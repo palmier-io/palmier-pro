@@ -231,10 +231,11 @@ extension MediaTab {
             .map { (id: $0.id, url: $0.url) }
         let coordinator = editor.searchIndex
         let corrector = GlossaryStore.load(projectURL: editor.projectURL).corrector()
+        let engine = editor.resolvedLocalEngine
         momentSearchTask = Task {
             try? await Task.sleep(for: .milliseconds(250))
             guard !Task.isCancelled else { return }
-            let spoken = TranscriptSearch.search(query: query, assets: assets, corrector: corrector)
+            let spoken = TranscriptSearch.search(query: query, assets: assets, corrector: corrector, engine: engine)
             let visual = await coordinator.search(query: query)
             guard !Task.isCancelled else { return }
             visualHits = visual

@@ -267,6 +267,7 @@ final class EditorViewModel {
         )
         agentService.editor = self
         searchIndex.assetsProvider = { [weak self] in self?.mediaAssets ?? [] }
+        searchIndex.localEngineProvider = { [weak self] in self?.resolvedLocalEngine ?? .current }
         mediaVisualCache.speech.onAnalyzingCountChange = { [weak self] count in
             self?.speechAnalyzingCount = count
         }

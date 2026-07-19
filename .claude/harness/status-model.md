@@ -1,6 +1,23 @@
 # feature/local-model-selection — Status (builder-model)
 
-Phase 2 complete. Ready for Evaluator. Full `swift build` + full `swift test` (1326/1326) green.
+Phase 2 + Evaluator fix round 1 complete. Full `swift build` + full `swift test` (1330/1330) green.
+
+## Evaluator fix round 1
+
+| ID  | Severity       | Fix                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| --- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F1  | MEDIUM BLOCKER | Search read/write symmetry: threaded the project's resolved engine into SearchIndexCoordinator (localEngineProvider closure wired from EditorViewModel; PreflightRequest.engine; indexOne transcript(engine:)) and TranscriptSearch.search(engine:) (both MediaTab + ToolExecutor+Search callers pass editor.resolvedLocalEngine). A whisper-override transcript is now found by preflight/spoken-search and never re-transcribed.                                                                                                                   |
+| F2  | MEDIUM         | Fallback no longer poisons the requested slot: new pure `TranscriptCache.storageEngine(requested:resultModel:)` routes a produced transcript to the slot of the engine that ACTUALLY ran (via the stamped model). An Apple fallback for a qwen3 request lands in the apple slot; the qwen3 slot stays empty so a later successful qwen3 run fills it and wins. Response always reports the true model (result.model, unchanged). Semantics: fallback IS cached (under the run engine's slot, reused by that engine), requested slot stays retryable. |
+| F3  | LOW            | Reconciled figures: qwen3 was "~4 GB" (detail) vs "~840 MB/~2 GB RAM" (schema). Now consistent everywhere — qwen3 = ~840 MB model + shared ~1.5 GB Whisper timing pass (~2.3 GB first-run), ~2 GB RAM; whisper = ~1.5 GB (was "~1 GB" in detail).                                                                                                                                                                                                                                                                                                    |
+
+New tests: preflightRespectsProjectEngineSlot, spokenSearchReadsProjectEngineSlot (F1);
+storageEngineRoutesFallbackToTheEngineThatRan, fallbackNeverOccupiesRequestedSlotThenRealRunWins (F2).
+
+---
+
+## Phase 2 (original)
+
+Full `swift build` + full `swift test` green.
 
 ## Deliverable 1 — larger/higher-precision local variant
 

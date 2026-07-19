@@ -37,9 +37,25 @@ actor TranscriptCache {
             full = isVideo
                 ? try await Transcription.transcribeVideoAudio(videoURL: url, engine: engine)
                 : try await Transcription.transcribe(fileURL: url, engine: engine)
-            if let key { store(full, key: key) }
+            // A fallback (e.g. qwen3 unavailable → Apple) stamps a different model than requested. Store
+            // it under the slot of the engine that ACTUALLY ran, never the requested one — otherwise the
+            // requested slot would serve the fallback forever and shadow a later successful run. Leaving
+            // the requested slot empty lets the next call re-attempt the real engine.
+            let ranEngine = Self.storageEngine(requested: engine, resultModel: full.model)
+            if let storeKey = Self.key(for: url, variant: .local(engine: ranEngine), cacheTag: cacheTag) {
+                store(full, key: storeKey)
+            }
         }
         return range.map { Self.filter(full, to: $0) } ?? full
+    }
+
+    /// The engine slot a freshly produced transcript belongs in: the engine whose model actually stamped
+    /// the result. Equals `requested` on success; on a fallback it resolves to the engine that ran (so the
+    /// requested slot stays empty and retryable). An untagged/unknown model defaults to `requested`.
+    static func storageEngine(requested: LocalSpeechEngine, resultModel: String?) -> LocalSpeechEngine {
+        guard let resultModel,
+              let ran = LocalSpeechEngine.allCases.first(where: { $0.modelId == resultModel }) else { return requested }
+        return ran
     }
 
     // Read-only lookups try the UNSALTED local key first — transcript() writes unsalted, so a fresh

@@ -20,8 +20,8 @@ enum LocalSpeechEngine: String, CaseIterable, Identifiable, Sendable, Codable {
 
     var detail: String {
         switch self {
-        case .qwen3: "Highest accuracy; 30+ languages, 20+ Chinese dialects, mixed-language speech. ~4 GB of downloads. Word timing aligned via a parallel Whisper pass."
-        case .whisper: "Word-level timestamps, ~100 languages. ~1 GB download."
+        case .qwen3: "Highest accuracy; 30+ languages, 20+ Chinese dialects, mixed-language speech. ~840 MB model plus a shared ~1.5 GB Whisper pass for word timing (~2.3 GB on first use)."
+        case .whisper: "Word-level timestamps, ~100 languages. ~1.5 GB download."
         case .apple: "System engine. Single language per file, chosen from your macOS language settings."
         }
     }

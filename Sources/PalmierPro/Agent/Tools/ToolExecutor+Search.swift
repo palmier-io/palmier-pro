@@ -86,7 +86,7 @@ extension ToolExecutor {
         let candidates = editor.mediaAssets
             .filter { ($0.type == .video || $0.type == .audio) && (restrict?.contains($0.id) ?? true) }
             .map { (id: $0.id, url: $0.url) }
-        let hits = TranscriptSearch.search(query: query, assets: candidates, limit: limit, corrector: glossaryCorrector(editor))
+        let hits = TranscriptSearch.search(query: query, assets: candidates, limit: limit, corrector: glossaryCorrector(editor), engine: editor.resolvedLocalEngine)
         return hits.map { hit in
             [
                 "mediaRef": hit.assetID,

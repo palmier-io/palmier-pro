@@ -82,4 +82,56 @@ struct SearchIndexPreflightTests {
         #expect(result.needsVisual)
         #expect(!result.needsTranscript)
     }
+
+    /// F1: preflight must check the PROJECT's engine slot — a transcript cached under a whisper override
+    /// makes preflight skip re-transcribing for whisper, but still request it for a different engine
+    /// (so the override neither re-transcribes what it already has nor reads another engine's slot).
+    @Test func preflightRespectsProjectEngineSlot() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("preflight-engine-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("clip.mov")
+        try Data("media".utf8).write(to: url)
+        let key = try seedTranscript(text: "hello", for: url, engine: .whisper)
+        defer { try? FileManager.default.removeItem(at: TranscriptCache.diskURL(key)) }
+
+        func needsTranscript(_ engine: LocalSpeechEngine) async -> Bool {
+            let request = SearchIndexCoordinator.PreflightRequest(url: url, type: .video, hasAudio: true, spec: spec, engine: engine)
+            return await Task.detached { SearchIndexCoordinator.preflight(request) }.value.needsTranscript
+        }
+        #expect(await needsTranscript(.whisper) == false) // already cached in this project's slot → no re-transcribe
+        #expect(await needsTranscript(.qwen3) == true)     // different engine → its slot is empty
+    }
+}
+
+@Suite("TranscriptSearch — engine slot")
+struct TranscriptSearchEngineTests {
+    @Test func spokenSearchReadsProjectEngineSlot() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("spoken-engine-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("clip.mov")
+        try Data("media".utf8).write(to: url)
+        let key = try seedTranscript(text: "the quick brown fox", for: url, engine: .whisper)
+        defer { try? FileManager.default.removeItem(at: TranscriptCache.diskURL(key)) }
+
+        let assets = [(id: "a1", url: url)]
+        // Reading the project's whisper slot finds the transcript; the global-default slot is empty.
+        #expect(TranscriptSearch.search(query: "brown", assets: assets, engine: .whisper).count == 1)
+        #expect(TranscriptSearch.search(query: "brown", assets: assets, engine: .qwen3).isEmpty)
+    }
+}
+
+/// Seeds a single-segment transcript on disk under `engine`'s local cache slot; returns its key.
+@discardableResult
+private func seedTranscript(text: String, for url: URL, engine: LocalSpeechEngine) throws -> String {
+    let key = try #require(TranscriptCache.key(for: url, variant: .local(engine: engine)))
+    let result = TranscriptionResult(
+        text: text, language: "en",
+        words: [], segments: [TranscriptionSegment(text: text, start: 0, end: 1)],
+        model: engine.modelId
+    )
+    try FileManager.default.createDirectory(at: TranscriptCache.directory, withIntermediateDirectories: true)
+    try JSONEncoder().encode(result).write(to: TranscriptCache.diskURL(key))
+    return key
 }

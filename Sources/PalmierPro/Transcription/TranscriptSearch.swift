@@ -16,12 +16,13 @@ enum TranscriptSearch {
         query: String,
         assets: [(id: String, url: URL)],
         limit: Int = 20,
-        corrector: GlossaryCorrector? = nil
+        corrector: GlossaryCorrector? = nil,
+        engine: LocalSpeechEngine = .current
     ) -> [Hit] {
         rank(
             query: query,
             transcripts: assets.compactMap { asset in
-                TranscriptCache.cachedOnDisk(for: asset.url).map { (asset.id, $0) }
+                TranscriptCache.cachedOnDisk(for: asset.url, engine: engine).map { (asset.id, $0) }
             },
             limit: limit,
             corrector: corrector

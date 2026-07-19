@@ -9,6 +9,9 @@ final class SearchIndexCoordinator {
         let type: ClipType
         let hasAudio: Bool
         let spec: VisualEmbedder.Spec
+        /// The project's resolved on-device engine, so the "already cached?" check reads the same slot
+        /// indexing writes — otherwise a project override transcribes twice and spoken search misses.
+        var engine: LocalSpeechEngine = .current
     }
 
     struct PreflightResult: Equatable, Sendable {
@@ -43,6 +46,8 @@ final class SearchIndexCoordinator {
     }
 
     var assetsProvider: () -> [MediaAsset] = { [] }
+    /// The project's resolved on-device engine; keeps index reads/writes on the same cache slot.
+    var localEngineProvider: () -> LocalSpeechEngine = { .current }
 
     private var queue: [IndexWork] = []
     private var scheduledIds: Set<String> = []
@@ -130,7 +135,7 @@ final class SearchIndexCoordinator {
         let needsVisual = (request.type == .video || request.type == .image)
             && VisualIndexer.needsIndex(url: request.url, spec: request.spec)
         let needsTranscript = (request.type == .audio || (request.type == .video && request.hasAudio))
-            && !TranscriptCache.hasCachedOnDisk(for: request.url)
+            && !TranscriptCache.hasCachedOnDisk(for: request.url, engine: request.engine)
         return PreflightResult(needsVisual: needsVisual, needsTranscript: needsTranscript)
     }
 
@@ -197,11 +202,13 @@ final class SearchIndexCoordinator {
             if let retry { schedule(retry) }
         }
 
+        let engine = localEngineProvider()
         let request = PreflightRequest(
             url: work.asset.url,
             type: work.asset.type,
             hasAudio: work.asset.hasAudio,
-            spec: work.spec
+            spec: work.spec,
+            engine: engine
         )
         let task = Task.detached(priority: .utility) { Self.preflight(request) }
         let result = await withTaskCancellationHandler {
@@ -225,7 +232,7 @@ final class SearchIndexCoordinator {
             retry = assetsProvider().first { $0.id == work.asset.id }
             return
         }
-        await indexOne(work.asset, model: model, transcribe: result.needsTranscript)
+        await indexOne(work.asset, model: model, transcribe: result.needsTranscript, engine: engine)
     }
 
     private func isCurrent(_ work: IndexWork) -> Bool {
@@ -244,7 +251,8 @@ final class SearchIndexCoordinator {
     private func indexOne(
         _ asset: AssetSnapshot,
         model: VisualEmbedder,
-        transcribe: Bool
+        transcribe: Bool,
+        engine: LocalSpeechEngine
     ) async {
         let visualShare = transcribe ? 0.5 : 1.0
         let onProgress: @Sendable (Double) -> Void = { [weak self] fraction in
@@ -257,7 +265,7 @@ final class SearchIndexCoordinator {
             async let transcriptDone: Void = {
                 if transcribe {
                     try await ExportQueue.shared.waitWhileExportActive()
-                    _ = try await TranscriptCache.shared.transcript(for: url, isVideo: isVideo, range: nil)
+                    _ = try await TranscriptCache.shared.transcript(for: url, isVideo: isVideo, range: nil, engine: engine)
                 }
             }()
             switch asset.type {
