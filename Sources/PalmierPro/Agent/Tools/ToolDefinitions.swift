@@ -563,7 +563,7 @@ enum ToolDefinitions {
                     "targetClipId": ["type": "string", "description": "Single clip to align. Use targetClipIds for several."],
                     "targetClipIds": ["type": "array", "items": ["type": "string"], "description": "Clips to align with the reference."],
                     "mode": ["type": "string", "enum": ["auto", "audio", "timecode"], "description": "auto (default): timecode when available, else audio. audio/timecode force that method."],
-                    "searchWindowSeconds": ["type": "number", "description": "Max ± offset to search in seconds, audio mode only (default 30)."],
+                    "searchWindowSeconds": ["type": "number", "description": "Optional max ± offset to search in seconds. Omit to search the full feasible overlap."],
                     "minConfidence": ["type": "number", "description": "Minimum audio correlation confidence 0–1 (default 0.5)."],
                 ],
                 required: ["referenceClipId"]

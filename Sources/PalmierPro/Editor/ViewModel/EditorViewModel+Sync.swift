@@ -9,10 +9,10 @@ extension EditorViewModel {
         var failures: [(clipId: String, message: String)] = []
         /// Frames the whole group (reference included) moved right so no target lands before frame 0.
         var shiftedFrames: Int = 0
+        var retimed: [(clipId: String, driftPpm: Double)] = []
     }
 
     enum SyncDefaults {
-        static let searchWindowSeconds: Double = 30
         static let minConfidence: Double = 0.5
         static let minSpeed: Double = 0.0001
         /// ± window around a capture-date seed; covers typical device clock skew.
@@ -38,7 +38,7 @@ extension EditorViewModel {
         referenceClipId: String,
         targetClipIds: [String],
         mode: SyncMode = .auto,
-        searchWindowSeconds: Double = SyncDefaults.searchWindowSeconds,
+        searchWindowSeconds: Double? = nil,
         minConfidence: Double = SyncDefaults.minConfidence,
         applying mutation: (@MainActor (@MainActor () -> Void) async throws -> Void)? = nil
     ) async throws -> SyncBatchReport {
@@ -75,22 +75,21 @@ extension EditorViewModel {
         let refTCCarrier = mode == .audio ? nil : tcCarrier(in: unit(of: refClip))
 
         let hop = AudioEnvelopeExtractor.hopSeconds
-        let maxLag = max(1, Int((searchWindowSeconds / hop).rounded()))
-        let seedWindow = max(1, min(maxLag, Int((SyncDefaults.dateSeedWindowSeconds / hop).rounded())))
+        let seedWindow = max(1, Int((SyncDefaults.dateSeedWindowSeconds / hop).rounded()))
         let minOverlap = max(AudioSyncCorrelator.minOverlap, Int((SyncDefaults.minOverlapSeconds / hop).rounded()))
 
         struct AudioClip {
             let clipId: String
             let samples: [Float]
             let speed: Double
-            let currentStart: Int
             let mediaRef: String
             let trimStartFrame: Int
         }
-        typealias Hit = (rawStart: Int, confidence: Double)
+        typealias Hit = (rawStart: Int, confidence: Double, driftRatio: Double, retimedSpeed: Double?)
         var anchors: [(rawStart: Int, clip: AudioClip)] = []
         var candidates: [(clip: AudioClip, direct: Hit?, tcRawStart: Int?)] = []
-        var placements: [(clipId: String, rawStart: Int, confidence: Double, method: SyncMethod)] = []
+        var placements: [(clipId: String, rawStart: Int, confidence: Double, method: SyncMethod,
+                          driftRatio: Double, retimedSpeed: Double?)] = []
         var refAudioTried = false
 
         func match(_ anchor: (rawStart: Int, clip: AudioClip), _ target: AudioClip) async -> Hit? {
@@ -101,16 +100,23 @@ extension EditorViewModel {
                     + Double(target.trimStartFrame - anchor.clip.trimStartFrame) / fps
                 seedHops = Int((lagSeconds / hop).rounded())
             }
-            let timelineLagSeconds = (Double(target.currentStart) - Double(anchor.rawStart))
-                * max(anchor.clip.speed, SyncDefaults.minSpeed) / fps
-            let timelineCenterHops = Int((timelineLagSeconds / hop).rounded())
+            let maxLag = searchWindowSeconds.map { max(1, Int(($0 / hop).rounded())) }
+                ?? max(anchor.clip.samples.count, target.samples.count)
             guard let result = await AudioSyncCorrelator.seededCorrelate(
                 reference: anchor.clip.samples, target: target.samples, seedHops: seedHops,
                 seedWindowHops: seedWindow, maxLagHops: maxLag, minOverlapHops: minOverlap,
-                minConfidence: minConfidence, additionalSearchCenterHops: [timelineCenterHops]
+                minConfidence: minConfidence
             ) else { return nil }
-            let lagFrames = Double(result.lagHops) * hop * fps / max(anchor.clip.speed, SyncDefaults.minSpeed)
-            return (Int((Double(anchor.rawStart) + lagFrames).rounded()), result.confidence)
+            let lagFrames = result.exactLagHops * hop * fps / max(anchor.clip.speed, SyncDefaults.minSpeed)
+            var retimedSpeed: Double?
+            if result.driftRatio != 0 {
+                let corrected = anchor.clip.speed / (1 + result.driftRatio)
+                if abs(corrected / max(target.speed, SyncDefaults.minSpeed) - 1) <= 0.001 {
+                    retimedSpeed = corrected
+                }
+            }
+            return (Int((Double(anchor.rawStart) + lagFrames).rounded()), result.confidence,
+                    result.driftRatio, retimedSpeed)
         }
 
         var seenUnits = Set<String>()
@@ -133,7 +139,7 @@ extension EditorViewModel {
                     refSpeed: liveRef.speed, refTimecode: refTC,
                     targetTrimStartFrame: liveCarrier.trimStartFrame, targetTimecode: targetTC, fps: fps)
                 if mode == .timecode {
-                    placements.append((carrier.id, rawStart, 1.0, .timecode))
+                    placements.append((carrier.id, rawStart, 1.0, .timecode, 0, nil))
                     continue
                 }
                 tcHint = (carrier.id, rawStart)
@@ -146,13 +152,13 @@ extension EditorViewModel {
 
             guard let bearer = unitClips.first(where: { $0.mediaType == .audio && captionCanTranscribe($0) })
                 ?? unitClips.first(where: { captionCanTranscribe($0) }) else {
-                if let tcHint { placements.append((tcHint.clipId, tcHint.rawStart, 1.0, .timecode)); continue }
+                if let tcHint { placements.append((tcHint.clipId, tcHint.rawStart, 1.0, .timecode, 0, nil)); continue }
                 report.failures.append((targetId, mode == .auto
                     ? "No source timecode, and clip has no audio." : "Clip has no audio."))
                 continue
             }
             guard let env = await envelope(of: bearer, fps: fps), !env.samples.isEmpty else {
-                if let tcHint { placements.append((tcHint.clipId, tcHint.rawStart, 1.0, .timecode)); continue }
+                if let tcHint { placements.append((tcHint.clipId, tcHint.rawStart, 1.0, .timecode, 0, nil)); continue }
                 report.failures.append((bearer.id, "Clip has no audio.")); continue
             }
             if !refAudioTried {
@@ -161,23 +167,21 @@ extension EditorViewModel {
                    let refEnv = await envelope(of: liveRef, fps: fps), !refEnv.samples.isEmpty {
                     anchors.append((liveRef.startFrame, AudioClip(
                         clipId: liveRef.id, samples: refEnv.samples, speed: liveRef.speed,
-                        currentStart: liveRef.startFrame,
                         mediaRef: liveRef.mediaRef, trimStartFrame: liveRef.trimStartFrame)))
                 }
             }
             guard let refAnchor = anchors.first else {
-                if let tcHint { placements.append((tcHint.clipId, tcHint.rawStart, 1.0, .timecode)); continue }
+                if let tcHint { placements.append((tcHint.clipId, tcHint.rawStart, 1.0, .timecode, 0, nil)); continue }
                 report.failures.append((bearer.id, mode == .auto && refTCCarrier == nil
                     ? "Reference has no source timecode or audio." : "Reference clip has no audio."))
                 continue
             }
             guard let liveBearer = liveClip(bearer.id) else {
-                if let tcHint { placements.append((tcHint.clipId, tcHint.rawStart, 1.0, .timecode)); continue }
+                if let tcHint { placements.append((tcHint.clipId, tcHint.rawStart, 1.0, .timecode, 0, nil)); continue }
                 report.failures.append((bearer.id, "Clip not found.")); continue
             }
             let clip = AudioClip(
                 clipId: bearer.id, samples: env.samples, speed: liveBearer.speed,
-                currentStart: liveBearer.startFrame,
                 mediaRef: liveBearer.mediaRef, trimStartFrame: liveBearer.trimStartFrame)
             candidates.append((clip, await match(refAnchor, clip), tcHint?.rawStart))
         }
@@ -191,13 +195,13 @@ extension EditorViewModel {
             }
             guard let best else {
                 if let tcRawStart {
-                    placements.append((clip.clipId, tcRawStart, 1.0, .timecode))
+                    placements.append((clip.clipId, tcRawStart, 1.0, .timecode, 0, nil))
                     anchors.append((tcRawStart, clip))
                     continue
                 }
                 report.failures.append((clip.clipId, "No confident alignment — clips may not overlap.")); continue
             }
-            placements.append((clip.clipId, best.rawStart, best.confidence, .audio))
+            placements.append((clip.clipId, best.rawStart, best.confidence, .audio, best.driftRatio, best.retimedSpeed))
             anchors.append((best.rawStart, clip))
         }
 
@@ -225,12 +229,17 @@ extension EditorViewModel {
         }
 
         var accepted: [(clipId: String, rawStart: Int, confidence: Double, method: SyncMethod, currentStart: Int)] = []
+        var retimes: [(ids: [String], speed: Double, driftPpm: Double, bearerId: String)] = []
         for p in placements {
             guard let clip = liveClip(p.clipId) else { report.failures.append((p.clipId, "Clip not found.")); continue }
             if let failure = queueMove(of: p.clipId, toFrame: p.rawStart) {
                 report.failures.append((p.clipId, failure)); continue
             }
             accepted.append((p.clipId, p.rawStart, p.confidence, p.method, clip.startFrame))
+            if let speed = p.retimedSpeed, speed != clip.speed {
+                let unitIds = [p.clipId] + linkedPartnerIds(of: p.clipId).filter { $0 != referenceClipId }
+                retimes.append((unitIds, speed, p.driftRatio * 1_000_000, p.clipId))
+            }
         }
 
         // Shift right if any accepted move (partners included) starts before frame 0.
@@ -245,16 +254,21 @@ extension EditorViewModel {
             }
         }
         report.synced = accepted.map { ($0.clipId, $0.rawStart + shift - $0.currentStart, $0.confidence, $0.method) }
+        report.retimed = retimes.map { ($0.bearerId, $0.driftPpm) }
 
         let moves = allMoves.compactMap { move -> (clipId: String, toTrack: Int, toFrame: Int)? in
             guard let clip = liveClip(move.clipId), move.toFrame + shift != clip.startFrame else { return nil }
             return (move.clipId, move.toTrack, move.toFrame + shift)
         }
-        if !moves.isEmpty {
+        if !moves.isEmpty || !retimes.isEmpty {
+            let apply: @MainActor () -> Void = { [self] in
+                for retime in retimes { commitClipSpeed(ids: retime.ids, newSpeed: retime.speed) }
+                if !moves.isEmpty { moveClips(moves) }
+            }
             if let mutation {
-                try await mutation { self.moveClips(moves) }
+                try await mutation(apply)
             } else {
-                undo.perform("Synchronize") { moveClips(moves) }
+                undo.perform("Synchronize", apply)
             }
         }
         return report

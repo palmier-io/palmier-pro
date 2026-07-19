@@ -192,7 +192,7 @@ extension EditorViewModel {
                 reference: anchor.samples, target: samples, seedHops: seed, seedWindowHops: seedWindow,
                 maxLagHops: maxLag, minOverlapHops: minOverlapHops, minConfidence: SyncDefaults.minConfidence
             ) else { return nil }
-            return (anchor.offsetSeconds + Double(result.lagHops) * hop, result.confidence)
+            return (anchor.offsetSeconds + result.exactLagHops * hop, result.confidence)
         }
 
         var candidates: [(ref: String, samples: [Float], direct: (offset: Double, confidence: Double)?)] = []
