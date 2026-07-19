@@ -113,10 +113,7 @@ struct MCPInstructionsPane: View {
             description: "Install the bundled Palmier Pro connector.",
             action: ("Install in Claude Desktop", openClaudeDesktopBundle)
         ) {
-            ManualFallback(
-                intro: "In Claude Desktop, choose Settings › Extensions › Advanced settings › Install extension…, then select the connector at this path.",
-                code: claudeDesktopBundleURL?.path ?? "palmier-pro.mcpb"
-            )
+            EmptyView()
         }
     }
 
