@@ -8,6 +8,14 @@ import Foundation
 actor Qwen3ASREngine {
     static let shared = Qwen3ASREngine()
 
+    /// Restores punctuation on each chunk's raw text before it's split into pieces. Injectable so
+    /// tests exercise distribution with a fake; production uses the on-demand sherpa model.
+    private let restorer: PunctuationRestoring
+
+    init(restorer: PunctuationRestoring = SherpaPunctuationRestorer.shared) {
+        self.restorer = restorer
+    }
+
     enum EngineError: LocalizedError {
         case modelDownloadFailed(String)
         case recognizerInitFailed
@@ -103,7 +111,10 @@ actor Qwen3ASREngine {
         let timingTask = Task { try await WhisperKitEngine.shared.transcribe(fileURL: fileURL) }
 
         let samples = try EngineAudio.loadSamples(fileURL: fileURL)
-        var chunks: [(text: String, start: Double, end: Double)] = []
+        // `raw` is the model's unpunctuated stream (drives piece timing); `text` carries restored
+        // punctuation for the segment and — folded onto pieces — for the words. When the punct model
+        // is unavailable, restore() returns the input and `text == raw`.
+        var chunks: [(text: String, raw: String, start: Double, end: Double)] = []
         var chunkStart = 0
         while chunkStart < samples.count {
             let chunkEnd = EngineAudio.chunkBoundary(
@@ -111,9 +122,10 @@ actor Qwen3ASREngine {
             let chunk = Array(samples[chunkStart..<chunkEnd])
             let start = Double(chunkStart) / Double(EngineAudio.sampleRate)
             let end = Double(chunkEnd) / Double(EngineAudio.sampleRate)
-            let text = Self.decodeChunk(recognizer: recognizer, samples: chunk)
-            if !text.isEmpty {
-                chunks.append((text, start, end))
+            let raw = Self.decodeChunk(recognizer: recognizer, samples: chunk)
+            if !raw.isEmpty {
+                let text = await restorer.restore(raw)
+                chunks.append((text, raw, start, end))
             }
             chunkStart = chunkEnd
         }
@@ -122,7 +134,7 @@ actor Qwen3ASREngine {
         var words: [TranscriptionWord] = []
         var segments: [TranscriptionSegment] = []
         for chunk in chunks {
-            let pieces = Self.splitPieces(text: chunk.text)
+            let pieces = Self.punctuatedPieces(raw: chunk.raw, restored: chunk.text)
             let anchors = timingWords.filter { word in
                 guard let start = word.start, let end = word.end else { return false }
                 return end > chunk.start - 1.0 && start < chunk.end + 1.0
@@ -266,6 +278,44 @@ actor Qwen3ASREngine {
             if !latin.isEmpty { pieces.append(latin) }
         }
         return pieces
+    }
+
+    /// Fold a chunk's restored punctuation onto its display pieces: each mark attaches to the piece it
+    /// follows, so the piece count matches the unpunctuated stream and aligned word timings never
+    /// shift. If the restorer altered or dropped base characters, the raw pieces are returned as-is.
+    static func punctuatedPieces(raw: String, restored: String) -> [String] {
+        let rawPieces = splitPieces(text: raw)
+        guard restored != raw else { return rawPieces }
+        let folded = foldPunctuation(splitPieces(text: restored))
+        guard folded.count == rawPieces.count,
+              zip(folded, rawPieces).allSatisfy({ stripPunctuation($0) == stripPunctuation($1) })
+        else { return rawPieces }
+        return folded
+    }
+
+    /// Bind each punctuation-only piece (a standalone CJK mark like 。、！) to the piece before it;
+    /// leading punctuation with nothing to bind to is dropped. Latin runs already carry their own
+    /// trailing marks, so they pass through untouched.
+    private static func foldPunctuation(_ pieces: [String]) -> [String] {
+        var out: [String] = []
+        for piece in pieces {
+            if stripPunctuation(piece).isEmpty, let last = out.last {
+                out[out.count - 1] = last + piece
+            } else if !stripPunctuation(piece).isEmpty {
+                out.append(piece)
+            }
+        }
+        return out
+    }
+
+    /// The piece's base content — alphanumerics and CJK ideographs, dropping punctuation (incl. the
+    /// CJK punctuation block 0x3000–0x303F). Used to prove restoration only inserted marks.
+    private static func stripPunctuation(_ piece: String) -> String {
+        String(piece.unicodeScalars.filter {
+            let value = Int($0.value)
+            if (0x3000...0x303F).contains(value) { return false }
+            return CharacterSet.alphanumerics.contains($0) || (0x2E80...0x9FFF).contains(value)
+        })
     }
 
     /// Whisper emits CJK as multi-character words ("小面" with one time range) while our

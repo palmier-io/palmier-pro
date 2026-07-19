@@ -42,6 +42,14 @@ extension EditorViewModel {
         }
     }
 
+    /// Terms natural segmentation must never break through: glossary auto-apply canonicals plus the
+    /// caption style's protected phrases. Keeps CaptionBuilder store-free — it just takes the strings.
+    func captionProtectedPhrases() -> [String] {
+        let glossary = GlossaryStore.load(projectURL: projectURL).hotwordTerms()
+        let style = CaptionStyleStore.resolve(projectPackageURL: projectURL).profile.protectedPhrases
+        return Array(Set(glossary + style)).filter { !$0.isEmpty }
+    }
+
     func captionLineFits(_ line: String, style: TextStyle) -> Bool {
         let size = TextLayout.naturalSize(
             content: line, style: style, maxWidth: .greatestFiniteMagnitude, canvasHeight: CGFloat(timeline.height)
@@ -269,6 +277,7 @@ extension EditorViewModel {
 
         let animation: TextAnimation? = request.animation.isActive ? request.animation : nil
         let fillerPolicy = (request.dropRemoveAlwaysFillers ? request.fillerProfile : nil).map { FillerPolicy(profile: $0) }
+        let protectedPhrases = captionProtectedPhrases()
         return targets.flatMap { t -> [TextClipSpec] in
             guard let result = results[t.clip.mediaRef] else { return [] }
             let phrases = CaptionTranscriptMapper.phrases(
@@ -278,7 +287,8 @@ extension EditorViewModel {
                 maxWords: request.maxWords,
                 minDuration: AppTheme.Caption.minDisplayDuration,
                 fits: { captionLineFits($0, style: request.style) },
-                segmentation: request.segmentation
+                segmentation: request.segmentation,
+                protectedPhrases: protectedPhrases
             )
             guard !phrases.isEmpty else { return [] }
             let cased = phrases.map { CaptionBuilder.Phrase(text: request.textCase.apply($0.text), start: $0.start, end: $0.end, words: $0.words) }

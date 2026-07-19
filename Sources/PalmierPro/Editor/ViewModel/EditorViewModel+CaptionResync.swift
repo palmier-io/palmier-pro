@@ -249,6 +249,7 @@ extension EditorViewModel {
     func captionResyncChunker(segmentation: CaptionBuilder.Segmentation = .default) -> CaptionResyncEngine.Chunker {
         let fps = Double(timeline.fps)
         let style = captionResyncModalStyle()
+        let protectedPhrases = captionProtectedPhrases()
         return { [weak self] words, maxWords in
             guard let self, !words.isEmpty, fps > 0 else { return words.isEmpty ? [] : [words] }
             let synthetic = words.map {
@@ -259,7 +260,8 @@ extension EditorViewModel {
                 fits: { self.captionLineFits($0, style: style) },
                 maxWords: maxWords,
                 minDuration: AppTheme.Caption.minDisplayDuration,
-                segmentation: segmentation
+                segmentation: segmentation,
+                protectedPhrases: protectedPhrases
             )
             guard !phrases.isEmpty else { return [words] }
             var out: [[WordTiming]] = []

@@ -35,7 +35,8 @@ enum CaptionBuilder {
         fits: (String) -> Bool,
         maxWords: Int? = nil,
         minDuration: Double,
-        segmentation: Segmentation = .default
+        segmentation: Segmentation = .default,
+        protectedPhrases: [String] = []
     ) -> [Phrase] {
         // Only phrases that fit visually and within the word cap are accepted; else, keep splitting.
         let pieces: [String]
@@ -48,7 +49,7 @@ enum CaptionBuilder {
                 pieces = split(segment.text, fits: fits)
             }
         case .natural:
-            pieces = naturalLines(segment.text, fits: fits, maxWords: maxWords)
+            pieces = naturalLines(segment.text, fits: fits, maxWords: maxWords, protectedPhrases: protectedPhrases)
         }
         let timed = time(pieces, segment: segment, words: words)
         return enforceMinDuration(timed, minDuration: minDuration)
@@ -59,10 +60,38 @@ enum CaptionBuilder {
         fits: (String) -> Bool,
         maxWords: Int? = nil,
         minDuration: Double,
-        segmentation: Segmentation = .default
+        segmentation: Segmentation = .default,
+        protectedPhrases: [String] = []
     ) -> [Phrase] {
         let timed = words.filter { $0.start != nil && $0.end != nil }
-        guard let first = timed.first, let last = timed.last, let start = first.start, let end = last.end, end > start else { return [] }
+        guard !timed.isEmpty else { return [] }
+        // A real speech pause is an unconditional line break: split the word stream at pauses and
+        // segment each run alone, so no line ever merges across silence. Pause breaks compose with
+        // punctuation breaks — either triggers. This runs BEFORE phrase protection, so a pause also
+        // overrides it: real silence inside a protected term (重庆<gap>西站) splits it, on the premise
+        // that a genuine pause mid-term means the match was wrong. fixedChars keeps its legacy shape.
+        let runs = segmentation == .natural ? splitAtPauses(timed) : [timed]
+        let built = runs.flatMap {
+            phrasesForRun($0, fits: fits, maxWords: maxWords, minDuration: minDuration,
+                          segmentation: segmentation, protectedPhrases: protectedPhrases)
+        }
+        return runs.count > 1 ? enforceMinDuration(built, minDuration: minDuration) : built
+    }
+
+    /// Join one run of timed words into a segment and cut it into phrases.
+    private static func phrasesForRun(
+        _ timed: [TranscriptionWord],
+        fits: (String) -> Bool,
+        maxWords: Int?,
+        minDuration: Double,
+        segmentation: Segmentation,
+        protectedPhrases: [String]
+    ) -> [Phrase] {
+        // A collapsed span (a zero-duration word isolated by a pause split) must still emit — dropping
+        // it would silently lose that word from the captions. enforceMinDuration floors its length.
+        guard let first = timed.first, let last = timed.last,
+              let start = first.start, let end0 = last.end else { return [] }
+        let end = max(end0, start)
         // Drop empty tokens (a multi-token glossary variant empties the span's tail). Legacy mode joins
         // on spaces; natural mode glues CJK runs so re-tokenisation sees words, not spaced characters.
         let tokens = timed.map(\.text).filter { !$0.isEmpty }
@@ -75,8 +104,31 @@ enum CaptionBuilder {
             fits: fits,
             maxWords: maxWords,
             minDuration: minDuration,
-            segmentation: segmentation
+            segmentation: segmentation,
+            protectedPhrases: protectedPhrases
         )
+    }
+
+    /// A gap between consecutive words of at least this long reads as a deliberate pause, not the
+    /// micro-silence between syllables. ~12 frames at 30 fps — the shortest break worth cutting on.
+    private static let pauseBreakSeconds = 0.4
+
+    /// Split a word run wherever consecutive words are separated by a real pause. Only genuine gaps
+    /// (anchored timings) exceed the threshold; interpolated words sit back-to-back, so they don't cut.
+    private static func splitAtPauses(_ words: [TranscriptionWord]) -> [[TranscriptionWord]] {
+        var runs: [[TranscriptionWord]] = []
+        var current: [TranscriptionWord] = []
+        var previousEnd: Double?
+        for word in words {
+            if let previousEnd, let start = word.start, start - previousEnd >= pauseBreakSeconds, !current.isEmpty {
+                runs.append(current)
+                current = []
+            }
+            current.append(word)
+            if let end = word.end { previousEnd = end }
+        }
+        if !current.isEmpty { runs.append(current) }
+        return runs
     }
 
     private static func wordCount(_ text: String) -> Int {
@@ -90,12 +142,16 @@ enum CaptionBuilder {
     private static let asciiHardBreak: Set<Character> = [".", "?", "!", ","]
 
     /// Cut into shortest natural lines: hard breaks then word-token boundaries; content preserved.
-    /// No NER — under a tight cap a run splits at the NLTokenizer seam (重庆|西站), only mid-token is prevented.
-    private static func naturalLines(_ text: String, fits: (String) -> Bool, maxWords: Int?) -> [String] {
+    /// Protected phrases (glossary terms, caption-style phrases) are atomic WITHIN a run — a term like
+    /// 重庆西站 is one unbreakable token even under a tight cap, so a line breaks before it rather than
+    /// through it. A real speech pause splits the stream upstream of this, so it can override protection.
+    private static func naturalLines(
+        _ text: String, fits: (String) -> Bool, maxWords: Int?, protectedPhrases: [String] = []
+    ) -> [String] {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
 
-        let tokens = wordTokenStarts(in: trimmed)
+        let tokens = wordTokenStarts(in: trimmed, protecting: protectedPhrases)
         var lines: [String] = []
         var current = ""
 
@@ -175,15 +231,63 @@ enum CaptionBuilder {
         return wordCount(line) > cap
     }
 
-    private static func wordTokenStarts(in text: String) -> [String.Index: Range<String.Index>] {
+    /// Word tokens keyed by start index. Protected phrases override the tokenizer: each becomes one
+    /// atomic token, and any tokenizer token overlapping a protected span is clipped to its
+    /// outside-the-span remainder so every original character stays covered by exactly one token.
+    private static func wordTokenStarts(
+        in text: String, protecting protectedPhrases: [String] = []
+    ) -> [String.Index: Range<String.Index>] {
         let tokenizer = NLTokenizer(unit: .word)
         tokenizer.string = text
-        var map: [String.Index: Range<String.Index>] = [:]
+        var ranges: [Range<String.Index>] = []
         tokenizer.enumerateTokens(in: text.startIndex..<text.endIndex) { range, _ in
-            map[range.lowerBound] = range
+            ranges.append(range)
             return true
         }
+
+        let spans = protectedSpans(in: text, phrases: protectedPhrases)
+        if !spans.isEmpty {
+            ranges = spans + ranges.flatMap { subtracting(spans, from: $0) }
+        }
+
+        var map: [String.Index: Range<String.Index>] = [:]
+        for range in ranges { map[range.lowerBound] = range }
         return map
+    }
+
+    /// Longest-match, non-overlapping character ranges of `text` covered by a protected phrase,
+    /// scanning left to right and preferring the longest phrase that starts at each position.
+    private static func protectedSpans(in text: String, phrases: [String]) -> [Range<String.Index>] {
+        let needles = phrases.filter { !$0.isEmpty }.sorted { $0.count > $1.count }
+        guard !needles.isEmpty else { return [] }
+        var spans: [Range<String.Index>] = []
+        var i = text.startIndex
+        while i < text.endIndex {
+            if let match = needles.first(where: { text[i...].hasPrefix($0) }) {
+                let end = text.index(i, offsetBy: match.count)
+                spans.append(i..<end)
+                i = end
+            } else {
+                i = text.index(after: i)
+            }
+        }
+        return spans
+    }
+
+    /// The parts of `range` not covered by any protected span, so a tokenizer token that straddles a
+    /// span boundary keeps its outside characters as tokens instead of being dropped.
+    private static func subtracting(
+        _ spans: [Range<String.Index>], from range: Range<String.Index>
+    ) -> [Range<String.Index>] {
+        var pieces: [Range<String.Index>] = []
+        var cursor = range.lowerBound
+        for span in spans where span.lowerBound < range.upperBound && span.upperBound > range.lowerBound {
+            let lo = max(span.lowerBound, range.lowerBound)
+            if cursor < lo { pieces.append(cursor..<lo) }
+            cursor = max(cursor, min(span.upperBound, range.upperBound))
+        }
+        if cursor < range.upperBound { pieces.append(cursor..<range.upperBound) }
+        return pieces
     }
 
     /// Join tokens cleanly: no space inside a CJK run or before punctuation, one space at Latin/seam gaps.
