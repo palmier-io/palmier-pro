@@ -550,6 +550,9 @@ final class TimelineInputController {
             break
         }
 
+        // A drag/trim just above may have run a reactive caption resync; surface it (UI-origin only).
+        editor.presentReactiveResyncToastIfNeeded()
+
         dragState = .idle
         snapIndicatorX = nil
         view.needsDisplay = true

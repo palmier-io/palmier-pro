@@ -155,6 +155,12 @@ enum AppTheme {
         static let warning = NSColor.systemOrange
 
         static var warningColor: Color { Color(warning) }
+
+        /// Caption that no longer matches its audio (resyncConflict). Amber from the timecode family —
+        /// warns without the alarm of `error`. Shared by the timeline badge and the inspector marker.
+        static let captionConflict = Accent.timecodeNSColor
+
+        static var captionConflictColor: Color { Color(captionConflict) }
     }
 
     // MARK: - Text

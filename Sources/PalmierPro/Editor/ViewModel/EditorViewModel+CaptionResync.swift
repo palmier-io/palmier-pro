@@ -93,6 +93,15 @@ extension EditorViewModel {
         return lastResyncReport
     }
 
+    /// A UI-origin timeline commit (drag / trim / ripple) may have run a reactive resync whose report is
+    /// still stashed — agent tool calls consume theirs via `takeResyncReport` for the delta, so anything
+    /// lingering here is human-initiated. Toast a one-line summary once, then consume it. Called from the
+    /// UI commit paths (TimelineInputController mouse-up); a no-op when nothing worth surfacing changed.
+    func presentReactiveResyncToastIfNeeded() {
+        guard let report = takeResyncReport(), let toast = report.uiToast else { return }
+        mediaPanelToast = toast
+    }
+
     // MARK: - Apply
 
     @discardableResult
@@ -281,5 +290,28 @@ extension EditorViewModel {
         timeline.tracks.flatMap(\.clips)
             .first { $0.mediaType == .text && $0.captionGroupId != nil }?
             .textStyle ?? TextStyle()
+    }
+}
+
+extension CaptionResyncReport {
+    /// One-line toast for a human-initiated resync, or nil when nothing worth surfacing changed. Empty
+    /// reports and retimed-only reports (boundary nudges) stay silent — the latter are too frequent to be
+    /// worth a banner. Conflicts alone read as a warning; content changes read as a success.
+    var uiToast: MediaPanelToast? {
+        let changed = updated.count + removed.count + created.count
+        guard changed > 0 || !conflicts.isEmpty else { return nil }
+
+        if changed == 0 {
+            let n = conflicts.count
+            return MediaPanelToast(message: "\(n) caption\(n == 1 ? "" : "s") kept manual text — see inspector.", kind: .warning)
+        }
+
+        var parts: [String] = []
+        if !updated.isEmpty { parts.append("\(updated.count) updated") }
+        if !removed.isEmpty { parts.append("\(removed.count) removed") }
+        if !created.isEmpty { parts.append("\(created.count) added") }
+        var message = "Captions resynced · \(parts.joined(separator: ", "))."
+        if !conflicts.isEmpty { message += " \(conflicts.count) kept manual text." }
+        return MediaPanelToast(message: message, kind: conflicts.isEmpty ? .success : .warning)
     }
 }
