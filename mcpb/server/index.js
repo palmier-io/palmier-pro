@@ -1,4 +1,6 @@
 // Stdio→HTTP shim for Claude Desktop
+const http = require('node:http');
+
 const URL_BASE = 'http://127.0.0.1:19789/mcp';
 const RETRY_MS_MIN = 500;
 const RETRY_MS_MAX = 5000;
@@ -72,28 +74,43 @@ async function post(message, onMessage) {
 }
 
 // Standalone GET stream carries server-initiated messages (tools/list_changed).
+// Uses node:http, not fetch: undici kills idle response bodies after 300s,
+// which would churn a new session (and a client tools refetch) every 5 minutes.
 function openGetStream() {
   getStreamAbort?.abort();
-  const abort = new AbortController();
-  getStreamAbort = abort;
-  (async () => {
-    try {
-      const res = await fetch(URL_BASE, {
-        method: 'GET',
-        headers: headers({ 'Accept': 'text/event-stream' }),
-        signal: abort.signal,
-      });
-      if (!res.ok) throw new Error(`GET HTTP ${res.status}`);
-      await readSSE(res.body, (msg) => {
-        if (msg.method) writeOut(msg);
-      });
-      throw new Error('GET stream ended');
-    } catch (err) {
-      if (abort.signal.aborted) return;
-      log('notification stream lost:', err.message);
-      reconnect();
-    }
-  })();
+  let aborted = false;
+  let request = null;
+  getStreamAbort = { abort() { aborted = true; request?.destroy(); } };
+  const fail = (err) => {
+    if (aborted) return;
+    aborted = true;
+    log('notification stream lost:', err.message);
+    reconnect();
+  };
+  request = http.get(URL_BASE, { headers: headers({ 'Accept': 'text/event-stream' }), timeout: 0 }, (res) => {
+    if (res.statusCode !== 200) { res.resume(); return fail(new Error(`GET HTTP ${res.statusCode}`)); }
+    let buf = '';
+    res.setEncoding('utf8');
+    res.on('data', (chunk) => {
+      buf += chunk;
+      let sep;
+      while ((sep = buf.indexOf('\n\n')) >= 0) {
+        const event = buf.slice(0, sep); buf = buf.slice(sep + 2);
+        const data = event.split('\n')
+          .filter(l => l.startsWith('data:'))
+          .map(l => l.slice(5).trimStart())
+          .join('\n');
+        if (!data) continue;
+        try {
+          const msg = JSON.parse(data);
+          if (msg.method) writeOut(msg);
+        } catch { /* priming events */ }
+      }
+    });
+    res.on('end', () => fail(new Error('GET stream ended')));
+    res.on('error', fail);
+  });
+  request.on('error', fail);
 }
 
 async function establishSession() {
