@@ -184,3 +184,43 @@ re-broken into shortest natural semantic units).
   minimize merge with sibling fix/caption-timing (update_text + CaptionBuilder timing threading).
 - `parseSegmentation` lives in ToolExecutor+Captions.swift, shared by add_captions and resync_captions.
 - Worktree Vendor/sherpa-onnx.xcframework symlinked from the main checkout (git-ignored binary).
+
+---
+
+# feature/caption-ui-resync — Status (uiA)
+
+Phase 2 complete (A1–A5). Ready for Evaluator. Full `swift build` + full `swift test` (1379/1379) green.
+
+## Items shipped
+
+| ID  | Change                                                                                                     |
+| --- | ---------------------------------------------------------------------------------------------------------- |
+| A1  | UI-origin reactive-resync toast. `CaptionResyncReport.uiToast` (pure decision) + `presentReactiveResyncToastIfNeeded()` hooked at end of `TimelineInputController.mouseUp`. |
+| A2  | Amber `!` conflict pill (dot fallback) on caption clips with `resyncConflict`, in `ClipRenderer.draw`, gated by `showDetailChrome`. |
+| A3  | TextTab conflict warning row + Keep mine / Use transcript. VM helpers `keepManualCaptionText` / `useTranscriptForCaptionConflicts` (overwrite-policy resync scoped to flagged clips). |
+| A4  | TextTab "Freeze captions" toggle → `setCaptionResyncExempt` group-wide. Engine already honors `resyncExempt` (group exclusion); locked with a test. |
+| A5  | Shared `EditorViewModel.promoteCaptionEditIfClean` (classify + library write + §5.1 mark-clean) used by BOTH `update_text` and the new `promoteInspectorCaptionEdit` (toast + §5.2). MCP behavior byte-identical; `ToolExecutor.promoteCaptionEdit` removed. |
+
+## Design decisions
+
+- **A1 hook**: single site at the end of `mouseUp` — covers every timeline drag/trim/ripple commit. Origin
+  is inferred structurally (agents consume via `takeResyncReport`; UI doesn't), so no explicit origin flag.
+  A3 "Use transcript" and A5 promotion both consume their own report so A1 never double-toasts.
+- **A5 shared shape**: helper returns a `CaptionEditPromotion` carrying both the classifier spans (drive §5.2)
+  and the stored spans (drive the response row / toast). Glossary write stays outside undo (unchanged caveat).
+
+## Deviation / for the lead
+
+- The persistent `resyncConflict` flag (drives A2 badge + A3 marker) is only SET by the engine under the
+  `.flag` conflict policy; the default reactive policy is `.preserve`, which records conflicts in the REPORT
+  (so A1's toast fires) but does not set the flag. So A2/A3 are live only when the conflict policy is `.flag`
+  — presumably exposed by the sibling caption-settings cluster (#16). I did NOT change engine policy
+  semantics (out of scope, would break agent resync tests). Flag if A2/A3 should also light up under preserve.
+
+## Files
+
+- New: `Editor/ViewModel/EditorViewModel+GlossaryPromotion.swift`, `Editor/ViewModel/EditorViewModel+CaptionConflict.swift`
+- Changed: `UI/AppTheme.swift` (Status.captionConflict), `Editor/ViewModel/EditorViewModel+CaptionResync.swift`,
+  `Timeline/ClipRenderer.swift`, `Timeline/TimelineInputController.swift`, `Inspector/Tabs/TextTab.swift`,
+  `Agent/Tools/ToolExecutor+Texts.swift`, `Agent/Tools/ToolExecutor+Glossary.swift`
+- Tests: `Tests/PalmierProTests/CaptionResyncTests.swift` (4 new suites)
