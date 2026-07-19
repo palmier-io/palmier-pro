@@ -143,15 +143,20 @@ final class VideoEngine {
             let generation = sourcePreviewGeneration
             replacePlayerItem(nil, reason: "previewAssetLoading")
             sourcePreviewTask = Task { @MainActor [weak self] in
+                guard let self else { return }
+                var didFinishSeek = false
+                defer {
+                    if generation == self.sourcePreviewGeneration {
+                        self.sourcePreviewTask = nil
+                        if !didFinishSeek { self.pause() }
+                    }
+                }
                 let trackStart: CMTime
                 do {
                     trackStart = try await Self.loadVideoTrackStart(url: url)
                 } catch {
                     guard !Task.isCancelled,
-                          let self,
                           self.isCurrentSourcePreview(id: id, url: url, generation: generation) else { return }
-                    self.sourcePreviewTask = nil
-                    self.pause()
                     Log.preview.warning(
                         "source preview timing load failed asset=\(id.prefix(8)): \(error.localizedDescription)"
                     )
@@ -159,7 +164,6 @@ final class VideoEngine {
                     return
                 }
                 guard !Task.isCancelled,
-                      let self,
                       self.isCurrentSourcePreview(id: id, url: url, generation: generation) else { return }
                 self.replacePlayerItem(
                     AVPlayerItem(url: url),
@@ -175,7 +179,7 @@ final class VideoEngine {
                 let didSeek = await self.seekPlayer(to: time)
                 guard !Task.isCancelled,
                       self.isCurrentSourcePreview(id: id, url: url, generation: generation) else { return }
-                self.sourcePreviewTask = nil
+                didFinishSeek = didSeek
                 if didSeek, editor.isPlaying { self.player.play() }
             }
             return
