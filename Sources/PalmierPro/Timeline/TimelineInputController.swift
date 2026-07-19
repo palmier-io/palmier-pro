@@ -68,6 +68,8 @@ final class TimelineInputController {
     func mouseDown(with event: NSEvent, geometry: TimelineGeometry) {
         let point = view.convert(event.locationInWindow, from: nil)
         let scrollOffsetY = view.enclosingScrollView?.contentView.bounds.origin.y ?? 0
+        // A report stranded by an errored agent call must not surface as this interaction's toast.
+        editor.lastResyncReport = nil
 
         if event.clickCount == 2,
            point.y >= scrollOffsetY + geometry.rulerHeight {
