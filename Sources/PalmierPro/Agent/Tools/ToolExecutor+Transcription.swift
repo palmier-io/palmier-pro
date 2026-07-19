@@ -549,7 +549,11 @@ extension ToolExecutor {
         }
         guard !uncached.isEmpty else { return (results, [], []) }
 
-        for url in uncached {
+        // Fire the scoped targets first so a scoped read isn't queued behind cache-warm siblings on
+        // the serialized engine actor; siblings still warm, just after.
+        let scoped = awaitURLs ?? []
+        let fireOrder = uncached.filter { scoped.contains($0) } + uncached.filter { !scoped.contains($0) }
+        for url in fireOrder {
             let isVideo = isVideoByURL[url] ?? true
             Task.detached(priority: .userInitiated) {
                 _ = try? await TranscriptCache.shared.transcript(for: url, isVideo: isVideo, range: nil, engine: engine)

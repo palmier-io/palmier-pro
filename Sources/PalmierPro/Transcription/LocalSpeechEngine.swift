@@ -36,6 +36,8 @@ enum LocalSpeechEngine: String, CaseIterable, Identifiable, Sendable, Codable {
     }
 
     /// Distinguishes cache entries across engines so switching engines re-transcribes.
+    /// Bumping a cacheTag REQUIRES prepending the old value to `priorCacheTags` — stale search recall
+    /// after a bump depends on the orphaned entries staying reachable through the prior-tag fallback.
     var cacheTag: String? {
         switch self {
         case .apple: nil  // preserves pre-existing cache entries

@@ -7,6 +7,18 @@ import Testing
 // assets index first, stale reads fall back to a prior engine tag, and interactive reads preempt
 // the background indexer.
 
+@Suite("Lazy reindex — cache tag invariants")
+struct CacheTagInvariantTests {
+    // A bumped cacheTag must never also appear in priorCacheTags — the current slot and the stale
+    // fallback slots must stay disjoint, or a fresh read could resolve to an orphaned prior entry.
+    @Test func currentTagNeverListedAsPrior() {
+        for engine in LocalSpeechEngine.allCases {
+            guard let tag = engine.cacheTag else { continue }
+            #expect(!engine.priorCacheTags.contains(tag), "\(engine) lists its current tag \(tag) as prior")
+        }
+    }
+}
+
 @Suite("Lazy reindex — background transcription gate")
 struct BackgroundTranscribeGateTests {
     // A stale-under-the-new-tag (or never-cached) asset still reports needsTranscript, but the

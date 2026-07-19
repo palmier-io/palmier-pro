@@ -31,7 +31,8 @@ struct StaleFallbackReadTests {
     @Test func currentTagWinsAndIsNotStale() throws {
         let url = try tempMediaURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
-        try seed("fresh", for: url, variant: .local(engine: .qwen3))
+        let key = try seed("fresh", for: url, variant: .local(engine: .qwen3))
+        defer { try? FileManager.default.removeItem(at: TranscriptCache.diskURL(key)) }
 
         let read = try #require(TranscriptCache.cachedOnDiskAllowingStale(for: url, engine: .qwen3))
         #expect(read.stale == false)
@@ -42,7 +43,8 @@ struct StaleFallbackReadTests {
         let url = try tempMediaURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         // Only a qw6 entry exists (the bump to qw7 orphaned it); no current-tag slot.
-        try seed("legacy", for: url, variant: .localTag("qw6"))
+        let key = try seed("legacy", for: url, variant: .localTag("qw6"))
+        defer { try? FileManager.default.removeItem(at: TranscriptCache.diskURL(key)) }
 
         let read = try #require(TranscriptCache.cachedOnDiskAllowingStale(for: url, engine: .qwen3))
         #expect(read.stale == true)
@@ -60,7 +62,8 @@ struct StaleFallbackReadTests {
     @Test func spokenSearchFlagsStaleHits() throws {
         let url = try tempMediaURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
-        try seed("the quick brown fox", for: url, variant: .localTag("qw6"))
+        let key = try seed("the quick brown fox", for: url, variant: .localTag("qw6"))
+        defer { try? FileManager.default.removeItem(at: TranscriptCache.diskURL(key)) }
 
         let hits = TranscriptSearch.search(query: "brown", assets: [(id: "a1", url: url)], engine: .qwen3)
         #expect(hits.count == 1)
@@ -73,7 +76,8 @@ struct GraceBoundedReadTests {
     @Test func cachedClipsReturnImmediatelyNoPending() async throws {
         let url = try tempMediaURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
-        try seed("hello", for: url, variant: .local(engine: .qwen3))
+        let key = try seed("hello", for: url, variant: .local(engine: .qwen3))
+        defer { try? FileManager.default.removeItem(at: TranscriptCache.diskURL(key)) }
 
         let out = await ToolExecutor.graceBoundedLocalTranscripts(
             urls: [url], isVideoByURL: [url: true], engine: .qwen3, grace: .seconds(5))
@@ -88,7 +92,8 @@ struct GraceBoundedReadTests {
             try? FileManager.default.removeItem(at: cached.deletingLastPathComponent())
             try? FileManager.default.removeItem(at: sibling.deletingLastPathComponent())
         }
-        try seed("scoped", for: cached, variant: .local(engine: .qwen3))
+        let key = try seed("scoped", for: cached, variant: .local(engine: .qwen3))
+        defer { try? FileManager.default.removeItem(at: TranscriptCache.diskURL(key)) }
 
         // Await only the cached clip; the uncached sibling must not hold the read past its own transcribe.
         let started = ContinuousClock.now
