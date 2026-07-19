@@ -240,50 +240,70 @@ extension EditorViewModel {
 
         var accepted: [(clipId: String, rawStart: Int, confidence: Double, method: SyncMethod, currentStart: Int)] = []
         var retimes: [(ids: [String], speed: Double, driftPpm: Double, bearerId: String)] = []
-        for p in placements {
-            guard let clip = liveClip(p.clipId) else { report.failures.append((p.clipId, "Clip not found.")); continue }
-            var retime: (ids: [String], speed: Double)?
-            if let speed = p.retimedSpeed, speed != clip.speed {
-                let unitIds = [p.clipId] + linkedPartnerIds(of: p.clipId).filter { $0 != referenceClipId }
-                retime = (unitIds, speed)
-                for id in unitIds {
-                    guard let unitClip = liveClip(id) else { continue }
-                    plannedDurations[id] = Self.retimedDurationFrames(
-                        durationFrames: unitClip.durationFrames, speed: unitClip.speed, newSpeed: speed)
+        var stagedFailures: [(clipId: String, message: String)] = []
+        var skippedRetimeBearers: [String] = []
+        var shift = 0
+
+        // A skipped retime shrinks footprints and can unblock other moves; requeue until stable.
+        while true {
+            allMoves.removeAll()
+            movedIds.removeAll()
+            plannedDurations.removeAll()
+            accepted.removeAll()
+            retimes.removeAll()
+            stagedFailures.removeAll()
+
+            for p in placements {
+                guard let clip = liveClip(p.clipId) else { stagedFailures.append((p.clipId, "Clip not found.")); continue }
+                var retime: (ids: [String], speed: Double)?
+                if let speed = p.retimedSpeed, speed != clip.speed, !skippedRetimeBearers.contains(p.clipId) {
+                    let unitIds = [p.clipId] + linkedPartnerIds(of: p.clipId).filter { $0 != referenceClipId }
+                    retime = (unitIds, speed)
+                    for id in unitIds {
+                        guard let unitClip = liveClip(id) else { continue }
+                        plannedDurations[id] = Self.retimedDurationFrames(
+                            durationFrames: unitClip.durationFrames, speed: unitClip.speed, newSpeed: speed)
+                    }
+                }
+                if let failure = queueMove(of: p.clipId, toFrame: p.rawStart) {
+                    for id in retime?.ids ?? [] { plannedDurations.removeValue(forKey: id) }
+                    stagedFailures.append((p.clipId, failure)); continue
+                }
+                accepted.append((p.clipId, p.rawStart, p.confidence, p.method, clip.startFrame))
+                if let retime { retimes.append((retime.ids, retime.speed, p.driftRatio * 1_000_000, p.clipId)) }
+            }
+
+            // Shift right if any accepted move (partners included) starts before frame 0.
+            shift = max(0, -(allMoves.map(\.toFrame).min() ?? 0))
+            if shift > 0 {
+                let failure = liveClip(referenceClipId).map { queueMove(of: referenceClipId, toFrame: $0.startFrame) }
+                    ?? "Reference clip unavailable."
+                if let failure {
+                    report.shiftedFrames = shift
+                    report.failures.append(contentsOf: stagedFailures)
+                    report.failures.append(contentsOf: accepted.map { ($0.clipId, failure) })
+                    return report
                 }
             }
-            if let failure = queueMove(of: p.clipId, toFrame: p.rawStart) {
-                for id in retime?.ids ?? [] { plannedDurations.removeValue(forKey: id) }
-                report.failures.append((p.clipId, failure)); continue
-            }
-            accepted.append((p.clipId, p.rawStart, p.confidence, p.method, clip.startFrame))
-            if let retime { retimes.append((retime.ids, retime.speed, p.driftRatio * 1_000_000, p.clipId)) }
+
+            let blockedBearers = retimes.filter { retime in
+                retime.ids.contains { id in
+                    guard let move = allMoves.first(where: { $0.clipId == id }),
+                          let newDuration = plannedDurations[id] else { return false }
+                    return retimeGrowthWouldClobberUnmovedClip(
+                        clipId: id, finalStart: move.toFrame + shift, newDuration: newDuration, movedIds: movedIds)
+                }
+            }.map(\.bearerId)
+            guard !blockedBearers.isEmpty else { break }
+            skippedRetimeBearers.append(contentsOf: blockedBearers)
         }
 
-        // Shift right if any accepted move (partners included) starts before frame 0.
-        let shift = max(0, -(allMoves.map(\.toFrame).min() ?? 0))
         report.shiftedFrames = shift
-        if shift > 0 {
-            let failure = liveClip(referenceClipId).map { queueMove(of: referenceClipId, toFrame: $0.startFrame) }
-                ?? "Reference clip unavailable."
-            if let failure {
-                report.failures.append(contentsOf: accepted.map { ($0.clipId, failure) })
-                return report
-            }
-        }
+        report.failures.append(contentsOf: stagedFailures)
         report.synced = accepted.map { ($0.clipId, $0.rawStart + shift - $0.currentStart, $0.confidence, $0.method) }
-
-        retimes.removeAll { retime in
-            let blocked = retime.ids.contains { id in
-                guard let move = allMoves.first(where: { $0.clipId == id }),
-                      let newDuration = plannedDurations[id] else { return false }
-                return retimeGrowthWouldClobberUnmovedClip(
-                    clipId: id, finalStart: move.toFrame + shift, newDuration: newDuration, movedIds: movedIds)
-            }
-            if blocked {
-                report.retimeSkipped.append((retime.bearerId, "Drift correction skipped — it would overwrite an adjacent clip."))
-            }
-            return blocked
+        let acceptedIds = Set(accepted.map(\.clipId))
+        report.retimeSkipped = skippedRetimeBearers.filter(acceptedIds.contains).map {
+            ($0, "Drift correction skipped — it would overwrite an adjacent clip.")
         }
         report.retimed = retimes.map { ($0.bearerId, $0.driftPpm) }
 
