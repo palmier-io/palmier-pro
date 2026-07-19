@@ -18,6 +18,7 @@ actor MCPHTTPServer {
         let server: Server
         let transport: StatefulHTTPServerTransport
         var lastUsed: ContinuousClock.Instant
+        var toolListAnnounced = false
     }
 
     private var sessions: [String: Session] = [:]
@@ -145,6 +146,8 @@ actor MCPHTTPServer {
             response = await session.transport.handleRequest(request)
             if request.method.uppercased() == "DELETE", response.statusCode == 200 {
                 sessions.removeValue(forKey: claimed)
+            } else if request.method.uppercased() == "GET", response.statusCode == 200 {
+                announceToolList(sessionID: claimed)
             }
         } else if isInitialize(request) {
             let transport = StatefulHTTPServerTransport(
@@ -167,6 +170,20 @@ actor MCPHTTPServer {
             response = await fallbackPair().transport.handleRequest(request)
         }
         writeResponse(response, on: connection)
+    }
+
+    private func announceToolList(sessionID: String) {
+        guard var session = sessions[sessionID], !session.toolListAnnounced else { return }
+        session.toolListAnnounced = true
+        sessions[sessionID] = session
+        let server = session.server
+        Task {
+            do {
+                try await server.notify(ToolListChangedNotification.message())
+            } catch {
+                Log.mcp.warning("tool list_changed notify failed id=\(sessionID): \(error.localizedDescription)")
+            }
+        }
     }
 
     private nonisolated func isInitialize(_ request: HTTPRequest) -> Bool {
