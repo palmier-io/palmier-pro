@@ -1307,8 +1307,12 @@ final class TimelineView: NSView {
         let point = convert(sender.draggingLocation, from: nil)
         let geo = geometry
         if externalDragAssets == nil, let urlString = sender.draggingPasteboard.string(forType: .string) {
-            externalDragAssets = editor.assetsFromDragPayload(urlString)
-            externalDragSegments = editor.segmentsFromDragPayload(urlString)
+            let assets = editor.assetsFromDragPayload(urlString)
+            // Non-sentinel strings (e.g. alongside file URLs) fall through to the Finder path.
+            if !assets.isEmpty || !editor.timelineIdsFromDragPayload(urlString).isEmpty {
+                externalDragAssets = assets
+                externalDragSegments = editor.segmentsFromDragPayload(urlString)
+            }
         }
         if externalDragAssets == nil {
             let urls = Self.finderFileURLs(sender.draggingPasteboard)
@@ -1386,39 +1390,39 @@ final class TimelineView: NSView {
         externalDragIsRippleInsert = false
 
         let editor = self.editor
+        let urlString = sender.draggingPasteboard.string(forType: .string)
 
-        guard let urlString = sender.draggingPasteboard.string(forType: .string) else {
-            let urls = Self.finderFileURLs(sender.draggingPasteboard)
-            guard !urls.isEmpty else { return false }
-            let ripple = NSEvent.modifierFlags.contains(.command)
-            Task { @MainActor in
-                await editor.importFinderItemsToTimeline(urls, cursor: cursorTarget, atFrame: targetFrame, ripple: ripple)
-                self.needsDisplay = true
+        if let urlString {
+            let timelineIds = editor.timelineIdsFromDragPayload(urlString)
+            if !timelineIds.isEmpty {
+                var frame = targetFrame
+                for id in timelineIds {
+                    guard editor.nestTimeline(id, cursor: cursorTarget, atFrame: frame) else { continue }
+                    frame += editor.timeline(for: id)?.totalFrames ?? 0
+                }
+                needsDisplay = true
+                return true
             }
-            return true
+
+            let assets = editor.assetsFromDragPayload(urlString)
+            if !assets.isEmpty {
+                let segments = editor.segmentsFromDragPayload(urlString)
+                let ripple = NSEvent.modifierFlags.contains(.command)
+                editor.addClipsWithSettingsCheck(assets: assets) {
+                    editor.placeDroppedAssets(assets, cursor: cursorTarget, atFrame: targetFrame, segments: segments, ripple: ripple)
+                }
+                needsDisplay = true
+                return true
+            }
         }
 
-        let timelineIds = editor.timelineIdsFromDragPayload(urlString)
-        if !timelineIds.isEmpty {
-            var frame = targetFrame
-            for id in timelineIds {
-                guard editor.nestTimeline(id, cursor: cursorTarget, atFrame: frame) else { continue }
-                frame += editor.timeline(for: id)?.totalFrames ?? 0
-            }
-            needsDisplay = true
-            return true
-        }
-
-        let assets = editor.assetsFromDragPayload(urlString)
-        let segments = editor.segmentsFromDragPayload(urlString)
-        guard !assets.isEmpty else { return false }
-
+        let urls = Self.finderFileURLs(sender.draggingPasteboard)
+        guard !urls.isEmpty else { return false }
         let ripple = NSEvent.modifierFlags.contains(.command)
-        editor.addClipsWithSettingsCheck(assets: assets) {
-            editor.placeDroppedAssets(assets, cursor: cursorTarget, atFrame: targetFrame, segments: segments, ripple: ripple)
+        Task { @MainActor in
+            await editor.importFinderItemsToTimeline(urls, cursor: cursorTarget, atFrame: targetFrame, ripple: ripple)
+            self.needsDisplay = true
         }
-
-        needsDisplay = true
         return true
     }
 
