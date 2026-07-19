@@ -133,22 +133,6 @@ extension ToolExecutor {
         return (sanitized.term, sanitized.warnings)
     }
 
-    /// Promote a classified caption edit into the library glossary as an asserted term. A caption-edit
-    /// correction is speaker/domain-level knowledge, not project-level, so it lands in library to be
-    /// reused across projects. Returns a response row, or nil if the variant was dropped by
-    /// validation. Called from update_text's promotion hook. §6
-    func promoteCaptionEdit(_ promotion: GlossaryClassifier.Promotion, clipId: String, editor: EditorViewModel) -> [String: Any]? {
-        let term = GlossaryTerm(
-            canonical: promotion.canonical,
-            variants: [promotion.variant],
-            provenance: "auto:caption-edit@\(clipId)",
-            confidence: .asserted
-        )
-        guard let (added, _) = try? upsertGlossaryTerm(term, scope: .library, editor: editor),
-              !added.variants.isEmpty else { return nil }
-        return ["canonical": added.canonical, "variants": added.variants, "clipId": clipId]
-    }
-
     // MARK: - glossary_remove
 
     func glossaryRemove(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {

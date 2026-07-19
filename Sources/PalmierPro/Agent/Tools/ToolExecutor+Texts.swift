@@ -715,16 +715,14 @@ extension ToolExecutor {
                 }
             }
 
-            // Auto-promote clean single-substitution caption edits into the glossary (no confirmation). §6
+            // Auto-promote clean single-substitution caption edits into the glossary (no confirmation).
+            // Shared with the inspector text-commit path via promoteCaptionEditIfClean (classify + write +
+            // §5.1 mark-clean), so MCP and UI can't drift. §6
             for edit in contentEdits where edit.grouped {
-                guard case let .promote(promotion) = GlossaryClassifier.classifyWithReason(old: edit.old, new: edit.new),
-                      let row = promoteCaptionEdit(promotion, clipId: edit.clipId, editor: editor) else { continue }
-                promoted.append(row)
-                promotedStrings.append(contentsOf: [promotion.canonical, promotion.variant])
+                guard let p = editor.promoteCaptionEditIfClean(old: edit.old, new: edit.new, clipId: edit.clipId) else { continue }
+                promoted.append(["canonical": p.storedCanonical, "variants": p.storedVariants, "clipId": p.clipId])
+                promotedStrings.append(contentsOf: [p.canonical, p.variant])
                 promotedClipIds.insert(edit.clipId)
-                // §5.1: the term now materialises in L1/L2, so this caption is generated again,
-                // not an override — mark it clean or every later resync logs a false conflict.
-                editor.commitClipProperties(clipIds: [edit.clipId]) { $0.generatedText = edit.new }
             }
         }
 
