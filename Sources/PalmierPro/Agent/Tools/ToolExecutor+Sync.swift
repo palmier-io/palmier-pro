@@ -56,6 +56,9 @@ extension ToolExecutor {
                 ["clipId": $0.clipId, "driftPpm": ($0.driftPpm * 10).rounded() / 10]
             }
         }
+        if !report.retimeSkipped.isEmpty {
+            extra["driftCorrectionSkipped"] = report.retimeSkipped.map { ["clipId": $0.clipId, "reason": $0.message] }
+        }
         if !report.failures.isEmpty {
             extra["failed"] = report.failures.map { ["clipId": $0.clipId, "reason": $0.message] }
         }

@@ -38,18 +38,17 @@ enum AudioSyncCorrelator {
     /// Slopes below ~one frame per hour are quantization noise, not drift.
     private static let minDriftRatio = 0.00002
 
+    @concurrent
     static func seededCorrelate(
         reference: [Float], target: [Float], seedHops: Int?, seedWindowHops: Int,
         maxLagHops: Int, minOverlapHops: Int, minConfidence: Double
     ) async -> Result? {
-        await Task.detached(priority: .userInitiated) { () -> Result? in
-            var windows = [(center: 0, radius: maxLagHops)]
-            if let seedHops { windows.append((seedHops, seedWindowHops)) }
-            return alignByConsensus(
-                reference: reference, target: target, windows: windows,
-                minOverlapHops: minOverlapHops, minConfidence: minConfidence
-            )
-        }.value
+        var windows = [(center: 0, radius: maxLagHops)]
+        if let seedHops { windows.append((seedHops, seedWindowHops)) }
+        return alignByConsensus(
+            reference: reference, target: target, windows: windows,
+            minOverlapHops: minOverlapHops, minConfidence: minConfidence
+        )
     }
 
     private static func alignByConsensus(
@@ -208,7 +207,7 @@ enum AudioSyncCorrelator {
         )
     }
 
-    private static func exactCandidates(
+    static func exactCandidates(
         reference: [Float], target: [Float],
         lagRanges: [ClosedRange<Int>], minOverlapHops: Int
     ) -> [Result] {
@@ -250,10 +249,16 @@ enum AudioSyncCorrelator {
             }
         }
         guard !Task.isCancelled else { return [] }
-        let peaks = results.enumerated().filter { index, result in
-            result.confidence >= (index > 0 ? results[index - 1].confidence : -Double.infinity)
-                && result.confidence >= (index + 1 < results.count ? results[index + 1].confidence : -Double.infinity)
-        }.map(\.element)
+        let peaks = results.indices.filter { index in
+            let result = results[index]
+            let leftIsLower = index == 0
+                || results[index - 1].lagHops != result.lagHops - 1
+                || result.confidence >= results[index - 1].confidence
+            let rightIsLower = index == results.count - 1
+                || results[index + 1].lagHops != result.lagHops + 1
+                || result.confidence >= results[index + 1].confidence
+            return leftIsLower && rightIsLower
+        }.map { results[$0] }
         return rankedCandidates(peaks.isEmpty ? results : peaks)
     }
 

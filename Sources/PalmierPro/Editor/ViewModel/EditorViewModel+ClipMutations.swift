@@ -229,14 +229,14 @@ extension EditorViewModel {
         setClipSpeed(at: loc, newSpeed: newSpeed)
     }
 
-    func commitClipSpeed(ids: [String], newSpeed: Double) {
+    func commitClipSpeed(ids: [String], newSpeed: Double, ripple: Bool = true) {
         guard !refusesMulticamRetime(clipIds: ids) else { return }
         let before: Timeline = preDragTimeline ?? timeline
         for id in ids {
             guard let loc = findClip(id: id) else { continue }
             guard timeline.tracks[loc.trackIndex].clips[loc.clipIndex].supportsRetiming else { continue }
             if timeline.tracks[loc.trackIndex].clips[loc.clipIndex].speed != newSpeed {
-                setClipSpeed(at: loc, newSpeed: newSpeed)
+                setClipSpeed(at: loc, newSpeed: newSpeed, ripple: ripple)
             }
         }
         let after = timeline
@@ -265,12 +265,16 @@ extension EditorViewModel {
         notifyTimelineChanged(refreshVisuals: refreshVisuals)
     }
 
-    fileprivate func setClipSpeed(at loc: ClipLocation, newSpeed: Double) {
+    nonisolated static func retimedDurationFrames(durationFrames: Int, speed: Double, newSpeed: Double) -> Int {
+        max(1, Int((Double(durationFrames) * speed / newSpeed).rounded()))
+    }
+
+    fileprivate func setClipSpeed(at loc: ClipLocation, newSpeed: Double, ripple: Bool = true) {
         let ti = loc.trackIndex
         let clip = timeline.tracks[ti].clips[loc.clipIndex]
         let basis = dragBefore[clip.id] ?? clip
-        let sourceFrames = Double(basis.durationFrames) * basis.speed
-        let newDuration = max(1, Int((sourceFrames / newSpeed).rounded()))
+        let newDuration = Self.retimedDurationFrames(
+            durationFrames: basis.durationFrames, speed: basis.speed, newSpeed: newSpeed)
         let oldDuration = clip.durationFrames
         let oldEnd = clip.endFrame
 
@@ -283,7 +287,7 @@ extension EditorViewModel {
         timeline.tracks[ti].clips[loc.clipIndex].clampFadesToDuration()
 
         let rippleDelta = (clip.startFrame + newDuration) - oldEnd
-        if rippleDelta != 0 {
+        if ripple, rippleDelta != 0 {
             let chainIds = timeline.tracks[ti].contiguousClipIds(fromEnd: oldEnd, excludeId: clip.id)
             for ci in timeline.tracks[ti].clips.indices where chainIds.contains(timeline.tracks[ti].clips[ci].id) {
                 timeline.tracks[ti].clips[ci].startFrame += rippleDelta

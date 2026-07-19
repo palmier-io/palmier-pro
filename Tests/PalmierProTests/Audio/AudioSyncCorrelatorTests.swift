@@ -93,6 +93,30 @@ struct AudioSyncCorrelatorTests {
         #expect((result?.confidence ?? 0) > 0.99)
     }
 
+    @Test func seededCorrelateObservesCallingTaskCancellation() async {
+        let s = signal(count: 2_000)
+        let result = await Task { () -> AudioSyncCorrelator.Result? in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return await AudioSyncCorrelator.seededCorrelate(
+                reference: s, target: s, seedHops: nil, seedWindowHops: 10,
+                maxLagHops: 500, minOverlapHops: 100, minConfidence: 0.5
+            )
+        }.value
+        #expect(result == nil)
+    }
+
+    @Test func edgePeakInRefinedRangeIsNotSuppressedByNeighboringRange() {
+        let omega = 2.0 * Double.pi / 64.0
+        let reference = (0..<256).map { Float(sin(Double($0) * omega)) }
+        let target = (0..<200).map { Float(sin(Double($0 + 10) * omega)) }
+        let candidates = AudioSyncCorrelator.exactCandidates(
+            reference: reference, target: target,
+            lagRanges: [0...2, 9...11], minOverlapHops: 16
+        )
+        #expect(candidates.first?.lagHops == 10)
+        #expect(candidates.contains { $0.lagHops == 2 })
+    }
+
     @Test func requestedOverlapAdaptsForShortClips() {
         let samples = signal(count: 120)
         let result = AudioSyncCorrelator.correlate(

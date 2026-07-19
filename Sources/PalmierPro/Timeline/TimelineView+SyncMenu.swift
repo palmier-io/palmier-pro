@@ -38,6 +38,7 @@ extension TimelineView {
         }
         if report.shiftedFrames > 0 { msg += ", group moved right to fit" }
         if !report.retimed.isEmpty { msg += ", drift-corrected" }
+        if !report.retimeSkipped.isEmpty { msg += "; drift correction skipped — it would overwrite an adjacent clip" }
         if !report.failures.isEmpty { msg += "; \(report.failures.count) couldn't align" }
         return msg + "."
     }
