@@ -105,9 +105,8 @@ else
   echo "!! missing Fonts/ in SwiftPM resource bundle at $RES_BUNDLE" >&2
   exit 1
 fi
-# Repack the Claude Desktop connector from mcpb/ so the shipped bundle can
-# never drift from source. Refresh the checked-in resource when it differs,
-# making any drift visible in git status.
+
+# Ensure the shipped Claude Desktop connector is always up to date with mcpb/ sources.
 MCPB_SRC="$ROOT/mcpb"
 MCPB_CHECKED_IN="$ROOT/Sources/PalmierPro/Resources/MCPB/palmier-pro.mcpb"
 MCPB_FRESH="$(mktemp -d)/palmier-pro.mcpb"
