@@ -9,6 +9,7 @@ enum ProjectError: LocalizedError {
     case nameTaken(URL)
     case invalidName(String)
     case openProjects([String])
+    case projectsOpening([String])
     case deletionInProgress(URL)
 
     var errorDescription: String? {
@@ -19,6 +20,8 @@ enum ProjectError: LocalizedError {
             "“\(name)” isn't a valid project name. Use a plain name without slashes or path components."
         case .openProjects(let names):
             "Close \(names.formatted()) before deleting."
+        case .projectsOpening(let names):
+            "Wait for \(names.formatted()) to finish opening before deleting."
         case .deletionInProgress(let url):
             "“\(url.deletingPathExtension().lastPathComponent)” is being moved to the Trash."
         }
@@ -32,6 +35,7 @@ final class AppState {
 
     private(set) var activeProject: VideoProject?
     private var projectPathsBeingDeleted: Set<String> = []
+    private var projectOpenCounts: [String: Int] = [:]
 
     var openProjects: [VideoProject] {
         NSDocumentController.shared.documents.compactMap { $0 as? VideoProject }
@@ -252,6 +256,14 @@ final class AppState {
         if let existing = showExistingProject(at: resolved, register: register, options: options) {
             return existing
         }
+        projectOpenCounts[resolved.path, default: 0] += 1
+        defer {
+            if projectOpenCounts[resolved.path] == 1 {
+                projectOpenCounts[resolved.path] = nil
+            } else {
+                projectOpenCounts[resolved.path, default: 1] -= 1
+            }
+        }
         let doc = try await VideoProject.load(from: resolved)
         guard !projectPathsBeingDeleted.contains(resolved.path) else {
             throw ProjectError.deletionInProgress(resolved)
@@ -276,6 +288,10 @@ final class AppState {
         let openEntries = entries.filter { openPaths.contains($0.url.standardizedFileURL.path) }
         guard openEntries.isEmpty else {
             throw ProjectError.openProjects(openEntries.map(\.name))
+        }
+        let openingEntries = entries.filter { projectOpenCounts[$0.url.standardizedFileURL.path] != nil }
+        guard openingEntries.isEmpty else {
+            throw ProjectError.projectsOpening(openingEntries.map(\.name))
         }
 
         let paths = Set(entries.map { $0.url.standardizedFileURL.path })
