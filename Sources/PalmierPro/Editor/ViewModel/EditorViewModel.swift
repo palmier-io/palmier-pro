@@ -18,6 +18,13 @@ struct PendingAudioPlacement {
     let actionName: String
 }
 
+struct PendingTransitionPlacement {
+    let timelineId: String
+    let trackIndex: Int
+    let gapStartFrame: Int
+    let gapLengthFrames: Int
+}
+
 @Observable
 @MainActor
 final class EditorViewModel {
@@ -120,13 +127,16 @@ final class EditorViewModel {
     var toolMode: ToolMode = .pointer
     var showExportDialog: Bool = false
     var showGenerationPanel: Bool = false {
-        didSet { if showGenerationPanel && !oldValue { showMediaPanelMediaTab() } }
+        didSet {
+            if showGenerationPanel && !oldValue { showMediaPanelMediaTab() } else if !showGenerationPanel && oldValue { clearPendingGenerationPanelState() }
+        }
     }
     /// AIEditTab input consumed by GenerationView.
     var pendingPanelSeed: PendingPanelSeed?
     var pendingEditReplacementClipId: String?
     var pendingEditTrimmedSource: TrimmedSource?
     var pendingEditAudioPlacement: PendingAudioPlacement?
+    var pendingEditTransitionPlacement: PendingTransitionPlacement?
     /// Clip ids currently awaiting an AI-generated replacement.
     var pendingReplacements: Set<String> = []
     var cropEditingActive: Bool = false
@@ -247,6 +257,7 @@ final class EditorViewModel {
     @ObservationIgnored var mediaImportTail: Task<MediaImportSummary, Error>?
     @ObservationIgnored var mediaImportSequence: Int = 0
     @ObservationIgnored var frameCaptureTask: Task<Void, Never>?
+    @ObservationIgnored var transitionSeedTask: Task<Void, Never>?
     @ObservationIgnored var pendingManifestMetadataUpdates: [String: MediaAsset] = [:]
     @ObservationIgnored var pendingManifestMetadataFlushTask: Task<Void, Never>?
 

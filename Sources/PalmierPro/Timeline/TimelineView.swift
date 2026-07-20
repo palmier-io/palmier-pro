@@ -833,7 +833,7 @@ final class TimelineView: NSView {
         let clickFrame = max(0, geometry.frameAt(x: point.x))
         let clickedRange = editor.validSelectedTimelineRange?.contains(frame: clickFrame) ?? false
         guard let hit = inputController.hitTestClip(at: point, trackIndex: trackIndex, geometry: geometry) else {
-            return emptyAreaMenu(trackIndex: trackIndex, frame: clickFrame, clickedRange: clickedRange)
+            return emptyAreaMenu(trackIndex: trackIndex, frame: clickFrame, clickedRange: clickedRange, point: point)
         }
         let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
         let clipRect = geometry.clipRect(for: clip, trackIndex: hit.trackIndex)
@@ -1033,7 +1033,7 @@ final class TimelineView: NSView {
         return menu.items.isEmpty ? nil : menu
     }
 
-    private func emptyAreaMenu(trackIndex: Int, frame: Int, clickedRange: Bool) -> NSMenu? {
+    private func emptyAreaMenu(trackIndex: Int, frame: Int, clickedRange: Bool, point: NSPoint) -> NSMenu? {
         let menu = NSMenu()
         if editor.canPasteClips,
            editor.timeline.tracks.indices.contains(trackIndex) {
@@ -1041,6 +1041,28 @@ final class TimelineView: NSView {
             item.target = self
             item.representedObject = ["trackIndex": trackIndex, "frame": frame] as [String: Any]
             menu.addItem(item)
+        }
+        if let gap = inputController.hitTestGap(at: point, trackIndex: trackIndex, geometry: geometry) {
+            menu.autoenablesItems = false
+            let gapInfo = ["trackIndex": gap.trackIndex, "start": gap.range.start, "end": gap.range.end] as [String: Any]
+
+            if gap.range.start > 0, editor.timeline.tracks[gap.trackIndex].type == .video {
+                let availability = editor.aiTransitionAvailability(for: gap)
+                let item = NSMenuItem(title: "Create AI Transition", action: #selector(performCreateAITransition(_:)), keyEquivalent: "")
+                item.target = self
+                item.isEnabled = availability.model != nil
+                item.toolTip = availability.refusal
+                item.representedObject = gapInfo
+                menu.addItem(item)
+            }
+
+            let refusal = editor.rippleDeleteGapRefusal(gap)
+            let deleteItem = NSMenuItem(title: "Ripple Delete Gap", action: #selector(performRippleDeleteGap(_:)), keyEquivalent: "")
+            deleteItem.target = self
+            deleteItem.isEnabled = refusal == nil
+            deleteItem.toolTip = refusal
+            deleteItem.representedObject = gapInfo
+            menu.addItem(deleteItem)
         }
         if clickedRange {
             if !menu.items.isEmpty { menu.addItem(.separator()) }
@@ -1177,6 +1199,16 @@ final class TimelineView: NSView {
               let trackIndex = info["trackIndex"] as? Int,
               let frame = info["frame"] as? Int else { return }
         editor.pasteClips(atTrack: trackIndex, atFrame: frame)
+        needsDisplay = true
+    }
+
+    @objc private func performRippleDeleteGap(_ sender: Any?) {
+        guard let item = sender as? NSMenuItem,
+              let info = item.representedObject as? [String: Any],
+              let trackIndex = info["trackIndex"] as? Int,
+              let start = info["start"] as? Int,
+              let end = info["end"] as? Int else { return }
+        editor.rippleDelete(gap: GapSelection(trackIndex: trackIndex, range: FrameRange(start: start, end: end)))
         needsDisplay = true
     }
 

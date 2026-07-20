@@ -18,6 +18,10 @@ private struct ReferenceAssetPreview: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(asset.name), \(asset.type.trackLabel)")
+        .task(id: "\(asset.id)|\(asset.url.path)|\(asset.generationStatus.serialized)") {
+            guard case .none = asset.generationStatus else { return }
+            await asset.loadLibraryThumbnail()
+        }
     }
 }
 

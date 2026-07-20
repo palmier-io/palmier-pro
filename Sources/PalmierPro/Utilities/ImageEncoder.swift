@@ -9,6 +9,7 @@ enum ImageEncoder {
     static let maxBytes = 3_500_000
     /// Internal downsample target.
     static let maxLongestEdge = 1568
+    static let libraryThumbnailMaxPixelSize = 320
 
     struct Output: Sendable {
         let data: Data
@@ -63,6 +64,11 @@ enum ImageEncoder {
 
     nonisolated static func thumbnail(url: URL, maxPixelSize: Int) -> CGImage? {
         guard let source = imageSource(url: url) else { return nil }
+        return makeThumbnail(source: source, maxPixelSize: maxPixelSize)
+    }
+
+    nonisolated static func thumbnail(data: Data, maxPixelSize: Int) -> CGImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         return makeThumbnail(source: source, maxPixelSize: maxPixelSize)
     }
 

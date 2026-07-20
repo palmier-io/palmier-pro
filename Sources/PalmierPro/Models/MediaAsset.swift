@@ -6,9 +6,6 @@ import AVFoundation
 final class MediaAsset: Identifiable {
     private nonisolated static let metadataLoadGate = AsyncSemaphore(value: 4)
     private nonisolated static let thumbnailLoadGate = AsyncSemaphore(value: 4)
-    private nonisolated static let libraryThumbnailMaxPixelSize = 320
-    private nonisolated static let previewThumbnailMaxPixelSize = ImageEncoder.maxLongestEdge
-
     let id: String
     var url: URL {
         didSet {
@@ -158,7 +155,7 @@ final class MediaAsset: Identifiable {
     func loadLibraryThumbnail() async {
         switch type {
         case .image:
-            await loadImageThumbnail(maxPixelSize: Self.libraryThumbnailMaxPixelSize)
+            await loadImageThumbnail(maxPixelSize: ImageEncoder.libraryThumbnailMaxPixelSize)
         case .video, .lottie:
             guard thumbnail == nil, await acquireThumbnailPermit() else { return }
             defer { releaseThumbnailPermit() }
@@ -171,7 +168,13 @@ final class MediaAsset: Identifiable {
 
     func loadPreviewThumbnail() async {
         guard type == .image else { return }
-        await loadImageThumbnail(maxPixelSize: Self.previewThumbnailMaxPixelSize)
+        await loadImageThumbnail(maxPixelSize: ImageEncoder.maxLongestEdge)
+    }
+
+    func installThumbnail(_ image: CGImage, maximumPixelSize: Int) {
+        guard maximumPixelSize >= thumbnailMaxPixelSize else { return }
+        thumbnail = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+        thumbnailMaxPixelSize = maximumPixelSize
     }
 
     @discardableResult

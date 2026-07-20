@@ -287,39 +287,46 @@ extension EditorViewModel {
     }
 
     func rippleDeleteSelectedGap() {
-        guard let gap = selectedGap,
-              timeline.tracks.indices.contains(gap.trackIndex),
-              gap.range.length > 0 else { return }
-        // An out-of-band edit may have filled the gap.
-        guard !timeline.tracks[gap.trackIndex].clips.contains(where: {
-            $0.startFrame < gap.range.end && $0.endFrame > gap.range.start
-        }) else { selectedGap = nil; return }
+        guard let gap = selectedGap else { return }
+        rippleDelete(gap: gap)
+    }
 
+    func rippleDeleteGapRefusal(_ gap: GapSelection) -> String? {
         let gapShiftingIds = Set(timeline.tracks.indices
             .filter { $0 == gap.trackIndex || timeline.tracks[$0].syncLocked }
             .map { timeline.tracks[$0].id })
         if let reason = multicamManualRippleViolation(shiftingTrackIds: gapShiftingIds, atFrame: gap.range.end) {
-            refuseRipple(reason: reason)
-            return
+            return reason
         }
-
-        var shiftsByTrack: [Int: [ClipShift]] = [:]
-        for ti in timeline.tracks.indices {
-            guard ti == gap.trackIndex || timeline.tracks[ti].syncLocked else { continue }
+        for ti in timeline.tracks.indices where ti != gap.trackIndex && timeline.tracks[ti].syncLocked {
             let shifts = RippleEngine.computeRippleShiftsForRanges(
                 clips: timeline.tracks[ti].clips,
                 removedRanges: [gap.range]
             )
-            // The gap track only ever moves clips into freed space; sync-locked followers may collide.
-            if ti != gap.trackIndex, let reason = validateShifts(trackIndex: ti, shifts: shifts) {
-                refuseRipple(reason: reason)
-                return
-            }
-            shiftsByTrack[ti] = shifts
+            if let reason = validateShifts(trackIndex: ti, shifts: shifts) { return reason }
+        }
+        return nil
+    }
+
+    func rippleDelete(gap: GapSelection) {
+        guard timeline.tracks.indices.contains(gap.trackIndex),
+              gap.range.length > 0 else { return }
+        guard !timeline.tracks[gap.trackIndex].clips.contains(where: {
+            $0.startFrame < gap.range.end && $0.endFrame > gap.range.start
+        }) else { selectedGap = nil; return }
+
+        if let reason = rippleDeleteGapRefusal(gap) {
+            refuseRipple(reason: reason)
+            return
         }
 
         withTimelineSwap(actionName: "Ripple Delete") {
-            for shifts in shiftsByTrack.values { applyShifts(shifts) }
+            for ti in timeline.tracks.indices where ti == gap.trackIndex || timeline.tracks[ti].syncLocked {
+                applyShifts(RippleEngine.computeRippleShiftsForRanges(
+                    clips: timeline.tracks[ti].clips,
+                    removedRanges: [gap.range]
+                ))
+            }
         }
         selectedGap = nil
     }
