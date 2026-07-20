@@ -412,13 +412,14 @@ struct FCPXMLExporterTests {
         let clip = Fixtures.clip(id: "c", mediaRef: "media-v", start: 0, duration: 30, trimStart: 10)
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
 
-        // 00:00:14:44 @ 50 quanta = 744; the timeline runs 30fps → 744/50×30 = 446 frames = 223/15s.
+        // 00:00:14:44 @ 50 quanta = 744; exact rational 744/50 = 372/25s — NOT quantized to the
+        // 30fps timeline (446/30s), which conformed in-points 2–3 frames off in Resolve.
         let tc = SourceTimecode(frame: 744, quanta: 50, dropFrame: false)
         let xml = FCPXMLExporter.render(timeline: timeline, resolver: resolver, startTimecodes: ["media-v": tc])
 
-        #expect(xml.contains("<asset id=\"asset1\" name=\"media-v.mp4\" start=\"223/15s\""))
+        #expect(xml.contains("<asset id=\"asset1\" name=\"media-v.mp4\" start=\"372/25s\""))
         // The compound reads the asset from its timecode origin (offset stays 0 — 0-based spine).
-        #expect(xml.contains("start=\"223/15s\" offset=\"0s\""))
+        #expect(xml.contains("start=\"372/25s\" offset=\"0s\""))
         // The outer ref-clip stays 0-based against the compound: trimStart 10 / 30fps = 1/3s.
         #expect(xml.contains("<ref-clip ref=\"media1\" name=\"media-v.mp4\" lane=\"1\" offset=\"0s\" start=\"1/3s\""))
     }

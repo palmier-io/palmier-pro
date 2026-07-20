@@ -8,11 +8,11 @@ struct TimecodeSyncTests {
 
     @Test func secondsPrefersExactFrameDuration() {
         #expect(SourceTimecode(frame: 250, quanta: 50, dropFrame: false).seconds == 5.0)
-        let tc = SourceTimecode(frame: 30000, quanta: 30, dropFrame: true, frameDuration: ntsc)
+        let tc = SourceTimecode(frame: 30000, quanta: 30, dropFrame: true, tick: .init(num: 1001, den: 30000))
         #expect(abs(tc.seconds - 1001.0) < 1e-9)
         // Quanta-only NTSC would land ~18 frames off per 10 minutes of offset.
         let quantaOnly = SourceTimecode(frame: 17982, quanta: 30, dropFrame: true)
-        let exact = SourceTimecode(frame: 17982, quanta: 30, dropFrame: true, frameDuration: ntsc)
+        let exact = SourceTimecode(frame: 17982, quanta: 30, dropFrame: true, tick: .init(num: 1001, den: 30000))
         #expect(abs(quantaOnly.seconds - exact.seconds) > 0.5)
     }
 

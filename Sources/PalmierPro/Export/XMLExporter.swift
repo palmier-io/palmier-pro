@@ -50,7 +50,7 @@ enum XMLExporter {
         try data.write(to: outputURL)
     }
 
-    /// Split out so tests can build the document synchronously.
+    /// Renders synchronously for deterministic tests.
     static func render(timeline: Timeline, resolver: MediaResolver,
                        resolveTimeline: @escaping (String) -> Timeline? = { _ in nil },
                        startFrameCache: [String: SourceTimecode] = [:]) -> String {
@@ -72,11 +72,17 @@ enum XMLExporter {
 
     // MARK: - Source timecode
 
-    /// The `<timecode>` values to emit for a file. A `tmcd` timecode runs at its own rate (often 30 DF
-    /// even on 60p footage), so when present it — not the video rate — drives the rate/format. When absent,
-    /// fall back to the video rate and emit a dummy 00:00:00:00.
+    /// Builds file timecode fields from embedded metadata or the video rate.
     static func timecodeTags(source: SourceTimecode?, videoTimebase: Int, videoNtsc: Bool)
         -> (base: Int, ntsc: Bool, frame: Int, dropFrame: Bool, string: String) {
+        // BWF time references use samples, so rescale them to the video rate.
+        if let source, source.quanta > 240 {
+            let effectiveFPS = videoNtsc ? Double(videoTimebase) * 1000 / 1001 : Double(videoTimebase)
+            let dropFrame = videoNtsc && videoTimebase % 30 == 0
+            let frame = Int((source.seconds * effectiveFPS).rounded())
+            return (videoTimebase, videoNtsc, frame, dropFrame,
+                    formatTimecode(frame: frame, fps: videoTimebase, dropFrame: dropFrame))
+        }
         let base = source?.quanta ?? videoTimebase
         let dropFrame = source?.dropFrame ?? (videoNtsc && videoTimebase % 30 == 0)
         let ntsc = dropFrame ? true : videoNtsc
@@ -89,9 +95,12 @@ enum XMLExporter {
         guard fps > 0 else { return "00:00:00:00" }
         var f = frame
         if dropFrame {
-            let drop = Int((Double(fps) * 0.066666).rounded())   // 2 @ 30, 4 @ 60
-            let d = f / (fps * 600), m = f % (fps * 600)
-            f += drop * 9 * d + (m > drop ? drop * ((m - drop) / (fps * 60)) : 0)
+            let drop = Int((Double(fps) * 0.066666).rounded())
+            // Drop-frame ten-minute blocks contain nine shortened minutes.
+            let perMinute = fps * 60 - drop
+            let per10 = perMinute * 10 + drop
+            let d = f / per10, m = f % per10
+            f += drop * 9 * d + (m > drop ? drop * ((m - drop) / perMinute) : 0)
         }
         let sep = dropFrame ? ";" : ":"
         let ff = f % fps, ss = (f / fps) % 60, mm = (f / (fps * 60)) % 60, hh = f / (fps * 3600)
@@ -109,19 +118,16 @@ enum XMLExporter {
         private let seqHeight: Int
         private var curSeqWidth: Int
 
-        /// Files already emitted in full; repeat references collapse to `<file id="..."/>`.
         private var emittedFiles: Set<FileKey> = []
-        /// Clip id → position within its media type, used to emit `<link>` cross-references.
         private var clipAddresses: [String: ClipAddress] = [:]
         private var clipsByLinkGroup: [String: [Clip]] = [:]
         private let startFrameCache: [String: SourceTimecode]
-        /// Child timeline id -> XMEML sequence id; first carrier embeds the full definition,
-        /// later carriers reference it (Premiere's own nested-sequence convention).
+        // Repeated nests reference the first embedded sequence.
         private var sequenceIds: [String: String] = [:]
         private var emittedSequences: Set<String> = []
 
         private struct FileKey: Hashable { let mediaRef: String; let isAudio: Bool }
-        private struct ClipAddress { let trackIndex: Int; let clipIndex: Int; let isAudio: Bool }  // indices 1-based
+        private struct ClipAddress { let trackIndex: Int; let clipIndex: Int; let isAudio: Bool }
 
         init(timeline: Timeline, resolver: MediaResolver, resolveTimeline: @escaping (String) -> Timeline?,
              startFrameCache: [String: SourceTimecode]) {
@@ -146,8 +152,7 @@ enum XMLExporter {
             return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE xmeml>\n" + renderXML(root, indent: 0)
         }
 
-        /// One timeline as a <sequence>; used for the root and, recursively, nested timelines.
-        /// Link/address state is per-sequence, so it stacks around the recursive build.
+        /// Builds a root or nested sequence with isolated link state.
         private func sequenceNode(id: String, timeline: Timeline) -> XMLNode {
             let savedAddresses = clipAddresses
             let savedGroups = clipsByLinkGroup
@@ -236,17 +241,27 @@ enum XMLExporter {
 
         private func clipItemNode(_ clip: Clip, isAudio: Bool) -> XMLNode {
             if clip.sourceClipType == .sequence { return nestClipItemNode(clip, isAudio: isAudio) }
+            // Clipitem rate/in/out/duration are in FILE-rate units; start/end stay sequence frames.
+            // Resolve conforms in/out against the file's own rate — timeline-rate values land the
+            // in-point off by the rate ratio on rate-mismatched sources.
+            let (timebase, ntsc) = rateTags(forFPS: resolver.entry(for: clip.mediaRef)?.sourceFPS ?? Double(fps))
+            let fileFPS = ntsc ? Double(timebase) * 1000.0 / 1001.0 : Double(timebase)
+            let scale = fileFPS / Double(fps)
+            let matchesTimeline = abs(scale - 1) < 0.0001
+            func fileFrames(_ timelineFrames: Int) -> Int {
+                matchesTimeline ? timelineFrames : Int((Double(timelineFrames) * scale).rounded())
+            }
             let sourceDuration = sourceDurationFrames(for: clip.mediaRef) ?? clip.sourceDurationFrames
-            // in/out are source-frame offsets, so they span sourceFramesConsumed (Time Remap handles rate).
-            let inPoint = clip.trimStartFrame
-            let outPoint = clip.trimStartFrame + clip.sourceFramesConsumed
+            // Time Remap handles speed through source in/out values.
+            let inPoint = fileFrames(clip.trimStartFrame)
+            let outPoint = fileFrames(clip.trimStartFrame + clip.sourceFramesConsumed)
 
             var children: [XMLNode] = [
                 leaf("masterclipid", masterclipId(for: clip, isAudio: isAudio)),
                 leaf("name", resolver.displayName(for: clip.mediaRef)),
                 bool("enabled", true),
-                leaf("duration", sourceDuration),
-                rate(fps),
+                leaf("duration", fileFrames(sourceDuration)),
+                matchesTimeline ? rate(fps) : rate(timebase, ntsc: ntsc),
                 leaf("start", clip.startFrame),
                 leaf("end", clip.endFrame),
                 leaf("in", inPoint),
@@ -259,8 +274,7 @@ enum XMLExporter {
             return el("clipitem", attrs: [("id", "clipitem-\(clip.id)")], children)
         }
 
-        /// Nest carrier: a clipitem over the child <sequence> — full definition on first use,
-        /// id reference after. The frozen carrier is clamped to the child's current length.
+        /// Embeds a nested sequence once, then references it by ID.
         private func nestClipItemNode(_ clip: Clip, isAudio: Bool) -> XMLNode {
             let child = resolveTimeline(clip.mediaRef)!  // sortEmittable guarantees resolution
             let seqId = sequenceIds[clip.mediaRef] ?? {
@@ -299,8 +313,7 @@ enum XMLExporter {
 
         // MARK: - File elements
 
-        /// Separate ids per media type — Premiere rejects a clipitem pointing at a `<file>` of the
-        /// wrong type. Repeats collapse to a self-closing `<file id="..."/>`.
+        /// Emits media-specific file IDs and collapses repeated definitions to references.
         private func fileNode(for mediaRef: String, isAudio: Bool) -> XMLNode {
             let fileId = "file-\(mediaRef)-\(isAudio ? "audio" : "video")"
             let key = FileKey(mediaRef: mediaRef, isAudio: isAudio)
@@ -315,10 +328,12 @@ enum XMLExporter {
             let pathUrl = url
                 .map { $0.absoluteString.replacingOccurrences(of: "file://", with: "file://localhost//") }
                 ?? "media/\(mediaRef)"
-            // A still decodes to exactly 1 frame
+            // Stills decode as one frame.
             let isImage = entry?.type == .image
-            let durationFrames = isImage ? 1 : (entry.map { max(0, secondsToFrame(seconds: $0.duration, fps: fps)) } ?? 0)
             let (timebase, ntsc) = rateTags(forFPS: entry?.sourceFPS ?? Double(fps))
+            // Duration in the file's own rate units, consistent with the rate element it sits beside.
+            let fileFPS = ntsc ? Double(timebase) * 1000.0 / 1001.0 : Double(timebase)
+            let durationFrames = isImage ? 1 : (entry.map { max(0, Int(($0.duration * fileFPS).rounded())) } ?? 0)
 
             let media: XMLNode = isAudio
                 ? el("media", [el("audio", [
@@ -334,7 +349,7 @@ enum XMLExporter {
                     rate(timebase, ntsc: ntsc),
                   ])])])
 
-            // timecode is required for Davinci Resolve; computed by the unit-tested timecodeTags.
+            // Resolve requires the timecode element.
             let tc = XMLExporter.timecodeTags(source: sourceTimecode(for: mediaRef), videoTimebase: timebase, videoNtsc: ntsc)
             let timecode = el("timecode", [
                 rate(tc.base, ntsc: tc.ntsc),
@@ -352,7 +367,6 @@ enum XMLExporter {
             ])
         }
 
-        /// Source start timecode — one read serves both the video and audio file nodes.
         private func sourceTimecode(for mediaRef: String) -> SourceTimecode? {
             startFrameCache[mediaRef]
         }
@@ -392,7 +406,7 @@ enum XMLExporter {
                 children.append(rate(fps))
                 children.append(effect(name: "Cross Fade ( 0dB)", id: "KGAudioTransCrossFade0dB", type: "transition", mediatype: "audio"))
             } else {
-                // Premiere's private cut-point, in ticks (254016000000/sec): 0 for fade-in, full length for fade-out.
+                // Premiere stores fade cut points in 254016000000 ticks per second.
                 let cutPointTicks = Int64(cutFrames) * (Int64(254_016_000_000) / Int64(fps))
                 children.append(leaf("cutPointTicks", String(cutPointTicks)))
                 children.append(rate(fps))
@@ -420,8 +434,7 @@ enum XMLExporter {
             ]))
         }
 
-        /// `level` is linear (1 = 0 dB, clamped to ~3.98). Uses fade-excluded volume since fades
-        /// export separately as a transition.
+        /// Exports fade-independent linear gain, clamped to Premiere's maximum.
         private func volumeFilters(_ clip: Clip) -> [XMLNode] {
             func clampLevel(_ v: Double) -> Double { max(0, min(v, 3.98)) }
             let frames = clip.keyframeFrames(for: .volume)
@@ -440,10 +453,10 @@ enum XMLExporter {
             [motionFilter(clip), cropFilter(clip), opacityFilter(clip)].compactMap { $0 }
         }
 
-        /// Basic Motion: scale, rotation, center — keyframed, or static (defaults omitted).
+        /// Emits nondefault Basic Motion parameters.
         private func motionFilter(_ clip: Clip) -> XMLNode? {
             let sourceWidth = resolver.entry(for: clip.mediaRef)?.sourceWidth ?? 0
-            // Scale is relative to the sequence being emitted — a nested child's canvas, not the root's.
+            // Nested transforms use the child sequence canvas.
             func scalePct(_ width: Double) -> Double {
                 sourceWidth > 0 ? (Double(curSeqWidth) / Double(sourceWidth)) * width * 100 : width * 100
             }
@@ -462,7 +475,7 @@ enum XMLExporter {
             if frames.isEmpty {
                 let t = clip.transform
                 let c = center(t), scaled = scalePct(t.width), rotated = -t.rotation
-                let needsCenter = abs(c.x) > 0.001 || abs(c.y) > 0.001   // normalized, so a small epsilon
+                let needsCenter = abs(c.x) > 0.001 || abs(c.y) > 0.001
                 let needsScale = abs(scaled - 100) > 0.1
                 let needsRotation = abs(rotated) > 0.05
                 guard needsCenter || needsScale || needsRotation else { return nil }
@@ -484,7 +497,7 @@ enum XMLExporter {
             return filter(effect(name: "Basic Motion", id: "basic", type: "motion", mediatype: "video", body: params))
         }
 
-        /// Crop filter — edge insets as 0–100 percentages (our model stores 0–1 fractions).
+        /// Converts crop fractions to FCP7 percentages.
         private func cropFilter(_ clip: Clip) -> XMLNode? {
             let frames = clip.keyframeFrames(for: .crop)
             if frames.isEmpty && clip.crop.isIdentity { return nil }
@@ -500,7 +513,7 @@ enum XMLExporter {
             return filter(effect(name: "Crop", id: "crop", type: "motion", mediatype: "video", category: "motion", body: params))
         }
 
-        /// FCP7 keeps opacity in its own Opacity effect (Basic Motion has no opacity parameter).
+        /// Emits opacity separately from Basic Motion.
         private func opacityFilter(_ clip: Clip) -> XMLNode? {
             let frames = clip.keyframeFrames(for: .opacity)
             let opacity: XMLNode
@@ -516,11 +529,11 @@ enum XMLExporter {
 
         // MARK: - Indexing helpers
 
-        /// Drops unresolvable clips so track builders and `<link>` indices agree.
+        /// Drops unresolved clips before assigning link indices.
         private func sortEmittable(_ track: Track) -> [Clip] {
             track.clips
                 .filter { clip in
-                    // A frozen carrier trimmed past the child's current length would emit out < in.
+                    // Drop carriers trimmed beyond the child timeline.
                     clip.sourceClipType == .sequence
                         ? clip.trimStartFrame < (resolveTimeline(clip.mediaRef)?.totalFrames ?? 0)
                         : resolver.resolveURL(for: clip.mediaRef) != nil
@@ -550,7 +563,7 @@ enum XMLExporter {
             return max(0, secondsToFrame(seconds: seconds, fps: fps))
         }
 
-        /// Real fps → FCP7 (timebase, ntsc). NTSC rates (timebase×1000/1001: 29.97, 23.976, …) set ntsc TRUE.
+        /// Converts a real frame rate to FCP7 timebase and NTSC fields.
         private func rateTags(forFPS rawFps: Double) -> (timebase: Int, ntsc: Bool) {
             let timebase = max(1, Int(rawFps.rounded()))
             let ntscRate = Double(timebase) * 1000.0 / 1001.0
@@ -575,7 +588,6 @@ enum XMLExporter {
             return el("effect", children)
         }
 
-        /// A `<parameter>`; `value` is its `<value>` node, optionally animated by `keyframes`.
         private func parameter(id: String, name: String, min: String? = nil, max: String? = nil,
                                value: XMLNode, keyframes: [(when: Int, value: XMLNode)] = []) -> XMLNode {
             var children = [leaf("parameterid", id), leaf("name", name)]
@@ -586,7 +598,6 @@ enum XMLExporter {
             return el("parameter", children)
         }
 
-        /// Scalar `<parameter>` whose value (and keyframes) are numbers formatted by `spec`.
         private func scalarParam(id: String, name: String, min: String, max: String, base: Double,
                                  keyframes: [(when: Int, value: Double)] = [], spec: String = "%.2f") -> XMLNode {
             parameter(id: id, name: name, min: min, max: max,
@@ -594,7 +605,6 @@ enum XMLExporter {
                       keyframes: keyframes.map { (when: $0.when, value: leaf("value", String(format: spec, $0.value))) })
         }
 
-        /// Two-component Center `<parameter>` whose value is a `<horiz>`/`<vert>` pair.
         private func centerParam(base: (x: Double, y: Double), keyframes: [(when: Int, x: Double, y: Double)] = []) -> XMLNode {
             func vec(_ x: Double, _ y: Double) -> XMLNode {
                 el("value", [leaf("horiz", String(format: "%.5f", x)), leaf("vert", String(format: "%.5f", y))])
@@ -607,13 +617,12 @@ enum XMLExporter {
 
 // MARK: - XML rendering
 
-/// A minimal XML tree. The emitters above describe document *structure*; `render` owns every bit
-/// of whitespace and escaping so no fragment ever hardcodes its own indentation.
+/// Minimal XML tree with centralized escaping and whitespace.
 private struct XMLNode {
     let name: String
     var attributes: [(String, String)] = []
-    var text: String? = nil        // leaf value → `<name>text</name>`
-    var children: [XMLNode] = []   // empty + no text → self-closing `<name/>`
+    var text: String? = nil
+    var children: [XMLNode] = []
 }
 
 private func el(_ name: String, _ children: [XMLNode] = []) -> XMLNode {
