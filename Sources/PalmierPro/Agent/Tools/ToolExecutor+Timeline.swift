@@ -226,7 +226,7 @@ extension ToolExecutor {
             }
         }
         let stripped = strippingDefaults(compactClipKeyframes(partner), clipDefaults)
-        for key in ["volume", "fadeInFrames", "fadeOutFrames", "fadeInInterpolation", "fadeOutInterpolation", "keyframes"] {
+        for key in ["volumeDb", "fadeInFrames", "fadeOutFrames", "fadeInInterpolation", "fadeOutInterpolation", "keyframes"] {
             if let v = stripped[key] { out[key] = v }
         }
         if let fx = stripped["effects"] as? [[String: Any]] {
@@ -422,9 +422,14 @@ extension ToolExecutor {
 
     private static func compactClipKeyframes(_ clip: [String: Any]) -> [String: Any] {
         var out = clip
+        if let linearVolume = (clip["volume"] as? NSNumber)?.doubleValue {
+            out.removeValue(forKey: "volume")
+            let volumeDb = VolumeScale.dbFromLinear(linearVolume)
+            if !nearlyEqual([volumeDb], [0]) { out["volumeDb"] = volumeDb }
+        }
         var keyframes: [String: Any] = [:]
         for (trackKey, propKey, valueShape) in [
-            ("volumeTrack", "volume", KeyframeValueShape.scalar),
+            ("volumeTrack", "volumeDb", KeyframeValueShape.scalar),
             ("opacityTrack", "opacity", KeyframeValueShape.scalar),
             ("rotationTrack", "rotation", KeyframeValueShape.scalar),
             ("positionTrack", "position", KeyframeValueShape.pair),
@@ -436,15 +441,17 @@ extension ToolExecutor {
                   let kfs = track["keyframes"] as? [[String: Any]],
                   !kfs.isEmpty else { continue }
 
-            let values = kfs.map { valueShape.values(from: $0["value"]).map { ($0 as? NSNumber)?.doubleValue ?? 0 } }
+            let values = kfs.map { keyframe in
+                valueShape.values(from: keyframe["value"]).map { ($0 as? NSNumber)?.doubleValue ?? 0 }
+            }
             if let first = values.first, values.allSatisfy({ nearlyEqual($0, first) }),
                collapseConstantKeyframes(first, propKey: propKey, clip: clip, into: &out) {
                 continue
             }
 
-            keyframes[propKey] = kfs.map { kf -> [Any] in
+            keyframes[propKey] = zip(kfs, values).map { kf, exposedValues -> [Any] in
                 var row: [Any] = [kf["frame"] ?? 0]
-                row.append(contentsOf: valueShape.values(from: kf["value"]))
+                row.append(contentsOf: exposedValues)
                 if let interp = kf["interpolationOut"] as? String, interp != "smooth" {
                     row.append(interp)
                 }
@@ -460,7 +467,12 @@ extension ToolExecutor {
         _ value: [Double], propKey: String, clip: [String: Any], into out: inout [String: Any]
     ) -> Bool {
         switch propKey {
-        case "volume", "opacity":
+        case "volumeDb":
+            if nearlyEqual(value, [0]) { return true }
+            guard (clip["volume"] as? NSNumber)?.doubleValue == 1 else { return false }
+            out[propKey] = value[0]
+            return true
+        case "opacity":
             if nearlyEqual(value, [1]) { return true }
             guard (clip[propKey] as? NSNumber)?.doubleValue == 1 else { return false }
             out[propKey] = value[0]
