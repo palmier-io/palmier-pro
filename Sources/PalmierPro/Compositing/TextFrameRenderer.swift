@@ -90,14 +90,6 @@ enum TextFrameRenderer {
         return CIImage(cgImage: cg, options: [.colorSpace: NSNull()])
     }
 
-    /// Tall top-anchored layout path so CoreText never drops a line overflowing the box
-    /// (CATextLayer didn't clip vertically either). Box width drives wrapping.
-    private static func layoutFrame(_ attr: NSAttributedString, box: CGRect) -> CTFrame {
-        let setter = CTFramesetterCreateWithAttributedString(attr as CFAttributedString)
-        let path = CGPath(rect: CGRect(x: box.minX, y: 0, width: box.width, height: box.maxY), transform: nil)
-        return CTFramesetterCreateFrame(setter, CFRange(location: 0, length: 0), path, nil)
-    }
-
     private static func drawOverlines(_ ctx: CGContext, frame: CTFrame, style: TextStyle,
                                       box: CGRect, fontSize: CGFloat) {
         guard style.isOverlined else { return }
@@ -131,7 +123,10 @@ enum TextFrameRenderer {
         let key = signature(content, style, transform, renderSize)
         if let cached = cache.object(forKey: key) { return cached }
         guard let ctx = beginContext(style: style, backgroundBox: boxes.background, renderSize: renderSize) else { return nil }
-        let frame = layoutFrame(NSAttributedString(string: content, attributes: style.attributes(size: fontSize)), box: boxes.text)
+        let frame = TextLayout.frame(
+            for: NSAttributedString(string: content, attributes: style.attributes(size: fontSize)),
+            in: boxes.text
+        )
         CTFrameDraw(frame, ctx)
         drawOverlines(ctx, frame: frame, style: style, box: boxes.text, fontSize: fontSize)
         guard let image = finish(ctx) else { return nil }
@@ -171,7 +166,7 @@ enum TextFrameRenderer {
         guard let ctx = beginContext(style: style, backgroundBox: boxes.background, renderSize: renderSize) else { return nil }
 
         let attr = NSAttributedString(string: content, attributes: style.attributes(size: fontSize))
-        let ctFrame = layoutFrame(attr, box: boxes.text)
+        let ctFrame = TextLayout.frame(for: attr, in: boxes.text)
         let lines = CTFrameGetLines(ctFrame) as? [CTLine] ?? []
         var origins = [CGPoint](repeating: .zero, count: lines.count)
         CTFrameGetLineOrigins(ctFrame, CFRange(location: 0, length: 0), &origins)
@@ -267,7 +262,7 @@ enum TextFrameRenderer {
         // Left-anchor so the text reveals rightward in place rather than re-centering as it grows.
         var attrs = style.attributes(size: fontSize)
         attrs[.paragraphStyle] = style.paragraphStyle(size: fontSize, alignment: .left)
-        let textFrame = layoutFrame(NSAttributedString(string: visible, attributes: attrs), box: boxes.text)
+        let textFrame = TextLayout.frame(for: NSAttributedString(string: visible, attributes: attrs), in: boxes.text)
         CTFrameDraw(textFrame, ctx)
         drawOverlines(ctx, frame: textFrame, style: style, box: boxes.text, fontSize: fontSize)
         return finish(ctx)

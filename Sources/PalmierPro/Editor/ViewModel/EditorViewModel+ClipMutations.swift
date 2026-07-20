@@ -418,6 +418,24 @@ extension EditorViewModel {
 
     // MARK: - Text-style mutation helpers
 
+    func applyTextContent(clipId: String, content: String) {
+        let canvasW = Double(timeline.width)
+        let canvasH = Double(timeline.height)
+        applyClipProperty(clipId: clipId, rebuild: true) { clip in
+            clip.textContent = content
+            _ = self.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
+        }
+    }
+
+    func commitTextContent(clipId: String, content: String) {
+        let canvasW = Double(timeline.width)
+        let canvasH = Double(timeline.height)
+        commitClipProperty(clipId: clipId, actionName: "Change Text") { clip in
+            clip.textContent = content
+            _ = self.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
+        }
+    }
+
     func applyTextStyle(clipId: String, fitToContent: Bool = false, _ modify: @escaping (inout TextStyle) -> Void) {
         let canvasW = Double(timeline.width)
         let canvasH = Double(timeline.height)

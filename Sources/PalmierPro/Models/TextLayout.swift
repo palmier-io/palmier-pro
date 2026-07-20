@@ -1,4 +1,5 @@
 import AppKit
+import CoreText
 
 /// Natural bounding size of a rendered text clip, shared between the layer
 /// controller and clip placement.
@@ -20,10 +21,7 @@ enum TextLayout {
             string: measured,
             attributes: style.attributes(size: renderSize, includeColor: false)
         )
-        let bounding = str.boundingRect(
-            with: CGSize(width: maxWidth, height: .greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading]
-        )
+        let bounding = suggestedSize(for: str, maxWidth: maxWidth)
         // +4px slack absorbs canvas→preview scale rounding.
         let slack: CGFloat = 4
         let shadowBlur = max(0, CGFloat(style.shadow.blur))
@@ -40,5 +38,36 @@ enum TextLayout {
             width: max(1, ceil(bounding.width) + shadowX + borderPad + backgroundPadX + slack),
             height: max(1, ceil(bounding.height) + shadowY + borderPad + backgroundPadY + slack)
         )
+    }
+
+    static func frame(for attributedString: NSAttributedString, in box: CGRect) -> CTFrame {
+        let framesetter = framesetter(for: attributedString)
+        let path = CGPath(rect: box, transform: nil)
+        return CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: 0), path, nil)
+    }
+
+    private static func suggestedSize(for attributedString: NSAttributedString, maxWidth: CGFloat) -> CGSize {
+        let measured: NSAttributedString
+        if attributedString.string.last?.isNewline == true {
+            // CoreText omits a final empty line unless measurement includes a zero-width glyph.
+            let mutable = NSMutableAttributedString(attributedString: attributedString)
+            var attributes = attributedString.attributes(at: attributedString.length - 1, effectiveRange: nil)
+            attributes[.kern] = 0
+            mutable.append(NSAttributedString(string: "\u{200B}", attributes: attributes))
+            measured = mutable
+        } else {
+            measured = attributedString
+        }
+        return CTFramesetterSuggestFrameSizeWithConstraints(
+            framesetter(for: measured),
+            CFRange(location: 0, length: 0),
+            nil,
+            CGSize(width: maxWidth, height: .greatestFiniteMagnitude),
+            nil
+        )
+    }
+
+    private static func framesetter(for attributedString: NSAttributedString) -> CTFramesetter {
+        CTFramesetterCreateWithAttributedString(attributedString as CFAttributedString)
     }
 }

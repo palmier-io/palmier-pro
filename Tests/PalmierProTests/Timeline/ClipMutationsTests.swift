@@ -432,6 +432,44 @@ struct WritePositionTests {
 @MainActor
 struct ClipPropertyCommitTests {
 
+    @Test func editingMultilineTextResizesAndUndoesTheTextBoxAtomically() throws {
+        let originalContent = "Text"
+        var style = TextStyle()
+        style.shadow.enabled = false
+        let natural = TextLayout.naturalSize(
+            content: originalContent,
+            style: style,
+            maxWidth: 1_728,
+            canvasHeight: 1_080
+        )
+        var clip = Fixtures.clip(id: "text", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
+        clip.textContent = originalContent
+        clip.textStyle = style
+        clip.transform = Transform(
+            center: (0.5, 0.5),
+            width: Double(natural.width) / 1_920,
+            height: Double(natural.height) / 1_080
+        )
+        let originalTransform = clip.transform
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        let undoManager = UndoManager()
+        e.undo.attach(undoManager)
+        let multiline = "Text\nfasfasf\nfsafasff\nfasfsafsa\nfasfasfas\nfasfasffs"
+
+        e.applyTextContent(clipId: clip.id, content: multiline)
+        let resized = try #require(e.clipFor(id: clip.id))
+        #expect(resized.textContent == multiline)
+        #expect(resized.transform.height > originalTransform.height)
+        #expect(resized.transform.centerY == originalTransform.centerY)
+
+        e.commitTextContent(clipId: clip.id, content: multiline)
+        undoManager.undo()
+        let restored = try #require(e.clipFor(id: clip.id))
+        #expect(restored.textContent == originalContent)
+        #expect(restored.transform == originalTransform)
+        #expect(undoManager.canUndo == false)
+    }
+
     @Test func sampledChromaKeyUndoes() throws {
         let clip = Fixtures.clip(id: "clip", start: 0, duration: 30)
         let e = editor([Fixtures.videoTrack(clips: [clip])])

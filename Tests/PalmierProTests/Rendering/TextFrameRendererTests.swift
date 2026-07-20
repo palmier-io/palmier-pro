@@ -1,4 +1,5 @@
 import CoreImage
+import CoreText
 import Foundation
 import Testing
 @testable import PalmierPro
@@ -225,5 +226,59 @@ struct TextFrameRendererTests {
 
         #expect(shiftedSize.height > centeredSize.height + 80)
         #expect(shiftedSize.width == centeredSize.width)
+    }
+
+    @Test func multilineNaturalSizeFitsTheSharedCoreTextFrame() {
+        let content = "Text\nfasfasf\nfsafasff\nfasfsafsa\nfasfasfas\nfasfasffs"
+        var style = TextStyle()
+        style.shadow.enabled = false
+        let size = TextLayout.naturalSize(
+            content: content,
+            style: style,
+            maxWidth: 1_728,
+            canvasHeight: 1_080
+        )
+        let attributedString = NSAttributedString(
+            string: content,
+            attributes: style.attributes(size: CGFloat(style.fontSize))
+        )
+        let frame = TextLayout.frame(for: attributedString, in: CGRect(origin: .zero, size: size))
+        let visibleRange = CTFrameGetVisibleStringRange(frame)
+        let lines = CTFrameGetLines(frame) as? [CTLine] ?? []
+
+        #expect(visibleRange.length == (content as NSString).length)
+        #expect(lines.count == 6)
+    }
+
+    @Test func trailingNewlineReservesTheNextLine() {
+        var style = TextStyle()
+        style.shadow.enabled = false
+
+        func size(_ content: String) -> CGSize {
+            TextLayout.naturalSize(
+                content: content,
+                style: style,
+                maxWidth: 1_728,
+                canvasHeight: 1_080
+            )
+        }
+
+        #expect(size("Line\n").height == size("Line\nNext").height)
+        #expect(size("Line\n").height > size("Line").height)
+    }
+
+    @Test func sharedCoreTextFrameHonorsAnUndersizedBox() {
+        let content = "First line\nSecond line"
+        let style = TextStyle()
+        let attributedString = NSAttributedString(
+            string: content,
+            attributes: style.attributes(size: CGFloat(style.fontSize))
+        )
+        let frame = TextLayout.frame(
+            for: attributedString,
+            in: CGRect(x: 0, y: 100, width: 800, height: 1)
+        )
+
+        #expect(CTFrameGetVisibleStringRange(frame).length < (content as NSString).length)
     }
 }

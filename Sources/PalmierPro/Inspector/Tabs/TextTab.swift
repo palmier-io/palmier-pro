@@ -64,14 +64,12 @@ struct TextTab: View {
                     get: { clip.textContent ?? "" },
                     set: { new in
                         guard !isBatch else { return }
-                        editor.applyClipProperty(clipId: clip.id, rebuild: true) { $0.textContent = new }
-                        editor.fitTextClipToContent(clipId: clip.id)
+                        editor.applyTextContent(clipId: clip.id, content: new)
                     }
                 ),
                 onCommit: { new in
                     guard !isBatch else { return }
-                    editor.commitClipProperty(clipId: clip.id) { $0.textContent = new }
-                    editor.fitTextClipToContent(clipId: clip.id)
+                    editor.commitTextContent(clipId: clip.id, content: new)
                 }
             )
             .disabled(isBatch)
