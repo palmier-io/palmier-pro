@@ -55,6 +55,38 @@ enum EngineAudio {
         return samples
     }
 
+    /// The time (seconds) of the audio's last non-silent 50ms window — its speech end. Trailing
+    /// silence or a music tail is excluded so a transcript that legitimately stops before a silent
+    /// outro isn't judged incomplete. Returns 0 for effectively silent audio.
+    static func nonSilentEnd(samples: [Float]) -> Double {
+        let window = sampleRate / 20
+        guard samples.count >= window else { return 0 }
+        let floor: Float = 0.003  // ~ -50 dBFS RMS
+        var index = samples.count - window
+        while index >= 0 {
+            var energy: Float = 0
+            for sample in samples[index..<(index + window)] { energy += sample * sample }
+            if (energy / Float(window)).squareRoot() > floor {
+                return Double(index + window) / Double(sampleRate)
+            }
+            index -= window
+        }
+        return 0
+    }
+
+    /// How far a transcript's speech falls short of the audio's non-silent end, or nil when it covers
+    /// enough. A transcript with speech present must reach `minimumFraction` of the non-silent span;
+    /// otherwise it's a partial decode that must not be cached. An empty transcript (silent or
+    /// non-speech audio) always covers. `covered`/`expected` are seconds, for diagnostics.
+    static func coverageShortfall(
+        segments: [TranscriptionSegment], samples: [Float], minimumFraction: Double = 0.8
+    ) -> (covered: Double, expected: Double)? {
+        guard let lastEnd = segments.map(\.end).max() else { return nil }
+        let expected = nonSilentEnd(samples: samples)
+        guard expected > 0, lastEnd < minimumFraction * expected else { return nil }
+        return (lastEnd, expected)
+    }
+
     /// End index for a chunk starting at `from` — the quietest 50ms window near the target boundary.
     static func chunkBoundary(samples: [Float], from: Int, targetSeconds: Double, searchSpanSeconds: Double = 2.5) -> Int {
         let target = from + Int(targetSeconds * Double(sampleRate))

@@ -12,10 +12,13 @@ actor WhisperKitEngine {
 
     enum EngineError: LocalizedError {
         case loadFailed(String)
+        case incompleteResult(covered: Double, expected: Double)
 
         var errorDescription: String? {
             switch self {
             case .loadFailed(let reason): "Could not load the Whisper model: \(reason)"
+            case .incompleteResult(let covered, let expected):
+                "Whisper transcript covers only \(Int(covered))s of \(Int(expected))s of speech."
             }
         }
     }
@@ -40,7 +43,9 @@ actor WhisperKitEngine {
             language: language,
             wordTimestamps: true
         )
+        try Task.checkCancellation()
         let resultsPerFile = await pipe.transcribe(audioPaths: [fileURL.path], decodeOptions: options)
+        try Task.checkCancellation()
         guard let fileResults = resultsPerFile.first ?? nil else {
             return TranscriptionResult(text: "", language: nil, words: [], segments: [])
         }
@@ -65,6 +70,12 @@ actor WhisperKitEngine {
                         text: wordText, start: Double(word.start), end: Double(word.end)))
                 }
             }
+        }
+        // Guard against an interrupted decode being cached as complete: reject a transcript whose
+        // speech ends grossly short of the audio's non-silent end.
+        let samples = (try? EngineAudio.loadSamples(fileURL: fileURL)) ?? []
+        if let gap = EngineAudio.coverageShortfall(segments: segments, samples: samples) {
+            throw EngineError.incompleteResult(covered: gap.covered, expected: gap.expected)
         }
         return TranscriptionResult(
             text: segments.map(\.text).joined(separator: " "),
