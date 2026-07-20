@@ -19,11 +19,14 @@ actor Qwen3ASREngine {
     enum EngineError: LocalizedError {
         case modelDownloadFailed(String)
         case recognizerInitFailed
+        case incompleteResult(covered: Double, expected: Double)
 
         var errorDescription: String? {
             switch self {
             case .modelDownloadFailed(let reason): "Qwen3-ASR model download failed: \(reason)"
             case .recognizerInitFailed: "Could not initialize the Qwen3-ASR recognizer."
+            case .incompleteResult(let covered, let expected):
+                "Qwen3-ASR transcript covers only \(Int(covered))s of \(Int(expected))s of speech."
             }
         }
     }
