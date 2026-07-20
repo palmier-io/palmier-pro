@@ -85,6 +85,7 @@ struct ProjectCard: View {
                     .font(.system(size: AppTheme.FontSize.xl, weight: .semibold))
                     .foregroundStyle(isSelected ? AppTheme.Accent.primary : AppTheme.Text.tertiaryColor)
                     .padding(AppTheme.Spacing.smMd)
+                    .allowsHitTesting(false)
             } else if isHovered {
                 Button(action: onDelete) {
                     Image(systemName: "trash.fill")

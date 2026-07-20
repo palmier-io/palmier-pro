@@ -71,14 +71,14 @@ struct MyProjectsSection: View {
         .padding(.horizontal, AppTheme.Spacing.xlXxl)
         .padding(.bottom, AppTheme.Spacing.sm)
         .animation(.easeInOut(duration: AppTheme.Anim.transition), value: isSearchExpanded)
-        .alert("Delete Selected Projects?", isPresented: Binding(
+        .alert(deletionTitle, isPresented: Binding(
             get: { !projectsPendingDeletion.isEmpty },
             set: { if !$0 { projectsPendingDeletion = [] } }
         )) {
             Button("Cancel", role: .cancel) { projectsPendingDeletion = [] }
             Button("Delete", role: .destructive) { deletePendingProjects() }
         } message: {
-            Text("The selected projects will be moved to the Trash.")
+            Text(deletionPrompt)
         }
         .alert("Projects Couldn’t Be Deleted", isPresented: Binding(
             get: { deletionMessage != nil },
@@ -172,6 +172,16 @@ struct MyProjectsSection: View {
         return ProjectRegistry.shared.sortedEntries.filter { $0.name.localizedStandardContains(query) }
     }
 
+    private var deletionTitle: String {
+        projectsPendingDeletion.count == 1 ? "Delete Project?" : "Delete Selected Projects?"
+    }
+
+    private var deletionPrompt: String {
+        projectsPendingDeletion.count == 1
+            ? "The project will be moved to the Trash."
+            : "The selected projects will be moved to the Trash."
+    }
+
     private func toggleSelection(_ id: UUID) {
         if selectedProjectIDs.contains(id) {
             selectedProjectIDs.remove(id)
@@ -206,20 +216,19 @@ struct MyProjectsSection: View {
     }
 
     private func deletePendingProjects() {
-        let entries = projectsPendingDeletion
+        let ids = Set(projectsPendingDeletion.map(\.id))
         projectsPendingDeletion = []
-        let open = openProjects(in: entries)
-        guard open.isEmpty else {
-            deletionMessage = "Close \(open.map(\.name).formatted()) before deleting."
-            return
-        }
         Task {
-            let result = await ProjectRegistry.shared.delete(entries)
-            selectedProjectIDs.subtract(result.deletedIDs)
-            if result.failedNames.isEmpty {
-                endSelection()
-            } else {
-                deletionMessage = "Couldn’t move \(result.failedNames.formatted()) to the Trash."
+            do {
+                let result = try await AppState.shared.deleteProjects(withIDs: ids)
+                selectedProjectIDs.subtract(result.deletedIDs)
+                if result.failedNames.isEmpty {
+                    endSelection()
+                } else {
+                    deletionMessage = "Couldn’t move \(result.failedNames.formatted()) to the Trash."
+                }
+            } catch {
+                deletionMessage = error.localizedDescription
             }
         }
     }
