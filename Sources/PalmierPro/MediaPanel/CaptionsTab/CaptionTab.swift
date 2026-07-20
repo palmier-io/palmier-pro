@@ -440,26 +440,26 @@ struct CaptionTab: View {
     private var animationSection: some View {
         EditorPanelGroup("Animation", isExpanded: $animationExpanded) {
             CaptionPresetGallery(selection: $animationPreset, highlight: animationHighlight)
-            if animationPreset != .none {
-                InspectorRow(
-                    label: "Animate by",
-                    labelHelp: "Whether each step reveals a whole word or a single character. Applies to per-word and typewriter animations.",
-                    onReset: { animationGranularity = .word }
-                ) {
-                    Menu {
-                        Button {
-                            animationGranularity = .word
-                        } label: { Label("Word", systemImage: animationGranularity == .word ? "checkmark" : "") }
-                        Button {
-                            animationGranularity = .char
-                        } label: { Label("Character", systemImage: animationGranularity == .char ? "checkmark" : "") }
-                    } label: {
-                        EditorMenuValue(text: animationGranularity == .word ? "Word" : "Character", expanded: true)
-                    }
-                    .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
-                    .frame(maxWidth: .infinity)
+            InspectorRow(
+                label: "Animate by",
+                labelHelp: "Whether each step reveals a whole word or a single character. Applies to per-word and typewriter animations.",
+                onReset: { animationGranularity = .word }
+            ) {
+                Menu {
+                    Button {
+                        animationGranularity = .word
+                    } label: { Label("Word", systemImage: animationGranularity == .word ? "checkmark" : "") }
+                    Button {
+                        animationGranularity = .char
+                    } label: { Label("Character", systemImage: animationGranularity == .char ? "checkmark" : "") }
+                } label: {
+                    EditorMenuValue(text: animationGranularity == .word ? "Word" : "Character", expanded: true)
                 }
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
+                .frame(maxWidth: .infinity)
             }
+            .disabled(!animationPreset.usesGranularity)
+            .opacity(animationPreset.usesGranularity ? AppTheme.Opacity.opaque : AppTheme.Opacity.medium)
             if animationPreset.usesHighlight {
                 InspectorRow(
                     label: "Highlight",

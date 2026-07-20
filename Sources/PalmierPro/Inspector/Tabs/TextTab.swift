@@ -145,7 +145,9 @@ struct TextAnimateTab: View {
                 ),
                 highlight: anim.highlight
             )
-            if anim.preset != .none { granularityRow(anim) }
+            granularityRow(anim)
+                .disabled(!anim.preset.usesGranularity)
+                .opacity(anim.preset.usesGranularity ? AppTheme.Opacity.opaque : AppTheme.Opacity.medium)
             if anim.preset.usesHighlight { highlightRow(anim) }
         }
     }

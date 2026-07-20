@@ -46,6 +46,8 @@ struct TextAnimation: Codable, Sendable, Equatable {
 
         var isPerWord: Bool { renderMode == .perWord }
         var usesHighlight: Bool { isPerWord }
+        /// Word/character stepping applies to per-word and typewriter modes; entrances animate the line.
+        var usesGranularity: Bool { self != .none && renderMode != .entrance }
 
         var displayName: String {
             switch self {
