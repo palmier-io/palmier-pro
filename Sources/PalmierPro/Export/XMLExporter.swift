@@ -330,8 +330,10 @@ enum XMLExporter {
                 ?? "media/\(mediaRef)"
             // Stills decode as one frame.
             let isImage = entry?.type == .image
-            let durationFrames = isImage ? 1 : (entry.map { max(0, secondsToFrame(seconds: $0.duration, fps: fps)) } ?? 0)
             let (timebase, ntsc) = rateTags(forFPS: entry?.sourceFPS ?? Double(fps))
+            // Duration in the file's own rate units, consistent with the rate element it sits beside.
+            let fileFPS = ntsc ? Double(timebase) * 1000.0 / 1001.0 : Double(timebase)
+            let durationFrames = isImage ? 1 : (entry.map { max(0, Int(($0.duration * fileFPS).rounded())) } ?? 0)
 
             let media: XMLNode = isAudio
                 ? el("media", [el("audio", [
