@@ -341,7 +341,7 @@ enum CaptionResyncEngine {
     }
 
     static func joinWords(_ words: [WordTiming]) -> String {
-        words.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        CaptionText.join(words.map(\.text)).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Absolute-frame words → clip-relative timings clamped to the clip's duration.

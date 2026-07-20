@@ -110,3 +110,29 @@ struct PunctuationRestorationTests {
             == ["the", "U.S.", "team."])
     }
 }
+
+// E: caption/transcript text assembly never puts spaces inside a CJK run.
+@Suite struct CJKJoinTests {
+    @Test func cjkRunJoinsTight() {
+        #expect(CaptionText.join(["好", "久", "没", "有", "拍", "视", "频", "了"]) == "好久没有拍视频了")
+    }
+
+    @Test func mixedLanguageKeepsLatinSpacing() {
+        #expect(CaptionText.join(["我", "掉", "得", "really", "low", "。"]) == "我掉得 really low。")
+    }
+
+    @Test func punctuationBindsLeftAcrossScripts() {
+        #expect(CaptionText.join(["Nice.", "行", "吗", "？"]) == "Nice. 行吗？")
+    }
+
+    @MainActor
+    @Test func resyncReplaceJoinIsCJKAware() {
+        let words = [
+            WordTiming(text: "好", startFrame: 0, endFrame: 10),
+            WordTiming(text: "久", startFrame: 10, endFrame: 20),
+            WordTiming(text: "really", startFrame: 20, endFrame: 40),
+            WordTiming(text: "low", startFrame: 40, endFrame: 60),
+        ]
+        #expect(CaptionResyncEngine.joinWords(words) == "好久 really low")
+    }
+}

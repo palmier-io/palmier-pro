@@ -38,4 +38,30 @@ enum CaptionText {
             CharacterSet.alphanumerics.contains($0) || isCJK($0)
         })
     }
+
+    /// Join tokens for display: no space inside a CJK run or before left-binding punctuation,
+    /// one space at Latin/seam gaps. The single join every caption/transcript text assembly uses.
+    static func join(_ tokens: [String]) -> String {
+        var out = ""
+        for token in tokens where !token.isEmpty {
+            guard let prev = out.last, let cur = token.first else { out += token; continue }
+            let glue = (isCJKContext(prev) && isCJKContext(cur)) || bindsLeft(cur)
+            out += glue ? token : " " + token
+        }
+        return out
+    }
+
+    private static func isCJKContext(_ c: Character) -> Bool {
+        c.unicodeScalars.contains(where: isCJK) || isFullwidthPunct(c)
+    }
+
+    private static func isFullwidthPunct(_ c: Character) -> Bool {
+        c.unicodeScalars.contains { (0x3000...0x303F).contains($0.value) || (0xFF00...0xFFEF).contains($0.value) }
+    }
+
+    /// Punctuation that attaches to the token on its left — never spaced off it.
+    private static func bindsLeft(_ c: Character) -> Bool {
+        if isFullwidthPunct(c) { return true }
+        return ".?!,:;)]}…".contains(c)
+    }
 }

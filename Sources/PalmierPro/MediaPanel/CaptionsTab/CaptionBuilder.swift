@@ -290,30 +290,8 @@ enum CaptionBuilder {
         return pieces
     }
 
-    /// Join tokens cleanly: no space inside a CJK run or before punctuation, one space at Latin/seam gaps.
     private static func cjkAwareJoin(_ tokens: [String]) -> String {
-        var out = ""
-        for token in tokens where !token.isEmpty {
-            guard let prev = out.last, let cur = token.first else { out += token; continue }
-            let glue = (isCJKContext(prev) && isCJKContext(cur)) || bindsLeft(cur)
-            out += glue ? token : " " + token
-        }
-        return out
-    }
-
-    private static func isCJKContext(_ c: Character) -> Bool {
-        GlossaryText.isCJK(c) || isFullwidthPunct(c)
-    }
-
-    private static func isFullwidthPunct(_ c: Character) -> Bool {
-        c.unicodeScalars.contains { (0x3000...0x303F).contains($0.value) || (0xFF00...0xFFEF).contains($0.value) }
-    }
-
-    /// Punctuation that attaches to the token on its left — never spaced off it, never starting a line.
-    private static func bindsLeft(_ c: Character) -> Bool {
-        if hardBreakPunct.contains(c) { return true }
-        if isFullwidthPunct(c) { return true }
-        return ":;)]}".contains(c)
+        CaptionText.join(tokens)
     }
 
     private static func split(_ text: String, fits: (String) -> Bool) -> [String] {

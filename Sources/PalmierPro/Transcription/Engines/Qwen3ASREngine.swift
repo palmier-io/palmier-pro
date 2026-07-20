@@ -183,7 +183,9 @@ actor Qwen3ASREngine {
 
             words.append(contentsOf: aligned.words)
             segments.append(TranscriptionSegment(
-                text: chunk.text,
+                // Join the punctuated pieces CJK-aware so segment text reads 好久没有… not 好 久 没 有…
+                // (per-char spacing broke CJK substring search and leaked into displayed transcripts).
+                text: CaptionText.join(pieces),
                 start: aligned.words.first?.start ?? chunk.start,
                 end: aligned.words.last?.end ?? chunk.end
             ))
@@ -200,7 +202,7 @@ actor Qwen3ASREngine {
         }
 
         return TranscriptionResult(
-            text: segments.map(\.text).joined(separator: " "),
+            text: CaptionText.join(segments.map(\.text)),
             language: "multi",
             words: refined,
             segments: segments
