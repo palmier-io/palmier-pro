@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import PalmierPro
 
-@Suite("BeatStore hydration")
+@Suite("BeatStore")
 @MainActor
 struct BeatStoreTests {
     @Test func hydrationReturnsWhileCacheLoadIsPending() async throws {
@@ -74,10 +74,71 @@ struct BeatStoreTests {
         #expect(store.analysis(for: asset.id) == current)
     }
 
+    @Test func detectionReturnsWhileFileTagLoadIsPending() async throws {
+        let cacheLoader = ControlledBeatCacheLoader()
+        let tagLoader = ControlledFileTagLoader()
+        let store = BeatStore(
+            cachedAnalysisLoader: { sourceURL, mediaRef in
+                await cacheLoader.load(sourceURL: sourceURL, mediaRef: mediaRef)
+            },
+            fileTagLoader: { sourceURL in
+                await tagLoader.load(sourceURL: sourceURL)
+            }
+        )
+        let asset = makeAsset()
+        let analysis = BeatAnalysis(bpm: 120, beats: [0.5], downbeats: [0.5])
+
+        let hydration = try #require(store.hydrate(for: asset))
+        await cacheLoader.waitUntilStarted()
+        #expect(await cacheLoader.finishNext(with: BeatAnalysisCacheEntry(analysis: analysis, fileTag: "tag")))
+        await hydration.value
+
+        let detection = store.detect(for: asset)
+        await tagLoader.waitUntilStarted()
+
+        #expect(store.analysis(for: asset.id) == analysis)
+        #expect(await tagLoader.invocationCount() == 1)
+        #expect(await tagLoader.finishNext(with: "tag"))
+        #expect(try await detection.value == analysis)
+    }
+
+    @Test func urlChangeDuringDetectionRestartsWithCurrentURL() async throws {
+        let cacheLoader = ControlledBeatCacheLoader()
+        let tagLoader = ControlledFileTagLoader()
+        let store = BeatStore(
+            cachedAnalysisLoader: { sourceURL, mediaRef in
+                await cacheLoader.load(sourceURL: sourceURL, mediaRef: mediaRef)
+            },
+            fileTagLoader: { sourceURL in
+                await tagLoader.load(sourceURL: sourceURL)
+            }
+        )
+        let originalURL = URL(fileURLWithPath: "/tmp/original.palmier/Media/audio.wav")
+        let rebasedURL = URL(fileURLWithPath: "/tmp/rebased.palmier/Media/audio.wav")
+        let asset = makeAsset(url: originalURL)
+        let analysis = BeatAnalysis(bpm: 120, beats: [0.5], downbeats: [0.5])
+
+        let hydration = try #require(store.hydrate(for: asset))
+        await cacheLoader.waitUntilStarted()
+        #expect(await cacheLoader.finishNext(with: BeatAnalysisCacheEntry(analysis: analysis, fileTag: "tag")))
+        await hydration.value
+
+        let detection = store.detect(for: asset)
+        await tagLoader.waitUntilInvocationCount(1)
+        asset.url = rebasedURL
+        #expect(await tagLoader.finishNext(with: "tag"))
+
+        await tagLoader.waitUntilInvocationCount(2)
+        #expect(await tagLoader.requestedURLs() == [originalURL, rebasedURL])
+        #expect(await tagLoader.finishNext(with: "tag"))
+        #expect(try await detection.value == analysis)
+        #expect(store.analysis(for: asset.id) == analysis)
+    }
+
     private func makeStore(loader: ControlledBeatCacheLoader) -> BeatStore {
-        BeatStore { sourceURL, mediaRef in
+        BeatStore(cachedAnalysisLoader: { sourceURL, mediaRef in
             await loader.load(sourceURL: sourceURL, mediaRef: mediaRef)
-        }
+        })
     }
 
     private func makeAsset(
@@ -89,6 +150,51 @@ struct BeatStoreTests {
             type: .audio,
             name: "Test Audio"
         )
+    }
+}
+
+private actor ControlledFileTagLoader {
+    private var loadCount = 0
+    private var sourceURLs: [URL] = []
+    private var startedWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+    private var resultWaiters: [CheckedContinuation<String, Never>] = []
+
+    func load(sourceURL: URL) async -> String {
+        loadCount += 1
+        sourceURLs.append(sourceURL)
+        let waiters = startedWaiters
+        startedWaiters.removeAll()
+        for waiter in waiters {
+            if loadCount >= waiter.count {
+                waiter.continuation.resume()
+            } else {
+                startedWaiters.append(waiter)
+            }
+        }
+        return await withCheckedContinuation { continuation in
+            resultWaiters.append(continuation)
+        }
+    }
+
+    func waitUntilStarted() async {
+        await waitUntilInvocationCount(1)
+    }
+
+    func waitUntilInvocationCount(_ count: Int) async {
+        guard loadCount < count else { return }
+        await withCheckedContinuation { continuation in
+            startedWaiters.append((count, continuation))
+        }
+    }
+
+    func invocationCount() -> Int { loadCount }
+
+    func requestedURLs() -> [URL] { sourceURLs }
+
+    func finishNext(with tag: String) -> Bool {
+        guard !resultWaiters.isEmpty else { return false }
+        resultWaiters.removeFirst().resume(returning: tag)
+        return true
     }
 }
 

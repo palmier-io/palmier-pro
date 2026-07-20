@@ -4,21 +4,27 @@ import Foundation
 @MainActor
 final class BeatStore {
     typealias CachedAnalysisLoader = @Sendable (URL, String) async -> BeatAnalysisCacheEntry?
+    typealias FileTagLoader = @Sendable (URL) async -> String
 
     private var analyses: [String: BeatAnalysis] = [:]
     private var fileTags: [String: String] = [:]
-    private var tasks: [String: Task<BeatAnalysis, Error>] = [:]
+    private var tasks: [String: (id: UUID, task: Task<BeatAnalysis, Error>)] = [:]
     private var hydrationTasks: [String: (id: UUID, task: Task<Void, Never>)] = [:]
     private let cachedAnalysisLoader: CachedAnalysisLoader
+    private let fileTagLoader: FileTagLoader
 
     var onBeatsReady: (() -> Void)?
 
     init(
         cachedAnalysisLoader: @escaping CachedAnalysisLoader = { sourceURL, mediaRef in
             await BeatDetector.cachedAnalysis(for: sourceURL, mediaRef: mediaRef)
+        },
+        fileTagLoader: @escaping FileTagLoader = { sourceURL in
+            await DiskCache.loadSizeMtimeTag(for: sourceURL)
         }
     ) {
         self.cachedAnalysisLoader = cachedAnalysisLoader
+        self.fileTagLoader = fileTagLoader
     }
 
     nonisolated func analysis(for mediaRef: String) -> BeatAnalysis? {
@@ -58,28 +64,47 @@ final class BeatStore {
     func detect(for asset: MediaAsset, force: Bool = false) -> Task<BeatAnalysis, Error> {
         let key = asset.id
         hydrationTasks.removeValue(forKey: key)?.task.cancel()
-        let tag = DiskCache.sizeMtimeTag(for: asset.url)
-        if !force {
-            if let existing = analyses[key], fileTags[key] == tag { return Task { existing } }
-            if let running = tasks[key] { return running }
+        if !force, let running = tasks[key] { return running.task }
+        tasks[key]?.task.cancel()
+        let id = UUID()
+        let task = Task(priority: .utility) { @MainActor [weak self, weak asset] in
+            guard let self, let asset else { throw CancellationError() }
+            defer { self.finishDetection(for: key, id: id) }
+            return try await self.analysisForCurrentSource(of: asset, force: force)
         }
-        tasks[key]?.cancel()
-        let url = asset.url
-        let task = Task(priority: .utility) { @MainActor in
-            defer { if !Task.isCancelled { tasks[key] = nil } }
+        tasks[key] = (id, task)
+        return task
+    }
+
+    private func analysisForCurrentSource(of asset: MediaAsset, force: Bool) async throws -> BeatAnalysis {
+        let key = asset.id
+        while true {
+            let url = asset.url.standardizedFileURL
+            let tag = await fileTagLoader(url)
+            try Task.checkCancellation()
+            guard asset.url.standardizedFileURL == url else { continue }
+            if !force, let existing = analyses[key], fileTags[key] == tag {
+                return existing
+            }
+
             let analysis = try await BeatDetector.analysis(for: url, mediaRef: key, force: force)
             try Task.checkCancellation()
+            guard asset.url.standardizedFileURL == url else { continue }
             analyses[key] = analysis
             fileTags[key] = tag
             onBeatsReady?()
             return analysis
         }
-        tasks[key] = task
-        return task
+    }
+
+    private func finishDetection(for key: String, id: UUID) {
+        if tasks[key]?.id == id {
+            tasks[key] = nil
+        }
     }
 
     func reset() {
-        tasks.values.forEach { $0.cancel() }
+        tasks.values.forEach { $0.task.cancel() }
         hydrationTasks.values.forEach { $0.task.cancel() }
         tasks.removeAll()
         hydrationTasks.removeAll()
@@ -88,7 +113,7 @@ final class BeatStore {
     }
 
     func invalidate(_ mediaRef: String) {
-        tasks.removeValue(forKey: mediaRef)?.cancel()
+        tasks.removeValue(forKey: mediaRef)?.task.cancel()
         hydrationTasks.removeValue(forKey: mediaRef)?.task.cancel()
         analyses.removeValue(forKey: mediaRef)
         fileTags.removeValue(forKey: mediaRef)
