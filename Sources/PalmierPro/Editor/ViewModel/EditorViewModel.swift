@@ -141,6 +141,8 @@ final class EditorViewModel {
     var pendingReplacements: Set<String> = []
     var cropEditingActive: Bool = false
     var chromaKeySamplingClipId: String?
+    /// Two-up in/out frames shown in the viewer while a slip drag is active.
+    var slipPreview: SlipPreviewState?
     var cropAspectLock: CropAspectLock = .free
     var previewTabs: [PreviewTab] = [.timeline]
     var activePreviewTabId: String = PreviewTab.timeline.id
@@ -306,6 +308,7 @@ final class EditorViewModel {
     @ObservationIgnored let undo = EditorUndo()
     @ObservationIgnored let projectPackageCoordinator = ProjectPackageCoordinator()
     @ObservationIgnored var onProjectCheckpointRequired: (() -> Void)?
+    @ObservationIgnored var onCancelTimelineDrag: (() -> Void)?
     var isDocumentEdited: Bool = false
 
     func telemetrySnapshot() -> [String: Any] {

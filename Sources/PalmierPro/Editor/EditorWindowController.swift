@@ -129,6 +129,13 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             }
             return false
 
+        case 17: // T key
+            if !cmd {
+                editorViewModel.toolMode = .trim
+                return true
+            }
+            return false
+
         case 34: // I key
             if rangeMarkShortcut {
                 editorViewModel.markTimelineRangeStart()
@@ -188,6 +195,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
                 editorViewModel.maximizedPanel = nil
                 return true
             }
+            editorViewModel.onCancelTimelineDrag?()
+            editorViewModel.slipPreview = nil
             editorViewModel.selectedClipIds.removeAll()
             editorViewModel.clearTimelineRange()
             editorViewModel.toolMode = .pointer
