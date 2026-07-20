@@ -127,7 +127,9 @@ final class EditorViewModel {
     var toolMode: ToolMode = .pointer
     var showExportDialog: Bool = false
     var showGenerationPanel: Bool = false {
-        didSet { if showGenerationPanel && !oldValue { showMediaPanelMediaTab() } }
+        didSet {
+            if showGenerationPanel && !oldValue { showMediaPanelMediaTab() } else if !showGenerationPanel && oldValue { clearPendingGenerationPanelState() }
+        }
     }
     /// AIEditTab input consumed by GenerationView.
     var pendingPanelSeed: PendingPanelSeed?

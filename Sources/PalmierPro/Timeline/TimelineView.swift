@@ -1047,17 +1047,11 @@ final class TimelineView: NSView {
             let gapInfo = ["trackIndex": gap.trackIndex, "start": gap.range.start, "end": gap.range.end] as [String: Any]
 
             if gap.range.start > 0, editor.timeline.tracks[gap.trackIndex].type == .video {
-                let gapSeconds = editor.transitionGapSeconds(lengthFrames: gap.range.length)
-                let tooLong = gapSeconds > EditorViewModel.maxTransitionSeconds
+                let availability = editor.aiTransitionAvailability(for: gap)
                 let item = NSMenuItem(title: "Create AI Transition", action: #selector(performCreateAITransition(_:)), keyEquivalent: "")
                 item.target = self
-                item.isEnabled = editor.aiEditAllowed && !tooLong
-                if tooLong {
-                    let limit = Int(EditorViewModel.maxTransitionSeconds)
-                    item.toolTip = "Transitions are limited to \(limit) seconds. This gap is \(String(format: "%.1f", gapSeconds)) seconds."
-                } else if !editor.aiEditAllowed {
-                    item.toolTip = "Sign in to generate."
-                }
+                item.isEnabled = availability.model != nil
+                item.toolTip = availability.refusal
                 item.representedObject = gapInfo
                 menu.addItem(item)
             }

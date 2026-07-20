@@ -18,13 +18,20 @@ extension EditorViewModel {
             ?? max(1, Int(seconds.rounded()))
     }
 
+    func aiTransitionAvailability(for gap: GapSelection) -> (model: VideoModelConfig?, refusal: String?) {
+        guard timeline.tracks.indices.contains(gap.trackIndex), gap.range.start > 0,
+              gap.range.length > 0, timeline.tracks[gap.trackIndex].type == .video else { return (nil, nil) }
+        let seconds = transitionGapSeconds(lengthFrames: gap.range.length)
+        guard seconds <= Self.maxTransitionSeconds else {
+            return (nil, "Transitions are limited to \(Int(Self.maxTransitionSeconds)) seconds. This gap is \(String(format: "%.1f", seconds)) seconds.")
+        }
+        guard aiEditAllowed else { return (nil, "Sign in to generate.") }
+        let model = VideoModelConfig.allModels.first { !$0.requiresSourceVideo && $0.supportsFirstFrame && $0.supportsLastFrame }
+        return (model, model == nil ? "No video model supports first and last frames." : nil)
+    }
+
     func beginAITransition(gap: GapSelection) {
-        guard gap.range.start > 0, gap.range.length > 0,
-              transitionGapSeconds(lengthFrames: gap.range.length) <= Self.maxTransitionSeconds,
-              timeline.tracks.indices.contains(gap.trackIndex),
-              let model = VideoModelConfig.allModels.first(where: {
-                  !$0.requiresSourceVideo && $0.supportsFirstFrame && $0.supportsLastFrame
-              }) else { return }
+        guard let model = aiTransitionAvailability(for: gap).model else { return }
         let placement = PendingTransitionPlacement(
             timelineId: timeline.id,
             trackIndex: gap.trackIndex,

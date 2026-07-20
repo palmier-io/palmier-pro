@@ -133,6 +133,15 @@ extension EditorViewModel {
         showGenerationPanel = true
     }
 
+    func clearPendingGenerationPanelState(preservingReplacement: Bool = false) {
+        cancelPendingTransitionSeed()
+        if !preservingReplacement { pendingEditReplacementClipId = nil }
+        pendingEditTrimmedSource = nil
+        pendingEditAudioPlacement = nil
+        pendingEditTransitionPlacement = nil
+        pendingPanelSeed = nil
+    }
+
     private func aiEditClipAsset(_ clipId: String) -> (clip: Clip, asset: MediaAsset)? {
         guard let clip = clipFor(id: clipId),
               let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }) else { return nil }

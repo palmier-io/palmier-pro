@@ -231,11 +231,8 @@ extension GenerationView {
         }
 
         let replacementClipId = editor.pendingEditReplacementClipId
-        editor.pendingEditReplacementClipId = nil
         let pendingAudioPlacement = selectedType == .audio ? editor.pendingEditAudioPlacement : nil
-        editor.pendingEditAudioPlacement = nil
         let transitionPlacement = selectedType == .video ? editor.pendingEditTransitionPlacement : nil
-        editor.pendingEditTransitionPlacement = nil
         let editorRef = editor
         if let clipId = replacementClipId {
             editor.markPendingReplacement(clipId: clipId)
@@ -272,7 +269,6 @@ extension GenerationView {
                       trim.sourceURL == sv.url else { return nil }
                 return trim
             }()
-            editor.pendingEditTrimmedSource = nil
             let placeholderDuration: Double
             if model.requiresSourceVideo {
                 if let trim = trimmedSource, trim.hasTrim {
@@ -370,7 +366,7 @@ extension GenerationView {
                 )
             }
         }
-        editor.pendingEditTrimmedSource = nil
+        editor.clearPendingGenerationPanelState()
         lyrics = ""
         styleInstructions = ""
         prompt = ""
