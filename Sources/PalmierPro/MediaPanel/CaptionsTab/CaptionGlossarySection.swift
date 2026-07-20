@@ -107,9 +107,16 @@ struct CaptionGlossarySection: View {
                 }
                 Text("\(merged.scope.rawValue) · \(merged.term.confidence.rawValue)")
                     .font(.system(size: AppTheme.FontSize.xxs))
-                    .foregroundStyle(AppTheme.Text.mutedColor)
+                    .foregroundStyle(merged.term.confidence == .inferred
+                        ? AppTheme.Status.warningColor : AppTheme.Text.mutedColor)
             }
             Spacer(minLength: AppTheme.Spacing.sm)
+            if merged.term.confidence == .inferred {
+                Button("Confirm") { confirm(merged) }
+                    .buttonStyle(.capsule(.prominent))
+                    .focusable(false)
+                    .help("Mark this suggestion correct. It starts applying to transcripts and captions immediately.")
+            }
             if isPromotable(merged) {
                 Button("Promote") { promote(merged) }
                     .buttonStyle(.capsule())
@@ -161,6 +168,20 @@ struct CaptionGlossarySection: View {
         do {
             _ = try editor.glossaryRemoveTerm(canonical: merged.term.canonical, scope: merged.scope)
             errorMessage = nil
+            reload()
+        } catch let error {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func confirm(_ merged: MergedGlossaryTerm) {
+        var term = merged.term
+        term.confidence = .declared
+        term.provenance = "user"
+        do {
+            let result = try editor.glossaryAddTerm(term, scope: merged.scope)
+            errorMessage = nil
+            warningMessage = result.warnings.isEmpty ? nil : result.warnings.joined(separator: " ")
             reload()
         } catch let error {
             errorMessage = error.localizedDescription
