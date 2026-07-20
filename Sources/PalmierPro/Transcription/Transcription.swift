@@ -168,6 +168,10 @@ enum Transcription {
         if engine != .apple {
             do {
                 return try await transcribeWithEngine(engine, fileURL: fileURL, preferredLocale: preferredLocale)
+            } catch is CancellationError {
+                // A cancelled decode must propagate — never fall through to a fresh Apple transcription
+                // (and never let a caller cache a result) when the work was interrupted.
+                throw CancellationError()
             } catch {
                 Log.transcription.warning(
                     "engine \(engine.rawValue) failed, falling back to Apple Speech: \(error.localizedDescription)",
