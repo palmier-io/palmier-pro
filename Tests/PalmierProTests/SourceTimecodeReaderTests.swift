@@ -139,9 +139,8 @@ struct SourceTimecodeReaderTests {
         #expect(SourceTimingReader.bwfTimecode(data)?.seconds == 2_529_397_698.0 / 48000.0)
     }
 
-    @Test func zeroTimeReferenceIsMidnightAndNonWavReturnsNil() {
-        #expect(SourceTimingReader.bwfTimecode(bwfFile(sampleRate: 48000, timeReference: 0))
-                == SourceTimecode(frame: 0, quanta: 48000, dropFrame: false))
+    @Test func zeroTimeReferenceAndNonWavReturnNil() {
+        #expect(SourceTimingReader.bwfTimecode(bwfFile(sampleRate: 48000, timeReference: 0)) == nil)
         #expect(SourceTimingReader.bwfTimecode(Data("RIFFxxxxAVI ".utf8)) == nil)
         #expect(SourceTimingReader.bwfTimecode(Data()) == nil)
     }

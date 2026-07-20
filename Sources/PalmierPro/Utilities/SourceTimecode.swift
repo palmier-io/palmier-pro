@@ -183,7 +183,7 @@ enum SourceTimingReader {
             if sampleRate > 0, timeReference != nil { break }
             pos += 8 + Int(size32) + (Int(size32) & 1)
         }
-        guard let reference = timeReference, sampleRate > 0, let frame = Int(exactly: reference)
+        guard let reference = timeReference, reference > 0, sampleRate > 0, let frame = Int(exactly: reference)
         else { return nil }
         return SourceTimecode(frame: frame, quanta: sampleRate, dropFrame: false)
     }
