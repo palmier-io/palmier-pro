@@ -64,42 +64,43 @@ final class BeatStore {
     func detect(for asset: MediaAsset, force: Bool = false) -> Task<BeatAnalysis, Error> {
         let key = asset.id
         hydrationTasks.removeValue(forKey: key)?.task.cancel()
-        if !force {
-            if let running = tasks[key] { return running.task }
-        }
+        if !force, let running = tasks[key] { return running.task }
         tasks[key]?.task.cancel()
         let id = UUID()
-        let url = asset.url
-        let existing = analyses[key]
-        let existingTag = fileTags[key]
-        let tagLoader = fileTagLoader
         let task = Task(priority: .utility) { @MainActor [weak self, weak asset] in
-            guard let self else { throw CancellationError() }
-            defer {
-                if self.tasks[key]?.id == id {
-                    self.tasks[key] = nil
-                }
-            }
-            let tag = await tagLoader(url)
-            try Task.checkCancellation()
-            guard let asset, asset.url.standardizedFileURL == url.standardizedFileURL else {
-                throw CancellationError()
-            }
-            if !force, let existing, existingTag == tag {
-                return existing
-            }
-            let analysis = try await BeatDetector.analysis(for: url, mediaRef: key, force: force)
-            try Task.checkCancellation()
-            guard asset.url.standardizedFileURL == url.standardizedFileURL else {
-                throw CancellationError()
-            }
-            self.analyses[key] = analysis
-            self.fileTags[key] = tag
-            self.onBeatsReady?()
-            return analysis
+            guard let self, let asset else { throw CancellationError() }
+            defer { self.finishDetection(for: key, id: id) }
+            return try await self.analysisForCurrentSource(of: asset, force: force)
         }
         tasks[key] = (id, task)
         return task
+    }
+
+    private func analysisForCurrentSource(of asset: MediaAsset, force: Bool) async throws -> BeatAnalysis {
+        let key = asset.id
+        while true {
+            let url = asset.url.standardizedFileURL
+            let tag = await fileTagLoader(url)
+            try Task.checkCancellation()
+            guard asset.url.standardizedFileURL == url else { continue }
+            if !force, let existing = analyses[key], fileTags[key] == tag {
+                return existing
+            }
+
+            let analysis = try await BeatDetector.analysis(for: url, mediaRef: key, force: force)
+            try Task.checkCancellation()
+            guard asset.url.standardizedFileURL == url else { continue }
+            analyses[key] = analysis
+            fileTags[key] = tag
+            onBeatsReady?()
+            return analysis
+        }
+    }
+
+    private func finishDetection(for key: String, id: UUID) {
+        if tasks[key]?.id == id {
+            tasks[key] = nil
+        }
     }
 
     func reset() {
