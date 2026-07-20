@@ -13,7 +13,6 @@ struct SlipPreviewState: Equatable {
 struct SlipTwoUpView: View {
     let state: SlipPreviewState
 
-    @State private var loader = SlipFrameLoader()
     @State private var inImage: CGImage?
     @State private var outImage: CGImage?
     @State private var pendingState: SlipPreviewState?
@@ -56,13 +55,15 @@ struct SlipTwoUpView: View {
     }
 
     private func load(_ state: SlipPreviewState) async {
-        loader.prepare(url: state.url, fps: state.fps)
-        async let start = loader.frame(at: state.inSourceFrame)
-        async let end = loader.frame(at: state.outSourceFrame)
-        let (i, o) = await (start, end)
+        let (start, end) = await SlipFrameLoader.frames(
+            inSourceFrame: state.inSourceFrame,
+            outSourceFrame: state.outSourceFrame,
+            url: state.url,
+            fps: state.fps
+        )
         guard !Task.isCancelled else { return }
-        if let i { inImage = i }
-        if let o { outImage = o }
+        if let start { inImage = start }
+        if let end { outImage = end }
     }
 
     private func pane(image: CGImage?, label: String, frame: Int) -> some View {
@@ -91,28 +92,27 @@ struct SlipTwoUpView: View {
     }
 }
 
-@MainActor
-private final class SlipFrameLoader {
-    private var url: URL?
-    private var fps: Int = 30
-    private var asset: AVURLAsset?
-
-    func prepare(url: URL, fps: Int) {
-        guard url != self.url || fps != self.fps else { return }
-        self.url = url
-        self.fps = fps
-        asset = AVURLAsset(url: url)
-    }
-
-    func frame(at sourceFrame: Int) async -> CGImage? {
-        guard let asset, fps > 0 else { return nil }
-        // Fresh generator per request: AVAssetImageGenerator isn't Sendable, a local stays region-isolated.
-        let generator = AVAssetImageGenerator(asset: asset)
+/// Decodes the slip two-up preview frames. Nonisolated so the AVFoundation setup and decode
+/// run on the cooperative pool, never the UI executor, and both frames come from a single
+/// generator per refresh.
+private enum SlipFrameLoader {
+    static func frames(inSourceFrame: Int, outSourceFrame: Int, url: URL, fps: Int) async -> (start: CGImage?, end: CGImage?) {
+        guard fps > 0 else { return (nil, nil) }
+        let timescale = CMTimeScale(fps)
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 960, height: 960)
         generator.requestedTimeToleranceBefore = .zero
-        generator.requestedTimeToleranceAfter = CMTime(value: 1, timescale: CMTimeScale(fps))
-        let time = CMTime(value: CMTimeValue(max(0, sourceFrame)), timescale: CMTimeScale(fps))
-        return try? await generator.image(at: time).image
+        generator.requestedTimeToleranceAfter = CMTime(value: 1, timescale: timescale)
+        let inTime = CMTime(value: CMTimeValue(max(0, inSourceFrame)), timescale: timescale)
+        let outTime = CMTime(value: CMTimeValue(max(0, outSourceFrame)), timescale: timescale)
+        var start: CGImage?
+        var end: CGImage?
+        for await result in generator.images(for: [inTime, outTime]) {
+            guard case let .success(requestedTime, image, _) = result else { continue }
+            if CMTimeCompare(requestedTime, inTime) == 0 { start = image }
+            if CMTimeCompare(requestedTime, outTime) == 0 { end = image }
+        }
+        return (start, end)
     }
 }
