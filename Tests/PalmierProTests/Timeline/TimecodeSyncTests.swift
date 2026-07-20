@@ -39,6 +39,47 @@ struct TimecodeSyncTests {
         #expect(SourceTimingReader.parseQuickTimeDate("not a date") == nil)
     }
 
+    @Test func syncClipsThrowsInsteadOfMutatingWhenCancelled() async throws {
+        let ref = Fixtures.clip(id: "ref", start: 0, duration: 60)
+        let target = Fixtures.clip(id: "t1", start: 200, duration: 60)
+        let e = await MainActor.run { () -> EditorViewModel in
+            let e = EditorViewModel()
+            e.timeline = Fixtures.timeline(tracks: [
+                Fixtures.videoTrack(clips: [ref]),
+                Fixtures.videoTrack(clips: [target]),
+            ])
+            return e
+        }
+        let before = await MainActor.run { e.timeline }
+        await #expect(throws: CancellationError.self) {
+            try await Task { @MainActor in
+                withUnsafeCurrentTask { $0?.cancel() }
+                return try await e.syncClips(referenceClipId: "ref", targetClipIds: ["t1"])
+            }.value
+        }
+        await MainActor.run { #expect(e.timeline == before) }
+    }
+
+    @MainActor
+    @Test func retimeGrowthClobberDetectionRespectsNeighborsGapsAndBatch() {
+        let clip = Fixtures.clip(id: "c1", start: 0, duration: 100)
+        let neighbor = Fixtures.clip(id: "n1", start: 100, duration: 50)
+        let e = EditorViewModel()
+        e.timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip, neighbor])])
+
+        #expect(e.retimeGrowthWouldClobberUnmovedClip(clipId: "c1", finalStart: 0, newDuration: 101, movedIds: ["c1"]))
+        #expect(!e.retimeGrowthWouldClobberUnmovedClip(clipId: "c1", finalStart: 0, newDuration: 100, movedIds: ["c1"]))
+        #expect(!e.retimeGrowthWouldClobberUnmovedClip(clipId: "c1", finalStart: 0, newDuration: 99, movedIds: ["c1"]))
+        #expect(!e.retimeGrowthWouldClobberUnmovedClip(clipId: "c1", finalStart: 0, newDuration: 101, movedIds: ["c1", "n1"]))
+        #expect(e.retimeGrowthWouldClobberUnmovedClip(clipId: "c1", finalStart: 25, newDuration: 101, movedIds: ["c1"]))
+        #expect(!e.retimeGrowthWouldClobberUnmovedClip(clipId: "c1", finalStart: 200, newDuration: 101, movedIds: ["c1"]))
+
+        let gapped = Fixtures.clip(id: "c2", start: 300, duration: 100)
+        e.timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [gapped, Fixtures.clip(id: "n2", start: 450, duration: 50)])])
+        #expect(!e.retimeGrowthWouldClobberUnmovedClip(clipId: "c2", finalStart: 300, newDuration: 150, movedIds: ["c2"]))
+        #expect(e.retimeGrowthWouldClobberUnmovedClip(clipId: "c2", finalStart: 300, newDuration: 151, movedIds: ["c2"]))
+    }
+
     @Test func seededCorrelationFindsLagOutsideSymmetricWindow() {
         var state: UInt64 = 42
         func noise(_ n: Int) -> [Float] {

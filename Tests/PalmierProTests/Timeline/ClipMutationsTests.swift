@@ -53,6 +53,26 @@ struct ApplyClipSpeedTests {
         #expect(updated.startFrame == 100)
     }
 
+    @Test func commitClipSpeedWithoutRippleLeavesContiguousNeighborsInPlace() {
+        let c1 = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        let c2 = Fixtures.clip(id: "c2", start: 60, duration: 30)
+        let e = editor([Fixtures.videoTrack(clips: [c1, c2])])
+        e.commitClipSpeed(ids: ["c1"], newSpeed: 2.0, ripple: false)
+        let updated = e.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+        #expect(updated[0].durationFrames == 30)
+        #expect(updated[1].startFrame == 60)
+    }
+
+    @Test func commitClipSpeedRipplesContiguousNeighborsByDefault() {
+        let c1 = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        let c2 = Fixtures.clip(id: "c2", start: 60, duration: 30)
+        let e = editor([Fixtures.videoTrack(clips: [c1, c2])])
+        e.commitClipSpeed(ids: ["c1"], newSpeed: 2.0)
+        let updated = e.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+        #expect(updated[0].durationFrames == 30)
+        #expect(updated[1].startFrame == 30)
+    }
+
     @Test func applyClipSpeedRescalesKeyframesInsteadOfDroppingThem() {
         // 2x speed halves a 60-frame clip; keyframes must rescale, not get clamped away.
         var clip = Fixtures.clip(id: "c1", start: 0, duration: 60)

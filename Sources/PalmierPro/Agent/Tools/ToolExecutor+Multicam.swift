@@ -36,7 +36,7 @@ extension ToolExecutor {
         }
 
         let masterRef = try resolveMasterRef(args.string("master"), specs: specs, editor: editor)
-        let sync = await editor.syncMulticamMembers(
+        let sync = try await editor.syncMulticamMembers(
             specs: specs, masterRef: masterRef,
             searchWindowSeconds: args.double("searchWindowSeconds") ?? EditorViewModel.SyncDefaults.memberSearchWindowSeconds
         )

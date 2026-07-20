@@ -8,12 +8,15 @@ extension TimelineView {
         let mode = (info["mode"] as? String).flatMap(EditorViewModel.SyncMode.init) ?? .auto
         Task { @MainActor [weak self] in
             guard let self else { return }
+            editor.mediaPanelToast = MediaPanelToast(message: "Synchronizing…", kind: .progress)
             do {
                 let report = try await editor.syncClips(referenceClipId: referenceClipId, targetClipIds: targetClipIds, mode: mode)
                 editor.mediaPanelToast = MediaPanelToast(
                     message: Self.synchronizeSummary(report),
                     kind: report.synced.isEmpty ? .warning : .success
                 )
+            } catch is CancellationError {
+                editor.dismissMediaPanelToast()
             } catch {
                 editor.mediaPanelToast = MediaPanelToast(message: error.localizedDescription, kind: .warning)
             }
@@ -34,6 +37,8 @@ extension TimelineView {
         default: msg += " (\(byTimecode) by timecode, \(byAudio) by audio)"
         }
         if report.shiftedFrames > 0 { msg += ", group moved right to fit" }
+        if !report.retimed.isEmpty { msg += ", drift-corrected" }
+        if !report.retimeSkipped.isEmpty { msg += "; drift correction skipped — it would overwrite an adjacent clip" }
         if !report.failures.isEmpty { msg += "; \(report.failures.count) couldn't align" }
         return msg + "."
     }

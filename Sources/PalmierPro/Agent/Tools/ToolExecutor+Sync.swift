@@ -23,8 +23,10 @@ extension ToolExecutor {
             }
             mode = parsed
         }
-        let searchWindow = args.double("searchWindowSeconds") ?? EditorViewModel.SyncDefaults.searchWindowSeconds
-        guard searchWindow > 0 else { throw ToolError("sync_clips: searchWindowSeconds must be > 0.") }
+        let searchWindow = args.double("searchWindowSeconds")
+        if let searchWindow, !searchWindow.isFinite || searchWindow <= 0 {
+            throw ToolError("sync_clips: searchWindowSeconds must be finite and > 0.")
+        }
 
         let snapshot = timelineSnapshot(editor)
         let report = try await editor.syncClips(
@@ -49,6 +51,14 @@ extension ToolExecutor {
             },
         ]
         if report.shiftedFrames > 0 { extra["shiftedFrames"] = report.shiftedFrames }
+        if !report.retimed.isEmpty {
+            extra["driftCorrected"] = report.retimed.map {
+                ["clipId": $0.clipId, "driftPpm": ($0.driftPpm * 10).rounded() / 10]
+            }
+        }
+        if !report.retimeSkipped.isEmpty {
+            extra["driftCorrectionSkipped"] = report.retimeSkipped.map { ["clipId": $0.clipId, "reason": $0.message] }
+        }
         if !report.failures.isEmpty {
             extra["failed"] = report.failures.map { ["clipId": $0.clipId, "reason": $0.message] }
         }

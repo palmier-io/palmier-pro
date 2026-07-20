@@ -115,7 +115,7 @@ extension EditorViewModel {
         masterRef: String,
         searchWindowSeconds: Double = SyncDefaults.memberSearchWindowSeconds,
         rebase: Bool = true
-    ) async -> MulticamSyncOutcome {
+    ) async throws -> MulticamSyncOutcome {
         var outcome = MulticamSyncOutcome()
 
         var pending: [MulticamMemberSpec] = []
@@ -145,9 +145,12 @@ extension EditorViewModel {
         }
 
         let envelopeSpan = 0...(searchWindowSeconds + 300)
-        guard let masterURL = urls[masterRef],
-              let masterEnv = try? await AudioEnvelopeExtractor.extract(from: masterURL, range: envelopeSpan),
-              !masterEnv.samples.isEmpty else {
+        var masterEnvelope: AudioEnvelope?
+        if let masterURL = urls[masterRef] {
+            masterEnvelope = try? await AudioEnvelopeExtractor.extract(from: masterURL, range: envelopeSpan)
+        }
+        try Task.checkCancellation()
+        guard let masterEnv = masterEnvelope, !masterEnv.samples.isEmpty else {
             outcome.failures.append((masterRef, "Master has no readable audio."))
             for spec in pending { resolveWithoutAudio(spec.mediaRef, reason: "No audio to sync with and no shared timecode.") }
             return rebase ? rebased(outcome) : outcome
@@ -167,6 +170,7 @@ extension EditorViewModel {
             for await (ref, samples) in group { out[ref] = samples }
             return out
         }
+        try Task.checkCancellation()
 
         let hop = AudioEnvelopeExtractor.hopSeconds
         let seedWindow = max(1, Int((SyncDefaults.dateSeedWindowSeconds / hop).rounded()))
@@ -192,7 +196,7 @@ extension EditorViewModel {
                 reference: anchor.samples, target: samples, seedHops: seed, seedWindowHops: seedWindow,
                 maxLagHops: maxLag, minOverlapHops: minOverlapHops, minConfidence: SyncDefaults.minConfidence
             ) else { return nil }
-            return (anchor.offsetSeconds + Double(result.lagHops) * hop, result.confidence)
+            return (anchor.offsetSeconds + result.exactLagHops * hop, result.confidence)
         }
 
         var candidates: [(ref: String, samples: [Float], direct: (offset: Double, confidence: Double)?)] = []
@@ -202,6 +206,7 @@ extension EditorViewModel {
                 continue
             }
             candidates.append((spec.mediaRef, samples, await match(anchors[0], ref: spec.mediaRef, samples: samples)))
+            try Task.checkCancellation()
         }
 
         candidates.sort { ($0.direct?.confidence ?? 0) > ($1.direct?.confidence ?? 0) }
@@ -213,6 +218,7 @@ extension EditorViewModel {
                     best = hit
                 }
             }
+            try Task.checkCancellation()
             guard let best else {
                 resolveWithoutAudio(candidate.ref, reason: "No confident alignment — pin an offset or re-sync with a wider window.")
                 continue

@@ -1,6 +1,6 @@
 /// A transient banner shown at the bottom of the media panel
 struct MediaPanelToast: Equatable, Sendable {
-    enum Kind: Equatable, Sendable { case warning, success }
+    enum Kind: Equatable, Sendable { case warning, success, progress }
     var message: String
     var kind: Kind = .warning
 
