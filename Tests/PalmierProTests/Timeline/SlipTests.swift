@@ -112,7 +112,7 @@ struct SlipTests {
         let clip = Fixtures.clip(id: "c1", start: 0, duration: 60, trimStart: 30, trimEnd: 20)
         let e = editor([Fixtures.videoTrack(clips: [clip])])
         let undoManager = UndoManager()
-        e.undoManager = undoManager
+        e.undo.attach(undoManager)
         e.commitSlip(clipId: "c1", deltaFrames: 10, propagateToLinked: true)
         #expect(e.timeline.tracks[0].clips[0].trimStartFrame == 20)
         undoManager.undo()
@@ -136,7 +136,7 @@ struct SlipTests {
         let clip = Fixtures.clip(id: "c1", start: 0, duration: 60, trimStart: 30, trimEnd: 20)
         let e = editor([Fixtures.videoTrack(clips: [clip])])
         let undoManager = UndoManager()
-        e.undoManager = undoManager
+        e.undo.attach(undoManager)
         e.commitSlip(clipId: "c1", deltaFrames: 0, propagateToLinked: true)
         #expect(undoManager.canUndo == false)
         #expect(e.timeline.tracks[0].clips[0].trimStartFrame == 30)
