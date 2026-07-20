@@ -81,4 +81,28 @@ struct GetTranscriptParamTests {
         #expect(segRows?.first?[0] as? Int == 0)   // firstWordIndex handle
         #expect(segRows?.first?[3] as? Int == 20)  // segment end retains real end frames
     }
+
+    @Test func sentenceRowsSplitOnCJKAndDoubledTerminals() async throws {
+        func w(_ i: Int, _ text: String, _ start: Int, _ end: Int) -> TimelineWord {
+            TimelineWord(index: i, clipId: "c1", trackIndex: 0, clipStartFrame: 0, clipEndFrame: 600,
+                         text: text, startFrame: start, endFrame: end, speaker: "S1")
+        }
+        // Consecutive frames (no >1s gaps) so terminals are the only thing that can split the run.
+        let transcript = TimelineTranscript(
+            context: .init(provider: .local, preferredLocale: nil),
+            words: [
+                w(0, "你好。", 0, 10), w(1, "再见。", 10, 20),   // CJK terminals
+                w(2, "Nice.。", 20, 30), w(3, "Right.", 30, 40),  // Latin+CJK pair still splits
+                w(4, "行吗？", 40, 50),                            // CJK question mark
+            ],
+            skipped: [],
+            resolvedModel: "qwen3-asr-0.6B-int8"
+        )
+
+        let segs = transcript.responsePayload(fps: 30, clipId: nil, startFrame: nil, endFrame: nil, maxWords: 100, segments: true)
+        let segRows = ((segs["clips"] as? [[String: Any]])?.first?["segments"]) as? [[Any]]
+        // One sentence per row — five terminals, five rows.
+        #expect(segRows?.count == 5)
+        #expect(segRows?.map { $0[1] as? String } == ["你好。", "再见。", "Nice.。", "Right.", "行吗？"])
+    }
 }

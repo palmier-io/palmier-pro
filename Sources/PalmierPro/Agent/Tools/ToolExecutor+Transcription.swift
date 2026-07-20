@@ -148,12 +148,26 @@ struct TimelineTranscript {
                 flush()
             }
             run.append(word)
-            if word.text.hasSuffix(".") || word.text.hasSuffix("!") || word.text.hasSuffix("?") {
+            if Self.endsSentence(word.text) {
                 flush()
             }
         }
         flush()
         return rows
+    }
+
+    /// Whether a word ends a sentence — its last meaningful character is a terminal mark (Latin .!?
+    /// or CJK 。！？), looking past trailing quotes and brackets. Punctuation-class rather than an exact
+    /// suffix so a shift in how marks are emitted can't silently collapse sentence segmentation.
+    private static func endsSentence(_ text: String) -> Bool {
+        let terminals: Set<Character> = [".", "!", "?", "。", "！", "？"]
+        let wrappers: Set<Character> = ["\"", "'", "”", "’", "」", "』", ")", "]", "}", "）", "》"]
+        for char in text.reversed() {
+            if terminals.contains(char) { return true }
+            if char.isWhitespace || wrappers.contains(char) { continue }
+            return false
+        }
+        return false
     }
 }
 
