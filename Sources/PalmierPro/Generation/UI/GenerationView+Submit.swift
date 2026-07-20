@@ -234,6 +234,8 @@ extension GenerationView {
         editor.pendingEditReplacementClipId = nil
         let pendingAudioPlacement = selectedType == .audio ? editor.pendingEditAudioPlacement : nil
         editor.pendingEditAudioPlacement = nil
+        let transitionPlacement = selectedType == .video ? editor.pendingEditTransitionPlacement : nil
+        editor.pendingEditTransitionPlacement = nil
         let editorRef = editor
         if let clipId = replacementClipId {
             editor.markPendingReplacement(clipId: clipId)
@@ -286,6 +288,14 @@ extension GenerationView {
                     ? (inputAssets.sourceVideo?.folderId ?? inputAssets.imageRefs.last?.folderId)
                     : inputAssets.textToVideoReferences.last?.folderId
             ) ?? editor.mediaPanelCurrentFolderId
+            let baseOnComplete = makeOnComplete(trimmedSource?.hasTrim == true)
+            let videoOnComplete: (@MainActor (MediaAsset) -> Void)? = {
+                guard transitionPlacement != nil else { return baseOnComplete }
+                return { [weak editorRef] asset in
+                    editorRef?.finalizeTransitionClip(placeholderId: asset.id, asset: asset)
+                    baseOnComplete?(asset)
+                }
+            }()
             let videoAssetId = VideoGenerationSubmission.make(
                 genInput: genInput,
                 model: model,
@@ -298,9 +308,12 @@ extension GenerationView {
                 service: editor.generationService,
                 projectURL: editor.projectURL,
                 editor: editor,
-                onComplete: makeOnComplete(trimmedSource?.hasTrim == true),
+                onComplete: videoOnComplete,
                 onFailure: onFailure
             )
+            if let placement = transitionPlacement {
+                editor.placeGeneratingTransitionClip(placeholderId: videoAssetId, placement: placement)
+            }
             autoOpenPreview(videoAssetId)
         case .image:
             let model = imageModel

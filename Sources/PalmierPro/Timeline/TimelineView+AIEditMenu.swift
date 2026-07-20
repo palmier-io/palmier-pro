@@ -121,6 +121,14 @@ extension TimelineView {
         )
     }
 
+    @objc func performCreateAITransition(_ sender: Any?) {
+        guard let info = (sender as? NSMenuItem)?.representedObject as? [String: Any],
+              let trackIndex = info["trackIndex"] as? Int,
+              let start = info["start"] as? Int,
+              let end = info["end"] as? Int else { return }
+        editor.beginAITransition(gap: GapSelection(trackIndex: trackIndex, range: FrameRange(start: start, end: end)))
+    }
+
     @objc private func performAIEditCreateVideo(_ sender: Any?) {
         guard let info = (sender as? NSMenuItem)?.representedObject as? [String: Any],
               let clipId = info["clipId"] as? String,

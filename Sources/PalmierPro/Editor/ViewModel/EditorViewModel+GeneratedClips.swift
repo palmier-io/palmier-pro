@@ -49,16 +49,22 @@ extension EditorViewModel {
 
     // Patch all timelines with placeholders for this asset.
     func finalizeGeneratingClip(placeholderId: String, asset: MediaAsset) {
+        patchGeneratingClips(placeholderId: placeholderId) { clip, fps in
+            clip.durationFrames = max(1, secondsToFrame(seconds: asset.duration, fps: fps))
+            clip.trimStartFrame = 0
+            clip.trimEndFrame = 0
+        }
+    }
+
+    func patchGeneratingClips(placeholderId: String, _ patch: (inout Clip, Int) -> Void) {
         var touched: Set<String> = []
         undo.withoutRegistration {
             for i in timelines.indices {
-                let realFrames = max(1, secondsToFrame(seconds: asset.duration, fps: timelines[i].fps))
+                let fps = timelines[i].fps
                 for ti in timelines[i].tracks.indices {
                     for ci in timelines[i].tracks[ti].clips.indices
                     where timelines[i].tracks[ti].clips[ci].mediaRef == placeholderId {
-                        timelines[i].tracks[ti].clips[ci].durationFrames = realFrames
-                        timelines[i].tracks[ti].clips[ci].trimStartFrame = 0
-                        timelines[i].tracks[ti].clips[ci].trimEndFrame = 0
+                        patch(&timelines[i].tracks[ti].clips[ci], fps)
                         touched.insert(timelines[i].id)
                     }
                 }

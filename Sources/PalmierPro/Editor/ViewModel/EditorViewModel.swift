@@ -18,6 +18,13 @@ struct PendingAudioPlacement {
     let actionName: String
 }
 
+struct PendingTransitionPlacement {
+    let timelineId: String
+    let trackIndex: Int
+    let gapStartFrame: Int
+    let gapLengthFrames: Int
+}
+
 @Observable
 @MainActor
 final class EditorViewModel {
@@ -127,6 +134,7 @@ final class EditorViewModel {
     var pendingEditReplacementClipId: String?
     var pendingEditTrimmedSource: TrimmedSource?
     var pendingEditAudioPlacement: PendingAudioPlacement?
+    var pendingEditTransitionPlacement: PendingTransitionPlacement?
     /// Clip ids currently awaiting an AI-generated replacement.
     var pendingReplacements: Set<String> = []
     var cropEditingActive: Bool = false
