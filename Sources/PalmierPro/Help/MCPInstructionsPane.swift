@@ -27,26 +27,6 @@ struct MCPInstructionsPane: View {
         """
     }
 
-    private var claudeDesktopJSONConfig: String {
-        """
-        {
-          "mcpServers": {
-            "palmier-pro": {
-              "command": "npx",
-              "args": [
-                "-y",
-                "mcp-remote",
-                "\(mcpEndpoint)",
-                "--allow-http",
-                "--transport",
-                "http-only"
-              ]
-            }
-          }
-        }
-        """
-    }
-
     private var cursorDeepLink: URL? {
         let config: [String: String] = ["type": "http", "url": mcpEndpoint]
         guard
@@ -87,7 +67,7 @@ struct MCPInstructionsPane: View {
         ) {
             Button("Dismiss") { claudeInstallError = nil }
         } message: {
-            Text(claudeInstallError ?? "Use manual setup instead.")
+            Text(claudeInstallError ?? "Try again.")
         }
     }
 
@@ -133,10 +113,7 @@ struct MCPInstructionsPane: View {
             description: "Install the bundled Palmier Pro connector.",
             action: ("Install in Claude Desktop", openClaudeDesktopBundle)
         ) {
-            ManualFallback(
-                intro: "In Claude Desktop, open Settings › Developer › Edit Config, then add this configuration to mcpServers.",
-                code: claudeDesktopJSONConfig
-            )
+            EmptyView()
         }
     }
 
@@ -222,7 +199,7 @@ struct MCPInstructionsPane: View {
 
     private func openClaudeDesktopBundle() {
         guard let bundleURL = claudeDesktopBundleURL else {
-            claudeInstallError = "The Palmier Pro connector could not be found. Use manual setup instead."
+            claudeInstallError = "The Palmier Pro connector could not be found. Reinstall Palmier Pro, then try again."
             return
         }
         guard let claudeURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.anthropic.claudefordesktop") else {
@@ -237,7 +214,7 @@ struct MCPInstructionsPane: View {
         ) { _, error in
             guard error != nil else { return }
             Task { @MainActor in
-                claudeInstallError = "Claude Desktop could not open the Palmier Pro connector. Use manual setup instead."
+                claudeInstallError = "Claude Desktop could not open the Palmier Pro connector. Update Claude Desktop, then try again."
             }
         }
     }
