@@ -1,17 +1,6 @@
 import SwiftUI
 
 struct HomeView: View {
-    private let columns = [
-        GridItem(
-            .adaptive(
-                minimum: AppTheme.ComponentSize.projectCardWidth,
-                maximum: AppTheme.ComponentSize.projectCardWidth
-            ),
-            spacing: AppTheme.Spacing.md,
-            alignment: .leading
-        )
-    ]
-
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
     @Bindable private var changelog = ChangelogStore.shared
 
@@ -49,12 +38,7 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             SampleProjectsStrip()
-            Text("My Projects")
-                .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.regular))
-                .foregroundStyle(AppTheme.Text.primaryColor)
-                .padding(.horizontal, AppTheme.Spacing.xlXxl)
-                .padding(.bottom, AppTheme.Spacing.sm)
-            projectGrid
+            MyProjectsSection()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -70,82 +54,6 @@ struct HomeView: View {
         .padding(.bottom, AppTheme.Spacing.xxl)
     }
 
-    private var projectGrid: some View {
-        let entries = ProjectRegistry.shared.sortedEntries
-        return ScrollView {
-            LazyVGrid(columns: columns, alignment: .leading, spacing: AppTheme.Spacing.xl) {
-                if entries.isEmpty {
-                    NewProjectCard(action: { AppState.shared.createProjectInteractively() })
-                } else {
-                    ForEach(entries) { entry in
-                        ProjectCard(
-                            entry: entry,
-                            onOpen: { AppState.shared.openProject(at: $0) },
-                            onRemove: { ProjectRegistry.shared.remove($0) }
-                        )
-                    }
-                }
-            }
-            .padding(.horizontal, AppTheme.Spacing.xlXxl)
-            .padding(.bottom, AppTheme.Spacing.xlXxl)
-        }
-        .scrollEdgeEffectStyle(.soft, for: .top)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-private struct NewProjectCard: View {
-    let action: () -> Void
-
-    @State private var isHovered = false
-
-    private let cardRadius: CGFloat = AppTheme.Radius.mdLg
-
-    var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            AppTheme.Background.placeholderColor
-                .aspectRatio(5.0/4.0, contentMode: .fit)
-                .overlay {
-                    Image(systemName: "plus")
-                        .font(.system(size: AppTheme.FontSize.title2, weight: .light))
-                        .foregroundStyle(AppTheme.Text.mutedColor)
-                }
-                .clipped()
-
-            LinearGradient(
-                stops: [
-                    .init(color: .clear, location: 0),
-                    .init(color: .black.opacity(0.7), location: 1),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: 60)
-            .allowsHitTesting(false)
-
-            Text("Untitled")
-                .font(.system(size: AppTheme.FontSize.smMd, weight: .regular))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .padding(.horizontal, AppTheme.Spacing.md)
-                .padding(.bottom, AppTheme.Spacing.smMd)
-        }
-        .contentShape(Rectangle())
-        .onTapGesture { action() }
-        .clipShape(RoundedRectangle(cornerRadius: cardRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: cardRadius, style: .continuous)
-                .strokeBorder(
-                    Color.white.opacity(isHovered ? AppTheme.Opacity.muted : AppTheme.Opacity.hint),
-                    lineWidth: AppTheme.BorderWidth.hairline
-                )
-        )
-        .shadow(color: .black.opacity(isHovered ? 0.4 : 0.2), radius: isHovered ? 12 : 4, y: isHovered ? 4 : 2)
-        .scaleEffect(isHovered ? 1.03 : 1.0)
-        .padding(AppTheme.Spacing.xs)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHovered)
-        .onHover { isHovered = $0 }
-    }
 }
 
 private struct WelcomeTitle: View {

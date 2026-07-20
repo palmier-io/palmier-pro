@@ -10,6 +10,11 @@ struct ProjectEntry: Codable, Identifiable, Sendable {
     var isAccessible: Bool { FileManager.default.fileExists(atPath: url.path) }
 }
 
+struct ProjectDeletionResult: Sendable {
+    let deletedIDs: Set<UUID>
+    let failedNames: [String]
+}
+
 @Observable
 @MainActor
 final class ProjectRegistry {
@@ -61,11 +66,16 @@ final class ProjectRegistry {
         }
     }
 
-    func delete(_ url: URL) {
-        Task { [weak self] in
-            guard let self, await self.disk.trashIfPresent(url) else { return }
-            self.remove(url)
+    func delete(_ entries: [ProjectEntry]) async -> ProjectDeletionResult {
+        let results = await disk.trash(entries)
+        let deletedIDs = Set(results.compactMap { $0.deleted ? $0.id : nil })
+        if !deletedIDs.isEmpty {
+            mutate { current in current.removeAll { deletedIDs.contains($0.id) } }
         }
+        return ProjectDeletionResult(
+            deletedIDs: deletedIDs,
+            failedNames: results.compactMap { $0.deleted ? nil : $0.name }
+        )
     }
 
     func updateURL(from oldURL: URL, to newURL: URL) {
@@ -129,6 +139,12 @@ final class ProjectRegistry {
 }
 
 private actor ProjectRegistryDisk {
+    struct TrashResult: Sendable {
+        let id: UUID
+        let name: String
+        let deleted: Bool
+    }
+
     func load(from fileURL: URL) -> [ProjectEntry] {
         Project.ensureStorageDirectory()
         return ProjectRegistry.loadEntries(from: fileURL)
@@ -141,6 +157,12 @@ private actor ProjectRegistryDisk {
             return true
         } catch {
             return false
+        }
+    }
+
+    func trash(_ entries: [ProjectEntry]) -> [TrashResult] {
+        entries.map {
+            TrashResult(id: $0.id, name: $0.name, deleted: trashIfPresent($0.url))
         }
     }
 }
