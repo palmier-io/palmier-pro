@@ -38,6 +38,11 @@ struct DiskCache: Sendable {
         return "\(size)_\(Int(modified))"
     }
 
+    @concurrent
+    static func loadSizeMtimeTag(for url: URL) async -> String {
+        sizeMtimeTag(for: url)
+    }
+
     func clear() {
         let fm = FileManager.default
         guard let entries = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return }
