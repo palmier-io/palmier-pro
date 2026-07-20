@@ -629,7 +629,7 @@ extension ToolExecutor {
             throw ToolError("Clip not found: \(input.clipId)")
         }
 
-        let snapshot = timelineSnapshot(editor)
+        let applyKeyframes: () -> Void
         switch input.property {
         case "volumeDb":
             let kfs = try Self.parseScalarKeyframes(
@@ -638,36 +638,41 @@ extension ToolExecutor {
                 valueName: "decibels",
                 range: VolumeScale.floorDb...VolumeScale.ceilingDb
             )
-            editor.undo.perform("Set Keyframes (Agent)") {
+            applyKeyframes = {
                 editor.commitClipProperty(clipId: input.clipId) { $0.volumeTrack = kfs.keyframes.isEmpty ? nil : kfs }
             }
         case "opacity":
             let kfs = try Self.parseScalarKeyframes(rows, path: "keyframes", range: 0...1)
-            editor.undo.perform("Set Keyframes (Agent)") {
+            applyKeyframes = {
                 editor.commitClipProperty(clipId: input.clipId) { $0.opacityTrack = kfs.keyframes.isEmpty ? nil : kfs }
             }
         case "rotation":
             let kfs = try Self.parseScalarKeyframes(rows, path: "keyframes")
-            editor.undo.perform("Set Keyframes (Agent)") {
+            applyKeyframes = {
                 editor.commitClipProperty(clipId: input.clipId) { $0.rotationTrack = kfs.keyframes.isEmpty ? nil : kfs }
             }
         case "position":
             let kfs = try Self.parsePairKeyframes(rows, path: "keyframes")
-            editor.undo.perform("Set Keyframes (Agent)") {
+            applyKeyframes = {
                 editor.commitClipProperty(clipId: input.clipId) { $0.positionTrack = kfs.keyframes.isEmpty ? nil : kfs }
             }
         case "scale":
             let kfs = try Self.parsePairKeyframes(rows, path: "keyframes")
-            editor.undo.perform("Set Keyframes (Agent)") {
+            applyKeyframes = {
                 editor.commitClipProperty(clipId: input.clipId) { $0.scaleTrack = kfs.keyframes.isEmpty ? nil : kfs }
             }
         case "crop":
             let kfs = try Self.parseCropKeyframes(rows, path: "keyframes")
-            editor.undo.perform("Set Keyframes (Agent)") {
+            applyKeyframes = {
                 editor.commitClipProperty(clipId: input.clipId) { $0.cropTrack = kfs.keyframes.isEmpty ? nil : kfs }
             }
         default:
-            break
+            throw ToolError("Unknown property '\(input.property)'")
+        }
+
+        let snapshot = timelineSnapshot(editor)
+        editor.undo.perform("Set Keyframes (Agent)") {
+            applyKeyframes()
         }
 
         let notes = rows.isEmpty ? ["Cleared \(input.property) keyframes."] : []
