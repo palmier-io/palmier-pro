@@ -169,6 +169,7 @@ struct GenerationView: View {
                 CreditSummaryView(style: .compact)
                 ProjectActivityButton()
                 Button {
+                    editor.cancelPendingTransitionSeed()
                     editor.pendingEditReplacementClipId = nil
                     editor.pendingEditTrimmedSource = nil
                     editor.pendingEditAudioPlacement = nil

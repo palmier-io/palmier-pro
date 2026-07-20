@@ -124,6 +124,7 @@ extension EditorViewModel {
         audioPlacement: PendingAudioPlacement? = nil,
         transitionPlacement: PendingTransitionPlacement? = nil
     ) {
+        if transitionPlacement == nil { cancelPendingTransitionSeed() }
         pendingEditReplacementClipId = replacementClipId
         pendingEditTrimmedSource = trimmedSource
         pendingEditAudioPlacement = audioPlacement

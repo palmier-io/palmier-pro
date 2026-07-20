@@ -255,6 +255,7 @@ final class EditorViewModel {
     @ObservationIgnored var mediaImportTail: Task<MediaImportSummary, Error>?
     @ObservationIgnored var mediaImportSequence: Int = 0
     @ObservationIgnored var frameCaptureTask: Task<Void, Never>?
+    @ObservationIgnored var transitionSeedTask: Task<Void, Never>?
     @ObservationIgnored var pendingManifestMetadataUpdates: [String: MediaAsset] = [:]
     @ObservationIgnored var pendingManifestMetadataFlushTask: Task<Void, Never>?
 

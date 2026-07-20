@@ -13,6 +13,11 @@ extension EditorViewModel {
         Double(lengthFrames) / Double(max(1, timeline.fps))
     }
 
+    static func nearestSupportedDuration(seconds: Double, in durations: [Int]) -> Int {
+        durations.min { abs(Double($0) - seconds) < abs(Double($1) - seconds) }
+            ?? max(1, Int(seconds.rounded()))
+    }
+
     func beginAITransition(gap: GapSelection) {
         guard gap.range.start > 0, gap.range.length > 0,
               transitionGapSeconds(lengthFrames: gap.range.length) <= Self.maxTransitionSeconds,
@@ -26,36 +31,55 @@ extension EditorViewModel {
             gapStartFrame: gap.range.start,
             gapLengthFrames: gap.range.length
         )
-        let gapSeconds = transitionGapSeconds(lengthFrames: placement.gapLengthFrames)
-        Task { @MainActor [weak self] in
+        let duration = Self.nearestSupportedDuration(
+            seconds: transitionGapSeconds(lengthFrames: placement.gapLengthFrames),
+            in: model.durations
+        )
+        cancelPendingTransitionSeed()
+        transitionSeedTask = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
                 let startFrame = placement.gapStartFrame - 1
                 let endFrame = placement.gapStartFrame + placement.gapLengthFrames
+                guard transitionSeedIsCurrent(placement) else { return }
                 let first = try await captureFrameToMedia(
                     source: .timeline(frame: startFrame),
                     name: "Transition start (frame \(startFrame))"
                 )
+                try Task.checkCancellation()
+                guard transitionSeedIsCurrent(placement) else { return }
                 let last = try await captureFrameToMedia(
                     source: .timeline(frame: endFrame),
                     name: "Transition end (frame \(endFrame))"
                 )
+                try Task.checkCancellation()
+                guard transitionSeedIsCurrent(placement) else { return }
                 var stored = GenerationInput(
                     prompt: Self.defaultTransitionPrompt, model: model.id,
-                    duration: max(1, Int(gapSeconds.rounded())),
+                    duration: duration,
                     aspectRatio: "", resolution: nil
                 )
                 stored.imageURLAssetIds = [first.asset.id, last.asset.id]
                 seedGenerationPanel(asset: first.asset, stored: stored, transitionPlacement: placement)
+            } catch is CancellationError {
             } catch {
                 mediaPanelToast = MediaPanelToast(message: error.localizedDescription)
             }
         }
     }
 
+    func transitionSeedIsCurrent(_ placement: PendingTransitionPlacement) -> Bool {
+        activeTimelineId == placement.timelineId && transitionGapIsEmpty(placement)
+    }
+
+    func cancelPendingTransitionSeed() {
+        transitionSeedTask?.cancel()
+        transitionSeedTask = nil
+    }
+
     @discardableResult
     func placeGeneratingTransitionClip(placeholderId: String, placement: PendingTransitionPlacement) -> String? {
-        guard activeTimelineId == placement.timelineId, transitionGapIsEmpty(placement),
+        guard transitionSeedIsCurrent(placement),
               let asset = mediaAssets.first(where: { $0.id == placeholderId }) else {
             refuseWithToast("The gap is no longer available, so the transition will land in Media instead.")
             return nil

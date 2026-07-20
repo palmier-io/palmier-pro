@@ -67,6 +67,32 @@ struct AITransitionPlacementTests {
         #expect(gap == GapSelection(trackIndex: 0, range: FrameRange(start: 100, end: 160)))
     }
 
+    @Test(arguments: [
+        (2.0, [4, 6, 8], 4),
+        (7.2, [4, 6, 8], 8),
+        (5.0, [4, 6, 8], 4),
+        (12.0, [4, 6, 8], 8),
+        (2.4, [Int](), 2),
+    ]) func seedDurationSnapsToNearestSupported(seconds: Double, durations: [Int], expected: Int) {
+        #expect(EditorViewModel.nearestSupportedDuration(seconds: seconds, in: durations) == expected)
+    }
+
+    @Test func seedIsStaleAfterTimelineSwitchOrFilledGap() {
+        let (e, _) = editorWithGap()
+        let placement = placement(for: e)
+        #expect(e.transitionSeedIsCurrent(placement))
+
+        e.timeline.tracks[0].clips.append(Fixtures.clip(start: 120, duration: 20))
+        #expect(!e.transitionSeedIsCurrent(placement))
+        e.timeline.tracks[0].clips.removeLast()
+
+        let other = e.createTimeline(activate: true)
+        #expect(!e.transitionSeedIsCurrent(placement))
+        e.activateTimeline(placement.timelineId)
+        e.deleteTimeline(other)
+        #expect(e.transitionSeedIsCurrent(placement))
+    }
+
     @Test func finalizeRetimesClipToFillGapExactly() {
         let (e, _) = editorWithGap()
         e.timeline.tracks[0].clips.append(Fixtures.clip(mediaRef: "gen-1", start: 100, duration: 60))
