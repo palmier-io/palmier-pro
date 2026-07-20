@@ -3,6 +3,7 @@ import Foundation
 
 struct RenderedFrame: Sendable {
     let stagedURL: URL
+    let thumbnail: CGImage?
     let width: Int
     let height: Int
     let actualSourceSeconds: Double?
@@ -175,6 +176,7 @@ enum FrameCaptureRenderer {
         }
         return RenderedFrame(
             stagedURL: stagedURL,
+            thumbnail: ImageEncoder.thumbnail(data: data, maxPixelSize: ImageEncoder.libraryThumbnailMaxPixelSize),
             width: image.width,
             height: image.height,
             actualSourceSeconds: actualSourceSeconds

@@ -120,6 +120,9 @@ extension EditorViewModel {
             name: requestedName ?? defaultName,
             duration: Defaults.imageDurationSeconds
         )
+        if let thumbnail = rendered.thumbnail {
+            asset.installThumbnail(thumbnail, maximumPixelSize: ImageEncoder.libraryThumbnailMaxPixelSize)
+        }
         asset.folderId = destinationFolderStillExists ? folderId : nil
         asset.sourceWidth = rendered.width
         asset.sourceHeight = rendered.height

@@ -38,6 +38,7 @@ struct CaptureFrameToolTests {
             let sourceReceipt = try json(text(sourceCapture.content))
             let sourceRef = try #require(sourceReceipt["mediaRef"] as? String)
             #expect(sourceReceipt["name"] as? String == "Final source frame")
+            #expect(fixture.editor.mediaAssets.first { $0.id.hasPrefix(sourceRef) }?.thumbnail != nil)
             let sourceImage = try imageData(try await client.callTool(
                 name: "inspect_media",
                 arguments: ["mediaRef": .string(sourceRef)]
