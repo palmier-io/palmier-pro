@@ -19,11 +19,14 @@ actor Qwen3ASREngine {
     enum EngineError: LocalizedError {
         case modelDownloadFailed(String)
         case recognizerInitFailed
+        case incompleteResult(covered: Double, expected: Double)
 
         var errorDescription: String? {
             switch self {
             case .modelDownloadFailed(let reason): "Qwen3-ASR model download failed: \(reason)"
             case .recognizerInitFailed: "Could not initialize the Qwen3-ASR recognizer."
+            case .incompleteResult(let covered, let expected):
+                "Qwen3-ASR transcript covers only \(Int(covered))s of \(Int(expected))s of speech."
             }
         }
     }
@@ -117,6 +120,9 @@ actor Qwen3ASREngine {
         var chunks: [(text: String, raw: String, start: Double, end: Double)] = []
         var chunkStart = 0
         while chunkStart < samples.count {
+            // Cooperative cancellation: throw between chunks so an interrupted decode never returns a
+            // partial transcript that the cache would persist as complete.
+            try Task.checkCancellation()
             let chunkEnd = EngineAudio.chunkBoundary(
                 samples: samples, from: chunkStart, targetSeconds: Self.chunkSeconds)
             let chunk = Array(samples[chunkStart..<chunkEnd])
@@ -134,6 +140,7 @@ actor Qwen3ASREngine {
         var words: [TranscriptionWord] = []
         var segments: [TranscriptionSegment] = []
         for chunk in chunks {
+            try Task.checkCancellation()
             let pieces = Self.punctuatedPieces(raw: chunk.raw, restored: chunk.text)
             let anchors = timingWords.filter { word in
                 guard let start = word.start, let end = word.end else { return false }
@@ -185,6 +192,12 @@ actor Qwen3ASREngine {
         // Roll first-after-pause word starts back to their acoustic onset so captions lead the
         // syllable instead of inheriting a chunk-quantized start (samples are already in hand).
         let refined = OnsetRefiner.refine(words: words, samples: samples, fps: Self.onsetFPS)
+
+        // Defense-in-depth against a partial decode (e.g. interrupted reindex) being cached as
+        // complete: reject a transcript whose speech ends grossly short of the audio's non-silent end.
+        if let gap = EngineAudio.coverageShortfall(segments: segments, samples: samples) {
+            throw EngineError.incompleteResult(covered: gap.covered, expected: gap.expected)
+        }
 
         return TranscriptionResult(
             text: segments.map(\.text).joined(separator: " "),
@@ -282,40 +295,70 @@ actor Qwen3ASREngine {
 
     /// Fold a chunk's restored punctuation onto its display pieces: each mark attaches to the piece it
     /// follows, so the piece count matches the unpunctuated stream and aligned word timings never
-    /// shift. If the restorer altered or dropped base characters, the raw pieces are returned as-is.
+    /// shift. Marks are merged, never doubled — a piece that already ends in a mark (a Latin mark the
+    /// ASR emitted itself) keeps it rather than gaining the restorer's CJK equivalent, so no Latin+CJK
+    /// pair like `.。` or `,，` can be produced. If the restorer altered or dropped base characters
+    /// (rather than only inserting marks), the raw pieces are returned unchanged.
     static func punctuatedPieces(raw: String, restored: String) -> [String] {
         let rawPieces = splitPieces(text: raw)
         guard restored != raw else { return rawPieces }
-        let folded = foldPunctuation(splitPieces(text: restored))
-        guard folded.count == rawPieces.count,
-              zip(folded, rawPieces).allSatisfy({ stripPunctuation($0) == stripPunctuation($1) })
-        else { return rawPieces }
-        return folded
+        return decoratePieces(rawPieces, restored: restored) ?? rawPieces
     }
 
-    /// Bind each punctuation-only piece (a standalone CJK mark like 。、！) to the piece before it;
-    /// leading punctuation with nothing to bind to is dropped. Latin runs already carry their own
-    /// trailing marks, so they pass through untouched.
-    private static func foldPunctuation(_ pieces: [String]) -> [String] {
-        var out: [String] = []
-        for piece in pieces {
-            if stripPunctuation(piece).isEmpty, let last = out.last {
-                out[out.count - 1] = last + piece
-            } else if !stripPunctuation(piece).isEmpty {
-                out.append(piece)
+    /// Walk the restored text against the raw pieces' base-character stream, attaching each inserted
+    /// mark to the piece whose final base character it follows. Comparing base characters (not raw
+    /// strings) makes the match tolerant of the restorer's spacing and re-segmentation — the case dense
+    /// CJK previously failed, leaving it unpunctuated. Returns nil when the base characters diverge
+    /// (proof the restorer did more than insert marks) so the caller keeps the raw pieces.
+    private static func decoratePieces(_ rawPieces: [String], restored: String) -> [String]? {
+        var baseChars: [Unicode.Scalar] = []
+        var owner: [Int] = []
+        var isPieceFinal: [Bool] = []
+        for (index, piece) in rawPieces.enumerated() {
+            let bases = piece.unicodeScalars.filter(isBaseScalar)
+            for (offset, scalar) in bases.enumerated() {
+                baseChars.append(scalar)
+                owner.append(index)
+                isPieceFinal.append(offset == bases.count - 1)
             }
         }
+
+        var out = rawPieces
+        var cursor = 0
+        // The piece eligible to receive a trailing mark; nil while mid-piece so a mark internal to a
+        // Latin run (an apostrophe, "U.S.") is left in place rather than re-appended.
+        var attachTarget: Int?
+        for scalar in restored.unicodeScalars {
+            if isWhitespaceScalar(scalar) { continue }
+            if isBaseScalar(scalar) {
+                guard cursor < baseChars.count, baseChars[cursor] == scalar else { return nil }
+                attachTarget = isPieceFinal[cursor] ? owner[cursor] : nil
+                cursor += 1
+            } else if let target = attachTarget, !endsWithMark(out[target]) {
+                out[target].unicodeScalars.append(scalar)
+            }
+        }
+        guard cursor == baseChars.count else { return nil }
         return out
     }
 
-    /// The piece's base content — alphanumerics and CJK ideographs, dropping punctuation (incl. the
-    /// CJK punctuation block 0x3000–0x303F). Used to prove restoration only inserted marks.
-    private static func stripPunctuation(_ piece: String) -> String {
-        String(piece.unicodeScalars.filter {
-            let value = Int($0.value)
-            if (0x3000...0x303F).contains(value) { return false }
-            return CharacterSet.alphanumerics.contains($0) || (0x2E80...0x9FFF).contains(value)
-        })
+    /// A piece's meaningful content: alphanumerics and CJK ideographs. Punctuation (incl. the CJK
+    /// punctuation block 0x3000–0x303F) and whitespace are not base characters.
+    private static func isBaseScalar(_ scalar: Unicode.Scalar) -> Bool {
+        let value = Int(scalar.value)
+        if (0x3000...0x303F).contains(value) { return false }
+        return CharacterSet.alphanumerics.contains(scalar) || (0x2E80...0x9FFF).contains(value)
+    }
+
+    private static func isWhitespaceScalar(_ scalar: Unicode.Scalar) -> Bool {
+        CharacterSet.whitespacesAndNewlines.contains(scalar)
+    }
+
+    /// Whether a piece already carries a trailing punctuation mark (Latin or CJK), so the fold merges
+    /// rather than doubles.
+    private static func endsWithMark(_ piece: String) -> Bool {
+        guard let last = piece.unicodeScalars.last else { return false }
+        return !isBaseScalar(last) && !isWhitespaceScalar(last)
     }
 
     /// Whisper emits CJK as multi-character words ("小面" with one time range) while our
