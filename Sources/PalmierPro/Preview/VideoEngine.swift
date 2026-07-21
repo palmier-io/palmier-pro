@@ -19,7 +19,7 @@ final class VideoEngine {
     weak var editor: EditorViewModel?
 
     private var timeObserver: Any?
-    private var rebuildTask: Task<Void, Never>?
+    private(set) var rebuildTask: Task<Void, Never>?
     private(set) var sourcePreviewTask: Task<Void, Never>?
     private var sourcePreviewGeneration = 0
     private var sourceTrackStart: CMTime = .zero

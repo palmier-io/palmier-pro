@@ -855,7 +855,7 @@ extension EditorViewModel {
                 }
             }
             selectedClipIds = [clipId]
-            videoEngine?.refreshVisuals()
+            notifyTimelineChanged()
             return clipId
         }
     }
