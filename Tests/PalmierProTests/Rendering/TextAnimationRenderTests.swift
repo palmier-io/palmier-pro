@@ -84,6 +84,21 @@ struct TextAnimationRenderTests {
         #expect(actualPixels == expectedPixels)
     }
 
+    @Test func typewriterPreviewTypesFinalTokenBeforeHold() {
+        var animated = clip(TextAnimation(preset: .typewriter))
+        animated.durationFrames = 54
+        animated.textContent = "Aa Bb Cc"
+        animated.textStyle?.alignment = .left
+        animated.wordTimings = nil
+        var expected = animated
+        expected.textAnimation = nil
+        expected.textContent = "Aa Bb |"
+
+        let actualPixels = pixels(animated, frame: 36)
+        let expectedPixels = pixels(expected, frame: 36)
+        #expect(actualPixels == expectedPixels)
+    }
+
     @Test func tokenTimingsSplitAlignedTranscriptSpan() {
         let tokens = [
             (range: NSRange(location: 0, length: 3), text: "New"),

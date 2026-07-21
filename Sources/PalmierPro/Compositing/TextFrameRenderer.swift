@@ -254,7 +254,10 @@ enum TextFrameRenderer {
             if i == tokens.count - 1, t.endFrame > t.startFrame {
                 let desiredHold = min(holdFrames, max(1, clip.durationFrames / 3))
                 let existingHold = max(1, clip.durationFrames - t.endFrame + 1)
-                let extraHold = max(0, desiredHold - existingHold)
+                let timingSpan = t.endFrame - t.startFrame
+                let minimumRevealFrames = min(timingSpan - 1, tok.range.length) + 1
+                let availableHoldFrames = timingSpan - minimumRevealFrames
+                let extraHold = min(max(0, desiredHold - existingHold), availableHoldFrames)
                 revealEnd = max(t.startFrame + 1, t.endFrame - extraHold)
             } else {
                 revealEnd = t.endFrame
