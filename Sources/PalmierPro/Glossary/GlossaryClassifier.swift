@@ -199,7 +199,7 @@ enum GlossaryClassifier {
         // Length safety: a variant below the find/replace threshold (a single CJK char like 开→拍)
         // would corrupt longer words. Dropping it makes the user re-fix the term every episode, so
         // instead widen the span into the shared neighbouring context until the variant clears the
-        // threshold (开→拍 inside 开视频→拍视频 becomes 开视频→拍视频). CJK only; Latin is unchanged.
+        // threshold (开→拍 inside 开照片→拍照片 becomes 开照片→拍照片). CJK only; Latin is unchanged.
         if GlossaryValidation.tooShortReason(variant) != nil {
             guard isCJK, let widened = widen(old: oldTrimmed, new: newTrimmed) else {
                 return .reject(.unsafeShortVariant)

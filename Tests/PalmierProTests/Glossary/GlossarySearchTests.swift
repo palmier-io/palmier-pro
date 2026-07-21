@@ -19,24 +19,24 @@ struct GlossarySearchTests {
     }
 
     private let corrector = GlossaryCorrector(terms: [
-        GlossaryTerm(canonical: "陈嬢嬢", variants: ["陈娘娘"], provenance: "user", confidence: .declared),
+        GlossaryTerm(canonical: "李嬢嬢", variants: ["李娘娘"], provenance: "user", confidence: .declared),
     ])
 
     @Test func queryByCanonicalHitsViaCorrectedLayer() {
         // Raw transcript holds the mis-hearing; a query for the canonical still finds it.
         let hits = TranscriptSearch.rank(
-            query: "陈嬢嬢",
-            transcripts: [("a", transcript(["我们去陈娘娘家吃饭"]))],
+            query: "李嬢嬢",
+            transcripts: [("a", transcript(["我们去李娘娘家吃饭"]))],
             corrector: corrector
         )
         #expect(hits.count == 1)
-        #expect(hits[0].text.contains("陈嬢嬢"))
+        #expect(hits[0].text.contains("李嬢嬢"))
     }
 
     @Test func queryByRawVariantHits() {
         let hits = TranscriptSearch.rank(
-            query: "陈娘娘",
-            transcripts: [("a", transcript(["我们去陈娘娘家吃饭"]))],
+            query: "李娘娘",
+            transcripts: [("a", transcript(["我们去李娘娘家吃饭"]))],
             corrector: corrector
         )
         #expect(hits.count == 1)
@@ -54,10 +54,10 @@ struct GlossarySearchTests {
 
     @Test func correctedHitsRankAboveRawOnly() {
         let hits = TranscriptSearch.rank(
-            query: "陈嬢嬢",
+            query: "李嬢嬢",
             transcripts: [
-                ("raw", transcript(["原文写作陈嬢嬢"])),      // already canonical → raw-only match
-                ("corrected", transcript(["口误说成陈娘娘"])), // matches via corrected layer
+                ("raw", transcript(["原文写作李嬢嬢"])),      // already canonical → raw-only match
+                ("corrected", transcript(["口误说成李娘娘"])), // matches via corrected layer
             ],
             corrector: corrector
         )
@@ -66,24 +66,24 @@ struct GlossarySearchTests {
     }
 
     @Test func blackCitizensRegressionReturnedVerbatim() {
-        // No glossary entry for "black citizens" — materialisation must not touch it.
+        // No glossary entry for "local citizens" — materialisation must not touch it.
         let empty = GlossaryCorrector(terms: [])
         let raw = TranscriptionResult(
-            text: "the black citizens gathered",
+            text: "the local citizens gathered",
             language: "en",
             words: [TranscriptionWord(text: "black", start: 0, end: 1)],
-            segments: [TranscriptionSegment(text: "the black citizens gathered", start: 0, end: 3)]
+            segments: [TranscriptionSegment(text: "the local citizens gathered", start: 0, end: 3)]
         )
         let out = raw.applyingGlossary(empty)
-        #expect(out.text == "the black citizens gathered")
-        #expect(out.segments[0].text == "the black citizens gathered")
+        #expect(out.text == "the local citizens gathered")
+        #expect(out.segments[0].text == "the local citizens gathered")
     }
 
     @Test func correctionsSurviveReindex() {
         // Simulate the library being re-indexed: a fresh raw result (new object) still corrects,
         // because corrections are additive and applied at read time.
-        let freshRaw = transcript(["新的转写结果陈娘娘"])
+        let freshRaw = transcript(["新的转写结果李娘娘"])
         let out = freshRaw.applyingGlossary(corrector)
-        #expect(out.segments[0].text == "新的转写结果陈嬢嬢")
+        #expect(out.segments[0].text == "新的转写结果李嬢嬢")
     }
 }

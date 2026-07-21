@@ -153,26 +153,26 @@ struct TextAnimationRenderTests {
 
     @Test func wordModeGroupsCJKIntoNLTokenizerUnits() {
         // Default (word) groups a space-less CJK run into NLTokenizer words, not per character.
-        #expect(unitTexts("重庆视频", .word) == ["重庆", "视频"])
+        #expect(unitTexts("电影照片", .word) == ["电影", "照片"])
     }
 
     @Test func charModeReproducesPerCharacter() {
-        #expect(unitTexts("重庆视频", .char) == ["重", "庆", "视", "频"])
+        #expect(unitTexts("电影照片", .char) == ["电", "影", "照", "片"])
     }
 
     @Test func wordModeUnionsPerCharacterSpans() {
         // Per-character transcript timings must collapse into one span per NLTokenizer word.
-        let units = TextFrameRenderer.animationUnits(in: "重庆视频", granularity: .word)
+        let units = TextFrameRenderer.animationUnits(in: "电影照片", granularity: .word)
         let perChar = [
-            WordTiming(text: "重", startFrame: 10, endFrame: 20),
-            WordTiming(text: "庆", startFrame: 20, endFrame: 35),
-            WordTiming(text: "视", startFrame: 50, endFrame: 60),
-            WordTiming(text: "频", startFrame: 60, endFrame: 80),
+            WordTiming(text: "电", startFrame: 10, endFrame: 20),
+            WordTiming(text: "影", startFrame: 20, endFrame: 35),
+            WordTiming(text: "照", startFrame: 50, endFrame: 60),
+            WordTiming(text: "片", startFrame: 60, endFrame: 80),
         ]
         let timings = TextFrameRenderer.tokenTimings(units, perChar, duration: 90)
         #expect(timings == [
-            WordTiming(text: "重庆", startFrame: 10, endFrame: 35),
-            WordTiming(text: "视频", startFrame: 50, endFrame: 80),
+            WordTiming(text: "电影", startFrame: 10, endFrame: 35),
+            WordTiming(text: "照片", startFrame: 50, endFrame: 80),
         ])
     }
 
@@ -185,11 +185,11 @@ struct TextAnimationRenderTests {
 
     @Test func nilWordTimingsUniformFallbackPerWordUnit() {
         // No transcript timings → each word unit gets an even slice of the duration (word-mode units).
-        let units = TextFrameRenderer.animationUnits(in: "重庆视频", granularity: .word)
+        let units = TextFrameRenderer.animationUnits(in: "电影照片", granularity: .word)
         let timings = TextFrameRenderer.tokenTimings(units, nil, duration: 90)
         #expect(timings == [
-            WordTiming(text: "重庆", startFrame: 0, endFrame: 45),
-            WordTiming(text: "视频", startFrame: 45, endFrame: 90),
+            WordTiming(text: "电影", startFrame: 0, endFrame: 45),
+            WordTiming(text: "照片", startFrame: 45, endFrame: 90),
         ])
     }
 

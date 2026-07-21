@@ -269,7 +269,7 @@ private func timeline(_ tracks: [Track]) -> Timeline {
         let caption = captionClip(id: "cap", start: 0, duration: 150, text: "old", generatedText: "old")
         let tl = timeline([Fixtures.videoTrack(clips: [caption])])
         let src = FakeWordSource(words: [
-            word("我掉得", 0, 30), word("really", 30, 60), word("low。", 60, 90),
+            word("我唱得", 0, 30), word("really", 30, 60), word("low。", 60, 90),
             word("oh", 90, 120), word("god。", 120, 150),
         ])
 
@@ -277,7 +277,7 @@ private func timeline(_ tracks: [Track]) -> Timeline {
             timeline: tl, triggerSpans: [0..<150], trigger: "t", fps: 30,
             policy: .preserve, wordSource: src, chunk: singleChunk
         )
-        #expect(plan.replacements.first?.text == "我掉得 really low。 oh god。")
+        #expect(plan.replacements.first?.text == "我唱得 really low。 oh god。")
     }
 
     // MARK: - CREATE
@@ -751,7 +751,7 @@ private func timeline(_ tracks: [Track]) -> Timeline {
 @MainActor
 @Suite struct CaptionResyncColdCacheTests {
     @Test func uncachedRefPreservesCleanCaptionInsteadOfDeleting() {
-        let caption = captionClip(id: "cap", start: 0, duration: 90, text: "开视频", generatedText: "开视频")
+        let caption = captionClip(id: "cap", start: 0, duration: 90, text: "开照片", generatedText: "开照片")
         let tl = timeline([Fixtures.videoTrack(clips: [caption])])
         let src = FakeWordSource(words: [], uncached: ["m"])  // audio ref has no cached transcript
 
@@ -766,7 +766,7 @@ private func timeline(_ tracks: [Track]) -> Timeline {
     }
 
     @Test func cachedEmptySpanStillRemovesCleanCaption() {
-        let caption = captionClip(id: "cap", start: 0, duration: 90, text: "开视频", generatedText: "开视频")
+        let caption = captionClip(id: "cap", start: 0, duration: 90, text: "开照片", generatedText: "开照片")
         let tl = timeline([Fixtures.videoTrack(clips: [caption])])
         let src = FakeWordSource(words: [], uncached: [])  // transcript cached; span genuinely empty (speech cut)
 
@@ -942,7 +942,7 @@ struct CaptionPromotionParityTests {
     }
 
     private func harness(dir: URL) -> ToolHarness {
-        var cap = captionClip(id: "cap", start: 0, duration: 60, text: "陈娘娘", generatedText: nil)
+        var cap = captionClip(id: "cap", start: 0, duration: 60, text: "李娘娘", generatedText: nil)
         cap.mediaRef = "m"
         let h = ToolHarness(timeline: timeline([Fixtures.videoTrack(clips: [cap])]))
         h.editor.projectURL = dir
@@ -957,20 +957,20 @@ struct CaptionPromotionParityTests {
         defer { try? FileManager.default.removeItem(at: dir) }
         let h = harness(dir: dir)
 
-        let promotion = h.editor.promoteCaptionEditIfClean(old: "陈娘娘", new: "陈嬢嬢", clipId: "cap")
+        let promotion = h.editor.promoteCaptionEditIfClean(old: "李娘娘", new: "李嬢嬢", clipId: "cap")
         #expect(promotion?.storedCanonical == "嬢嬢")
         #expect(promotion?.storedVariants == ["娘娘"])
         #expect(promotion?.canonical == "嬢嬢" && promotion?.variant == "娘娘")
-        #expect(h.editor.clipFor(id: "cap")?.generatedText == "陈嬢嬢")   // §5.1 clean-mark
+        #expect(h.editor.clipFor(id: "cap")?.generatedText == "李嬢嬢")   // §5.1 clean-mark
     }
 
     @Test func inspectorWrapperFiresLearnedToastOnPromotion() {
         let dir = projectDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         let h = harness(dir: dir)
-        h.editor.commitClipProperty(clipId: "cap") { _ = $0.setCaptionContent("陈嬢嬢") }
+        h.editor.commitClipProperty(clipId: "cap") { _ = $0.setCaptionContent("李嬢嬢") }
 
-        h.editor.promoteInspectorCaptionEdit(old: "陈娘娘", new: "陈嬢嬢", clipId: "cap")
+        h.editor.promoteInspectorCaptionEdit(old: "李娘娘", new: "李嬢嬢", clipId: "cap")
         #expect(h.editor.mediaPanelToast?.message == "Learned 嬢嬢 — future transcripts corrected.")
         #expect(h.editor.mediaPanelToast?.kind == .success)
         #expect(h.editor.lastResyncReport == nil)   // §5.2 report consumed, no stray A1 toast
@@ -989,11 +989,11 @@ struct CaptionPromotionParityTests {
     @Test func ungroupedClipDoesNotPromote() {
         let dir = projectDir()
         defer { try? FileManager.default.removeItem(at: dir) }
-        var loose = captionClip(id: "loose", start: 0, duration: 60, text: "陈娘娘", generatedText: nil)
+        var loose = captionClip(id: "loose", start: 0, duration: 60, text: "李娘娘", generatedText: nil)
         loose.captionGroupId = nil   // a hand-placed title, not part of a caption group
         let h = ToolHarness(timeline: timeline([Fixtures.videoTrack(clips: [loose])]))
         h.editor.projectURL = dir
-        #expect(h.editor.promoteCaptionEditIfClean(old: "陈娘娘", new: "陈嬢嬢", clipId: "loose") == nil)
+        #expect(h.editor.promoteCaptionEditIfClean(old: "李娘娘", new: "李嬢嬢", clipId: "loose") == nil)
     }
 
     // An edit already promoted via the inspector must not double-promote when the same content later
@@ -1002,12 +1002,12 @@ struct CaptionPromotionParityTests {
         let dir = projectDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         let h = harness(dir: dir)
-        h.editor.commitClipProperty(clipId: "cap") { _ = $0.setCaptionContent("陈嬢嬢") }
-        h.editor.promoteInspectorCaptionEdit(old: "陈娘娘", new: "陈嬢嬢", clipId: "cap")
+        h.editor.commitClipProperty(clipId: "cap") { _ = $0.setCaptionContent("李嬢嬢") }
+        h.editor.promoteInspectorCaptionEdit(old: "李娘娘", new: "李嬢嬢", clipId: "cap")
         h.editor.mediaPanelToast = nil
 
         let json = try await h.runOK("update_text", args: [
-            "entries": [["clipId": "cap", "content": "陈嬢嬢"]],
+            "entries": [["clipId": "cap", "content": "李嬢嬢"]],
         ]) as? [String: Any]
         #expect(json?["promoted"] == nil)   // same content → no edit → no second promotion
     }
