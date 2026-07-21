@@ -122,17 +122,24 @@ enum CaptionResyncEngine {
         let clipWords = words.filter { $0.startFrame < clip.endFrame && $0.endFrame > clip.startFrame }
         let current = clip.textContent ?? ""
 
-        guard !clipWords.isEmpty else {
-            // Empty words with an uncached overlapping ref mean "missing read", not "speech cut" —
-            // deleting here would silently destroy the caption. Preserve it and surface a conflict.
-            // (When cached words exist the resync proceeds normally: an unrelated uncached ref — a
-            // music bed, b-roll — must not freeze caption resync.)
-            if uncached {
+        // Cold-cache gate, span-scoped: with an uncached overlapping ref, resync proceeds only when
+        // the cached words already SPAN the caption (the uncached ref demonstrably contributed
+        // nothing — e.g. a music bed). Empty or partial word coverage means the missing read
+        // plausibly owns part of this caption; destructive resolution would delete or shrink it, so
+        // preserve and surface a conflict instead.
+        if uncached {
+            let spanStart = clipWords.map(\.startFrame).min() ?? clip.endFrame
+            let spanEnd = clipWords.map(\.endFrame).max() ?? clip.startFrame
+            let spanCovered = max(0, min(spanEnd, clip.endFrame) - max(spanStart, clip.startFrame))
+            if Double(spanCovered) < 0.8 * Double(max(1, clip.durationFrames)) {
                 plan.report.conflicts.append(.init(
                     clipId: clip.id, manualText: current,
                     newTranscript: "(transcript not cached — resync skipped; run resync_captions after transcription completes)"))
                 return
             }
+        }
+
+        guard !clipWords.isEmpty else {
             plan.removals.append(clip.id)
             removed.insert(clip.id)
             plan.report.removed.append(.init(clipId: clip.id, text: current))

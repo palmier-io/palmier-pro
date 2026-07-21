@@ -517,3 +517,23 @@ private func timeline(_ tracks: [Track]) -> Timeline {
         #expect(repl?.wordTimings.last?.endFrame == 60)
     }
 }
+
+// Round-3: an uncached ref with only PARTIAL cached word coverage must preserve the caption —
+// resyncing on half the words would shrink it to the cached half.
+@MainActor
+@Suite struct CaptionResyncPartialCacheTests {
+    @Test func partialCoverageWithUncachedRefPreservesCaption() {
+        let caption = captionClip(id: "cap", start: 0, duration: 120, text: "前 半 后 半", generatedText: "前 半 后 半")
+        let tl = timeline([Fixtures.videoTrack(clips: [caption])])
+        // Words cover only the first half of the caption's span; a second ref is uncached.
+        let src = FakeWordSource(words: [word("前", 0, 30), word("半", 30, 55)], uncached: ["m2"])
+
+        let plan = CaptionResyncEngine.plan(
+            timeline: tl, triggerSpans: [0..<120], trigger: "Trim Clip", fps: 30,
+            policy: .preserve, wordSource: src, chunk: singleChunk)
+
+        #expect(plan.removals.isEmpty)
+        #expect(plan.replacements.isEmpty)
+        #expect(plan.report.conflicts.contains { $0.clipId == "cap" && $0.newTranscript.contains("not cached") })
+    }
+}
