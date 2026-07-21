@@ -61,6 +61,10 @@ enum ClipRenderer {
         return isHovered || (isSelected && rect.width >= AppTheme.ComponentSize.timelineClipDetailMinWidth)
     }
 
+    static func showsVolumeKeyframes(isSelected: Bool, isHovered: Bool, in rect: NSRect) -> Bool {
+        isSelected && showsFadeControls(isSelected: isSelected, isHovered: isHovered, in: rect)
+    }
+
     static func draw(
         _ clip: Clip,
         type: ClipType,
@@ -127,8 +131,19 @@ enum ClipRenderer {
         }
 
         let showsFadeControls = showsFadeControls(isSelected: isSelected, isHovered: isHovered, in: rect)
+        let volumeKeyframesVisible = showsVolumeKeyframes(
+            isSelected: isSelected,
+            isHovered: isHovered,
+            in: rect
+        )
         if type == .audio {
-            drawVolumeRubberBand(clip: clip, in: rect, isSelected: isSelected, showsFadeControls: showsFadeControls, context: context)
+            drawVolumeRubberBand(
+                clip: clip,
+                in: rect,
+                showsFadeControls: showsFadeControls,
+                showsVolumeKeyframes: volumeKeyframesVisible,
+                context: context
+            )
         } else {
             drawOpacityFades(clip: clip, in: rect, showsFadeControls: showsFadeControls, context: context)
         }
@@ -407,8 +422,8 @@ enum ClipRenderer {
     private static func drawVolumeRubberBand(
         clip: Clip,
         in rect: NSRect,
-        isSelected: Bool,
         showsFadeControls: Bool,
+        showsVolumeKeyframes: Bool,
         context: CGContext
     ) {
         guard clip.durationFrames > 0 else { return }
@@ -498,7 +513,7 @@ enum ClipRenderer {
 
         let half = volumeKeyframeSize / 2
 
-        if isSelected {
+        if showsVolumeKeyframes {
             context.setFillColor(lineColor)
             context.setStrokeColor(NSColor.black.withAlphaComponent(0.5).cgColor)
             context.setLineWidth(0.5)

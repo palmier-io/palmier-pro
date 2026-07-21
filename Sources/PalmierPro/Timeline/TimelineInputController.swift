@@ -280,11 +280,11 @@ final class TimelineInputController {
             }
         } else {
             view.setHoveredClipId(nil)
+            editor.isMarqueeSelecting = true
             if !event.modifierFlags.contains(.shift) {
                 editor.selectedClipIds.removeAll()
             }
             editor.selectedGap = hitTestGap(at: point, trackIndex: trackIndex, geometry: geometry)
-            editor.isMarqueeSelecting = true
             dragState = .marquee(DragState.MarqueeDrag(origin: point, baseSelection: editor.selectedClipIds))
         }
 
@@ -862,6 +862,11 @@ final class TimelineInputController {
     }
 
     func audioVolumeKfHit(at point: NSPoint, clip: Clip, clipRect: NSRect) -> Int? {
+        guard ClipRenderer.showsVolumeKeyframes(
+            isSelected: editor.selectedClipIds.contains(clip.id),
+            isHovered: view.hoveredClipId == clip.id,
+            in: clipRect
+        ) else { return nil }
         guard let track = clip.volumeTrack, track.isActive else { return nil }
         let geo = view.geometry
         for kf in track.keyframes {

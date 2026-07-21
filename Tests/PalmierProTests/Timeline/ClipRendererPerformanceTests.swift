@@ -3,6 +3,20 @@ import Testing
 @testable import PalmierPro
 
 @Suite struct ClipRendererPerformanceTests {
+    @Test func volumeKeyframesUseTheSameVisibilityRulesAsRendering() {
+        let compactRect = CGRect(x: 0, y: 0, width: 0.5, height: 64)
+        let detailRect = CGRect(
+            x: 0,
+            y: 0,
+            width: AppTheme.ComponentSize.timelineClipDetailMinWidth,
+            height: 64
+        )
+
+        #expect(!ClipRenderer.showsVolumeKeyframes(isSelected: true, isHovered: true, in: compactRect))
+        #expect(!ClipRenderer.showsVolumeKeyframes(isSelected: false, isHovered: true, in: detailRect))
+        #expect(ClipRenderer.showsVolumeKeyframes(isSelected: true, isHovered: false, in: detailRect))
+    }
+
     @Test func compactSelectedClipsRenderWithinInteractionBudget() throws {
         let context = try #require(CGContext(
             data: nil,
