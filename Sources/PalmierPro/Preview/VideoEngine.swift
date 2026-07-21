@@ -11,6 +11,12 @@ enum PreviewSeekMode: String {
 
 @MainActor
 final class VideoEngine {
+    enum VisualRefreshAction: Equatable {
+        case meterPlayback
+        case seekToActiveFrame
+        case none
+    }
+
     private(set) var player = AVPlayer()
     private let scrubAudioEngine: ScrubAudioEngine
 
@@ -19,6 +25,7 @@ final class VideoEngine {
     weak var editor: EditorViewModel?
 
     private var timeObserver: Any?
+    private var playbackEndObserver: NSObjectProtocol?
     private(set) var rebuildTask: Task<Void, Never>?
     private(set) var sourcePreviewTask: Task<Void, Never>?
     private var sourcePreviewGeneration = 0
@@ -49,7 +56,9 @@ final class VideoEngine {
     init(editor: EditorViewModel) {
         self.editor = editor
         scrubAudioEngine = ScrubAudioEngine(meter: editor.audioMeter)
-        setupTimeObserver()
+        player.defaultRate = editor.playbackRate.rawValue
+        installTimeObserver(for: editor.playbackRate)
+        installPlaybackEndObserver()
     }
 
     func teardown() {
@@ -61,9 +70,22 @@ final class VideoEngine {
         scrubAudioEngine.teardown()
         if let timeObserver { player.removeTimeObserver(timeObserver) }
         timeObserver = nil
+        if let playbackEndObserver { NotificationCenter.default.removeObserver(playbackEndObserver) }
+        playbackEndObserver = nil
     }
 
     // MARK: - Playback
+
+    func setPlaybackRate(_ rate: PreviewPlaybackRate) {
+        player.defaultRate = rate.rawValue
+        installTimeObserver(for: rate)
+        if !rate.allowsAudioMetering {
+            scrubAudioEngine.stopPlaybackMetering()
+        }
+        if editor?.isPlaying == true, player.timeControlStatus != .paused {
+            player.rate = rate.rawValue
+        }
+    }
 
     func play() {
         guard let editor else { return }
@@ -367,11 +389,15 @@ final class VideoEngine {
         currentItem.audioMix = audioMix
         currentItem.videoComposition = videoComposition
         scrubAudioEngine.configure(asset: currentItem.asset, audioMix: audioMix, resetMeter: false)
-        if editor.isPlaying {
+        switch Self.visualRefreshAction(isPlaying: editor.isPlaying, playbackRate: editor.playbackRate) {
+        case .meterPlayback:
             scrubAudioEngine.meterPlayback(at: player.currentTime())
-        } else if let time = playerTime(forPreviewFrame: editor.activeFrame) {
+        case .seekToActiveFrame:
+            guard let time = playerTime(forPreviewFrame: editor.activeFrame) else { return }
             cancelInteractiveSeek()
             performSeek(time: time, tolerance: .zero)
+        case .none:
+            break
         }
     }
 
@@ -585,32 +611,83 @@ final class VideoEngine {
 
     // MARK: - Time Observer
 
-    private func setupTimeObserver() {
-        guard let editor else { return }
-        let interval = CMTime(value: 1, timescale: CMTimeScale(editor.timeline.fps))
-        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            MainActor.assumeIsolated {
-                guard let self, let editor = self.editor else { return }
-                guard editor.isPlaying, !editor.isScrubbing else { return }
-                self.scrubAudioEngine.meterPlayback(at: time)
+    nonisolated static func visualRefreshAction(
+        isPlaying: Bool,
+        playbackRate: PreviewPlaybackRate
+    ) -> VisualRefreshAction {
+        guard isPlaying else { return .seekToActiveFrame }
+        return playbackRate.allowsAudioMetering ? .meterPlayback : .none
+    }
 
-                let frame = SourceMediaTimebase.relativeFrame(
-                    absoluteTime: time,
-                    fps: editor.timeline.fps,
-                    trackStart: self.sourceTrackStart
-                )
-                let duration = editor.activePreviewDurationFrames
-                let clamped = duration > 0 ? min(frame, duration) : frame
-                if editor.activePreviewTab == .timeline {
-                    editor.currentFrame = clamped
-                } else {
-                    editor.sourcePlayheadFrame = clamped
-                }
-                if duration > 0, frame >= duration {
-                    self.pause()
-                }
+    private func installPlaybackEndObserver() {
+        playbackEndObserver = NotificationCenter.default.addObserver(
+            forName: AVPlayerItem.didPlayToEndTimeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let object = notification.object else { return }
+            let itemIdentifier = ObjectIdentifier(object as AnyObject)
+            MainActor.assumeIsolated {
+                self?.handlePlaybackEnd(for: itemIdentifier)
             }
         }
+    }
+
+    private func handlePlaybackEnd(for itemIdentifier: ObjectIdentifier) {
+        guard let item = player.currentItem,
+              ObjectIdentifier(item) == itemIdentifier,
+              let editor else { return }
+        pause()
+        let duration = editor.activePreviewDurationFrames
+        if editor.activePreviewTab == .timeline {
+            editor.currentFrame = duration
+        } else {
+            editor.sourcePlayheadFrame = duration
+        }
+    }
+
+    private func installTimeObserver(for playbackRate: PreviewPlaybackRate) {
+        if let timeObserver {
+            player.removeTimeObserver(timeObserver)
+            self.timeObserver = nil
+        }
+        let interval = Self.playheadObserverInterval(for: playbackRate)
+        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+            MainActor.assumeIsolated {
+                self?.updatePlaybackTime(time)
+            }
+        }
+    }
+
+    private func updatePlaybackTime(_ time: CMTime) {
+        guard let editor, editor.isPlaying, !editor.isScrubbing else { return }
+        if editor.playbackRate.allowsAudioMetering {
+            scrubAudioEngine.meterPlayback(at: time)
+        }
+
+        let frame = SourceMediaTimebase.relativeFrame(
+            absoluteTime: time,
+            fps: editor.timeline.fps,
+            trackStart: sourceTrackStart
+        )
+        let duration = editor.activePreviewDurationFrames
+        let clamped = duration > 0 ? min(frame, duration) : frame
+        if editor.activePreviewTab == .timeline {
+            editor.currentFrame = clamped
+        } else {
+            editor.sourcePlayheadFrame = clamped
+        }
+        if duration > 0, frame >= duration {
+            pause()
+        }
+    }
+
+    nonisolated static func playheadObserverInterval(for playbackRate: PreviewPlaybackRate) -> CMTime {
+        let updatesPerSecond = 30.0
+        return CMTime(
+            seconds: Double(playbackRate.rawValue) / updatesPerSecond,
+            preferredTimescale: 600
+        )
     }
 
     private func playbackStartFrame(for editor: EditorViewModel) -> Int {
