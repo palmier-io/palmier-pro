@@ -13,23 +13,27 @@ enum TextLayout {
         maxWidth: CGFloat,
         canvasHeight: CGFloat
     ) -> CGSize {
+        let visualScale = CGFloat(style.fontScale)
+        let style = style.scaledVisualStyle
         let displayText = style.displayText(content)
         let measured = displayText.isEmpty ? " " : displayText
         let canvasScale = canvasHeight / referenceCanvasHeight
-        let renderSize = CGFloat(style.fontSize * style.fontScale) * canvasScale
+        let renderSize = CGFloat(style.fontSize) * canvasScale
         let str = NSAttributedString(
             string: measured,
             attributes: style.attributes(size: renderSize, includeColor: false)
         )
-        let bounding = suggestedSize(for: str, maxWidth: maxWidth)
-        // +4px slack absorbs canvas→preview scale rounding.
-        let slack: CGFloat = 4
+        let proposedMaxWidth = maxWidth * visualScale
+        let scaledMaxWidth = proposedMaxWidth.isFinite ? proposedMaxWidth : .greatestFiniteMagnitude
+        let bounding = suggestedSize(for: str, maxWidth: scaledMaxWidth)
+        // Four reference pixels absorb canvas→preview scale rounding.
+        let slack = max(0, visualScale) * 4
         let shadowBlur = max(0, CGFloat(style.shadow.blur))
         let shadowX = style.shadow.enabled
-            ? max(shadowPadding, shadowBlur + abs(CGFloat(style.shadow.offsetX))) * canvasScale * 2
+            ? max(shadowPadding * visualScale, shadowBlur + abs(CGFloat(style.shadow.offsetX))) * canvasScale * 2
             : 0
         let shadowY = style.shadow.enabled
-            ? max(shadowPadding, shadowBlur + abs(CGFloat(style.shadow.offsetY))) * canvasScale * 2
+            ? max(shadowPadding * visualScale, shadowBlur + abs(CGFloat(style.shadow.offsetY))) * canvasScale * 2
             : 0
         let borderPad = style.border.enabled ? style.glyphBorderPadding(fontSize: renderSize) * 2 : 0
         let backgroundPadX = style.background.enabled ? CGFloat(max(0, style.background.paddingX)) * canvasScale * 2 : 0

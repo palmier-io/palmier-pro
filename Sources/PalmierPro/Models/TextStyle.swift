@@ -238,6 +238,26 @@ extension TextStyle.RGBA {
 }
 
 extension TextStyle {
+    var scaledVisualStyle: TextStyle {
+        guard fontScale != 1 else { return self }
+        var style = self
+        style.fontSize *= fontScale
+        style.tracking *= fontScale
+        style.lineSpacing *= fontScale
+        style.shadow.offsetX *= fontScale
+        style.shadow.offsetY *= fontScale
+        style.shadow.blur *= fontScale
+        style.border.width *= fontScale
+        style.background.paddingX *= fontScale
+        style.background.paddingY *= fontScale
+        style.background.cornerRadius *= fontScale
+        style.background.offsetX *= fontScale
+        style.background.offsetY *= fontScale
+        style.background.outlineWidth *= fontScale
+        style.fontScale = 1
+        return style
+    }
+
     func resolvedFont(size: CGFloat) -> NSFont {
         let base = NSFont(name: fontName, size: size) ?? NSFont.systemFont(ofSize: size)
         return Self.font(base, size: size, bold: isBold, italic: isItalic)

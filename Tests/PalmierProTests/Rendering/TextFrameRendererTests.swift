@@ -204,6 +204,35 @@ struct TextFrameRendererTests {
         #expect(spacedSize.width > compactSize.width + 50)
     }
 
+    @Test func fontScalePreservesCompleteTextLayoutProportions() {
+        let content = "fasfasfasf\nsfsaf\nsfasfsaf"
+        var style = TextStyle()
+        style.tracking = 18
+        style.lineSpacing = 24
+        style.shadow.offsetX = 15
+        style.shadow.offsetY = -9
+        style.shadow.blur = 10
+        style.border = .init(enabled: true, width: 6)
+        style.background = .init(enabled: true, paddingX: 40, paddingY: 28)
+        let fullSize = TextLayout.naturalSize(
+            content: content,
+            style: style,
+            maxWidth: 1_728,
+            canvasHeight: 1_080
+        )
+
+        style.fontScale = 0.25
+        let scaledSize = TextLayout.naturalSize(
+            content: content,
+            style: style,
+            maxWidth: 1_728,
+            canvasHeight: 1_080
+        )
+
+        #expect(abs(scaledSize.width - fullSize.width * 0.25) <= 2)
+        #expect(abs(scaledSize.height - fullSize.height * 0.25) <= 2)
+    }
+
     @Test func verticalShadowOffsetExpandsMeasuredHeight() {
         var centered = TextStyle()
         centered.shadow.offsetX = 0

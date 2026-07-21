@@ -9,12 +9,12 @@ enum TextFrameRenderer {
 
     static func image(clip: Clip, frame: Int, renderSize: CGSize) -> CIImage? {
         guard renderSize.width >= 1, renderSize.height >= 1 else { return nil }
-        let style = clip.textStyle ?? TextStyle()
+        let style = (clip.textStyle ?? TextStyle()).scaledVisualStyle
         let content = style.displayText(clip.textContent ?? "")
         guard !content.isEmpty else { return nil }
         let box = boxRect(clip.transform, renderSize)
         let boxes = layoutBoxes(style: style, box: box, renderSize: renderSize)
-        let fontSize = CGFloat(style.fontSize * style.fontScale) * (renderSize.height / TextLayout.referenceCanvasHeight)
+        let fontSize = CGFloat(style.fontSize) * (renderSize.height / TextLayout.referenceCanvasHeight)
         let anim = clip.textAnimation
 
         if let anim, anim.isActive {
