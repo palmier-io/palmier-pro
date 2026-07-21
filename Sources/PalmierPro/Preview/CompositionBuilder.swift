@@ -916,11 +916,14 @@ enum CompositionBuilder {
         let ty = (t.flipVertical ? tl.y + t.height : tl.y) * renderSize.height
         let placed = CGAffineTransform(scaleX: sx, y: sy)
             .concatenating(CGAffineTransform(translationX: tx, y: ty))
-        guard t.rotation != 0 else { return placed }
+        return placed.concatenating(canvasRotationTransform(for: t, renderSize: renderSize))
+    }
+
+    static func canvasRotationTransform(for t: Transform, renderSize: CGSize) -> CGAffineTransform {
+        guard t.rotation != 0 else { return .identity }
         let cx = t.centerX * renderSize.width
         let cy = t.centerY * renderSize.height
-        return placed
-            .concatenating(CGAffineTransform(translationX: -cx, y: -cy))
+        return CGAffineTransform(translationX: -cx, y: -cy)
             .concatenating(CGAffineTransform(rotationAngle: t.rotation * .pi / 180))
             .concatenating(CGAffineTransform(translationX: cx, y: cy))
     }

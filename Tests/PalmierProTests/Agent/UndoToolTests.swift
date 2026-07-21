@@ -81,8 +81,8 @@ struct UndoToolTests {
         let (h, um) = harness()
         _ = um
 
-        async let first = h.runRaw("set_clip_properties", args: ["clipIds": ["c1"], "volume": 0.25])
-        async let second = h.runRaw("set_clip_properties", args: ["clipIds": ["c1"], "volume": 0.5])
+        async let first = h.runRaw("set_clip_properties", args: ["clipIds": ["c1"], "volumeDb": -12.0])
+        async let second = h.runRaw("set_clip_properties", args: ["clipIds": ["c1"], "volumeDb": -6.0])
         _ = await (first, second)
 
         _ = await h.runRaw("undo")
@@ -95,14 +95,14 @@ struct UndoToolTests {
         let (h, um) = harness()
         let other = ToolExecutor(editor: h.editor)
 
-        _ = await h.runRaw("set_clip_properties", args: ["clipIds": ["c1"], "volume": 0.25])
+        _ = await h.runRaw("set_clip_properties", args: ["clipIds": ["c1"], "volumeDb": -12.0])
         _ = await other.execute(
             name: "set_clip_properties",
-            args: ["clipIds": ["c1"], "volume": 0.5]
+            args: ["clipIds": ["c1"], "volumeDb": -6.0]
         )
 
         #expect(!(await h.runRaw("undo")).isError)
-        #expect(h.editor.timeline.tracks[0].clips[0].volume == 0.25)
+        #expect(abs(h.editor.timeline.tracks[0].clips[0].volume - VolumeScale.linearFromDb(-12)) < 0.0001)
         #expect(!(await h.runRaw("undo")).isError)
         #expect(h.editor.timeline.tracks[0].clips[0].volume == 1.0)
         _ = um
@@ -110,7 +110,7 @@ struct UndoToolTests {
 
     @Test func nativeUndoConsumesAgentTransaction() async throws {
         let (h, um) = harness()
-        _ = await h.runRaw("set_clip_properties", args: ["clipIds": ["c1"], "volume": 0.5])
+        _ = await h.runRaw("set_clip_properties", args: ["clipIds": ["c1"], "volumeDb": -6.0])
 
         um.undo()
 

@@ -261,6 +261,7 @@ Rule: **any drop target that spans an area containing other drop targets must us
   2. **Approach:** important design decisions, technical details, invariants, tradeoffs, and alternatives rejected.
   3. **Design:** for large architectural changes, Mermaid diagrams showing the relevant before and after data flow, ownership, or lifecycle.
   4. **Testing:** exact automated commands and results, plus end-to-end UI or MCP scenarios, expected outcomes, and any verification not completed.
+  5. **Change statistics:** aggregate additions and deletions by category, including code logic and tests.
 - Describe the full resulting change, not the sequence of edits made while developing it. Remove stale investigation notes and unsupported claims.
 - Open substantial changes as draft PRs until automated checks pass and required manual UI verification is identified or completed.
 

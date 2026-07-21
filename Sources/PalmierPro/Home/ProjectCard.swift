@@ -2,12 +2,15 @@ import SwiftUI
 
 struct ProjectCard: View {
     let entry: ProjectEntry
+    let isSelecting: Bool
+    let isSelected: Bool
     let onOpen: (URL) -> Void
     let onRemove: (URL) -> Void
+    let onSelect: () -> Void
+    let onDelete: () -> Void
 
     @State private var isHovered = false
     @State private var thumbnail: NSImage?
-    @State private var showDeleteConfirmation = false
 
     private let cardRadius: CGFloat = AppTheme.Radius.mdLg
 
@@ -41,9 +44,6 @@ struct ProjectCard: View {
                     }
                 }
                 .clipped()
-                .onTapGesture {
-                    if entry.isAccessible { onOpen(entry.url) }
-                }
 
             // Bottom gradient + label overlay
             LinearGradient(
@@ -70,10 +70,24 @@ struct ProjectCard: View {
             .padding(.horizontal, AppTheme.Spacing.md)
             .padding(.bottom, AppTheme.Spacing.smMd)
         }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if isSelecting {
+                onSelect()
+            } else if entry.isAccessible {
+                onOpen(entry.url)
+            }
+        }
         .opacity(entry.isAccessible ? 1.0 : 0.6)
         .overlay(alignment: .topTrailing) {
-            if isHovered {
-                Button { showDeleteConfirmation = true } label: {
+            if isSelecting {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: AppTheme.FontSize.xl, weight: .semibold))
+                    .foregroundStyle(isSelected ? AppTheme.Accent.primary : AppTheme.Text.tertiaryColor)
+                    .padding(AppTheme.Spacing.smMd)
+                    .allowsHitTesting(false)
+            } else if isHovered {
+                Button(action: onDelete) {
                     Image(systemName: "trash.fill")
                         .font(.system(size: AppTheme.FontSize.smMd, weight: .semibold))
                         .foregroundStyle(.red)
@@ -89,8 +103,10 @@ struct ProjectCard: View {
         .overlay(
             RoundedRectangle(cornerRadius: cardRadius, style: .continuous)
                 .strokeBorder(
-                    Color.white.opacity(isHovered ? AppTheme.Opacity.muted : AppTheme.Opacity.hint),
-                    lineWidth: AppTheme.BorderWidth.hairline
+                    isSelected
+                        ? AppTheme.Accent.primary
+                        : Color.white.opacity(isHovered ? AppTheme.Opacity.muted : AppTheme.Opacity.hint),
+                    lineWidth: isSelected ? AppTheme.BorderWidth.thick : AppTheme.BorderWidth.hairline
                 )
         )
         .shadow(color: .black.opacity(isHovered ? 0.4 : 0.2), radius: isHovered ? 12 : 4, y: isHovered ? 4 : 2)
@@ -107,15 +123,7 @@ struct ProjectCard: View {
                 Divider()
             }
             Button("Remove from Recents") { onRemove(entry.url) }
-            Button("Delete Project", role: .destructive) { showDeleteConfirmation = true }
-        }
-        .alert("Delete \"\(entry.name)\"?", isPresented: $showDeleteConfirmation) {
-            Button("Cancel", role: .cancel) {}
-            Button("Delete", role: .destructive) {
-                ProjectRegistry.shared.delete(entry.url)
-            }
-        } message: {
-            Text("The project will be moved to the Trash.")
+            Button("Delete Project", role: .destructive, action: onDelete)
         }
         .task(id: entry.lastOpenedDate) { await loadThumbnail(for: entry.url) }
     }
