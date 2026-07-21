@@ -431,7 +431,7 @@ enum TextFrameRenderer {
     }
 
     /// Animation units for per-word/typewriter presets. `word` (default) groups a CJK run into
-    /// NLTokenizer words (重庆 as one unit) while Latin stays whitespace-run; `char` splits every CJK
+    /// NLTokenizer words (电影 as one unit) while Latin stays whitespace-run; `char` splits every CJK
     /// character out so per-character timings drive per-character karaoke.
     static func animationUnits(in content: String, granularity: TextAnimation.Granularity) -> [(range: NSRange, text: String)] {
         switch granularity {
