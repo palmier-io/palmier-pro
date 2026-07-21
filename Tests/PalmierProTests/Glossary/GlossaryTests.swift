@@ -234,3 +234,26 @@ struct GlossaryTests {
         #expect(Set(term.variants) == ["李娘娘", "李酿酿"])
     }
 }
+
+// Merging a user promotion into an inferred (suggestion-only) entry must upgrade it to asserted —
+// the user actively typed the correction, so it must auto-apply.
+@MainActor
+@Suite struct GlossaryPromotionConfidenceTests {
+    @Test func promotionUpgradesInferredEntryToAsserted() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".palmier")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        var doc = try GlossaryStore.read(scope: .project, projectURL: dir)
+        doc.terms.append(GlossaryTerm(canonical: "李嬢嬢", variants: ["李娘娘"], provenance: "lint", confidence: .inferred))
+        try GlossaryStore.write(doc, scope: .project, projectURL: dir)
+
+        let h = ToolHarness()
+        h.editor.projectURL = dir
+        let promo = GlossaryClassifier.Promotion(canonical: "李嬢嬢", variant: "李酿酿")
+        #expect(h.executor.promoteCaptionEdit(promo, clipId: "c1", editor: h.editor) != nil)
+
+        let term = try #require(try GlossaryStore.read(scope: .project, projectURL: dir).terms.first { $0.canonical == "李嬢嬢" })
+        #expect(term.confidence == .asserted)
+        #expect(Set(term.variants) == ["李娘娘", "李酿酿"])
+    }
+}

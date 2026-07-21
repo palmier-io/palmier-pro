@@ -129,11 +129,15 @@ extension ToolExecutor {
             .terms.first { $0.canonical == promotion.canonical }
         var variants = existing?.variants ?? []
         if !variants.contains(promotion.variant) { variants.append(promotion.variant) }
+        // A user actively typed this correction: the merged term is at least .asserted, so it
+        // auto-applies. Higher existing confidence (declared/verified) is kept; merging into an
+        // inferred (suggestion-only) entry must not leave the user's own edit suggestion-only.
+        let confidence = existing.map { $0.confidence.autoApplies ? $0.confidence : .asserted } ?? .asserted
         let term = GlossaryTerm(
             canonical: promotion.canonical,
             variants: variants,
             provenance: existing?.provenance ?? "auto:caption-edit@\(clipId)",
-            confidence: existing?.confidence ?? .asserted
+            confidence: confidence
         )
         guard let (added, _) = try? upsertGlossaryTerm(term, scope: .project, editor: editor),
               !added.variants.isEmpty else { return nil }
