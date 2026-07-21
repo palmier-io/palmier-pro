@@ -139,9 +139,17 @@ extension ToolExecutor {
             provenance: existing?.provenance ?? "auto:caption-edit@\(clipId)",
             confidence: confidence
         )
-        guard let (added, _) = try? upsertGlossaryTerm(term, scope: .project, editor: editor),
-              !added.variants.isEmpty else { return nil }
-        return ["canonical": added.canonical, "variants": added.variants, "clipId": clipId]
+        do {
+            let (added, _) = try upsertGlossaryTerm(term, scope: .project, editor: editor)
+            guard !added.variants.isEmpty else { return nil }
+            return ["canonical": added.canonical, "variants": added.variants, "clipId": clipId]
+        } catch {
+            // A failed write must not masquerade as "nothing to promote" — the caption edit looked
+            // learned but wasn't persisted. Log and surface for the tool response.
+            Log.agent.warning("caption-edit promotion write failed clip=\(clipId): \(error.localizedDescription)")
+            return ["canonical": promotion.canonical, "clipId": clipId,
+                    "error": "glossary write failed: \(error.localizedDescription)"]
+        }
     }
 
     // MARK: - glossary_remove

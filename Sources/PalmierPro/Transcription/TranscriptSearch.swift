@@ -42,14 +42,17 @@ enum TranscriptSearch {
 
         var corrected: [Hit] = []   // matched the canonical/corrected layer — ranked first
         var rawOnly: [Hit] = []     // matched only the raw transcript
-        for (assetID, transcript) in transcripts {
+        // Corrected-layer hits always outrank raw ones, so the scan can stop as soon as the page
+        // is full of corrected hits, and raw collection never grows past the page either — large
+        // libraries must not pay a full-library walk for a one-page result.
+        scan: for (assetID, transcript) in transcripts {
             for segment in transcript.segments {
+                if corrected.count >= limit { break scan }
                 let correctedText = corrector.map { $0.isEmpty ? segment.text : $0.correct(segment.text) } ?? segment.text
                 let hitsCorrected = correctedText != segment.text && matches(correctedText, terms: terms)
-                let hitsRaw = matches(segment.text, terms: terms)
                 if hitsCorrected {
                     corrected.append(Hit(assetID: assetID, start: segment.start, end: segment.end, text: correctedText))
-                } else if hitsRaw {
+                } else if rawOnly.count < limit, matches(segment.text, terms: terms) {
                     rawOnly.append(Hit(assetID: assetID, start: segment.start, end: segment.end, text: segment.text))
                 }
             }

@@ -291,6 +291,9 @@ final class VideoProject: NSDocument {
         } else {
             try copyPreservedFile(Project.thumbnailFilename, from: sourceURL, to: packageURL, fm: fm)
         }
+        // Project-scope corrections are part of the project: without this, export/Save As silently
+        // drops asserted/declared glossary terms from the copied package.
+        try copyPreservedFile("glossary.json", from: sourceURL, to: packageURL, fm: fm)
         try writeChatDirectory(snapshot.chatSessionFiles, to: packageURL, fm: fm)
         try copyMediaDirectoryIfNeeded(from: sourceURL, to: packageURL, fm: fm)
         try fm.createDirectory(
