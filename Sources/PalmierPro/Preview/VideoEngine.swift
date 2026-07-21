@@ -369,6 +369,8 @@ final class VideoEngine {
         scrubAudioEngine.configure(asset: currentItem.asset, audioMix: audioMix, resetMeter: false)
         if editor.isPlaying {
             scrubAudioEngine.meterPlayback(at: player.currentTime())
+        } else {
+            seek(to: editor.currentFrame, mode: .exact)
         }
     }
 
