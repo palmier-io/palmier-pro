@@ -82,9 +82,9 @@ struct CaptionStyleTests {
 
     @Test func nonFillerWordsPassThroughVerbatim() {
         let policy = FillerPolicy(profile: .builtInDefault)
-        let actions = policy.plan(words: ["black", "citizens"])
+        let actions = policy.plan(words: ["local", "citizens"])
         #expect(actions.allSatisfy { $0.decision == .keep })
-        #expect(actions.map(\.token) == ["black", "citizens"])
+        #expect(actions.map(\.token) == ["local", "citizens"])
     }
 
     // MARK: - Phrase stripping (add_captions removeAlways path)
@@ -111,9 +111,9 @@ struct CaptionStyleTests {
 
     @Test func strippingLeavesNonFillerContentUntouched() {
         let policy = FillerPolicy(profile: .builtInDefault)
-        let phrase = CaptionBuilder.Phrase(text: "black citizens", start: 0, end: 1)
+        let phrase = CaptionBuilder.Phrase(text: "local citizens", start: 0, end: 1)
         let stripped = policy.strippingRemoveAlways(phrase)
-        #expect(stripped?.text == "black citizens")
+        #expect(stripped?.text == "local citizens")
     }
 
     // MARK: - Layered merge
