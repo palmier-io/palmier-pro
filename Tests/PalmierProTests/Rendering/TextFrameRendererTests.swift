@@ -296,6 +296,41 @@ struct TextFrameRendererTests {
         #expect(size("Line\n").height > size("Line").height)
     }
 
+    @Test func sharedCoreTextFrameCentersTextVerticallyInExtraSpace() throws {
+        let style = TextStyle(fontSize: 80)
+        let attributedString = NSAttributedString(
+            string: "Text",
+            attributes: style.attributes(size: CGFloat(style.fontSize))
+        )
+        let box = CGRect(x: 100, y: 40, width: 600, height: 300)
+        let frame = TextLayout.frame(for: attributedString, in: box)
+        let line = try #require((CTFrameGetLines(frame) as? [CTLine])?.first)
+        var origin = CGPoint.zero
+        CTFrameGetLineOrigins(frame, CFRange(location: 0, length: 1), &origin)
+        var ascent: CGFloat = 0
+        var descent: CGFloat = 0
+        CTLineGetTypographicBounds(line, &ascent, &descent, nil)
+        let pathBounds = CTFrameGetPath(frame).boundingBox
+        let textMidY = pathBounds.minY + origin.y + (ascent - descent) / 2
+
+        #expect(
+            abs(textMidY - box.midY) < 10,
+            "textMidY=\(textMidY), origin=\(origin), path=\(pathBounds)"
+        )
+
+        let fullText = NSAttributedString(
+            string: "First\nSecond",
+            attributes: style.attributes(size: CGFloat(style.fontSize))
+        )
+        let fullFrame = TextLayout.frame(for: fullText, in: box)
+        let revealFrame = TextLayout.frame(
+            for: attributedString,
+            in: box,
+            verticallySizedFor: fullText
+        )
+        #expect(CTFrameGetPath(revealFrame).boundingBox == CTFrameGetPath(fullFrame).boundingBox)
+    }
+
     @Test func sharedCoreTextFrameHonorsAnUndersizedBox() {
         let content = "First line\nSecond line"
         let style = TextStyle()

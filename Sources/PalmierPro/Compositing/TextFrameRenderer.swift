@@ -91,15 +91,16 @@ enum TextFrameRenderer {
     }
 
     private static func drawOverlines(_ ctx: CGContext, frame: CTFrame, style: TextStyle,
-                                      box: CGRect, fontSize: CGFloat) {
+                                      fontSize: CGFloat) {
         guard style.isOverlined else { return }
         let lines = CTFrameGetLines(frame) as? [CTLine] ?? []
         var origins = [CGPoint](repeating: .zero, count: lines.count)
         CTFrameGetLineOrigins(frame, CFRange(location: 0, length: 0), &origins)
+        let frameBounds = CTFrameGetPath(frame).boundingBox
         let font = style.resolvedFont(size: fontSize)
         for (index, line) in lines.enumerated() {
             let width = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil) - CTLineGetTrailingWhitespaceWidth(line))
-            drawOverline(ctx, x: box.minX + origins[index].x, y: origins[index].y,
+            drawOverline(ctx, x: frameBounds.minX + origins[index].x, y: frameBounds.minY + origins[index].y,
                          width: width, font: font, color: style.color)
         }
     }
@@ -128,7 +129,7 @@ enum TextFrameRenderer {
             in: boxes.text
         )
         CTFrameDraw(frame, ctx)
-        drawOverlines(ctx, frame: frame, style: style, box: boxes.text, fontSize: fontSize)
+        drawOverlines(ctx, frame: frame, style: style, fontSize: fontSize)
         guard let image = finish(ctx) else { return nil }
         cache.setObject(image, forKey: key)
         return image
@@ -170,6 +171,7 @@ enum TextFrameRenderer {
         let lines = CTFrameGetLines(ctFrame) as? [CTLine] ?? []
         var origins = [CGPoint](repeating: .zero, count: lines.count)
         CTFrameGetLineOrigins(ctFrame, CFRange(location: 0, length: 0), &origins)
+        let frameBounds = CTFrameGetPath(ctFrame).boundingBox
 
         let tokens = words(in: content)
         let timings = tokenTimings(tokens, clip.wordTimings, duration: clip.durationFrames)
@@ -187,8 +189,8 @@ enum TextFrameRenderer {
 
                 let startOff = CTLineGetOffsetForStringIndex(line, tok.range.location, nil)
                 let endOff = CTLineGetOffsetForStringIndex(line, tok.range.location + tok.range.length, nil)
-                let penX = boxes.text.minX + origins[li].x + startOff
-                let penY = origins[li].y
+                let penX = frameBounds.minX + origins[li].x + startOff
+                let penY = frameBounds.minY + origins[li].y
                 let wWidth = endOff - startOff
 
                 var attrs = baseAttrs
@@ -262,9 +264,14 @@ enum TextFrameRenderer {
         // Left-anchor so the text reveals rightward in place rather than re-centering as it grows.
         var attrs = style.attributes(size: fontSize)
         attrs[.paragraphStyle] = style.paragraphStyle(size: fontSize, alignment: .left)
-        let textFrame = TextLayout.frame(for: NSAttributedString(string: visible, attributes: attrs), in: boxes.text)
+        let fullText = NSAttributedString(string: content, attributes: attrs)
+        let textFrame = TextLayout.frame(
+            for: NSAttributedString(string: visible, attributes: attrs),
+            in: boxes.text,
+            verticallySizedFor: fullText
+        )
         CTFrameDraw(textFrame, ctx)
-        drawOverlines(ctx, frame: textFrame, style: style, box: boxes.text, fontSize: fontSize)
+        drawOverlines(ctx, frame: textFrame, style: style, fontSize: fontSize)
         return finish(ctx)
     }
 

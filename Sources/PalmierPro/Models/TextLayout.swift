@@ -44,26 +44,47 @@ enum TextLayout {
         )
     }
 
-    static func frame(for attributedString: NSAttributedString, in box: CGRect) -> CTFrame {
-        let framesetter = framesetter(for: attributedString)
-        let path = CGPath(rect: box, transform: nil)
-        return CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: 0), path, nil)
+    static func frame(
+        for attributedString: NSAttributedString,
+        in box: CGRect,
+        verticallySizedFor sizingString: NSAttributedString? = nil
+    ) -> CTFrame {
+        let textFramesetter = framesetter(for: attributedString)
+        let measurementString = measurementString(for: sizingString ?? attributedString)
+        let measurementFramesetter = measurementString === attributedString
+            ? textFramesetter
+            : framesetter(for: measurementString)
+        let contentHeight = suggestedSize(using: measurementFramesetter, maxWidth: box.width).height
+        let frameHeight = min(box.height, ceil(contentHeight))
+        let centeredBox = CGRect(
+            x: box.minX,
+            y: box.midY - frameHeight / 2,
+            width: box.width,
+            height: frameHeight
+        )
+        let path = CGPath(rect: centeredBox, transform: nil)
+        return CTFramesetterCreateFrame(textFramesetter, CFRange(location: 0, length: 0), path, nil)
     }
 
     private static func suggestedSize(for attributedString: NSAttributedString, maxWidth: CGFloat) -> CGSize {
-        let measured: NSAttributedString
+        suggestedSize(using: framesetter(for: measurementString(for: attributedString)), maxWidth: maxWidth)
+    }
+
+    private static func measurementString(for attributedString: NSAttributedString) -> NSAttributedString {
         if attributedString.string.last?.isNewline == true {
             // CoreText omits a final empty line unless measurement includes a zero-width glyph.
             let mutable = NSMutableAttributedString(attributedString: attributedString)
             var attributes = attributedString.attributes(at: attributedString.length - 1, effectiveRange: nil)
             attributes[.kern] = 0
             mutable.append(NSAttributedString(string: "\u{200B}", attributes: attributes))
-            measured = mutable
-        } else {
-            measured = attributedString
+            return mutable
         }
+        return attributedString
+    }
+
+    private static func suggestedSize(using framesetter: CTFramesetter, maxWidth: CGFloat) -> CGSize {
         return CTFramesetterSuggestFrameSizeWithConstraints(
-            framesetter(for: measured),
+            framesetter,
             CFRange(location: 0, length: 0),
             nil,
             CGSize(width: maxWidth, height: .greatestFiniteMagnitude),
