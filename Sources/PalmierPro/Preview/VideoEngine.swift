@@ -370,6 +370,7 @@ final class VideoEngine {
         if editor.isPlaying {
             scrubAudioEngine.meterPlayback(at: player.currentTime())
         } else if let time = playerTime(forPreviewFrame: editor.activeFrame) {
+            cancelInteractiveSeek()
             performSeek(time: time, tolerance: .zero)
         }
     }
