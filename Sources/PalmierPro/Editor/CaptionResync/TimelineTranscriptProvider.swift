@@ -3,6 +3,7 @@
 // which is the L1/L2 read-only guarantee the resync engine depends on.
 
 import Foundation
+import Synchronization
 
 final class TimelineTranscriptProvider: CaptionWordSource {
     private struct Fragment { let clip: Clip; let url: URL; let mediaRef: String }
@@ -49,8 +50,27 @@ final class TimelineTranscriptProvider: CaptionWordSource {
 
     private func transcript(for url: URL) -> TranscriptionResult? {
         if let memo = transcripts[url] { return memo }
-        let loaded = TranscriptCache.cachedOnDisk(for: url)
+        let loaded = Self.diskMemoized(url)
         transcripts[url] = loaded
+        return loaded
+    }
+
+    /// Cross-run memo keyed by the cache's file-identity key (path|mtime|size), so an edit burst
+    /// (drag, repeated trims) pays one disk read per asset, not one per resync run. Identity keys
+    /// invalidate naturally when the file changes; bounded to keep memory flat.
+    private static let diskMemo = Mutex<[String: TranscriptionResult]>([:])
+
+    private static func diskMemoized(_ url: URL) -> TranscriptionResult? {
+        guard let key = TranscriptCache.identityKey(for: url) else { return TranscriptCache.cachedOnDisk(for: url) }
+        if let memo = diskMemo.withLock({ $0[key] }) { return memo }
+        let loaded = TranscriptCache.cachedOnDisk(for: url)
+        // Never memoize a miss: a transcript that lands moments later must be visible to the next run.
+        if let loaded {
+            diskMemo.withLock {
+                if $0.count >= 64 { $0.removeAll() }
+                $0[key] = loaded
+            }
+        }
         return loaded
     }
 }

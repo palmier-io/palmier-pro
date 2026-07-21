@@ -183,17 +183,25 @@ private func timeline(_ tracks: [Track]) -> Timeline {
         #expect(plan.clearedFlags == ["cap"])
     }
 
-    @Test func unknownProvenanceReplacedAndConflictLogged() {
+    @Test func unknownProvenanceFollowsPolicyNeverBlindReplace() {
+        // generatedText == nil is hand-authored or pre-feature text: clean requires PROOF, so the
+        // conflict policy governs — .preserve keeps the text, .overwrite replaces it.
         let caption = captionClip(id: "cap", start: 0, duration: 60, text: "pre feature text", generatedText: nil)
         let tl = timeline([Fixtures.videoTrack(clips: [caption])])
         let src = FakeWordSource(words: [word("one", 0, 30), word("two", 30, 60)])
 
-        let plan = CaptionResyncEngine.plan(
+        let preserved = CaptionResyncEngine.plan(
             timeline: tl, triggerSpans: [0..<60], trigger: "t", fps: 30,
             policy: .preserve, wordSource: src, chunk: singleChunk
         )
-        #expect(plan.replacements.first?.text == "one two")
-        #expect(plan.report.conflicts.count == 1)   // logged even though replaced
+        #expect(preserved.replacements.isEmpty)
+        #expect(preserved.report.conflicts.count == 1)
+
+        let overwritten = CaptionResyncEngine.plan(
+            timeline: tl, triggerSpans: [0..<60], trigger: "t", fps: 30,
+            policy: .overwrite, wordSource: src, chunk: singleChunk
+        )
+        #expect(overwritten.replacements.first?.text == "one two")
     }
 
     @Test func exemptGroupIsUntouched() {

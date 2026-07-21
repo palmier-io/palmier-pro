@@ -114,6 +114,9 @@ actor TranscriptCache {
         directory.appendingPathComponent("\(key).json")
     }
 
+    /// File-identity key (path|mtime|size) for memoization by read-side callers.
+    nonisolated static func identityKey(for url: URL) -> String? { key(for: url) }
+
     private static func key(for url: URL, variant: CacheVariant = .local) -> String? {
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
               let size = (attrs[.size] as? NSNumber)?.int64Value,
