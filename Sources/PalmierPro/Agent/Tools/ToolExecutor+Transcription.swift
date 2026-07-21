@@ -193,7 +193,7 @@ extension ToolExecutor {
     static let transcriptWordLimit = 10000
 
     private static let inspectMaxSegments = 400
-    private static let getTranscriptAllowedKeys: Set<String> = ["startFrame", "endFrame", "clipId", "wordTimestamps", "language", "granularity"]
+    private static let getTranscriptAllowedKeys: Set<String> = ["startFrame", "endFrame", "clipId", "wordTimestamps", "language", "granularity", "refresh"]
 
     func transcriptionContext(
         _ args: [String: Any],
@@ -304,6 +304,22 @@ extension ToolExecutor {
         let granularity = args.string("granularity") ?? "words"
         guard granularity == "words" || granularity == "segments" else {
             throw ToolError("granularity must be 'words' or 'segments' (got '\(granularity)')")
+        }
+
+        // Dev/verification affordance: force ONE asset to re-transcribe without a global cache bump.
+        // Scoped to a clip so a typo can't silently fan out a whole-library re-transcription.
+        if args["refresh"] != nil {
+            guard args.bool("refresh") == true else {
+                throw ToolError("get_transcript.refresh: expected true (omit the key to read normally).")
+            }
+            guard let clipFilter else {
+                throw ToolError("get_transcript.refresh requires clipId — refresh re-transcribes that clip's asset only.")
+            }
+            guard let clip = editor.captionTargets(ids: []).first(where: { $0.id == clipFilter }),
+                  let asset = editor.mediaAssets.first(where: { $0.id == clip.mediaRef }) else {
+                throw ToolError("get_transcript.refresh: clip \(clipFilter) has no transcribable asset.")
+            }
+            await TranscriptCache.shared.invalidateLocalEntry(for: asset.url, engine: editor.resolvedLocalEngine)
         }
 
         let context = try await transcriptionContext(args, path: "get_transcript", preference: editor.transcriptionPreference) {

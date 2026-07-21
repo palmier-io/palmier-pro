@@ -100,9 +100,13 @@ actor Qwen3ASREngine {
         Log.transcription.notice("qwen3-asr model installed", telemetry: "Qwen3 model installed")
     }
 
-    func transcribe(fileURL: URL) async throws -> TranscriptionResult {
+    /// `yieldsToInteractive` marks a background (indexer) run: between chunks it waits out any
+    /// in-flight interactive read, so a get_transcript never queues behind a long library asset.
+    /// The actor is re-entrant at that suspension, which is what lets the interactive call in.
+    func transcribe(fileURL: URL, yieldsToInteractive: Bool = false) async throws -> TranscriptionResult {
         try await Self.ensureModel()
         let recognizer = try loadedRecognizer()
+        let started = ContinuousClock.now
 
         // Timing track: Whisper runs concurrently on its own actor (CoreML/ANE, so the
         // hardware doesn't contend with Qwen3's CPU decode below). Qwen3's text is
@@ -111,26 +115,42 @@ actor Qwen3ASREngine {
         let timingTask = Task { try await WhisperKitEngine.shared.transcribe(fileURL: fileURL) }
 
         let samples = try EngineAudio.loadSamples(fileURL: fileURL)
+        let extractDone = ContinuousClock.now
         // `raw` is the model's unpunctuated stream (drives piece timing); `text` carries restored
         // punctuation for the segment and — folded onto pieces — for the words. When the punct model
         // is unavailable, restore() returns the input and `text == raw`.
         var chunks: [(text: String, raw: String, start: Double, end: Double)] = []
+        var decodeTime = Duration.zero
+        var restoreTime = Duration.zero
         var chunkStart = 0
         while chunkStart < samples.count {
+            // Cooperative cancellation: throw between chunks so an interrupted decode never returns a
+            // partial transcript that the cache would persist as complete.
+            try Task.checkCancellation()
+            if yieldsToInteractive {
+                await BackgroundTranscriptionGate.shared.waitUntilIdle()
+                try Task.checkCancellation()
+            }
             let chunkEnd = EngineAudio.chunkBoundary(
                 samples: samples, from: chunkStart, targetSeconds: Self.chunkSeconds)
             let chunk = Array(samples[chunkStart..<chunkEnd])
             let start = Double(chunkStart) / Double(EngineAudio.sampleRate)
             let end = Double(chunkEnd) / Double(EngineAudio.sampleRate)
+            let decodeStart = ContinuousClock.now
             let raw = Self.decodeChunk(recognizer: recognizer, samples: chunk)
+            decodeTime += decodeStart.duration(to: .now)
             if !raw.isEmpty {
+                let restoreStart = ContinuousClock.now
                 let text = await restorer.restore(raw)
+                restoreTime += restoreStart.duration(to: .now)
                 chunks.append((text, raw, start, end))
             }
             chunkStart = chunkEnd
         }
 
+        let anchorsStart = ContinuousClock.now
         let timingWords = Self.expandCJKAnchors((try? await timingTask.value)?.words ?? [])
+        let anchorsWait = anchorsStart.duration(to: .now)
         var words: [TranscriptionWord] = []
         var segments: [TranscriptionSegment] = []
         for chunk in chunks {
@@ -185,6 +205,27 @@ actor Qwen3ASREngine {
         // Roll first-after-pause word starts back to their acoustic onset so captions lead the
         // syllable instead of inheriting a chunk-quantized start (samples are already in hand).
         let refined = OnsetRefiner.refine(words: words, samples: samples, fps: Self.onsetFPS)
+
+        // Defense-in-depth against a partial decode (e.g. interrupted reindex) being cached as
+        // complete: reject a transcript whose speech ends grossly short of the audio's non-silent end.
+        if let gap = EngineAudio.coverageShortfall(segments: segments, samples: samples) {
+            throw EngineError.incompleteResult(covered: gap.covered, expected: gap.expected)
+        }
+
+        // §0 stage split: decide optimizations from this line, not from guesses. `anchorsWait` is the
+        // residual wait on the concurrent Whisper task, not its full runtime.
+        let audioSeconds = Double(samples.count) / Double(EngineAudio.sampleRate)
+        let totalSeconds = started.duration(to: .now).stageSeconds
+        Log.transcription.notice("""
+            qwen3 stages file=\(fileURL.lastPathComponent) audio=\(String(format: "%.0f", audioSeconds))s \
+            extract=\(String(format: "%.1f", started.duration(to: extractDone).stageSeconds))s \
+            decode=\(String(format: "%.1f", decodeTime.stageSeconds))s \
+            punct=\(String(format: "%.1f", restoreTime.stageSeconds))s \
+            anchorsWait=\(String(format: "%.1f", anchorsWait.stageSeconds))s \
+            total=\(String(format: "%.1f", totalSeconds))s \
+            rtf=\(String(format: "%.2f", audioSeconds > 0 ? totalSeconds / audioSeconds : 0)) \
+            backend=cpu-int8 threads=4 background=\(yieldsToInteractive)
+            """)
 
         return TranscriptionResult(
             text: segments.map(\.text).joined(separator: " "),
@@ -471,4 +512,8 @@ actor Qwen3ASREngine {
         }
         return (result, matched.count, Set(matched.map(\.piece)))
     }
+}
+
+private extension Duration {
+    var stageSeconds: Double { Double(components.seconds) + Double(components.attoseconds) / 1e18 }
 }

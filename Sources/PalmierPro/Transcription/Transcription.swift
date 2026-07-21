@@ -117,11 +117,23 @@ enum TranscriptionError: LocalizedError {
 enum Transcription {
     private static let audioExtractionGate = AsyncSemaphore(value: 2)
 
-    static func transcribeVideoAudio(videoURL: URL, censorProfanity: Bool = false, preferredLocale: Locale? = nil, sourceRange: ClosedRange<Double>? = nil, engine: LocalSpeechEngine? = nil) async throws -> TranscriptionResult {
+    static func transcribeVideoAudio(videoURL: URL, censorProfanity: Bool = false, preferredLocale: Locale? = nil, sourceRange: ClosedRange<Double>? = nil, engine: LocalSpeechEngine? = nil, background: Bool = false) async throws -> TranscriptionResult {
+        // Full-file extractions persist in ExtractedAudioCache so a re-transcription (model change,
+        // cache-tag bump) reads the small mono file instead of re-demuxing the source video.
+        if sourceRange == nil {
+            let audioURL: URL
+            if let cached = ExtractedAudioCache.cached(for: videoURL) {
+                audioURL = cached
+            } else {
+                let temp = try await extractAudioTrack(from: videoURL, range: nil)
+                audioURL = ExtractedAudioCache.adopt(tempURL: temp, for: videoURL)
+            }
+            return try await transcribe(fileURL: audioURL, censorProfanity: censorProfanity, preferredLocale: preferredLocale, engine: engine, background: background)
+        }
         let tempAudioURL = try await extractAudioTrack(from: videoURL, range: sourceRange)
         defer { try? FileManager.default.removeItem(at: tempAudioURL) }
-        let result = try await transcribe(fileURL: tempAudioURL, censorProfanity: censorProfanity, preferredLocale: preferredLocale, engine: engine)
-        return result.offsetting(by: sourceRange?.lowerBound ?? 0)
+        let result = try await transcribe(fileURL: tempAudioURL, censorProfanity: censorProfanity, preferredLocale: preferredLocale, engine: engine, background: background)
+        return result.offsetting(by: sourceRange.map(\.lowerBound) ?? 0)
     }
 
     static func supportedLocales() async -> [Locale] {
@@ -149,11 +161,11 @@ enum Transcription {
         return nil
     }
 
-    static func transcribe(fileURL: URL, censorProfanity: Bool = false, preferredLocale: Locale? = nil, sourceRange: ClosedRange<Double>? = nil, engine: LocalSpeechEngine? = nil) async throws -> TranscriptionResult {
+    static func transcribe(fileURL: URL, censorProfanity: Bool = false, preferredLocale: Locale? = nil, sourceRange: ClosedRange<Double>? = nil, engine: LocalSpeechEngine? = nil, background: Bool = false) async throws -> TranscriptionResult {
         if let sourceRange {
             let tempURL = try await extractAudioTrack(from: fileURL, range: sourceRange)
             defer { try? FileManager.default.removeItem(at: tempURL) }
-            let result = try await transcribe(fileURL: tempURL, censorProfanity: censorProfanity, preferredLocale: preferredLocale, engine: engine)
+            let result = try await transcribe(fileURL: tempURL, censorProfanity: censorProfanity, preferredLocale: preferredLocale, engine: engine, background: background)
             return result.offsetting(by: sourceRange.lowerBound)
         }
 
@@ -167,7 +179,11 @@ enum Transcription {
         let engine = engine ?? .current
         if engine != .apple {
             do {
-                return try await transcribeWithEngine(engine, fileURL: fileURL, preferredLocale: preferredLocale)
+                return try await transcribeWithEngine(engine, fileURL: fileURL, preferredLocale: preferredLocale, background: background)
+            } catch is CancellationError {
+                // A cancelled decode must propagate — never fall through to a fresh Apple transcription
+                // (and never let a caller cache a result) when the work was interrupted.
+                throw CancellationError()
             } catch {
                 Log.transcription.warning(
                     "engine \(engine.rawValue) failed, falling back to Apple Speech: \(error.localizedDescription)",
@@ -282,13 +298,14 @@ enum Transcription {
     private static func transcribeWithEngine(
         _ engine: LocalSpeechEngine,
         fileURL: URL,
-        preferredLocale: Locale?
+        preferredLocale: Locale?,
+        background: Bool = false
     ) async throws -> TranscriptionResult {
         let languageCode = preferredLocale?.language.languageCode?.identifier
         switch engine {
         case .qwen3:
             // Qwen3-ASR autodetects language per chunk; no hint parameter.
-            return try await Qwen3ASREngine.shared.transcribe(fileURL: fileURL).withModel(engine.modelId)
+            return try await Qwen3ASREngine.shared.transcribe(fileURL: fileURL, yieldsToInteractive: background).withModel(engine.modelId)
         case .whisper:
             return try await WhisperKitEngine.shared.transcribe(fileURL: fileURL, language: languageCode, refineOnsets: true).withModel(engine.modelId)
         case .apple:

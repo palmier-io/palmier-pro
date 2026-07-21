@@ -27,7 +27,12 @@ final class EditorViewModel {
     var timelines: [Timeline] {
         didSet { timelineRenderRevision &+= 1 }
     }
-    var activeTimelineId: String
+    var activeTimelineId: String {
+        didSet {
+            // Mid-batch indexing must serve the timeline the user just switched to.
+            if oldValue != activeTimelineId { searchIndex.reprioritize() }
+        }
+    }
     var openTimelineIds: [String]
     @ObservationIgnored var liveViewStates: [String: TimelineViewState] = [:]
     var timelineTabRenameRequest: String?
@@ -67,6 +72,30 @@ final class EditorViewModel {
             }
         }
         return refs
+    }
+
+    /// mediaRefs of one timeline in TIMELINE order (first use wins), nested sequences flattened at
+    /// their carrier's position — the indexer transcribes the top of the cut before the tail.
+    func orderedMediaRefs(inTimeline id: String) -> [String] {
+        let resolve: (String) -> Timeline? = { [timelines] id in timelines.first { $0.id == id } }
+        var seen: Set<String> = []
+        var ordered: [String] = []
+        func walk(_ timeline: Timeline, visited: inout Set<String>) {
+            let clips = timeline.tracks.flatMap(\.clips).sorted { $0.startFrame < $1.startFrame }
+            for clip in clips {
+                if clip.sourceClipType == .sequence {
+                    guard !visited.contains(clip.mediaRef), let nested = resolve(clip.mediaRef) else { continue }
+                    visited.insert(clip.mediaRef)
+                    walk(nested, visited: &visited)
+                } else if seen.insert(clip.mediaRef).inserted {
+                    ordered.append(clip.mediaRef)
+                }
+            }
+        }
+        guard let root = resolve(id) else { return [] }
+        var visited: Set<String> = [id]
+        walk(root, visited: &visited)
+        return ordered
     }
 
     var mediaManifest = MediaManifest()
@@ -285,7 +314,10 @@ final class EditorViewModel {
         agentService.editor = self
         searchIndex.assetsProvider = { [weak self] in self?.mediaAssets ?? [] }
         searchIndex.localEngineProvider = { [weak self] in self?.resolvedLocalEngine ?? .current }
-        searchIndex.activeTimelineRefsProvider = { [weak self] in self?.mediaRefs(inTimelines: [self?.activeTimelineId].compactMap { $0 }) ?? [] }
+        searchIndex.activeTimelineRefsProvider = { [weak self] in
+            guard let self else { return [] }
+            return self.orderedMediaRefs(inTimeline: self.activeTimelineId)
+        }
         searchIndex.openTimelineRefsProvider = { [weak self] in self?.mediaRefs(inTimelines: self?.openTimelineIds ?? []) ?? [] }
         mediaVisualCache.speech.onAnalyzingCountChange = { [weak self] count in
             self?.speechAnalyzingCount = count

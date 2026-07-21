@@ -48,8 +48,9 @@ final class SearchIndexCoordinator {
     var assetsProvider: () -> [MediaAsset] = { [] }
     /// The project's resolved on-device engine; keeps index reads/writes on the same cache slot.
     var localEngineProvider: () -> LocalSpeechEngine = { .current }
-    /// mediaRefs referenced by the ACTIVE timeline (incl. nested) — indexed first, transcribed first.
-    var activeTimelineRefsProvider: () -> Set<String> = { [] }
+    /// mediaRefs referenced by the ACTIVE timeline (incl. nested), in timeline order — indexed first,
+    /// transcribed first, so the editor can start working from the top of the cut while the tail indexes.
+    var activeTimelineRefsProvider: () -> [String] = { [] }
     /// mediaRefs referenced by any OPEN timeline (incl. nested). Background SPOKEN transcription is
     /// limited to these: a library asset that isn't on an open timeline is visual-indexed but not
     /// eagerly transcribed, so a cache-tag bump can't fan re-transcription out across the whole
@@ -125,17 +126,40 @@ final class SearchIndexCoordinator {
         }
     }
 
-    /// Active-timeline assets first, then other open-project assets, then the rest — so the clips a
-    /// user is actually working on index (and, where eligible, transcribe) ahead of idle library media.
-    /// Stable within each tier to keep ordering deterministic.
-    static func prioritized(_ assets: [MediaAsset], active: Set<String>, open: Set<String>) -> [MediaAsset] {
-        func tier(_ asset: MediaAsset) -> Int {
-            if active.contains(asset.id) { return 0 }
-            if open.contains(asset.id) { return 1 }
-            return 2
-        }
+    /// Active-timeline assets first — in TIMELINE order, so the top of the cut is ready before the
+    /// tail — then other open-project assets, then the rest. Stable within tiers 1–2 to keep
+    /// ordering deterministic.
+    static func prioritized(_ assets: [MediaAsset], active: [String], open: Set<String>) -> [MediaAsset] {
+        let rank = Self.priorityRank(active: active, open: open)
         return assets.enumerated()
-            .sorted { (tier($0.element), $0.offset) < (tier($1.element), $1.offset) }
+            .sorted {
+                let a = rank($0.element.id), b = rank($1.element.id)
+                return (a.0, a.1, $0.offset) < (b.0, b.1, $1.offset)
+            }
+            .map(\.element)
+    }
+
+    /// Shared tiering for initial scheduling and mid-batch re-prioritization: tier 0 keyed by
+    /// timeline position, tier 1 open-timeline membership, tier 2 everything else.
+    private static func priorityRank(active: [String], open: Set<String>) -> (String) -> (Int, Int) {
+        let position = Dictionary(active.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        return { id in
+            if let p = position[id] { return (0, p) }
+            return (open.contains(id) ? 1 : 2, 0)
+        }
+    }
+
+    /// Re-sort the PENDING queue against the current active timeline — called on a timeline switch so
+    /// an in-flight batch serves the timeline the user just moved to, not the one it was enqueued under.
+    /// The in-flight item is untouched (already dequeued); progress counters keep their meaning.
+    func reprioritize() {
+        guard queue.count > 1 else { return }
+        let rank = Self.priorityRank(active: activeTimelineRefsProvider(), open: openTimelineRefsProvider())
+        queue = queue.enumerated()
+            .sorted {
+                let a = rank($0.element.asset.id), b = rank($1.element.asset.id)
+                return (a.0, a.1, $0.offset) < (b.0, b.1, $1.offset)
+            }
             .map(\.element)
     }
 
@@ -304,7 +328,8 @@ final class SearchIndexCoordinator {
             async let transcriptDone: Void = {
                 if transcribe {
                     try await ExportQueue.shared.waitWhileExportActive()
-                    _ = try await TranscriptCache.shared.transcript(for: url, isVideo: isVideo, range: nil, engine: engine)
+                    _ = try await TranscriptCache.shared.transcript(
+                        for: url, isVideo: isVideo, range: nil, engine: engine, background: true)
                 }
             }()
             switch asset.type {

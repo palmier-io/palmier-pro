@@ -56,8 +56,40 @@ struct ReindexPriorityTests {
         let assets = ["rest1", "open1", "active1", "rest2", "active2"].map(asset)
         let ordered = SearchIndexCoordinator.prioritized(
             assets, active: ["active1", "active2"], open: ["open1"])
-        // Active tier first (original order preserved within tier), then open, then the rest.
+        // Active tier first, then open, then the rest (original order preserved in tiers 1–2).
         #expect(ordered.map(\.id) == ["active1", "active2", "open1", "rest1", "rest2"])
+    }
+
+    // The reported repro: the editor works top-of-cut down, so tier 0 follows TIMELINE order even
+    // when it disagrees with library order — the first clip of the cut indexes first.
+    @Test func activeTierFollowsTimelineOrder() {
+        let assets = ["libA", "act-late", "libB", "act-early", "act-mid"].map(asset)
+        let ordered = SearchIndexCoordinator.prioritized(
+            assets, active: ["act-early", "act-mid", "act-late"], open: [])
+        #expect(ordered.map(\.id) == ["act-early", "act-mid", "act-late", "libA", "libB"])
+    }
+}
+
+@Suite("Lazy reindex — timeline-ordered refs")
+@MainActor
+struct OrderedMediaRefsTests {
+    @Test func ordersByTimelinePositionFirstUseWins() {
+        let editor = EditorViewModel()
+        var t1 = Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [
+                Fixtures.clip(mediaRef: "late", start: 300, duration: 30),
+                Fixtures.clip(mediaRef: "early", start: 0, duration: 30),
+                Fixtures.clip(mediaRef: "early", start: 600, duration: 30), // reuse: first use wins
+            ]),
+            Fixtures.audioTrack(clips: [
+                Fixtures.clip(mediaRef: "mid", mediaType: .audio, start: 100, duration: 30),
+            ]),
+        ])
+        t1.id = "t1"
+        editor.timelines = [t1]
+        editor.activeTimelineId = "t1"
+        editor.openTimelineIds = ["t1"]
+        #expect(editor.orderedMediaRefs(inTimeline: "t1") == ["early", "mid", "late"])
     }
 }
 

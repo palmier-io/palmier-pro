@@ -20,7 +20,9 @@ actor TranscriptCache {
     /// `engine` is the caller's resolved on-device engine (a per-project override, else the app-global
     /// default). It selects the engine that runs AND the cache slot the entry lives in, so switching
     /// engines/variants re-transcribes into a distinct key with no cross-variant collision. nil = global.
-    func transcript(for url: URL, isVideo: Bool, range: ClosedRange<Double>?, preferredLocale: Locale? = nil, cacheTag: String? = nil, engine: LocalSpeechEngine? = nil) async throws -> TranscriptionResult {
+    /// `background` marks an indexer-initiated transcription: the engine yields between chunks while
+    /// an interactive read is in flight, so a foreground request never waits out a long library asset.
+    func transcript(for url: URL, isVideo: Bool, range: ClosedRange<Double>?, preferredLocale: Locale? = nil, cacheTag: String? = nil, engine: LocalSpeechEngine? = nil, background: Bool = false) async throws -> TranscriptionResult {
         let engine = engine ?? .current
         // When a locale is forced, bypass the cache — locale variants must not overwrite the auto-detected entry.
         if let preferredLocale {
@@ -35,8 +37,8 @@ actor TranscriptCache {
             full = cached
         } else {
             full = isVideo
-                ? try await Transcription.transcribeVideoAudio(videoURL: url, engine: engine)
-                : try await Transcription.transcribe(fileURL: url, engine: engine)
+                ? try await Transcription.transcribeVideoAudio(videoURL: url, engine: engine, background: background)
+                : try await Transcription.transcribe(fileURL: url, engine: engine, background: background)
             // A fallback (e.g. qwen3 unavailable → Apple) stamps a different model than requested. Store
             // it under the slot of the engine that ACTUALLY ran, never the requested one — otherwise the
             // requested slot would serve the fallback forever and shadow a later successful run. Leaving
@@ -157,6 +159,20 @@ actor TranscriptCache {
 
     /// Drop in-memory entries so a disk clear isn't shadowed by the memory cache.
     func clearMemory() { memory.removeAll() }
+
+    /// Force one asset to re-transcribe: delete its current-tag local entries (unsalted + legacy
+    /// salted) and the memory cache. Prior-tag entries survive for stale search fallback; the cloud
+    /// alias survives because it wasn't produced by the local decode being refreshed.
+    func invalidateLocalEntry(for url: URL, engine: LocalSpeechEngine) {
+        memory.removeAll()
+        var keys = [Self.key(for: url, variant: .local(engine: engine))]
+        if let fingerprint = TranscriptionBias.fingerprint {
+            keys.append(Self.key(for: url, variant: .local(engine: engine), cacheTag: fingerprint))
+        }
+        for key in keys.compactMap({ $0 }) {
+            try? FileManager.default.removeItem(at: Self.diskURL(key))
+        }
+    }
 
     private func cached(_ key: String) -> TranscriptionResult? {
         if let r = memory[key] { return r }

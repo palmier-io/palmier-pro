@@ -669,6 +669,7 @@ enum ToolDefinitions {
                     "clipId": ["type": "string", "description": "Scope the transcript to a single clip — returns only what that clip says, in project frames. Answers \"what's in clip X?\" without scanning the whole timeline."],
                     "granularity": ["type": "string", "enum": ["words", "segments"], "description": "words (default) for cutting with remove_words; segments for cheap sentence-level reading — rows carry firstWordIndex to drill back into words."],
                     "language": ["type": "string", "description": "Optional BCP-47 speech language. Applies to local only; cloud auto-detects."],
+                    "refresh": ["type": "boolean", "description": "Force this clip's asset to re-transcribe from audio, discarding its cached transcript (requires clipId; never fans out beyond that one asset). Use to verify a transcription change or recover from a bad cached result. The refreshed read may first return the clip under pending — re-read to collect it."],
                 ]
             )
         ),
