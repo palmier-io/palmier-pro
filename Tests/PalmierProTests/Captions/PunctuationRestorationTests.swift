@@ -102,6 +102,35 @@ struct PunctuationRestorationTests {
         #expect(joined.contains("站。"))
     }
 
+    /// The ct-transformer emits fullwidth marks regardless of script — the 2026-07 report saw
+    /// "right？" and "ice creams。" rendered inside English captions.
+    private struct FullwidthEverywhereRestorer: PunctuationRestoring {
+        func restore(_ text: String) async -> String {
+            text
+                .replacingOccurrences(of: "right", with: "right？")
+                .replacingOccurrences(of: "creams", with: "creams。")
+                .replacingOccurrences(of: "了", with: "了。")
+        }
+    }
+
+    @Test func fullwidthMarksAfterLatinLandAsASCII() async {
+        let raw = "That's so American for you right there"
+        let restored = await FullwidthEverywhereRestorer().restore(raw)
+        let pieces = Qwen3ASREngine.punctuatedPieces(raw: raw, restored: restored)
+        #expect(pieces.contains("right?"))
+        let joined = pieces.joined(separator: " ")
+        #expect(!joined.contains("？"))
+        #expect(!joined.contains("。"))
+    }
+
+    @Test func fullwidthMarksAfterCJKStayFullwidth() async {
+        let raw = "拍视频了 ice creams"
+        let restored = await FullwidthEverywhereRestorer().restore(raw)
+        let pieces = Qwen3ASREngine.punctuatedPieces(raw: raw, restored: restored)
+        #expect(pieces.joined().contains("了。"))
+        #expect(pieces.contains("creams."))
+    }
+
     @Test func internalLatinPunctuationIsNotReAppended() {
         // Marks inside a Latin run (apostrophe, abbreviation dots) stay put and are not folded on again.
         #expect(Qwen3ASREngine.punctuatedPieces(raw: "don't stop", restored: "don't stop.")

@@ -41,7 +41,6 @@ actor Qwen3ASREngine {
     private static let chunkSeconds = 12.0
 
     private var recognizer: OpaquePointer?
-    private var builtHotwords: String?
 
     static var isInstalled: Bool {
         installedFiles != nil
@@ -213,13 +212,9 @@ actor Qwen3ASREngine {
     private static let onsetFPS = 30
 
     private func loadedRecognizer() throws -> OpaquePointer {
-        // Glossary hotwords are baked into the recognizer; rebuild when the set changes.
-        let hotwords = TranscriptionBias.hotwordsCSV
-        if let recognizer {
-            if builtHotwords == hotwords { return recognizer }
-            SherpaOnnxDestroyOfflineRecognizer(recognizer)
-            self.recognizer = nil
-        }
+        // No hotword biasing: prompt conditioning on the 0.6B model perturbs unrelated
+        // recognition. Glossary corrections apply at read-time materialisation instead.
+        if let recognizer { return recognizer }
         guard let files = Self.installedFiles else { throw EngineError.recognizerInitFailed }
 
         var config = SherpaOnnxOfflineRecognizerConfig()
@@ -232,24 +227,19 @@ actor Qwen3ASREngine {
                     files.tokenizer.withCString { tokPtr in
                         "greedy_search".withCString { decodePtr in
                             "cpu".withCString { providerPtr in
-                                (hotwords ?? "").withCString { hotwordsPtr in
-                                    config.model_config.qwen3_asr.conv_frontend = convPtr
-                                    config.model_config.qwen3_asr.encoder = encPtr
-                                    config.model_config.qwen3_asr.decoder = decPtr
-                                    config.model_config.qwen3_asr.tokenizer = tokPtr
-                                    if hotwords != nil {
-                                        config.model_config.qwen3_asr.hotwords = hotwordsPtr
-                                    }
-                                    config.model_config.qwen3_asr.max_total_len = 512
-                                    config.model_config.qwen3_asr.max_new_tokens = 128
-                                    config.model_config.qwen3_asr.temperature = 1e-6
-                                    config.model_config.qwen3_asr.top_p = 0.8
-                                    config.model_config.qwen3_asr.seed = 42
-                                    config.model_config.num_threads = 4
-                                    config.model_config.provider = providerPtr
-                                    config.decoding_method = decodePtr
-                                    created = SherpaOnnxCreateOfflineRecognizer(&config)
-                                }
+                                config.model_config.qwen3_asr.conv_frontend = convPtr
+                                config.model_config.qwen3_asr.encoder = encPtr
+                                config.model_config.qwen3_asr.decoder = decPtr
+                                config.model_config.qwen3_asr.tokenizer = tokPtr
+                                config.model_config.qwen3_asr.max_total_len = 512
+                                config.model_config.qwen3_asr.max_new_tokens = 128
+                                config.model_config.qwen3_asr.temperature = 1e-6
+                                config.model_config.qwen3_asr.top_p = 0.8
+                                config.model_config.qwen3_asr.seed = 42
+                                config.model_config.num_threads = 4
+                                config.model_config.provider = providerPtr
+                                config.decoding_method = decodePtr
+                                created = SherpaOnnxCreateOfflineRecognizer(&config)
                             }
                         }
                     }
@@ -258,7 +248,6 @@ actor Qwen3ASREngine {
         }
         guard let created else { throw EngineError.recognizerInitFailed }
         recognizer = created
-        builtHotwords = hotwords
         return created
     }
 
@@ -330,18 +319,40 @@ actor Qwen3ASREngine {
         // The piece eligible to receive a trailing mark; nil while mid-piece so a mark internal to a
         // Latin run (an apostrophe, "U.S.") is left in place rather than re-appended.
         var attachTarget: Int?
+        var attachAfterLatin = false
         for scalar in restored.unicodeScalars {
             if isWhitespaceScalar(scalar) { continue }
             if isBaseScalar(scalar) {
                 guard cursor < baseChars.count, baseChars[cursor] == scalar else { return nil }
                 attachTarget = isPieceFinal[cursor] ? owner[cursor] : nil
+                attachAfterLatin = !isCJKIdeograph(scalar)
                 cursor += 1
             } else if let target = attachTarget, !endsWithMark(out[target]) {
-                out[target].unicodeScalars.append(scalar)
+                out[target].unicodeScalars.append(attachAfterLatin ? asciiEquivalent(scalar) : scalar)
             }
         }
         guard cursor == baseChars.count else { return nil }
         return out
+    }
+
+    /// The zh-en restorer emits fullwidth marks regardless of script; a mark following a Latin base
+    /// character must land as its ASCII form so 。？ never appears inside an English span.
+    private static func asciiEquivalent(_ scalar: Unicode.Scalar) -> Unicode.Scalar {
+        switch scalar.value {
+        case 0x3002: return "."  // 。
+        case 0xFF0C, 0x3001: return ","  // ，、
+        case 0xFF1F: return "?"  // ？
+        case 0xFF01: return "!"  // ！
+        case 0xFF1A: return ":"  // ：
+        case 0xFF1B: return ";"  // ；
+        default: return scalar
+        }
+    }
+
+    private static func isCJKIdeograph(_ scalar: Unicode.Scalar) -> Bool {
+        let value = Int(scalar.value)
+        return ((0x2E80...0x9FFF).contains(value) && !(0x3000...0x303F).contains(value))
+            || (0xF900...0xFAFF).contains(value)
     }
 
     /// A piece's meaningful content: alphanumerics and CJK ideographs. Punctuation (incl. the CJK
