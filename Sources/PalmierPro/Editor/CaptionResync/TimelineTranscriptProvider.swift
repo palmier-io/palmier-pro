@@ -60,6 +60,10 @@ final class TimelineTranscriptProvider: CaptionWordSource {
     /// invalidate naturally when the file changes; bounded to keep memory flat.
     private static let diskMemo = Mutex<[String: TranscriptionResult]>([:])
 
+    /// Invalidate alongside a transcript-cache clear or analysis reset — the memo must never
+    /// outlive the entries it mirrors.
+    static func clearDiskMemo() { diskMemo.withLock { $0.removeAll() } }
+
     private static func diskMemoized(_ url: URL) -> TranscriptionResult? {
         guard let key = TranscriptCache.identityKey(for: url) else { return TranscriptCache.cachedOnDisk(for: url) }
         if let memo = diskMemo.withLock({ $0[key] }) { return memo }

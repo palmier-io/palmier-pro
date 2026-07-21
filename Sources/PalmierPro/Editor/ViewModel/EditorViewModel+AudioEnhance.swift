@@ -3,6 +3,7 @@ import Foundation
 extension EditorViewModel {
     /// Called after Settings clears disk caches: session memoization must not outlive them.
     func resetAnalysisSessionState() {
+        TimelineTranscriptProvider.clearDiskMemo()
         denoiseBaked.removeAll()
         denoiseFailed.removeAll()
         mediaVisualCache.resetSessionState()

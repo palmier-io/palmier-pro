@@ -130,6 +130,7 @@ struct StoragePane: View {
         Task.detached {
             for cache in Self.caches { cache.clear() }
             await TranscriptCache.shared.clearMemory()
+            TimelineTranscriptProvider.clearDiskMemo()
             await MainActor.run {
                 isClearing = false
                 for document in NSDocumentController.shared.documents {
