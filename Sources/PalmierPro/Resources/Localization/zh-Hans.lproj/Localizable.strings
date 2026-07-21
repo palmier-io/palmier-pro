@@ -4,3 +4,37 @@
 "or use your own Anthropic key" = "或使用你自己的 Anthropic 密钥";
 "Subscribe" = "订阅";
 "Open Settings" = "打开设置";
+
+/* Home sidebar */
+"Sign in with Google" = "使用 Google 登录";
+"Opening Google…" = "正在打开 Google…";
+"New Project" = "新建项目";
+"Open Project" = "打开项目";
+"Settings" = "设置";
+
+/* Home header */
+"Welcome to Palmier Pro" = "欢迎使用 Palmier Pro";
+
+/* Home sections */
+"Sample Project" = "示例项目";
+"My Projects" = "我的项目";
+"Search projects" = "搜索项目";
+
+/* Project actions */
+"Select" = "选择";
+"Done" = "完成";
+"Cancel" = "取消";
+"Delete" = "删除";
+"Retry" = "重试";
+"OK" = "确定";
+
+/* Settings tabs */
+"Account" = "账户";
+"General" = "通用";
+"Models" = "模型";
+"Agent" = "智能体";
+"Skills" = "技能";
+"Storage" = "存储";
+
+/* Alerts */
+"Projects Couldn't Be Deleted" = "项目无法删除";

@@ -4,3 +4,37 @@
 "or use your own Anthropic key" = "or use your own Anthropic key";
 "Subscribe" = "Subscribe";
 "Open Settings" = "Open Settings";
+
+/* Home sidebar */
+"Sign in with Google" = "Sign in with Google";
+"Opening Google…" = "Opening Google…";
+"New Project" = "New Project";
+"Open Project" = "Open Project";
+"Settings" = "Settings";
+
+/* Home header */
+"Welcome to Palmier Pro" = "Welcome to Palmier Pro";
+
+/* Home sections */
+"Sample Project" = "Sample Project";
+"My Projects" = "My Projects";
+"Search projects" = "Search projects";
+
+/* Project actions */
+"Select" = "Select";
+"Done" = "Done";
+"Cancel" = "Cancel";
+"Delete" = "Delete";
+"Retry" = "Retry";
+"OK" = "OK";
+
+/* Settings tabs */
+"Account" = "Account";
+"General" = "General";
+"Models" = "Models";
+"Agent" = "Agent";
+"Skills" = "Skills";
+"Storage" = "Storage";
+
+/* Alerts */
+"Projects Couldn't Be Deleted" = "Projects Couldn't Be Deleted";
