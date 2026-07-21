@@ -212,3 +212,25 @@ struct GlossaryTests {
         #expect(a.hotwordTerms() == ["Xterm"])
     }
 }
+
+// Promotion must MERGE variants per canonical: two caption clips can carry different mis-hearings
+// of one canonical in a single update_text; upsert-replace would keep only the last one.
+@MainActor
+@Suite struct GlossaryPromotionMergeTests {
+    @Test func secondPromotionKeepsFirstVariant() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".palmier")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let h = ToolHarness()
+        h.editor.projectURL = dir
+
+        let first = GlossaryClassifier.Promotion(canonical: "李嬢嬢", variant: "李娘娘")
+        let second = GlossaryClassifier.Promotion(canonical: "李嬢嬢", variant: "李酿酿")
+        #expect(h.executor.promoteCaptionEdit(first, clipId: "c1", editor: h.editor) != nil)
+        #expect(h.executor.promoteCaptionEdit(second, clipId: "c2", editor: h.editor) != nil)
+
+        let doc = try GlossaryStore.read(scope: .project, projectURL: dir)
+        let term = try #require(doc.terms.first { $0.canonical == "李嬢嬢" })
+        #expect(Set(term.variants) == ["李娘娘", "李酿酿"])
+    }
+}

@@ -122,11 +122,18 @@ extension ToolExecutor {
     /// Returns a response row, or nil if the project scope is unavailable or the variant was
     /// dropped by validation. Called from update_text's promotion hook. §6
     func promoteCaptionEdit(_ promotion: GlossaryClassifier.Promotion, clipId: String, editor: EditorViewModel) -> [String: Any]? {
+        // Merge with any existing same-canonical project entry — several caption clips can carry
+        // DIFFERENT mis-hearings of one canonical in a single update_text; upsert-replace would
+        // silently keep only the last variant.
+        let existing = (try? GlossaryStore.read(scope: .project, projectURL: editor.projectURL))?
+            .terms.first { $0.canonical == promotion.canonical }
+        var variants = existing?.variants ?? []
+        if !variants.contains(promotion.variant) { variants.append(promotion.variant) }
         let term = GlossaryTerm(
             canonical: promotion.canonical,
-            variants: [promotion.variant],
-            provenance: "auto:caption-edit@\(clipId)",
-            confidence: .asserted
+            variants: variants,
+            provenance: existing?.provenance ?? "auto:caption-edit@\(clipId)",
+            confidence: existing?.confidence ?? .asserted
         )
         guard let (added, _) = try? upsertGlossaryTerm(term, scope: .project, editor: editor),
               !added.variants.isEmpty else { return nil }
