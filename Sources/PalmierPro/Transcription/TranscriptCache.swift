@@ -11,9 +11,7 @@ actor TranscriptCache {
     private var memory: [String: TranscriptionResult] = [:]
     private static let memoryMax = 4
 
-    /// `cacheTag` salts the cache key (e.g. a decoder-bias fingerprint from GlossaryStore.biasFingerprint())
-    /// so a changed hotword set yields a fresh transcription instead of a stale cached one. §4
-    func transcript(for url: URL, isVideo: Bool, range: ClosedRange<Double>?, preferredLocale: Locale? = nil, cacheTag: String? = nil) async throws -> TranscriptionResult {
+    func transcript(for url: URL, isVideo: Bool, range: ClosedRange<Double>?, preferredLocale: Locale? = nil) async throws -> TranscriptionResult {
         // When a locale is forced, bypass the cache — locale variants must not overwrite the auto-detected entry.
         if let preferredLocale {
             return isVideo
@@ -21,7 +19,7 @@ actor TranscriptCache {
                 : try await Transcription.transcribe(fileURL: url, preferredLocale: preferredLocale, sourceRange: range)
         }
         // Cache full transcripts only; windowed calls filter the cached result for consistency.
-        let key = Self.key(for: url, cacheTag: cacheTag ?? TranscriptionBias.fingerprint)
+        let key = Self.key(for: url)
         let full: TranscriptionResult
         if let key, let cached = cached(key) {
             full = cached
@@ -34,29 +32,16 @@ actor TranscriptCache {
         return range.map { Self.filter(full, to: $0) } ?? full
     }
 
-    // Read-only lookups prefer the bias-salted entry but fall back to the unsalted one, so
-    // pre-glossary transcripts stay searchable/resyncable until a biased pass supersedes them.
-    private nonisolated static var readTags: [String?] {
-        TranscriptionBias.fingerprint.map { [$0, nil] } ?? [nil]
-    }
-
     nonisolated static func hasCachedOnDisk(for url: URL) -> Bool {
-        readTags.contains { tag in
-            guard let key = key(for: url, cacheTag: tag) else { return false }
-            return FileManager.default.fileExists(atPath: diskURL(key).path)
-        }
+        guard let key = key(for: url) else { return false }
+        return FileManager.default.fileExists(atPath: diskURL(key).path)
     }
 
     /// Disk-only read
     nonisolated static func cachedOnDisk(for url: URL) -> TranscriptionResult? {
-        for tag in readTags {
-            if let key = key(for: url, cacheTag: tag),
-               let data = try? Data(contentsOf: diskURL(key)),
-               let result = try? JSONDecoder().decode(TranscriptionResult.self, from: data) {
-                return result
-            }
-        }
-        return nil
+        guard let key = key(for: url),
+              let data = try? Data(contentsOf: diskURL(key)) else { return nil }
+        return try? JSONDecoder().decode(TranscriptionResult.self, from: data)
     }
 
     static func filter(_ r: TranscriptionResult, to range: ClosedRange<Double>) -> TranscriptionResult {
@@ -129,12 +114,11 @@ actor TranscriptCache {
         directory.appendingPathComponent("\(key).json")
     }
 
-    private static func key(for url: URL, variant: CacheVariant = .local, cacheTag: String? = nil) -> String? {
+    private static func key(for url: URL, variant: CacheVariant = .local) -> String? {
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
               let size = (attrs[.size] as? NSNumber)?.int64Value,
               let mtime = attrs[.modificationDate] as? Date else { return nil }
-        var base = "\(url.path)|\(mtime.timeIntervalSince1970)|\(size)"
-        if let cacheTag { base += "|bias:\(cacheTag)" }
+        let base = "\(url.path)|\(mtime.timeIntervalSince1970)|\(size)"
         let identity = variant.prefix.map { "\($0)|\(base)" } ?? base
         return SHA256.hash(data: Data(identity.utf8)).map { String(format: "%02x", $0) }.joined().prefix(32).description
     }

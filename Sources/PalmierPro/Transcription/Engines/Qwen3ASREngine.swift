@@ -30,7 +30,6 @@ actor Qwen3ASREngine {
     private static let chunkSeconds = 12.0
 
     private var recognizer: OpaquePointer?
-    private var builtHotwords: String?
 
     static var isInstalled: Bool {
         installedFiles != nil
@@ -179,13 +178,9 @@ actor Qwen3ASREngine {
     }
 
     private func loadedRecognizer() throws -> OpaquePointer {
-        // Glossary hotwords are baked into the recognizer; rebuild when the set changes.
-        let hotwords = TranscriptionBias.hotwordsCSV
-        if let recognizer {
-            if builtHotwords == hotwords { return recognizer }
-            SherpaOnnxDestroyOfflineRecognizer(recognizer)
-            self.recognizer = nil
-        }
+        // No hotword biasing: prompt conditioning on the 0.6B model perturbs unrelated recognition.
+        // Glossary corrections apply at read-time materialisation instead.
+        if let recognizer { return recognizer }
         guard let files = Self.installedFiles else { throw EngineError.recognizerInitFailed }
 
         var config = SherpaOnnxOfflineRecognizerConfig()
@@ -198,24 +193,19 @@ actor Qwen3ASREngine {
                     files.tokenizer.withCString { tokPtr in
                         "greedy_search".withCString { decodePtr in
                             "cpu".withCString { providerPtr in
-                                (hotwords ?? "").withCString { hotwordsPtr in
-                                    config.model_config.qwen3_asr.conv_frontend = convPtr
-                                    config.model_config.qwen3_asr.encoder = encPtr
-                                    config.model_config.qwen3_asr.decoder = decPtr
-                                    config.model_config.qwen3_asr.tokenizer = tokPtr
-                                    if hotwords != nil {
-                                        config.model_config.qwen3_asr.hotwords = hotwordsPtr
-                                    }
-                                    config.model_config.qwen3_asr.max_total_len = 512
-                                    config.model_config.qwen3_asr.max_new_tokens = 128
-                                    config.model_config.qwen3_asr.temperature = 1e-6
-                                    config.model_config.qwen3_asr.top_p = 0.8
-                                    config.model_config.qwen3_asr.seed = 42
-                                    config.model_config.num_threads = 4
-                                    config.model_config.provider = providerPtr
-                                    config.decoding_method = decodePtr
-                                    created = SherpaOnnxCreateOfflineRecognizer(&config)
-                                }
+                                config.model_config.qwen3_asr.conv_frontend = convPtr
+                                config.model_config.qwen3_asr.encoder = encPtr
+                                config.model_config.qwen3_asr.decoder = decPtr
+                                config.model_config.qwen3_asr.tokenizer = tokPtr
+                                config.model_config.qwen3_asr.max_total_len = 512
+                                config.model_config.qwen3_asr.max_new_tokens = 128
+                                config.model_config.qwen3_asr.temperature = 1e-6
+                                config.model_config.qwen3_asr.top_p = 0.8
+                                config.model_config.qwen3_asr.seed = 42
+                                config.model_config.num_threads = 4
+                                config.model_config.provider = providerPtr
+                                config.decoding_method = decodePtr
+                                created = SherpaOnnxCreateOfflineRecognizer(&config)
                             }
                         }
                     }
@@ -224,7 +214,6 @@ actor Qwen3ASREngine {
         }
         guard let created else { throw EngineError.recognizerInitFailed }
         recognizer = created
-        builtHotwords = hotwords
         return created
     }
 

@@ -120,7 +120,6 @@ extension ToolExecutor {
         } catch {
             throw ToolError("glossary_add: could not write \(scope.rawValue) glossary: \(error.localizedDescription)")
         }
-        glossaryStore(editor).applyBias()
         return (sanitized.term, sanitized.warnings)
     }
 
@@ -159,8 +158,7 @@ extension ToolExecutor {
         if removed {
             do { try GlossaryStore.write(doc, scope: scope, projectURL: editor.projectURL) }
             catch { throw ToolError("glossary_remove: could not write \(scope.rawValue) glossary: \(error.localizedDescription)") }
-            glossaryStore(editor).applyBias()
-        }
+            }
         var payload: [String: Any] = ["removed": removed, "canonical": canonical, "scope": scope.rawValue]
         // §5.2: captions showing the canonical revert to whatever the transcript now materialises.
         if removed {

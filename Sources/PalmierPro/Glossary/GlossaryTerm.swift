@@ -20,7 +20,7 @@ enum GlossaryTermType: String, Codable, Sendable, CaseIterable {
 }
 
 /// One canonical spelling and the ASR mis-hearings that should be corrected to it.
-/// A term with no variants is bias-only (contributes a hotword, drives no find/replace).
+/// A term with no variants only protects its canonical spelling (drives no find/replace).
 struct GlossaryTerm: Codable, Sendable, Equatable {
     var canonical: String
     var variants: [String]

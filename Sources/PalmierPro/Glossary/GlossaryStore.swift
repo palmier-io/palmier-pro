@@ -14,15 +14,21 @@ enum GlossaryScope: String, Codable, Sendable, CaseIterable {
     /// Resolution order, weakest first.
     static let precedence: [GlossaryScope] = [.global, .library, .project]
 
+    /// Test seam: redirects the process-global library/global roots to an isolated directory. nil in
+    /// production (real user paths). Task-local so parallel tests each get their own root with no race.
+    @TaskLocal static var sharedRootOverride: URL?
+
     /// The glossary.json for this scope, or nil when unavailable (e.g. project scope with no open project).
     func fileURL(projectURL: URL?) -> URL? {
         switch self {
         case .global:
-            return FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent(".config/glossary/global.json", isDirectory: false)
+            let root = Self.sharedRootOverride
+                ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/glossary", isDirectory: true)
+            return root.appendingPathComponent("global.json", isDirectory: false)
         case .library:
             // No cross-project media-library root exists; the shared storage dir is the closest concept.
-            return Project.storageDirectory.appendingPathComponent("glossary.json", isDirectory: false)
+            let root = Self.sharedRootOverride ?? Project.storageDirectory
+            return root.appendingPathComponent("glossary.json", isDirectory: false)
         case .project:
             return projectURL?.appendingPathComponent("glossary.json", isDirectory: false)
         }
@@ -117,28 +123,6 @@ struct GlossaryStore: Sendable {
         warnings + sanitizedAutoApply().warnings
     }
 
-    /// Canonicals that should bias the decoder (auto-apply confidences only). §4
-    func hotwordTerms() -> [String] {
-        autoApplyTerms.map(\.canonical).sorted()
-    }
-
-    /// Stable fingerprint of the biasing terms, for salting a transcription cache key so changed
-    /// hotwords force a fresh transcription. §4
-    func biasFingerprint() -> String {
-        let material = autoApplyTerms
-            .map { "\($0.canonical)=\($0.variants.sorted().joined(separator: ","))" }
-            .sorted()
-            .joined(separator: "\n")
-        guard !material.isEmpty else { return "none" }
-        let digest = SHA256.hash(data: Data(material.utf8))
-        return digest.map { String(format: "%02x", $0) }.joined().prefix(16).description
-    }
-
-    /// Publish this store's hotwords to the transcription engines (TranscriptionBias). Call from
-    /// project-aware paths before transcribing and after any glossary write. §4
-    func applyBias() {
-        TranscriptionBias.update(hotwords: hotwordTerms(), fingerprint: biasFingerprint())
-    }
 
     // MARK: - Per-scope reads/writes
 

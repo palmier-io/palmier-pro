@@ -110,7 +110,7 @@ struct GlossaryTests {
         defer { try? FileManager.default.removeItem(at: dir) }
         try Data("{ not json ".utf8).write(to: dir.appendingPathComponent("glossary.json"))
 
-        let store = GlossaryStore.load(projectURL: dir)
+        let store = GlossaryScope.$sharedRootOverride.withValue(dir) { GlossaryStore.load(projectURL: dir) }
         #expect(!store.warnings.isEmpty)
         #expect(store.corrector().isEmpty)
         let raw = result(text: "陈娘娘", segments: ["陈娘娘"], words: ["陈娘娘"])
@@ -136,7 +136,7 @@ struct GlossaryTests {
         let json = #"{"version":1,"terms":[{"canonical":"狮","variants":["师"],"provenance":"user","confidence":"declared"}]}"#
         try Data(json.utf8).write(to: dir.appendingPathComponent("glossary.json"))
 
-        let store = GlossaryStore.load(projectURL: dir)
+        let store = GlossaryScope.$sharedRootOverride.withValue(dir) { GlossaryStore.load(projectURL: dir) }
         #expect(store.corrector().correct("我的老师说") == "我的老师说")
         // The drop is surfaced so a hand-author can see why the entry didn't apply.
         #expect(store.allWarnings().contains { $0.contains("师") && $0.contains("狮") })
@@ -184,14 +184,15 @@ struct GlossaryTests {
         doc.terms.append(term("陈嬢嬢", ["陈娘娘"]))
         try GlossaryStore.write(doc, scope: .project, projectURL: dir)
 
-        let reloaded = GlossaryStore.load(projectURL: dir)
+        let reloaded = GlossaryScope.$sharedRootOverride.withValue(dir) { GlossaryStore.load(projectURL: dir) }
         #expect(reloaded.corrector().correct("陈娘娘") == "陈嬢嬢")
 
         // Removing it clears the correction.
         var after = try GlossaryStore.read(scope: .project, projectURL: dir)
         after.terms.removeAll { $0.canonical == "陈嬢嬢" }
         try GlossaryStore.write(after, scope: .project, projectURL: dir)
-        #expect(GlossaryStore.load(projectURL: dir).corrector().correct("陈娘娘") == "陈娘娘")
+        let cleared = GlossaryScope.$sharedRootOverride.withValue(dir) { GlossaryStore.load(projectURL: dir) }
+        #expect(cleared.corrector().correct("陈娘娘") == "陈娘娘")
     }
 
     @Test func projectScopeUnavailableWithoutProject() {
@@ -200,15 +201,4 @@ struct GlossaryTests {
         }
     }
 
-    // MARK: - Fingerprint
-
-    @Test func biasFingerprintIsStableAndSensitive() {
-        // Variants must clear the §5.4 length floor or read-time sanitization strips them.
-        let a = GlossaryStore(layers: [.init(scope: .project, document: GlossaryDocument(terms: [term("Xterm", ["variantone"])]))], warnings: [])
-        let b = GlossaryStore(layers: [.init(scope: .project, document: GlossaryDocument(terms: [term("Xterm", ["variantone"])]))], warnings: [])
-        let c = GlossaryStore(layers: [.init(scope: .project, document: GlossaryDocument(terms: [term("Xterm", ["varianttwo"])]))], warnings: [])
-        #expect(a.biasFingerprint() == b.biasFingerprint())
-        #expect(a.biasFingerprint() != c.biasFingerprint())
-        #expect(a.hotwordTerms() == ["Xterm"])
-    }
 }
