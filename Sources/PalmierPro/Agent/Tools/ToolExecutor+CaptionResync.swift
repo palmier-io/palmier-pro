@@ -16,8 +16,16 @@ extension ToolExecutor {
         // Resolve the spans to rebuild: an explicit group, an explicit range, their intersection,
         // or — when neither is given — every caption group in the project.
         let groupId = args.string("captionGroupId")
-        let rangeStart = args["startFrame"] as? Int
-        let rangeEnd = args["endFrame"] as? Int
+        // args.int handles MCP numeric shapes (Double-encoded ints); a raw `as? Int` cast would
+        // silently drop the window and fall through to every caption group.
+        let rangeStart = args.int("startFrame")
+        let rangeEnd = args.int("endFrame")
+        if args.keys.contains("startFrame"), rangeStart == nil {
+            throw ToolError("resync_captions: startFrame must be an integer frame")
+        }
+        if args.keys.contains("endFrame"), rangeEnd == nil {
+            throw ToolError("resync_captions: endFrame must be an integer frame")
+        }
         if let s = rangeStart, let e = rangeEnd, e <= s {
             throw ToolError("resync_captions: endFrame must be greater than startFrame")
         }
@@ -30,8 +38,11 @@ extension ToolExecutor {
             if let lo = clips.map(\.startFrame).min(), let hi = clips.map(\.endFrame).max(), hi > lo {
                 spans.append(lo..<hi)
             }
-        } else if let s = rangeStart, let e = rangeEnd {
-            spans.append(s..<e)
+        } else if rangeStart != nil || rangeEnd != nil {
+            // One-sided windows are valid: missing side spans to the timeline edge.
+            let s = rangeStart ?? 0
+            let e = rangeEnd ?? max(s + 1, editor.timeline.totalFrames)
+            if e > s { spans.append(s..<e) }
         } else {
             let groups = Set(editor.timeline.tracks.flatMap(\.clips)
                 .filter { $0.mediaType == .text }.compactMap(\.captionGroupId))
@@ -43,8 +54,10 @@ extension ToolExecutor {
                 }
             }
         }
-        // Clip the resolved spans to the requested window when both a group and a range are given.
-        if groupId != nil, let s = rangeStart, let e = rangeEnd {
+        // Clip the resolved spans to the requested window when a group and a range are given.
+        if groupId != nil, rangeStart != nil || rangeEnd != nil {
+            let s = rangeStart ?? 0
+            let e = rangeEnd ?? Int.max
             spans = spans.compactMap { span in
                 let lo = max(span.lowerBound, s), hi = min(span.upperBound, e)
                 return lo < hi ? lo..<hi : nil

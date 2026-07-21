@@ -454,3 +454,33 @@ private func timeline(_ tracks: [Track]) -> Timeline {
         #expect(listing() == before)   // TranscriptCache directory untouched — resync never writes L1/L2.
     }
 }
+
+// A clean caption over a source whose transcript is not cached must be PRESERVED, not deleted —
+// the empty word span is a missing read, not a speech cut. A genuinely-cached empty span still removes.
+@MainActor
+@Suite struct CaptionResyncColdCacheTests {
+    @Test func uncachedRefPreservesCaptionInsteadOfDeleting() {
+        let caption = captionClip(id: "cap", start: 0, duration: 90, text: "开照片", generatedText: "开照片")
+        let tl = timeline([Fixtures.videoTrack(clips: [caption])])
+        let src = FakeWordSource(words: [], uncached: ["m"])
+
+        let plan = CaptionResyncEngine.plan(
+            timeline: tl, triggerSpans: [0..<90], trigger: "Trim Clip", fps: 30,
+            policy: .preserve, wordSource: src, chunk: singleChunk)
+
+        #expect(plan.removals.isEmpty)
+        #expect(plan.report.conflicts.contains { $0.clipId == "cap" && $0.newTranscript.contains("not cached") })
+    }
+
+    @Test func cachedEmptySpanStillRemovesCaption() {
+        let caption = captionClip(id: "cap", start: 0, duration: 90, text: "开照片", generatedText: "开照片")
+        let tl = timeline([Fixtures.videoTrack(clips: [caption])])
+        let src = FakeWordSource(words: [], uncached: [])
+
+        let plan = CaptionResyncEngine.plan(
+            timeline: tl, triggerSpans: [0..<90], trigger: "Trim Clip", fps: 30,
+            policy: .preserve, wordSource: src, chunk: singleChunk)
+
+        #expect(plan.removals == ["cap"])
+    }
+}

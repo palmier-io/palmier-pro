@@ -101,7 +101,8 @@ enum CaptionResyncEngine {
 
             var removedIds = Set<String>()
             for clip in captionClips {
-                resolveClip(clip, words: words, policy: policy, into: &plan, removed: &removedIds)
+                let uncached = !wordSource.uncachedRefs(in: clip.startFrame..<clip.endFrame).isEmpty
+                resolveClip(clip, words: words, policy: policy, uncached: uncached, into: &plan, removed: &removedIds)
             }
 
             createUncovered(
@@ -115,11 +116,21 @@ enum CaptionResyncEngine {
     // MARK: - Per-clip REPLACE / REMOVE / conflict
 
     private static func resolveClip(
-        _ clip: Clip, words: [WordTiming], policy: CaptionConflictPolicy,
+        _ clip: Clip, words: [WordTiming], policy: CaptionConflictPolicy, uncached: Bool,
         into plan: inout CaptionResyncPlan, removed: inout Set<String>
     ) {
         let clipWords = words.filter { $0.startFrame < clip.endFrame && $0.endFrame > clip.startFrame }
         let current = clip.textContent ?? ""
+
+        // A ref without a cached transcript yields empty/partial words that mean "missing read",
+        // not "speech cut" — destructive resolution here would silently delete or shrink the
+        // caption. Preserve it and surface a conflict instead.
+        if uncached {
+            plan.report.conflicts.append(.init(
+                clipId: clip.id, manualText: current,
+                newTranscript: "(transcript not cached — resync skipped; run resync_captions after transcription completes)"))
+            return
+        }
 
         guard !clipWords.isEmpty else {
             plan.removals.append(clip.id)

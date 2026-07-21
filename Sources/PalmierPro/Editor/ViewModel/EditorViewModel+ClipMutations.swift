@@ -239,6 +239,11 @@ extension EditorViewModel {
                 setClipSpeed(at: loc, newSpeed: newSpeed, ripple: ripple)
             }
         }
+        // Speed remaps source↔timeline for every word under the clip — captions must follow,
+        // inside the same undo swap (registration happens below).
+        undo.withoutRegistration {
+            resyncCaptionsAfterSwap(before: before, trigger: "Change Speed")
+        }
         let after = timeline
         preDragTimeline = nil
         for id in ids { dragBefore.removeValue(forKey: id) }
