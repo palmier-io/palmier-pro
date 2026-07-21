@@ -3,9 +3,13 @@ import CoreText
 import SwiftUI
 
 struct TextStyle: Codable, Sendable, Equatable, Hashable {
+    static let axisScaleRange = 0.1...10.0
+
     var fontName: String = "Helvetica-Bold"
     var fontSize: Double = 96
     var fontScale: Double = 1.0
+    var widthScale: Double = 1.0
+    var heightScale: Double = 1.0
     var tracking: Double = 0
     var lineSpacing: Double = 0
     var fontCase: FontCase = .mixed
@@ -143,7 +147,7 @@ struct TextStyle: Codable, Sendable, Equatable, Hashable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case fontName, fontSize, fontScale, tracking, lineSpacing, fontCase
+        case fontName, fontSize, fontScale, widthScale, heightScale, tracking, lineSpacing, fontCase
         case isBold, isItalic, isUnderlined, isStruckThrough, isOverlined
         case color, alignment, shadow, background, border
     }
@@ -160,6 +164,8 @@ extension TextStyle {
             fontName: fontName,
             fontSize: fontSize,
             fontScale: (try? c.decode(Double.self, forKey: .fontScale)) ?? 1.0,
+            widthScale: (try? c.decode(Double.self, forKey: .widthScale)) ?? 1.0,
+            heightScale: (try? c.decode(Double.self, forKey: .heightScale)) ?? 1.0,
             tracking: (try? c.decode(Double.self, forKey: .tracking)) ?? 0,
             lineSpacing: (try? c.decode(Double.self, forKey: .lineSpacing)) ?? 0,
             fontCase: (try? c.decode(FontCase.self, forKey: .fontCase)) ?? .mixed,
@@ -260,7 +266,13 @@ extension TextStyle {
 
     func resolvedFont(size: CGFloat) -> NSFont {
         let base = NSFont(name: fontName, size: size) ?? NSFont.systemFont(ofSize: size)
-        return Self.font(base, size: size, bold: isBold, italic: isItalic)
+        let resolved = Self.font(base, size: size, bold: isBold, italic: isItalic)
+        guard widthScale != 1 || heightScale != 1 else { return resolved }
+        var transform = CGAffineTransform(
+            scaleX: CGFloat(widthScale),
+            y: CGFloat(heightScale)
+        )
+        return CTFontCreateCopyWithAttributes(resolved as CTFont, size, &transform, nil) as NSFont
     }
 
     var nsColor: NSColor { color.nsColor }

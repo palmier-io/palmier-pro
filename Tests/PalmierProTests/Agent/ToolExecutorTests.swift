@@ -1807,6 +1807,18 @@ struct ToolExecutorTextFolderTests {
 
     // MARK: - add_texts
 
+    @Test func updateTextSchemaExposesIndependentTextScale() throws {
+        let tool = try #require(ToolDefinitions.mcpServer.first { $0.name == .updateText })
+        let properties = try #require(tool.inputSchema["properties"] as? [String: [String: Any]])
+        let style = try #require(properties["style"])
+        let styleProperties = try #require(style["properties"] as? [String: [String: Any]])
+
+        #expect((styleProperties["widthScale"]?["minimum"] as? NSNumber)?.doubleValue == 0.1)
+        #expect((styleProperties["widthScale"]?["maximum"] as? NSNumber)?.doubleValue == 10)
+        #expect((styleProperties["heightScale"]?["minimum"] as? NSNumber)?.doubleValue == 0.1)
+        #expect((styleProperties["heightScale"]?["maximum"] as? NSNumber)?.doubleValue == 10)
+    }
+
     @Test func addTextsCreatesNewTrackWhenIndexOmitted() async throws {
         let h = ToolHarness()
         let initialTrackCount = h.editor.timeline.tracks.count
@@ -1855,6 +1867,8 @@ struct ToolExecutorTextFolderTests {
                 "content": "Styled",
                 "style": [
                     "fontSize": 54,
+                    "widthScale": 1.5,
+                    "heightScale": 0.8,
                     "tracking": 5,
                     "lineSpacing": 12,
                     "fontCase": "uppercase",
@@ -1881,6 +1895,8 @@ struct ToolExecutorTextFolderTests {
         #expect(result.isError == false, "\(ToolHarness.textOf(result))")
         let style = h.editor.timeline.tracks[0].clips[0].textStyle
         #expect(style?.fontSize == 54)
+        #expect(style?.widthScale == 1.5)
+        #expect(style?.heightScale == 0.8)
         #expect(style?.tracking == 5)
         #expect(style?.lineSpacing == 12)
         #expect(style?.fontCase == .uppercase)
@@ -1911,6 +1927,23 @@ struct ToolExecutorTextFolderTests {
             ]]
         ])
         #expect(result.isError)
+    }
+
+    @Test func addTextsRejectsOutOfRangeTextScale() async {
+        let h = ToolHarness()
+        _ = h.editor.insertTrack(at: 0, type: .video)
+        let result = await h.runRaw("add_texts", args: [
+            "entries": [[
+                "trackIndex": 0,
+                "startFrame": 0,
+                "endFrame": 60,
+                "content": "Invalid",
+                "style": ["widthScale": 0],
+            ]]
+        ])
+
+        #expect(result.isError)
+        #expect(h.editor.timeline.tracks[0].clips.isEmpty)
     }
 
     @Test func addTextsRejectsAudioTargetTrack() async throws {
