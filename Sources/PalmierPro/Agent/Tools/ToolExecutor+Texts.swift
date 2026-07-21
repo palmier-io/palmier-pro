@@ -55,6 +55,8 @@ struct ParsedTextBackgroundPatch {
 struct ParsedTextStylePatch {
     let fontName: String?
     let fontSize: Double?
+    let widthScale: Double?
+    let heightScale: Double?
     let isBold: Bool?
     let isItalic: Bool?
     let isUnderlined: Bool?
@@ -70,7 +72,8 @@ struct ParsedTextStylePatch {
     let background: ParsedTextBackgroundPatch?
 
     var hasAnyField: Bool {
-        fontName != nil || fontSize != nil || isBold != nil || isItalic != nil
+        fontName != nil || fontSize != nil || widthScale != nil || heightScale != nil
+            || isBold != nil || isItalic != nil
             || isUnderlined != nil || isStruckThrough != nil || isOverlined != nil
             || tracking != nil || lineSpacing != nil || fontCase != nil
             || color != nil || alignment != nil || outline?.hasAnyField == true
@@ -78,7 +81,8 @@ struct ParsedTextStylePatch {
     }
 
     var affectsLayout: Bool {
-        fontName != nil || fontSize != nil || isBold != nil || isItalic != nil
+        fontName != nil || fontSize != nil || widthScale != nil || heightScale != nil
+            || isBold != nil || isItalic != nil
             || tracking != nil || lineSpacing != nil || fontCase != nil
             || outline?.affectsLayout == true || shadow?.affectsLayout == true
             || background?.affectsLayout == true
@@ -119,7 +123,8 @@ extension ToolExecutor {
         try validateUnknownKeys(
             args,
             allowed: [
-                "fontName", "fontSize", "bold", "italic", "underline", "strikethrough", "overline",
+                "fontName", "fontSize", "widthScale", "heightScale",
+                "bold", "italic", "underline", "strikethrough", "overline",
                 "tracking", "lineSpacing", "fontCase",
                 "color", "alignment", "outline", "shadow", "background",
             ],
@@ -133,6 +138,8 @@ extension ToolExecutor {
         return ParsedTextStylePatch(
             fontName: try optionalString(args, key: "fontName", path: path),
             fontSize: try optionalNumber(args, key: "fontSize", path: path, range: 12...300),
+            widthScale: try optionalNumber(args, key: "widthScale", path: path, range: TextStyle.axisScaleRange),
+            heightScale: try optionalNumber(args, key: "heightScale", path: path, range: TextStyle.axisScaleRange),
             isBold: try optionalBool(args, key: "bold", path: path),
             isItalic: try optionalBool(args, key: "italic", path: path),
             isUnderlined: try optionalBool(args, key: "underline", path: path),
@@ -277,6 +284,8 @@ extension ToolExecutor {
     static func applyTextStylePatch(_ patch: ParsedTextStylePatch, to style: inout TextStyle) {
         if let f = patch.fontName { style.fontName = f }
         if let s = patch.fontSize { style.fontSize = s }
+        if let s = patch.widthScale { style.widthScale = s }
+        if let s = patch.heightScale { style.heightScale = s }
         if let b = patch.isBold { style.isBold = b }
         if let i = patch.isItalic { style.isItalic = i }
         if let u = patch.isUnderlined { style.isUnderlined = u }

@@ -473,7 +473,7 @@ enum FCPXMLExporter {
                     FCPXMLNode(name: "text-style", attributes: textStyleAttributes(for: style)),
                 ]),
             ]
-            textNodes += titleTransformNodes(for: clip.transform)
+            textNodes += titleTransformNodes(for: clip.transform, style: style)
             if let blend = blendNode(for: clip) { textNodes.append(blend) }
             return FCPXMLNode(name: "title", attributes: [
                 ("ref", titleEffectId),
@@ -892,11 +892,11 @@ enum FCPXMLExporter {
             return attrs
         }
 
-        private func titleTransformNodes(for transform: Transform) -> [FCPXMLNode] {
+        private func titleTransformNodes(for transform: Transform, style: TextStyle) -> [FCPXMLNode] {
             [
                 FCPXMLNode(name: "adjust-conform", attributes: [("type", "fit")]),
                 FCPXMLNode(name: "adjust-transform", attributes: [
-                    ("scale", "1 1"),
+                    ("scale", "\(formatNumber(style.widthScale)) \(formatNumber(style.heightScale))"),
                     ("anchor", "0 0"),
                     ("position", positionValue(for: transform)),
                 ]),

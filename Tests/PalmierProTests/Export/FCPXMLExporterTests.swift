@@ -831,6 +831,21 @@ struct FCPXMLExporterTests {
         #expect(!xml.contains("strokeWidth="))
     }
 
+    @Test func textScaleExportsAsIndependentTitleTransform() async throws {
+        let (resolver, tmpDir) = try makeResolver(entries: [])
+        var text = Fixtures.clip(id: "title", mediaRef: "text", mediaType: .text, start: 0, duration: 60)
+        text.textContent = "WIDE"
+        var style = TextStyle()
+        style.widthScale = 1.5
+        style.heightScale = 0.75
+        text.textStyle = style
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [text])])
+
+        let xml = try await export(timeline, resolver: resolver, tmpDir: tmpDir)
+
+        #expect(xml.contains("<adjust-transform scale=\"1.5 0.75\" anchor=\"0 0\" position=\"0 0\"/>"))
+    }
+
     @Test func titleFontSizeDoesNotScaleWithSequenceHeight() async throws {
         let (resolver, tmpDir) = try makeResolver(entries: [])
         var text = Fixtures.clip(id: "title", mediaRef: "text", mediaType: .text, start: 0, duration: 60)

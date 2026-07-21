@@ -1089,6 +1089,8 @@ enum ToolDefinitions {
                 "properties": [
                     "fontName": ["type": "string", "description": "Font PostScript name."],
                     "fontSize": ["type": "number", "minimum": 12, "maximum": 300, "description": "Font size in canvas points."],
+                    "widthScale": ["type": "number", "minimum": TextStyle.axisScaleRange.lowerBound, "maximum": TextStyle.axisScaleRange.upperBound, "description": "Glyph width multiplier. 1 preserves the font's original width."],
+                    "heightScale": ["type": "number", "minimum": TextStyle.axisScaleRange.lowerBound, "maximum": TextStyle.axisScaleRange.upperBound, "description": "Glyph height multiplier. 1 preserves the font's original height."],
                     "bold": ["type": "boolean", "description": "Bold font trait."],
                     "italic": ["type": "boolean", "description": "Italic font trait."],
                     "underline": ["type": "boolean", "description": "Draw a line below the text."],
