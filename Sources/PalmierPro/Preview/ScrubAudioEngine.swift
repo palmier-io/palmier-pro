@@ -190,6 +190,16 @@ final class ScrubAudioEngine {
         }
     }
 
+    func stopPlaybackMetering() {
+        latestMeterSample = nil
+        if latestRequest == nil {
+            decodeTask?.cancel()
+            decodeTask = nil
+            pendingDecodeRange = nil
+        }
+        meter.reset()
+    }
+
     func stopScrubbing() {
         resetScrubState()
         output.stop()
