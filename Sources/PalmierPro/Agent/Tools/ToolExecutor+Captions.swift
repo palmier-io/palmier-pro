@@ -11,22 +11,21 @@ extension ToolExecutor {
 
         let profile = CaptionStyleStore.resolve(projectPackageURL: editor.projectURL).profile
 
-        // Explicit style/maxWords/transform params always win; the profile fills only when absent.
+        // Explicit style/maxWords/transform params always win FIELD-WISE; the profile fills every
+        // field the caller left unspecified (a partial style must not discard the whole profile).
         let stylePatch = try parseTextStylePatch(args, path: "add_captions")
         var style = TextStyle(fontSize: AppTheme.Caption.defaultFontSize)
+        Self.applyProfileTypography(profile.typography, to: &style)
         if let stylePatch {
             Self.applyTextStylePatch(stylePatch, to: &style)
-        } else {
-            Self.applyProfileTypography(profile.typography, to: &style)
         }
 
         var center = AppTheme.Caption.defaultCenter
+        if let position = profile.typography.position { center = CGPoint(x: position.x, y: position.y) }
         if let t = args["transform"] as? [String: Any] {
             try validateUnknownKeys(t, allowed: ["centerX", "centerY"], path: "add_captions.transform")
             if let x = t.double("centerX") { center.x = CGFloat(x) }
             if let y = t.double("centerY") { center.y = CGFloat(y) }
-        } else if let position = profile.typography.position {
-            center = CGPoint(x: position.x, y: position.y)
         }
 
         let animation = try parseTextAnimation(preset: args.string("animation"), highlightColor: args.string("highlightColor"), path: "add_captions") ?? TextAnimation()

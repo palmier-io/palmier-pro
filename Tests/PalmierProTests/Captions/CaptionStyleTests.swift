@@ -207,3 +207,21 @@ struct CaptionStyleTests {
         return url
     }
 }
+
+// Review regressions: a partial explicit style must not discard the rest of the profile, and
+// removeAlways must match single-character CJK fillers inside unsegmented phrase text.
+@Suite struct CaptionStyleReviewRegressionTests {
+    @Test func cjkFillerStrippedFromUnsegmentedPhrase() {
+        var profile = CaptionStyleProfile.builtInDefault
+        profile.fillers.removeAlways = ["呃"]
+        let policy = FillerPolicy(profile: profile)
+        let phrase = CaptionBuilder.Phrase(text: "呃你好 ok", start: 0, end: 1)
+        let stripped = policy.strippingRemoveAlways(phrase)
+        #expect(stripped?.text == "你好 ok")
+    }
+
+    @Test func fallbackTokensSplitCJKKeepLatinRuns() {
+        #expect(FillerPolicy.fallbackTokens("呃你好 hello there") == ["呃", "你", "好", "hello", "there"])
+        #expect(FillerPolicy.joinTokens(["你", "好", "hello"]) == "你好 hello")
+    }
+}

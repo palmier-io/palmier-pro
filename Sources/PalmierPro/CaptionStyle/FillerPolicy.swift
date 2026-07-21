@@ -103,12 +103,54 @@ struct FillerPolicy: Sendable {
             let text = kept.map(\.text).joined(separator: " ")
             return CaptionBuilder.Phrase(text: text, start: first.start, end: last.end, words: kept)
         }
-        let tokens = phrase.text.split(whereSeparator: \.isWhitespace).map(String.init)
+        // Whitespace splitting misses unsegmented CJK ("呃你好" arrives as one token, so a
+        // single-character removeAlways entry like 呃 never matches). Split CJK per character,
+        // keep Latin whitespace runs whole, and rejoin without spaces inside CJK runs.
+        let tokens = Self.fallbackTokens(phrase.text)
         guard !tokens.isEmpty else { return phrase }
         let actions = plan(words: tokens)
         let kept = zip(tokens, actions).filter { $0.1.decision != .remove }.map(\.0)
         guard !kept.isEmpty else { return nil }
-        return CaptionBuilder.Phrase(text: kept.joined(separator: " "), start: phrase.start, end: phrase.end)
+        return CaptionBuilder.Phrase(text: Self.joinTokens(kept), start: phrase.start, end: phrase.end)
+    }
+
+    private static func isCJKScalar(_ scalar: Unicode.Scalar) -> Bool {
+        let value = Int(scalar.value)
+        return ((0x2E80...0x9FFF).contains(value) && !(0x3000...0x303F).contains(value))
+            || (0xF900...0xFAFF).contains(value)
+    }
+
+    private static func isCJKToken(_ token: String) -> Bool {
+        token.count == 1 && token.unicodeScalars.allSatisfy(isCJKScalar)
+    }
+
+    static func fallbackTokens(_ text: String) -> [String] {
+        var tokens: [String] = []
+        var latin = ""
+        for ch in text {
+            if ch.isWhitespace {
+                if !latin.isEmpty { tokens.append(latin); latin = "" }
+            } else if ch.unicodeScalars.allSatisfy(isCJKScalar) {
+                if !latin.isEmpty { tokens.append(latin); latin = "" }
+                tokens.append(String(ch))
+            } else {
+                latin.append(ch)
+            }
+        }
+        if !latin.isEmpty { tokens.append(latin) }
+        return tokens
+    }
+
+    static func joinTokens(_ tokens: [String]) -> String {
+        var out = ""
+        var prevCJK = false
+        for token in tokens {
+            let cjk = isCJKToken(token)
+            if !out.isEmpty, !(cjk && prevCJK) { out += " " }
+            out += token
+            prevCJK = cjk
+        }
+        return out
     }
 
     // MARK: - Helpers
