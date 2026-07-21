@@ -35,6 +35,136 @@
 "Agent" = "Agent";
 "Skills" = "Skills";
 "Storage" = "Storage";
+"Notifications" = "Notifications";
+"Privacy & Diagnostics" = "Privacy & Diagnostics";
 
 /* Alerts */
 "Projects Couldn't Be Deleted" = "Projects Couldn't Be Deleted";
+
+/* Editor — Title Bar */
+"Export" = "Export";
+"Export (⌘E)" = "Export (⌘E)";
+"Toggle Agent Panel" = "Toggle Agent Panel";
+
+/* Editor — Toolbar */
+"Pointer (V)" = "Pointer (V)";
+"Razor (C)" = "Razor (C)";
+"Trim (T)" = "Trim (T)";
+"Split at Playhead (⌘K)" = "Split at Playhead (⌘K)";
+"Trim Start to Playhead (Q)" = "Trim Start to Playhead (Q)";
+"Trim End to Playhead (W)" = "Trim End to Playhead (W)";
+"Undo (⌘Z)" = "Undo (⌘Z)";
+"Redo (⇧⌘Z)" = "Redo (⇧⌘Z)";
+"Add Text" = "Add Text";
+"Zoom In" = "Zoom In";
+"Zoom Out" = "Zoom Out";
+
+/* Editor — Media Panel Tabs */
+"Media" = "Media";
+"Audio" = "Audio";
+"Captions" = "Captions";
+
+/* Editor — Inspector Panel — Project */
+"Project" = "Project";
+"Name" = "Name";
+"Path" = "Path";
+"Duration" = "Duration";
+"Resolution" = "Resolution";
+"Frame Rate" = "Frame Rate";
+"Aspect Ratio" = "Aspect Ratio";
+
+/* Editor — Inspector Panel — Clip Properties */
+"Content" = "Content";
+"Type" = "Type";
+"Video" = "Video";
+"Speed" = "Speed";
+"Opacity" = "Opacity";
+"Blend Mode" = "Blend Mode";
+"Blend" = "Blend";
+"Transform" = "Transform";
+"Position" = "Position";
+"Rotation" = "Rotation";
+"Scale" = "Scale";
+"Dimensions" = "Dimensions";
+"Size" = "Size";
+"Crop" = "Crop";
+"Flip" = "Flip";
+"Flip Horizontal" = "Flip Horizontal";
+"Flip Vertical" = "Flip Vertical";
+"Flip horizontally" = "Flip horizontally";
+"Flip vertically" = "Flip vertically";
+
+/* Editor — Inspector Panel — Effects */
+"Effects" = "Effects";
+"Adjust" = "Adjust";
+"Blur" = "Blur";
+"Detail" = "Detail";
+"Curves" = "Curves";
+"Vignette" = "Vignette";
+"Glow" = "Glow";
+"Film Grain" = "Film Grain";
+"Motion Blur" = "Motion Blur";
+"Color Wheels" = "Color Wheels";
+"Hue Curves" = "Hue Curves";
+"Chroma Key" = "Chroma Key";
+"Image Adjustment" = "Image Adjustment";
+"LUTs" = "LUTs";
+
+/* Editor — Inspector Panel — AI & Generation */
+"AI Edit" = "AI Edit";
+"Model" = "Model";
+"Prompt" = "Prompt";
+"References" = "References";
+"Generated" = "Generated";
+"Multicam" = "Multicam";
+"Animate" = "Animate";
+
+/* Editor — Inspector Panel — Keyframes */
+"Keyframes" = "Keyframes";
+"Add keyframe at playhead" = "Add keyframe at playhead";
+"Remove keyframe at playhead" = "Remove keyframe at playhead";
+"Go to next keyframe" = "Go to next keyframe";
+"Go to previous keyframe" = "Go to previous keyframe";
+"Show keyframe timeline" = "Show keyframe timeline";
+"Hide keyframe timeline" = "Hide keyframe timeline";
+
+/* Editor — Inspector Panel — Playback */
+"Playback" = "Playback";
+"File" = "File";
+
+/* Editor — Inspector Panel — Crop */
+"Choose a crop aspect" = "Choose a crop aspect";
+"Crop applies to one clip at a time" = "Crop applies to one clip at a time";
+"Edit crop on canvas" = "Edit crop on canvas";
+"Stop editing crop on canvas" = "Stop editing crop on canvas";
+
+/* Editor — Inspector Panel — Flip */
+"Remove horizontal flip" = "Remove horizontal flip";
+"Remove vertical flip" = "Remove vertical flip";
+
+/* Editor — Inspector Panel — Reset Actions */
+"Reset Opacity" = "Reset Opacity";
+"Reset Blend Mode" = "Reset Blend Mode";
+"Reset Transform" = "Reset Transform";
+"Reset Position" = "Reset Position";
+"Reset Rotation" = "Reset Rotation";
+"Reset Scale" = "Reset Scale";
+"Reset Flip" = "Reset Flip";
+"Reset Edge Rounding" = "Reset Edge Rounding";
+"Reset Edge Softness" = "Reset Edge Softness";
+"Reset Image Adjustment" = "Reset Image Adjustment";
+
+/* Editor — Inspector Panel — Edge */
+"Edge Rounding" = "Edge Rounding";
+"Edge Softness" = "Edge Softness";
+"Change Edge Rounding" = "Change Edge Rounding";
+"Change Edge Softness" = "Change Edge Softness";
+"Change Opacity" = "Change Opacity";
+"Change Scale" = "Change Scale";
+
+/* Editor — Inspector Panel — Misc */
+"Details" = "Details";
+"Copied" = "Copied";
+"Copy prompt" = "Copy prompt";
+"Select a single clip to enable" = "Select a single clip to enable";
+"Move playhead inside the clip" = "Move playhead inside the clip";

@@ -35,6 +35,136 @@
 "Agent" = "智能体";
 "Skills" = "技能";
 "Storage" = "存储";
+"Notifications" = "通知";
+"Privacy & Diagnostics" = "隐私与诊断";
 
 /* Alerts */
 "Projects Couldn't Be Deleted" = "项目无法删除";
+
+/* Editor — Title Bar */
+"Export" = "导出";
+"Export (⌘E)" = "导出 (⌘E)";
+"Toggle Agent Panel" = "切换智能体面板";
+
+/* Editor — Toolbar */
+"Pointer (V)" = "选择 (V)";
+"Razor (C)" = "剪切 (C)";
+"Trim (T)" = "裁剪 (T)";
+"Split at Playhead (⌘K)" = "在播放头处分割 (⌘K)";
+"Trim Start to Playhead (Q)" = "裁剪到播放头起始 (Q)";
+"Trim End to Playhead (W)" = "裁剪到播放头结束 (W)";
+"Undo (⌘Z)" = "撤销 (⌘Z)";
+"Redo (⇧⌘Z)" = "重做 (⇧⌘Z)";
+"Add Text" = "添加文字";
+"Zoom In" = "放大";
+"Zoom Out" = "缩小";
+
+/* Editor — Media Panel Tabs */
+"Media" = "媒体";
+"Audio" = "音频";
+"Captions" = "字幕";
+
+/* Editor — Inspector Panel — Project */
+"Project" = "项目";
+"Name" = "名称";
+"Path" = "路径";
+"Duration" = "时长";
+"Resolution" = "分辨率";
+"Frame Rate" = "帧率";
+"Aspect Ratio" = "宽高比";
+
+/* Editor — Inspector Panel — Clip Properties */
+"Content" = "内容";
+"Type" = "类型";
+"Video" = "视频";
+"Speed" = "速度";
+"Opacity" = "不透明度";
+"Blend Mode" = "混合模式";
+"Blend" = "混合";
+"Transform" = "变换";
+"Position" = "位置";
+"Rotation" = "旋转";
+"Scale" = "缩放";
+"Dimensions" = "尺寸";
+"Size" = "大小";
+"Crop" = "裁切";
+"Flip" = "翻转";
+"Flip Horizontal" = "水平翻转";
+"Flip Vertical" = "垂直翻转";
+"Flip horizontally" = "水平翻转";
+"Flip vertically" = "垂直翻转";
+
+/* Editor — Inspector Panel — Effects */
+"Effects" = "效果";
+"Adjust" = "调整";
+"Blur" = "模糊";
+"Detail" = "细节";
+"Curves" = "曲线";
+"Vignette" = "暗角";
+"Glow" = "辉光";
+"Film Grain" = "胶片颗粒";
+"Motion Blur" = "运动模糊";
+"Color Wheels" = "色轮";
+"Hue Curves" = "色相曲线";
+"Chroma Key" = "色度键";
+"Image Adjustment" = "图像调整";
+"LUTs" = "LUT 预设";
+
+/* Editor — Inspector Panel — AI & Generation */
+"AI Edit" = "AI 编辑";
+"Model" = "模型";
+"Prompt" = "提示词";
+"References" = "参考";
+"Generated" = "已生成";
+"Multicam" = "多机位";
+"Animate" = "动画";
+
+/* Editor — Inspector Panel — Keyframes */
+"Keyframes" = "关键帧";
+"Add keyframe at playhead" = "在播放头处添加关键帧";
+"Remove keyframe at playhead" = "移除播放头处的关键帧";
+"Go to next keyframe" = "跳转到下一关键帧";
+"Go to previous keyframe" = "跳转到上一关键帧";
+"Show keyframe timeline" = "显示关键帧时间线";
+"Hide keyframe timeline" = "隐藏关键帧时间线";
+
+/* Editor — Inspector Panel — Playback */
+"Playback" = "播放";
+"File" = "文件";
+
+/* Editor — Inspector Panel — Crop */
+"Choose a crop aspect" = "选择裁切比例";
+"Crop applies to one clip at a time" = "裁切一次仅适用于一个片段";
+"Edit crop on canvas" = "在画布上编辑裁切";
+"Stop editing crop on canvas" = "停止在画布上编辑裁切";
+
+/* Editor — Inspector Panel — Flip */
+"Remove horizontal flip" = "移除水平翻转";
+"Remove vertical flip" = "移除垂直翻转";
+
+/* Editor — Inspector Panel — Reset Actions */
+"Reset Opacity" = "重置不透明度";
+"Reset Blend Mode" = "重置混合模式";
+"Reset Transform" = "重置变换";
+"Reset Position" = "重置位置";
+"Reset Rotation" = "重置旋转";
+"Reset Scale" = "重置缩放";
+"Reset Flip" = "重置翻转";
+"Reset Edge Rounding" = "重置边缘圆角";
+"Reset Edge Softness" = "重置边缘柔化";
+"Reset Image Adjustment" = "重置图像调整";
+
+/* Editor — Inspector Panel — Edge */
+"Edge Rounding" = "边缘圆角";
+"Edge Softness" = "边缘柔化";
+"Change Edge Rounding" = "调整边缘圆角";
+"Change Edge Softness" = "调整边缘柔化";
+"Change Opacity" = "调整不透明度";
+"Change Scale" = "调整缩放";
+
+/* Editor — Inspector Panel — Misc */
+"Details" = "详情";
+"Copied" = "已复制";
+"Copy prompt" = "复制提示词";
+"Select a single clip to enable" = "选择单个片段以启用";
+"Move playhead inside the clip" = "将播放头移动到片段内";
