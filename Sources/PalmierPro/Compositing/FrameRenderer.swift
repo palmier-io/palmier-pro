@@ -2,7 +2,7 @@ import AVFoundation
 import CoreImage
 
 /// Composites a frame from a CompositorInstruction's layers with Core Image:
-/// per-layer crop → effects → transform → opacity, stacked bottom→top.
+/// per-layer crop → effects → corner mask → transform → opacity, stacked bottom→top.
 enum FrameRenderer {
 
     static func render(
@@ -252,7 +252,7 @@ enum FrameRenderer {
         )
     }
 
-    /// Crop → effects → transform → opacity, sampled from `layer.clip` at `frame`.
+    /// Crop → effects → corner mask → transform → opacity, sampled from `layer.clip` at `frame`.
     private static func applyClipPipeline(
         image input: CIImage,
         srcHeight: CGFloat,
@@ -290,6 +290,12 @@ enum FrameRenderer {
                 image = descriptor.render(image, effect: effect, atOffset: offset)
             }
         }
+
+        image = EdgeRoundingKernel.apply(
+            image,
+            edgeRounding: clip.edgeRounding,
+            edgeSoftness: clip.edgeSoftness
+        )
 
         let t = clip.transformAt(frame: frame)
         let av = layer.preferredTransform.concatenating(

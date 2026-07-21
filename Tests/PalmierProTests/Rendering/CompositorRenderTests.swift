@@ -120,6 +120,52 @@ extension CompositorRenderTests {
         #expect(!isBlack(f.at(300, 45)), "right side should still show content: \(f.at(300, 45))")
     }
 
+    @Test func edgeRoundingRevealsBackgroundAndPreservesInterior() async throws {
+        var foreground = CompositorFixtures.patternClip(id: "foreground")
+        foreground.edgeRounding = 1
+        var background = CompositorFixtures.patternClip(id: "background")
+        background.transform.flipHorizontal = true
+
+        let frame = try await Self.render(Self.timelineWith(
+            Fixtures.videoTrack(clips: [foreground]),
+            Fixtures.videoTrack(clips: [background])
+        ), frame: 15)
+
+        #expect(isGreen(frame.at(5, 5)), "edge rounding should reveal background: \(frame.at(5, 5))")
+        #expect(isRed(frame.tl), "interior should preserve foreground: \(frame.tl)")
+    }
+
+    @Test func edgeRoundingUsesVisibleCropBounds() async throws {
+        var foreground = CompositorFixtures.patternClip(id: "foreground")
+        foreground.crop = Crop(left: 0.25)
+        foreground.edgeRounding = 1
+        var background = CompositorFixtures.patternClip(id: "background")
+        background.transform.flipHorizontal = true
+
+        let frame = try await Self.render(Self.timelineWith(
+            Fixtures.videoTrack(clips: [foreground]),
+            Fixtures.videoTrack(clips: [background])
+        ), frame: 15)
+
+        #expect(isGreen(frame.at(82, 5)), "edge-rounded crop should reveal background: \(frame.at(82, 5))")
+        #expect(isRed(frame.at(100, 45)), "edge-rounded crop interior should preserve foreground: \(frame.at(100, 45))")
+    }
+
+    @Test func edgeSoftnessFeathersAlphaAndPreservesInterior() async throws {
+        var foreground = CompositorFixtures.patternClip(id: "foreground")
+        foreground.edgeSoftness = 0.25
+        var background = CompositorFixtures.patternClip(id: "background")
+        background.transform.flipHorizontal = true
+
+        let frame = try await Self.render(Self.timelineWith(
+            Fixtures.videoTrack(clips: [foreground]),
+            Fixtures.videoTrack(clips: [background])
+        ), frame: 15)
+
+        #expect(isGreen(frame.at(2, 45)), "soft edge should reveal background: \(frame.at(2, 45))")
+        #expect(isRed(frame.tl), "interior should preserve foreground: \(frame.tl)")
+    }
+
     @Test func cropKeyframedMidway() async throws {
         var clip = CompositorFixtures.patternClip()
         clip.cropTrack = KeyframeTrack(keyframes: [
@@ -244,7 +290,8 @@ extension CompositorRenderTests {
             CGImageDestinationAddImage(dest, ctx.makeImage()!, nil)
             #expect(CGImageDestinationFinalize(dest))
         }
-        let overlay = Fixtures.clip(id: "ov", mediaRef: "alpha-img", mediaType: .image, start: 0, duration: 60)
+        var overlay = Fixtures.clip(id: "ov", mediaRef: "alpha-img", mediaType: .image, start: 0, duration: 60)
+        overlay.edgeRounding = 1
         let f = try await Self.render(Self.timelineWith(
             Fixtures.videoTrack(clips: [overlay]),
             Fixtures.videoTrack(clips: [CompositorFixtures.patternClip(id: "bg")])

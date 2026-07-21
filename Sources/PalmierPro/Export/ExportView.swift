@@ -38,8 +38,8 @@ enum TimelineExportFormat: String, CaseIterable, Identifiable {
 
     var summary: String {
         switch self {
-        case .xmeml: "Older interchange format, best when Premiere Pro is the destination. Supports basic edits and keyframes, but not text, color, or effects."
-        case .fcpxml: "Newer timeline format with better support for DaVinci Resolve and Final Cut Pro. Supports basic edits, keyframes, and text, but not color or effects."
+        case .xmeml: "Older interchange format, best when Premiere Pro is the destination. Supports basic edits and keyframes, but not text, color, effects, edge softness, or edge rounding."
+        case .fcpxml: "Newer timeline format with better support for DaVinci Resolve and Final Cut Pro. Supports basic edits, keyframes, and text, but not color, effects, edge softness, or edge rounding."
         }
     }
 

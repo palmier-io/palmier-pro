@@ -175,7 +175,8 @@ extension EditorViewModel {
 
     /// Group-level looks that have no per-clip equivalent after decompose.
     private func carrierHasGroupLook(_ clip: Clip, child: Timeline) -> Bool {
-        clip.opacity != 1 || clip.crop != Crop() || clip.effects?.isEmpty == false
+        clip.opacity != 1 || clip.crop != Crop() || clip.edgeRounding != 0 || clip.edgeSoftness != 0
+            || clip.effects?.isEmpty == false
             || clip.fadeInFrames > 0 || clip.fadeOutFrames > 0 || clip.blendMode != nil
             || clip.opacityTrack != nil || clip.positionTrack != nil || clip.scaleTrack != nil
             || clip.rotationTrack != nil || clip.cropTrack != nil
