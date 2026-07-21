@@ -2277,7 +2277,7 @@ struct SetClipPropertiesTests {
 
     @Test func updateTextAnimationSetsGranularity() async {
         var clip = Fixtures.clip(id: "title", mediaRef: "text", mediaType: .text, start: 0, duration: 60)
-        clip.textContent = "重庆视频"
+        clip.textContent = "电影照片"
         let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])]))
 
         let result = await h.runRaw("update_text", args: [
@@ -2292,7 +2292,7 @@ struct SetClipPropertiesTests {
 
     @Test func updateTextAnimationDefaultsGranularityToWord() async {
         var clip = Fixtures.clip(id: "title", mediaRef: "text", mediaType: .text, start: 0, duration: 60)
-        clip.textContent = "重庆视频"
+        clip.textContent = "电影照片"
         let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])]))
 
         _ = await h.runRaw("update_text", args: ["clipIds": ["title"], "animation": "highlightPop"])
@@ -2391,18 +2391,18 @@ struct SetClipPropertiesTests {
     @Test func updateTextPromotionSurfacesUncachedResyncSkip() async throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("promote-\(UUID().uuidString).palmier", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: dir) }
-        var edited = textClip("cap1", start: 0, duration: 60, content: "陈娘娘")
+        var edited = textClip("cap1", start: 0, duration: 60, content: "李娘娘")
         edited.captionGroupId = "g1"
-        var sibling = textClip("cap2", start: 60, duration: 60, content: "陈娘娘")
+        var sibling = textClip("cap2", start: 60, duration: 60, content: "李娘娘")
         sibling.captionGroupId = "g1"
-        sibling.generatedText = "陈娘娘"  // clean sibling still showing the variant
+        sibling.generatedText = "李娘娘"  // clean sibling still showing the variant
         let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [edited, sibling])]))
         h.editor.projectURL = dir
         h.editor.captionWordSourceProvider = { _ in FakeWordSource(words: [], uncached: ["m"]) }
 
         let json = try await h.runOK("update_text", args: [
             "clipIds": ["cap1"],
-            "content": "陈嬢嬢",
+            "content": "李嬢嬢",
         ]) as? [String: Any]
 
         let resync = json?["captionResync"] as? [String: Any]
