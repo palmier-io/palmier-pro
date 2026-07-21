@@ -28,16 +28,16 @@ private struct FixedWordSource: CaptionWordSource {
     }
 
     @Test func flagsNearSoundSubstitutionWithContextAndFrames() async throws {
-        let w = window("c1", "好久没有开视频了", start: 100, end: 150, next: "今天来拍个 vlog")
+        let w = window("c1", "好久没有开照片了", start: 100, end: 150, next: "今天来拍个 vlog")
         let stub = StubCompleter(response: """
-        [{"clipId":"c1","original":"开视频","suggestion":"拍视频","reason":"near-sound; context is shooting a vlog","confidence":0.8}]
+        [{"clipId":"c1","original":"开照片","suggestion":"拍照片","reason":"near-sound; context is shooting a vlog","confidence":0.8}]
         """)
         let flags = try await CaptionLinter.flag(windows: [w], exclusions: LintExclusions(terms: []), completer: stub)
         #expect(flags.count == 1)
         let f = try #require(flags.first)
         #expect(f.clipId == "c1")
-        #expect(f.original == "开视频")
-        #expect(f.suggestion == "拍视频")
+        #expect(f.original == "开照片")
+        #expect(f.suggestion == "拍照片")
         #expect(f.startFrame == 100 && f.endFrame == 150)
         #expect(f.confidence == 0.8)
         #expect(f.reason.contains("near-sound"))
@@ -48,9 +48,9 @@ private struct FixedWordSource: CaptionWordSource {
         // A correction whose change lands on an excluded term is suppressed.
         #expect(excl.excludesChange(original: "呃", suggestion: "啊"))
         #expect(excl.excludesChange(original: "小明", suggestion: "小名"))
-        #expect(!excl.excludesChange(original: "拍视频", suggestion: "开视频"))
+        #expect(!excl.excludesChange(original: "拍照片", suggestion: "开照片"))
 
-        let w = window("c1", "呃 小明 去 拍视频")
+        let w = window("c1", "呃 小明 去 拍照片")
         let stub = StubCompleter(response: """
         [{"clipId":"c1","original":"呃","suggestion":"啊","reason":"x","confidence":0.9},
          {"clipId":"c1","original":"小明","suggestion":"小名","reason":"x","confidence":0.9}]
@@ -64,24 +64,24 @@ private struct FixedWordSource: CaptionWordSource {
     @Test func excludedTermInUnchangedTokensDoesNotSuppress() async throws {
         // 视频 is a glossary canonical; the fix changes 开→拍, leaving 视频 untouched → still flagged.
         let excl = LintExclusions(terms: ["视频"])
-        let w = window("c1", "好久没有开视频了", next: "今天来拍")
+        let w = window("c1", "好久没有开照片了", next: "今天来拍")
         let stub = StubCompleter(response: """
-        [{"clipId":"c1","original":"开视频","suggestion":"拍视频","reason":"near-sound","confidence":0.8}]
+        [{"clipId":"c1","original":"开照片","suggestion":"拍照片","reason":"near-sound","confidence":0.8}]
         """)
-        #expect(!excl.excludesChange(original: "开视频", suggestion: "拍视频"))
+        #expect(!excl.excludesChange(original: "开照片", suggestion: "拍照片"))
         let flags = try await CaptionLinter.flag(windows: [w], exclusions: excl, completer: stub)
         #expect(flags.count == 1)
-        #expect(flags.first?.suggestion == "拍视频")
+        #expect(flags.first?.suggestion == "拍照片")
     }
 
     @Test func adjacentFillerDoesNotSuppress() async throws {
         // 呃 is a filler sitting next to the changed word — the change is at 开, so it stays flagged.
         let excl = LintExclusions(terms: ["呃"])
-        let w = window("c1", "呃开视频了")
+        let w = window("c1", "呃开照片了")
         let stub = StubCompleter(response: """
-        [{"clipId":"c1","original":"呃开视频","suggestion":"呃拍视频","reason":"near-sound","confidence":0.8}]
+        [{"clipId":"c1","original":"呃开照片","suggestion":"呃拍照片","reason":"near-sound","confidence":0.8}]
         """)
-        #expect(!excl.excludesChange(original: "呃开视频", suggestion: "呃拍视频"))
+        #expect(!excl.excludesChange(original: "呃开照片", suggestion: "呃拍照片"))
         let flags = try await CaptionLinter.flag(windows: [w], exclusions: excl, completer: stub)
         #expect(flags.count == 1)
     }
@@ -128,7 +128,7 @@ private struct FixedWordSource: CaptionWordSource {
     }
 
     @Test func dropsFlagWhoseOriginalIsAbsentFromText() async throws {
-        let w = window("c1", "好久没有开视频了")
+        let w = window("c1", "好久没有开照片了")
         let stub = StubCompleter(response: """
         [{"clipId":"c1","original":"苹果","suggestion":"香蕉","reason":"x","confidence":0.9}]
         """)
@@ -174,10 +174,10 @@ private struct FixedWordSource: CaptionWordSource {
     }
 
     @Test func flagsModeSurfacesButDoesNotApply() async throws {
-        let e = editorWithCaptions([("好久没有开视频了", 100, 50), ("今天来拍个 vlog", 150, 50)])
-        let target = clipId(e, text: "好久没有开视频了")
+        let e = editorWithCaptions([("好久没有开照片了", 100, 50), ("今天来拍个 vlog", 150, 50)])
+        let target = clipId(e, text: "好久没有开照片了")
         let stub = StubCompleter(response: """
-        [{"clipId":"\(target)","original":"开视频","suggestion":"拍视频","reason":"near-sound","confidence":0.8}]
+        [{"clipId":"\(target)","original":"开照片","suggestion":"拍照片","reason":"near-sound","confidence":0.8}]
         """)
         let exec = ToolExecutor(editor: e)
         let result = try await exec.captionLint(e, ["mode": "flags"], completer: stub)
@@ -185,24 +185,24 @@ private struct FixedWordSource: CaptionWordSource {
 
         let flags = out["flags"] as? [[String: Any]] ?? []
         #expect(flags.count == 1)
-        #expect(flags.first?["original"] as? String == "开视频")
+        #expect(flags.first?["original"] as? String == "开照片")
         #expect(flags.first?["frameRange"] as? [Int] == [100, 150])
         #expect((out["applied"] as? [[String: Any]])?.isEmpty ?? true)
         // Nothing changed without a threshold.
-        #expect(e.timeline.tracks.flatMap(\.clips).first { $0.id == target }?.textContent == "好久没有开视频了")
+        #expect(e.timeline.tracks.flatMap(\.clips).first { $0.id == target }?.textContent == "好久没有开照片了")
     }
 
     @Test func autoApplyAboveThresholdRewritesTheClip() async throws {
-        let e = editorWithCaptions([("好久没有开视频了", 100, 50)])
-        let target = clipId(e, text: "好久没有开视频了")
+        let e = editorWithCaptions([("好久没有开照片了", 100, 50)])
+        let target = clipId(e, text: "好久没有开照片了")
         let stub = StubCompleter(response: """
-        [{"clipId":"\(target)","original":"开视频","suggestion":"拍视频","reason":"near-sound","confidence":0.8}]
+        [{"clipId":"\(target)","original":"开照片","suggestion":"拍照片","reason":"near-sound","confidence":0.8}]
         """)
         // A cached transcript stand-in so the post-promotion resync rebuilds the corrected caption
         // rather than clearing it (the auto-applied edit now promotes into the glossary — which the
         // suite's .isolatedGlossaryRoot trait keeps off the real user library).
         e.captionWordSourceProvider = { _ in
-            FixedWordSource(words: [WordTiming(text: "好久没有拍视频了", startFrame: 100, endFrame: 150)])
+            FixedWordSource(words: [WordTiming(text: "好久没有拍照片了", startFrame: 100, endFrame: 150)])
         }
         let exec = ToolExecutor(editor: e)
         let result = try await exec.captionLint(e, ["mode": "flags", "autoApplyThreshold": 0.7], completer: stub)
@@ -210,22 +210,22 @@ private struct FixedWordSource: CaptionWordSource {
 
         let applied = out["applied"] as? [[String: Any]] ?? []
         #expect(applied.count == 1)
-        #expect(applied.first?["suggestion"] as? String == "拍视频")
+        #expect(applied.first?["suggestion"] as? String == "拍照片")
         #expect((out["flags"] as? [[String: Any]])?.isEmpty ?? true)
-        #expect(e.timeline.tracks.flatMap(\.clips).first { $0.id == target }?.textContent == "好久没有拍视频了")
+        #expect(e.timeline.tracks.flatMap(\.clips).first { $0.id == target }?.textContent == "好久没有拍照片了")
     }
 
     @Test func belowThresholdStaysFlagged() async throws {
-        let e = editorWithCaptions([("好久没有开视频了", 100, 50)])
-        let target = clipId(e, text: "好久没有开视频了")
+        let e = editorWithCaptions([("好久没有开照片了", 100, 50)])
+        let target = clipId(e, text: "好久没有开照片了")
         let stub = StubCompleter(response: """
-        [{"clipId":"\(target)","original":"开视频","suggestion":"拍视频","reason":"near-sound","confidence":0.5}]
+        [{"clipId":"\(target)","original":"开照片","suggestion":"拍照片","reason":"near-sound","confidence":0.5}]
         """)
         let exec = ToolExecutor(editor: e)
         let out = body(try await exec.captionLint(e, ["mode": "flags", "autoApplyThreshold": 0.9], completer: stub))
         #expect((out["flags"] as? [[String: Any]])?.count == 1)
         #expect((out["applied"] as? [[String: Any]])?.isEmpty ?? true)
-        #expect(e.timeline.tracks.flatMap(\.clips).first { $0.id == target }?.textContent == "好久没有开视频了")
+        #expect(e.timeline.tracks.flatMap(\.clips).first { $0.id == target }?.textContent == "好久没有开照片了")
     }
 
     @Test func builtInFillerIsExcludedThroughTheTool() async throws {
@@ -241,18 +241,18 @@ private struct FixedWordSource: CaptionWordSource {
     }
 
     @Test func contextModeMakesNoModelCall() async throws {
-        let e = editorWithCaptions([("好久没有开视频了", 100, 50)])
+        let e = editorWithCaptions([("好久没有开照片了", 100, 50)])
         let exec = ToolExecutor(editor: e)
         // A failing completer proves context mode never calls it.
         let out = body(try await exec.captionLint(e, ["mode": "context"], completer: FailingCompleter()))
         let segs = out["segments"] as? [[String: Any]] ?? []
         #expect(segs.count == 1)
-        #expect(segs.first?["text"] as? String == "好久没有开视频了")
+        #expect(segs.first?["text"] as? String == "好久没有开照片了")
         #expect((out["flags"] as? [[String: Any]])?.isEmpty ?? true)
     }
 
     @Test func flagsDegradeToContextWhenLLMUnreachable() async throws {
-        let e = editorWithCaptions([("好久没有开视频了", 100, 50)])
+        let e = editorWithCaptions([("好久没有开照片了", 100, 50)])
         let exec = ToolExecutor(editor: e)
         let out = body(try await exec.captionLint(e, ["mode": "flags"], completer: nil))
         #expect((out["segments"] as? [[String: Any]])?.count == 1)
@@ -260,7 +260,7 @@ private struct FixedWordSource: CaptionWordSource {
     }
 
     @Test func lintFailureDegradesToContext() async throws {
-        let e = editorWithCaptions([("好久没有开视频了", 100, 50)])
+        let e = editorWithCaptions([("好久没有开照片了", 100, 50)])
         let exec = ToolExecutor(editor: e)
         let out = body(try await exec.captionLint(e, ["mode": "flags"], completer: FailingCompleter()))
         #expect((out["segments"] as? [[String: Any]])?.count == 1)
