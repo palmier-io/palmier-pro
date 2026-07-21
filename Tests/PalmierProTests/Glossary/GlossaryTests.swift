@@ -35,26 +35,26 @@ struct GlossaryTests {
     // MARK: - Materialisation
 
     @Test func replacesVariantInTextSegmentsAndWords() {
-        let c = corrector([term("陈嬢嬢", ["陈娘娘"])])
-        let raw = result(text: "去陈娘娘家", segments: ["去陈娘娘家吃饭"], words: ["去", "陈娘娘", "家"])
+        let c = corrector([term("李嬢嬢", ["李娘娘"])])
+        let raw = result(text: "去李娘娘家", segments: ["去李娘娘家吃饭"], words: ["去", "李娘娘", "家"])
         let out = raw.applyingGlossary(c)
-        #expect(out.text == "去陈嬢嬢家")
-        #expect(out.segments[0].text == "去陈嬢嬢家吃饭")
-        #expect(out.words[1].text == "陈嬢嬢")
+        #expect(out.text == "去李嬢嬢家")
+        #expect(out.segments[0].text == "去李嬢嬢家吃饭")
+        #expect(out.words[1].text == "李嬢嬢")
     }
 
     @Test func rawInputIsUntouched() {
-        let c = corrector([term("陈嬢嬢", ["陈娘娘"])])
-        let raw = result(text: "陈娘娘", segments: ["陈娘娘"], words: ["陈娘娘"])
+        let c = corrector([term("李嬢嬢", ["李娘娘"])])
+        let raw = result(text: "李娘娘", segments: ["李娘娘"], words: ["李娘娘"])
         _ = raw.applyingGlossary(c)
-        #expect(raw.text == "陈娘娘")
-        #expect(raw.segments[0].text == "陈娘娘")
-        #expect(raw.words[0].text == "陈娘娘")
+        #expect(raw.text == "李娘娘")
+        #expect(raw.segments[0].text == "李娘娘")
+        #expect(raw.words[0].text == "李娘娘")
     }
 
     @Test func timingsAreNotShifted() {
-        let c = corrector([term("陈嬢嬢", ["陈娘娘"])])
-        let raw = result(text: "陈娘娘", segments: ["陈娘娘"], words: ["陈娘娘"])
+        let c = corrector([term("李嬢嬢", ["李娘娘"])])
+        let raw = result(text: "李娘娘", segments: ["李娘娘"], words: ["李娘娘"])
         let out = raw.applyingGlossary(c)
         #expect(out.words[0].start == raw.words[0].start)
         #expect(out.words[0].end == raw.words[0].end)
@@ -65,11 +65,11 @@ struct GlossaryTests {
         // Inferred terms are excluded from the store's auto-apply corrector.
         let store = GlossaryStore(layers: [
             .init(scope: .project, document: GlossaryDocument(terms: [
-                term("陈嬢嬢", ["陈娘娘"], confidence: .inferred),
+                term("李嬢嬢", ["李娘娘"], confidence: .inferred),
             ])),
         ], warnings: [])
-        let out = result(text: "陈娘娘", segments: ["陈娘娘"], words: ["陈娘娘"]).applyingGlossary(store.corrector())
-        #expect(out.text == "陈娘娘")
+        let out = result(text: "李娘娘", segments: ["李娘娘"], words: ["李娘娘"]).applyingGlossary(store.corrector())
+        #expect(out.text == "李娘娘")
     }
 
     @Test func multiWordLatinVariantSpansTokens() {
@@ -113,8 +113,8 @@ struct GlossaryTests {
         let store = GlossaryStore.load(projectURL: dir)
         #expect(!store.warnings.isEmpty)
         #expect(store.corrector().isEmpty)
-        let raw = result(text: "陈娘娘", segments: ["陈娘娘"], words: ["陈娘娘"])
-        #expect(raw.applyingGlossary(store.corrector()).text == "陈娘娘")
+        let raw = result(text: "李娘娘", segments: ["李娘娘"], words: ["李娘娘"])
+        #expect(raw.applyingGlossary(store.corrector()).text == "李娘娘")
     }
 
     // MARK: - Boundary safety (§5.4)
@@ -144,12 +144,12 @@ struct GlossaryTests {
     }
 
     @Test func longestMatchFirstAcrossVariants() {
-        // Both 娘娘 and 陈娘娘 are variants; the longer one must win inside 陈娘娘.
+        // Both 娘娘 and 李娘娘 are variants; the longer one must win inside 李娘娘.
         let c = corrector([
-            term("陈嬢嬢", ["陈娘娘"]),
+            term("李嬢嬢", ["李娘娘"]),
             term("娘娘庙", ["娘娘"]),
         ])
-        #expect(c.correct("去陈娘娘家") == "去陈嬢嬢家")
+        #expect(c.correct("去李娘娘家") == "去李嬢嬢家")
     }
 
     @Test func latinVariantRespectsWordBoundaries() {
@@ -181,17 +181,17 @@ struct GlossaryTests {
 
         var doc = try GlossaryStore.read(scope: .project, projectURL: dir)
         #expect(doc.terms.isEmpty)
-        doc.terms.append(term("陈嬢嬢", ["陈娘娘"]))
+        doc.terms.append(term("李嬢嬢", ["李娘娘"]))
         try GlossaryStore.write(doc, scope: .project, projectURL: dir)
 
         let reloaded = GlossaryStore.load(projectURL: dir)
-        #expect(reloaded.corrector().correct("陈娘娘") == "陈嬢嬢")
+        #expect(reloaded.corrector().correct("李娘娘") == "李嬢嬢")
 
         // Removing it clears the correction.
         var after = try GlossaryStore.read(scope: .project, projectURL: dir)
-        after.terms.removeAll { $0.canonical == "陈嬢嬢" }
+        after.terms.removeAll { $0.canonical == "李嬢嬢" }
         try GlossaryStore.write(after, scope: .project, projectURL: dir)
-        #expect(GlossaryStore.load(projectURL: dir).corrector().correct("陈娘娘") == "陈娘娘")
+        #expect(GlossaryStore.load(projectURL: dir).corrector().correct("李娘娘") == "李娘娘")
     }
 
     @Test func projectScopeUnavailableWithoutProject() {
@@ -238,7 +238,7 @@ struct GlossaryTests {
 
     @Test func pureCJKAndPureLatinUnaffectedByEdgeRule() {
         let cjk = corrector([term("嬢嬢", ["娘娘"])])
-        #expect(cjk.correct("陈娘娘家") == "陈嬢嬢家")
+        #expect(cjk.correct("李娘娘家") == "李嬢嬢家")
         let latin = corrector([term("Kubernetes", ["kubernetis"])])
         #expect(latin.correct("kubernetisation") == "kubernetisation")
     }
