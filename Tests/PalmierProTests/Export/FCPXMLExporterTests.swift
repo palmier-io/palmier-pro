@@ -815,7 +815,7 @@ struct FCPXMLExporterTests {
         let xml = try await export(timeline, resolver: resolver, tmpDir: tmpDir)
 
         #expect(xml.contains("strokeColor=\"0 0 0 1\""))
-        #expect(xml.contains("strokeWidth=\"7\""))
+        #expect(xml.contains("strokeWidth=\"14\""))
     }
 
     @Test func disabledBorderOmitsStroke() async throws {

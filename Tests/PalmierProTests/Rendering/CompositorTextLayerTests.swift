@@ -20,7 +20,7 @@ struct CompositorTextLayerTests {
         c.textStyle = style
         // A band over the left-center, where the pattern is red (top) / blue (bottom) —
         // never white — so any white pixel there is unambiguously text.
-        c.transform = Transform(topLeft: (0.1, 0.4), width: 0.8, height: 0.2)
+        c.transform = Transform(topLeft: (0.1, 0.4), width: 0.8, height: 0.25)
         return c
     }
 

@@ -35,6 +35,7 @@ struct TransformOverlayView: View {
                             .fill(borderColor)
                             .frame(width: handleSize, height: handleSize)
                             .offset(x: off.x, y: off.y)
+                            .pointerStyle(.frameResize(position: corner.resizePosition))
                             .gesture(resizeGesture(clip: clip, corner: corner, videoRect: videoRect))
                     }
                 }
@@ -312,5 +313,14 @@ struct TransformOverlayView: View {
 
     private enum Corner: CaseIterable {
         case topLeft, topRight, bottomLeft, bottomRight
+
+        var resizePosition: FrameResizePosition {
+            switch self {
+            case .topLeft: .topLeading
+            case .topRight: .topTrailing
+            case .bottomLeft: .bottomLeading
+            case .bottomRight: .bottomTrailing
+            }
+        }
     }
 }

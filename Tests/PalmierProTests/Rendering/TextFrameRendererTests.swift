@@ -1,4 +1,5 @@
 import CoreImage
+import CoreText
 import Foundation
 import Testing
 @testable import PalmierPro
@@ -203,6 +204,35 @@ struct TextFrameRendererTests {
         #expect(spacedSize.width > compactSize.width + 50)
     }
 
+    @Test func fontScalePreservesCompleteTextLayoutProportions() {
+        let content = "fasfasfasf\nsfsaf\nsfasfsaf"
+        var style = TextStyle()
+        style.tracking = 18
+        style.lineSpacing = 24
+        style.shadow.offsetX = 15
+        style.shadow.offsetY = -9
+        style.shadow.blur = 10
+        style.border = .init(enabled: true, width: 6)
+        style.background = .init(enabled: true, paddingX: 40, paddingY: 28)
+        let fullSize = TextLayout.naturalSize(
+            content: content,
+            style: style,
+            maxWidth: 1_728,
+            canvasHeight: 1_080
+        )
+
+        style.fontScale = 0.25
+        let scaledSize = TextLayout.naturalSize(
+            content: content,
+            style: style,
+            maxWidth: 1_728,
+            canvasHeight: 1_080
+        )
+
+        #expect(abs(scaledSize.width - fullSize.width * 0.25) <= 2)
+        #expect(abs(scaledSize.height - fullSize.height * 0.25) <= 2)
+    }
+
     @Test func verticalShadowOffsetExpandsMeasuredHeight() {
         var centered = TextStyle()
         centered.shadow.offsetX = 0
@@ -225,5 +255,94 @@ struct TextFrameRendererTests {
 
         #expect(shiftedSize.height > centeredSize.height + 80)
         #expect(shiftedSize.width == centeredSize.width)
+    }
+
+    @Test func multilineNaturalSizeFitsTheSharedCoreTextFrame() {
+        let content = "Text\nfasfasf\nfsafasff\nfasfsafsa\nfasfasfas\nfasfasffs"
+        var style = TextStyle()
+        style.shadow.enabled = false
+        let size = TextLayout.naturalSize(
+            content: content,
+            style: style,
+            maxWidth: 1_728,
+            canvasHeight: 1_080
+        )
+        let attributedString = NSAttributedString(
+            string: content,
+            attributes: style.attributes(size: CGFloat(style.fontSize))
+        )
+        let frame = TextLayout.frame(for: attributedString, in: CGRect(origin: .zero, size: size))
+        let visibleRange = CTFrameGetVisibleStringRange(frame)
+        let lines = CTFrameGetLines(frame) as? [CTLine] ?? []
+
+        #expect(visibleRange.length == (content as NSString).length)
+        #expect(lines.count == 6)
+    }
+
+    @Test func trailingNewlineReservesTheNextLine() {
+        var style = TextStyle()
+        style.shadow.enabled = false
+
+        func size(_ content: String) -> CGSize {
+            TextLayout.naturalSize(
+                content: content,
+                style: style,
+                maxWidth: 1_728,
+                canvasHeight: 1_080
+            )
+        }
+
+        #expect(size("Line\n").height == size("Line\nNext").height)
+        #expect(size("Line\n").height > size("Line").height)
+    }
+
+    @Test func sharedCoreTextFrameCentersTextVerticallyInExtraSpace() throws {
+        let style = TextStyle(fontSize: 80)
+        let attributedString = NSAttributedString(
+            string: "Text",
+            attributes: style.attributes(size: CGFloat(style.fontSize))
+        )
+        let box = CGRect(x: 100, y: 40, width: 600, height: 300)
+        let frame = TextLayout.frame(for: attributedString, in: box)
+        let line = try #require((CTFrameGetLines(frame) as? [CTLine])?.first)
+        var origin = CGPoint.zero
+        CTFrameGetLineOrigins(frame, CFRange(location: 0, length: 1), &origin)
+        var ascent: CGFloat = 0
+        var descent: CGFloat = 0
+        CTLineGetTypographicBounds(line, &ascent, &descent, nil)
+        let pathBounds = CTFrameGetPath(frame).boundingBox
+        let textMidY = pathBounds.minY + origin.y + (ascent - descent) / 2
+
+        #expect(
+            abs(textMidY - box.midY) < 10,
+            "textMidY=\(textMidY), origin=\(origin), path=\(pathBounds)"
+        )
+
+        let fullText = NSAttributedString(
+            string: "First\nSecond",
+            attributes: style.attributes(size: CGFloat(style.fontSize))
+        )
+        let fullFrame = TextLayout.frame(for: fullText, in: box)
+        let revealFrame = TextLayout.frame(
+            for: attributedString,
+            in: box,
+            verticallySizedFor: fullText
+        )
+        #expect(CTFrameGetPath(revealFrame).boundingBox == CTFrameGetPath(fullFrame).boundingBox)
+    }
+
+    @Test func sharedCoreTextFrameHonorsAnUndersizedBox() {
+        let content = "First line\nSecond line"
+        let style = TextStyle()
+        let attributedString = NSAttributedString(
+            string: content,
+            attributes: style.attributes(size: CGFloat(style.fontSize))
+        )
+        let frame = TextLayout.frame(
+            for: attributedString,
+            in: CGRect(x: 0, y: 100, width: 800, height: 1)
+        )
+
+        #expect(CTFrameGetVisibleStringRange(frame).length < (content as NSString).length)
     }
 }
