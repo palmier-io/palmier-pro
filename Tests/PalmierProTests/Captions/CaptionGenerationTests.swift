@@ -116,6 +116,27 @@ private func mediaAsset(_ id: String, hasAudio: Bool = true) -> MediaAsset {
 
 @MainActor
 @Suite struct CaptionTargetTests {
+    @Test func largeCaptionSelectionResolvesWithinInteractionBudget() {
+        let captions = (0..<10_000).map {
+            Fixtures.clip(
+                id: "caption-\($0)",
+                mediaRef: "caption-media-\($0)",
+                mediaType: .text,
+                start: $0 * 30,
+                duration: 30
+            )
+        }
+        let e = editor([Fixtures.videoTrack(clips: captions)])
+        var targets: [Clip] = []
+
+        let duration = ContinuousClock().measure {
+            targets = e.captionTargets(ids: captions.map(\.id))
+        }
+
+        #expect(targets.isEmpty)
+        #expect(duration < .seconds(1))
+    }
+
     @Test func linkedAndTrackTargetsChooseAudioSide() {
         let groupId = "linked-1"
         var video = Fixtures.clip(id: "video", mediaRef: "media-1", mediaType: .video, start: 0, duration: 100)

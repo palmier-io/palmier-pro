@@ -73,9 +73,14 @@ extension EditorViewModel {
     }
 
     func captionTargets(ids: [String]) -> [Clip] {
-        let pool: [Clip] = ids.isEmpty
-            ? timeline.tracks.flatMap(\.clips)
-            : ids.compactMap { findClip(id: $0).map { timeline.tracks[$0.trackIndex].clips[$0.clipIndex] } }
+        let clips = timeline.tracks.flatMap(\.clips)
+        let pool: [Clip]
+        if ids.isEmpty {
+            pool = clips
+        } else {
+            let selectedIds = Set(ids)
+            pool = clips.filter { selectedIds.contains($0.id) }
+        }
         return captionTargets(in: pool)
     }
 

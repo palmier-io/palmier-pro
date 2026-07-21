@@ -103,8 +103,7 @@ extension InspectorView {
     }
 
     @ViewBuilder
-    func effectsTabContent() -> some View {
-        let clips = nonTextVisualClips
+    func effectsTabContent(clips: [Clip]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             adjustSection(title: "Basic Correction", effectIds: basicEffectIds, clips: clips) {
                 adjustSubgroup(title: "Tone", controls: toneControls, clips: clips)

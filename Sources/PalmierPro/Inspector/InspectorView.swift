@@ -1,6 +1,41 @@
 import AppKit
 import SwiftUI
 
+struct InspectorClipSelection {
+    private(set) var textClips: [Clip] = []
+    private(set) var nonTextVisualClips: [Clip] = []
+    private(set) var audioClips: [Clip] = []
+    private(set) var firstVisualClip: Clip?
+
+    var clipCount: Int {
+        textClips.count + nonTextVisualClips.count + audioClips.count
+    }
+
+    var firstAudioClip: Clip? { audioClips.first }
+
+    static func resolve(timeline: Timeline, selectedIds: Set<String>) -> InspectorClipSelection {
+        guard !selectedIds.isEmpty else { return InspectorClipSelection() }
+        var selection = InspectorClipSelection()
+        for track in timeline.tracks {
+            for clip in track.clips where selectedIds.contains(clip.id) {
+                if clip.mediaType == .audio {
+                    selection.audioClips.append(clip)
+                } else if clip.mediaType.isVisual {
+                    if selection.firstVisualClip == nil {
+                        selection.firstVisualClip = clip
+                    }
+                    if clip.mediaType == .text {
+                        selection.textClips.append(clip)
+                    } else {
+                        selection.nonTextVisualClips.append(clip)
+                    }
+                }
+            }
+        }
+        return selection
+    }
+}
+
 struct InspectorView: View {
     @Environment(EditorViewModel.self) var editor
 
@@ -33,12 +68,8 @@ struct InspectorView: View {
         VStack(alignment: .leading, spacing: 0) {
             if editor.isMarqueeSelecting {
                 marqueeSelectionSummary
-            } else if selectedVisualClip != nil || selectedAudioClip != nil {
-                clipInspectorContent()
-            } else if let asset = selectedMediaAsset {
-                mediaAssetInspectorContent(asset)
             } else {
-                projectMetadataContent
+                resolvedInspectorContent
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -54,6 +85,21 @@ struct InspectorView: View {
         }
     }
 
+    @ViewBuilder
+    private var resolvedInspectorContent: some View {
+        let selection = InspectorClipSelection.resolve(
+            timeline: editor.timeline,
+            selectedIds: editor.selectedClipIds
+        )
+        if selection.clipCount > 0 {
+            clipInspectorContent(selection: selection)
+        } else if let asset = selectedMediaAsset {
+            mediaAssetInspectorContent(asset)
+        } else {
+            projectMetadataContent
+        }
+    }
+
     private var marqueeSelectionSummary: some View {
         VStack {
             Spacer()
@@ -66,8 +112,8 @@ struct InspectorView: View {
     }
 
     private func resolvePreferredTab() {
-        let isSingleText = selectedVisualClips.count + selectedAudioClips.count == 1
-            && selectedVisualClip?.mediaType == .text
+        let isSingleText = editor.selectedClipIds.count == 1
+            && editor.selectedClipIds.first.flatMap { editor.clipFor(id: $0) }?.mediaType == .text
         if isSingleText {
             preferredTab = .text
         } else if preferredTab == .text {
@@ -222,10 +268,14 @@ struct InspectorView: View {
 
     // MARK: - Clip Inspector
 
-    private var availableTabs: [ClipTab] {
-        let audios = selectedAudioClips
-        let texts = selectedTextClips
-        let nonText = nonTextVisualClips
+    private func availableTabs(
+        for selection: InspectorClipSelection,
+        resolvedClipAsset: MediaAsset?,
+        selectedMulticamGroupId: String?
+    ) -> [ClipTab] {
+        let audios = selection.audioClips
+        let texts = selection.textClips
+        let nonText = selection.nonTextVisualClips
         let isTextOnly = !texts.isEmpty && nonText.isEmpty && audios.isEmpty
 
         var tabs: [ClipTab] = []
@@ -236,76 +286,86 @@ struct InspectorView: View {
         }
         if !audios.isEmpty { tabs.append(.audio) }
         if selectedMulticamGroupId != nil { tabs.append(.multicam) }
-        if aiEditEligible && !AccountService.shared.isMisconfigured { tabs.append(.ai) }
+        if aiEditEligible(selection: selection, resolvedClipAsset: resolvedClipAsset)
+            && !AccountService.shared.isMisconfigured {
+            tabs.append(.ai)
+        }
         return tabs
     }
 
-    /// Group of the first stamped clip in the selection, if it still resolves.
-    var selectedMulticamGroupId: String? {
-        (nonTextVisualClips + selectedAudioClips)
-            .compactMap(\.multicamGroupId)
-            .first { editor.multicamGroup(id: $0) != nil }
+    private func selectedMulticamGroupId(for selection: InspectorClipSelection) -> String? {
+        for clips in [selection.nonTextVisualClips, selection.audioClips] {
+            for clip in clips {
+                if let groupId = clip.multicamGroupId, editor.multicamGroup(id: groupId) != nil {
+                    return groupId
+                }
+            }
+        }
+        return nil
     }
 
-    /// True when the selection resolves to one AI-editable media source.
-    /// A linked video+audio pair counts as one source.
-    private var aiEditEligible: Bool {
-        let visuals = selectedVisualClips
-        let audios = selectedAudioClips
+    private func aiEditEligible(
+        selection: InspectorClipSelection,
+        resolvedClipAsset: MediaAsset?
+    ) -> Bool {
+        let visualCount = selection.textClips.count + selection.nonTextVisualClips.count
+        let audios = selection.audioClips
         guard resolvedClipAsset != nil else { return false }
-        if visuals.isEmpty { return audios.count == 1 }
-        guard visuals.count == 1 else { return false }
+        if visualCount == 0 { return audios.count == 1 }
+        guard visualCount == 1, let visual = selection.firstVisualClip else { return false }
         if audios.isEmpty { return true }
-        let partners = Set(editor.linkedPartnerIds(of: visuals[0].id))
+        let partners = Set(editor.linkedPartnerIds(of: visual.id))
         return audios.allSatisfy { partners.contains($0.id) }
     }
 
-    /// Tab the view actually renders (preferred if valid, else first available).
-    private var activeTab: ClipTab? {
-        let tabs = availableTabs
+    private func activeTab(in tabs: [ClipTab]) -> ClipTab? {
         return tabs.contains(preferredTab) ? preferredTab : tabs.first
     }
 
-    /// Media asset backing the selected visual clip, or a standalone audio clip.
-    private var resolvedClipAsset: MediaAsset? {
-        guard let clip = selectedVisualClip ?? selectedAudioClip else { return nil }
+    private func resolvedClipAsset(for selection: InspectorClipSelection) -> MediaAsset? {
+        guard let clip = selection.firstVisualClip ?? selection.firstAudioClip else { return nil }
         return editor.mediaAssets.first { $0.id == clip.mediaRef }
     }
 
-    var nonTextVisualClips: [Clip] {
-        selectedVisualClips.filter { $0.mediaType != .text }
-    }
-
-    private var selectedTextClips: [Clip] {
-        selectedVisualClips.filter { $0.mediaType == .text }
-    }
-
     @ViewBuilder
-    private func clipInspectorContent() -> some View {
-        let tabs = availableTabs
+    private func clipInspectorContent(selection: InspectorClipSelection) -> some View {
+        let clipAsset = resolvedClipAsset(for: selection)
+        let multicamGroupId = selectedMulticamGroupId(for: selection)
+        let tabs = availableTabs(
+            for: selection,
+            resolvedClipAsset: clipAsset,
+            selectedMulticamGroupId: multicamGroupId
+        )
+        let selectedTab = activeTab(in: tabs)
         VStack(spacing: 0) {
             if tabs.count > 1 {
-                tabBar(tabs)
+                tabBar(tabs, selectedTab: selectedTab)
             }
             Group {
-                if activeTab == .ai, let asset = resolvedClipAsset {
-                    AIEditTab(asset: asset, clipId: selectedVisualClip?.id ?? selectedAudioClip?.id)
-                } else if activeTab == .effects {
-                    ScrollView { effectsTabContent() }
+                if selectedTab == .ai, let asset = clipAsset {
+                    AIEditTab(asset: asset, clipId: selection.firstVisualClip?.id ?? selection.firstAudioClip?.id)
+                } else if selectedTab == .effects {
+                    ScrollView { effectsTabContent(clips: selection.nonTextVisualClips) }
                 } else {
                     ScrollView {
                         VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
-                            switch activeTab {
+                            switch selectedTab {
                             case .text:
-                                if !selectedTextClips.isEmpty { TextTab(clips: selectedTextClips) }
+                                if !selection.textClips.isEmpty { TextTab(clips: selection.textClips) }
                             case .textAnimate:
-                                if !selectedTextClips.isEmpty { TextAnimateTab(clips: selectedTextClips) }
+                                if !selection.textClips.isEmpty { TextAnimateTab(clips: selection.textClips) }
                             case .video:
-                                videoTabContent()
+                                videoTabContent(
+                                    clips: selection.nonTextVisualClips,
+                                    audioClips: selection.audioClips
+                                )
                             case .audio:
-                                audioTabContent()
+                                audioTabContent(
+                                    audioClips: selection.audioClips,
+                                    hasNonTextVisualClips: !selection.nonTextVisualClips.isEmpty
+                                )
                             case .multicam:
-                                if let groupId = selectedMulticamGroupId {
+                                if let groupId = multicamGroupId {
                                     MulticamTab(groupId: groupId)
                                 }
                             case .effects, .ai, .none:
@@ -318,10 +378,10 @@ struct InspectorView: View {
         }
     }
 
-    private func tabBar(_ tabs: [ClipTab]) -> some View {
+    private func tabBar(_ tabs: [ClipTab], selectedTab: ClipTab?) -> some View {
         TitleTabBar(
             titles: tabs.map(\.rawValue),
-            selected: activeTab?.rawValue
+            selected: selectedTab?.rawValue
         ) { title in
             if let tab = tabs.first(where: { $0.rawValue == title }) { preferredTab = tab }
         }
@@ -337,11 +397,10 @@ struct InspectorView: View {
     }
 
     @ViewBuilder
-    private func videoTabContent() -> some View {
-        let clips = nonTextVisualClips
+    private func videoTabContent(clips: [Clip], audioClips: [Clip]) -> some View {
         transformSection(clips: clips)
         imageAdjustmentSection(clips: clips)
-        speedSection(clips: (clips + selectedAudioClips).filter(\.supportsRetiming))
+        speedSection(clips: (clips + audioClips).filter(\.supportsRetiming))
     }
 
     func keyframesToggleButton(enabled: Bool) -> some View {
@@ -1062,31 +1121,6 @@ struct InspectorView: View {
     }
 
     // MARK: - Helpers
-
-    private var selectedVisualClips: [Clip] {
-        guard !editor.selectedClipIds.isEmpty else { return [] }
-        var out: [Clip] = []
-        for track in editor.timeline.tracks {
-            for clip in track.clips where editor.selectedClipIds.contains(clip.id) && clip.mediaType.isVisual {
-                out.append(clip)
-            }
-        }
-        return out
-    }
-
-    var selectedAudioClips: [Clip] {
-        guard !editor.selectedClipIds.isEmpty else { return [] }
-        var out: [Clip] = []
-        for track in editor.timeline.tracks {
-            for clip in track.clips where editor.selectedClipIds.contains(clip.id) && clip.mediaType == .audio {
-                out.append(clip)
-            }
-        }
-        return out
-    }
-
-    private var selectedVisualClip: Clip? { selectedVisualClips.first }
-    private var selectedAudioClip: Clip? { selectedAudioClips.first }
 
     private var selectedMediaAsset: MediaAsset? {
         guard editor.selectedMediaAssetIds.count == 1,
