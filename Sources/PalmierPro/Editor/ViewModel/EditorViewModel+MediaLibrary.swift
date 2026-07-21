@@ -444,20 +444,6 @@ extension EditorViewModel {
         }
     }
 
-    func fitTextClipToContent(clipId: String) {
-        let canvasW = Double(timeline.width)
-        let canvasH = Double(timeline.height)
-        guard let loc = findClip(id: clipId) else { return }
-        let original = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-        var fitted = original
-        guard fitTextClipToContentIfNeeded(&fitted, canvasW: canvasW, canvasH: canvasH) else { return }
-        if dragBefore[clipId] == nil {
-            dragBefore[clipId] = original
-        }
-        timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = fitted
-        videoEngine?.refreshVisuals()
-    }
-
     func fitTextClipToContentIfNeeded(_ clip: inout Clip, canvasW: Double, canvasH: Double) -> Bool {
         guard clip.mediaType == .text else { return false }
         let natural = TextLayout.naturalSize(

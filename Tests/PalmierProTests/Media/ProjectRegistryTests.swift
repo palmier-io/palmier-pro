@@ -73,6 +73,21 @@ struct ProjectRegistryTests {
         #expect(reg.entries.count == 1)
     }
 
+    @Test func deleteBatchRemovesMissingProjectsAndReturnsTheirIDs() async {
+        let reg = makeRegistry()
+        let first = makeProjectURL("First")
+        let second = makeProjectURL("Second")
+        reg.register(first)
+        reg.register(second)
+        let entries = reg.entries
+
+        let result = await reg.delete(entries)
+
+        #expect(result.deletedIDs == Set(entries.map(\.id)))
+        #expect(result.failedNames.isEmpty)
+        #expect(reg.entries.isEmpty)
+    }
+
     // MARK: - updateURL (rename / move)
 
     @Test func updateURLChangesURLAndBumpsLastOpenedDate() {

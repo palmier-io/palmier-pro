@@ -874,6 +874,7 @@ enum FCPXMLExporter {
         }
 
         private func textStyleAttributes(for style: TextStyle) -> [(String, String)] {
+            let style = style.scaledVisualStyle
             let resolvedFont = style.resolvedFont(size: CGFloat(style.fontSize))
             let family = resolvedFont.familyName ?? fontFamilyFallback(style.fontName)
             let face = fontFace(for: style, resolvedFont: resolvedFont)
