@@ -97,10 +97,23 @@ struct FillerPolicy: Sendable {
     /// Display-only: it rebuilds caption text and word timings; it never touches audio.
     func strippingRemoveAlways(_ phrase: CaptionBuilder.Phrase) -> CaptionBuilder.Phrase? {
         if !phrase.words.isEmpty {
-            let actions = plan(words: phrase.words.map(\.text))
-            let kept = zip(phrase.words, actions).filter { $0.1.decision != .remove }.map(\.0)
+            // Flatten each word's text with the shared tokenizer so single-character CJK fillers
+            // match inside multi-character word blobs, then map decisions back per timing: a timing
+            // is removed only when ALL its subtokens are removals (a timing cannot be split).
+            let subtokens = phrase.words.map { Self.fallbackTokens($0.text) }
+            let actions = plan(words: subtokens.flatMap { $0 })
+            var cursor = 0
+            var kept: [CaptionBuilder.WordSpan] = []
+            for (word, tokens) in zip(phrase.words, subtokens) {
+                let decisions = actions[cursor..<(cursor + tokens.count)]
+                cursor += tokens.count
+                if tokens.isEmpty || !decisions.allSatisfy({ $0.decision == .remove }) {
+                    kept.append(word)
+                }
+            }
             guard let first = kept.first, let last = kept.last else { return nil }
-            let text = kept.map(\.text).joined(separator: " ")
+            // CJK-aware rebuild: per-character word spans must not introduce spaces (你 好).
+            let text = Self.joinTokens(kept.map(\.text))
             return CaptionBuilder.Phrase(text: text, start: first.start, end: last.end, words: kept)
         }
         // Whitespace splitting misses unsegmented CJK ("呃你好" arrives as one token, so a
@@ -181,8 +194,16 @@ struct FillerPolicy: Sendable {
         phrase.split(whereSeparator: \.isWhitespace).map { normalize(String($0)) }.filter { !$0.isEmpty }
     }
 
+    /// Both tokenizations of a phrase, so span matching works against whitespace-token streams
+    /// (CaptionBuilder words, blobs) AND per-character CJK streams (the fallback/flattened paths).
+    private static func candidateForms(_ phrase: String) -> [[String]] {
+        let whitespace = parts(phrase)
+        let perChar = fallbackTokens(phrase).map { normalize($0) }.filter { !$0.isEmpty }
+        return whitespace == perChar ? [whitespace] : [whitespace, perChar]
+    }
+
     private func markSpans(_ phrases: [String], norm: [String], mark: (Int) -> Void) {
-        let candidates = phrases.map(Self.parts).filter { !$0.isEmpty }
+        let candidates = phrases.flatMap(Self.candidateForms).filter { !$0.isEmpty }
         var i = 0
         while i < norm.count {
             if let len = matchAt(i, norm: norm, candidates: candidates) {

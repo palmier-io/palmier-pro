@@ -225,3 +225,38 @@ struct CaptionStyleTests {
         #expect(FillerPolicy.joinTokens(["你", "好", "hello"]) == "你好 hello")
     }
 }
+
+// Round-2 review: the timed path must behave like the fallback path — CJK fillers matched inside
+// word blobs, protected phrases matched across per-char streams, no spaces introduced into CJK.
+@Suite struct FillerPolicyTimedPathTests {
+    private func timedPhrase(_ words: [(String, Double, Double)]) -> CaptionBuilder.Phrase {
+        let spans = words.map { CaptionBuilder.WordSpan(text: $0.0, start: $0.1, end: $0.2) }
+        return CaptionBuilder.Phrase(text: words.map(\.0).joined(), start: words.first!.1, end: words.last!.2, words: spans)
+    }
+
+    @Test func timedCJKFillerBlobIsRemoved() {
+        var profile = CaptionStyleProfile.builtInDefault
+        profile.fillers.removeAlways = ["呃"]
+        let policy = FillerPolicy(profile: profile)
+        let phrase = timedPhrase([("呃", 0, 0.3), ("你", 0.3, 0.6), ("好", 0.6, 0.9)])
+        let stripped = policy.strippingRemoveAlways(phrase)
+        #expect(stripped?.text == "你好")
+        #expect(stripped?.words.map(\.text) == ["你", "好"])
+    }
+
+    @Test func timedCJKKeepsNoSpuriousSpaces() {
+        let policy = FillerPolicy(profile: .builtInDefault)
+        let phrase = timedPhrase([("你", 0, 0.3), ("好", 0.3, 0.6)])
+        let stripped = policy.strippingRemoveAlways(phrase)
+        #expect(stripped?.text == "你好")
+    }
+
+    @Test func protectedPhraseMatchesPerCharStream() {
+        var profile = CaptionStyleProfile.builtInDefault
+        profile.protectedPhrases = ["兄弟牛逼"]
+        profile.fillers.removeAlways = ["逼"]
+        let policy = FillerPolicy(profile: profile)
+        let phrase = CaptionBuilder.Phrase(text: "兄弟牛逼", start: 0, end: 1)
+        #expect(policy.strippingRemoveAlways(phrase)?.text == "兄弟牛逼")
+    }
+}
