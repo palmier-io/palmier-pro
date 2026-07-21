@@ -65,6 +65,14 @@ actor TranscriptCache {
         readKeys(for: url).contains { FileManager.default.fileExists(atPath: diskURL($0).path) }
     }
 
+    /// Requested-slot-only probe for SCHEDULING decisions (the background indexer's "needs
+    /// transcription?"): a fallback entry must satisfy readers but must NOT suppress the retry
+    /// that lets the requested engine heal into its own slot.
+    nonisolated static func hasRequestedEngineEntry(for url: URL) -> Bool {
+        guard let key = key(for: url) else { return false }
+        return FileManager.default.fileExists(atPath: diskURL(key).path)
+    }
+
     /// Disk-only read
     nonisolated static func cachedOnDisk(for url: URL) -> TranscriptionResult? {
         for key in readKeys(for: url) {

@@ -190,13 +190,18 @@ actor Qwen3ASREngine {
         }
 
         // Guard against a partial decode (dropped or empty trailing chunks) being cached as
-        // complete. `expected` prefers the Whisper pass's speech end over raw energy — a music tail
-        // keeps energy high long after speech ends and would false-positive an energy-only check;
-        // Whisper decodes speech only, and it heard the same audio independently.
-        let energyEnd = EngineAudio.nonSilentEnd(samples: samples)
-        let expected = timingWords.compactMap(\.end).max().map { min($0 + 2.0, energyEnd) } ?? energyEnd
-        if let lastEnd = segments.map(\.end).max(), expected > 0, lastEnd < 0.8 * expected {
-            throw EngineError.incompleteResult(covered: lastEnd, expected: expected)
+        // complete — on direct evidence, not tuned thresholds. Whisper heard the same audio
+        // independently and decodes speech only: a run of its words AFTER qwen3's last segment is
+        // proof of dropped speech (immune to music tails, which have no words). The energy check
+        // applies only when Whisper produced nothing to compare against.
+        let lastEnd = segments.map(\.end).max() ?? 0
+        if !timingWords.isEmpty {
+            let missedSpeech = timingWords.filter { ($0.start ?? 0) > lastEnd + 2.0 }
+            if missedSpeech.count >= 5, let missedEnd = missedSpeech.compactMap(\.end).max() {
+                throw EngineError.incompleteResult(covered: lastEnd, expected: missedEnd)
+            }
+        } else if let gap = EngineAudio.coverageShortfall(segments: segments, samples: samples) {
+            throw EngineError.incompleteResult(covered: gap.covered, expected: gap.expected)
         }
 
         return TranscriptionResult(
