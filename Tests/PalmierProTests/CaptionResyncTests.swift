@@ -212,7 +212,7 @@ private func timeline(_ tracks: [Track]) -> Timeline {
         let caption = captionClip(id: "cap", start: 0, duration: 150, text: "old", generatedText: "old")
         let tl = timeline([Fixtures.videoTrack(clips: [caption])])
         let src = FakeWordSource(words: [
-            word("我掉得", 0, 30), word("really", 30, 60), word("low。", 60, 90),
+            word("我唱得", 0, 30), word("really", 30, 60), word("low。", 60, 90),
             word("oh", 90, 120), word("god。", 120, 150),
         ])
 
@@ -220,7 +220,7 @@ private func timeline(_ tracks: [Track]) -> Timeline {
             timeline: tl, triggerSpans: [0..<150], trigger: "t", fps: 30,
             policy: .preserve, wordSource: src, chunk: singleChunk
         )
-        #expect(plan.replacements.first?.text == "我掉得 really low。 oh god。")
+        #expect(plan.replacements.first?.text == "我唱得 really low。 oh god。")
     }
 
     // MARK: - CREATE
