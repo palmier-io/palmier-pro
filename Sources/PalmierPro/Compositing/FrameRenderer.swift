@@ -291,7 +291,11 @@ enum FrameRenderer {
             }
         }
 
-        image = RoundedCornersKernel.apply(image, rounding: clip.cornerRounding)
+        image = EdgeRoundingKernel.apply(
+            image,
+            edgeRounding: clip.edgeRounding,
+            edgeSoftness: clip.edgeSoftness
+        )
 
         let t = clip.transformAt(frame: frame)
         let av = layer.preferredTransform.concatenating(

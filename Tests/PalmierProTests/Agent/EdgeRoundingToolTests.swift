@@ -3,9 +3,9 @@ import MCP
 import Testing
 @testable import PalmierPro
 
-@Suite("corner rounding Agent tool", .serialized)
+@Suite("image adjustment Agent tool", .serialized)
 @MainActor
-struct CornerRoundingToolTests {
+struct EdgeRoundingToolTests {
     @Test func MCPDiscoveryMutationReadbackValidationAndUndo() async throws {
         let clip = Fixtures.clip(id: "clip", start: 0, duration: 30)
         let editor = EditorViewModel()
@@ -14,13 +14,13 @@ struct CornerRoundingToolTests {
         editor.undo.attach(undoManager)
 
         let server = Server(
-            name: "corner-rounding-test",
+            name: "edge-rounding-test",
             version: "1.0.0",
             capabilities: .init(tools: .init(listChanged: false))
         )
         await MCPService.registerTools(on: server, executor: ToolExecutor(editor: editor))
         let transports = await InMemoryTransport.createConnectedPair()
-        let client = Client(name: "corner-rounding-test", version: "1.0.0")
+        let client = Client(name: "edge-rounding-test", version: "1.0.0")
 
         try await server.start(transport: transports.server)
         do {
@@ -28,32 +28,39 @@ struct CornerRoundingToolTests {
             let (tools, _) = try await client.listTools()
             let tool = try #require(tools.first { $0.name == "set_clip_properties" })
             let properties = try #require(tool.inputSchema.objectValue?["properties"]?.objectValue)
-            #expect(properties["cornerRounding"]?.objectValue?["type"]?.stringValue == "number")
+            #expect(properties["edgeRounding"]?.objectValue?["type"]?.stringValue == "number")
+            #expect(properties["edgeSoftness"]?.objectValue?["type"]?.stringValue == "number")
 
             let mutation = try await client.callTool(name: "set_clip_properties", arguments: [
                 "clipIds": .array([.string(clip.id)]),
-                "cornerRounding": .double(0.4),
+                "edgeRounding": .double(0.4),
+                "edgeSoftness": .double(0.25),
             ])
             #expect(mutation.isError != true)
             let receipt = try json(text(mutation.content))
             let changed = try #require(receipt["clips"] as? [[String: Any]])
-            #expect(changed.first?["cornerRounding"] as? Double == 0.4)
+            #expect(changed.first?["edgeRounding"] as? Double == 0.4)
+            #expect(changed.first?["edgeSoftness"] as? Double == 0.25)
 
             let timeline = try json(text(try await client.callTool(name: "get_timeline").content))
-            #expect(cornerRounding(in: timeline) == 0.4)
+            #expect(edgeRounding(in: timeline) == 0.4)
+            #expect(edgeSoftness(in: timeline) == 0.25)
 
             let invalid = try await client.callTool(name: "set_clip_properties", arguments: [
                 "clipIds": .array([.string(clip.id)]),
-                "cornerRounding": .double(1.1),
+                "edgeSoftness": .double(1.1),
             ])
             #expect(invalid.isError == true)
-            #expect(editor.clipFor(id: clip.id)?.cornerRounding == 0.4)
+            #expect(editor.clipFor(id: clip.id)?.edgeRounding == 0.4)
+            #expect(editor.clipFor(id: clip.id)?.edgeSoftness == 0.25)
 
             let undo = try await client.callTool(name: "undo")
             #expect(undo.isError != true)
             let restored = try json(text(try await client.callTool(name: "get_timeline").content))
-            #expect(cornerRounding(in: restored) == nil)
-            #expect(editor.clipFor(id: clip.id)?.cornerRounding == 0)
+            #expect(edgeRounding(in: restored) == nil)
+            #expect(edgeSoftness(in: restored) == nil)
+            #expect(editor.clipFor(id: clip.id)?.edgeRounding == 0)
+            #expect(editor.clipFor(id: clip.id)?.edgeSoftness == 0)
         } catch {
             await server.stop()
             await client.disconnect()
@@ -63,10 +70,16 @@ struct CornerRoundingToolTests {
         await client.disconnect()
     }
 
-    private func cornerRounding(in timeline: [String: Any]) -> Double? {
+    private func edgeRounding(in timeline: [String: Any]) -> Double? {
         let tracks = timeline["tracks"] as? [[String: Any]]
         let clips = tracks?.first?["clips"] as? [[String: Any]]
-        return clips?.first?["cornerRounding"] as? Double
+        return clips?.first?["edgeRounding"] as? Double
+    }
+
+    private func edgeSoftness(in timeline: [String: Any]) -> Double? {
+        let tracks = timeline["tracks"] as? [[String: Any]]
+        let clips = tracks?.first?["clips"] as? [[String: Any]]
+        return clips?.first?["edgeSoftness"] as? Double
     }
 
     private func json(_ text: String) throws -> [String: Any] {

@@ -63,21 +63,23 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
     let speed: Double?
     let volumeDb: Double?
     let opacity: Double?
-    let cornerRounding: Double?
+    let edgeRounding: Double?
+    let edgeSoftness: Double?
     let transform: ParsedTransform?
     let blendMode: String?
 
     static let allowedKeys: Set<String> = Set([
         "clipIds",
         "durationFrames", "trimStartFrame", "trimEndFrame", "speed",
-        "volumeDb", "opacity", "cornerRounding",
+        "volumeDb", "opacity", "edgeRounding", "edgeSoftness",
         "transform",
         "blendMode",
     ])
 
     var hasAnyProperty: Bool {
         durationFrames != nil || trimStartFrame != nil || trimEndFrame != nil
-            || speed != nil || volumeDb != nil || opacity != nil || cornerRounding != nil
+            || speed != nil || volumeDb != nil || opacity != nil
+            || edgeRounding != nil || edgeSoftness != nil
             || transform?.hasAnyField == true
             || blendMode != nil
     }
@@ -493,9 +495,14 @@ extension ToolExecutor {
         if let o = input.opacity, !(0...1).contains(o) {
             throw ToolError("opacity must be between 0 and 1 (got \(o))")
         }
-        if let rounding = input.cornerRounding,
-           !rounding.isFinite || !(0...1).contains(rounding) {
-            throw ToolError("cornerRounding must be between 0 and 1 (got \(rounding))")
+        for (name, value) in [
+            ("edgeRounding", input.edgeRounding),
+            ("edgeSoftness", input.edgeSoftness),
+        ] {
+            guard let value else { continue }
+            guard value.isFinite, (0...1).contains(value) else {
+                throw ToolError("\(name) must be between 0 and 1 (got \(value))")
+            }
         }
         if let t = input.trimStartFrame, t < 0 {
             throw ToolError("trimStartFrame must be >= 0 (got \(t))")
@@ -513,7 +520,7 @@ extension ToolExecutor {
 
         if clipIds.contains(where: { editor.clipFor(id: $0)?.multicamGroupId != nil }),
            input.trimStartFrame != nil || input.trimEndFrame != nil || input.durationFrames != nil || input.speed != nil {
-            throw ToolError("Timing fields would slip a multicam clip out of sync — switch angles with change_cam; split/delete and property fields (volumeDb, opacity, cornerRounding, transform) stay editable.")
+            throw ToolError("Timing fields would slip a multicam clip out of sync — switch angles with change_cam; split/delete and property fields (volumeDb, opacity, edgeRounding, edgeSoftness, transform) stay editable.")
         }
 
         // blendMode applies only to visual (video/image) clips. "normal" clears it.
@@ -531,10 +538,10 @@ extension ToolExecutor {
                 blendMode = m
             }
         }
-        if input.cornerRounding != nil {
+        if input.edgeRounding != nil || input.edgeSoftness != nil {
             let unsupported = clipTypes.filter { $0.value == .audio || $0.value == .text }.map(\.key).sorted()
             if !unsupported.isEmpty {
-                throw ToolError("cornerRounding only applies to non-text visual clips: \(unsupported.joined(separator: ", "))")
+                throw ToolError("edgeRounding and edgeSoftness only apply to non-text visual clips: \(unsupported.joined(separator: ", "))")
             }
         }
 
@@ -574,7 +581,8 @@ extension ToolExecutor {
                     speed: input.speed,
                     volumeDb: input.volumeDb,
                     opacity: input.opacity,
-                    cornerRounding: input.cornerRounding,
+                    edgeRounding: input.edgeRounding,
+                    edgeSoftness: input.edgeSoftness,
                     transform: input.transform,
                     blendMode: blendMode,
                     setBlendMode: setBlendMode,
@@ -591,7 +599,7 @@ extension ToolExecutor {
                     trimStartFrame: partnerIsText ? nil : input.trimStartFrame,
                     trimEndFrame:   partnerIsText ? nil : input.trimEndFrame,
                     speed:          partnerIsText ? nil : input.speed,
-                    volumeDb: nil, opacity: nil, cornerRounding: nil, transform: nil,
+                    volumeDb: nil, opacity: nil, edgeRounding: nil, edgeSoftness: nil, transform: nil,
                     blendMode: nil, setBlendMode: false,
                     clipId: partnerId,
                     editor: editor
@@ -615,7 +623,8 @@ extension ToolExecutor {
         speed: Double?,
         volumeDb: Double?,
         opacity: Double?,
-        cornerRounding: Double?,
+        edgeRounding: Double?,
+        edgeSoftness: Double?,
         transform: ParsedTransform?,
         blendMode: BlendMode?,
         setBlendMode: Bool,
@@ -650,7 +659,8 @@ extension ToolExecutor {
                 changed.append("volumeDb")
             }
             if let v = opacity        { clip.opacity = v; clip.opacityTrack = nil; changed.append("opacity") }
-            if let v = cornerRounding { clip.cornerRounding = v; changed.append("cornerRounding") }
+            if let v = edgeRounding { clip.edgeRounding = v; changed.append("edgeRounding") }
+            if let v = edgeSoftness { clip.edgeSoftness = v; changed.append("edgeSoftness") }
             if setBlendMode           { clip.blendMode = blendMode; changed.append("blendMode") }
             if let t = transform {
                 t.apply(to: &clip)

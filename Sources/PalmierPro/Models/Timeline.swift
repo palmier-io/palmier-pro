@@ -150,7 +150,8 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var opacity: Double = 1.0
     var transform: Transform = Transform()
     var crop: Crop = Crop()
-    var cornerRounding: Double = 0
+    var edgeRounding: Double = 0
+    var edgeSoftness: Double = 0
     var linkGroupId: String?
     var captionGroupId: String?
     var multicamGroupId: String?
@@ -179,7 +180,7 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         case id, mediaRef, mediaType, sourceClipType, startFrame, durationFrames
         case trimStartFrame, trimEndFrame, speed, volume
         case fadeInFrames, fadeOutFrames, fadeInInterpolation, fadeOutInterpolation
-        case opacity, transform, crop, cornerRounding
+        case opacity, transform, crop, edgeRounding, edgeSoftness
         case linkGroupId, captionGroupId, multicamGroupId, textContent, textStyle, textAnimation, wordTimings
         case textFillMode
         case opacityTrack, positionTrack, scaleTrack, rotationTrack, cropTrack, volumeTrack
@@ -438,8 +439,10 @@ extension Clip {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        let decodedCornerRounding = (try? c.decode(Double.self, forKey: .cornerRounding)) ?? 0
-        let cornerRounding = (0...1).contains(decodedCornerRounding) ? decodedCornerRounding : 0
+        func normalizedValue(forKey key: CodingKeys) -> Double {
+            let value = (try? c.decode(Double.self, forKey: key)) ?? 0
+            return (0...1).contains(value) ? value : 0
+        }
         self.init(
             id: (try? c.decode(String.self, forKey: .id)) ?? UUID().uuidString,
             mediaRef: try c.decode(String.self, forKey: .mediaRef),
@@ -458,7 +461,8 @@ extension Clip {
             opacity: (try? c.decode(Double.self, forKey: .opacity)) ?? 1.0,
             transform: (try? c.decode(Transform.self, forKey: .transform)) ?? Transform(),
             crop: (try? c.decode(Crop.self, forKey: .crop)) ?? Crop(),
-            cornerRounding: cornerRounding,
+            edgeRounding: normalizedValue(forKey: .edgeRounding),
+            edgeSoftness: normalizedValue(forKey: .edgeSoftness),
             linkGroupId: try? c.decode(String.self, forKey: .linkGroupId),
             captionGroupId: try? c.decode(String.self, forKey: .captionGroupId),
             multicamGroupId: try? c.decode(String.self, forKey: .multicamGroupId),

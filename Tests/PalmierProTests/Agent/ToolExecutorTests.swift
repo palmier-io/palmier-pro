@@ -304,7 +304,8 @@ struct ToolExecutorReadOnlyTests {
             volume: 0.987654321
         )
         clip.opacity = 0.123456789
-        clip.cornerRounding = 0.456789
+        clip.edgeRounding = 0.456789
+        clip.edgeSoftness = 0.234567
         clip.transform = Transform(
             centerX: 0.123456789,
             centerY: 0.987654321,
@@ -340,7 +341,8 @@ struct ToolExecutorReadOnlyTests {
         #expect(outClip?["volumeDb"] as? Double == -0.108)
         #expect(outClip?["volume"] == nil)
         #expect(outClip?["opacity"] as? Double == 0.123)
-        #expect(outClip?["cornerRounding"] as? Double == 0.457)
+        #expect(outClip?["edgeRounding"] as? Double == 0.457)
+        #expect(outClip?["edgeSoftness"] as? Double == 0.235)
     }
 
     @Test func getTimelineOmitsDefaultValuedFields() async throws {
@@ -371,7 +373,7 @@ struct ToolExecutorReadOnlyTests {
         #expect(clip?["durationFrames"] == nil)
         for defaulted in [
             "mediaType", "sourceClipType", "speed", "volume", "volumeDb", "opacity",
-            "cornerRounding",
+            "edgeRounding", "edgeSoftness",
             "trimStartFrame", "trimEndFrame", "fadeInFrames", "fadeOutFrames",
             "fadeInInterpolation", "fadeOutInterpolation", "transform", "crop",
         ] {
@@ -1271,24 +1273,25 @@ struct ToolExecutorClipTests {
         }
     }
 
-    @Test func setClipPropertiesSetsCornerRoundingOnVisualClips() async throws {
+    @Test func setClipPropertiesSetsEdgeAdjustmentsOnVisualClips() async throws {
         let (h, asset) = await setupWithVideoTrack()
         let clipId = await addedClip(in: h, asset: asset)
 
         let result = await h.runRaw("set_clip_properties", args: [
-            "clipIds": [clipId], "cornerRounding": 0.4,
+            "clipIds": [clipId], "edgeRounding": 0.4, "edgeSoftness": 0.25,
         ])
 
         #expect(result.isError == false, "\(ToolHarness.textOf(result))")
-        #expect(h.editor.clipFor(id: clipId)?.cornerRounding == 0.4)
+        #expect(h.editor.clipFor(id: clipId)?.edgeRounding == 0.4)
+        #expect(h.editor.clipFor(id: clipId)?.edgeSoftness == 0.25)
     }
 
-    @Test func setClipPropertiesRejectsCornerRoundingOnNonVisualClips() async {
+    @Test func setClipPropertiesRejectsEdgeAdjustmentsOnNonVisualClips() async {
         let clip = Fixtures.clip(id: "audio", mediaType: .audio, start: 0, duration: 30)
         let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.audioTrack(clips: [clip])]))
 
         let result = await h.runRaw("set_clip_properties", args: [
-            "clipIds": [clip.id], "cornerRounding": 0.4,
+            "clipIds": [clip.id], "edgeRounding": 0.4, "edgeSoftness": 0.25,
         ])
 
         #expect(result.isError)
@@ -1378,7 +1381,8 @@ struct ToolExecutorClipTests {
             ("speed", 0.0), ("speed", -2.0),
             ("volumeDb", 15.1), ("volumeDb", -60.1),
             ("opacity", -1.0),
-            ("cornerRounding", -0.1), ("cornerRounding", 1.1),
+            ("edgeRounding", -0.1), ("edgeRounding", 1.1),
+            ("edgeSoftness", -0.1), ("edgeSoftness", 1.1),
             ("trimStartFrame", -100),
         ]
         for (field, value) in cases {

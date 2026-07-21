@@ -22,6 +22,7 @@ struct InspectorView: View {
     @State private var preferredTab: ClipTab = .video
     @State private var preferredAssetTab: AssetTab = .details
     @State private var transformExpanded = true
+    @State private var imageAdjustmentExpanded = true
     @State var audioLevelsExpanded = true
     @State var collapsedAdjustSections: Set<String> = ["Curves", "Color Wheels", "Hue Curves", "LUTs", "Effects"]
     @State var collapsedAdjustSubgroups: Set<String> = [
@@ -339,6 +340,7 @@ struct InspectorView: View {
     private func videoTabContent() -> some View {
         let clips = nonTextVisualClips
         transformSection(clips: clips)
+        imageAdjustmentSection(clips: clips)
         speedSection(clips: (clips + selectedAudioClips).filter(\.supportsRetiming))
     }
 
@@ -521,9 +523,26 @@ struct InspectorView: View {
                 opacityScrubField(clips: clips)
             }
             cropRow(single: single)
-            cornerRoundingRow(clips: clips)
             flipRow(clips: clips)
             blendRow(clips: clips)
+        }
+    }
+
+    private func imageAdjustmentSection(clips: [Clip]) -> some View {
+        EditorPanelGroup(
+            "Image Adjustment",
+            isExpanded: $imageAdjustmentExpanded,
+            onReset: {
+                commitPropertiesToClips(clips, actionName: "Reset Image Adjustment") { clip in
+                    clip.edgeSoftness = 0
+                    clip.edgeRounding = 0
+                }
+            }
+        ) {
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+                edgeSoftnessRow(clips: clips)
+                edgeRoundingRow(clips: clips)
+            }
         }
     }
 
@@ -645,18 +664,17 @@ struct InspectorView: View {
         }
     }
 
-    private func cornerRoundingRow(clips: [Clip]) -> some View {
+    private func edgeSoftnessRow(clips: [Clip]) -> some View {
         propertyRow(
-            label: "Corner Radius",
+            label: "Edge Softness",
             onReset: {
-                commitPropertiesToClips(clips, actionName: "Reset Corner Radius") {
-                    $0.cornerRounding = 0
+                commitPropertiesToClips(clips, actionName: "Reset Edge Softness") {
+                    $0.edgeSoftness = 0
                 }
-            },
-            reservesKeyframeControls: true
+            }
         ) {
             ScrubbableNumberField(
-                value: sharedClipValue(clips) { $0.cornerRounding },
+                value: sharedClipValue(clips) { $0.edgeSoftness },
                 range: 0...1,
                 displayMultiplier: 100,
                 format: "%.0f",
@@ -664,15 +682,48 @@ struct InspectorView: View {
                 fieldWidth: AppTheme.EditorPanel.numericFieldWidth,
                 onChanged: { newValue in
                     editor.applyClipProperties(clipIds: clips.map(\.id)) {
-                        $0.cornerRounding = newValue
+                        $0.edgeSoftness = newValue
                     }
                 }
             ) { newValue in
                 editor.commitClipProperties(
                     clipIds: clips.map(\.id),
-                    actionName: "Change Corner Radius"
+                    actionName: "Change Edge Softness"
                 ) {
-                    $0.cornerRounding = newValue
+                    $0.edgeSoftness = newValue
+                }
+            }
+        }
+        .frame(height: KeyframesMetrics.rowHeight)
+    }
+
+    private func edgeRoundingRow(clips: [Clip]) -> some View {
+        propertyRow(
+            label: "Edge Rounding",
+            onReset: {
+                commitPropertiesToClips(clips, actionName: "Reset Edge Rounding") {
+                    $0.edgeRounding = 0
+                }
+            }
+        ) {
+            ScrubbableNumberField(
+                value: sharedClipValue(clips) { $0.edgeRounding },
+                range: 0...1,
+                displayMultiplier: 100,
+                format: "%.0f",
+                valueSuffix: "%",
+                fieldWidth: AppTheme.EditorPanel.numericFieldWidth,
+                onChanged: { newValue in
+                    editor.applyClipProperties(clipIds: clips.map(\.id)) {
+                        $0.edgeRounding = newValue
+                    }
+                }
+            ) { newValue in
+                editor.commitClipProperties(
+                    clipIds: clips.map(\.id),
+                    actionName: "Change Edge Rounding"
+                ) {
+                    $0.edgeRounding = newValue
                 }
             }
         }
