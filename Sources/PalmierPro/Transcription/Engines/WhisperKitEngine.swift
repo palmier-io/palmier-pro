@@ -73,7 +73,9 @@ actor WhisperKitEngine {
         }
         // Guard against an interrupted decode being cached as complete: reject a transcript whose
         // speech ends grossly short of the audio's non-silent end.
-        let samples = (try? EngineAudio.loadSamples(fileURL: fileURL)) ?? []
+        // Fail closed: if the verification reload fails we cannot prove coverage, and returning the
+        // transcript unchecked would let a truncated decode be cached as complete.
+        let samples = try EngineAudio.loadSamples(fileURL: fileURL)
         if let gap = EngineAudio.coverageShortfall(segments: segments, samples: samples) {
             throw EngineError.incompleteResult(covered: gap.covered, expected: gap.expected)
         }

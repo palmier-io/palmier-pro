@@ -181,7 +181,17 @@ actor Qwen3ASREngine {
                 }
             }
 
-            words.append(contentsOf: aligned.words)
+            // Anchors are matched with slack past the chunk boundary; clamp emitted times into the
+            // chunk window so the merged transcript stays monotonic across chunks.
+            words.append(contentsOf: aligned.words.map { word in
+                TranscriptionWord(
+                    text: word.text,
+                    start: word.start.map { min(max($0, chunk.start), chunk.end) },
+                    end: word.end.map { min(max($0, chunk.start), chunk.end) },
+                    speaker: word.speaker,
+                    aligned: word.aligned
+                )
+            })
             segments.append(TranscriptionSegment(
                 text: chunk.text,
                 start: aligned.words.first?.start ?? chunk.start,
