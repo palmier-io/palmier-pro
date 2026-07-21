@@ -24,8 +24,7 @@ actor WhisperKitEngine {
     }
 
     private static let modelName = "large-v3_turbo"
-    private static let downloadBase = ModelDownloader.modelsDir
-        .appendingPathComponent("whisperkit", isDirectory: true)
+    private static let downloadBase = SpeechModels.installDir(named: "whisperkit")
 
     private var pipe: WhisperKit?
 
@@ -71,13 +70,18 @@ actor WhisperKitEngine {
                 }
             }
         }
-        // Guard against an interrupted decode being cached as complete: reject a transcript whose
-        // speech ends grossly short of the audio's non-silent end.
-        // Fail closed: if the verification reload fails we cannot prove coverage, and returning the
-        // transcript unchecked would let a truncated decode be cached as complete.
+        // Guard against an interrupted decode being cached as complete: throw only on the
+        // unambiguous case — a (near-)empty transcript over sustained non-silent audio. Energy is
+        // not speech (music outros), so partial shortfalls log instead of throwing.
+        // Fail closed on the reload itself: without samples we cannot prove coverage.
         let samples = try EngineAudio.loadSamples(fileURL: fileURL)
-        if let gap = EngineAudio.coverageShortfall(segments: segments, samples: samples) {
-            throw EngineError.incompleteResult(covered: gap.covered, expected: gap.expected)
+        let lastEnd = segments.map(\.end).max() ?? 0
+        let energyEnd = EngineAudio.nonSilentEnd(samples: samples)
+        if lastEnd < 1.0, energyEnd > 30.0 {
+            throw EngineError.incompleteResult(covered: lastEnd, expected: energyEnd)
+        } else if let gap = EngineAudio.coverageShortfall(segments: segments, samples: samples) {
+            Log.transcription.warning(
+                "whisper possible shortfall: segments end \(String(format: "%.0f", gap.covered))s of \(String(format: "%.0f", gap.expected))s non-silent (not failing — may be a music tail)")
         }
         return TranscriptionResult(
             text: segments.map(\.text).joined(separator: " "),
@@ -142,6 +146,10 @@ actor WhisperKitEngine {
             )
             pipe = loaded
             return loaded
+        } catch is CancellationError {
+            // Propagate: a cancelled load must not read as an engine failure, which would fall
+            // through to a fresh Apple run that gets cached as a legitimate result.
+            throw CancellationError()
         } catch {
             throw EngineError.loadFailed(error.localizedDescription)
         }

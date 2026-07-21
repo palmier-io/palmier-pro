@@ -26,8 +26,7 @@ actor Qwen3ASREngine {
     private static let modelArchiveName = "sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25"
     private static let modelArchiveURL = URL(string:
         "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/\(modelArchiveName).tar.bz2")!
-    private static let installDir = ModelDownloader.modelsDir
-        .appendingPathComponent("qwen3-asr-0.6B-int8", isDirectory: true)
+    private static let installDir = SpeechModels.installDir(named: "qwen3-asr-0.6B-int8")
 
     /// 12s chunks: dense Mandarin stays well inside the decoder's 128-new-token budget.
     private static let chunkSeconds = 12.0
@@ -117,6 +116,7 @@ actor Qwen3ASREngine {
         // (e.g. model download offline), words fall back to interpolation.
         let timingTask = Task { try await WhisperKitEngine.shared.transcribe(fileURL: fileURL) }
 
+        defer { if Task.isCancelled { timingTask.cancel() } }
         let samples = try EngineAudio.loadSamples(fileURL: fileURL)
         var chunks: [(text: String, start: Double, end: Double)] = []
         var chunkStart = 0
@@ -182,14 +182,19 @@ actor Qwen3ASREngine {
             }
 
             // Anchors are matched with slack past the chunk boundary; clamp emitted times into the
-            // chunk window so the merged transcript stays monotonic across chunks.
+            // chunk window so the merged transcript stays monotonic across chunks. A clamp that
+            // actually moves a time forfeits its acoustic trust — downstream cut planners must not
+            // treat the adjusted value as anchored.
             words.append(contentsOf: aligned.words.map { word in
-                TranscriptionWord(
+                let start = word.start.map { min(max($0, chunk.start), chunk.end) }
+                let end = word.end.map { min(max($0, chunk.start), chunk.end) }
+                let moved = start != word.start || end != word.end
+                return TranscriptionWord(
                     text: word.text,
-                    start: word.start.map { min(max($0, chunk.start), chunk.end) },
-                    end: word.end.map { min(max($0, chunk.start), chunk.end) },
+                    start: start,
+                    end: end,
                     speaker: word.speaker,
-                    aligned: word.aligned
+                    aligned: moved ? false : word.aligned
                 )
             })
             segments.append(TranscriptionSegment(
@@ -199,19 +204,21 @@ actor Qwen3ASREngine {
             ))
         }
 
-        // Guard against a partial decode (dropped or empty trailing chunks) being cached as
-        // complete — on direct evidence, not tuned thresholds. Whisper heard the same audio
-        // independently and decodes speech only: a run of its words AFTER qwen3's last segment is
-        // proof of dropped speech (immune to music tails, which have no words). The energy check
-        // applies only when Whisper produced nothing to compare against.
+        // Incomplete-decode guard: throw ONLY on unambiguous evidence — a (near-)empty decode while
+        // an independent signal (Whisper speech or sustained energy) shows real content. Anything
+        // subtler logs a warning instead: Whisper hallucinates fluent words on music tails and
+        // per-char CJK anchors inflate counts, so a threshold-tuned throw here has repeatedly
+        // traded one failure mode for another (false fallback + retry churn vs cached truncation).
         let lastEnd = segments.map(\.end).max() ?? 0
-        if !timingWords.isEmpty {
-            let missedSpeech = timingWords.filter { ($0.start ?? 0) > lastEnd + 2.0 }
-            if missedSpeech.count >= 5, let missedEnd = missedSpeech.compactMap(\.end).max() {
-                throw EngineError.incompleteResult(covered: lastEnd, expected: missedEnd)
+        let whisperSpeechEnd = timingWords.compactMap(\.end).max() ?? 0
+        if lastEnd < 1.0 {
+            let energyEnd = EngineAudio.nonSilentEnd(samples: samples)
+            if whisperSpeechEnd > 5.0 || energyEnd > 30.0 {
+                throw EngineError.incompleteResult(covered: lastEnd, expected: max(whisperSpeechEnd, energyEnd))
             }
-        } else if let gap = EngineAudio.coverageShortfall(segments: segments, samples: samples) {
-            throw EngineError.incompleteResult(covered: gap.covered, expected: gap.expected)
+        } else if whisperSpeechEnd > lastEnd + 10.0 {
+            Log.transcription.warning(
+                "qwen3 possible tail shortfall: segments end \(String(format: "%.0f", lastEnd))s, whisper words to \(String(format: "%.0f", whisperSpeechEnd))s (not failing — may be a hallucinated tail)")
         }
 
         return TranscriptionResult(
