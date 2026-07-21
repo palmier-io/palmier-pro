@@ -129,12 +129,13 @@ extension EditorViewModel {
         targets = resolvedCaptionTargets(for: request)
         guard !targets.isEmpty else { throw CaptionError.noSource }
 
+        let preparationTimeline = timeline
+
         if request.autoDetect {
             guard let winner = dominantSpeechTrack(targets, results) else { return [] }
             targets = targets.filter { $0.trackId == winner }
         }
 
-        let preparationRevision = timelineRenderRevision
         let animation: TextAnimation? = request.animation.isActive ? request.animation : nil
         let input = CaptionSpecBuilder.Input(
             targets: targets.compactMap { target in
@@ -151,8 +152,10 @@ extension EditorViewModel {
         )
         let specs = try await CaptionSpecBuilder.build(input)
         try Task.checkCancellation()
-        guard activeTimelineId == owningTimelineId,
-              timelineRenderRevision == preparationRevision else {
+        guard captionPreparationIsCurrent(
+            timelineId: owningTimelineId,
+            snapshot: preparationTimeline
+        ) else {
             throw CaptionError.timelineChanged
         }
         guard !specs.isEmpty else { return [] }
@@ -197,6 +200,13 @@ extension EditorViewModel {
                 CaptionTarget(id: c.id, trackId: timeline.tracks[$0.trackIndex].id, clip: timeline.tracks[$0.trackIndex].clips[$0.clipIndex])
             }
         }
+    }
+
+    func captionPreparationIsCurrent(
+        timelineId: String,
+        snapshot: Timeline
+    ) -> Bool {
+        activeTimelineId == timelineId && timeline == snapshot
     }
 
     private struct TranscribeJob {

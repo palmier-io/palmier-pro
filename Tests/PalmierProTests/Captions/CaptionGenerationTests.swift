@@ -116,6 +116,27 @@ private func mediaAsset(_ id: String, hasAudio: Bool = true) -> MediaAsset {
 
 @MainActor
 @Suite struct CaptionTargetTests {
+    @Test func preparationTracksTimelineValueInsteadOfRenderRevision() {
+        let source = Fixtures.clip(
+            id: "source",
+            mediaRef: "source-media",
+            mediaType: .audio,
+            start: 0,
+            duration: 90
+        )
+        let e = editor([Fixtures.audioTrack(clips: [source])])
+        let timelineId = e.activeTimelineId
+        let snapshot = e.timeline
+
+        e.timelineRenderRevision &+= 1
+
+        #expect(e.captionPreparationIsCurrent(timelineId: timelineId, snapshot: snapshot))
+
+        e.timeline.tracks[0].clips[0].startFrame += 1
+
+        #expect(!e.captionPreparationIsCurrent(timelineId: timelineId, snapshot: snapshot))
+    }
+
     @Test func largeCaptionSelectionResolvesWithinInteractionBudget() {
         let captions = (0..<10_000).map {
             Fixtures.clip(
