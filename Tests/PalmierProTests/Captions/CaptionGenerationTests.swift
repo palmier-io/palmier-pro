@@ -26,6 +26,20 @@ private func mediaAsset(_ id: String, hasAudio: Bool = true) -> MediaAsset {
 
 @MainActor
 @Suite struct CaptionPlacementTests {
+    @Test func bulkNonOverwritingPlacementMutatesTimelineOnce() {
+        let e = editor([Fixtures.videoTrack()])
+        let specs = (0..<1_000).map {
+            textSpec(start: $0 * 30, duration: 30, content: "caption \($0)")
+        }
+        let revision = e.timelineRenderRevision
+
+        let ids = e.placeTextClips(specs, clearExistingRegions: false, refreshVisuals: false)
+
+        #expect(ids.count == specs.count)
+        #expect(e.timelineRenderRevision == revision + 1)
+        #expect(e.timeline.tracks[0].clips.map(\.startFrame) == specs.map(\.startFrame))
+    }
+
     @Test func textClipsStayOnInsertedTrackWhenAClipIsOverwritten() {
         let e = editor([Fixtures.videoTrack(clips: [Fixtures.clip(start: 0, duration: 300)])])
         e.timeline.tracks.insert(Track(type: .video), at: 0)
@@ -55,6 +69,48 @@ private func mediaAsset(_ id: String, hasAudio: Bool = true) -> MediaAsset {
         _ = e.placeTextClips([textSpec(start: 0, duration: 50, content: "hi")])
         #expect(e.timeline.tracks.count == 2)
         #expect(e.timeline.tracks[0].clips.count == 1)
+    }
+}
+
+@Suite struct CaptionSpecBuilderTests {
+    @Test func buildsCaptionSpecsFromImmutableInput() async throws {
+        let clip = Fixtures.clip(
+            id: "source",
+            mediaRef: "media",
+            mediaType: .audio,
+            start: 0,
+            duration: 300
+        )
+        let result = TranscriptionResult(
+            text: "hello world",
+            language: "en",
+            words: [
+                TranscriptionWord(text: "hello", start: 1, end: 1.4),
+                TranscriptionWord(text: "world", start: 1.5, end: 2),
+            ],
+            segments: []
+        )
+        let input = CaptionSpecBuilder.Input(
+            targets: [.init(clip: clip, result: result)],
+            fps: 30,
+            canvasWidth: 1920,
+            canvasHeight: 1080,
+            style: TextStyle(),
+            center: CGPoint(x: 0.5, y: 0.8),
+            textCase: .upper,
+            maxWords: nil,
+            animation: nil
+        )
+
+        let specs = try await CaptionSpecBuilder.build(input)
+        let spec = try #require(specs.first)
+
+        #expect(specs.count == 1)
+        #expect(spec.content == "HELLO WORLD")
+        #expect(spec.startFrame == 30)
+        #expect(spec.durationFrames == 30)
+        #expect(spec.transform != nil)
+        #expect(spec.words?.map(\.text) == ["hello", "world"])
     }
 }
 

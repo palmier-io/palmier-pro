@@ -599,7 +599,7 @@ final class VideoEngine {
                     fps: editor.timeline.fps,
                     trackStart: self.sourceTrackStart
                 )
-                let duration = editor.activePreviewDurationFrames
+                let duration = self.playbackDurationFrames(for: editor)
                 let clamped = duration > 0 ? min(frame, duration) : frame
                 if editor.activePreviewTab == .timeline {
                     editor.currentFrame = clamped
@@ -614,7 +614,7 @@ final class VideoEngine {
     }
 
     private func playbackStartFrame(for editor: EditorViewModel) -> Int {
-        let duration = editor.activePreviewDurationFrames
+        let duration = playbackDurationFrames(for: editor)
         guard duration > 0 else { return 0 }
         let current = editor.activePreviewTab == .timeline ? editor.currentFrame : editor.sourcePlayheadFrame
         guard current >= duration else { return current }
@@ -624,6 +624,17 @@ final class VideoEngine {
             editor.sourcePlayheadFrame = 0
         }
         return 0
+    }
+
+    private func playbackDurationFrames(for editor: EditorViewModel) -> Int {
+        guard editor.activePreviewTab == .timeline else {
+            return editor.activePreviewDurationFrames
+        }
+        return SourceMediaTimebase.relativeFrame(
+            absoluteTime: compositionDuration,
+            fps: editor.timeline.fps,
+            trackStart: .zero
+        )
     }
 
     private static let interactiveSeekInterval: TimeInterval = 1.0 / 30.0
