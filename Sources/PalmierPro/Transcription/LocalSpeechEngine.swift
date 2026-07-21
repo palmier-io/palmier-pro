@@ -27,6 +27,15 @@ enum LocalSpeechEngine: String, CaseIterable, Identifiable, Sendable {
     }
 
     /// Distinguishes cache entries across engines so switching engines re-transcribes.
+    /// Stable identifier stamped onto results, so the cache can tell which engine actually ran.
+    var modelId: String {
+        switch self {
+        case .qwen3: "qwen3-asr-0.6B-int8"
+        case .whisper: "whisper-large-v3_turbo"
+        case .apple: "apple-speech"
+        }
+    }
+
     var cacheTag: String? {
         switch self {
         case .apple: nil  // preserves pre-existing cache entries

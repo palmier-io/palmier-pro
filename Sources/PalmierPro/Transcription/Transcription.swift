@@ -51,11 +51,20 @@ struct TranscriptionResult: Sendable, Codable {
     let language: String?
     let words: [TranscriptionWord]
     let segments: [TranscriptionSegment]
+    /// The model that actually produced this result (e.g. "qwen3-asr-0.6B-int8"); used to store the
+    /// entry under the engine that RAN, so an Apple fallback can never poison another engine's cache slot.
+    var model: String? = nil
+
+    func withModel(_ id: String) -> TranscriptionResult {
+        var copy = self
+        copy.model = id
+        return copy
+    }
 
     /// Shifts all timestamps back into source time after transcribing an extracted range
     func offsetting(by offset: Double) -> TranscriptionResult {
         guard offset != 0 else { return self }
-        return TranscriptionResult(
+        var shifted = TranscriptionResult(
             text: text,
             language: language,
             words: words.map {
@@ -71,6 +80,8 @@ struct TranscriptionResult: Sendable, Codable {
                 TranscriptionSegment(text: $0.text, start: $0.start + offset, end: $0.end + offset, speaker: $0.speaker)
             }
         )
+        shifted.model = model
+        return shifted
     }
 }
 
@@ -141,9 +152,10 @@ enum Transcription {
         }
 
         // Route through the configured on-device engine; fall back to Apple Speech on failure
-        // (e.g. first-run model download with no network).
+        // (e.g. first-run model download with no network). Profanity etiquette replacements exist
+        // only in Apple Speech, so a censoring request routes there rather than silently ignoring it.
         let engine = LocalSpeechEngine.current
-        if engine != .apple {
+        if engine != .apple, !censorProfanity {
             do {
                 return try await transcribeWithEngine(engine, fileURL: fileURL, preferredLocale: preferredLocale)
             } catch is CancellationError {
@@ -247,7 +259,7 @@ enum Transcription {
             throw TranscriptionError.analysisFailed(error.localizedDescription)
         }
 
-        let decoded = decodeResults(collected, locale: locale)
+        let decoded = decodeResults(collected, locale: locale).withModel(LocalSpeechEngine.apple.modelId)
         Log.transcription.notice(
             "ok textChars=\(decoded.text.count) words=\(decoded.words.count) lang=\(decoded.language ?? "?")",
             telemetry: "Transcription finished",
@@ -270,9 +282,9 @@ enum Transcription {
         switch engine {
         case .qwen3:
             // Qwen3-ASR autodetects language per chunk; no hint parameter.
-            return try await Qwen3ASREngine.shared.transcribe(fileURL: fileURL)
+            return try await Qwen3ASREngine.shared.transcribe(fileURL: fileURL).withModel(engine.modelId)
         case .whisper:
-            return try await WhisperKitEngine.shared.transcribe(fileURL: fileURL, language: languageCode)
+            return try await WhisperKitEngine.shared.transcribe(fileURL: fileURL, language: languageCode).withModel(engine.modelId)
         case .apple:
             throw TranscriptionError.analysisFailed("apple engine is not routed here")
         }

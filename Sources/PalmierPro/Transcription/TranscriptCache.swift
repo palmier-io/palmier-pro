@@ -27,9 +27,24 @@ actor TranscriptCache {
             full = isVideo
                 ? try await Transcription.transcribeVideoAudio(videoURL: url)
                 : try await Transcription.transcribe(fileURL: url)
-            if let key { store(full, key: key) }
+            // A fallback (e.g. qwen3 unavailable → Apple) stamps a different model than requested.
+            // Store under the slot of the engine that ACTUALLY ran, never the requested one —
+            // otherwise the fallback would be served from the requested engine's slot forever and
+            // shadow a later successful run. Leaving that slot empty keeps the real engine retryable.
+            let ran = Self.storageEngine(requested: LocalSpeechEngine.current, resultModel: full.model)
+            if let storeKey = Self.key(for: url, variant: .local(engine: ran)) {
+                store(full, key: storeKey)
+            }
         }
         return range.map { Self.filter(full, to: $0) } ?? full
+    }
+
+    /// The engine slot a freshly produced transcript belongs in: the engine whose model stamped the
+    /// result. Equals `requested` on success; on a fallback it resolves to the engine that ran.
+    static func storageEngine(requested: LocalSpeechEngine, resultModel: String?) -> LocalSpeechEngine {
+        guard let resultModel,
+              let ran = LocalSpeechEngine.allCases.first(where: { $0.modelId == resultModel }) else { return requested }
+        return ran
     }
 
     nonisolated static func hasCachedOnDisk(for url: URL) -> Bool {
@@ -114,7 +129,7 @@ actor TranscriptCache {
         directory.appendingPathComponent("\(key).json")
     }
 
-    private static func key(for url: URL, variant: CacheVariant = .local) -> String? {
+    private static func key(for url: URL, variant: CacheVariant = .local(engine: LocalSpeechEngine.current)) -> String? {
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
               let size = (attrs[.size] as? NSNumber)?.int64Value,
               let mtime = attrs[.modificationDate] as? Date else { return nil }
@@ -124,15 +139,15 @@ actor TranscriptCache {
     }
 
     private enum CacheVariant {
-        case local
+        case local(engine: LocalSpeechEngine)
         case cloud(range: ClosedRange<Double>?, language: String?)
 
         var prefix: String? {
             switch self {
-            case .local:
+            case .local(let engine):
                 // Engine-tagged so switching engines re-transcribes; Apple stays untagged
                 // to keep pre-engine cache entries valid.
-                return LocalSpeechEngine.current.cacheTag
+                return engine.cacheTag
             case .cloud(let range, let language):
                 let lang = language ?? "auto"
                 guard let range else { return "cloud|\(lang)|full" }

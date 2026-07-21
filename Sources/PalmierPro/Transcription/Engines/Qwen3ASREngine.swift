@@ -11,11 +11,14 @@ actor Qwen3ASREngine {
     enum EngineError: LocalizedError {
         case modelDownloadFailed(String)
         case recognizerInitFailed
+        case incompleteResult(covered: Double, expected: Double)
 
         var errorDescription: String? {
             switch self {
             case .modelDownloadFailed(let reason): "Qwen3-ASR model download failed: \(reason)"
             case .recognizerInitFailed: "Could not initialize the Qwen3-ASR recognizer."
+            case .incompleteResult(let covered, let expected):
+                "Qwen3-ASR transcript covers only \(Int(covered))s of \(Int(expected))s of speech."
             }
         }
     }
@@ -60,6 +63,19 @@ actor Qwen3ASREngine {
         return (conv, encoder, decoder, tokenizerDir)
     }
 
+    /// In-flight install, so concurrent first callers await one download instead of racing
+    /// filesystem extraction (the actor is re-entrant at awaits).
+    private var installTask: Task<Void, Error>?
+
+    private func ensureModelOnce() async throws {
+        if Self.isInstalled { return }
+        if let installTask { return try await installTask.value }
+        let task = Task { try await Self.ensureModel() }
+        installTask = task
+        defer { installTask = nil }
+        try await task.value
+    }
+
     static func ensureModel() async throws {
         if isInstalled { return }
         Log.transcription.notice("qwen3-asr model download start (~840MB)", telemetry: "Qwen3 model download started")
@@ -92,7 +108,7 @@ actor Qwen3ASREngine {
     }
 
     func transcribe(fileURL: URL) async throws -> TranscriptionResult {
-        try await Self.ensureModel()
+        try await ensureModelOnce()
         let recognizer = try loadedRecognizer()
 
         // Timing track: Whisper runs concurrently on its own actor (CoreML/ANE, so the
@@ -105,6 +121,9 @@ actor Qwen3ASREngine {
         var chunks: [(text: String, start: Double, end: Double)] = []
         var chunkStart = 0
         while chunkStart < samples.count {
+            // Cooperative cancellation: throw between chunks so an interrupted decode never returns a
+            // partial transcript that the cache would persist as complete.
+            try Task.checkCancellation()
             let chunkEnd = EngineAudio.chunkBoundary(
                 samples: samples, from: chunkStart, targetSeconds: Self.chunkSeconds)
             let chunk = Array(samples[chunkStart..<chunkEnd])
@@ -121,6 +140,7 @@ actor Qwen3ASREngine {
         var words: [TranscriptionWord] = []
         var segments: [TranscriptionSegment] = []
         for chunk in chunks {
+            try Task.checkCancellation()
             let pieces = Self.splitPieces(text: chunk.text)
             let anchors = timingWords.filter { word in
                 guard let start = word.start, let end = word.end else { return false }
@@ -167,6 +187,12 @@ actor Qwen3ASREngine {
                 start: aligned.words.first?.start ?? chunk.start,
                 end: aligned.words.last?.end ?? chunk.end
             ))
+        }
+
+        // Guard against a partial decode (dropped or empty trailing chunks) being cached as
+        // complete: reject a transcript whose speech ends grossly short of the audio's non-silent end.
+        if let gap = EngineAudio.coverageShortfall(segments: segments, samples: samples) {
+            throw EngineError.incompleteResult(covered: gap.covered, expected: gap.expected)
         }
 
         return TranscriptionResult(

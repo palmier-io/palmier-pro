@@ -15,6 +15,9 @@ struct TimelineWord {
     let startFrame: Int
     let endFrame: Int
     let speaker: String?
+    /// False when the word's times are interpolated rather than acoustically anchored — a cut
+    /// planner must not derive cut points from such rows.
+    var aligned: Bool? = nil
 }
 
 struct TimelineTranscript {
@@ -83,7 +86,11 @@ struct TimelineTranscript {
             if segments {
                 clipOut["segments"] = Self.segmentRows(visible, fps: fps)
             } else {
-                clipOut["words"] = visible.map { [$0.index, $0.text, $0.startFrame] }
+                // Interpolated (not acoustically aligned) rows carry a trailing `false`, mirroring
+                // inspect_media — remove_words must not cut on fabricated timings.
+                clipOut["words"] = visible.map {
+                    $0.aligned == false ? [$0.index, $0.text, $0.startFrame, false] : [$0.index, $0.text, $0.startFrame]
+                }
             }
             clipsOut.append(clipOut)
         }
@@ -98,6 +105,9 @@ struct TimelineTranscript {
             out["segmentFormat"] = ["firstWordIndex", "text", "start", "end"]
         } else {
             out["wordFormat"] = ["index", "text", "start"]
+            if words.contains(where: { $0.aligned == false }) {
+                out["alignmentNote"] = "Rows with a trailing `false` have interpolated (not acoustically aligned) times — do not derive cut points from them."
+            }
         }
         if includesSpeakers, !speakerRuns.isEmpty {
             out["speakers"] = speakerRuns
@@ -301,7 +311,8 @@ extension ToolExecutor {
                     text: row.text,
                     startFrame: row.start,
                     endFrame: row.end,
-                    speaker: row.speaker.map { speakerMap[frag.clip.mediaRef]?[$0] ?? $0 }
+                    speaker: row.speaker.map { speakerMap[frag.clip.mediaRef]?[$0] ?? $0 },
+                    aligned: row.aligned
                 ))
             }
         }
@@ -417,15 +428,15 @@ extension ToolExecutor {
         return ranges
     }
 
-    private func timelineRows(from transcript: TranscriptionResult, clip: Clip, fps: Int) -> [(start: Int, end: Int, text: String, speaker: String?)] {
+    private func timelineRows(from transcript: TranscriptionResult, clip: Clip, fps: Int) -> [(start: Int, end: Int, text: String, speaker: String?, aligned: Bool?)] {
         let visible = CaptionTranscriptMapper.sourceSpan(for: clip)
         let rate = Double(fps)
-        let rows = transcript.words.compactMap { word -> (start: Int, end: Int, text: String, speaker: String?)? in
+        let rows = transcript.words.compactMap { word -> (start: Int, end: Int, text: String, speaker: String?, aligned: Bool?)? in
             guard let start = word.start, let end = word.end else { return nil }
             let midFrame = (start + end) / 2 * rate
             guard midFrame >= visible.start, midFrame < visible.end,
                   let frameSpan = Self.spanFrames(start: start, end: end, clip: clip, fps: fps) else { return nil }
-            return (frameSpan.start, frameSpan.end, word.text, word.speaker)
+            return (frameSpan.start, frameSpan.end, word.text, word.speaker, word.aligned)
         }
         return rows.sorted { ($0.start, $0.end) < ($1.start, $1.end) }
     }
