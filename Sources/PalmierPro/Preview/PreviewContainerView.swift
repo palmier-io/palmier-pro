@@ -120,7 +120,20 @@ struct PreviewContainerView: View {
             if isTimeline || editor.activePreviewTab.clipType == .video {
                 captureFrameButton
             }
-            settingsMenuButton(label: zoomBadgeLabel, help: "Canvas Zoom") { zoomMenuItems }
+            settingsMenuButton(
+                systemImage: "speedometer",
+                label: editor.playbackRate.label,
+                help: "Playback Speed"
+            ) {
+                playbackRateMenuItems
+            }
+            settingsMenuButton(
+                systemImage: "magnifyingglass",
+                label: zoomBadgeLabel,
+                help: "Canvas Zoom"
+            ) {
+                zoomMenuItems
+            }
         }
         .padding(.horizontal, AppTheme.Spacing.lg)
         .frame(height: 36)
@@ -131,7 +144,13 @@ struct PreviewContainerView: View {
     private var imageSettingsBar: some View {
         HStack(spacing: AppTheme.Spacing.sm) {
             Spacer()
-            settingsMenuButton(label: zoomBadgeLabel, help: "Canvas Zoom") { zoomMenuItems }
+            settingsMenuButton(
+                systemImage: "magnifyingglass",
+                label: zoomBadgeLabel,
+                help: "Canvas Zoom"
+            ) {
+                zoomMenuItems
+            }
         }
         .padding(.horizontal, AppTheme.Spacing.lg)
         .frame(height: 36)
@@ -152,7 +171,24 @@ struct PreviewContainerView: View {
         .tourAnchor(.screenshotButton)
     }
 
-    // MARK: - Project settings
+    // MARK: - Preview settings
+
+    @ViewBuilder
+    private var playbackRateMenuItems: some View {
+        ForEach(PreviewPlaybackRate.allCases, id: \.self) { rate in
+            Button {
+                editor.setPlaybackRate(rate)
+            } label: {
+                HStack {
+                    Text(rate.label)
+                    Spacer()
+                    if editor.playbackRate == rate {
+                        Image(systemName: "checkmark")
+                    }
+                }
+            }
+        }
+    }
 
     @ViewBuilder
     private var zoomMenuItems: some View {
@@ -185,6 +221,7 @@ struct PreviewContainerView: View {
     }
 
     private func settingsMenuButton<MenuContent: View>(
+        systemImage: String,
         label: String,
         help: String,
         @ViewBuilder menu: @escaping () -> MenuContent
@@ -192,21 +229,31 @@ struct PreviewContainerView: View {
         Menu {
             menu()
         } label: {
-            badgeLabel(label)
+            badgeLabel(systemImage: systemImage, text: label)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
         .hoverHighlight()
         .help(help)
+        .accessibilityLabel(help)
+        .accessibilityValue(label)
     }
 
-    private func badgeLabel(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: AppTheme.FontSize.xxs, weight: .bold, design: .rounded))
-            .foregroundStyle(AppTheme.Text.secondaryColor)
-            .padding(.horizontal, AppTheme.Spacing.sm)
-            .frame(height: AppTheme.IconSize.mdLg)
+    private func badgeLabel(systemImage: String, text: String) -> some View {
+        HStack(spacing: AppTheme.Spacing.xs) {
+            Image(systemName: systemImage)
+                .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.semibold))
+            Text(text)
+                .font(.system(
+                    size: AppTheme.FontSize.xxs,
+                    weight: AppTheme.FontWeight.bold,
+                    design: .rounded
+                ))
+        }
+        .foregroundStyle(AppTheme.Text.secondaryColor)
+        .padding(.horizontal, AppTheme.Spacing.sm)
+        .frame(height: AppTheme.IconSize.mdLg)
     }
 
     // MARK: - Image preview

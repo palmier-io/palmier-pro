@@ -102,6 +102,7 @@ final class EditorViewModel {
     }
     var activeFrame: Int { playheadState.timelineFrame }
     var isPlaying: Bool = false
+    private(set) var playbackRate: PreviewPlaybackRate = .normal
     var selectedClipIds: Set<String> = []
     var isMarqueeSelecting: Bool = false
     var selectedGap: GapSelection?
@@ -363,6 +364,12 @@ final class EditorViewModel {
     var pendingSettingsContinuation: (@MainActor () -> Void)?
 
     // MARK: - Playback
+
+    func setPlaybackRate(_ rate: PreviewPlaybackRate) {
+        guard playbackRate != rate else { return }
+        playbackRate = rate
+        videoEngine?.setPlaybackRate(rate)
+    }
 
     func togglePlayback() {
         if let videoEngine {
