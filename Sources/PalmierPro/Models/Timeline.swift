@@ -236,7 +236,11 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     func transformAt(frame: Int) -> Transform {
         let tl = topLeftAt(frame: frame)
         let sz = sizeAt(frame: frame)
-        var t = Transform(topLeft: (tl.x, tl.y), width: sz.width, height: sz.height)
+        var t = transform
+        t.centerX = tl.x + sz.width / 2
+        t.centerY = tl.y + sz.height / 2
+        t.width = sz.width
+        t.height = sz.height
         t.rotation = rotationAt(frame: frame)
         return t
     }

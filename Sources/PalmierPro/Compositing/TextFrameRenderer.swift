@@ -12,7 +12,8 @@ enum TextFrameRenderer {
         let style = (clip.textStyle ?? TextStyle()).scaledVisualStyle
         let content = style.displayText(clip.textContent ?? "")
         guard !content.isEmpty else { return nil }
-        let box = boxRect(clip.transform, renderSize)
+        let transform = clip.transformAt(frame: frame)
+        let box = boxRect(transform, renderSize)
         let boxes = layoutBoxes(style: style, box: box, renderSize: renderSize)
         let fontSize = CGFloat(style.fontSize) * (renderSize.height / TextLayout.referenceCanvasHeight)
         let anim = clip.textAnimation
@@ -31,7 +32,7 @@ enum TextFrameRenderer {
         }
 
         // Static base is frame-independent → cache it. Entrance reuses it under a transform.
-        guard let base = cachedStatic(content: content, style: style, transform: clip.transform,
+        guard let base = cachedStatic(content: content, style: style, transform: transform,
                                       boxes: boxes,
                                       fontSize: fontSize, renderSize: renderSize) else { return nil }
         guard let anim, anim.isActive else { return base }
@@ -499,7 +500,9 @@ enum TextFrameRenderer {
 
     private static func signature(_ content: String, _ s: TextStyle, _ t: Transform, _ size: CGSize) -> NSString {
         var h = Hasher()
-        h.combine(content); h.combine(s); h.combine(t); h.combine(size)
+        h.combine(content); h.combine(s)
+        h.combine(t.centerX); h.combine(t.centerY); h.combine(t.width); h.combine(t.height)
+        h.combine(size)
         return String(h.finalize()) as NSString
     }
 }

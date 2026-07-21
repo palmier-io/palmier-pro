@@ -27,6 +27,7 @@ struct TextTab: View {
                 actions: styleActions,
                 afterAlignment: {
                     positionSection
+                    rotationSection
                     fillModeRow
                 },
                 afterColor: { opacitySlider }
@@ -119,6 +120,20 @@ struct TextTab: View {
             }
         ) {
             InspectorPositionFields(clips: clips)
+        }
+    }
+
+    private var rotationSection: some View {
+        InspectorRow(
+            label: "Rotation",
+            onReset: {
+                editor.commitClipProperties(clipIds: clipIds, actionName: "Reset Rotation") {
+                    $0.transform.rotation = Transform().rotation
+                    $0.rotationTrack = nil
+                }
+            }
+        ) {
+            InspectorRotationField(clips: clips)
         }
     }
 

@@ -469,7 +469,10 @@ extension EditorViewModel {
         case .center:
             cx = tl.x + currentW / 2
         }
-        clip.transform = Transform(center: (cx, cy), width: needW, height: needH)
+        clip.transform.centerX = cx
+        clip.transform.centerY = cy
+        clip.transform.width = needW
+        clip.transform.height = needH
         return true
     }
 

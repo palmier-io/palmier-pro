@@ -90,12 +90,14 @@ extension EditorViewModel {
         }
     }
 
-    func applyRotation(clipId: String, valueDeg: Double) {
-        applyClipProperty(clipId: clipId) { self.writeRotation(into: &$0, valueDeg: valueDeg) }
+    func applyRotation(clipIds: [String], valueDeg: Double) {
+        applyClipProperties(clipIds: clipIds) { self.writeRotation(into: &$0, valueDeg: valueDeg) }
     }
 
-    func commitRotation(clipId: String, valueDeg: Double) {
-        commitClipProperty(clipId: clipId, actionName: "Change Rotation") { self.writeRotation(into: &$0, valueDeg: valueDeg) }
+    func commitRotation(clipIds: [String], valueDeg: Double) {
+        commitClipProperties(clipIds: clipIds, actionName: "Change Rotation") {
+            self.writeRotation(into: &$0, valueDeg: valueDeg)
+        }
     }
 
     private func writeRotation(into clip: inout Clip, valueDeg: Double) {

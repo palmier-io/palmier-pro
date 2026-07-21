@@ -77,7 +77,7 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
     var hasAnyProperty: Bool {
         durationFrames != nil || trimStartFrame != nil || trimEndFrame != nil
             || speed != nil || volumeDb != nil || opacity != nil
-            || transform != nil
+            || transform?.hasAnyField == true
             || blendMode != nil
     }
 }
@@ -97,18 +97,37 @@ fileprivate struct SetKeyframesInput: DecodableToolArgs {
     static let allowedKeys: Set<String> = ["clipId", "property", "keyframes"]
 }
 
-/// Partial transform shared between set_clip_properties and add_texts.
+/// Partial transform shared by clip and text property tools.
 struct ParsedTransform: Decodable {
     var centerX: Double?
     var centerY: Double?
     var width: Double?
     var height: Double?
+    var rotation: Double?
     var flipHorizontal: Bool?
     var flipVertical: Bool?
 
-    var hasAnyField: Bool {
+    static let allowedKeys: Set<String> = [
+        "centerX", "centerY", "width", "height", "rotation", "flipHorizontal", "flipVertical",
+    ]
+
+    var hasLayoutField: Bool {
         centerX != nil || centerY != nil || width != nil || height != nil
+    }
+
+    var hasAnyField: Bool {
+        hasLayoutField || rotation != nil
             || flipHorizontal != nil || flipVertical != nil
+    }
+
+    func apply(to clip: inout Clip) {
+        if let centerX { clip.transform.centerX = centerX }
+        if let centerY { clip.transform.centerY = centerY }
+        if let width { clip.transform.width = width }
+        if let height { clip.transform.height = height }
+        if let rotation { clip.transform.rotation = rotation; clip.rotationTrack = nil }
+        if let flipHorizontal { clip.transform.flipHorizontal = flipHorizontal }
+        if let flipVertical { clip.transform.flipVertical = flipVertical }
     }
 }
 
@@ -445,6 +464,16 @@ extension ToolExecutor {
     // MARK: set_clip_properties
 
     func setClipProperties(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        if let rawTransform = args["transform"] {
+            guard let transform = rawTransform as? [String: Any] else {
+                throw ToolError("set_clip_properties.transform: expected object")
+            }
+            try validateUnknownKeys(
+                transform,
+                allowed: ParsedTransform.allowedKeys,
+                path: "set_clip_properties.transform"
+            )
+        }
         let input: SetClipPropertiesInput = try decodeToolArgs(args, path: "set_clip_properties")
         let clipIds = input.clipIds ?? []
         guard !clipIds.isEmpty else { throw ToolError("Provide a non-empty 'clipIds' array") }
@@ -512,9 +541,15 @@ extension ToolExecutor {
             let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
             return (input.volumeDb != nil && clip.volumeTrack != nil)
                 || (input.opacity != nil && clip.opacityTrack != nil)
+                || (input.transform?.rotation != nil && clip.rotationTrack != nil)
         }
         if !clearedKeyframes.isEmpty {
-            notes.append("Setting a scalar cleared existing keyframes on: \(clearedKeyframes.joined(separator: ", ")).")
+            notes.append("Setting a static value cleared existing keyframes on: \(clearedKeyframes.joined(separator: ", ")).")
+        }
+
+        var beforeClips: [String: Clip] = [:]
+        for id in clipIds + Array(partners) {
+            beforeClips[id] = editor.clipFor(id: id)
         }
 
         let snapshot = timelineSnapshot(editor)
@@ -551,7 +586,14 @@ extension ToolExecutor {
                 )
             }
         }
-        return mutationResult(editor, since: snapshot, touched: clipIds + Array(partners), notes: notes)
+        let changed = beforeClips.contains { id, clip in editor.clipFor(id: id) != clip }
+        return mutationResult(
+            editor,
+            since: snapshot,
+            touched: clipIds + Array(partners),
+            extra: ["changed": changed],
+            notes: notes
+        )
     }
 
     fileprivate static func applyPropertyChanges(
@@ -597,16 +639,7 @@ extension ToolExecutor {
             if let v = opacity        { clip.opacity = v; clip.opacityTrack = nil; changed.append("opacity") }
             if setBlendMode           { clip.blendMode = blendMode; changed.append("blendMode") }
             if let t = transform {
-                let cur = clip.transform
-                var next = Transform(
-                    center: (t.centerX ?? cur.center.x, t.centerY ?? cur.center.y),
-                    width: t.width ?? cur.width,
-                    height: t.height ?? cur.height
-                )
-                next.rotation = cur.rotation
-                next.flipHorizontal = t.flipHorizontal ?? cur.flipHorizontal
-                next.flipVertical = t.flipVertical ?? cur.flipVertical
-                clip.transform = next
+                t.apply(to: &clip)
                 changed.append("transform")
             }
         }

@@ -103,7 +103,10 @@ enum FrameRenderer {
         var style = clip.textStyle ?? TextStyle()
         style.color = .init(r: 1, g: 1, b: 1, a: 1)
         clip.textStyle = style
-        return TextFrameRenderer.image(clip: clip, frame: frame, renderSize: renderSize)
+        guard let image = TextFrameRenderer.image(clip: clip, frame: frame, renderSize: renderSize) else {
+            return nil
+        }
+        return rotatedTextImage(image, clip: clip, frame: frame, renderSize: renderSize)
     }
 
     /// Children composite at the child canvas; the nest clip's pipeline runs on the result.
@@ -288,8 +291,7 @@ enum FrameRenderer {
             }
         }
 
-        // transformAt drops the flip flags, so use the static transform unless animated.
-        let t = clip.hasTransformAnimation ? clip.transformAt(frame: frame) : clip.transform
+        let t = clip.transformAt(frame: frame)
         let av = layer.preferredTransform.concatenating(
             CompositionBuilder.affineTransform(for: t, natSize: layer.natSize, renderSize: renderSize)
         )
@@ -307,7 +309,7 @@ enum FrameRenderer {
         return image
     }
 
-    /// Text renders flat in place; opacity fades apply after. Per-word animation bakes in at raster. Preset only, no keyframed transform.
+    /// Text renders in place; effects run before rotation and opacity, matching visual clips.
     private static func composedTextLayer(
         _ layer: LayerPlan,
         frame: Int,
@@ -327,6 +329,7 @@ enum FrameRenderer {
                 image = descriptor.render(image, effect: effect, atOffset: offset)
             }
         }
+        image = rotatedTextImage(image, clip: clip, frame: frame, renderSize: renderSize)
         image = image.premultiplyingAlpha()
 
         if bakeOpacity, alpha < 1 {
@@ -335,6 +338,23 @@ enum FrameRenderer {
             ])
         }
         return image
+    }
+
+    private static func rotatedTextImage(
+        _ image: CIImage,
+        clip: Clip,
+        frame: Int,
+        renderSize: CGSize
+    ) -> CIImage {
+        let rotation = CompositionBuilder.canvasRotationTransform(
+            for: clip.transformAt(frame: frame),
+            renderSize: renderSize
+        )
+        guard !rotation.isIdentity else { return image }
+        let ciTransform = flipY(renderSize.height)
+            .concatenating(rotation)
+            .concatenating(flipY(renderSize.height))
+        return image.transformed(by: ciTransform)
     }
 
     private static func flipY(_ height: CGFloat) -> CGAffineTransform {

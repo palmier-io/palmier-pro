@@ -1,3 +1,4 @@
+import CoreGraphics
 import Testing
 @testable import PalmierPro
 
@@ -30,5 +31,29 @@ struct PreviewSelectionTests {
         editor.selectPreviewClip("first")
 
         #expect(editor.selectedClipIds == ["first", "second"])
+    }
+
+    @Test func rotatedTextUsesRotatedHitTarget() {
+        let editor = EditorViewModel()
+        var text = Fixtures.clip(id: "text", mediaRef: "", mediaType: .text, start: 0, duration: 20)
+        text.transform = Transform(width: 0.6, height: 0.1, rotation: 90)
+        var timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [text])])
+        timeline.width = 320
+        timeline.height = 180
+        editor.timeline = timeline
+
+        let rotatedOnlyPoint = PreviewHitTester.clipID(
+            at: CGPoint(x: 160, y: 45),
+            viewSize: CGSize(width: 320, height: 180),
+            editor: editor
+        )
+        let unrotatedOnlyPoint = PreviewHitTester.clipID(
+            at: CGPoint(x: 100, y: 90),
+            viewSize: CGSize(width: 320, height: 180),
+            editor: editor
+        )
+
+        #expect(rotatedOnlyPoint == "text")
+        #expect(unrotatedOnlyPoint == nil)
     }
 }
