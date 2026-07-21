@@ -83,7 +83,9 @@ enum CaptionResyncEngine {
         fps: Int,
         policy: CaptionConflictPolicy,
         wordSource: CaptionWordSource,
-        chunk: Chunker
+        chunk: Chunker,
+        maxWords: Int? = nil,
+        punctuation: CaptionText.PunctuationPolicy = .keep
     ) -> CaptionResyncPlan {
         let spans = mergeSpans(triggerSpans)
         var report = CaptionResyncReport(trigger: trigger)
@@ -115,12 +117,14 @@ enum CaptionResyncEngine {
                 // actions on it so a cold cache can't delete or shrink a good caption.
                 let uncached = !wordSource.uncachedRefs(in: clip.startFrame..<clip.endFrame).isEmpty
                 resolveClip(clip, words: words, policy: policy, uncached: uncached,
-                            bounds: neighborBounds(for: clip, in: timeline), into: &plan, removed: &removedIds)
+                            bounds: neighborBounds(for: clip, in: timeline),
+                            punctuation: punctuation, into: &plan, removed: &removedIds)
             }
 
             createUncovered(
                 span: span, words: words, captionClips: captionClips, removedIds: removedIds,
-                timeline: timeline, fps: fps, chunk: chunk, into: &plan
+                timeline: timeline, fps: fps, chunk: chunk,
+                maxWordsOverride: maxWords, punctuation: punctuation, into: &plan
             )
         }
         return plan
@@ -130,7 +134,8 @@ enum CaptionResyncEngine {
 
     private static func resolveClip(
         _ clip: Clip, words: [WordTiming], policy: CaptionConflictPolicy, uncached: Bool,
-        bounds: (lower: Int, upper: Int), into plan: inout CaptionResyncPlan, removed: inout Set<String>
+        bounds: (lower: Int, upper: Int), punctuation: CaptionText.PunctuationPolicy = .keep,
+        into plan: inout CaptionResyncPlan, removed: inout Set<String>
     ) {
         let clipWords = words.filter { $0.startFrame < clip.endFrame && $0.endFrame > clip.startFrame }
         let current = clip.textContent ?? ""
@@ -161,7 +166,7 @@ enum CaptionResyncEngine {
             return
         }
 
-        let newText = joinWords(clipWords)
+        let newText = joinWords(clipWords, punctuation: punctuation)
         // Boundary retiming (onset rollback / trailing-silence tighten) is confined to clean clips.
         let retiming = clean ? retimedBounds(clip, clipWords: clipWords, bounds: bounds) : nil
         let effStart = retiming?.startFrame ?? clip.startFrame
@@ -257,7 +262,9 @@ enum CaptionResyncEngine {
 
     private static func createUncovered(
         span: Range<Int>, words: [WordTiming], captionClips: [Clip], removedIds: Set<String>,
-        timeline: Timeline, fps: Int, chunk: Chunker, into plan: inout CaptionResyncPlan
+        timeline: Timeline, fps: Int, chunk: Chunker,
+        maxWordsOverride: Int? = nil, punctuation: CaptionText.PunctuationPolicy = .keep,
+        into plan: inout CaptionResyncPlan
     ) {
         // Only create when a single caption group owns this region — otherwise the target group is ambiguous.
         let groups = Set(captionClips.compactMap(\.captionGroupId))
@@ -274,14 +281,14 @@ enum CaptionResyncEngine {
         }
         guard !uncovered.isEmpty else { return }
 
-        let maxWords = inferredMaxWords(groupClips)
+        let maxWords = maxWordsOverride ?? inferredMaxWords(groupClips)
         let style = modal.textStyle ?? TextStyle()
         let animation = modal.textAnimation
         for group in chunk(uncovered, maxWords) {
             guard let first = group.first, let last = group.last, last.endFrame > first.startFrame else { continue }
             let start = first.startFrame
             let duration = max(1, last.endFrame - start)
-            let text = joinWords(group)
+            let text = joinWords(group, punctuation: punctuation)
             let spec = EditorViewModel.TextClipSpec(
                 trackIndex: trackIndex,
                 startFrame: start,
@@ -340,8 +347,9 @@ enum CaptionResyncEngine {
         return counts.max()
     }
 
-    static func joinWords(_ words: [WordTiming]) -> String {
-        CaptionText.join(words.map(\.text)).trimmingCharacters(in: .whitespacesAndNewlines)
+    static func joinWords(_ words: [WordTiming], punctuation: CaptionText.PunctuationPolicy = .keep) -> String {
+        let tokens = words.map { CaptionText.strippingMarks($0.text, policy: punctuation) }.filter { !$0.isEmpty }
+        return CaptionText.join(tokens).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Absolute-frame words → clip-relative timings clamped to the clip's duration.

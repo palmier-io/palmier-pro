@@ -450,7 +450,9 @@ struct CaptionTab: View {
             locale: locale,
             maxWords: maxWords,
             provider: provider,
-            animation: TextAnimation(preset: animationPreset, highlight: animationHighlight)
+            animation: TextAnimation(preset: animationPreset, highlight: animationHighlight),
+            punctuation: CaptionText.PunctuationPolicy(
+                profileValue: CaptionStyleStore.resolve(projectPackageURL: editor.projectURL).profile.typography.punctuation)
         )
         Task {
             isGenerating = true

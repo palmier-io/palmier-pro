@@ -5,12 +5,16 @@
 import Foundation
 
 extension ToolExecutor {
-    static let resyncCaptionsAllowedKeys: Set<String> = ["captionGroupId", "startFrame", "endFrame", "dryRun", "onManualEdits", "segmentation"]
+    static let resyncCaptionsAllowedKeys: Set<String> = ["captionGroupId", "startFrame", "endFrame", "dryRun", "onManualEdits", "maxWords", "segmentation"]
 
     func resyncCaptions(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.resyncCaptionsAllowedKeys, path: "resync_captions")
 
         let dryRun = args["dryRun"] as? Bool ?? false
+        let maxWords = args["maxWords"] as? Int
+        if let maxWords, !(1...100).contains(maxWords) {
+            throw ToolError("resync_captions.maxWords: expected 1-100")
+        }
         let policyOverride = try parseConflictPolicy(args.string("onManualEdits"))
         let profileSegmentation = CaptionStyleStore.resolve(projectPackageURL: editor.projectURL).profile.typography.segmentation
         let segmentation = try parseSegmentation(args.string("segmentation"), profileDefault: profileSegmentation, path: "resync_captions")
@@ -55,14 +59,14 @@ extension ToolExecutor {
         guard !spans.isEmpty else { throw ToolError("resync_captions: nothing to resync in the requested range") }
 
         if dryRun {
-            let report = editor.runCaptionResync(spans: spans, trigger: "resync_captions", dryRun: true, policyOverride: policyOverride, segmentation: segmentation)
+            let report = editor.runCaptionResync(spans: spans, trigger: "resync_captions", dryRun: true, policyOverride: policyOverride, segmentation: segmentation, maxWords: maxWords)
             let payload: [String: Any] = ["dryRun": true, "captionResync": report?.agentPayload ?? [:]]
             return .ok(Self.jsonString(payload) ?? "{}")
         }
 
         let snapshot = timelineSnapshot(editor)
         editor.undo.perform("Resync Captions") {
-            editor.runCaptionResync(spans: spans, trigger: "resync_captions", policyOverride: policyOverride, segmentation: segmentation)
+            editor.runCaptionResync(spans: spans, trigger: "resync_captions", policyOverride: policyOverride, segmentation: segmentation, maxWords: maxWords)
         }
         return mutationResult(editor, since: snapshot)
     }

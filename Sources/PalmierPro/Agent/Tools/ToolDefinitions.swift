@@ -830,6 +830,7 @@ enum ToolDefinitions {
                     "endFrame": ["type": "integer", "description": "Window end (exclusive). Pair with startFrame."],
                     "dryRun": ["type": "boolean", "description": "Report what would change without mutating. Default false."],
                     "onManualEdits": ["type": "string", "enum": ["preserve", "overwrite", "flag"], "description": "How to treat hand-edited captions. Defaults to the project's conflict policy (preserve)."],
+                    "maxWords": ["type": "integer", "description": "Upper bound per rebuilt line (CJK: characters, Latin: words), 1-100. Defaults to the caption-style profile's typography.maxWords; breaks still land at punctuation, pauses, and word boundaries first."],
                     "segmentation": ["type": "string", "enum": CaptionBuilder.Segmentation.allCases.map(\.rawValue), "description": "Line-breaking for rebuilt captions. Default natural: break at sentence/clause punctuation and word boundaries (never mid-word). fixedChars is the legacy recursive width split."],
                 ]
             )

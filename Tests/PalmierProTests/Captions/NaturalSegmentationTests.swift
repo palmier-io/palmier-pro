@@ -282,4 +282,47 @@ struct NaturalSegmentationTests {
         )
         #expect(phrases.map(\.text) == ["好 久", "没", "有 开"])
     }
+
+    @Test func punctuationDrivesBreaksButIsStrippedFromDisplay() {
+        // Bug report: marks rendered on screen while the width cap decided breaks. Inverted: marks
+        // decide breaks (with maxWords only an upper bound), then stripCJK removes them from display.
+        let source = "好久没有拍视频了。那我现在人在重庆西站在等着和我老婆，还有我们的白人理疗师小哥。他来中国玩"
+        let phrases = CaptionBuilder.phrases(
+            fromTimedWords: cjkWords(source),
+            fits: { $0.count <= 14 },
+            maxWords: 14,
+            minDuration: 0,
+            protectedPhrases: ["重庆西站"],
+            punctuation: .stripCJK
+        )
+        let lines = phrases.map(\.text)
+        #expect(lines.first == "好久没有拍视频了")
+        #expect(lines.allSatisfy { !$0.contains("。") && !$0.contains("，") })
+        #expect(lines.allSatisfy { $0.count <= 14 })
+        #expect(lines.allSatisfy { $0.count >= 2 }, "no single-particle lines like 了")
+        #expect(lines.filter { $0.contains("重庆西站") }.count == 1, "protected term whole in one line")
+        #expect(lines.joined() == source.replacingOccurrences(of: "。", with: "").replacingOccurrences(of: "，", with: ""))
+    }
+
+    @Test func latinPunctuationSurvivesStripCJK() {
+        let phrases = CaptionBuilder.phrases(
+            fromTimedWords: [
+                word("Yo,", 0.0, 0.3), word("what's", 0.3, 0.6), word("up?", 0.6, 0.9),
+            ],
+            fits: { $0.count <= 30 },
+            minDuration: 0,
+            punctuation: .stripCJK
+        )
+        // Clause breaks may split at the comma; the policy contract is that Latin marks stay VISIBLE.
+        #expect(phrases.map(\.text).joined(separator: " ") == "Yo, what's up?")
+    }
+
+    @MainActor
+    @Test func resyncProfileMaxWordsReachesEngineCreations() {
+        // Bug report: caption_style typography.maxWords was ignored by resync — inferredMaxWords from
+        // legacy clips won. The override must take precedence when supplied.
+        #expect(CaptionResyncEngine.joinWords([
+            WordTiming(text: "拍视频了。", startFrame: 0, endFrame: 30),
+        ], punctuation: .stripCJK) == "拍视频了")
+    }
 }

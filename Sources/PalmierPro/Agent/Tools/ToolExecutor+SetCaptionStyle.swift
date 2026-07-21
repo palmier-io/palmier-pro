@@ -73,7 +73,7 @@ extension ToolExecutor {
         guard let obj = raw as? [String: Any] else {
             throw ToolError("set_caption_style.typography: expected an object.")
         }
-        let allowed: Set<String> = ["fontName", "fontSize", "color", "outline", "shadow", "position", "maxWords", "segmentation"]
+        let allowed: Set<String> = ["fontName", "fontSize", "color", "outline", "shadow", "position", "maxWords", "segmentation", "punctuation"]
         let unknown = Set(obj.keys).subtracting(allowed)
         guard unknown.isEmpty else {
             throw ToolError("set_caption_style.typography: unknown field(s) '\(unknown.sorted().joined(separator: "', '"))'. Allowed: \(allowed.sorted().joined(separator: ", ")).")
@@ -94,6 +94,13 @@ extension ToolExecutor {
                 throw ToolError("set_caption_style.typography.segmentation: expected \(CaptionBuilder.Segmentation.allCases.map(\.rawValue).joined(separator: " or ")) (got '\(s)').")
             }
             out["segmentation"] = s
+        }
+        if let v = obj["punctuation"] {
+            let s = try requireNonEmptyString(v, path: "set_caption_style.typography.punctuation")
+            guard CaptionText.PunctuationPolicy(rawValue: s) != nil else {
+                throw ToolError("set_caption_style.typography.punctuation: expected stripCJK, strip, or keep (got '\(s)').")
+            }
+            out["punctuation"] = s
         }
         if let v = obj["position"] {
             guard let p = v as? [String: Any] else {

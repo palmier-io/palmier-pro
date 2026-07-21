@@ -18,6 +18,8 @@ extension EditorViewModel {
         var fillerProfile: CaptionStyleProfile? = nil
         /// When true, removeAlways-classified tokens are dropped from caption TEXT (display only).
         var dropRemoveAlwaysFillers: Bool = false
+        /// Display policy for punctuation in caption text (marks always drive breaks).
+        var punctuation: CaptionText.PunctuationPolicy = .keep
         /// How transcript runs are cut into caption lines.
         var segmentation: CaptionBuilder.Segmentation = .default
     }
@@ -287,7 +289,8 @@ extension EditorViewModel {
                 minDuration: AppTheme.Caption.minDisplayDuration,
                 fits: { captionLineFits($0, style: request.style) },
                 segmentation: request.segmentation,
-                protectedPhrases: protectedPhrases
+                protectedPhrases: protectedPhrases,
+                punctuation: request.punctuation
             )
             guard !phrases.isEmpty else { return [] }
             let cased = phrases.map { CaptionBuilder.Phrase(text: request.textCase.apply($0.text), start: $0.start, end: $0.end, words: $0.words) }

@@ -64,4 +64,43 @@ enum CaptionText {
         if isFullwidthPunct(c) { return true }
         return ".?!,:;)]}…".contains(c)
     }
+
+    /// What happens to punctuation in displayed caption text. Marks always drive line BREAKS; this
+    /// only controls whether they remain visible. stripCJK removes 。，？！-class fullwidth marks and
+    /// keeps Latin ("Yo, what's up?" reads naturally); strip also trims Latin terminal marks; keep
+    /// shows everything.
+    enum PunctuationPolicy: String, Sendable {
+        case stripCJK, strip, keep
+
+        init(profileValue: String?) {
+            self = profileValue.flatMap(PunctuationPolicy.init(rawValue:)) ?? .stripCJK
+        }
+    }
+
+    /// Apply the display policy to one token. CJK marks are removed anywhere in the token (they ride
+    /// as trailing attachments on per-char pieces); Latin marks are trimmed only at token edges so
+    /// internal ones (U.S., don't) survive.
+    static func strippingMarks(_ token: String, policy: PunctuationPolicy) -> String {
+        switch policy {
+        case .keep:
+            return token
+        case .stripCJK:
+            return String(token.unicodeScalars.filter { !isCJKMark($0) })
+        case .strip:
+            let noCJK = token.unicodeScalars.filter { !isCJKMark($0) }
+            var out = String(noCJK)
+            let latinMarks: Set<Character> = [".", ",", "?", "!", ":", ";", "\u{2026}"]
+            while let last = out.last, latinMarks.contains(last) { out.removeLast() }
+            while let first = out.first, latinMarks.contains(first) { out.removeFirst() }
+            return out
+        }
+    }
+
+    /// Fullwidth CJK punctuation — excludes fullwidth alphanumerics.
+    private static func isCJKMark(_ scalar: Unicode.Scalar) -> Bool {
+        let v = Int(scalar.value)
+        if (0x3000...0x303F).contains(v) { return true }
+        guard (0xFF00...0xFFEF).contains(v) else { return false }
+        return !((0xFF10...0xFF19).contains(v) || (0xFF21...0xFF3A).contains(v) || (0xFF41...0xFF5A).contains(v))
+    }
 }

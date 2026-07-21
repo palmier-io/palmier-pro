@@ -79,6 +79,7 @@ extension ToolExecutor {
             animation: animation,
             fillerProfile: fillerPolicy == .removeAlways ? profile : nil,
             dropRemoveAlwaysFillers: fillerPolicy == .removeAlways,
+            punctuation: CaptionText.PunctuationPolicy(profileValue: profile.typography.punctuation),
             segmentation: segmentation
         )
 

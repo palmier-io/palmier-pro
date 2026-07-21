@@ -44,6 +44,9 @@ struct CaptionStyleProfile: Codable, Equatable, Sendable {
         /// resync_captions when no explicit segmentation param is passed. Stored as a raw string so
         /// the profile stays decoupled from CaptionBuilder; an unknown value falls back to natural.
         var segmentation: String? = nil
+        /// Display policy for punctuation in caption text ("stripCJK" | "strip" | "keep"). Marks
+        /// always drive breaks; this controls visibility. Absent resolves to stripCJK.
+        var punctuation: String? = nil
     }
 
     /// Normalized 0–1 caption box center.
@@ -114,7 +117,8 @@ struct CaptionStyleProfilePartial: Equatable {
             shadow: over.shadow ?? base.shadow,
             position: over.position ?? base.position,
             maxWords: over.maxWords ?? base.maxWords,
-            segmentation: over.segmentation ?? base.segmentation
+            segmentation: over.segmentation ?? base.segmentation,
+            punctuation: over.punctuation ?? base.punctuation
         )
     }
 
@@ -179,7 +183,8 @@ struct CaptionStyleProfilePartial: Equatable {
                 shadow: typo.csBool("shadow"),
                 position: position,
                 maxWords: typo.csInt("maxWords"),
-                segmentation: typo.csString("segmentation")
+                segmentation: typo.csString("segmentation"),
+                punctuation: typo.csString("punctuation")
             )
         }
         if let prov = obj["provenance"] as? [String: Any] {

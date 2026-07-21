@@ -36,7 +36,8 @@ enum CaptionBuilder {
         maxWords: Int? = nil,
         minDuration: Double,
         segmentation: Segmentation = .default,
-        protectedPhrases: [String] = []
+        protectedPhrases: [String] = [],
+        punctuation: CaptionText.PunctuationPolicy = .keep
     ) -> [Phrase] {
         // Only phrases that fit visually and within the word cap are accepted; else, keep splitting.
         let pieces: [String]
@@ -52,7 +53,9 @@ enum CaptionBuilder {
             pieces = naturalLines(segment.text, fits: fits, maxWords: maxWords, protectedPhrases: protectedPhrases)
         }
         let timed = time(pieces, segment: segment, words: words)
-        return enforceMinDuration(timed, minDuration: minDuration)
+        let floored = enforceMinDuration(timed, minDuration: minDuration)
+        // Marks drove the break decisions above; the display policy decides whether they stay visible.
+        return segmentation == .natural ? strippingMarks(floored, policy: punctuation) : floored
     }
 
     static func phrases(
@@ -61,7 +64,8 @@ enum CaptionBuilder {
         maxWords: Int? = nil,
         minDuration: Double,
         segmentation: Segmentation = .default,
-        protectedPhrases: [String] = []
+        protectedPhrases: [String] = [],
+        punctuation: CaptionText.PunctuationPolicy = .keep
     ) -> [Phrase] {
         let timed = words.filter { $0.start != nil && $0.end != nil }
         guard !timed.isEmpty else { return [] }
@@ -73,7 +77,8 @@ enum CaptionBuilder {
         let runs = segmentation == .natural ? splitAtPauses(timed) : [timed]
         let built = runs.flatMap {
             phrasesForRun($0, fits: fits, maxWords: maxWords, minDuration: minDuration,
-                          segmentation: segmentation, protectedPhrases: protectedPhrases)
+                          segmentation: segmentation, protectedPhrases: protectedPhrases,
+                          punctuation: punctuation)
         }
         return runs.count > 1 ? enforceMinDuration(built, minDuration: minDuration) : built
     }
@@ -85,7 +90,8 @@ enum CaptionBuilder {
         maxWords: Int?,
         minDuration: Double,
         segmentation: Segmentation,
-        protectedPhrases: [String]
+        protectedPhrases: [String],
+        punctuation: CaptionText.PunctuationPolicy = .keep
     ) -> [Phrase] {
         // A collapsed span (a zero-duration word isolated by a pause split) must still emit — dropping
         // it would silently lose that word from the captions. enforceMinDuration floors its length.
@@ -105,8 +111,30 @@ enum CaptionBuilder {
             maxWords: maxWords,
             minDuration: minDuration,
             segmentation: segmentation,
-            protectedPhrases: protectedPhrases
+            protectedPhrases: protectedPhrases,
+            punctuation: punctuation
         )
+    }
+
+    /// Strip marks from phrase text and word tokens per the display policy. Tokens that empty out
+    /// (a standalone mark) are dropped; a phrase that empties out is dropped whole.
+    private static func strippingMarks(_ phrases: [Phrase], policy: CaptionText.PunctuationPolicy) -> [Phrase] {
+        guard policy != .keep else { return phrases }
+        return phrases.compactMap { phrase in
+            var p = phrase
+            p.words = phrase.words.compactMap { span in
+                let stripped = CaptionText.strippingMarks(span.text, policy: policy)
+                guard !stripped.isEmpty else { return nil }
+                var s = span
+                s.text = stripped
+                return s
+            }
+            let tokens = phrase.text.split(separator: " ").map {
+                CaptionText.strippingMarks(String($0), policy: policy)
+            }.filter { !$0.isEmpty }
+            p.text = CaptionText.join(tokens)
+            return p.text.isEmpty ? nil : p
+        }
     }
 
     /// A gap between consecutive words of at least this long reads as a deliberate pause, not the
