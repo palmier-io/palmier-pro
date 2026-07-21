@@ -24,6 +24,16 @@ struct CompositorTextLayerTests {
         return c
     }
 
+    private func backgroundTextClip(rotation: Double = 0) -> Clip {
+        var clip = textClip(" ")
+        var style = clip.textStyle ?? TextStyle()
+        style.color.a = 0
+        style.background = .init(enabled: true, color: .init(r: 1, g: 1, b: 1, a: 1))
+        clip.textStyle = style
+        clip.transform = Transform(width: 0.6, height: 0.2, rotation: rotation)
+        return clip
+    }
+
     /// White pixels in the discriminating band (x 40–150, y 72–108).
     private func whiteInBand(_ f: CompositorRenderTests.Frame) -> Int {
         var n = 0
@@ -53,6 +63,66 @@ struct CompositorTextLayerTests {
         )
         let f = try await CompositorRenderTests.render(behind, frame: 15, renderSize: Self.size)
         #expect(whiteInBand(f) == 0, "text behind an opaque video must be hidden: \(whiteInBand(f))")
+    }
+
+    @Test func textUsesVideoCanvasRotation() async throws {
+        let timeline = CompositorRenderTests.timelineWith(
+            Fixtures.videoTrack(clips: [backgroundTextClip(rotation: 90)])
+        )
+        let frame = try await CompositorRenderTests.render(timeline, frame: 15, renderSize: Self.size)
+
+        #expect(CompositorFixtures.isWhite(frame.at(160, 30)))
+        #expect(CompositorFixtures.isBlack(frame.at(80, 90)))
+    }
+
+    @Test func textRotationSamplesKeyframes() async throws {
+        var text = backgroundTextClip()
+        text.rotationTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 0, interpolationOut: .linear),
+            Keyframe(frame: 30, value: 90, interpolationOut: .linear),
+        ])
+        let timeline = CompositorRenderTests.timelineWith(Fixtures.videoTrack(clips: [text]))
+
+        let horizontal = try await CompositorRenderTests.render(timeline, frame: 0, renderSize: Self.size)
+        let vertical = try await CompositorRenderTests.render(timeline, frame: 30, renderSize: Self.size)
+
+        #expect(CompositorFixtures.isWhite(horizontal.at(80, 90)))
+        #expect(CompositorFixtures.isBlack(horizontal.at(160, 30)))
+        #expect(CompositorFixtures.isWhite(vertical.at(160, 30)))
+        #expect(CompositorFixtures.isBlack(vertical.at(80, 90)))
+    }
+
+    @Test func textRenderingUsesFrameResolvedTransform() async throws {
+        var text = backgroundTextClip()
+        text.transform = Transform(centerX: 0.2, centerY: 0.2, width: 0.2, height: 0.1)
+        text.positionTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 30, value: AnimPair(a: 0.65, b: 0.2)),
+        ])
+        text.scaleTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 30, value: AnimPair(a: 0.2, b: 0.4)),
+        ])
+        text.rotationTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 30, value: 90),
+        ])
+        let timeline = CompositorRenderTests.timelineWith(Fixtures.videoTrack(clips: [text]))
+
+        let frame = try await CompositorRenderTests.render(timeline, frame: 30, renderSize: Self.size)
+
+        #expect(CompositorFixtures.isWhite(frame.at(240, 72)))
+        #expect(CompositorFixtures.isBlack(frame.at(64, 36)))
+    }
+
+    @Test func footageFillUsesTextRotation() async throws {
+        var text = backgroundTextClip(rotation: 90)
+        text.textFillMode = .footage
+        let timeline = CompositorRenderTests.timelineWith(
+            Fixtures.videoTrack(clips: [text]),
+            Fixtures.videoTrack(clips: [CompositorFixtures.patternClip(id: "bg")])
+        )
+        let frame = try await CompositorRenderTests.render(timeline, frame: 15, renderSize: Self.size)
+
+        #expect(!CompositorFixtures.isBlack(frame.at(160, 30)))
+        #expect(CompositorFixtures.isBlack(frame.at(80, 90)))
     }
 
     @Test func footageFillStencilsVideoThroughGlyphs() async throws {

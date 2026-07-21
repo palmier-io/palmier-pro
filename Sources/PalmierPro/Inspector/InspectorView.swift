@@ -505,7 +505,7 @@ struct InspectorView: View {
                     }
                 }
             ) {
-                rotationScrubField(clips: clips)
+                InspectorRotationField(clips: clips)
             }
             animatableRow(
                 label: "Opacity",
@@ -621,25 +621,6 @@ struct InspectorView: View {
         ) { newVal in
             editor.undo.perform("Change Scale") {
                 for c in clips { editor.commitScale(clipId: c.id, newScale: newVal) }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func rotationScrubField(clips: [Clip]) -> some View {
-        ScrubbableNumberField(
-            value: sharedClipValue(clips) { $0.rotationAt(frame: editor.activeFrame) },
-            range: -3600...3600,
-            displayMultiplier: 1,
-            format: "%.0f",
-            valueSuffix: "°",
-            fieldWidth: AppTheme.EditorPanel.numericFieldWidth,
-            onChanged: { newVal in
-                for c in clips { editor.applyRotation(clipId: c.id, valueDeg: newVal) }
-            }
-        ) { newVal in
-            editor.undo.perform("Change Rotation") {
-                for c in clips { editor.commitRotation(clipId: c.id, valueDeg: newVal) }
             }
         }
     }

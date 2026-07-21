@@ -468,7 +468,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .setClipProperties,
-            description: "Apply the same generic clip property values to one or more clips in a single undoable action. Pass any combination of durationFrames, trimStartFrame, trimEndFrame, speed, volumeDb, opacity, transform, or blendMode (video/image clips only). For text content, typography, captions, and text animation, use update_text.\n\nNOT for preview layout — split screen, picture-in-picture, grid, sidebar, and any multi-clip canvas arrangement belong to apply_layout, which sets transform and crop together. Do not use transform here (or set_keyframes position/scale/crop) to build those layouts.\n\nAll values apply to every clip in clipIds; for per-clip differences, make separate calls. trimStartFrame/trimEndFrame are offsets from the source media, not the timeline. speed 1.0 is normal, <1.0 slows (clip gets longer on the timeline), >1.0 speeds up. volumeDb is −60 through +15 dB; 0 dB keeps source level and −60 dB is mute. opacity is 0.0–1.0. transform is for rare single-clip tweaks only — 0–1 normalized canvas coords, partial merge; flipHorizontal/flipVertical mirror across the axis.\n\nFor moves and start-frame changes, use move_clips. For animated values (keyframes), use set_keyframes — setting volumeDb or opacity here clears any existing keyframe track on that property.\n\nTiming changes (durationFrames, trimStartFrame, trimEndFrame, speed) on a linked clip carry over to its linked partner so audio/video stay in sync — same as the timeline UI. Per-clip fields (volumeDb, opacity, transform, blendMode) don't propagate. trim and speed are skipped for text partners.\n\nTiming fields (trims, durationFrames, speed) are refused on multicam clips — they would slip the clip out of sync; property fields stay editable, and angle changes go through change_cam.",
+            description: "Apply the same generic clip property values to one or more clips in a single undoable action. Pass any combination of durationFrames, trimStartFrame, trimEndFrame, speed, volumeDb, opacity, transform, or blendMode (video/image clips only). For text content, typography, captions, and text animation, use update_text.\n\nNOT for preview layout — split screen, picture-in-picture, grid, sidebar, and any multi-clip canvas arrangement belong to apply_layout, which sets transform and crop together. Do not use transform here (or set_keyframes position/scale/crop) to build those layouts.\n\nAll values apply to every clip in clipIds; for per-clip differences, make separate calls. trimStartFrame/trimEndFrame are offsets from the source media, not the timeline. speed 1.0 is normal, <1.0 slows (clip gets longer on the timeline), >1.0 speeds up. volumeDb is −60 through +15 dB; 0 dB keeps source level and −60 dB is mute. opacity is 0.0–1.0. transform is for rare single-clip tweaks only — 0–1 normalized canvas coords, partial merge; rotation is clockwise degrees; flipHorizontal/flipVertical mirror across the axis.\n\nFor moves and start-frame changes, use move_clips. For animated values (keyframes), use set_keyframes — setting volumeDb, opacity, or transform.rotation here clears any existing keyframe track on that property.\n\nTiming changes (durationFrames, trimStartFrame, trimEndFrame, speed) on a linked clip carry over to its linked partner so audio/video stay in sync — same as the timeline UI. Per-clip fields (volumeDb, opacity, transform, blendMode) don't propagate. trim and speed are skipped for text partners.\n\nTiming fields (trims, durationFrames, speed) are refused on multicam clips — they would slip the clip out of sync; property fields stay editable, and angle changes go through change_cam.",
             inputSchema: objectSchema(
                 properties: [
                     "clipIds": [
@@ -489,12 +489,13 @@ enum ToolDefinitions {
                     "opacity": ["type": "number", "description": "Opacity 0.0-1.0. Clears any existing opacity keyframes."],
                     "transform": [
                         "type": "object",
-                        "description": "Single-clip only — not for split screen, PIP, or grid (use apply_layout). Partial transform: centerX, centerY, width, height, flipHorizontal, flipVertical; omitted fields keep current value.",
+                        "description": "Single-clip only — not for split screen, PIP, or grid (use apply_layout). Partial transform; omitted fields keep current values. Static rotation uses clockwise degrees and clears rotation keyframes.",
                         "properties": [
                             "centerX": ["type": "number"],
                             "centerY": ["type": "number"],
                             "width": ["type": "number"],
                             "height": ["type": "number"],
+                            "rotation": ["type": "number", "description": "Clockwise degrees."],
                             "flipHorizontal": ["type": "boolean", "description": "Mirror across the vertical axis."],
                             "flipVertical": ["type": "boolean", "description": "Mirror across the horizontal axis."],
                         ],
@@ -736,7 +737,7 @@ enum ToolDefinitions {
                                 "content": ["type": "string", "description": "Text. Supports \\n."],
                                 "transform": [
                                     "type": "object",
-                                    "description": "Text box. Omit for centered auto-fit; center only auto-fits size; all four override.",
+                                    "description": "Text box. Omit for centered auto-fit; rotation alone rotates an auto-fit box; center only auto-fits size; all four override.",
                                     "properties": textBoxTransformProperties(),
                                 ],
                             ], textStyleProperties(detailed: false), [
@@ -753,7 +754,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .updateText,
-            description: "Updates text clips or a captionGroupId. The nested style object is a partial patch: omitted values stay unchanged. Use it for typography, color, outline, shadow, and background. fillMode 'footage' stencils layers below through the glyphs. Content and layout-affecting style changes auto-fit the box unless transform is passed. Unknown fields are rejected.",
+            description: "Updates text clips or a captionGroupId. The nested style object is a partial patch: omitted values stay unchanged. Use it for typography, color, outline, shadow, and background. fillMode 'footage' stencils layers below through the glyphs. Content and layout-affecting style changes auto-fit the box unless transform includes box geometry; rotation alone keeps auto-fit. Static rotation uses clockwise degrees and clears rotation keyframes. Unknown fields are rejected.",
             inputSchema: objectSchema(
                 properties: mergedProperties([
                     "clipIds": [
@@ -1083,6 +1084,7 @@ enum ToolDefinitions {
             "centerY": ["type": "number", "description": "0-1 vertical center."],
             "width": ["type": "number", "description": "0-1 width."],
             "height": ["type": "number", "description": "0-1 height."],
+            "rotation": ["type": "number", "description": "Clockwise degrees."],
         ]
     }
 
