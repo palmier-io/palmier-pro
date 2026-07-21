@@ -851,7 +851,7 @@ extension EditorViewModel {
             undo.register("Add Text", withTarget: self) { vm in
                 if let loc = vm.findClip(id: clipId) {
                     vm.timeline.tracks[loc.trackIndex].clips.remove(at: loc.clipIndex)
-                    vm.videoEngine?.refreshVisuals()
+                    vm.notifyTimelineChanged()
                 }
             }
             selectedClipIds = [clipId]

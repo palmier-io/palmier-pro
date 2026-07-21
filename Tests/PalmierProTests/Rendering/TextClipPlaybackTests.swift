@@ -51,5 +51,17 @@ struct TextClipPlaybackTests {
         #expect(instructions.contains { instruction in
             instruction.layers.contains { $0.clip.id == addedClipId }
         })
+
+        #expect(editor.undo.undoLatest() == "Add Text")
+        try await #require(engine.rebuildTask).value
+
+        let restoredItem = try #require(engine.player.currentItem)
+        let restoredDuration = try await restoredItem.asset.load(.duration)
+        #expect(CMTimeCompare(restoredDuration, CMTime(value: 30, timescale: 30)) == 0)
+        let restoredInstructions = try #require(restoredItem.videoComposition).instructions
+            .compactMap { $0 as? CompositorInstruction }
+        #expect(restoredInstructions.allSatisfy { instruction in
+            instruction.layers.allSatisfy { $0.clip.id != addedClipId }
+        })
     }
 }
