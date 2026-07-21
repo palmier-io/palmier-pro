@@ -37,7 +37,7 @@ struct NaturalSegmentationTests {
     // MARK: - The three real regressions
 
     @Test func breaksAtSentenceMarkAndKeepsProperNounWhole() {
-        let source = "好久没有开视频了。那我现在人在重庆西站在等着"
+        let source = "好久没有开照片了。那我现在人在城南西站在等着"
         let phrases = CaptionBuilder.phrases(
             fromTimedWords: cjkWords(source),
             fits: { $0.count <= 20 },   // both clauses fit width, so only the 。 forces a break
@@ -45,19 +45,19 @@ struct NaturalSegmentationTests {
         )
         let lines = phrases.map(\.text)
 
-        #expect(lines == ["好久没有开视频了。", "那我现在人在重庆西站在等着"])
-        #expect(lines.contains { $0.contains("重庆西站") })   // proper noun never split mid-word
+        #expect(lines == ["好久没有开照片了。", "那我现在人在城南西站在等着"])
+        #expect(lines.contains { $0.contains("城南西站") })   // proper noun never split mid-word
         assertTokensWhole(lines, source: source)
 
         // Karaoke data survives: per-character word timings are still sliced from the transcript.
         #expect(phrases.allSatisfy { !$0.words.isEmpty })
-        #expect(phrases[0].words.map(\.text) == ["好", "久", "没", "有", "开", "视", "频", "了"])
+        #expect(phrases[0].words.map(\.text) == ["好", "久", "没", "有", "开", "照", "片", "了"])
     }
 
     @Test func tightCapSplitsAtTokenSeamsNotMidToken() {
-        // Accepted limitation: under a tight cap a proper noun may split at the 重庆|西站 token seam
+        // Accepted limitation: under a tight cap a proper noun may split at the 城南|西站 token seam
         // (NLTokenizer sees two words) — but never mid-character, and each token stays whole.
-        let source = "那我现在人在重庆西站在等着"
+        let source = "那我现在人在城南西站在等着"
         let phrases = CaptionBuilder.phrases(
             fromTimedWords: cjkWords(source),
             fits: { _ in true },
@@ -68,12 +68,12 @@ struct NaturalSegmentationTests {
         #expect(lines.count > 1)   // a tight cap forces multiple lines
         #expect(lines.allSatisfy { GlossaryText.cjkCount($0) <= 4 })
         assertTokensWhole(lines, source: source)
-        #expect(lines.contains { $0.contains("重庆") })
+        #expect(lines.contains { $0.contains("城南") })
         #expect(lines.contains { $0.contains("西站") })
     }
 
     @Test func punctuationBindsLeftNeverStartsALine() {
-        let source = "好久没有开视频了。那我现在人在重庆西站在等着"
+        let source = "好久没有开照片了。那我现在人在城南西站在等着"
         let phrases = CaptionBuilder.phrases(
             fromTimedWords: cjkWords(source),
             fits: { $0.count <= 6 },   // tight width forces multiple word-boundary breaks
@@ -87,13 +87,13 @@ struct NaturalSegmentationTests {
 
     @Test func mixedScriptSegmentsAtSentenceMarksKeepingEnglishWhole() {
         let words = [
-            word("我掉得", 0.0, 0.6), word("really", 0.6, 1.0), word("low", 1.0, 1.3), word("。", 1.3, 1.35),
+            word("我唱得", 0.0, 0.6), word("really", 0.6, 1.0), word("low", 1.0, 1.3), word("。", 1.3, 1.35),
             word("oh", 1.4, 1.7), word("god", 1.7, 2.0), word("。", 2.0, 2.05),
         ]
         let phrases = CaptionBuilder.phrases(fromTimedWords: words, fits: { _ in true }, minDuration: 0)
         let lines = phrases.map(\.text)
 
-        #expect(lines == ["我掉得 really low。", "oh god。"])
+        #expect(lines == ["我唱得 really low。", "oh god。"])
         for w in ["really", "low", "oh", "god"] {
             #expect(lines.contains { $0.contains(w) })   // English words stay whole
         }
@@ -103,7 +103,7 @@ struct NaturalSegmentationTests {
     // MARK: - Caps still respected
 
     @Test func maxWordsCapsCJKCharactersPerLine() {
-        let source = "好久没有开视频了"
+        let source = "好久没有开照片了"
         let phrases = CaptionBuilder.phrases(
             fromTimedWords: cjkWords(source),
             fits: { _ in true },

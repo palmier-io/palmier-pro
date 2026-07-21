@@ -62,7 +62,7 @@ struct LintExclusions: Sendable {
 
     /// True when the correction TOUCHES a term another stage owns — i.e. a changed token falls inside
     /// an excluded term's span. An excluded term sitting only in the unchanged surrounding tokens does
-    /// not suppress the flag (开视频→拍视频 stays flagged even when 视频 or an adjacent 呃 is excluded).
+    /// not suppress the flag (开照片→拍照片 stays flagged even when 视频 or an adjacent 呃 is excluded).
     func excludesChange(original: String, suggestion: String) -> Bool {
         let origKeys = CaptionText.tokens(original).map(CaptionText.matchKey).filter { !$0.isEmpty }
         guard !origKeys.isEmpty else { return false }
