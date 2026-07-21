@@ -240,6 +240,7 @@ enum TextFrameRenderer {
 
     private static func renderTypewriter(clip: Clip, content: String, style: TextStyle, boxes: LayoutBoxes,
                                          fontSize: CGFloat, frame: Int, renderSize: CGSize) -> CIImage? {
+        let holdFrames = 18
         guard let ctx = beginContext(style: style, backgroundBox: boxes.background, renderSize: renderSize) else { return nil }
         let rel = frame - clip.startFrame
         let ns = content as NSString
@@ -249,10 +250,23 @@ enum TextFrameRenderer {
         var visLen = 0
         for (i, tok) in tokens.enumerated() {
             let t = timings[i]
-            if rel >= t.endFrame {
+            let revealEnd: Int
+            if i == tokens.count - 1, t.endFrame > t.startFrame {
+                let desiredHold = min(holdFrames, max(1, clip.durationFrames / 3))
+                let existingHold = max(1, clip.durationFrames - t.endFrame + 1)
+                let extraHold = max(0, desiredHold - existingHold)
+                revealEnd = max(t.startFrame + 1, t.endFrame - extraHold)
+            } else {
+                revealEnd = t.endFrame
+            }
+
+            if rel >= revealEnd {
                 visLen = tok.range.location + tok.range.length
             } else if rel >= t.startFrame {
-                let p = Double(rel - t.startFrame) / Double(max(1, t.endFrame - t.startFrame))
+                let span = revealEnd - t.startFrame
+                let p = span == 1
+                    ? 1
+                    : Double(rel - t.startFrame) / Double(span - 1)
                 visLen = tok.range.location + Int((Double(tok.range.length) * p).rounded(.down))
                 break
             } else {
@@ -262,7 +276,7 @@ enum TextFrameRenderer {
         var visible = ns.substring(to: min(visLen, ns.length))
         // Caret blinks (~0.5s) until shortly after the last word finishes.
         let doneAt = timings.last?.endFrame ?? clip.durationFrames
-        if rel <= doneAt + 18, (rel / 15) % 2 == 0 { visible += "|" }
+        if rel <= doneAt + holdFrames, (rel / 15) % 2 == 0 { visible += "|" }
         guard !visible.isEmpty else { return finish(ctx) }
         // Left-anchor so the text reveals rightward in place rather than re-centering as it grows.
         var attrs = style.attributes(size: fontSize)
