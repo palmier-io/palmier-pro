@@ -370,7 +370,10 @@ final class VideoEngine {
         if editor.isPlaying {
             scrubAudioEngine.meterPlayback(at: player.currentTime())
         } else {
-            seek(to: editor.currentFrame, mode: .exact)
+            seek(
+                to: editor.activeFrame,
+                mode: editor.isScrubbing ? .interactiveScrub : .exact
+            )
         }
     }
 
