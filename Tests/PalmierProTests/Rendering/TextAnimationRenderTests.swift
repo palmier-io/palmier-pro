@@ -62,6 +62,43 @@ struct TextAnimationRenderTests {
         #expect(yellow > 20, "active word should be highlighted yellow (\(yellow))")
     }
 
+    @Test func typewriterShowsCompleteTextOnFinalFrame() {
+        var animated = clip(TextAnimation(preset: .typewriter))
+        animated.textStyle?.alignment = .left
+        var expected = animated
+        expected.textAnimation = nil
+
+        let actualPixels = pixels(animated, frame: animated.endFrame - 1)
+        let expectedPixels = pixels(expected, frame: expected.endFrame - 1)
+        #expect(actualPixels == expectedPixels)
+    }
+
+    @Test func typewriterHoldsCompleteTextBeforeClipEnds() {
+        var animated = clip(TextAnimation(preset: .typewriter))
+        animated.textStyle?.alignment = .left
+        var expected = animated
+        expected.textAnimation = nil
+
+        let actualPixels = pixels(animated, frame: animated.endFrame - 15)
+        let expectedPixels = pixels(expected, frame: expected.endFrame - 15)
+        #expect(actualPixels == expectedPixels)
+    }
+
+    @Test func typewriterPreviewTypesFinalTokenBeforeHold() {
+        var animated = clip(TextAnimation(preset: .typewriter))
+        animated.durationFrames = 54
+        animated.textContent = "Aa Bb Cc"
+        animated.textStyle?.alignment = .left
+        animated.wordTimings = nil
+        var expected = animated
+        expected.textAnimation = nil
+        expected.textContent = "Aa Bb |"
+
+        let actualPixels = pixels(animated, frame: 36)
+        let expectedPixels = pixels(expected, frame: 36)
+        #expect(actualPixels == expectedPixels)
+    }
+
     @Test func tokenTimingsSplitAlignedTranscriptSpan() {
         let tokens = [
             (range: NSRange(location: 0, length: 3), text: "New"),
