@@ -249,6 +249,9 @@ extension EditorViewModel {
         for id in ids { dragBefore.removeValue(forKey: id) }
         guard before != after else { return }
         registerTimelineSwap(undoState: before, redoState: after, actionName: "Change Speed")
+        // setClipSpeed already kicked an async rebuild from a pre-resync snapshot; notify again so
+        // the player rebuilds from the post-resync timeline instead of racing it.
+        notifyTimelineChanged()
     }
 
     func registerTimelineSwap(undoState: Timeline, redoState: Timeline, actionName: String) {

@@ -484,3 +484,36 @@ private func timeline(_ tracks: [Track]) -> Timeline {
         #expect(plan.removals == ["cap"])
     }
 }
+
+// Round-2 review regressions: an unrelated uncached ref must not freeze resync when cached words
+// exist, and new chunks must never span a surviving caption island.
+@MainActor
+@Suite struct CaptionResyncRoundTwoTests {
+    @Test func cachedWordsResyncDespiteUnrelatedUncachedRef() {
+        let caption = captionClip(id: "cap", start: 0, duration: 60, text: "旧的", generatedText: "旧的")
+        let tl = timeline([Fixtures.videoTrack(clips: [caption])])
+        let src = FakeWordSource(words: [word("新", 0, 30), word("的", 30, 60)], uncached: ["music-bed"])
+
+        let plan = CaptionResyncEngine.plan(
+            timeline: tl, triggerSpans: [0..<60], trigger: "Trim Clip", fps: 30,
+            policy: .preserve, wordSource: src, chunk: singleChunk)
+
+        #expect(plan.replacements.first { $0.clipId == "cap" }?.text == "新 的")
+    }
+
+    @Test func unchangedTextStillRefreshesStaleTimings() {
+        var caption = captionClip(id: "cap", start: 0, duration: 60, text: "你 好", generatedText: "你 好")
+        caption.wordTimings = [WordTiming(text: "你", startFrame: 0, endFrame: 10),
+                               WordTiming(text: "好", startFrame: 10, endFrame: 20)]
+        let tl = timeline([Fixtures.videoTrack(clips: [caption])])
+        let src = FakeWordSource(words: [word("你", 0, 30), word("好", 30, 60)])
+
+        let plan = CaptionResyncEngine.plan(
+            timeline: tl, triggerSpans: [0..<60], trigger: "Change Speed", fps: 30,
+            policy: .preserve, wordSource: src, chunk: singleChunk)
+
+        let repl = plan.replacements.first { $0.clipId == "cap" }
+        #expect(repl?.text == "你 好")
+        #expect(repl?.wordTimings.last?.endFrame == 60)
+    }
+}
