@@ -543,7 +543,7 @@ const sourceGuards = [
         error: "统一 Undo 入口必须本地化操作名称",
     },
     {
-        file: path.join(sourceRoot, "Project", "HomeView.swift"),
+        file: path.join(sourceRoot, "Home", "HomeView.swift"),
         required: "window.title = L10n.string(\"Palmier Pro\")",
         error: "主窗口标题必须显式本地化",
     },
