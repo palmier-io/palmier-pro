@@ -2277,7 +2277,7 @@ struct SetClipPropertiesTests {
 
     @Test func updateTextAnimationSetsGranularity() async {
         var clip = Fixtures.clip(id: "title", mediaRef: "text", mediaType: .text, start: 0, duration: 60)
-        clip.textContent = "重庆视频"
+        clip.textContent = "电影照片"
         let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])]))
 
         let result = await h.runRaw("update_text", args: [
@@ -2292,7 +2292,7 @@ struct SetClipPropertiesTests {
 
     @Test func updateTextAnimationDefaultsGranularityToWord() async {
         var clip = Fixtures.clip(id: "title", mediaRef: "text", mediaType: .text, start: 0, duration: 60)
-        clip.textContent = "重庆视频"
+        clip.textContent = "电影照片"
         let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])]))
 
         _ = await h.runRaw("update_text", args: ["clipIds": ["title"], "animation": "highlightPop"])

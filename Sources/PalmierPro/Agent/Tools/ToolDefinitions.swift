@@ -732,7 +732,7 @@ enum ToolDefinitions {
                             ], textStyleProperties(detailed: false), [
                                 "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Animation preset. Omit for a static clip — text does not animate unless you set this; off also means none."],
                                 "highlightColor": ["type": "string", "description": "Active-word hex."],
-                                "granularity": ["type": "string", "enum": ["word", "char"], "description": "Per-word animation unit, applies only when animation is set. Default word (a CJK word like 重庆 animates as one); char animates each character."],
+                                "granularity": ["type": "string", "enum": ["word", "char"], "description": "Per-word animation unit, applies only when animation is set. Default word (a CJK word like 电影 animates as one); char animates each character."],
                                 "captionGroupId": ["type": "string", "description": "Join this caption group, or \"none\" to opt out. Omit to default-join the track's group when its clips all share one; a plain text track stays ungrouped."],
                             ]),
                             "required": ["startFrame", "endFrame", "content"],
@@ -763,7 +763,7 @@ enum ToolDefinitions {
                 ], textStyleProperties(detailed: true), [
                     "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Animation preset; set to animate (off by default), off clears an existing one. Omit to leave the clip's current animation unchanged."],
                     "highlightColor": ["type": "string", "description": "Active-word hex."],
-                    "granularity": ["type": "string", "enum": ["word", "char"], "description": "Per-word animation unit, applies only when animation is set. Default word (a CJK word like 重庆 animates as one); char animates each character."],
+                    "granularity": ["type": "string", "enum": ["word", "char"], "description": "Per-word animation unit, applies only when animation is set. Default word (a CJK word like 电影 animates as one); char animates each character."],
                 ]),
                 required: []
             )
@@ -788,7 +788,7 @@ enum ToolDefinitions {
                 ], textStyleProperties(detailed: false), [
                     "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Caption animation preset. Omit for static captions — nothing animates unless you set this."],
                     "highlightColor": ["type": "string", "description": "Active-word hex."],
-                    "granularity": ["type": "string", "enum": ["word", "char"], "description": "Per-word animation unit, applies only when animation is set. Default word (a CJK word like 重庆 animates as one); char animates each character."],
+                    "granularity": ["type": "string", "enum": ["word", "char"], "description": "Per-word animation unit, applies only when animation is set. Default word (a CJK word like 电影 animates as one); char animates each character."],
                     "fillerPolicy": ["type": "string", "enum": ["off", "removeAlways"], "description": "Default off. 'removeAlways' drops only removeAlways-classified filler tokens from caption text (display only, no audio cut). caseByCase tokens are never auto-removed — see caption_style."],
                 ])
             )
