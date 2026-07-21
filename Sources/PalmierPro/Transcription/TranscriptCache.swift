@@ -47,16 +47,33 @@ actor TranscriptCache {
         return ran
     }
 
+    // Read-only lookups (search, resync, cache checks) try the requested engine's slot first, then
+    // the Apple slot: a fallback-produced transcript lives there, and without the fallback read the
+    // asset would be treated as uncached by every read-only consumer. The full `transcript()` path
+    // deliberately does NOT read the fallback slot — it re-attempts the requested engine so a
+    // transient failure (e.g. model still downloading) heals into the right slot.
+    private nonisolated static func readKeys(for url: URL) -> [String] {
+        var keys: [String] = []
+        if let key = key(for: url) { keys.append(key) }
+        if let fallback = key(for: url, variant: .local(engine: .apple)), !keys.contains(fallback) {
+            keys.append(fallback)
+        }
+        return keys
+    }
+
     nonisolated static func hasCachedOnDisk(for url: URL) -> Bool {
-        guard let key = key(for: url) else { return false }
-        return FileManager.default.fileExists(atPath: diskURL(key).path)
+        readKeys(for: url).contains { FileManager.default.fileExists(atPath: diskURL($0).path) }
     }
 
     /// Disk-only read
     nonisolated static func cachedOnDisk(for url: URL) -> TranscriptionResult? {
-        guard let key = key(for: url),
-              let data = try? Data(contentsOf: diskURL(key)) else { return nil }
-        return try? JSONDecoder().decode(TranscriptionResult.self, from: data)
+        for key in readKeys(for: url) {
+            if let data = try? Data(contentsOf: diskURL(key)),
+               let result = try? JSONDecoder().decode(TranscriptionResult.self, from: data) {
+                return result
+            }
+        }
+        return nil
     }
 
     static func filter(_ r: TranscriptionResult, to range: ClosedRange<Double>) -> TranscriptionResult {

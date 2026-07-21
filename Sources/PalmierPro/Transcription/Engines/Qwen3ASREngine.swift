@@ -190,9 +190,13 @@ actor Qwen3ASREngine {
         }
 
         // Guard against a partial decode (dropped or empty trailing chunks) being cached as
-        // complete: reject a transcript whose speech ends grossly short of the audio's non-silent end.
-        if let gap = EngineAudio.coverageShortfall(segments: segments, samples: samples) {
-            throw EngineError.incompleteResult(covered: gap.covered, expected: gap.expected)
+        // complete. `expected` prefers the Whisper pass's speech end over raw energy — a music tail
+        // keeps energy high long after speech ends and would false-positive an energy-only check;
+        // Whisper decodes speech only, and it heard the same audio independently.
+        let energyEnd = EngineAudio.nonSilentEnd(samples: samples)
+        let expected = timingWords.compactMap(\.end).max().map { min($0 + 2.0, energyEnd) } ?? energyEnd
+        if let lastEnd = segments.map(\.end).max(), expected > 0, lastEnd < 0.8 * expected {
+            throw EngineError.incompleteResult(covered: lastEnd, expected: expected)
         }
 
         return TranscriptionResult(
