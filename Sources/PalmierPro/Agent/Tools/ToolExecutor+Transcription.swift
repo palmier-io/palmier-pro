@@ -79,7 +79,10 @@ struct TimelineTranscript {
         var speakerRuns: [[Any]] = []
         var currentSpeaker: String??
 
-        for group in groups(clipId: clipId) {
+        // A clip is in `clips` or in `pending`, never both — a mid-transcription clip must not be
+        // mistakable for a settled one by an automated diff pass.
+        let pendingClipIds = Set(pending.compactMap { $0["clipId"] as? String })
+        for group in groups(clipId: clipId) where !pendingClipIds.contains(group.clipId) {
             var visible: [TimelineWord] = []
             for word in group.words {
                 if let startFrame, word.endFrame <= startFrame { continue }
@@ -135,9 +138,11 @@ struct TimelineTranscript {
             }
         }
         if !skipped.isEmpty { out["skipped"] = skipped }
-        if !pending.isEmpty {
-            out["pending"] = clipId.map { filter in pending.filter { ($0["clipId"] as? String) == filter } } ?? pending
-            out["pendingNote"] = "Transcription in flight for these clips; already-cached clips are returned above. Re-read to collect them."
+        let visiblePending = clipId.map { filter in pending.filter { ($0["clipId"] as? String) == filter } } ?? pending
+        if !visiblePending.isEmpty {
+            out["pending"] = visiblePending
+            out["complete"] = false
+            out["pendingNote"] = "Transcription in flight; these clips are omitted from `clips` until complete — a clip never appears with partial words. Re-read to collect them."
         }
         if let indexing {
             out["indexing"] = ["done": indexing.done, "total": indexing.total]
