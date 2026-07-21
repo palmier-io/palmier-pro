@@ -63,5 +63,17 @@ struct TextClipPlaybackTests {
         #expect(restoredInstructions.allSatisfy { instruction in
             instruction.layers.allSatisfy { $0.clip.id != addedClipId }
         })
+
+        undoManager.redo()
+        try await #require(engine.rebuildTask).value
+
+        let redoneItem = try #require(engine.player.currentItem)
+        let redoneDuration = try await redoneItem.asset.load(.duration)
+        #expect(CMTimeCompare(redoneDuration, CMTime(value: 120, timescale: 30)) == 0)
+        let redoneInstructions = try #require(redoneItem.videoComposition).instructions
+            .compactMap { $0 as? CompositorInstruction }
+        #expect(redoneInstructions.contains { instruction in
+            instruction.layers.contains { $0.clip.id == addedClipId }
+        })
     }
 }

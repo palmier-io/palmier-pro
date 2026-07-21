@@ -27,6 +27,7 @@ final class VideoEngine {
     private var timeObserver: Any?
     private var playbackEndObserver: NSObjectProtocol?
     private(set) var rebuildTask: Task<Void, Never>?
+    private var rebuildGeneration = 0
     private(set) var sourcePreviewTask: Task<Void, Never>?
     private var sourcePreviewGeneration = 0
     private var sourceTrackStart: CMTime = .zero
@@ -62,8 +63,7 @@ final class VideoEngine {
     }
 
     func teardown() {
-        rebuildTask?.cancel()
-        rebuildTask = nil
+        invalidateRebuild()
         cancelSourcePreviewLoad()
         compositionCache.removeAll()
         invalidateSeekState()
@@ -214,8 +214,7 @@ final class VideoEngine {
 
     func activateTab(_ tab: PreviewTab) {
         guard let editor else { return }
-        rebuildTask?.cancel()
-        rebuildTask = nil
+        invalidateRebuild()
         cancelSourcePreviewLoad()
         sourceTrackStart = .zero
         invalidateSeekState()
@@ -289,7 +288,7 @@ final class VideoEngine {
 
     func rebuild() {
         guard let editor, editor.activePreviewTab == .timeline else { return }
-        rebuildTask?.cancel()
+        let generation = invalidateRebuild()
 
         let mediaURLs = editor.mediaResolver.expectedURLMap()
         let missingMediaRefs = editor.missingMediaRefs
@@ -309,7 +308,6 @@ final class VideoEngine {
             missingMediaRefs: missingMediaRefs
         )
         if let cached = compositionCache[timelineId], cached.inputs == inputs {
-            rebuildTask = nil
             apply(cached.result, resolveTimeline: resolveTimeline, editor: editor)
             return
         }
@@ -327,13 +325,15 @@ final class VideoEngine {
                     renderSize: CGSize(width: snapshot.width, height: snapshot.height)
                 )
             } catch {
+                guard generation == rebuildGeneration else { return }
+                rebuildTask = nil
                 if !Task.isCancelled {
                     Log.preview.error("rebuild failed: \(error.localizedDescription)")
                 }
-                rebuildTask = nil
                 return
             }
 
+            guard generation == rebuildGeneration else { return }
             rebuildTask = nil
             guard !Task.isCancelled else { return }
 
@@ -343,6 +343,14 @@ final class VideoEngine {
             compositionCache = compositionCache.filter { editor.openTimelineIds.contains($0.key) }
             apply(result, resolveTimeline: resolveTimeline, editor: editor)
         }
+    }
+
+    @discardableResult
+    private func invalidateRebuild() -> Int {
+        rebuildGeneration &+= 1
+        rebuildTask?.cancel()
+        rebuildTask = nil
+        return rebuildGeneration
     }
 
     private var compositionCache: [String: (inputs: RebuildInputs, result: CompositionResult)] = [:]

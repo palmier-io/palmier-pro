@@ -820,43 +820,32 @@ extension EditorViewModel {
 
     @discardableResult
     func addTextClip(content: String = "Text", style: TextStyle = TextStyle()) -> String? {
-        undo.perform("Add Text") {
-            let durationFrames = max(1, secondsToFrame(seconds: Defaults.textDurationSeconds, fps: timeline.fps))
+        let durationFrames = max(1, secondsToFrame(seconds: Defaults.textDurationSeconds, fps: timeline.fps))
+        let canvasW = Double(timeline.width)
+        let canvasH = Double(timeline.height)
+        let natural = TextLayout.naturalSize(content: content, style: style, maxWidth: CGFloat(canvasW) * 0.9, canvasHeight: CGFloat(canvasH))
+        let w = Double(natural.width) / canvasW
+        let h = Double(natural.height) / canvasH
+        let transform = Transform(topLeft: ((1 - w) / 2, (1 - h) / 2), width: w, height: h)
 
-            // Index 0 is the topmost slot in the timeline UI.
+        var clip = Clip(
+            mediaRef: "",
+            mediaType: .text,
+            sourceClipType: .text,
+            startFrame: max(0, currentFrame),
+            durationFrames: durationFrames,
+            transform: transform
+        )
+        clip.textContent = content
+        clip.textStyle = style
+        let clipId = clip.id
+
+        withTimelineSwap(actionName: "Add Text") {
             let trackIdx = insertTrack(at: 0, type: .video)
-
-            let canvasW = Double(timeline.width)
-            let canvasH = Double(timeline.height)
-            let natural = TextLayout.naturalSize(content: content, style: style, maxWidth: CGFloat(canvasW) * 0.9, canvasHeight: CGFloat(canvasH))
-            let w = Double(natural.width) / canvasW
-            let h = Double(natural.height) / canvasH
-            let transform = Transform(topLeft: ((1 - w) / 2, (1 - h) / 2), width: w, height: h)
-
-            var clip = Clip(
-                mediaRef: "",
-                mediaType: .text,
-                sourceClipType: .text,
-                startFrame: max(0, currentFrame),
-                durationFrames: durationFrames,
-                transform: transform
-            )
-            clip.textContent = content
-            clip.textStyle = style
-            let clipId = clip.id
-
             timeline.tracks[trackIdx].clips.append(clip)
             sortClips(trackIndex: trackIdx)
-
-            undo.register("Add Text", withTarget: self) { vm in
-                if let loc = vm.findClip(id: clipId) {
-                    vm.timeline.tracks[loc.trackIndex].clips.remove(at: loc.clipIndex)
-                    vm.notifyTimelineChanged()
-                }
-            }
-            selectedClipIds = [clipId]
-            notifyTimelineChanged()
-            return clipId
         }
+        selectedClipIds = [clipId]
+        return clipId
     }
 }
