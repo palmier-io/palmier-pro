@@ -260,3 +260,19 @@ struct CaptionStyleTests {
         #expect(policy.strippingRemoveAlways(phrase)?.text == "兄弟牛逼")
     }
 }
+
+// Round-3: a multi-character CJK removeAlways entry (one profile string, e.g. 嗯嗯) must strip on
+// the timed path, where the stream is flattened to per-character tokens.
+@Suite struct FillerPolicyMultiCharEntryTests {
+    @Test func multiCharCJKEntryStripsOnTimedPath() {
+        var profile = CaptionStyleProfile.builtInDefault
+        profile.fillers.removeAlways = ["嗯嗯"]
+        let policy = FillerPolicy(profile: profile)
+        let spans = [CaptionBuilder.WordSpan(text: "嗯嗯", start: 0, end: 0.4),
+                     CaptionBuilder.WordSpan(text: "好", start: 0.4, end: 0.8)]
+        let phrase = CaptionBuilder.Phrase(text: "嗯嗯好", start: 0, end: 0.8, words: spans)
+        let stripped = policy.strippingRemoveAlways(phrase)
+        #expect(stripped?.text == "好")
+        #expect(stripped?.words.map(\.text) == ["好"])
+    }
+}
