@@ -72,6 +72,24 @@ struct TextStyleControls<AfterAlignment: View, AfterColor: View>: View {
                     keyPath: \.fontSize
                 )
                 numberRow(
+                    label: "Width",
+                    range: TextStyle.axisScaleRange,
+                    displayMultiplier: 100,
+                    format: "%.0f",
+                    suffix: "%",
+                    fitToContent: true,
+                    keyPath: \.widthScale
+                )
+                numberRow(
+                    label: "Height",
+                    range: TextStyle.axisScaleRange,
+                    displayMultiplier: 100,
+                    format: "%.0f",
+                    suffix: "%",
+                    fitToContent: true,
+                    keyPath: \.heightScale
+                )
+                numberRow(
                     label: "Tracking",
                     range: -20...100,
                     format: "%.1f",

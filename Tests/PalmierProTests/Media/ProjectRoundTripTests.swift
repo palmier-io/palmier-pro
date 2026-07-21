@@ -176,8 +176,7 @@ struct ProjectRoundTripTests {
         #expect(t.centerX != 0.5 || t.centerY != 0.5)
     }
 
-    @Test func textStyleMissingFontScaleDecodesAsOne() throws {
-        // fontScale was added later — older text styles should default to 1.0.
+    @Test func textStyleMissingScaleFieldsDecodesAsOne() throws {
         let json = """
         {
           "fontName": "Helvetica-Bold",
@@ -193,6 +192,8 @@ struct ProjectRoundTripTests {
         """
         let style = try JSONDecoder().decode(TextStyle.self, from: Data(json.utf8))
         #expect(style.fontScale == 1.0)
+        #expect(style.widthScale == 1.0)
+        #expect(style.heightScale == 1.0)
         #expect(style.tracking == 0)
         #expect(style.lineSpacing == 0)
         #expect(style.fontCase == .mixed)
@@ -226,6 +227,8 @@ struct ProjectRoundTripTests {
 
     @Test func textStyleDecorationAdjustmentsRoundTrip() throws {
         var style = TextStyle()
+        style.widthScale = 1.4
+        style.heightScale = 0.75
         style.tracking = 8
         style.lineSpacing = 18
         style.fontCase = .uppercase

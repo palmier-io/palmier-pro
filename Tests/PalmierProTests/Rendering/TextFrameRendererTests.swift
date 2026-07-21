@@ -38,6 +38,29 @@ struct TextFrameRendererTests {
         return px
     }
 
+    private func alphaBounds(_ pixels: [UInt8], size: CGSize) -> CGRect? {
+        let width = Int(size.width)
+        var minX = width
+        var minY = Int(size.height)
+        var maxX = -1
+        var maxY = -1
+        for y in 0..<Int(size.height) {
+            for x in 0..<width where pixels[(y * width + x) * 4 + 3] > 32 {
+                minX = min(minX, x)
+                minY = min(minY, y)
+                maxX = max(maxX, x)
+                maxY = max(maxY, y)
+            }
+        }
+        guard maxX >= minX, maxY >= minY else { return nil }
+        return CGRect(
+            x: CGFloat(minX),
+            y: CGFloat(minY),
+            width: CGFloat(maxX - minX + 1),
+            height: CGFloat(maxY - minY + 1)
+        )
+    }
+
     @Test func whiteTextIsBrightAndColorMatches() {
         let size = CGSize(width: 640, height: 360)
         var style = TextStyle()
@@ -202,6 +225,55 @@ struct TextFrameRendererTests {
         )
 
         #expect(spacedSize.width > compactSize.width + 50)
+    }
+
+    @Test func widthAndHeightScaleStretchRenderedGlyphsIndependently() throws {
+        let size = CGSize(width: 640, height: 360)
+        let transform = Transform(topLeft: (0.05, 0.1), width: 0.9, height: 0.8)
+        var style = TextStyle()
+        style.fontName = "Helvetica-Bold"
+        style.fontSize = 240
+        style.shadow.enabled = false
+
+        func bounds(_ style: TextStyle) throws -> CGRect {
+            let clip = textClip(content: "TEXT", style: style, transform: transform)
+            let image = try #require(TextFrameRenderer.image(clip: clip, frame: 0, renderSize: size))
+            return try #require(alphaBounds(rawPixels(image, size: size), size: size))
+        }
+
+        let original = try bounds(style)
+        style.widthScale = 1.5
+        let wider = try bounds(style)
+        style.widthScale = 1
+        style.heightScale = 1.5
+        let taller = try bounds(style)
+
+        #expect(wider.width > original.width * 1.4)
+        #expect(abs(wider.height - original.height) <= 2)
+        #expect(taller.height > original.height * 1.4)
+        #expect(abs(taller.width - original.width) <= 2)
+    }
+
+    @Test func widthScaleDoesNotScaleTrackingDistance() {
+        func measuredWidth(widthScale: Double, tracking: Double) -> CGFloat {
+            var style = TextStyle()
+            style.shadow.enabled = false
+            style.widthScale = widthScale
+            style.tracking = tracking
+            return TextLayout.naturalSize(
+                content: "TRACKING",
+                style: style,
+                maxWidth: .greatestFiniteMagnitude,
+                canvasHeight: 1080
+            ).width
+        }
+
+        let originalTrackingDelta = measuredWidth(widthScale: 1, tracking: 12)
+            - measuredWidth(widthScale: 1, tracking: 0)
+        let wideTrackingDelta = measuredWidth(widthScale: 2, tracking: 12)
+            - measuredWidth(widthScale: 2, tracking: 0)
+
+        #expect(abs(wideTrackingDelta - originalTrackingDelta) <= 2)
     }
 
     @Test func fontScalePreservesCompleteTextLayoutProportions() {

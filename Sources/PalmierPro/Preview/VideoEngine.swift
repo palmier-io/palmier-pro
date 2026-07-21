@@ -369,6 +369,9 @@ final class VideoEngine {
         scrubAudioEngine.configure(asset: currentItem.asset, audioMix: audioMix, resetMeter: false)
         if editor.isPlaying {
             scrubAudioEngine.meterPlayback(at: player.currentTime())
+        } else if let time = playerTime(forPreviewFrame: editor.activeFrame) {
+            cancelInteractiveSeek()
+            performSeek(time: time, tolerance: .zero)
         }
     }
 
