@@ -1182,7 +1182,7 @@ final class TimelineView: NSView {
 
             if gap.range.start > 0, editor.timeline.tracks[gap.trackIndex].type == .video {
                 let availability = editor.aiTransitionAvailability(for: gap)
-                let item = NSMenuItem(title: "Create AI Transition", action: #selector(performCreateAITransition(_:)), keyEquivalent: "")
+                let item = NSMenuItem(title: L10n.string("Create AI Transition"), action: #selector(performCreateAITransition(_:)), keyEquivalent: "")
                 item.target = self
                 item.isEnabled = availability.model != nil
                 item.toolTip = availability.refusal
@@ -1191,7 +1191,7 @@ final class TimelineView: NSView {
             }
 
             let refusal = editor.rippleDeleteGapRefusal(gap)
-            let deleteItem = NSMenuItem(title: "Ripple Delete Gap", action: #selector(performRippleDeleteGap(_:)), keyEquivalent: "")
+            let deleteItem = NSMenuItem(title: L10n.string("Ripple Delete Gap"), action: #selector(performRippleDeleteGap(_:)), keyEquivalent: "")
             deleteItem.target = self
             deleteItem.isEnabled = refusal == nil
             deleteItem.toolTip = refusal
