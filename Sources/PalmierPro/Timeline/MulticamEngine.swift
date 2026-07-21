@@ -242,6 +242,7 @@ enum MulticamEngine {
             && a.opacity == b.opacity
             && a.transform == b.transform
             && a.crop == b.crop
+            && a.cornerRounding == b.cornerRounding
             && a.effects == b.effects
             && a.blendMode == b.blendMode
             && a.fadeOutFrames == 0 && b.fadeInFrames == 0

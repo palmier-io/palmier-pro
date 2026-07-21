@@ -521,6 +521,7 @@ struct InspectorView: View {
                 opacityScrubField(clips: clips)
             }
             cropRow(single: single)
+            cornerRoundingRow(clips: clips)
             flipRow(clips: clips)
             blendRow(clips: clips)
         }
@@ -661,6 +662,40 @@ struct InspectorView: View {
                 for c in clips { editor.commitOpacity(clipId: c.id, value: newVal) }
             }
         }
+    }
+
+    private func cornerRoundingRow(clips: [Clip]) -> some View {
+        propertyRow(
+            label: "Corner Radius",
+            onReset: {
+                commitPropertiesToClips(clips, actionName: "Reset Corner Radius") {
+                    $0.cornerRounding = 0
+                }
+            },
+            reservesKeyframeControls: true
+        ) {
+            ScrubbableNumberField(
+                value: sharedClipValue(clips) { $0.cornerRounding },
+                range: 0...1,
+                displayMultiplier: 100,
+                format: "%.0f",
+                valueSuffix: "%",
+                fieldWidth: AppTheme.EditorPanel.numericFieldWidth,
+                onChanged: { newValue in
+                    editor.applyClipProperties(clipIds: clips.map(\.id)) {
+                        $0.cornerRounding = newValue
+                    }
+                }
+            ) { newValue in
+                editor.commitClipProperties(
+                    clipIds: clips.map(\.id),
+                    actionName: "Change Corner Radius"
+                ) {
+                    $0.cornerRounding = newValue
+                }
+            }
+        }
+        .frame(height: KeyframesMetrics.rowHeight)
     }
 
     // MARK: - Section helpers

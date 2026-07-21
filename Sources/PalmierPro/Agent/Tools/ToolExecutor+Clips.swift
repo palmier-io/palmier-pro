@@ -63,20 +63,21 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
     let speed: Double?
     let volume: Double?
     let opacity: Double?
+    let cornerRounding: Double?
     let transform: ParsedTransform?
     let blendMode: String?
 
     static let allowedKeys: Set<String> = Set([
         "clipIds",
         "durationFrames", "trimStartFrame", "trimEndFrame", "speed",
-        "volume", "opacity",
+        "volume", "opacity", "cornerRounding",
         "transform",
         "blendMode",
     ])
 
     var hasAnyProperty: Bool {
         durationFrames != nil || trimStartFrame != nil || trimEndFrame != nil
-            || speed != nil || volume != nil || opacity != nil
+            || speed != nil || volume != nil || opacity != nil || cornerRounding != nil
             || transform != nil
             || blendMode != nil
     }
@@ -463,6 +464,10 @@ extension ToolExecutor {
         if let o = input.opacity, !(0...1).contains(o) {
             throw ToolError("opacity must be between 0 and 1 (got \(o))")
         }
+        if let rounding = input.cornerRounding,
+           !rounding.isFinite || !(0...1).contains(rounding) {
+            throw ToolError("cornerRounding must be between 0 and 1 (got \(rounding))")
+        }
         if let t = input.trimStartFrame, t < 0 {
             throw ToolError("trimStartFrame must be >= 0 (got \(t))")
         }
@@ -497,6 +502,12 @@ extension ToolExecutor {
                 blendMode = m
             }
         }
+        if input.cornerRounding != nil {
+            let unsupported = clipTypes.filter { $0.value == .audio || $0.value == .text }.map(\.key).sorted()
+            if !unsupported.isEmpty {
+                throw ToolError("cornerRounding only applies to non-text visual clips: \(unsupported.joined(separator: ", "))")
+            }
+        }
 
         // Expand timing fields to linked partners via the shared model helper.
         // Partners drop trim/speed when they're text — handled per-partner below.
@@ -528,6 +539,7 @@ extension ToolExecutor {
                     speed: input.speed,
                     volume: input.volume,
                     opacity: input.opacity,
+                    cornerRounding: input.cornerRounding,
                     transform: input.transform,
                     blendMode: blendMode,
                     setBlendMode: setBlendMode,
@@ -544,7 +556,7 @@ extension ToolExecutor {
                     trimStartFrame: partnerIsText ? nil : input.trimStartFrame,
                     trimEndFrame:   partnerIsText ? nil : input.trimEndFrame,
                     speed:          partnerIsText ? nil : input.speed,
-                    volume: nil, opacity: nil, transform: nil,
+                    volume: nil, opacity: nil, cornerRounding: nil, transform: nil,
                     blendMode: nil, setBlendMode: false,
                     clipId: partnerId,
                     editor: editor
@@ -561,6 +573,7 @@ extension ToolExecutor {
         speed: Double?,
         volume: Double?,
         opacity: Double?,
+        cornerRounding: Double?,
         transform: ParsedTransform?,
         blendMode: BlendMode?,
         setBlendMode: Bool,
@@ -591,6 +604,7 @@ extension ToolExecutor {
             // Setting a scalar clears any existing keyframe track on the same property.
             if let v = volume         { clip.volume  = v; clip.volumeTrack  = nil; changed.append("volume") }
             if let v = opacity        { clip.opacity = v; clip.opacityTrack = nil; changed.append("opacity") }
+            if let v = cornerRounding { clip.cornerRounding = v; changed.append("cornerRounding") }
             if setBlendMode           { clip.blendMode = blendMode; changed.append("blendMode") }
             if let t = transform {
                 let cur = clip.transform

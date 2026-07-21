@@ -120,6 +120,37 @@ extension CompositorRenderTests {
         #expect(!isBlack(f.at(300, 45)), "right side should still show content: \(f.at(300, 45))")
     }
 
+    @Test func roundedCornersRevealBackgroundAndPreserveInterior() async throws {
+        var foreground = CompositorFixtures.patternClip(id: "foreground")
+        foreground.cornerRounding = 1
+        var background = CompositorFixtures.patternClip(id: "background")
+        background.transform.flipHorizontal = true
+
+        let frame = try await Self.render(Self.timelineWith(
+            Fixtures.videoTrack(clips: [foreground]),
+            Fixtures.videoTrack(clips: [background])
+        ), frame: 15)
+
+        #expect(isGreen(frame.at(5, 5)), "rounded corner should reveal background: \(frame.at(5, 5))")
+        #expect(isRed(frame.tl), "interior should preserve foreground: \(frame.tl)")
+    }
+
+    @Test func cornerRoundingUsesVisibleCropBounds() async throws {
+        var foreground = CompositorFixtures.patternClip(id: "foreground")
+        foreground.crop = Crop(left: 0.25)
+        foreground.cornerRounding = 1
+        var background = CompositorFixtures.patternClip(id: "background")
+        background.transform.flipHorizontal = true
+
+        let frame = try await Self.render(Self.timelineWith(
+            Fixtures.videoTrack(clips: [foreground]),
+            Fixtures.videoTrack(clips: [background])
+        ), frame: 15)
+
+        #expect(isGreen(frame.at(82, 5)), "rounded crop corner should reveal background: \(frame.at(82, 5))")
+        #expect(isRed(frame.at(100, 45)), "rounded crop interior should preserve foreground: \(frame.at(100, 45))")
+    }
+
     @Test func cropKeyframedMidway() async throws {
         var clip = CompositorFixtures.patternClip()
         clip.cropTrack = KeyframeTrack(keyframes: [
@@ -244,7 +275,8 @@ extension CompositorRenderTests {
             CGImageDestinationAddImage(dest, ctx.makeImage()!, nil)
             #expect(CGImageDestinationFinalize(dest))
         }
-        let overlay = Fixtures.clip(id: "ov", mediaRef: "alpha-img", mediaType: .image, start: 0, duration: 60)
+        var overlay = Fixtures.clip(id: "ov", mediaRef: "alpha-img", mediaType: .image, start: 0, duration: 60)
+        overlay.cornerRounding = 1
         let f = try await Self.render(Self.timelineWith(
             Fixtures.videoTrack(clips: [overlay]),
             Fixtures.videoTrack(clips: [CompositorFixtures.patternClip(id: "bg")])

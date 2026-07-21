@@ -53,6 +53,7 @@ struct ProjectRoundTripTests {
         clip.transform = Transform(centerX: 0.4, centerY: 0.6, width: 0.5, height: 0.5, rotation: 45,
                                    flipHorizontal: true, flipVertical: false)
         clip.crop = Crop(left: 0.1, top: 0.2, right: 0.3, bottom: 0.4)
+        clip.cornerRounding = 0.35
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
 
         let decoded = try roundTrip(timeline)
@@ -62,6 +63,7 @@ struct ProjectRoundTripTests {
         #expect(dc.transform.rotation == 45)
         #expect(dc.transform.flipHorizontal == true)
         #expect(dc.crop == Crop(left: 0.1, top: 0.2, right: 0.3, bottom: 0.4))
+        #expect(dc.cornerRounding == 0.35)
     }
 
     @Test func clipKeyframesSurviveRoundTrip() throws {
@@ -155,8 +157,25 @@ struct ProjectRoundTripTests {
         #expect(clip.fadeInInterpolation == .linear)
         #expect(clip.transform == Transform())
         #expect(clip.crop == Crop())
+        #expect(clip.cornerRounding == 0)
         #expect(clip.linkGroupId == nil)
         #expect(clip.textContent == nil)
+    }
+
+    @Test(arguments: [-0.1, 1.1])
+    func clipInvalidCornerRoundingDecodesAsDefault(_ value: Double) throws {
+        let json = """
+        {
+          "mediaRef": "media-1",
+          "startFrame": 0,
+          "durationFrames": 30,
+          "cornerRounding": \(value)
+        }
+        """
+
+        let clip = try JSONDecoder().decode(Clip.self, from: Data(json.utf8))
+
+        #expect(clip.cornerRounding == 0)
     }
 
     @Test func transformMigratesLegacyXYToCenterXY() throws {

@@ -2,7 +2,7 @@ import AVFoundation
 import CoreImage
 
 /// Composites a frame from a CompositorInstruction's layers with Core Image:
-/// per-layer crop → effects → transform → opacity, stacked bottom→top.
+/// per-layer crop → effects → corner mask → transform → opacity, stacked bottom→top.
 enum FrameRenderer {
 
     static func render(
@@ -249,7 +249,7 @@ enum FrameRenderer {
         )
     }
 
-    /// Crop → effects → transform → opacity, sampled from `layer.clip` at `frame`.
+    /// Crop → effects → corner mask → transform → opacity, sampled from `layer.clip` at `frame`.
     private static func applyClipPipeline(
         image input: CIImage,
         srcHeight: CGFloat,
@@ -287,6 +287,8 @@ enum FrameRenderer {
                 image = descriptor.render(image, effect: effect, atOffset: offset)
             }
         }
+
+        image = RoundedCornersKernel.apply(image, rounding: clip.cornerRounding)
 
         // transformAt drops the flip flags, so use the static transform unless animated.
         let t = clip.hasTransformAnimation ? clip.transformAt(frame: frame) : clip.transform

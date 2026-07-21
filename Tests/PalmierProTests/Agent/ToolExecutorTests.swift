@@ -304,6 +304,7 @@ struct ToolExecutorReadOnlyTests {
             volume: 0.987654321
         )
         clip.opacity = 0.123456789
+        clip.cornerRounding = 0.456789
         clip.transform = Transform(
             centerX: 0.123456789,
             centerY: 0.987654321,
@@ -338,6 +339,7 @@ struct ToolExecutorReadOnlyTests {
         #expect(outClip?["speed"] as? Double == 1.235)
         #expect(outClip?["volume"] as? Double == 0.988)
         #expect(outClip?["opacity"] as? Double == 0.123)
+        #expect(outClip?["cornerRounding"] as? Double == 0.457)
     }
 
     @Test func getTimelineOmitsDefaultValuedFields() async throws {
@@ -368,6 +370,7 @@ struct ToolExecutorReadOnlyTests {
         #expect(clip?["durationFrames"] == nil)
         for defaulted in [
             "mediaType", "sourceClipType", "speed", "volume", "opacity",
+            "cornerRounding",
             "trimStartFrame", "trimEndFrame", "fadeInFrames", "fadeOutFrames",
             "fadeInInterpolation", "fadeOutInterpolation", "transform", "crop",
         ] {
@@ -1264,6 +1267,30 @@ struct ToolExecutorClipTests {
         }
     }
 
+    @Test func setClipPropertiesSetsCornerRoundingOnVisualClips() async throws {
+        let (h, asset) = await setupWithVideoTrack()
+        let clipId = await addedClip(in: h, asset: asset)
+
+        let result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clipId], "cornerRounding": 0.4,
+        ])
+
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        #expect(h.editor.clipFor(id: clipId)?.cornerRounding == 0.4)
+    }
+
+    @Test func setClipPropertiesRejectsCornerRoundingOnNonVisualClips() async {
+        let clip = Fixtures.clip(id: "audio", mediaType: .audio, start: 0, duration: 30)
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.audioTrack(clips: [clip])]))
+
+        let result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clip.id], "cornerRounding": 0.4,
+        ])
+
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("visual clips"))
+    }
+
     @Test func setClipPropertiesRejectsUnknownKey() async throws {
         let (h, asset) = await setupWithVideoTrack()
         let clipId = await addedClip(in: h, asset: asset)
@@ -1335,7 +1362,9 @@ struct ToolExecutorClipTests {
         let clipId = await addedClip(in: h, asset: asset)
         let cases: [(String, Any)] = [
             ("speed", 0.0), ("speed", -2.0),
-            ("volume", 5.0), ("opacity", -1.0), ("trimStartFrame", -100),
+            ("volume", 5.0), ("opacity", -1.0),
+            ("cornerRounding", -0.1), ("cornerRounding", 1.1),
+            ("trimStartFrame", -100),
         ]
         for (field, value) in cases {
             var args: [String: Any] = ["clipIds": [clipId]]
