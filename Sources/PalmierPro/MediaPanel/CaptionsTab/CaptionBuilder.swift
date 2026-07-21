@@ -89,7 +89,7 @@ enum CaptionBuilder {
     private static let asciiHardBreak: Set<Character> = [".", "?", "!", ","]
 
     /// Cut into shortest natural lines: hard breaks then word-token boundaries; content preserved.
-    /// No NER — under a tight cap a run splits at the NLTokenizer seam (重庆|西站), only mid-token is prevented.
+    /// No NER — under a tight cap a run splits at the NLTokenizer seam (城南|西站), only mid-token is prevented.
     private static func naturalLines(_ text: String, fits: (String) -> Bool, maxWords: Int?) -> [String] {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }

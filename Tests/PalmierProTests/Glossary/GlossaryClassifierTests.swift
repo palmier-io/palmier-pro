@@ -7,7 +7,7 @@ import Testing
 @Suite("GlossaryClassifier")
 struct GlossaryClassifierTests {
     @Test func promotesCJKSingleSubstitution() {
-        let p = GlossaryClassifier.classify(old: "陈娘娘", new: "陈嬢嬢")
+        let p = GlossaryClassifier.classify(old: "李娘娘", new: "李嬢嬢")
         #expect(p != nil)
         #expect(p?.canonical == "嬢嬢")
         #expect(p?.variant == "娘娘")
@@ -54,7 +54,7 @@ struct GlossaryClassifierTests {
     }
 
     @Test func doesNotPromoteUnchanged() {
-        #expect(GlossaryClassifier.classify(old: "陈嬢嬢", new: "陈嬢嬢") == nil)
+        #expect(GlossaryClassifier.classify(old: "李嬢嬢", new: "李嬢嬢") == nil)
     }
 
     @Test func doesNotPromoteUnsafeShortVariant() {
