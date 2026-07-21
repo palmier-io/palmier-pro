@@ -21,7 +21,7 @@ struct TextAnimation: Codable, Sendable, Equatable {
     var perWordFrames: Int = 6
     var highlight: TextStyle.RGBA?
     /// Animation unit for per-word/typewriter presets. `word` (default) animates a whole word — a CJK
-    /// word like 重庆 as one unit; `char` animates each character. Missing in old projects → word.
+    /// word like 电影 as one unit; `char` animates each character. Missing in old projects → word.
     var granularity: Granularity = .word
 
     enum Granularity: String, Codable, Sendable { case word, char }
