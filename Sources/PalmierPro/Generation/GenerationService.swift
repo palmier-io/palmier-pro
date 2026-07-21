@@ -341,20 +341,37 @@ final class GenerationService {
             for (i, url) in urls.enumerated() {
                 let type = types.indices.contains(i) ? types[i] : .image
                 let cacheKey = cacheKeys.indices.contains(i) ? cacheKeys[i] : nil
-                if let cacheKey, let hit = cacheKey.freshRemoteURL {
+                let requiresConversion = type == .image
+                    && ImageConverter.requiresConversion(url)
+                if !requiresConversion, let cacheKey, let hit = cacheKey.freshRemoteURL {
                     group.addTask { (i, hit) }
                     continue
                 }
-                let contentType = Self.contentType(for: url, fallback: type)
+                let contentType = requiresConversion
+                    ? "image/jpeg"
+                    : Self.contentType(for: url, fallback: type)
                 group.addTask {
-                    let uploaded = try await GenerationBackend.uploadReference(
-                        fileURL: url,
-                        contentType: contentType,
-                    )
-                    if let cacheKey {
-                        await Self.recordUploadCache(asset: cacheKey, url: uploaded)
+                    let convertedURL = requiresConversion
+                        ? try await ImageConverter.convertToJPEG(url)
+                        : nil
+                    do {
+                        let uploaded = try await GenerationBackend.uploadReference(
+                            fileURL: convertedURL ?? url,
+                            contentType: contentType,
+                        )
+                        if let convertedURL {
+                            await ImageConverter.removeConvertedFile(convertedURL)
+                        }
+                        if !requiresConversion, let cacheKey {
+                            await Self.recordUploadCache(asset: cacheKey, url: uploaded)
+                        }
+                        return (i, uploaded)
+                    } catch {
+                        if let convertedURL {
+                            await ImageConverter.removeConvertedFile(convertedURL)
+                        }
+                        throw error
                     }
-                    return (i, uploaded)
                 }
             }
             var results = [(Int, String)]()
