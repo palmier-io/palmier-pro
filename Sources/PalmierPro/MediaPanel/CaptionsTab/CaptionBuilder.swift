@@ -72,7 +72,7 @@ enum CaptionBuilder {
         // A real speech pause is an unconditional line break: split the word stream at pauses and
         // segment each run alone, so no line ever merges across silence. Pause breaks compose with
         // punctuation breaks — either triggers. This runs BEFORE phrase protection, so a pause also
-        // overrides it: real silence inside a protected term (重庆<gap>西站) splits it, on the premise
+        // overrides it: real silence inside a protected term (城南<gap>西站) splits it, on the premise
         // that a genuine pause mid-term means the match was wrong. fixedChars keeps its legacy shape.
         let runs = segmentation == .natural ? splitAtPauses(timed) : [timed]
         let built = runs.flatMap {
@@ -171,7 +171,7 @@ enum CaptionBuilder {
 
     /// Cut into shortest natural lines: hard breaks then word-token boundaries; content preserved.
     /// Protected phrases (glossary terms, caption-style phrases) are atomic WITHIN a run — a term like
-    /// 重庆西站 is one unbreakable token even under a tight cap, so a line breaks before it rather than
+    /// 城南西站 is one unbreakable token even under a tight cap, so a line breaks before it rather than
     /// through it. A real speech pause splits the stream upstream of this, so it can override protection.
     private static func naturalLines(
         _ text: String, fits: (String) -> Bool, maxWords: Int?, protectedPhrases: [String] = []

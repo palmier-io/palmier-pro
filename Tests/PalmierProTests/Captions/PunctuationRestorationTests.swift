@@ -71,10 +71,10 @@ struct PunctuationRestorationTests {
         }
     }
 
-    // Real cached English from the 2026-07-15 zh/en vlog report, before doubling was fixed.
+    // Representative already-punctuated English inputs, before doubling was fixed.
     private static let realEnglish = [
         "This is sufficient. Oh, okay.",
-        "What I don't like about it: if you want smoked meat, you have to wait.",
+        "What I don't like about it: if you want fresh bread, you have to wait.",
         "Right, so that's the plan.",
         "Yeah. That works.",
     ]
@@ -92,7 +92,7 @@ struct PunctuationRestorationTests {
     }
 
     @Test func unpunctuatedCJKStreamComesBackPunctuated() async {
-        let raw = "好久没有开视频了那我现在人在重庆西站"
+        let raw = "好久没有开照片了那我现在人在城南西站"
         let restored = await CJKRestorer().restore(raw)
         let pieces = Qwen3ASREngine.punctuatedPieces(raw: raw, restored: restored)
         // Piece count matches the unpunctuated stream, so aligned word timings never shift.
@@ -114,7 +114,7 @@ struct PunctuationRestorationTests {
     }
 
     @Test func fullwidthMarksAfterLatinLandAsASCII() async {
-        let raw = "That's so American for you right there"
+        let raw = "That's so generous of you right there"
         let restored = await FullwidthEverywhereRestorer().restore(raw)
         let pieces = Qwen3ASREngine.punctuatedPieces(raw: raw, restored: restored)
         #expect(pieces.contains("right?"))
@@ -124,7 +124,7 @@ struct PunctuationRestorationTests {
     }
 
     @Test func fullwidthMarksAfterCJKStayFullwidth() async {
-        let raw = "拍视频了 ice creams"
+        let raw = "拍照片了 ice creams"
         let restored = await FullwidthEverywhereRestorer().restore(raw)
         let pieces = Qwen3ASREngine.punctuatedPieces(raw: raw, restored: restored)
         #expect(pieces.joined().contains("了。"))
@@ -143,11 +143,11 @@ struct PunctuationRestorationTests {
 // E: caption/transcript text assembly never puts spaces inside a CJK run.
 @Suite struct CJKJoinTests {
     @Test func cjkRunJoinsTight() {
-        #expect(CaptionText.join(["好", "久", "没", "有", "拍", "视", "频", "了"]) == "好久没有拍视频了")
+        #expect(CaptionText.join(["好", "久", "没", "有", "拍", "照", "片", "了"]) == "好久没有拍照片了")
     }
 
     @Test func mixedLanguageKeepsLatinSpacing() {
-        #expect(CaptionText.join(["我", "掉", "得", "really", "low", "。"]) == "我掉得 really low。")
+        #expect(CaptionText.join(["我", "唱", "得", "really", "low", "。"]) == "我唱得 really low。")
     }
 
     @Test func punctuationBindsLeftAcrossScripts() {
