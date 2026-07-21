@@ -7,7 +7,7 @@ import Testing
 @Suite("GlossaryClassifier")
 struct GlossaryClassifierTests {
     @Test func promotesCJKSingleSubstitution() {
-        let p = GlossaryClassifier.classify(old: "陈娘娘", new: "陈嬢嬢")
+        let p = GlossaryClassifier.classify(old: "李娘娘", new: "李嬢嬢")
         #expect(p != nil)
         #expect(p?.canonical == "嬢嬢")
         #expect(p?.variant == "娘娘")
@@ -54,7 +54,7 @@ struct GlossaryClassifierTests {
     }
 
     @Test func doesNotPromoteUnchanged() {
-        #expect(GlossaryClassifier.classify(old: "陈嬢嬢", new: "陈嬢嬢") == nil)
+        #expect(GlossaryClassifier.classify(old: "李嬢嬢", new: "李嬢嬢") == nil)
     }
 
     @Test func doesNotPromoteUnsafeShortVariant() {
@@ -67,7 +67,7 @@ struct GlossaryClassifierTests {
     /// classifyWithReason must agree with classify on whether every table case promotes.
     @Test func reasonWrapperAgreesWithClassify() {
         let pairs: [(String, String)] = [
-            ("陈娘娘", "陈嬢嬢"),
+            ("李娘娘", "李嬢嬢"),
             ("I love black sushi", "I love black sesame"),
             ("呃，我们住的酒店", "我们住的酒店"),
             ("太好吃了", "非常好吃"),
@@ -76,7 +76,7 @@ struct GlossaryClassifierTests {
             ("hello world", "Hello World"),
             ("我们住的酒店", "呃，我们住的酒店"),
             ("um the plan", "uh the plan"),
-            ("陈嬢嬢", "陈嬢嬢"),
+            ("李嬢嬢", "李嬢嬢"),
             ("我的师父", "我的狮父"),
         ]
         for (old, new) in pairs {
