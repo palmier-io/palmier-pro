@@ -1286,6 +1286,62 @@ struct ToolExecutorClipTests {
         #expect(h.editor.clipFor(id: clipId)?.edgeSoftness == 0.25)
     }
 
+    @Test func setClipPropertiesSetsFadesWithoutClearingKeyframes() async throws {
+        let (h, clipId) = await setupClipForKeyframes()
+        _ = await h.runRaw("set_keyframes", args: [
+            "clipId": clipId, "property": "opacity",
+            "keyframes": [[0, 0.25], [30, 1.0]],
+        ])
+
+        let json = try await h.runOK("set_clip_properties", args: [
+            "clipIds": [clipId],
+            "fadeInFrames": 12,
+            "fadeOutFrames": 18,
+            "fadeInInterpolation": "smooth",
+            "fadeOutInterpolation": "linear",
+        ]) as? [String: Any]
+
+        let clip = try #require(h.editor.clipFor(id: clipId))
+        #expect(clip.fadeInFrames == 12)
+        #expect(clip.fadeOutFrames == 18)
+        #expect(clip.fadeInInterpolation == .smooth)
+        #expect(clip.fadeOutInterpolation == .linear)
+        #expect(clip.opacityTrack?.keyframes.count == 2)
+        let receipt = (json?["clips"] as? [[String: Any]])?.first
+        #expect(receipt?["fadeInFrames"] as? Int == 12)
+        #expect(receipt?["fadeOutFrames"] as? Int == 18)
+        #expect((receipt?["keyframes"] as? [String: Any])?["opacity"] != nil)
+    }
+
+    @Test func setClipPropertiesRejectsOversizedFadesAtomically() async {
+        let first = Fixtures.clip(id: "first", start: 0, duration: 60)
+        let second = Fixtures.clip(id: "second", start: 60, duration: 20)
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [first, second])]))
+
+        let result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [first.id, second.id], "fadeInFrames": 15, "fadeOutFrames": 10,
+        ])
+
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("second"))
+        #expect(h.editor.clipFor(id: first.id)?.fadeInFrames == 0)
+        #expect(h.editor.clipFor(id: second.id)?.fadeInFrames == 0)
+    }
+
+    @Test func setClipPropertiesFadesDoNotPropagateToLinkedPartner() async {
+        let (h, videoId, audioId) = await setupLinkedPair()
+
+        let result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [videoId], "fadeInFrames": 10, "fadeOutFrames": 20,
+        ])
+
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        #expect(h.editor.clipFor(id: videoId)?.fadeInFrames == 10)
+        #expect(h.editor.clipFor(id: videoId)?.fadeOutFrames == 20)
+        #expect(h.editor.clipFor(id: audioId)?.fadeInFrames == 0)
+        #expect(h.editor.clipFor(id: audioId)?.fadeOutFrames == 0)
+    }
+
     @Test func setClipPropertiesRejectsEdgeAdjustmentsOnNonVisualClips() async {
         let clip = Fixtures.clip(id: "audio", mediaType: .audio, start: 0, duration: 30)
         let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.audioTrack(clips: [clip])]))
@@ -1381,6 +1437,7 @@ struct ToolExecutorClipTests {
             ("speed", 0.0), ("speed", -2.0),
             ("volumeDb", 15.1), ("volumeDb", -60.1),
             ("opacity", -1.0),
+            ("fadeInFrames", -1), ("fadeOutFrames", -1),
             ("edgeRounding", -0.1), ("edgeRounding", 1.1),
             ("edgeSoftness", -0.1), ("edgeSoftness", 1.1),
             ("trimStartFrame", -100),
@@ -1392,6 +1449,18 @@ struct ToolExecutorClipTests {
             #expect(result.isError, "\(field)=\(value) should be rejected")
             #expect(ToolHarness.textOf(result).contains(field), "error should name \(field)")
         }
+    }
+
+    @Test func setClipPropertiesRejectsUnsupportedFadeInterpolation() async {
+        let (h, asset) = await setupWithVideoTrack()
+        let clipId = await addedClip(in: h, asset: asset)
+
+        let result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clipId], "fadeInInterpolation": "hold",
+        ])
+
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("fadeInInterpolation"))
     }
 
     @Test func setClipPropertiesDurationAndSpeedPropagateToLinkedPartner() async throws {
