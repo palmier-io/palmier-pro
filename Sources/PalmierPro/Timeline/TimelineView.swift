@@ -350,16 +350,22 @@ final class TimelineView: NSView {
         }
         let linkOffsets = cachedLinkOffsets
         let anglesByGroup = cachedAngleLabels
+        let selectedClipIds = editor.selectedClipIds
         func angleLabel(_ clip: Clip) -> String? {
             guard let groupId = clip.multicamGroupId else { return nil }
             return anglesByGroup[groupId]?[clip.mediaRef]
+        }
+
+        func displayName(_ clip: Clip, in rect: NSRect, isSelected: Bool) -> String? {
+            guard ClipRenderer.showsLabel(isSelected: isSelected, in: rect) else { return nil }
+            return editor.clipDisplayLabel(for: clip)
         }
 
         clipDisplayRects.removeAll(keepingCapacity: true)
         var deferredDraws: [() -> Void] = []
         for (ti, track) in editor.timeline.tracks.enumerated() {
             for clip in track.clips {
-                let isSelected = editor.selectedClipIds.contains(clip.id)
+                let isSelected = selectedClipIds.contains(clip.id)
                 let clipMissing = editor.isClipMediaOffline(clip)
                 let clipGenerating = editor.isClipMediaGenerating(clip)
 
@@ -372,7 +378,7 @@ final class TimelineView: NSView {
                         ClipRenderer.draw(previewClip, type: clip.mediaType, in: previewRect,
                                           isSelected: isSelected, opacity: CGFloat(AppTheme.Opacity.prominent), context: ctx,
                                           cache: editor.mediaVisualCache,
-                                          displayName: editor.clipDisplayLabel(for: clip),
+                                          displayName: displayName(clip, in: previewRect, isSelected: isSelected),
                                           multicamAngleLabel: angleLabel(clip),
                                           fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
                     }
@@ -387,7 +393,7 @@ final class TimelineView: NSView {
                         ClipRenderer.draw(clip, type: clip.mediaType, in: originalRect,
                                           isSelected: drag.isDuplicate && isSelected, opacity: originalOpacity, context: ctx,
                                           cache: editor.mediaVisualCache,
-                                          displayName: editor.clipDisplayLabel(for: clip),
+                                          displayName: displayName(clip, in: originalRect, isSelected: drag.isDuplicate && isSelected),
                                           multicamAngleLabel: angleLabel(clip),
                                           fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
                     }
@@ -413,7 +419,7 @@ final class TimelineView: NSView {
                         ClipRenderer.draw(ghostClip, type: clip.mediaType, in: ghostRect,
                                           isSelected: true, opacity: 0.7, context: ctx,
                                           cache: editor.mediaVisualCache,
-                                          displayName: editor.clipDisplayLabel(for: clip),
+                                          displayName: displayName(clip, in: ghostRect, isSelected: true),
                                           multicamAngleLabel: angleLabel(clip),
                                           fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
                     }
@@ -446,7 +452,7 @@ final class TimelineView: NSView {
                     if previewRect.intersects(dirtyRect) {
                         let chip = angleLabel(clip)
                         let cache = editor.mediaVisualCache
-                        let name = editor.clipDisplayLabel(for: clip)
+                        let name = displayName(clip, in: previewRect, isSelected: isSelected)
                         let fps = editor.timeline.fps
                         deferredDraws.append {
                             ClipRenderer.draw(previewClip, type: clip.mediaType, in: previewRect,
@@ -484,7 +490,7 @@ final class TimelineView: NSView {
                     if rect.intersects(dirtyRect) {
                         let chip = angleLabel(clip)
                         let cache = editor.mediaVisualCache
-                        let name = editor.clipDisplayLabel(for: clip)
+                        let name = displayName(clip, in: rect, isSelected: isSelected)
                         let fps = editor.timeline.fps
                         deferredDraws.append {
                             ClipRenderer.draw(previewClip, type: clip.mediaType, in: rect,
@@ -506,7 +512,7 @@ final class TimelineView: NSView {
                         ClipRenderer.draw(shiftedClip, type: clip.mediaType, in: shiftedRect,
                                           isSelected: isSelected, context: ctx,
                                           cache: editor.mediaVisualCache,
-                                          displayName: editor.clipDisplayLabel(for: clip),
+                                          displayName: displayName(clip, in: shiftedRect, isSelected: isSelected),
                                           linkOffset: linkOffsets[clip.id],
                                           multicamAngleLabel: angleLabel(clip),
                                           fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
@@ -520,7 +526,7 @@ final class TimelineView: NSView {
                 ClipRenderer.draw(clip, type: clip.mediaType, in: rect,
                                   isSelected: isSelected, isHovered: hoveredClipId == clip.id, context: ctx,
                                   cache: editor.mediaVisualCache,
-                                  displayName: editor.clipDisplayLabel(for: clip),
+                                  displayName: displayName(clip, in: rect, isSelected: isSelected),
                                   linkOffset: linkOffsets[clip.id],
                                   multicamAngleLabel: angleLabel(clip),
                                   fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)

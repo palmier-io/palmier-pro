@@ -280,11 +280,11 @@ final class TimelineInputController {
             }
         } else {
             view.setHoveredClipId(nil)
+            editor.isMarqueeSelecting = true
             if !event.modifierFlags.contains(.shift) {
                 editor.selectedClipIds.removeAll()
             }
             editor.selectedGap = hitTestGap(at: point, trackIndex: trackIndex, geometry: geometry)
-            editor.isMarqueeSelecting = true
             dragState = .marquee(DragState.MarqueeDrag(origin: point, baseSelection: editor.selectedClipIds))
         }
 
@@ -487,13 +487,14 @@ final class TimelineInputController {
             }
             dragState = .marquee(marq)
             // Touch only what changed.
-            view.setNeedsDisplay(previousRect.union(marq.current).insetBy(dx: -2, dy: -2))
+            let padding = AppTheme.BorderWidth.thick
+            view.setNeedsDisplay(previousRect.union(marq.current).insetBy(dx: -padding, dy: -padding))
             if selected != editor.selectedClipIds {
                 let flipped = selected.symmetricDifference(editor.selectedClipIds)
                 editor.selectedClipIds = selected
                 for (ti, track) in editor.timeline.tracks.enumerated() {
                     for clip in track.clips where flipped.contains(clip.id) {
-                        view.setNeedsDisplay(geometry.clipRect(for: clip, trackIndex: ti).insetBy(dx: -2, dy: -2))
+                        view.setNeedsDisplay(geometry.clipRect(for: clip, trackIndex: ti).insetBy(dx: -padding, dy: -padding))
                     }
                 }
             }
@@ -542,6 +543,7 @@ final class TimelineInputController {
 
     func mouseUp(with event: NSEvent, geometry: TimelineGeometry) {
         stopPlayheadAutoScroll()
+        var finalDirtyRect: NSRect?
 
         switch dragState {
         case .moveClip(let drag):
@@ -644,8 +646,10 @@ final class TimelineInputController {
                 editor.revertClipProperty(clipId: drag.clipId)
             }
 
-        case .marquee:
+        case .marquee(let marquee):
             editor.isMarqueeSelecting = false
+            let padding = AppTheme.BorderWidth.thick
+            finalDirtyRect = marquee.current.insetBy(dx: -padding, dy: -padding)
 
         case .scrubPlayhead:
             finishPlayheadScrub()
@@ -659,7 +663,11 @@ final class TimelineInputController {
 
         dragState = .idle
         snapIndicatorX = nil
-        view.needsDisplay = true
+        if let finalDirtyRect {
+            view.setNeedsDisplay(finalDirtyRect)
+        } else {
+            view.needsDisplay = true
+        }
     }
 
     /// Escape during an in-progress slip drag: drop the preview and the pending
@@ -854,6 +862,11 @@ final class TimelineInputController {
     }
 
     func audioVolumeKfHit(at point: NSPoint, clip: Clip, clipRect: NSRect) -> Int? {
+        guard ClipRenderer.showsVolumeKeyframes(
+            isSelected: editor.selectedClipIds.contains(clip.id),
+            isHovered: view.hoveredClipId == clip.id,
+            in: clipRect
+        ) else { return nil }
         guard let track = clip.volumeTrack, track.isActive else { return nil }
         let geo = view.geometry
         for kf in track.keyframes {
@@ -865,7 +878,11 @@ final class TimelineInputController {
     }
 
     func fadeKneeHit(at point: NSPoint, clip: Clip, clipRect: NSRect) -> FadeEdge? {
-        guard editor.selectedClipIds.contains(clip.id) || view.hoveredClipId == clip.id else { return nil }
+        guard ClipRenderer.showsFadeControls(
+            isSelected: editor.selectedClipIds.contains(clip.id),
+            isHovered: view.hoveredClipId == clip.id,
+            in: clipRect
+        ) else { return nil }
         let geo = view.geometry
         if geo.fadeKneeRect(clip: clip, edge: .left, in: clipRect).contains(point) { return .left }
         if geo.fadeKneeRect(clip: clip, edge: .right, in: clipRect).contains(point) { return .right }

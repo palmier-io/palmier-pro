@@ -25,6 +25,12 @@ struct PreviewPlaybackRateTests {
         #expect(abs(updatesPerSecond - 30) < 0.0001)
     }
 
+    @Test func frameAlignedDurationPreservesItsExactFrameCount() {
+        let duration = CMTime(value: 123, timescale: 30)
+
+        #expect(VideoEngine.frameCount(for: duration, fps: 30) == 123)
+    }
+
     @Test func audioMeteringStopsAboveDoubleSpeed() {
         #expect(PreviewPlaybackRate.allCases.filter(\.allowsAudioMetering) == [
             .half,

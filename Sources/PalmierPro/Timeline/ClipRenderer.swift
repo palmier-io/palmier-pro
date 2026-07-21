@@ -45,6 +45,26 @@ enum ClipRenderer {
         return min(clipRect.maxX - edgeInset, max(clipRect.minX + edgeInset, actual))
     }
 
+    static func usesCompactRendering(in rect: NSRect) -> Bool {
+        rect.width < AppTheme.ComponentSize.timelineClipBorderMinWidth
+    }
+
+    static func showsLabel(isSelected: Bool, in rect: NSRect) -> Bool {
+        let minimumWidth = isSelected
+            ? AppTheme.ComponentSize.timelineClipDetailMinWidth
+            : AppTheme.ComponentSize.timelineClipLabelMinWidth
+        return rect.width >= minimumWidth
+    }
+
+    static func showsFadeControls(isSelected: Bool, isHovered: Bool, in rect: NSRect) -> Bool {
+        guard !usesCompactRendering(in: rect) else { return false }
+        return isHovered || (isSelected && rect.width >= AppTheme.ComponentSize.timelineClipDetailMinWidth)
+    }
+
+    static func showsVolumeKeyframes(isSelected: Bool, isHovered: Bool, in rect: NSRect) -> Bool {
+        isSelected && showsFadeControls(isSelected: isSelected, isHovered: isHovered, in: rect)
+    }
+
     static func draw(
         _ clip: Clip,
         type: ClipType,
@@ -66,11 +86,20 @@ enum ClipRenderer {
             context.setAlpha(opacity)
         }
 
+        let colorType = clip.sourceClipType
+        if usesCompactRendering(in: rect) {
+            let color = isMissing && !isGenerating
+                ? AppTheme.Status.error
+                : (isSelected ? AppTheme.Text.primary : colorType.themeColor)
+            context.setFillColor(color.cgColor)
+            context.fill(rect)
+            if opacity < 1.0 { context.restoreGState() }
+            return
+        }
+
         let cornerRadius = Trim.clipCornerRadius
         let path = CGPath(roundedRect: rect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
 
-
-        let colorType = clip.sourceClipType
         context.setFillColor(colorType.themeColor.cgColor)
         context.addPath(path)
         context.fillPath()
@@ -101,9 +130,20 @@ enum ClipRenderer {
                          clip: clip, type: colorType, in: audioRect, context: context)
         }
 
-        let showsFadeControls = isSelected || isHovered
+        let showsFadeControls = showsFadeControls(isSelected: isSelected, isHovered: isHovered, in: rect)
+        let volumeKeyframesVisible = showsVolumeKeyframes(
+            isSelected: isSelected,
+            isHovered: isHovered,
+            in: rect
+        )
         if type == .audio {
-            drawVolumeRubberBand(clip: clip, in: rect, isSelected: isSelected, showsFadeControls: showsFadeControls, context: context)
+            drawVolumeRubberBand(
+                clip: clip,
+                in: rect,
+                showsFadeControls: showsFadeControls,
+                showsVolumeKeyframes: volumeKeyframesVisible,
+                context: context
+            )
         } else {
             drawOpacityFades(clip: clip, in: rect, showsFadeControls: showsFadeControls, context: context)
         }
@@ -141,8 +181,8 @@ enum ClipRenderer {
             context.strokePath()
         }
 
-        let showDetailChrome = isSelected || rect.width >= AppTheme.ComponentSize.timelineClipDetailMinWidth
-        let showLabel = isSelected || rect.width >= AppTheme.ComponentSize.timelineClipLabelMinWidth
+        let showDetailChrome = rect.width >= AppTheme.ComponentSize.timelineClipDetailMinWidth
+        let showLabel = showsLabel(isSelected: isSelected, in: rect)
 
         if showLabel {
             drawLabelBar(clip: clip, type: type, in: labelRect, clipRect: rect, context: context,
@@ -382,8 +422,8 @@ enum ClipRenderer {
     private static func drawVolumeRubberBand(
         clip: Clip,
         in rect: NSRect,
-        isSelected: Bool,
         showsFadeControls: Bool,
+        showsVolumeKeyframes: Bool,
         context: CGContext
     ) {
         guard clip.durationFrames > 0 else { return }
@@ -473,7 +513,7 @@ enum ClipRenderer {
 
         let half = volumeKeyframeSize / 2
 
-        if isSelected {
+        if showsVolumeKeyframes {
             context.setFillColor(lineColor)
             context.setStrokeColor(NSColor.black.withAlphaComponent(0.5).cgColor)
             context.setLineWidth(0.5)
@@ -783,8 +823,6 @@ enum ClipRenderer {
     }
 
     private static func drawLabelBar(clip: Clip, type: ClipType, in labelRect: NSRect, clipRect: NSRect, context: CGContext, displayName: String? = nil, badge: String? = nil, fps: Int) {
-        guard clipRect.width > 20 else { return }
-
         var labelRect = labelRect
         if let badge,
            let chipRect = drawPill(badge, textColor: NSColor.black.withAlphaComponent(AppTheme.Opacity.prominent),

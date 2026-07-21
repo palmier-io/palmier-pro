@@ -36,19 +36,13 @@ extension EditorViewModel {
         }
     }
 
-    func captionLineFits(_ line: String, style: TextStyle) -> Bool {
-        let size = TextLayout.naturalSize(
-            content: line, style: style, maxWidth: .greatestFiniteMagnitude, canvasHeight: CGFloat(timeline.height)
-        )
-        return size.width <= CGFloat(timeline.width) * AppTheme.ComponentSize.captionPreviewMaxTextWidthRatio
-    }
-
     enum CaptionError: LocalizedError {
-        case noSource
+        case noSource, timelineChanged
 
         var errorDescription: String? {
             switch self {
             case .noSource: "No audio clips to caption."
+            case .timelineChanged: "The timeline changed while captions were being prepared. Generate captions again."
             }
         }
     }
@@ -79,9 +73,14 @@ extension EditorViewModel {
     }
 
     func captionTargets(ids: [String]) -> [Clip] {
-        let pool: [Clip] = ids.isEmpty
-            ? timeline.tracks.flatMap(\.clips)
-            : ids.compactMap { findClip(id: $0).map { timeline.tracks[$0.trackIndex].clips[$0.clipIndex] } }
+        let clips = timeline.tracks.flatMap(\.clips)
+        let pool: [Clip]
+        if ids.isEmpty {
+            pool = clips
+        } else {
+            let selectedIds = Set(ids)
+            pool = clips.filter { selectedIds.contains($0.id) }
+        }
         return captionTargets(in: pool)
     }
 
@@ -127,13 +126,38 @@ extension EditorViewModel {
 
         guard timeline(for: owningTimelineId) != nil else { return [] }
         if activeTimelineId != owningTimelineId { activateTimeline(owningTimelineId) }
+        targets = resolvedCaptionTargets(for: request)
+        guard !targets.isEmpty else { throw CaptionError.noSource }
+
+        let preparationTimeline = timeline
 
         if request.autoDetect {
             guard let winner = dominantSpeechTrack(targets, results) else { return [] }
             targets = targets.filter { $0.trackId == winner }
         }
 
-        let specs = captionSpecs(targets, results: results, request: request)
+        let animation: TextAnimation? = request.animation.isActive ? request.animation : nil
+        let input = CaptionSpecBuilder.Input(
+            targets: targets.compactMap { target in
+                results[target.clip.mediaRef].map { CaptionSpecBuilder.Target(clip: target.clip, result: $0) }
+            },
+            fps: timeline.fps,
+            canvasWidth: timeline.width,
+            canvasHeight: timeline.height,
+            style: request.style,
+            center: request.center,
+            textCase: request.textCase,
+            maxWords: request.maxWords,
+            animation: animation
+        )
+        let specs = try await CaptionSpecBuilder.build(input)
+        try Task.checkCancellation()
+        guard captionPreparationIsCurrent(
+            timelineId: owningTimelineId,
+            snapshot: preparationTimeline
+        ) else {
+            throw CaptionError.timelineChanged
+        }
         guard !specs.isEmpty else { return [] }
         if let mutation {
             return try await mutation { self.placeCaptionTrack(specs) }
@@ -176,6 +200,13 @@ extension EditorViewModel {
                 CaptionTarget(id: c.id, trackId: timeline.tracks[$0.trackIndex].id, clip: timeline.tracks[$0.trackIndex].clips[$0.clipIndex])
             }
         }
+    }
+
+    func captionPreparationIsCurrent(
+        timelineId: String,
+        snapshot: Timeline
+    ) -> Bool {
+        activeTimelineId == timelineId && timeline == snapshot
     }
 
     private struct TranscribeJob {
@@ -249,42 +280,6 @@ extension EditorViewModel {
             wordsByTrack[t.trackId, default: 0] += CaptionTranscriptMapper.spokenWordCount(in: t.clip, result: result, fps: timeline.fps)
         }
         return wordsByTrack.filter { $0.value > 0 }.max { $0.value < $1.value }?.key
-    }
-
-    private func captionSpecs(_ targets: [CaptionTarget], results: [String: TranscriptionResult], request: CaptionRequest) -> [TextClipSpec] {
-        let fps = timeline.fps
-        let groupId = UUID().uuidString
-        let transformFor = captionTransform(style: request.style, center: request.center)
-
-        let animation: TextAnimation? = request.animation.isActive ? request.animation : nil
-        return targets.flatMap { t -> [TextClipSpec] in
-            guard let result = results[t.clip.mediaRef] else { return [] }
-            let phrases = CaptionTranscriptMapper.phrases(
-                for: t.clip,
-                result: result,
-                fps: fps,
-                maxWords: request.maxWords,
-                minDuration: AppTheme.Caption.minDisplayDuration,
-                fits: { captionLineFits($0, style: request.style) }
-            )
-            guard !phrases.isEmpty else { return [] }
-            let cased = phrases.map { CaptionBuilder.Phrase(text: request.textCase.apply($0.text), start: $0.start, end: $0.end, words: $0.words) }
-            return CaptionBuilder.specs(for: cased, sourceClip: t.clip, trackIndex: 0, fps: fps, style: request.style, captionGroupId: groupId, animation: animation, transformFor: transformFor)
-        }
-    }
-
-    private func captionTransform(style: TextStyle, center: CGPoint) -> (String) -> Transform? {
-        let canvasW = Double(timeline.width), canvasH = Double(timeline.height)
-        return { text in
-            let natural = TextLayout.naturalSize(
-                content: text, style: style, maxWidth: CGFloat(canvasW) * AppTheme.ComponentSize.captionPreviewMaxTextWidthRatio, canvasHeight: CGFloat(canvasH)
-            )
-            return Transform(
-                center: (Double(center.x), Double(center.y)),
-                width: Double(natural.width) / canvasW,
-                height: Double(natural.height) / canvasH
-            )
-        }
     }
 
     private func placeCaptionTrack(_ specs: [TextClipSpec]) -> [String] {

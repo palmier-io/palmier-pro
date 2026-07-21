@@ -3,16 +3,14 @@ import SwiftUI
 extension InspectorView {
 
     @ViewBuilder
-    func audioTabContent() -> some View {
-        let audios = selectedAudioClips
-
+    func audioTabContent(audioClips: [Clip], hasNonTextVisualClips: Bool) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
-            levelsSection(audios: audios)
+            levelsSection(audios: audioClips)
             EditorPanelGroup("Enhance", contentSpacing: AppTheme.Spacing.smMd) {
-                denoiseRow(audios: audios)
+                denoiseRow(audios: audioClips)
             }
-            if nonTextVisualClips.isEmpty {
-                speedSection(clips: audios)
+            if !hasNonTextVisualClips {
+                speedSection(clips: audioClips)
             }
         }
     }
