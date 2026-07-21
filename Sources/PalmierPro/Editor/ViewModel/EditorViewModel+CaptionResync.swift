@@ -81,7 +81,9 @@ extension EditorViewModel {
             guard let loc = findClip(id: r.clipId) else { continue }
             timeline.tracks[loc.trackIndex].clips[loc.clipIndex].textContent = r.text
             timeline.tracks[loc.trackIndex].clips[loc.clipIndex].wordTimings = r.wordTimings.isEmpty ? nil : r.wordTimings
-            timeline.tracks[loc.trackIndex].clips[loc.clipIndex].generatedText = r.generatedText
+            if let provenance = r.generatedText {
+                timeline.tracks[loc.trackIndex].clips[loc.clipIndex].generatedText = provenance
+            }
             timeline.tracks[loc.trackIndex].clips[loc.clipIndex].resyncConflict = nil
         }
         for id in plan.flagged {
@@ -223,7 +225,7 @@ extension EditorViewModel {
             }
             let phrases = CaptionBuilder.phrases(
                 fromTimedWords: synthetic,
-                fits: { self.captionLineFits($0, style: style) },
+                fits: { CaptionSpecBuilder.lineFits($0, style: style, canvasWidth: self.timeline.width, canvasHeight: self.timeline.height) },
                 maxWords: maxWords,
                 minDuration: AppTheme.Caption.minDisplayDuration
             )

@@ -129,7 +129,10 @@ struct StoragePane: View {
         isClearing = true
         Task.detached {
             for cache in Self.caches { cache.clear() }
+            TimelineTranscriptProvider.clearDiskMemo()
             await TranscriptCache.shared.clearMemory()
+            // Cleared again after the disk wipe: a resync during the await may have repopulated
+            // the memo from files that no longer exist.
             TimelineTranscriptProvider.clearDiskMemo()
             await MainActor.run {
                 isClearing = false

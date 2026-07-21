@@ -78,7 +78,7 @@ enum CaptionSpecBuilder {
         return specs
     }
 
-    private static func lineFits(
+    static func lineFits(
         _ text: String,
         style: TextStyle,
         canvasWidth: Int,
