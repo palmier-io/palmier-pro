@@ -2,20 +2,23 @@
   "changelogURL": "https://github.com/palmier-io/palmier-pro/releases",
   "entries": [
     {
-      "version": "0.6.13",
-      "date": "2026-07-20",
+      "version": "0.6.14",
+      "date": "2026-07-21",
       "sections": [
         {
           "heading": "New",
           "items": [
-            "AI Transitions: Select a gap betweeen two clips and generate a transition using AI.",
-            "Slip edit: press T to slip edit a clip (Shifting the underlying content without changing the duration)."
+            "Agent can set fade in and fade out for audio and video clips",
+            "Preview playback speed control: Watch your timeline in 0.5x, 2x, 4x, or 10x speed, without modifying the timeline",
+            "Text rotation: You can now rotate text clips"
           ]
         },
         {
           "heading": "Improved",
           "items": [
-            "Audio Synchronization: More accurate audio synchronization between clips."
+            "Agent can set fade in and fade out for audio and video clips",
+            "Better rendering for large timelines",
+            "Better project management: In home page, you can search, select and delete multiple projects"
           ]
         }
       ]
