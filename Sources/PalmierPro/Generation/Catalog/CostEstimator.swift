@@ -39,9 +39,10 @@ enum CostEstimator {
     static func audioCost(
         model: AudioModelConfig,
         prompt: String,
-        durationSeconds: Int?
+        durationSeconds: Int?,
+        input: AudioModelConfig.Input? = nil
     ) -> Int? {
-        switch model.pricing {
+        switch model.pricing(for: input) {
         case .perThousandChars(let rate):
             let chars = prompt.count
             guard chars > 0 else { return nil }
@@ -85,8 +86,14 @@ enum CostEstimator {
                 numImages: genInput.numImages ?? 1
             )
         case .audio(let m):
-            let duration = (m.durations != nil || m.acceptsSourceMedia) ? genInput.duration : nil
-            return audioCost(model: m, prompt: genInput.prompt, durationSeconds: duration)
+            let input = genInput.audioInput.flatMap(AudioModelConfig.Input.init(rawValue:))
+            let duration = (m.hasDurationControl || m.acceptsSourceMedia) ? genInput.duration : nil
+            return audioCost(
+                model: m,
+                prompt: genInput.prompt,
+                durationSeconds: duration,
+                input: input
+            )
         case .upscale(let m):
             return upscaleCost(model: m, durationSeconds: genInput.duration)
         case .none:

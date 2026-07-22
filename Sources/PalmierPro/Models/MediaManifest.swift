@@ -57,6 +57,7 @@ struct GenerationInput: Codable, Sendable, Equatable {
     var styleInstructions: String?
     var instrumental: Bool?
     var targetLanguage: String?
+    var audioInput: String?
     /// Video-only
     var generateAudio: Bool?
     var referenceImageURLs: [String]?

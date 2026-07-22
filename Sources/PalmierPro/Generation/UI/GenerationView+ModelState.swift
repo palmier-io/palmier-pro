@@ -78,6 +78,14 @@ extension GenerationView {
 
     var trimmedPrompt: String { prompt.trimmingCharacters(in: .whitespaces) }
     var isPromptEmpty: Bool { trimmedPrompt.isEmpty }
+    var audioUsesSource: Bool {
+        audioModel.acceptsSourceMedia
+            && (!audioModel.inputs.contains(.text) || audioSource != nil)
+    }
+    var activeAudioInput: AudioModelConfig.Input {
+        guard audioUsesSource, let audioSource else { return .text }
+        return audioSource.type == .video ? .video : .audio
+    }
     var isPromptEnabled: Bool {
         selectedType != .audio || audioModel.inputs.contains(.text)
     }
@@ -96,7 +104,8 @@ extension GenerationView {
         case .video: return !videoModel.durations.isEmpty || !videoModel.aspectRatios.isEmpty || videoModel.resolutions != nil || videoModel.audioDiscountRate != nil
         case .image: return !imageModel.aspectRatios.isEmpty || imageModel.resolutions != nil || imageModel.qualities != nil || imageModel.maxImages > 1
         case .audio:
-            return audioModel.supportsInstrumental || audioModel.durations != nil
+            return audioModel.supportsInstrumental
+                || (!audioUsesSource && audioModel.hasDurationControl)
         }
     }
 

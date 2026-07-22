@@ -31,6 +31,15 @@ struct MusicTab: View {
     }
     private var isTextMode: Bool { effectiveMode == .textToMusic }
 
+    private var textDurationRange: ClosedRange<Double> {
+        guard let range = model?.durationRange else { return 1...600 }
+        return Double(range.minimum)...Double(range.maximum)
+    }
+
+    private var defaultTextDuration: Double {
+        Double(model?.durationRange?.defaultValue ?? 90)
+    }
+
     private var source: EditorViewModel.TimelineSpan? { editor.selectedTimelineSpan() }
 
     private var spanSeconds: Double {
@@ -53,13 +62,27 @@ struct MusicTab: View {
 
     private var estimatedCost: Int? {
         guard let model, costDuration > 0 else { return nil }
-        return CostEstimator.audioCost(model: model, prompt: trimmedPrompt, durationSeconds: costDuration)
+        return CostEstimator.audioCost(
+            model: model,
+            prompt: trimmedPrompt,
+            durationSeconds: costDuration,
+            input: isTextMode ? .text : .video
+        )
     }
 
     private var validationNote: String? {
         guard let model else { return "No music models available." }
         if isTextMode {
             if trimmedPrompt.isEmpty { return "Describe the music to generate." }
+            let params = AudioGenerationParams(
+                prompt: trimmedPrompt,
+                voice: nil,
+                lyrics: nil,
+                styleInstructions: nil,
+                instrumental: false,
+                durationSeconds: costDuration
+            )
+            if let issue = model.validate(params: params) { return issue }
         } else {
             guard source != nil else {
                 return "Add video to the timeline, then mark a range to score only part of it."
@@ -132,15 +155,16 @@ struct MusicTab: View {
             InspectorRow(
                 label: "Duration",
                 labelHelp: "Length of the generated music. It's placed at the playhead, or at the marked range start.",
-                onReset: { textDuration = 90 }
+                onReset: { textDuration = defaultTextDuration }
             ) {
                 ScrubbableNumberField(
                     value: textDuration,
-                    range: 1...600,
+                    range: textDurationRange,
                     format: "%.0f",
                     valueSuffix: " s",
-                    onChanged: { textDuration = $0 }
-                ) { textDuration = $0 }
+                    dragValueAdjustment: { $0.rounded() },
+                    onChanged: { textDuration = $0.rounded() }
+                ) { textDuration = $0.rounded() }
             }
         } else {
             InspectorRow(
@@ -158,10 +182,10 @@ struct MusicTab: View {
     }
 
     private var modelControl: some View {
-        InspectorRow(label: "Model", onReset: { selectedModelId = nil }) {
+        InspectorRow(label: "Model", onReset: { selectModel(nil) }) {
             Menu {
                 ForEach(models, id: \.id) { m in
-                    Button(m.displayName) { selectedModelId = m.id }
+                    Button(m.displayName) { selectModel(m) }
                 }
             } label: {
                 EditorMenuValue(text: model?.displayName ?? "None", expanded: true)
@@ -171,11 +195,20 @@ struct MusicTab: View {
         }
     }
 
+    private func selectModel(_ selectedModel: AudioModelConfig?) {
+        selectedModelId = selectedModel?.id
+        guard let selectedModel = selectedModel ?? models.first else { return }
+        if let range = selectedModel.durationRange,
+           !(Double(range.minimum)...Double(range.maximum)).contains(textDuration) {
+            textDuration = Double(range.defaultValue)
+        } else if let durations = selectedModel.durations,
+                  !durations.contains(Int(textDuration.rounded())) {
+            textDuration = Double(durations.first ?? 90)
+        }
+    }
+
     private var promptControl: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            Text(model?.promptLabel ?? "Prompt")
-                .font(.system(size: AppTheme.FontSize.sm))
-                .foregroundStyle(AppTheme.Text.secondaryColor)
+        InspectorRow(label: "Prompt") {
             TextField(model?.promptLabel ?? "", text: $prompt, axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(2...5)

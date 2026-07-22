@@ -17,12 +17,12 @@ extension GenerationView {
             return false
         }
         if selectedType == .audio {
-            if audioModel.acceptsSourceMedia {
+            if audioUsesSource {
                 guard audioSource != nil else { return false }
                 guard let languages = audioModel.targetLanguages else { return true }
                 return languages.contains(selectedTargetLanguage)
             }
-            return trimmedPrompt.count >= audioModel.minPromptLength
+            return trimmedPrompt.count >= max(1, audioModel.minPromptLength)
         }
         return !isPromptEmpty
     }
@@ -46,11 +46,14 @@ extension GenerationView {
                 numImages: selectedNumImages
             )
         case .audio:
-            let duration: Int? = audioModel.acceptsSourceMedia
+            let duration: Int? = audioUsesSource
                 ? (audioSource == nil ? nil : effectiveAudioSourceSeconds)
-                : (audioModel.durations != nil ? selectedAudioDuration : nil)
+                : (audioModel.hasDurationControl ? selectedAudioDuration : nil)
             return CostEstimator.audioCost(
-                model: audioModel, prompt: trimmedPrompt, durationSeconds: duration
+                model: audioModel,
+                prompt: trimmedPrompt,
+                durationSeconds: duration,
+                input: activeAudioInput
             )
         }
     }
@@ -165,7 +168,7 @@ extension GenerationView {
                 numImages: imageCount
             )
         case .audio:
-            if audioModel.acceptsSourceMedia {
+            if audioUsesSource {
                 guard audioSource != nil else { return "Add source media." }
                 return audioModel.validate(spanSeconds: effectiveAudioSourceSpanSeconds)
                     ?? audioModel.validate(params: audioParams(audioDuration: audioDuration))
@@ -182,7 +185,7 @@ extension GenerationView {
             styleInstructions: audioModel.supportsStyleInstructions && !styleInstructions.isEmpty
                 ? styleInstructions : nil,
             instrumental: audioModel.supportsInstrumental ? instrumental : false,
-            durationSeconds: (audioModel.durations != nil || audioModel.acceptsSourceMedia) ? audioDuration : nil,
+            durationSeconds: (audioModel.hasDurationControl || audioModel.acceptsSourceMedia) ? audioDuration : nil,
             videoURL: videoURL,
             sourceURL: nil,
             targetLanguage: audioModel.targetLanguages != nil ? selectedTargetLanguage : nil
@@ -196,8 +199,8 @@ extension GenerationView {
         }
         let audioDuration: Int = {
             guard selectedType == .audio else { return 0 }
-            if audioModel.acceptsSourceMedia { return effectiveAudioSourceSeconds }
-            return audioModel.durations != nil ? selectedAudioDuration : 0
+            if audioUsesSource { return effectiveAudioSourceSeconds }
+            return audioModel.hasDurationControl ? selectedAudioDuration : 0
         }()
         if let err = preflightValidation(audioDuration: audioDuration) {
             flashDropError(err)
@@ -228,6 +231,9 @@ extension GenerationView {
         }()
         if imageCount > 1 {
             genInput.numImages = imageCount
+        }
+        if selectedType == .audio {
+            genInput.audioInput = activeAudioInput.rawValue
         }
 
         let replacementClipId = editor.pendingEditReplacementClipId
@@ -474,7 +480,15 @@ extension GenerationView {
         if !model.supportsLyrics { lyrics = "" }
         if !model.supportsStyleInstructions { styleInstructions = "" }
         if !model.supportsInstrumental { instrumental = false }
-        if let durations = model.durations, !durations.contains(selectedAudioDuration) {
+        normalizeAudioDuration()
+    }
+
+    private func normalizeAudioDuration() {
+        let model = audioModel
+        if let range = model.durationRange,
+           !(range.minimum...range.maximum).contains(selectedAudioDuration) {
+            selectedAudioDuration = range.defaultValue
+        } else if let durations = model.durations, !durations.contains(selectedAudioDuration) {
             selectedAudioDuration = durations.first ?? 30
         }
     }
@@ -496,5 +510,6 @@ extension GenerationView {
         if selectedType == .image {
             selectedNumImages = min(max(1, selectedNumImages), imageModel.maxImages)
         }
+        if selectedType == .audio { normalizeAudioDuration() }
     }
 }

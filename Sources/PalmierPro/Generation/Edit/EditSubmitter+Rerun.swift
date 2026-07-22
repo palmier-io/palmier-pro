@@ -164,7 +164,7 @@ extension EditSubmitter {
                 lyrics: gen.lyrics,
                 styleInstructions: gen.styleInstructions,
                 instrumental: gen.instrumental ?? false,
-                durationSeconds: (audioModel.durations != nil || expectsSource) && gen.duration > 0
+                durationSeconds: (audioModel.hasDurationControl || expectsSource) && gen.duration > 0
                     ? gen.duration
                     : nil,
                 videoURL: videoURL,
