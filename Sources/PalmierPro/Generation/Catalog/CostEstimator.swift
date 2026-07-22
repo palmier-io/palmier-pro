@@ -57,9 +57,43 @@ enum CostEstimator {
         }
     }
 
-    static func upscaleCost(model: UpscaleModelConfig, durationSeconds: Int) -> Int? {
+    static func upscaleCost(
+        model: UpscaleModelConfig,
+        durationSeconds: Int,
+        settings: UpscaleSettings? = nil,
+        sourceWidth: Int? = nil,
+        sourceHeight: Int? = nil,
+        sourceFPS: Double? = nil
+    ) -> Int? {
         let d = max(1, durationSeconds)
-        return ceilCredits(model.creditsPerSecond * Double(d))
+        let selections = model.defaultSettings.selections.merging(settings?.selections ?? [:]) { _, new in new }
+        if let tiers = model.pricing?.megapixelRates {
+            guard let width = sourceWidth, let height = sourceHeight else {
+                return ceilCredits(model.creditsPerSecond)
+            }
+            let targetEdge = selections["targetResolution"] == "1080p" ? 1920.0 : 3840.0
+            let factor = max(1, targetEdge / Double(max(width, height)))
+            let outputMP = Double(width * height) * factor * factor / 1_000_000
+            return tiers.first(where: { outputMP <= $0.upTo }).map { ceilCredits($0.credits) }
+        }
+        let resolution = model.pricing?.sourceResolutionFloor == true
+            && max(sourceWidth ?? 0, sourceHeight ?? 0) > 1920
+            ? "4k" : selections["targetResolution"]
+        var rate = resolution.flatMap { model.pricing?.ratesByResolution?[$0] }
+            ?? model.creditsPerSecond
+        let fps: String? = if selections["targetFPS"] == "source" {
+            sourceFPS.map { String(Int($0.rounded())) }
+                ?? (settings == nil ? nil : "60")
+        } else {
+            selections["targetFPS"]
+        }
+        if let fps, let multiplier = model.pricing?.fpsMultipliers?[fps] {
+            rate *= multiplier
+        }
+        if let tier = selections["enhancementTier"], let multiplier = model.pricing?.tierMultipliers?[tier] {
+            rate *= multiplier
+        }
+        return ceilCredits(rate * (model.pricing?.mode == .flat ? 1 : Double(d)))
     }
 
     static func estimatedTranscriptionCost(durationSeconds: Double) -> Int? {
@@ -95,7 +129,14 @@ enum CostEstimator {
                 input: input
             )
         case .upscale(let m):
-            return upscaleCost(model: m, durationSeconds: genInput.duration)
+            return upscaleCost(
+                model: m,
+                durationSeconds: genInput.duration,
+                settings: genInput.upscaleSettings,
+                sourceWidth: genInput.upscaleSourceWidth,
+                sourceHeight: genInput.upscaleSourceHeight,
+                sourceFPS: genInput.upscaleSourceFPS
+            )
         case .none:
             return nil
         }

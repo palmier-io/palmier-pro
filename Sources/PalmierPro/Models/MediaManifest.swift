@@ -47,6 +47,10 @@ struct GenerationInput: Codable, Sendable, Equatable {
     var duration: Int
     var aspectRatio: String
     var resolution: String?
+    var upscaleSettings: UpscaleSettings? = nil
+    var upscaleSourceWidth: Int? = nil
+    var upscaleSourceHeight: Int? = nil
+    var upscaleSourceFPS: Double? = nil
     var quality: String?
     var imageURLs: [String]?
     /// Image-only

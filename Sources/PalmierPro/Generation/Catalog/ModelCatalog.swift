@@ -145,6 +145,7 @@ struct CatalogEntry: Decodable, Sendable {
     let qualities: [String]?
     let audioPricing: AudioPricing?
     let creditsPerSecondUpscale: Double?
+    let upscalePricing: UpscalePricing?
     let paidOnly: Bool
 
     enum Kind: String, Decodable, Sendable { case video, image, audio, upscale }
@@ -190,7 +191,7 @@ struct CatalogEntry: Decodable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case id, kind, displayName, allowedEndpoints, responseShape, uiCapabilities
         case creditsPerSecond, audioDiscountRate, creditsPerImage, qualities
-        case audioPricing, creditsPerSecondUpscale, paidOnly
+        case audioPricing, creditsPerSecondUpscale, upscalePricing, paidOnly
     }
 
     init(from decoder: Decoder) throws {
@@ -206,6 +207,7 @@ struct CatalogEntry: Decodable, Sendable {
         self.qualities = try c.decodeIfPresent([String].self, forKey: .qualities)
         self.audioPricing = try c.decodeIfPresent(AudioPricing.self, forKey: .audioPricing)
         self.creditsPerSecondUpscale = try c.decodeIfPresent(Double.self, forKey: .creditsPerSecondUpscale)
+        self.upscalePricing = try c.decodeIfPresent(UpscalePricing.self, forKey: .upscalePricing)
         self.paidOnly = try c.decodeIfPresent(Bool.self, forKey: .paidOnly) ?? false
         switch self.kind {
         case .video:
@@ -273,5 +275,9 @@ struct AudioDurationRange: Decodable, Sendable {
 struct UpscaleCaps: Decodable, Sendable {
     let speed: String   // "Fast" | "Medium" | "Slow"
     let p75DurationSeconds: Int
+    let maximumUpscaleFactor: Double?
     let supportedTypes: [String]   // "video" | "image"
+    let selectSettings: [UpscaleSelectSetting]?
+    let numericSettings: [UpscaleNumericSetting]?
+    let toggleSettings: [UpscaleToggleSetting]?
 }

@@ -10,6 +10,7 @@ struct GenerationView: View {
     @State var selectedVideoModelIndex = 0
     @State var selectedImageModelIndex = 0
     @State var selectedAudioModelIndex = 0
+    @State var selectedUpscaleModelIndex = 0
     @State var selectedDuration = 5
     @State var selectedAspectRatio = "16:9"
     @State var selectedResolution = "1080p"
@@ -24,6 +25,7 @@ struct GenerationView: View {
     @State var selectedAudioDuration = 30
     @State var selectedTargetLanguage = ""
     @State var generateAudio = true
+    @State var upscaleSettings = UpscaleSettings()
     @State var showSettingsPopover = false
     @FocusState private var isPromptFocused: Bool
 
@@ -54,6 +56,10 @@ struct GenerationView: View {
     // Source media for audio transformations and video-to-audio models
     @State var audioSource: MediaAsset?
     @State var audioSourceTargeted = false
+
+    // Source media for enhancement models
+    @State var upscaleSource: MediaAsset?
+    @State var upscaleSourceTargeted = false
 
     @State var isPopulatingPanel = false
     @State var editFolderId: String?
@@ -108,11 +114,13 @@ struct GenerationView: View {
         case image = "Image"
         case video = "Video"
         case audio = "Audio"
+        case upscale = "Enhance"
         var icon: String {
             switch self {
             case .image: "photo"
             case .video: "video"
             case .audio: "waveform"
+            case .upscale: "arrow.up.right.square"
             }
         }
         var accentColor: Color {
@@ -123,6 +131,7 @@ struct GenerationView: View {
             case .image: .image
             case .video: .video
             case .audio: .audio
+            case .upscale: .video
             }
         }
     }
@@ -202,7 +211,7 @@ struct GenerationView: View {
                 }
 
                 VStack(spacing: 0) {
-                    promptArea
+                    if selectedType != .upscale { promptArea }
                     if selectedType == .audio && audioModel.supportsLyrics {
                         inputDivider
                         secondaryField(
@@ -301,11 +310,22 @@ struct GenerationView: View {
             guard !isPopulatingPanel else { return }
             if selectedType == .audio { resetAudioState() }
         }
+        .onChange(of: selectedUpscaleModelIndex) { _, _ in
+            guard !isPopulatingPanel else { return }
+            if selectedType == .upscale { resetUpscaleSettings() }
+        }
+        .onChange(of: upscaleSource?.id) { _, _ in
+            guard selectedType == .upscale, !isPopulatingPanel else { return }
+            normalizeModelSelection()
+            resetUpscaleSettings()
+        }
     }
 
     @ViewBuilder
     private var referencesContent: some View {
-        if selectedType == .video && videoModel.requiresSourceVideo {
+        if selectedType == .upscale {
+            upscaleSourceStrip
+        } else if selectedType == .video && videoModel.requiresSourceVideo {
             editVideoStrip
         } else if selectedType == .video {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {

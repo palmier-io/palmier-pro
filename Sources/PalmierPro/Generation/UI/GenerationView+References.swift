@@ -227,6 +227,7 @@ extension GenerationView {
         resetRefPools()
         sourceVideo = nil
         audioSource = nil
+        upscaleSource = nil
     }
 
     private var refCounterLabel: String {
@@ -315,6 +316,19 @@ extension GenerationView {
             iconName: audioSourceTypes == [.video] ? "video.badge.plus" : "waveform",
             onDrop: { audioSource = $0 },
             onClear: { audioSource = nil },
+            onError: flashDropError
+        )
+    }
+
+    var upscaleSourceStrip: some View {
+        FrameSlot(
+            label: "Source Media",
+            asset: upscaleSource,
+            isTargeted: $upscaleSourceTargeted,
+            accepting: [.video, .image],
+            iconName: "arrow.up.right.square",
+            onDrop: { upscaleSource = $0 },
+            onClear: { upscaleSource = nil },
             onError: flashDropError
         )
     }

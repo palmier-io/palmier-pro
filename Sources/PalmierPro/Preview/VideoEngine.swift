@@ -188,7 +188,6 @@ final class VideoEngine {
                 Log.preview.warning(
                     "source preview timing load failed asset=\(id.prefix(8)): \(error.localizedDescription)"
                 )
-                self.editor?.mediaPanelToast = MediaPanelToast(message: "Couldn’t load video preview.")
                 return
             }
             guard !Task.isCancelled,

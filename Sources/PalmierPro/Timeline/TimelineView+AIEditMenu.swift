@@ -13,20 +13,10 @@ extension TimelineView {
         for action in actions {
             switch action {
             case .upscale:
-                let models = editor.aiEditUpscaleModels(clipId: clipId)
-                guard !models.isEmpty else { continue }
-                let upscaleItem = NSMenuItem(title: isPaid ? "Upscale" : "Upscale (Paid)", action: nil, keyEquivalent: "")
+                let upscaleItem = NSMenuItem(title: isPaid ? "Upscale…" : "Upscale… (Paid)", action: #selector(performAIEditUpscale(_:)), keyEquivalent: "")
+                upscaleItem.target = self
+                upscaleItem.representedObject = clipId
                 upscaleItem.isEnabled = aiAllowed && isPaid
-                let modelsMenu = NSMenu()
-                modelsMenu.autoenablesItems = false
-                for model in models {
-                    let item = NSMenuItem(title: model.displayName, action: #selector(performAIEditUpscale(_:)), keyEquivalent: "")
-                    item.target = self
-                    item.representedObject = ["clipId": clipId, "modelId": model.id]
-                    item.isEnabled = aiAllowed && isPaid
-                    modelsMenu.addItem(item)
-                }
-                upscaleItem.submenu = modelsMenu
                 submenu.addItem(upscaleItem)
             case .edit:
                 let item = NSMenuItem(title: isPaid ? "Edit…" : "Edit… (Paid)", action: #selector(performAIEditEdit(_:)), keyEquivalent: "")
@@ -97,11 +87,8 @@ extension TimelineView {
     }
 
     @objc private func performAIEditUpscale(_ sender: Any?) {
-        guard let info = (sender as? NSMenuItem)?.representedObject as? [String: Any],
-              let clipId = info["clipId"] as? String,
-              let modelId = info["modelId"] as? String,
-              let model = UpscaleModelConfig.allModels.first(where: { $0.id == modelId }) else { return }
-        editor.runAIUpscale(clipId: clipId, model: model)
+        guard let clipId = (sender as? NSMenuItem)?.representedObject as? String else { return }
+        editor.beginAIUpscale(clipId: clipId)
     }
 
     @objc private func performAIEditVideoAudio(_ sender: Any?) {

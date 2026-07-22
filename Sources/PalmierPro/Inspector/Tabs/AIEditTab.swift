@@ -6,7 +6,6 @@ struct AIEditTab: View {
     let clipId: String?
     @Environment(EditorViewModel.self) private var editor
     @Bindable private var account = AccountService.shared
-    @State private var rerunError: String?
     @State private var replaceClipSource: Bool = false
     @State private var useTrimmedClip: Bool = true
     @State private var placeAudioOnTimeline: Bool = true
@@ -34,7 +33,7 @@ struct AIEditTab: View {
                             action: .upscale,
                             icon: "sparkles.rectangle.stack",
                             title: "Upscale",
-                            description: "Enhance resolution with AI"
+                            description: "Enhance resolution or frame rate with AI"
                         )
                         actionRow(
                             action: .edit,
@@ -46,7 +45,8 @@ struct AIEditTab: View {
                             action: .rerun,
                             icon: "arrow.clockwise",
                             title: "Rerun",
-                            description: rerunDescription
+                            description: "Regenerate with the same parameters",
+                            detail: rerunCost
                         )
                         if asset.type == .image {
                             actionRow(
@@ -69,7 +69,8 @@ struct AIEditTab: View {
                                 action: .rerun,
                                 icon: "arrow.clockwise",
                                 title: "Rerun",
-                                description: rerunDescription
+                                description: "Regenerate with the same parameters",
+                                detail: rerunCost
                             )
                         }
                         if clipId != nil {
@@ -85,14 +86,6 @@ struct AIEditTab: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .alert("Rerun failed", isPresented: Binding(
-            get: { rerunError != nil },
-            set: { if !$0 { rerunError = nil } }
-        )) {
-            Button("Dismiss") { rerunError = nil }
-        } message: {
-            Text(rerunError ?? "")
-        }
     }
 
     private var hasScopeToggles: Bool {
@@ -107,12 +100,12 @@ struct AIEditTab: View {
         timelineClip?.mediaType.isVisual ?? asset.type.isVisual
     }
 
-    private var rerunDescription: String {
+    private var rerunCost: String? {
         guard let gen = asset.generationInput,
               let cost = CostEstimator.cost(for: gen) else {
-            return "Regenerate with the same parameters"
+            return nil
         }
-        return "Regenerate · \(CostEstimator.format(cost))"
+        return CostEstimator.format(cost)
     }
 
     // MARK: - Replace toggle
@@ -198,6 +191,7 @@ struct AIEditTab: View {
         icon: String,
         title: String,
         description: String,
+        detail: String? = nil,
         triggerTitle: String? = nil
     ) -> some View {
         let availability = action.availability(
@@ -213,6 +207,7 @@ struct AIEditTab: View {
             icon: icon,
             title: title,
             description: description,
+            detail: detail,
             isEnabled: isEnabled,
             disabledReason: disabledReason
         ) {
@@ -262,11 +257,12 @@ struct AIEditTab: View {
         icon: String,
         title: String,
         description: String,
+        detail: String? = nil,
         isEnabled: Bool,
         disabledReason: String?,
         @ViewBuilder trailing: () -> Trailing
     ) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
+        HStack(alignment: .center, spacing: AppTheme.Spacing.sm) {
             Image(systemName: icon)
                 .font(.system(size: AppTheme.FontSize.md))
                 .foregroundStyle(isEnabled ? AppTheme.Text.secondaryColor : AppTheme.Text.mutedColor)
@@ -275,16 +271,24 @@ struct AIEditTab: View {
                 Text(title)
                     .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                     .foregroundStyle(isEnabled ? AppTheme.Text.primaryColor : AppTheme.Text.mutedColor)
-                Text(disabledReason ?? description)
-                    .font(.system(size: AppTheme.FontSize.xs))
-                    .foregroundStyle(disabledReason != nil ? AppTheme.Text.secondaryColor : AppTheme.Text.tertiaryColor)
-                    .fixedSize(horizontal: false, vertical: true)
+                if let disabledReason {
+                    Text(disabledReason)
+                        .font(.system(size: AppTheme.FontSize.xs))
+                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: AppTheme.Spacing.xs)
+            if isEnabled, let detail {
+                Text(detail)
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .lineLimit(1)
+            }
             trailing()
+                .accessibilityHint(disabledReason ?? description)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .help(disabledReason ?? "")
     }
 
     private func presentAudioTransform(_ kind: AudioTransformEditKind) {
@@ -301,19 +305,11 @@ struct AIEditTab: View {
     private func actionTrigger(action: EditAction, title: String, isEnabled: Bool) -> some View {
         switch action {
         case .upscale:
-            Menu(title) {
-                ForEach(UpscaleModelConfig.models(for: asset.type)) { model in
-                    Button {
-                        runUpscale(model)
-                    } label: {
-                        Text(upscaleLabel(for: model))
-                    }
-                }
+            Button(title) {
+                present(action)
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
+            .buttonStyle(.capsule(.secondary))
             .controlSize(.small)
-            .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
             .disabled(!isEnabled)
         case .createVideo:
             Menu(title) {
@@ -342,7 +338,14 @@ struct AIEditTab: View {
 
     private func present(_ action: EditAction) {
         switch action {
-        case .upscale, .createVideo: break // handled via menu
+        case .upscale:
+            guard let model = UpscaleModelConfig.models(for: asset.type).first else { return }
+            let trim = trimmedSourceIfEnabled()
+            seedPanel(
+                stored: EditSubmitter.upscaleSeed(for: asset, model: model, trimmedSource: trim),
+                trimmed: trim
+            )
+        case .createVideo: break // handled via menu
         case .edit:
             guard let stored = EditSubmitter.editSeed(for: asset) else { return }
             seedPanel(stored: stored, trimmed: trimmedSourceIfEnabled())
@@ -351,20 +354,7 @@ struct AIEditTab: View {
         case .generateSFX:
             presentVideoAudio(kind: .sfx)
         case .rerun:
-            let modelId = asset.generationInput?.model ?? ""
-            if UpscaleModelConfig.allIds.contains(modelId) {
-                do {
-                    markReplacementPendingIfNeeded()
-                    _ = try EditSubmitter.rerun(
-                        asset: asset, editor: editor,
-                        onComplete: replacementCompletion(),
-                        onFailure: replacementFailure()
-                    )
-                } catch {
-                    unmarkReplacementPendingIfNeeded()
-                    rerunError = error.localizedDescription
-                }
-            } else if let stored = asset.generationInput {
+            if let stored = asset.generationInput {
                 seedPanel(stored: stored, trimmed: nil)
             }
         }
@@ -404,57 +394,12 @@ struct AIEditTab: View {
         )
     }
 
-    private func upscaleLabel(for model: UpscaleModelConfig) -> String {
-        let seconds = Int((effectiveDurationForAvailability ?? asset.duration).rounded())
-        let cost = CostEstimator.upscaleCost(model: model, durationSeconds: max(1, seconds))
-        return "\(model.displayName) · \(model.speed) · \(CostEstimator.format(cost))"
-    }
-
-    private func runUpscale(_ model: UpscaleModelConfig) {
-        markReplacementPendingIfNeeded()
-        let trim = trimmedSourceIfEnabled()
-        _ = EditSubmitter.submitUpscale(
-            asset: asset, model: model, editor: editor,
-            trimmedSource: trim,
-            onComplete: replacementCompletion(resetTrim: trim != nil),
-            onFailure: replacementFailure()
-        )
-    }
-
     private var shouldReplace: Bool { replaceClipSource && clipId != nil }
 
     private var aiDisabledReason: String? {
         if account.isMisconfigured { return "AI is unavailable" }
         if !account.isSignedIn { return "Sign in to use AI" }
         return nil
-    }
-
-    private func markReplacementPendingIfNeeded() {
-        guard shouldReplace, let clipId else { return }
-        editor.markPendingReplacement(clipId: clipId)
-    }
-
-    private func unmarkReplacementPendingIfNeeded() {
-        guard shouldReplace, let clipId else { return }
-        editor.clearPendingReplacement(clipId: clipId)
-    }
-
-    private func replacementCompletion(resetTrim: Bool = false) -> (@MainActor (MediaAsset) -> Void)? {
-        guard shouldReplace, let clipId else { return nil }
-        // if generating more than one image, only replace with the first one
-        let fired = FirstOnlyFlag()
-        return { [weak editor] newAsset in
-            guard fired.fire() else { return }
-            editor?.replaceClipMediaRef(clipId: clipId, newAssetId: newAsset.id, resetTrim: resetTrim)
-            editor?.clearPendingReplacement(clipId: clipId)
-        }
-    }
-
-    private func replacementFailure() -> (@MainActor () -> Void)? {
-        guard shouldReplace, let clipId else { return nil }
-        return { [weak editor] in
-            editor?.clearPendingReplacement(clipId: clipId)
-        }
     }
 
 }
