@@ -208,10 +208,7 @@ struct MusicTab: View {
     }
 
     private var promptControl: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            Text(model?.promptLabel ?? "Prompt")
-                .font(.system(size: AppTheme.FontSize.sm))
-                .foregroundStyle(AppTheme.Text.secondaryColor)
+        InspectorRow(label: "Prompt") {
             TextField(model?.promptLabel ?? "", text: $prompt, axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(2...5)
