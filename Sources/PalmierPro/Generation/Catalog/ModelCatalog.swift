@@ -161,10 +161,10 @@ struct CatalogEntry: Decodable, Sendable {
 
     enum AudioPricing: Decodable, Sendable {
         case perThousandChars(rate: Double)
-        case perSecond(rate: Double)
+        case perSecond(rate: Double, textRate: Double?)
         case flat(price: Double)
 
-        private enum K: String, CodingKey { case mode, rate, price }
+        private enum K: String, CodingKey { case mode, rate, textRate, price }
 
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: K.self)
@@ -172,7 +172,10 @@ struct CatalogEntry: Decodable, Sendable {
             case "perThousandChars":
                 self = .perThousandChars(rate: try c.decode(Double.self, forKey: .rate))
             case "perSecond":
-                self = .perSecond(rate: try c.decode(Double.self, forKey: .rate))
+                self = .perSecond(
+                    rate: try c.decode(Double.self, forKey: .rate),
+                    textRate: try c.decodeIfPresent(Double.self, forKey: .textRate)
+                )
             case "flat":
                 self = .flat(price: try c.decode(Double.self, forKey: .price))
             default:
@@ -251,6 +254,7 @@ struct AudioCaps: Decodable, Sendable {
     let supportsInstrumental: Bool
     let supportsStyleInstructions: Bool
     let durations: [Int]?
+    let durationRange: AudioDurationRange?
     let minPromptLength: Int
     let inputs: [String]?
     let promptLabel: String?
@@ -258,6 +262,12 @@ struct AudioCaps: Decodable, Sendable {
     let maxSeconds: Int?
     let targetLanguages: [String]?
     let defaultTargetLanguage: String?
+}
+
+struct AudioDurationRange: Decodable, Sendable {
+    let minimum: Int
+    let maximum: Int
+    let defaultValue: Int
 }
 
 struct UpscaleCaps: Decodable, Sendable {

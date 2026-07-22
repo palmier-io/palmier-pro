@@ -157,7 +157,9 @@ extension GenerationView {
     var settingsSummary: String {
         var parts: [String] = []
         if selectedType == .audio {
-            if audioModel.durations != nil { parts.append("\(selectedAudioDuration)s") }
+            if audioModel.hasDurationControl, !audioUsesSource {
+                parts.append("\(selectedAudioDuration)s")
+            }
             if audioModel.supportsInstrumental && instrumental { parts.append("Instrumental") }
             return parts.isEmpty ? "Settings" : parts.joined(separator: " \u{00B7} ")
         }
@@ -210,8 +212,25 @@ extension GenerationView {
             if selectedType == .video {
                 settingsPicker("Duration", selection: $selectedDuration, options: videoModel.durations) { "\($0)s" }
             }
-            if selectedType == .audio, let durations = audioModel.durations {
-                settingsPicker("Duration", selection: $selectedAudioDuration, options: durations) { "\($0)s" }
+            if selectedType == .audio, !audioUsesSource {
+                if let durations = audioModel.durations {
+                    settingsPicker("Duration", selection: $selectedAudioDuration, options: durations) { "\($0)s" }
+                } else if let range = audioModel.durationRange {
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+                        Text("Duration")
+                            .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                            .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        ScrubbableNumberField(
+                            value: Double(selectedAudioDuration),
+                            range: Double(range.minimum)...Double(range.maximum),
+                            format: "%.0f",
+                            valueSuffix: " s",
+                            dragValueAdjustment: { $0.rounded() },
+                            onChanged: { selectedAudioDuration = Int($0.rounded()) }
+                        ) { selectedAudioDuration = Int($0.rounded()) }
+                        .help("Duration (\(range.minimum)-\(range.maximum) seconds)")
+                    }
+                }
             }
             if !currentAspectRatios.isEmpty {
                 settingsPicker(

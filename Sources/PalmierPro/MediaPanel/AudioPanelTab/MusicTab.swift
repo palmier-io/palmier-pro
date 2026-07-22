@@ -31,6 +31,15 @@ struct MusicTab: View {
     }
     private var isTextMode: Bool { effectiveMode == .textToMusic }
 
+    private var textDurationRange: ClosedRange<Double> {
+        guard let range = model?.durationRange else { return 1...600 }
+        return Double(range.minimum)...Double(range.maximum)
+    }
+
+    private var defaultTextDuration: Double {
+        Double(model?.durationRange?.defaultValue ?? 90)
+    }
+
     private var source: EditorViewModel.TimelineSpan? { editor.selectedTimelineSpan() }
 
     private var spanSeconds: Double {
@@ -53,7 +62,12 @@ struct MusicTab: View {
 
     private var estimatedCost: Int? {
         guard let model, costDuration > 0 else { return nil }
-        return CostEstimator.audioCost(model: model, prompt: trimmedPrompt, durationSeconds: costDuration)
+        return CostEstimator.audioCost(
+            model: model,
+            prompt: trimmedPrompt,
+            durationSeconds: costDuration,
+            input: isTextMode ? .text : .video
+        )
     }
 
     private var validationNote: String? {
@@ -132,15 +146,16 @@ struct MusicTab: View {
             InspectorRow(
                 label: "Duration",
                 labelHelp: "Length of the generated music. It's placed at the playhead, or at the marked range start.",
-                onReset: { textDuration = 90 }
+                onReset: { textDuration = defaultTextDuration }
             ) {
                 ScrubbableNumberField(
                     value: textDuration,
-                    range: 1...600,
+                    range: textDurationRange,
                     format: "%.0f",
                     valueSuffix: " s",
-                    onChanged: { textDuration = $0 }
-                ) { textDuration = $0 }
+                    dragValueAdjustment: { $0.rounded() },
+                    onChanged: { textDuration = $0.rounded() }
+                ) { textDuration = $0.rounded() }
             }
         } else {
             InspectorRow(
