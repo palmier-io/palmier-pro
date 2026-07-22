@@ -211,7 +211,7 @@ struct GenerationView: View {
                 }
 
                 VStack(spacing: 0) {
-                    if selectedType != .upscale { promptArea }
+                    if showsPrompt { promptArea }
                     if selectedType == .audio && audioModel.supportsLyrics {
                         inputDivider
                         secondaryField(
@@ -384,7 +384,6 @@ struct GenerationView: View {
                 ), attachmentAnchor: .point(.topLeading), arrowEdge: .top) {
                     refMentionPopover
                 }
-                .disabled(!isPromptEnabled)
 
             if prompt.isEmpty {
                 Text(promptPlaceholder)
@@ -396,8 +395,6 @@ struct GenerationView: View {
             }
         }
         .frame(height: promptHeight)
-        .opacity(isPromptEnabled ? AppTheme.Opacity.opaque : AppTheme.Opacity.muted)
-        .accessibilityHint(isPromptEnabled ? "" : "This model does not use a prompt")
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measuredPromptHeight = $0 }
     }
 

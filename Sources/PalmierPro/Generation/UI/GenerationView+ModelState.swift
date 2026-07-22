@@ -109,7 +109,7 @@ extension GenerationView {
         guard audioUsesSource, let audioSource else { return .text }
         return audioSource.type == .video ? .video : .audio
     }
-    var isPromptEnabled: Bool {
+    var showsPrompt: Bool {
         selectedType != .upscale && (selectedType != .audio || audioModel.inputs.contains(.text))
     }
 
