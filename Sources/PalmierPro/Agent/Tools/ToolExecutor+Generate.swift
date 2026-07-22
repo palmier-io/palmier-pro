@@ -324,6 +324,15 @@ extension ToolExecutor {
             targetLanguage: params.targetLanguage
         )
         if let sourceAsset {
+            genInput.audioInput = sourceAsset.type == .video
+                ? AudioModelConfig.Input.video.rawValue
+                : AudioModelConfig.Input.audio.rawValue
+        } else {
+            genInput.audioInput = videoURL == nil
+                ? AudioModelConfig.Input.text.rawValue
+                : AudioModelConfig.Input.video.rawValue
+        }
+        if let sourceAsset {
             genInput.setAudioSourceAsset(sourceAsset)
         }
 

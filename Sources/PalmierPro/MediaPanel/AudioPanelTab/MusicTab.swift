@@ -74,6 +74,15 @@ struct MusicTab: View {
         guard let model else { return "No music models available." }
         if isTextMode {
             if trimmedPrompt.isEmpty { return "Describe the music to generate." }
+            let params = AudioGenerationParams(
+                prompt: trimmedPrompt,
+                voice: nil,
+                lyrics: nil,
+                styleInstructions: nil,
+                instrumental: false,
+                durationSeconds: costDuration
+            )
+            if let issue = model.validate(params: params) { return issue }
         } else {
             guard source != nil else {
                 return "Add video to the timeline, then mark a range to score only part of it."
@@ -173,16 +182,28 @@ struct MusicTab: View {
     }
 
     private var modelControl: some View {
-        InspectorRow(label: "Model", onReset: { selectedModelId = nil }) {
+        InspectorRow(label: "Model", onReset: { selectModel(nil) }) {
             Menu {
                 ForEach(models, id: \.id) { m in
-                    Button(m.displayName) { selectedModelId = m.id }
+                    Button(m.displayName) { selectModel(m) }
                 }
             } label: {
                 EditorMenuValue(text: model?.displayName ?? "None", expanded: true)
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
             .frame(maxWidth: .infinity)
+        }
+    }
+
+    private func selectModel(_ selectedModel: AudioModelConfig?) {
+        selectedModelId = selectedModel?.id
+        guard let selectedModel = selectedModel ?? models.first else { return }
+        if let range = selectedModel.durationRange,
+           !(Double(range.minimum)...Double(range.maximum)).contains(textDuration) {
+            textDuration = Double(range.defaultValue)
+        } else if let durations = selectedModel.durations,
+                  !durations.contains(Int(textDuration.rounded())) {
+            textDuration = Double(durations.first ?? 90)
         }
     }
 

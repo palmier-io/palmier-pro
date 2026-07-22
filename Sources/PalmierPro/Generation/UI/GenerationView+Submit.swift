@@ -480,6 +480,11 @@ extension GenerationView {
         if !model.supportsLyrics { lyrics = "" }
         if !model.supportsStyleInstructions { styleInstructions = "" }
         if !model.supportsInstrumental { instrumental = false }
+        normalizeAudioDuration()
+    }
+
+    private func normalizeAudioDuration() {
+        let model = audioModel
         if let range = model.durationRange,
            !(range.minimum...range.maximum).contains(selectedAudioDuration) {
             selectedAudioDuration = range.defaultValue
@@ -505,5 +510,6 @@ extension GenerationView {
         if selectedType == .image {
             selectedNumImages = min(max(1, selectedNumImages), imageModel.maxImages)
         }
+        if selectedType == .audio { normalizeAudioDuration() }
     }
 }
