@@ -38,18 +38,24 @@ final class TimelineInputController {
     // MARK: - Mouse down
 
 
-    private func trimHeadroom(for clip: Clip, linked: Bool) -> (left: Int, right: Int) {
-        var clips = [clip]
-        if linked {
-            clips += editor.linkedPartnerIds(of: clip.id).compactMap { editor.clipFor(id: $0) }
+    private func trimHeadroom(for clip: Clip, edge: EditorViewModel.TrimEdge, linked: Bool, ripple: Bool) -> (left: Int, right: Int) {
+        let clips: [Clip]
+        if ripple {
+            clips = editor.rippleTrimTargets(clipId: clip.id, edge: edge, propagateToLinked: linked)
+        } else {
+            var resolved = [clip]
+            if linked {
+                resolved += editor.linkedPartnerIds(of: clip.id).compactMap { editor.clipFor(id: $0) }
+            }
+            clips = resolved
         }
         var left = Int.max
         var right = Int.max
         for c in clips {
-            if let bounds = editor.multicamTrimBounds(for: c) {
+            if !ripple, let bounds = editor.multicamTrimBounds(for: c) {
                 left = min(left, bounds.left)
                 right = min(right, bounds.right)
-            } else if c.id == clip.id {
+            } else {
                 left = min(left, c.trimStartFrame)
                 right = min(right, editor.effectiveTrimEnd(for: c))
             }
@@ -220,7 +226,8 @@ final class TimelineInputController {
                 dragState = .idle
             } else if let edge = trimEdge {
                 Self.trimCursor(for: edge).set()
-                let headroom = trimHeadroom(for: clip, linked: linkedOn)
+                let modelEdge: EditorViewModel.TrimEdge = edge == .left ? .left : .right
+                let headroom = trimHeadroom(for: clip, edge: modelEdge, linked: linkedOn, ripple: rippleTrim)
                 let drag = DragState.TrimDrag(
                     clipId: clip.id,
                     trackIndex: hit.trackIndex,

@@ -109,6 +109,17 @@ extension EditorViewModel {
         return (max(0, left), max(0, right))
     }
 
+    func multicamRippleCohort(for clip: Clip, edge: TrimEdge) -> [Clip] {
+        guard let groupId = clip.multicamGroupId else { return [clip] }
+        let boundary = edge == .left ? clip.startFrame : clip.endFrame
+        return multicamClips(of: groupId).compactMap { item in
+            let sharesEdge = edge == .left
+                ? item.clip.startFrame == boundary
+                : item.clip.endFrame == boundary
+            return sharesEdge ? item.clip : nil
+        }
+    }
+
     // MARK: - Source sync
     func syncMulticamMembers(
         specs: [MulticamMemberSpec],

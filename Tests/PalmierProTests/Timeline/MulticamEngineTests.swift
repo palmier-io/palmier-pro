@@ -48,6 +48,25 @@ struct MulticamTests {
         h.editor.multicamClips(of: groupId).first { $0.clip.mediaType == .audio }!.clip
     }
 
+    private func rippleSeam(
+        _ h: ToolHarness, groupId: String
+    ) throws -> (leftProgram: Clip, rightProgram: Clip, leftMic: Clip, rightMic: Clip) {
+        guard case .ok = h.editor.rippleDeleteRangesOnTrack(
+            trackIndex: 0, ranges: [FrameRange(start: 600, end: 700)]
+        ) else {
+            Issue.record("ripple refused")
+            throw CancellationError()
+        }
+        let program = programClips(h, groupId)
+        let mic = h.editor.multicamClips(of: groupId).map(\.clip).filter { $0.mediaType == .audio }
+        return (
+            try #require(program.first { $0.endFrame == 600 }),
+            try #require(program.first { $0.startFrame == 600 }),
+            try #require(mic.first { $0.endFrame == 600 }),
+            try #require(mic.first { $0.startFrame == 600 })
+        )
+    }
+
     // MARK: - Model
 
     @Test func groupMetadataRoundTripsThroughProjectFile() throws {
@@ -433,6 +452,103 @@ struct MulticamTests {
             Issue.record("range ripple should pass")
             return
         }
+    }
+
+    @Test func alignedRippleTrimShrinksProgramAndMicTogether() throws {
+        let h = harness()
+        let (groupId, _) = try createGroup(h)
+        let seam = try rippleSeam(h, groupId: groupId)
+
+        h.editor.rippleTrimClip(
+            clipId: seam.leftProgram.id, edge: .right, deltaFrames: -60, propagateToLinked: false
+        )
+
+        #expect(h.editor.clipFor(id: seam.leftProgram.id)?.endFrame == 540)
+        #expect(h.editor.clipFor(id: seam.rightProgram.id)?.startFrame == 540)
+        #expect(h.editor.clipFor(id: seam.leftMic.id)?.endFrame == 540)
+        #expect(h.editor.clipFor(id: seam.rightMic.id)?.startFrame == 540)
+        #expect(h.editor.linkGroupOffsets().isEmpty)
+    }
+
+    @Test func alignedRippleExtendGrowsProgramAndMicTogether() throws {
+        let h = harness()
+        let (groupId, _) = try createGroup(h)
+        let seam = try rippleSeam(h, groupId: groupId)
+
+        let plan = try #require(h.editor.planRippleTrim(
+            clipId: seam.leftProgram.id, edge: .right, deltaFrames: 40, propagateToLinked: false
+        ))
+        #expect(plan.targetIds == Set([seam.leftProgram.id, seam.leftMic.id]))
+        h.editor.rippleTrimClip(
+            clipId: seam.leftProgram.id, edge: .right, deltaFrames: 40, propagateToLinked: false
+        )
+
+        #expect(h.editor.clipFor(id: seam.leftProgram.id)?.endFrame == 640)
+        #expect(h.editor.clipFor(id: seam.rightProgram.id)?.startFrame == 640)
+        #expect(h.editor.clipFor(id: seam.leftMic.id)?.endFrame == 640)
+        #expect(h.editor.clipFor(id: seam.rightMic.id)?.startFrame == 640)
+        #expect(h.editor.linkGroupOffsets().isEmpty)
+    }
+
+    @Test func alignedRippleShrinkStopsAtShortestMember() throws {
+        let h = harness()
+        let (groupId, _) = try createGroup(h)
+        let seam = try rippleSeam(h, groupId: groupId)
+        let micLoc = try #require(h.editor.findClip(id: seam.leftMic.id))
+        let shortenedDuration = 30
+        let removedHead = seam.leftMic.durationFrames - shortenedDuration
+        h.editor.timeline.tracks[micLoc.trackIndex].clips[micLoc.clipIndex].startFrame += removedHead
+        h.editor.timeline.tracks[micLoc.trackIndex].clips[micLoc.clipIndex].trimStartFrame += removedHead
+        h.editor.timeline.tracks[micLoc.trackIndex].clips[micLoc.clipIndex].setDuration(shortenedDuration)
+
+        let plan = try #require(h.editor.planRippleTrim(
+            clipId: seam.leftProgram.id, edge: .right, deltaFrames: -60, propagateToLinked: false
+        ))
+        #expect(plan.durationDelta == -(shortenedDuration - 1))
+        h.editor.rippleTrimClip(
+            clipId: seam.leftProgram.id, edge: .right, deltaFrames: -60, propagateToLinked: false
+        )
+
+        let expectedEdge = seam.leftProgram.endFrame - (shortenedDuration - 1)
+        #expect(h.editor.clipFor(id: seam.leftProgram.id)?.endFrame == expectedEdge)
+        #expect(h.editor.clipFor(id: seam.leftMic.id)?.durationFrames == 1)
+        #expect(h.editor.clipFor(id: seam.leftMic.id)?.endFrame == expectedEdge)
+        #expect(h.editor.clipFor(id: seam.rightProgram.id)?.startFrame == expectedEdge)
+        #expect(h.editor.clipFor(id: seam.rightMic.id)?.startFrame == expectedEdge)
+        #expect(h.editor.linkGroupOffsets().isEmpty)
+    }
+
+    @Test func alignedLeftRippleTargetsProgramAndMicTogether() throws {
+        let h = harness()
+        let (groupId, _) = try createGroup(h)
+        let seam = try rippleSeam(h, groupId: groupId)
+        let programTrim = seam.rightProgram.trimStartFrame
+        let micTrim = seam.rightMic.trimStartFrame
+
+        h.editor.rippleTrimClip(
+            clipId: seam.rightProgram.id, edge: .left, deltaFrames: 30, propagateToLinked: false
+        )
+
+        #expect(h.editor.clipFor(id: seam.rightProgram.id)?.trimStartFrame == programTrim + 30)
+        #expect(h.editor.clipFor(id: seam.rightMic.id)?.trimStartFrame == micTrim + 30)
+        #expect(h.editor.linkGroupOffsets().isEmpty)
+    }
+
+    @Test func alignedRippleTrimUndoesAsOneAction() throws {
+        let h = harness()
+        let (groupId, _) = try createGroup(h)
+        let seam = try rippleSeam(h, groupId: groupId)
+        let before = h.editor.timeline
+        let manager = UndoManager()
+        h.editor.undo.attach(manager)
+
+        h.editor.rippleTrimClip(
+            clipId: seam.leftProgram.id, edge: .right, deltaFrames: -60, propagateToLinked: false
+        )
+
+        #expect(manager.undoActionName == "Ripple Trim")
+        #expect(h.editor.undo.undoLatest() == "Ripple Trim")
+        #expect(h.editor.timeline == before)
     }
 
     @Test func manualRippleAfterGroupStaysAllowed() throws {
