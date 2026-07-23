@@ -427,7 +427,7 @@ final class TimelineView: NSView {
                 }
 
                 if let (drag, isLeft) = trimDrag,
-                   clip.id == drag.clipId || trimPartnerIds.contains(clip.id),
+                   clip.id == drag.clipId || trimPartnerIds.contains(clip.id) || rippleResizeByClip[clip.id] != nil,
                    // Ripple drags with no resize preview at rest.
                    !(drag.isRipple && rippleResizeByClip[clip.id] == nil) {
                     var previewClip = clip
