@@ -35,6 +35,16 @@ struct ToolbarView: View {
             Divider()
                 .frame(height: AppTheme.Spacing.xl)
 
+            // Three-point edits
+            HStack(spacing: AppTheme.Spacing.md) {
+                toolbarButton("text.append", help: "Append to End (E)", action: editor.appendSourceToEnd)
+                toolbarButton("arrow.down.to.line.compact", help: "Insert at Playhead (⇧E)", action: editor.insertSourceAtPlayhead)
+                toolbarButton("square.fill.on.square", help: "Overwrite at Playhead (D)", action: editor.overwriteSourceAtPlayhead)
+            }
+
+            Divider()
+                .frame(height: AppTheme.Spacing.xl)
+
             // Add content
             HStack(spacing: AppTheme.Spacing.md) {
                 textGlyphButton("T", help: "Add Text", action: { _ = editor.addTextClip() })
