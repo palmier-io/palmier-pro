@@ -56,7 +56,7 @@ extension GenerationView {
     // MARK: - First/Last / Reference mode picker (Seedance, Grok)
 
     var framesRefsModePicker: some View {
-        HStack(spacing: AppTheme.Spacing.lg) {
+        Menu {
             ForEach(FramesRefsMode.allCases, id: \.self) { mode in
                 Button {
                     framesRefsMode = mode
@@ -65,23 +65,29 @@ extension GenerationView {
                     case .reference: firstFrame = nil; lastFrame = nil
                     }
                 } label: {
-                    VStack(spacing: AppTheme.Spacing.xxs) {
+                    if framesRefsMode == mode {
+                        Label(mode.rawValue, systemImage: "checkmark")
+                    } else {
                         Text(mode.rawValue)
-                            .font(.system(size: AppTheme.FontSize.xs, weight: framesRefsMode == mode ? .semibold : .medium))
-                            .foregroundStyle(framesRefsMode == mode
-                                ? AppTheme.Text.primaryColor
-                                : AppTheme.Text.tertiaryColor)
-                            .fixedSize()
-                        Rectangle()
-                            .fill(framesRefsMode == mode ? AppTheme.Accent.primary : Color.clear)
-                            .frame(height: AppTheme.BorderWidth.medium)
                     }
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
             }
+        } label: {
+            HStack(spacing: AppTheme.Spacing.xs) {
+                Text(framesRefsMode.rawValue)
+                    .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: AppTheme.FontSize.micro, weight: .semibold))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+            }
+            .padding(.horizontal, AppTheme.Spacing.xs)
+            .padding(.vertical, AppTheme.Spacing.xxs)
         }
-        .fixedSize()
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .hoverHighlight()
     }
 
     // MARK: - Unified video references strip (Seedance/Kling/Grok reference-to-video)

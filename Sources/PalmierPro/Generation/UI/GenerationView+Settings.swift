@@ -20,15 +20,30 @@ extension GenerationView {
                 Button {
                     withAnimation(.easeInOut(duration: AppTheme.Anim.hover)) { selectedType = type }
                 } label: {
-                    Image(systemName: type.icon)
-                        .font(.system(size: AppTheme.FontSize.smMd, weight: selectedType == type ? .semibold : .medium))
-                        .foregroundStyle(selectedType == type ? type.accentColor : AppTheme.Text.tertiaryColor)
-                        .frame(width: AppTheme.IconSize.xl + AppTheme.Spacing.lg, height: AppTheme.IconSize.md)
+                    VStack(spacing: AppTheme.Spacing.xxs) {
+                        Image(systemName: type.icon)
+                            .font(.system(
+                                size: AppTheme.FontSize.smMd,
+                                weight: selectedType == type ? .semibold : .medium
+                            ))
+                            .foregroundStyle(selectedType == type ? type.accentColor : AppTheme.Text.tertiaryColor)
+                        Text(type.rawValue)
+                            .font(.system(size: AppTheme.FontSize.xxs, weight: .medium))
+                            .foregroundStyle(selectedType == type ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
+                    }
+                    .frame(width: AppTheme.GenerationPanel.typeTabWidth, height: AppTheme.IconSize.lgXl)
+                    .padding(.vertical, AppTheme.Spacing.xs)
                     .background(
-                        RoundedRectangle(cornerRadius: AppTheme.Radius.concentric(outer: AppTheme.Radius.sm, padding: AppTheme.Spacing.xxs))
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.concentric(
+                            outer: AppTheme.Radius.sm,
+                            padding: AppTheme.Spacing.xxs
+                        ))
                             .fill(selectedType == type ? Color.white.opacity(AppTheme.Opacity.faint) : .clear)
                     )
-                    .hoverHighlight(cornerRadius: AppTheme.Radius.concentric(outer: AppTheme.Radius.sm, padding: AppTheme.Spacing.xxs))
+                    .hoverHighlight(cornerRadius: AppTheme.Radius.concentric(
+                        outer: AppTheme.Radius.sm,
+                        padding: AppTheme.Spacing.xxs
+                    ))
                 }
                 .buttonStyle(.plain)
                 .help(type.rawValue)

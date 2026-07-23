@@ -133,15 +133,6 @@ enum AppTheme {
         endPoint: .bottomTrailing
     )
 
-    static let aiGradientDark = LinearGradient(
-        stops: [
-            .init(color: Color(white: 0.11), location: 0.00),
-            .init(color: Color(white: 0.06), location: 1.00),
-        ],
-        startPoint: .top,
-        endPoint: .bottom
-    )
-
     // MARK: - Status
 
     enum Status {
@@ -332,7 +323,10 @@ enum AppTheme {
     enum Window {
         static let homeDefault = NSSize(width: 1200, height: 800)
         static let homeMin = NSSize(width: 760, height: 480)
-        static let projectMin = NSSize(width: 960, height: 600)
+        static let projectMin = NSSize(
+            width: 960 + GenerationPanel.minimumWidthAdjustment,
+            height: 600
+        )
         static let projectTitlebarTrailingWidth: CGFloat = 280
         static let settingsDefault = NSSize(width: 1200, height: 800)
         static let settingsMin = NSSize(width: 860, height: 640)
@@ -350,6 +344,8 @@ enum AppTheme {
     }
 
     enum GenerationPanel {
+        static let typeTabWidth: CGFloat = IconSize.xl + Spacing.lg
+        static let minimumWidthAdjustment: CGFloat = typeTabWidth + Spacing.xxl
         static let mediaAreaMinHeight: CGFloat = 120
         static let loadingHeight: CGFloat = 180
         static let promptMinHeight: CGFloat = 40
