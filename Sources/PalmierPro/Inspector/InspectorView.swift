@@ -156,7 +156,7 @@ struct InspectorView: View {
         title: String,
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
-        EditorPanelGroup(title, contentSpacing: AppTheme.Spacing.sm) {
+        EditorPanelGroup(NSLocalizedString(title, comment: ""), contentSpacing: AppTheme.Spacing.sm) {
             content()
         }
     }
@@ -168,7 +168,7 @@ struct InspectorView: View {
         truncate: Text.TruncationMode = .tail
     ) -> some View {
         HStack(spacing: AppTheme.Spacing.sm) {
-            Text(label)
+            Text(NSLocalizedString(label, comment: ""))
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .fixedSize()
@@ -197,7 +197,7 @@ struct InspectorView: View {
         @ViewBuilder menu: @escaping () -> MenuContent
     ) -> some View {
         HStack(spacing: AppTheme.Spacing.sm) {
-            Text(label)
+            Text(NSLocalizedString(label, comment: ""))
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .fixedSize()
