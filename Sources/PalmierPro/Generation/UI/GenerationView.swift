@@ -146,6 +146,9 @@ struct GenerationView: View {
                 catalogLoadingView
             }
         }
+        .onChange(of: upscaleModels.isEmpty) { _, isEmpty in
+            if isEmpty && selectedType == .upscale { selectedType = .video }
+        }
     }
 
     private var catalogLoadingView: some View {

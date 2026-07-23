@@ -17,7 +17,11 @@ extension GenerationView {
         !videoModels.isEmpty
             && !imageModels.isEmpty
             && !audioModels.isEmpty
-            && !upscaleModels.isEmpty
+            && (selectedType != .upscale || !upscaleModels.isEmpty)
+    }
+
+    var availableGenerationTypes: [GenerationType] {
+        upscaleModels.isEmpty ? GenerationType.allCases.filter { $0 != .upscale } : GenerationType.allCases
     }
 
     var aiAllowed: Bool { account.aiAllowed }

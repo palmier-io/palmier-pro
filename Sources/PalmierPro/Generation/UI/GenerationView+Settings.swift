@@ -16,7 +16,7 @@ extension GenerationView {
 
     var typeTabs: some View {
         HStack(spacing: 0) {
-            ForEach(GenerationType.allCases, id: \.self) { type in
+            ForEach(availableGenerationTypes, id: \.self) { type in
                 Button {
                     withAnimation(.easeInOut(duration: AppTheme.Anim.hover)) { selectedType = type }
                 } label: {

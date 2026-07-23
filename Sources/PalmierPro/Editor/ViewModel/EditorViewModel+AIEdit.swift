@@ -40,7 +40,8 @@ extension EditorViewModel {
     func beginAIUpscale(clipId: String, model: UpscaleModelConfig? = nil) {
         guard let (_, asset) = aiEditClipAsset(clipId) else { return }
         let trim = aiEditTrimmedSource(clipId: clipId)
-        guard let selected = model ?? UpscaleModelConfig.models(for: asset.type).first else { return }
+        let candidates = model.map { [$0] } ?? UpscaleModelConfig.models(for: asset.type)
+        guard let selected = candidates.first(where: { $0.supports(source: asset) }) else { return }
         seedGenerationPanel(
             asset: asset,
             stored: EditSubmitter.upscaleSeed(for: asset, model: selected, trimmedSource: trim),
