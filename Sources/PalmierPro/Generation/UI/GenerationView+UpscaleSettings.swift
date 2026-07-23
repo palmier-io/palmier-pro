@@ -145,7 +145,7 @@ extension GenerationView {
                 dragValueAdjustment: { snappedUpscaleValue($0, setting: setting) },
                 onChanged: setValue
             ) { setValue($0) }
-            upscaleResetButton(setting.label, disabled: storedValue == nil) {
+            EditorResetButton(title: setting.label) {
                 upscaleSettings.numbers.removeValue(forKey: setting.id)
             }
         }
@@ -164,21 +164,4 @@ extension GenerationView {
         return "%.2f"
     }
 
-    private func upscaleResetButton(
-        _ label: String,
-        disabled: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: "eraser")
-                .font(.system(size: AppTheme.FontSize.xs))
-                .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(AppTheme.Text.tertiaryColor)
-        .hoverHighlight()
-        .disabled(disabled)
-        .help("Use default \(label.lowercased())")
-        .accessibilityLabel("Use default \(label.lowercased())")
-    }
 }
