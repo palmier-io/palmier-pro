@@ -13,17 +13,13 @@ struct AIEditMenu: View {
         } else {
             Menu("AI Edit") {
                 if availableActions.contains(.upscale) {
-                    Menu("Upscale") {
-                        ForEach(UpscaleModelConfig.models(for: asset.type)) { model in
-                            if model.paidOnly && !AccountService.shared.isPaid {
-                                Button {
-                                    SettingsWindowController.shared.show(tab: .account)
-                                } label: {
-                                    Label("\(model.displayName) (Paid)", systemImage: "lock.fill")
-                                }
-                            } else {
-                                Button(model.displayName) { runUpscale(model) }
-                            }
+                    if AccountService.shared.isPaid {
+                        Button("Upscale…") { runUpscale() }
+                    } else {
+                        Button {
+                            SettingsWindowController.shared.show(tab: .account)
+                        } label: {
+                            Label("Upscale… (Paid)", systemImage: "lock.fill")
                         }
                     }
                 }
@@ -68,8 +64,10 @@ struct AIEditMenu: View {
         AudioTransformEditKind.available(for: asset)
     }
 
-    private func runUpscale(_ model: UpscaleModelConfig) {
-        _ = EditSubmitter.submitUpscale(asset: asset, model: model, editor: editor)
+    private func runUpscale() {
+        guard let model = UpscaleModelConfig.models(for: asset.type).first else { return }
+        let stored = EditSubmitter.upscaleSeed(for: asset, model: model)
+        editor.seedGenerationPanel(asset: asset, stored: stored)
     }
 
     private func edit() {
@@ -88,10 +86,7 @@ struct AIEditMenu: View {
     }
 
     private func rerun() {
-        let modelId = asset.generationInput?.model ?? ""
-        if UpscaleModelConfig.allIds.contains(modelId) {
-            _ = try? EditSubmitter.rerun(asset: asset, editor: editor)
-        } else if let stored = asset.generationInput {
+        if let stored = asset.generationInput {
             editor.seedGenerationPanel(asset: asset, stored: stored)
         }
     }

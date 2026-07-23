@@ -23,11 +23,6 @@ extension EditorViewModel {
         )
     }
 
-    func aiEditUpscaleModels(clipId: String) -> [UpscaleModelConfig] {
-        guard let (_, asset) = aiEditClipAsset(clipId) else { return [] }
-        return UpscaleModelConfig.models(for: asset.type)
-    }
-
     // MARK: - Clip-aware actions (trim + replace-on-complete where applicable)
 
     /// Edit: seed the panel with the trimmed range, replacing the clip's source on completion.
@@ -42,15 +37,16 @@ extension EditorViewModel {
         )
     }
 
-    func runAIUpscale(clipId: String, model: UpscaleModelConfig) {
+    func beginAIUpscale(clipId: String, model: UpscaleModelConfig? = nil) {
         guard let (_, asset) = aiEditClipAsset(clipId) else { return }
         let trim = aiEditTrimmedSource(clipId: clipId)
-        let handlers = clipReplacementHandlers(clipId: clipId, resetTrim: trim != nil)
-        _ = EditSubmitter.submitUpscale(
-            asset: asset, model: model, editor: self,
-            trimmedSource: trim,
-            onComplete: handlers.onComplete,
-            onFailure: handlers.onFailure
+        let candidates = model.map { [$0] } ?? UpscaleModelConfig.models(for: asset.type)
+        guard let selected = candidates.first(where: { $0.supports(source: asset) }) else { return }
+        seedGenerationPanel(
+            asset: asset,
+            stored: EditSubmitter.upscaleSeed(for: asset, model: selected, trimmedSource: trim),
+            replacementClipId: clipId,
+            trimmedSource: trim
         )
     }
 
@@ -98,14 +94,7 @@ extension EditorViewModel {
 
     func beginAIRerun(clipId: String) {
         guard let (_, asset) = aiEditClipAsset(clipId) else { return }
-        let modelId = asset.generationInput?.model ?? ""
-        if UpscaleModelConfig.allIds.contains(modelId) {
-            let handlers = clipReplacementHandlers(clipId: clipId, resetTrim: false)
-            _ = try? EditSubmitter.rerun(
-                asset: asset, editor: self,
-                onComplete: handlers.onComplete, onFailure: handlers.onFailure
-            )
-        } else if let stored = asset.generationInput {
+        if let stored = asset.generationInput {
             seedGenerationPanel(asset: asset, stored: stored, replacementClipId: clipId)
         }
     }
@@ -178,21 +167,4 @@ extension EditorViewModel {
         )
     }
 
-    /// onComplete/onFailure for a direct (non-panel) submission that replaces the clip's source.
-    private func clipReplacementHandlers(
-        clipId: String,
-        resetTrim: Bool
-    ) -> (onComplete: (@MainActor (MediaAsset) -> Void)?, onFailure: (@MainActor () -> Void)?) {
-        markPendingReplacement(clipId: clipId)
-        let fired = FirstOnlyFlag()
-        let onComplete: @MainActor (MediaAsset) -> Void = { [weak self] newAsset in
-            guard fired.fire() else { return }
-            self?.replaceClipMediaRef(clipId: clipId, newAssetId: newAsset.id, resetTrim: resetTrim)
-            self?.clearPendingReplacement(clipId: clipId)
-        }
-        let onFailure: @MainActor () -> Void = { [weak self] in
-            self?.clearPendingReplacement(clipId: clipId)
-        }
-        return (onComplete, onFailure)
-    }
 }

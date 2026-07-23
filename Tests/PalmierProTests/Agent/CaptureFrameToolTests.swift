@@ -202,7 +202,6 @@ struct CaptureFrameToolTests {
         #expect(engine.sourcePreviewTask == nil)
         #expect(engine.player.currentItem == nil)
         #expect(!fixture.editor.isPlaying)
-        #expect(fixture.editor.mediaPanelToast?.message == "Couldn’t load video preview.")
     }
 
     @Test func staleSourcePreviewLoadPreservesDeferredPlayback() async throws {

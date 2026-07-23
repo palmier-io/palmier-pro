@@ -1017,8 +1017,10 @@ struct InspectorView: View {
     @ViewBuilder
     private func assetDetailsContent(_ asset: MediaAsset) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
                 assetIdentityHeader(asset)
+                    .padding(.horizontal, AppTheme.Spacing.lg)
+                    .padding(.bottom, AppTheme.Spacing.xl)
 
                 fileSection(asset)
 
@@ -1047,10 +1049,11 @@ struct InspectorView: View {
 
                     if !gen.prompt.isEmpty {
                         promptSection(prompt: gen.prompt)
+                            .padding(.horizontal, AppTheme.Spacing.lg)
                     }
                 }
             }
-            .padding(.horizontal, AppTheme.Spacing.lg)
+            .padding(.top, AppTheme.Spacing.xs)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -1061,6 +1064,12 @@ struct InspectorView: View {
             plainMetadataRow(label: "Type", value: asset.type.trackLabel)
             if asset.type != .audio, let width = asset.sourceWidth, let height = asset.sourceHeight {
                 plainMetadataRow(label: "Dimensions", value: "\(width) × \(height)")
+            }
+            if let fps = asset.sourceFPS, fps > 0 {
+                plainMetadataRow(
+                    label: "FPS",
+                    value: "\(fps.formatted(.number.precision(.fractionLength(0...3)))) fps"
+                )
             }
             if asset.duration > 0 && asset.type != .image {
                 plainMetadataRow(label: "Duration", value: formatDuration(asset.duration))

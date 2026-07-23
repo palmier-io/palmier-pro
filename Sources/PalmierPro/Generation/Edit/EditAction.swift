@@ -31,17 +31,6 @@ enum EditAction {
             guard asset.type == .video || asset.type == .image else {
                 return .disabled(reason: "Upscale only works on video or images")
             }
-            if asset.type == .video {
-                guard let h = asset.sourceHeight, h > 0 else {
-                    return .disabled(reason: "Loading video metadata…")
-                }
-                if h >= 2160 {
-                    return .disabled(reason: "Already 4K or higher")
-                }
-            }
-            if Self.isUpscaleResult(asset) {
-                return .disabled(reason: "Already upscaled")
-            }
             if asset.isGenerating {
                 return .disabled(reason: "Generation in progress")
             }
@@ -108,12 +97,6 @@ enum EditAction {
             }
             return .available
         }
-    }
-
-    @MainActor
-    private static func isUpscaleResult(_ asset: MediaAsset) -> Bool {
-        guard let modelId = asset.generationInput?.model else { return false }
-        return UpscaleModelConfig.allIds.contains(modelId)
     }
 
     /// Falls back to the recorded generation duration when AVAsset metadata hasn't loaded.

@@ -3,6 +3,8 @@ import SwiftUI
 private enum GenerationSettingsLayout {
     static let popoverWidth: CGFloat = 220
     static let imagePopoverWidth: CGFloat = 270
+    static let upscalePopoverWidth: CGFloat = 280
+    static let upscalePopoverMaxHeight: CGFloat = 500
     static let imageAspectGridMinWidth: CGFloat = 78
     static let gridButtonMinHeight: CGFloat = 30
 }
@@ -14,19 +16,34 @@ extension GenerationView {
 
     var typeTabs: some View {
         HStack(spacing: 0) {
-            ForEach(GenerationType.allCases, id: \.self) { type in
+            ForEach(availableGenerationTypes, id: \.self) { type in
                 Button {
                     withAnimation(.easeInOut(duration: AppTheme.Anim.hover)) { selectedType = type }
                 } label: {
-                    Image(systemName: type.icon)
-                        .font(.system(size: AppTheme.FontSize.smMd, weight: selectedType == type ? .semibold : .medium))
-                        .foregroundStyle(selectedType == type ? type.accentColor : AppTheme.Text.tertiaryColor)
-                        .frame(width: AppTheme.IconSize.xl + AppTheme.Spacing.lg, height: AppTheme.IconSize.md)
+                    VStack(spacing: AppTheme.Spacing.xxs) {
+                        Image(systemName: type.icon)
+                            .font(.system(
+                                size: AppTheme.FontSize.smMd,
+                                weight: selectedType == type ? .semibold : .medium
+                            ))
+                            .foregroundStyle(selectedType == type ? type.accentColor : AppTheme.Text.tertiaryColor)
+                        Text(type.rawValue)
+                            .font(.system(size: AppTheme.FontSize.xxs, weight: .medium))
+                            .foregroundStyle(selectedType == type ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
+                    }
+                    .frame(width: AppTheme.GenerationPanel.typeTabWidth, height: AppTheme.IconSize.lgXl)
+                    .padding(.vertical, AppTheme.Spacing.xs)
                     .background(
-                        RoundedRectangle(cornerRadius: AppTheme.Radius.concentric(outer: AppTheme.Radius.sm, padding: AppTheme.Spacing.xxs))
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.concentric(
+                            outer: AppTheme.Radius.sm,
+                            padding: AppTheme.Spacing.xxs
+                        ))
                             .fill(selectedType == type ? Color.white.opacity(AppTheme.Opacity.faint) : .clear)
                     )
-                    .hoverHighlight(cornerRadius: AppTheme.Radius.concentric(outer: AppTheme.Radius.sm, padding: AppTheme.Spacing.xxs))
+                    .hoverHighlight(cornerRadius: AppTheme.Radius.concentric(
+                        outer: AppTheme.Radius.sm,
+                        padding: AppTheme.Spacing.xxs
+                    ))
                 }
                 .buttonStyle(.plain)
                 .help(type.rawValue)
@@ -63,6 +80,16 @@ extension GenerationView {
                         Section(category.label) {
                             ForEach(items, id: \.index) { item in
                                 Button(item.model.displayName) { selectedAudioModelIndex = item.index }
+                            }
+                        }
+                    }
+                }
+            case .upscale:
+                ForEach([ClipType.image, .video], id: \.self) { type in
+                    if let items = enabledUpscaleModelsByType[type], !items.isEmpty {
+                        Section(type.trackLabel) {
+                            ForEach(items, id: \.index) { item in
+                                Button(item.model.displayName) { selectedUpscaleModelIndex = item.index }
                             }
                         }
                     }
@@ -153,9 +180,20 @@ extension GenerationView {
     }
 
     // MARK: - Settings
-
     var settingsSummary: String {
         var parts: [String] = []
+        if selectedType == .upscale {
+            for id in ["targetResolution", "targetFPS"] {
+                guard let setting = upscaleModel.selectSettings.first(where: { $0.id == id }) else { continue }
+                let value = upscaleSettings.selections[id] ?? setting.defaultValue
+                if id == "targetFPS", value == "source" {
+                    parts.append(upscaleSourceFPSLabel)
+                } else if let label = setting.options.first(where: { $0.value == value })?.label {
+                    parts.append(label)
+                }
+            }
+            return parts.isEmpty ? "Settings" : parts.joined(separator: " \u{00B7} ")
+        }
         if selectedType == .audio {
             if audioModel.hasDurationControl, !audioUsesSource {
                 parts.append("\(selectedAudioDuration)s")
@@ -173,6 +211,10 @@ extension GenerationView {
             parts.append("×\(selectedNumImages)")
         }
         return parts.joined(separator: " \u{00B7} ")
+    }
+
+    private var upscaleSourceFPSLabel: String {
+        upscaleSource?.sourceFPS.map { "\(max(1, Int($0.rounded()))) FPS" } ?? "Original FPS"
     }
 
     private func resolutionLabel(_ id: String) -> String {
@@ -207,75 +249,87 @@ extension GenerationView {
         }
     }
 
+    @ViewBuilder
     private var settingsPopoverContent: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-            if selectedType == .video {
-                settingsPicker("Duration", selection: $selectedDuration, options: videoModel.durations) { "\($0)s" }
+        if selectedType == .upscale {
+            ScrollView {
+                upscaleSettingsContent
+                    .padding(AppTheme.Spacing.lg)
             }
-            if selectedType == .audio, !audioUsesSource {
-                if let durations = audioModel.durations {
-                    settingsPicker("Duration", selection: $selectedAudioDuration, options: durations) { "\($0)s" }
-                } else if let range = audioModel.durationRange {
-                    VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-                        Text("Duration")
-                            .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
-                            .foregroundStyle(AppTheme.Text.tertiaryColor)
-                        ScrubbableNumberField(
-                            value: Double(selectedAudioDuration),
-                            range: Double(range.minimum)...Double(range.maximum),
-                            format: "%.0f",
-                            valueSuffix: " s",
-                            dragValueAdjustment: { $0.rounded() },
-                            onChanged: { selectedAudioDuration = Int($0.rounded()) }
-                        ) { selectedAudioDuration = Int($0.rounded()) }
-                        .help("Duration (\(range.minimum)-\(range.maximum) seconds)")
+            .frame(width: GenerationSettingsLayout.upscalePopoverWidth)
+            .frame(maxHeight: GenerationSettingsLayout.upscalePopoverMaxHeight)
+        } else {
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+                if selectedType == .video {
+                    settingsPicker("Duration", selection: $selectedDuration, options: videoModel.durations) { "\($0)s" }
+                }
+                if selectedType == .audio, !audioUsesSource {
+                    if let durations = audioModel.durations {
+                        settingsPicker("Duration", selection: $selectedAudioDuration, options: durations) { "\($0)s" }
+                    } else if let range = audioModel.durationRange {
+                        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+                            Text("Duration")
+                                .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                            ScrubbableNumberField(
+                                value: Double(selectedAudioDuration),
+                                range: Double(range.minimum)...Double(range.maximum),
+                                format: "%.0f",
+                                valueSuffix: " s",
+                                dragValueAdjustment: { $0.rounded() },
+                                onChanged: { selectedAudioDuration = Int($0.rounded()) }
+                            ) { selectedAudioDuration = Int($0.rounded()) }
+                            .help("Duration (\(range.minimum)-\(range.maximum) seconds)")
+                        }
                     }
                 }
-            }
-            if !currentAspectRatios.isEmpty {
-                settingsPicker(
-                    "Aspect Ratio",
-                    selection: $selectedAspectRatio,
-                    options: currentAspectRatios,
-                    gridMinWidth: selectedType == .image ? GenerationSettingsLayout.imageAspectGridMinWidth : nil
-                ) {
-                    aspectRatioLabel($0)
+                if !currentAspectRatios.isEmpty {
+                    settingsPicker(
+                        "Aspect Ratio",
+                        selection: $selectedAspectRatio,
+                        options: currentAspectRatios,
+                        gridMinWidth: selectedType == .image ? GenerationSettingsLayout.imageAspectGridMinWidth : nil
+                    ) {
+                        aspectRatioLabel($0)
+                    }
+                }
+                if let resolutions = currentResolutions {
+                    settingsPicker("Resolution", selection: $selectedResolution, options: resolutions) { resolutionLabel($0) }
+                }
+                if let qualities = currentQualities {
+                    settingsPicker("Quality", selection: $selectedQuality, options: qualities) { $0.capitalized }
+                }
+                if selectedType == .image, imageModel.maxImages > 1 {
+                    settingsPicker(
+                        "Count",
+                        selection: $selectedNumImages,
+                        options: Array(1...imageModel.maxImages)
+                    ) { "\($0)" }
+                }
+                if selectedType == .audio && audioModel.supportsInstrumental {
+                    Toggle("Instrumental", isOn: $instrumental)
+                        .controlSize(.small)
+                        .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                }
+                if selectedType == .video, videoModel.audioDiscountRate != nil {
+                    let discount = videoModel.audioDiscount(for: effectiveResolution)
+                    let savings = discount.map { Int(((1 - $0) * 100).rounded()) }
+                    Toggle("Generate audio", isOn: $generateAudio)
+                        .controlSize(.small)
+                        .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        .help(savings.map { "Turn off to save \($0)% on generation cost." } ?? "Turn off to skip audio generation.")
                 }
             }
-            if let resolutions = currentResolutions {
-                settingsPicker("Resolution", selection: $selectedResolution, options: resolutions) { resolutionLabel($0) }
-            }
-            if let qualities = currentQualities {
-                settingsPicker("Quality", selection: $selectedQuality, options: qualities) { $0.capitalized }
-            }
-            if selectedType == .image, imageModel.maxImages > 1 {
-                settingsPicker(
-                    "Count",
-                    selection: $selectedNumImages,
-                    options: Array(1...imageModel.maxImages)
-                ) { "\($0)" }
-            }
-            if selectedType == .audio && audioModel.supportsInstrumental {
-                Toggle("Instrumental", isOn: $instrumental)
-                    .controlSize(.small)
-                    .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-            }
-            if selectedType == .video, videoModel.audioDiscountRate != nil {
-                let discount = videoModel.audioDiscount(for: effectiveResolution)
-                let savings = discount.map { Int(((1 - $0) * 100).rounded()) }
-                Toggle("Generate audio", isOn: $generateAudio)
-                    .controlSize(.small)
-                    .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    .help(savings.map { "Turn off to save \($0)% on generation cost." } ?? "Turn off to skip audio generation.")
-            }
+            .padding(AppTheme.Spacing.lg)
+            .frame(width: selectedType == .image
+                ? GenerationSettingsLayout.imagePopoverWidth
+                : GenerationSettingsLayout.popoverWidth)
         }
-        .padding(AppTheme.Spacing.lg)
-        .frame(width: selectedType == .image ? GenerationSettingsLayout.imagePopoverWidth : GenerationSettingsLayout.popoverWidth)
     }
 
-    private func settingsPicker<T: Hashable>(
+    func settingsPicker<T: Hashable>(
         _ label: String,
         selection: Binding<T>,
         options: [T],

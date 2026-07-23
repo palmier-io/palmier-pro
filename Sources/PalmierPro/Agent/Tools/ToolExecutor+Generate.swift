@@ -382,6 +382,12 @@ extension ToolExecutor {
         guard asset.type == .video || asset.type == .image else {
             throw ToolError("Upscale supports video and image assets only (got \(asset.type.rawValue))")
         }
+        guard asset.sourceWidth != nil, asset.sourceHeight != nil else {
+            throw ToolError("Source dimensions are not available yet. Poll get_media until the asset is ready.")
+        }
+        guard asset.type != .video || asset.sourceFPS != nil else {
+            throw ToolError("Source FPS is not available yet. Poll get_media until the asset is ready.")
+        }
         guard AccountService.shared.isSignedIn else {
             throw ToolError("Upscale requires signing in to Palmier. Tell the user to sign in.")
         }
@@ -397,21 +403,70 @@ extension ToolExecutor {
                 throw ToolError("Model '\(requested)' does not support \(asset.type.rawValue). Available: \(ids)")
             }
             try requirePlan(for: match.id, paidOnly: match.paidOnly)
+            guard match.supports(source: asset) else {
+                throw ToolError("Model '\(requested)' is not compatible with this source's resolution or frame rate.")
+            }
             model = match
         } else {
-            guard let first = available.first(where: { modelAvailable(paidOnly: $0.paidOnly) }) else {
-                throw ToolError("No upscaler available for \(asset.type.rawValue) on the current plan.")
+            guard let first = available.first(where: {
+                modelAvailable(paidOnly: $0.paidOnly) && $0.supports(source: asset)
+            }) else {
+                throw ToolError("No compatible upscaler is available for this \(asset.type.rawValue) on the current plan.")
             }
             model = first
         }
 
+        let settings = try resolvedUpscaleSettings(args["settings"], model: model, source: asset)
         let trimmed = try trimmedSource(args, editor: editor, source: asset)
         guard let placeholderId = EditSubmitter.submitUpscale(
-            asset: asset, model: model, editor: editor, trimmedSource: trimmed
+            asset: asset, model: model, editor: editor, settings: settings, trimmedSource: trimmed
         ) else {
             throw ToolError("Failed to start upscale")
         }
         return .ok("Upscale started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), source: \(asset.name)\(trimmed != nil ? " (trimmed range)" : "")")
+    }
+
+    private func resolvedUpscaleSettings(
+        _ raw: Any?, model: UpscaleModelConfig, source: MediaAsset
+    ) throws -> UpscaleSettings {
+        let supplied: [String: Any]
+        if let raw {
+            guard let dictionary = raw as? [String: Any] else {
+                throw ToolError("settings must be an object")
+            }
+            supplied = dictionary
+        } else {
+            supplied = [:]
+        }
+
+        var resolved = model.normalizedSettings(model.defaultSettings, source: source)
+        for (id, rawValue) in supplied {
+            if let setting = model.selectSettings.first(where: { $0.id == id }) {
+                let options = model.availableOptions(for: setting, source: source)
+                guard let value = rawValue as? String,
+                      options.contains(where: { $0.value == value }) else {
+                    throw ToolError("Unsupported \(id). Available: \(options.map(\.value).joined(separator: ", "))")
+                }
+                resolved.selections[id] = value
+            } else if let setting = model.numericSettings.first(where: { $0.id == id }) {
+                guard let value = ["value": rawValue].double("value"), value.isFinite,
+                      (setting.minimum...setting.maximum).contains(value) else {
+                    throw ToolError("\(id) must be between \(setting.minimum) and \(setting.maximum)")
+                }
+                resolved.numbers[id] = value
+            } else if model.toggleSettings.contains(where: { $0.id == id }) {
+                guard isJSONBoolean(rawValue), let value = rawValue as? Bool else {
+                    throw ToolError("\(id) must be true or false")
+                }
+                resolved.toggles[id] = value
+            } else {
+                let valid = (model.selectSettings.map(\.id)
+                    + model.numericSettings.map(\.id)
+                    + model.toggleSettings.map(\.id)).joined(separator: ", ")
+                throw ToolError("Unknown upscale setting '\(id)'. Available: \(valid)")
+            }
+        }
+        return resolved
     }
 
     private func trimmedSource(
@@ -533,11 +588,41 @@ extension ToolExecutor {
     }
 
     nonisolated static func upscaleModelInfo(_ m: UpscaleModelConfig) -> [String: Any] {
-        [
+        var info: [String: Any] = [
             "id": m.id, "displayName": m.displayName,
             "type": "upscale",
             "speed": m.speed,
             "supportedTypes": m.supportedTypes.map(\.rawValue).sorted(),
         ]
+        if let description = m.description { info["description"] = description }
+        if let factor = m.caps.maximumUpscaleFactor { info["maximumUpscaleFactor"] = factor }
+
+        let selects: [[String: Any]] = m.selectSettings.map { setting in
+            let options: [[String: Any]] = setting.options.map { option in
+                var value: [String: Any] = ["value": option.value, "label": option.label]
+                if let description = option.description { value["description"] = description }
+                if let group = option.group { value["group"] = group }
+                if let description = option.groupDescription { value["groupDescription"] = description }
+                return value
+            }
+            return [
+                "id": setting.id, "label": setting.label, "type": "select",
+                "default": setting.defaultValue, "options": options,
+            ]
+        }
+        let numbers: [[String: Any]] = m.numericSettings.map {
+            [
+                "id": $0.id, "label": $0.label, "type": "number",
+                "minimum": $0.minimum, "maximum": $0.maximum, "step": $0.step,
+            ]
+        }
+        let toggles: [[String: Any]] = m.toggleSettings.map {
+            [
+                "id": $0.id, "label": $0.label, "type": "boolean",
+                "default": $0.defaultValue,
+            ]
+        }
+        info["settings"] = selects + numbers + toggles
+        return info
     }
 }

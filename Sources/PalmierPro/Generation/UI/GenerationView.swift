@@ -10,6 +10,7 @@ struct GenerationView: View {
     @State var selectedVideoModelIndex = 0
     @State var selectedImageModelIndex = 0
     @State var selectedAudioModelIndex = 0
+    @State var selectedUpscaleModelIndex = 0
     @State var selectedDuration = 5
     @State var selectedAspectRatio = "16:9"
     @State var selectedResolution = "1080p"
@@ -24,6 +25,7 @@ struct GenerationView: View {
     @State var selectedAudioDuration = 30
     @State var selectedTargetLanguage = ""
     @State var generateAudio = true
+    @State var upscaleSettings = UpscaleSettings()
     @State var showSettingsPopover = false
     @FocusState private var isPromptFocused: Bool
 
@@ -54,6 +56,10 @@ struct GenerationView: View {
     // Source media for audio transformations and video-to-audio models
     @State var audioSource: MediaAsset?
     @State var audioSourceTargeted = false
+
+    // Source media for enhancement models
+    @State var upscaleSource: MediaAsset?
+    @State var upscaleSourceTargeted = false
 
     @State var isPopulatingPanel = false
     @State var editFolderId: String?
@@ -95,7 +101,7 @@ struct GenerationView: View {
 
     enum FramesRefsMode: String, CaseIterable {
         case firstLast = "First/Last"
-        case reference = "Reference"
+        case reference = "References"
     }
 
     struct RefTag: Hashable, Identifiable {
@@ -108,11 +114,13 @@ struct GenerationView: View {
         case image = "Image"
         case video = "Video"
         case audio = "Audio"
+        case upscale = "Upscale"
         var icon: String {
             switch self {
             case .image: "photo"
             case .video: "video"
             case .audio: "waveform"
+            case .upscale: "arrow.up.right.square"
             }
         }
         var accentColor: Color {
@@ -123,6 +131,7 @@ struct GenerationView: View {
             case .image: .image
             case .video: .video
             case .audio: .audio
+            case .upscale: .video
             }
         }
     }
@@ -137,6 +146,9 @@ struct GenerationView: View {
                 catalogLoadingView
             }
         }
+        .onChange(of: upscaleModels.isEmpty) { _, isEmpty in
+            if isEmpty && selectedType == .upscale { selectedType = .video }
+        }
     }
 
     private var catalogLoadingView: some View {
@@ -148,20 +160,21 @@ struct GenerationView: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: AppTheme.GenerationPanel.loadingHeight)
-        .background {
-            RoundedRectangle(cornerRadius: AppTheme.Radius.lg)
-                .fill(AppTheme.aiGradientDark)
+        .glassEffect(.regular, in: .rect(cornerRadius: AppTheme.Radius.xl))
+        .overlay {
+            RoundedRectangle(cornerRadius: AppTheme.Radius.xl, style: .continuous)
+                .strokeBorder(
+                    Color.white.opacity(AppTheme.Opacity.hint),
+                    lineWidth: AppTheme.BorderWidth.hairline
+                )
                 .allowsHitTesting(false)
         }
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.lg))
-        .shadow(AppTheme.Shadow.sm)
         .padding(.horizontal, AppTheme.Spacing.sm)
         .padding(.bottom, AppTheme.Spacing.sm)
     }
 
     private var bodyContent: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-            resizeHandle
             // Type tabs (left) · credits · activity · close (right)
             HStack(spacing: AppTheme.Spacing.sm) {
                 typeTabs
@@ -180,13 +193,7 @@ struct GenerationView: View {
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, AppTheme.Spacing.sm)
-
-            if showsFramesRefsPicker {
-                framesRefsModePicker
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, AppTheme.Spacing.sm)
-            }
+            .padding(.horizontal, AppTheme.Spacing.md)
 
             VStack(spacing: AppTheme.Spacing.xs) {
                 referencesContent
@@ -202,7 +209,7 @@ struct GenerationView: View {
                 }
 
                 VStack(spacing: 0) {
-                    promptArea
+                    if showsPrompt { promptArea }
                     if selectedType == .audio && audioModel.supportsLyrics {
                         inputDivider
                         secondaryField(
@@ -222,37 +229,33 @@ struct GenerationView: View {
                     inputToolbar
                 }
                 .background {
-                    let r = AppTheme.Radius.concentric(outer: AppTheme.Radius.lg, padding: AppTheme.Spacing.sm)
-                    RoundedRectangle(cornerRadius: r)
-                        .fill(Color.black.opacity(AppTheme.Opacity.subtle))
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.xl, style: .continuous)
+                        .fill(AppTheme.Background.raisedColor)
                 }
-                .overlay {
-                    let r = AppTheme.Radius.concentric(outer: AppTheme.Radius.lg, padding: AppTheme.Spacing.sm)
-                    RoundedRectangle(cornerRadius: r)
-                        .strokeBorder(
-                            isPromptFocused ? AppTheme.Accent.primary.opacity(AppTheme.Opacity.strong) : Color.white.opacity(AppTheme.Opacity.faint),
-                            lineWidth: AppTheme.BorderWidth.thin
-                        )
-                }
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.concentric(outer: AppTheme.Radius.lg, padding: AppTheme.Spacing.sm)))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.xl, style: .continuous))
             }
-            .padding(.horizontal, AppTheme.Spacing.sm)
-            .padding(.bottom, AppTheme.Spacing.sm)
+            .padding(.horizontal, AppTheme.Spacing.md)
+            .padding(.bottom, AppTheme.Spacing.md)
         }
-        .padding(.top, AppTheme.Spacing.xxs)
+        .padding(.top, AppTheme.Spacing.md)
+        .overlay(alignment: .top) { resizeHandle }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measuredPanelHeight = $0 }
         .background {
-            RoundedRectangle(cornerRadius: AppTheme.Radius.lg)
-                .fill(AppTheme.aiGradientDark)
+            Color.clear
+                .glassEffect(.regular, in: .rect(cornerRadius: AppTheme.Radius.xl))
                 .allowsHitTesting(false)
         }
         .overlay {
-            RoundedRectangle(cornerRadius: AppTheme.Radius.lg)
-                .strokeBorder(AppTheme.aiGradientDark, lineWidth: AppTheme.BorderWidth.medium)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.xl, style: .continuous)
+                .strokeBorder(
+                    isPromptFocused
+                        ? AppTheme.Accent.primary.opacity(AppTheme.Opacity.medium)
+                        : Color.white.opacity(AppTheme.Opacity.hint),
+                    lineWidth: isPromptFocused ? AppTheme.BorderWidth.thin : AppTheme.BorderWidth.hairline
+                )
                 .allowsHitTesting(false)
         }
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.lg))
-        .shadow(AppTheme.Shadow.sm)
+        .animation(.easeOut(duration: 0.15), value: isPromptFocused)
         .padding(.horizontal, AppTheme.Spacing.sm)
         .padding(.bottom, AppTheme.Spacing.sm)
         .frame(maxHeight: max(0, CGFloat(maxPanelHeight)), alignment: .top)
@@ -301,11 +304,22 @@ struct GenerationView: View {
             guard !isPopulatingPanel else { return }
             if selectedType == .audio { resetAudioState() }
         }
+        .onChange(of: selectedUpscaleModelIndex) { _, _ in
+            guard !isPopulatingPanel else { return }
+            if selectedType == .upscale { resetUpscaleSettings() }
+        }
+        .onChange(of: upscaleSource?.id) { _, _ in
+            guard selectedType == .upscale, !isPopulatingPanel else { return }
+            normalizeModelSelection()
+            resetUpscaleSettings()
+        }
     }
 
     @ViewBuilder
     private var referencesContent: some View {
-        if selectedType == .video && videoModel.requiresSourceVideo {
+        if selectedType == .upscale {
+            upscaleSourceStrip
+        } else if selectedType == .video && videoModel.requiresSourceVideo {
             editVideoStrip
         } else if selectedType == .video {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
@@ -364,7 +378,6 @@ struct GenerationView: View {
                 ), attachmentAnchor: .point(.topLeading), arrowEdge: .top) {
                     refMentionPopover
                 }
-                .disabled(!isPromptEnabled)
 
             if prompt.isEmpty {
                 Text(promptPlaceholder)
@@ -376,8 +389,6 @@ struct GenerationView: View {
             }
         }
         .frame(height: promptHeight)
-        .opacity(isPromptEnabled ? AppTheme.Opacity.opaque : AppTheme.Opacity.muted)
-        .accessibilityHint(isPromptEnabled ? "" : "This model does not use a prompt")
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measuredPromptHeight = $0 }
     }
 
@@ -416,26 +427,24 @@ struct GenerationView: View {
     // MARK: - Input toolbar (bottom of input box)
 
     private var inputToolbar: some View {
-        VStack(spacing: 0) {
-            inputDivider
-            HStack(spacing: AppTheme.Spacing.sm) {
-                modelPicker
-                if selectedType == .audio, audioModel.voices != nil {
-                    voicePicker
-                }
-                if selectedType == .audio, audioModel.targetLanguages != nil {
-                    languagePicker
-                }
-                if hasAnySettings { settingsButton }
-
-                Spacer(minLength: AppTheme.Spacing.xs)
-
-                costEstimateLabel
-                submitButton
+        HStack(spacing: AppTheme.Spacing.sm) {
+            modelPicker
+            if showsFramesRefsPicker { framesRefsModePicker }
+            if selectedType == .audio, audioModel.voices != nil {
+                voicePicker
             }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, AppTheme.Spacing.md)
-            .padding(.vertical, AppTheme.Spacing.sm)
+            if selectedType == .audio, audioModel.targetLanguages != nil {
+                languagePicker
+            }
+            if hasAnySettings { settingsButton }
+
+            Spacer(minLength: AppTheme.Spacing.xs)
+
+            costEstimateLabel
+            submitButton
         }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, AppTheme.Spacing.md)
+        .padding(.vertical, AppTheme.Spacing.sm)
     }
 }

@@ -5,6 +5,16 @@ extension GenerationView {
 
     var canSubmit: Bool {
         guard canAffordGeneration else { return false }
+        if selectedType == .upscale {
+            guard let source = upscaleSource,
+                  source.sourceWidth != nil, source.sourceHeight != nil,
+                  source.type != .video || source.sourceFPS != nil,
+                  enabledUpscaleModels.contains(where: { $0.index == selectedUpscaleModelIndex }) else { return false }
+            return upscaleModel.selectSettings.allSatisfy { setting in
+                let value = upscaleSettings.selections[setting.id] ?? setting.defaultValue
+                return availableUpscaleOptions(setting).contains(where: { $0.value == value })
+            }
+        }
         if selectedType == .video && videoModel.requiresSourceVideo {
             guard sourceVideo != nil else { return false }
             if videoModel.requiresReferenceImage && imageReferences.isEmpty { return false }
@@ -54,6 +64,15 @@ extension GenerationView {
                 prompt: trimmedPrompt,
                 durationSeconds: duration,
                 input: activeAudioInput
+            )
+        case .upscale:
+            return CostEstimator.upscaleCost(
+                model: upscaleModel,
+                durationSeconds: effectiveUpscaleSeconds,
+                settings: upscaleSettings,
+                sourceWidth: upscaleSource?.sourceWidth,
+                sourceHeight: upscaleSource?.sourceHeight,
+                sourceFPS: upscaleSource?.sourceFPS
             )
         }
     }
@@ -113,9 +132,12 @@ extension GenerationView {
         .buttonBorderShape(.circle)
         .controlSize(.regular)
         .tint(AppTheme.Accent.primary)
+        .accessibilityLabel(aiAllowed ? (selectedType == .upscale ? "Upscale" : "Generate") : "Sign in")
         .disabled(aiAllowed ? !canSubmit : account.isMisconfigured || account.isSigningIn)
         .opacity((aiAllowed ? canSubmit : !account.isMisconfigured && !account.isSigningIn) ? AppTheme.Opacity.opaque : AppTheme.Opacity.strong)
-        .help(aiAllowed ? "" : (account.isMisconfigured ? "AI is unavailable" : account.isSigningIn ? "Opening Google" : "Sign in to generate"))
+        .help(aiAllowed
+            ? (selectedType == .upscale ? "Upscale source media" : "")
+            : (account.isMisconfigured ? "AI is unavailable" : account.isSigningIn ? "Opening Google" : "Sign in to generate"))
     }
 
     // MARK: - Actions
@@ -174,6 +196,21 @@ extension GenerationView {
                     ?? audioModel.validate(params: audioParams(audioDuration: audioDuration))
             }
             return audioModel.validate(params: audioParams(audioDuration: audioDuration))
+        case .upscale:
+            guard let source = upscaleSource else { return "Add source media." }
+            guard upscaleModel.supportedTypes.contains(source.type) else {
+                return "\(upscaleModel.displayName) does not support this media type."
+            }
+            guard source.sourceWidth != nil, source.sourceHeight != nil else {
+                return "Loading source dimensions…"
+            }
+            if source.type == .video {
+                guard source.sourceFPS != nil else { return "Loading source frame rate…" }
+                guard upscaleModel.supports(source: source) else {
+                    return "This model cannot cap the output at 60 FPS."
+                }
+            }
+            return nil
         }
     }
 
@@ -206,10 +243,16 @@ extension GenerationView {
             flashDropError(err)
             return
         }
+        let inputDuration: Int = switch selectedType {
+        case .video: effectiveVideoSeconds
+        case .audio: audioDuration
+        case .upscale: effectiveUpscaleSeconds
+        case .image: 0
+        }
         var genInput = GenerationInput(
             prompt: prompt,
             model: currentModelId,
-            duration: selectedType == .video ? effectiveVideoSeconds : audioDuration,
+            duration: inputDuration,
             aspectRatio: selectedAspectRatio,
             resolution: effectiveResolution,
             quality: selectedType == .image && imageModel.qualities != nil ? selectedQuality : nil,
@@ -371,6 +414,23 @@ extension GenerationView {
                     actionName: placement.actionName
                 )
             }
+        case .upscale:
+            guard let source = upscaleSource else { return }
+            let trim: TrimmedSource? = {
+                guard let pending = editor.pendingEditTrimmedSource,
+                      pending.sourceURL == source.url else { return nil }
+                return pending
+            }()
+            let assetId = EditSubmitter.submitUpscale(
+                asset: source,
+                model: upscaleModel,
+                editor: editor,
+                settings: upscaleSettings,
+                trimmedSource: trim,
+                onComplete: makeOnComplete(trim?.hasTrim == true),
+                onFailure: onFailure
+            )
+            if let assetId { autoOpenPreview(assetId) }
         }
         editor.clearPendingGenerationPanelState()
         lyrics = ""
@@ -405,7 +465,12 @@ extension GenerationView {
             isPopulatingPanel = true
             selectedType = .audio
             selectedAudioModelIndex = idx
-        case .upscale, .none:
+        case .upscale:
+            guard let idx = upscaleModels.firstIndex(where: { $0.id == stored.model }) else { return }
+            isPopulatingPanel = true
+            selectedType = .upscale
+            selectedUpscaleModelIndex = idx
+        case .none:
             return
         }
         defer { DispatchQueue.main.async { isPopulatingPanel = false } }
@@ -430,6 +495,9 @@ extension GenerationView {
         styleInstructions = stored.styleInstructions ?? ""
         instrumental = stored.instrumental ?? false
         generateAudio = stored.generateAudio ?? true
+        if selectedType == .upscale {
+            upscaleSettings = stored.upscaleSettings ?? upscaleModel.defaultSettings
+        }
 
         clearReferences()
 
@@ -466,11 +534,17 @@ extension GenerationView {
         case .audio:
             audioSource = (stored.referenceAudioAssetIds ?? []).compactMap(lookup).first
                 ?? (stored.referenceVideoAssetIds ?? []).compactMap(lookup).first
+        case .upscale:
+            upscaleSource = primary.first ?? asset
         }
 
         editFolderId = asset.folderId
 
-        resetSettings()
+        if selectedType == .upscale {
+            upscaleSettings = upscaleModel.normalizedSettings(upscaleSettings, source: upscaleSource)
+        } else {
+            resetSettings()
+        }
     }
 
     func resetAudioState() {
@@ -494,6 +568,10 @@ extension GenerationView {
     }
 
     func resetSettings() {
+        if selectedType == .upscale {
+            resetUpscaleSettings()
+            return
+        }
         if !currentAspectRatios.contains(selectedAspectRatio) {
             selectedAspectRatio = currentAspectRatios.first ?? "16:9"
         }
@@ -511,5 +589,9 @@ extension GenerationView {
             selectedNumImages = min(max(1, selectedNumImages), imageModel.maxImages)
         }
         if selectedType == .audio { normalizeAudioDuration() }
+    }
+
+    func resetUpscaleSettings() {
+        upscaleSettings = upscaleModel.normalizedSettings(upscaleModel.defaultSettings, source: upscaleSource)
     }
 }

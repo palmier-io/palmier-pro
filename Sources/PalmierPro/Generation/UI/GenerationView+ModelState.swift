@@ -6,15 +6,22 @@ extension GenerationView {
     var videoModels: [VideoModelConfig] { ModelCatalog.shared.video }
     var imageModels: [ImageModelConfig] { ModelCatalog.shared.image }
     var audioModels: [AudioModelConfig] { ModelCatalog.shared.audio }
+    var upscaleModels: [UpscaleModelConfig] { ModelCatalog.shared.upscale }
 
     var videoModel: VideoModelConfig { selectedModel(videoModels, at: selectedVideoModelIndex) }
     var imageModel: ImageModelConfig { selectedModel(imageModels, at: selectedImageModelIndex) }
     var audioModel: AudioModelConfig { selectedModel(audioModels, at: selectedAudioModelIndex) }
+    var upscaleModel: UpscaleModelConfig { selectedModel(upscaleModels, at: selectedUpscaleModelIndex) }
 
     var catalogReady: Bool {
         !videoModels.isEmpty
             && !imageModels.isEmpty
             && !audioModels.isEmpty
+            && (selectedType != .upscale || !upscaleModels.isEmpty)
+    }
+
+    var availableGenerationTypes: [GenerationType] {
+        upscaleModels.isEmpty ? GenerationType.allCases.filter { $0 != .upscale } : GenerationType.allCases
     }
 
     var aiAllowed: Bool { account.aiAllowed }
@@ -25,6 +32,7 @@ extension GenerationView {
         case .video: return videoModel.paidOnly
         case .image: return imageModel.paidOnly
         case .audio: return audioModel.paidOnly
+        case .upscale: return upscaleModel.paidOnly
         }
     }
 
@@ -50,6 +58,21 @@ extension GenerationView {
             .filter { ModelPreferences.shared.isEnabled($0.element.id) && isAvailable($0.element.paidOnly) }
             .map { (index: $0.offset, model: $0.element) }
     }
+    var enabledUpscaleModels: [(index: Int, model: UpscaleModelConfig)] {
+        upscaleModels.enumerated()
+            .filter { item in
+                let supportsSource = upscaleSource.map { item.element.supports(source: $0) } ?? true
+                return ModelPreferences.shared.isEnabled(item.element.id)
+                    && isAvailable(item.element.paidOnly)
+                    && supportsSource
+            }
+            .map { (index: $0.offset, model: $0.element) }
+    }
+    var enabledUpscaleModelsByType: [ClipType: [(index: Int, model: UpscaleModelConfig)]] {
+        Dictionary(uniqueKeysWithValues: [ClipType.image, .video].map { type in
+            (type, enabledUpscaleModels.filter { $0.model.supportedTypes.contains(type) })
+        })
+    }
     var enabledAudioModelsByCategory: [AudioModelConfig.Category: [(index: Int, model: AudioModelConfig)]] {
         var grouped: [AudioModelConfig.Category: [(index: Int, model: AudioModelConfig)]] = [:]
         grouped.reserveCapacity(AudioModelConfig.Category.allCases.count)
@@ -73,6 +96,10 @@ extension GenerationView {
             if !enabledAudioModels.contains(where: { $0.index == selectedAudioModelIndex }) {
                 selectedAudioModelIndex = enabledAudioModels.first?.index ?? 0
             }
+        case .upscale:
+            if !enabledUpscaleModels.contains(where: { $0.index == selectedUpscaleModelIndex }) {
+                selectedUpscaleModelIndex = enabledUpscaleModels.first?.index ?? 0
+            }
         }
     }
 
@@ -86,8 +113,8 @@ extension GenerationView {
         guard audioUsesSource, let audioSource else { return .text }
         return audioSource.type == .video ? .video : .audio
     }
-    var isPromptEnabled: Bool {
-        selectedType != .audio || audioModel.inputs.contains(.text)
+    var showsPrompt: Bool {
+        selectedType != .upscale && (selectedType != .audio || audioModel.inputs.contains(.text))
     }
 
     var initialAudioTargetLanguage: String {
@@ -106,6 +133,8 @@ extension GenerationView {
         case .audio:
             return audioModel.supportsInstrumental
                 || (!audioUsesSource && audioModel.hasDurationControl)
+        case .upscale:
+            return true
         }
     }
 
@@ -114,6 +143,7 @@ extension GenerationView {
         case .video: videoModel.displayName
         case .image: imageModel.displayName
         case .audio: audioModel.displayName
+        case .upscale: upscaleModel.displayName
         }
     }
 
@@ -122,6 +152,7 @@ extension GenerationView {
         case .video: videoModel.id
         case .image: imageModel.id
         case .audio: audioModel.id
+        case .upscale: upscaleModel.id
         }
     }
 
@@ -130,6 +161,7 @@ extension GenerationView {
         case .video: videoModel.aspectRatios
         case .image: imageModel.aspectRatios
         case .audio: []
+        case .upscale: []
         }
     }
 
@@ -138,6 +170,7 @@ extension GenerationView {
         case .video: videoModel.resolutions
         case .image: imageModel.resolutions
         case .audio: nil
+        case .upscale: nil
         }
     }
 
@@ -172,6 +205,7 @@ extension GenerationView {
             case .sfx: "Describe the sound\(audioPromptHint)"
             case .cleanup, .dubbing: "No prompt needed"
             }
+        case .upscale: "No prompt needed"
         }
     }
 
@@ -201,4 +235,14 @@ extension GenerationView {
         guard let trim = editor.pendingEditTrimmedSource, trim.sourceURL == source.url else { return nil }
         return trim
     }
+
+    var effectiveUpscaleSeconds: Int {
+        guard let source = upscaleSource else { return 0 }
+        if let trim = editor.pendingEditTrimmedSource,
+           trim.sourceURL == source.url, trim.hasTrim {
+            return max(1, Int(trim.durationSeconds.rounded()))
+        }
+        return source.type == .image ? 1 : max(1, Int(source.duration.rounded()))
+    }
+
 }
