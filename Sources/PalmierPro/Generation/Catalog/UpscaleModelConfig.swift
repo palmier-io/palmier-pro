@@ -88,6 +88,7 @@ struct UpscaleModelConfig: Identifiable, Sendable {
 
     var id: String { entry.id }
     var displayName: String { entry.displayName }
+    var description: String? { entry.description }
     var paidOnly: Bool { entry.paidOnly }
     var creditsPerSecond: Double { entry.creditsPerSecondUpscale ?? 0 }
     var pricing: UpscalePricing? { entry.upscalePricing }
@@ -139,6 +140,20 @@ struct UpscaleModelConfig: Identifiable, Sendable {
         default:
             return setting.options
         }
+    }
+
+    @MainActor
+    func normalizedSettings(_ settings: UpscaleSettings, source: MediaAsset?) -> UpscaleSettings {
+        var normalized = settings
+        for setting in selectSettings {
+            let options = availableOptions(for: setting, source: source)
+            guard !options.isEmpty else { continue }
+            let selected = normalized.selections[setting.id] ?? setting.defaultValue
+            if !options.contains(where: { $0.value == selected }) {
+                normalized.selections[setting.id] = options.last?.value
+            }
+        }
+        return normalized
     }
 
     private func targetLongEdge(_ value: String) -> Int {

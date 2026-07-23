@@ -541,7 +541,7 @@ extension GenerationView {
         editFolderId = asset.folderId
 
         if selectedType == .upscale {
-            normalizeUpscaleSettings()
+            upscaleSettings = upscaleModel.normalizedSettings(upscaleSettings, source: upscaleSource)
         } else {
             resetSettings()
         }
@@ -592,18 +592,6 @@ extension GenerationView {
     }
 
     func resetUpscaleSettings() {
-        upscaleSettings = upscaleModel.defaultSettings
-        normalizeUpscaleSettings()
-    }
-
-    private func normalizeUpscaleSettings() {
-        for setting in upscaleModel.selectSettings {
-            let options = availableUpscaleOptions(setting)
-            guard !options.isEmpty else { continue }
-            let selected = upscaleSettings.selections[setting.id] ?? setting.defaultValue
-            if !options.contains(where: { $0.value == selected }) {
-                upscaleSettings.selections[setting.id] = options.last?.value
-            }
-        }
+        upscaleSettings = upscaleModel.normalizedSettings(upscaleModel.defaultSettings, source: upscaleSource)
     }
 }
