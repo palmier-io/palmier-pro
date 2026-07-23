@@ -333,28 +333,38 @@ extension EditorViewModel {
 
     /// Ripple insert: add clips at `atFrame` and push everything past it right by the
     /// insertion's duration on the target track and every sync-locked track.
+    /// `splitStraddlers` makes this a full insert edit: clips spanning `atFrame` are split
+    /// so their right halves ride the ripple.
     @discardableResult
-    func rippleInsertClips(assets: [MediaAsset], trackIndex: Int, atFrame: Int, segments: [String: ClosedRange<Double>] = [:]) -> [String] {
+    func rippleInsertClips(assets: [MediaAsset], trackIndex: Int, atFrame: Int, segments: [String: ClosedRange<Double>] = [:], splitStraddlers: Bool = false) -> [String] {
         guard timeline.tracks.indices.contains(trackIndex) else { return [] }
-        if let reason = multicamManualRippleViolation(shiftingTrackIds: rippleInsertShiftingTrackIds(trackIndex: trackIndex), atFrame: atFrame) {
+        if let reason = rippleInsertRefusalReason(trackIndex: trackIndex, atFrame: atFrame) {
             refuseRipple(reason: reason)
             return []
         }
         var created: [String] = []
         withTimelineSwap(actionName: "Ripple Insert Clips") {
             let totalPush = assets.reduce(0) { $0 + clipDurationFrames(for: $1, segment: segments[$1.id]) }
-
-            for ti in timeline.tracks.indices where ti == trackIndex || timeline.tracks[ti].syncLocked {
-                applyShifts(RippleEngine.computeRipplePush(
-                    clips: timeline.tracks[ti].clips,
-                    insertFrame: atFrame,
-                    pushAmount: totalPush
-                ))
+            let needsLinkedAudio = timeline.tracks[trackIndex].type == .video && assets.contains {
+                $0.hasAudio && ($0.type == .video || $0.type == .sequence)
             }
-            created = createClips(from: assets, trackIndex: trackIndex, startFrame: atFrame, segments: segments)
+            let linkedAudioTrackIndex = openInsertGap(
+                trackIndex: trackIndex, atFrame: atFrame, totalPush: totalPush,
+                insertEdit: splitStraddlers, needsLinkedAudio: needsLinkedAudio
+            )
+            created = createClips(
+                from: assets, trackIndex: trackIndex, startFrame: atFrame,
+                linkedAudioTrackIndex: linkedAudioTrackIndex, segments: segments
+            )
             sortClips(trackIndex: trackIndex)
         }
         return created
+    }
+
+    /// Why an insert at `atFrame` on `trackIndex` would be refused, or nil if allowed.
+    /// Shared by the mutation paths and callers that pre-validate before opening an undo group.
+    func rippleInsertRefusalReason(trackIndex: Int, atFrame: Int) -> String? {
+        multicamManualRippleViolation(shiftingTrackIds: rippleInsertShiftingTrackIds(trackIndex: trackIndex), atFrame: atFrame)
     }
 
     struct RippleInsertPreviewPlan: Equatable {
@@ -432,44 +442,20 @@ extension EditorViewModel {
     @discardableResult
     func rippleInsertClips(specs: [RippleInsertSpec], trackIndex: Int, atFrame: Int) -> [String] {
         guard timeline.tracks.indices.contains(trackIndex), !specs.isEmpty else { return [] }
-        if let reason = multicamManualRippleViolation(shiftingTrackIds: rippleInsertShiftingTrackIds(trackIndex: trackIndex), atFrame: atFrame) {
+        if let reason = rippleInsertRefusalReason(trackIndex: trackIndex, atFrame: atFrame) {
             refuseRipple(reason: reason)
             return []
         }
         var created: [String] = []
         withTimelineSwap(actionName: specs.count == 1 ? "Ripple Insert Clip (Agent)" : "Ripple Insert Clips (Agent)") {
             let totalPush = specs.reduce(0) { $0 + $1.durationFrames }
-
-            // Pin the linked-audio destination before pushing so it ripples too; otherwise the
-            // auto-created audio partner would land on an un-pushed track and overlap.
-            let targetIsVideo = timeline.tracks[trackIndex].type == .video
-            let needsLinkedAudio = targetIsVideo && specs.contains {
+            let needsLinkedAudio = timeline.tracks[trackIndex].type == .video && specs.contains {
                 $0.asset.hasAudio && ($0.asset.type == .video || $0.asset.type == .sequence)
             }
-            let linkedAudioTrackIndex: Int? = needsLinkedAudio
-                ? (timeline.tracks.firstIndex { $0.type == .audio } ?? insertTrack(at: timeline.tracks.count, type: .audio))
-                : nil
-
-            // Tracks the gap opens on. Splitting below doesn't add tracks, so these stay valid.
-            let pushTracks = timeline.tracks.indices.filter {
-                $0 == trackIndex || $0 == linkedAudioTrackIndex || timeline.tracks[$0].syncLocked
-            }
-
-            // Insert-edit: split any clip straddling atFrame on each pushed track so its right
-            // half rides the ripple instead of being overlapped. splitClip also splits linked
-            // partners and regroups them, so a clip already cut via its partner is no longer a
-            // straddler when its own track comes up.
-            for ti in pushTracks {
-                if let straddler = timeline.tracks[ti].clips.first(where: { $0.startFrame < atFrame && atFrame < $0.endFrame }) {
-                    _ = splitClip(clipId: straddler.id, atFrame: atFrame)
-                }
-            }
-
-            for ti in pushTracks {
-                applyShifts(RippleEngine.computeRipplePush(
-                    clips: timeline.tracks[ti].clips, insertFrame: atFrame, pushAmount: totalPush
-                ))
-            }
+            let linkedAudioTrackIndex = openInsertGap(
+                trackIndex: trackIndex, atFrame: atFrame, totalPush: totalPush,
+                insertEdit: true, needsLinkedAudio: needsLinkedAudio
+            )
 
             var cursor = atFrame
             for spec in specs {
@@ -483,6 +469,45 @@ extension EditorViewModel {
             }
         }
         return created
+    }
+
+    /// Opens an insert gap of `totalPush` frames at `atFrame` on the target track, every
+    /// sync-locked track, and — for insert edits — the pinned linked-audio track.
+    /// Returns the pinned linked-audio track index (insert edits only).
+    @discardableResult
+    private func openInsertGap(
+        trackIndex: Int, atFrame: Int, totalPush: Int,
+        insertEdit: Bool, needsLinkedAudio: Bool
+    ) -> Int? {
+        // Pin the linked-audio destination before pushing so it ripples too; otherwise the
+        // auto-created audio partner would land on an un-pushed track and overlap.
+        let linkedAudioTrackIndex: Int? = insertEdit && needsLinkedAudio
+            ? (timeline.tracks.firstIndex { $0.type == .audio } ?? insertTrack(at: timeline.tracks.count, type: .audio))
+            : nil
+
+        // Tracks the gap opens on. Splitting below doesn't add tracks, so these stay valid.
+        let pushTracks = timeline.tracks.indices.filter {
+            $0 == trackIndex || $0 == linkedAudioTrackIndex || timeline.tracks[$0].syncLocked
+        }
+
+        if insertEdit {
+            // Insert-edit: split any clip straddling atFrame on each pushed track so its right
+            // half rides the ripple instead of being overlapped. splitClip also splits linked
+            // partners and regroups them, so a clip already cut via its partner is no longer a
+            // straddler when its own track comes up.
+            for ti in pushTracks {
+                if let straddler = timeline.tracks[ti].clips.first(where: { $0.startFrame < atFrame && atFrame < $0.endFrame }) {
+                    _ = splitClip(clipId: straddler.id, atFrame: atFrame)
+                }
+            }
+        }
+
+        for ti in pushTracks {
+            applyShifts(RippleEngine.computeRipplePush(
+                clips: timeline.tracks[ti].clips, insertFrame: atFrame, pushAmount: totalPush
+            ))
+        }
+        return linkedAudioTrackIndex
     }
 
     // MARK: - Internal

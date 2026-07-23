@@ -19,6 +19,7 @@ struct AssetThumbnailView: View {
             .overlay(alignment: .topLeading) { thumbnailBadges }
             .overlay(alignment: .topTrailing) { hoverActions }
             .overlay(alignment: .bottomTrailing) { durationOverlay }
+            .overlay(alignment: .bottom) { markedRangeStrip }
             .overlay(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
                     .strokeBorder(borderColor, lineWidth: borderWidth)
@@ -196,6 +197,24 @@ struct AssetThumbnailView: View {
     private var durationOverlay: some View {
         if showsDurationBadge {
             durationBadge
+        }
+    }
+
+    /// Marked in/out range shown as a thin accent strip along the thumbnail's bottom edge.
+    @ViewBuilder
+    private var markedRangeStrip: some View {
+        if let segment = asset.markedSegment {
+            GeometryReader { geo in
+                let lowerX = geo.size.width * CGFloat(segment.lowerBound / asset.duration)
+                let upperX = geo.size.width * CGFloat(segment.upperBound / asset.duration)
+                Capsule()
+                    .fill(AppTheme.Accent.primary)
+                    .frame(width: max(AppTheme.BorderWidth.medium, upperX - lowerX))
+                    .offset(x: lowerX)
+            }
+            .frame(height: AppTheme.BorderWidth.medium)
+            .padding(.horizontal, AppTheme.Spacing.xs)
+            .padding(.bottom, AppTheme.Spacing.xxs)
         }
     }
 

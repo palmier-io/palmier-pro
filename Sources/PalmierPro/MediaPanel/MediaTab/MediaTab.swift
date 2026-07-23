@@ -444,7 +444,7 @@ struct MediaTab: View {
     // MARK: - Selection / state derivations
 
     var selectedMediaAssetsInOrder: [MediaAsset] {
-        editor.mediaAssets.filter { editor.selectedMediaAssetIds.contains($0.id) }
+        editor.selectedMediaAssetsInOrder
     }
 
     private var showsEmptyState: Bool {

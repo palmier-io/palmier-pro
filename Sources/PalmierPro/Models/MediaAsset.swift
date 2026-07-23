@@ -29,7 +29,17 @@ final class MediaAsset: Identifiable {
     var pendingDownloadURL: URL?
     var cachedRemoteURL: String?
     var cachedRemoteURLExpiresAt: Date?
+    var sourceMarks: SourceMarks?
     private var thumbnailMaxPixelSize = 0
+
+    /// Clamped, ordered marked range for edits and UI; nil when unset, degenerate, or a still.
+    var markedSegment: ClosedRange<Double>? {
+        guard let marks = sourceMarks, type != .image, duration > 0 else { return nil }
+        let lower = min(max(0, marks.inSeconds ?? 0), duration)
+        let upper = min(max(0, marks.outSeconds ?? duration), duration)
+        guard upper > lower else { return nil }
+        return lower...upper
+    }
 
     /// Returns the cached URL if it's set AND not expired; else nil.
     var freshRemoteURL: String? {
@@ -126,6 +136,7 @@ final class MediaAsset: Identifiable {
         self.cachedRemoteURL = entry.cachedRemoteURL
         self.cachedRemoteURLExpiresAt = entry.cachedRemoteURLExpiresAt
         self.importInput = entry.importInput
+        self.sourceMarks = entry.sourceMarks
         let restoredStatus = GenerationStatus(serialized: entry.generationStatus)
         self.generationStatus = restoredStatus == .preparing && !canResumeGeneration ? .none : restoredStatus
     }
@@ -149,6 +160,7 @@ final class MediaAsset: Identifiable {
             cachedRemoteURLExpiresAt: fresh == nil ? nil : cachedRemoteURLExpiresAt,
             generationStatus: generationStatus.manifestValue,
             importInput: importInput,
+            sourceMarks: sourceMarks,
         )
     }
 
