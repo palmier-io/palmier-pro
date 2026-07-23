@@ -439,7 +439,7 @@ extension ToolExecutor {
             supplied = [:]
         }
 
-        var resolved = UpscaleSettings()
+        var resolved = model.defaultSettings
         for (id, rawValue) in supplied {
             if let setting = model.selectSettings.first(where: { $0.id == id }) {
                 let options = model.availableOptions(for: setting, source: source)
