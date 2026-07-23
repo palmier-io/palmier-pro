@@ -298,7 +298,26 @@ extension ToolExecutor {
                 guard let trackIdx = editor.timeline.tracks.firstIndex(where: { $0.id == trackId }) else {
                     throw ToolError("entries[\(i)]: destination track no longer exists")
                 }
-                editor.clearRegion(trackIndex: trackIdx, start: spec.startFrame, end: spec.startFrame + spec.durationFrames, prune: false)
+
+                // Collect linked partner track IDs before clearing. clearRegion calls splitClip
+                // which splits linked partners on other tracks, but then removeClips only removes
+                // the target-track fragment — leaving a stranded audio fragment that causes
+                // double playback and pushes the new audio onto a spurious extra track.
+                let rangeEnd = spec.startFrame + spec.durationFrames
+                let partnerTrackIds: Set<String> = editor.timeline.tracks[trackIdx].type == .video
+                    ? Set(editor.timeline.tracks[trackIdx].clips
+                        .filter { $0.linkGroupId != nil && $0.startFrame < rangeEnd && $0.endFrame > spec.startFrame }
+                        .flatMap { editor.linkedPartnerIds(of: $0.id) }
+                        .compactMap { pid in editor.findClip(id: pid).map { editor.timeline.tracks[$0.trackIndex].id } })
+                    : []
+
+                editor.clearRegion(trackIndex: trackIdx, start: spec.startFrame, end: rangeEnd, prune: false)
+                for tid in partnerTrackIds {
+                    if let idx = editor.timeline.tracks.firstIndex(where: { $0.id == tid }) {
+                        editor.clearRegion(trackIndex: idx, start: spec.startFrame, end: rangeEnd, prune: false)
+                    }
+                }
+
                 let ids = editor.placeClip(
                     asset: spec.asset, trackIndex: trackIdx,
                     startFrame: spec.startFrame, durationFrames: spec.durationFrames,
