@@ -400,6 +400,7 @@
 "Duplicate Timeline (Agent)" = "Duplicate Timeline (Agent)";
 "duration" = "duration";
 "Duration" = "Duration";
+"Duration (%d-%d seconds)" = "Duration (%d-%d seconds)";
 "Edit" = "Edit";
 "Edit doesn't support audio" = "Edit doesn't support audio";
 "Edit doesn't support Lottie" = "Edit doesn't support Lottie";

@@ -134,6 +134,7 @@
 "Drop files here or import from disk" = "将文件拖到此处，或从磁盘导入";
 "Duplicate" = "复制副本";
 "Duration" = "时长";
+"Duration (%d-%d seconds)" = "时长（%d-%d 秒）";
 "Edit" = "编辑";
 "Edit…" = "编辑…";
 "Edit… (Paid)" = "编辑…（付费）";

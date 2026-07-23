@@ -230,7 +230,13 @@ extension GenerationView {
                             dragValueAdjustment: { $0.rounded() },
                             onChanged: { selectedAudioDuration = Int($0.rounded()) }
                         ) { selectedAudioDuration = Int($0.rounded()) }
-                        .help("Duration (\(range.minimum)-\(range.maximum) seconds)")
+                        .help(
+                            L10n.format(
+                                "Duration (%d-%d seconds)",
+                                range.minimum,
+                                range.maximum
+                            )
+                        )
                     }
                 }
             }
