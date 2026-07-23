@@ -439,7 +439,7 @@ extension ToolExecutor {
             supplied = [:]
         }
 
-        var resolved = model.defaultSettings
+        var resolved = model.normalizedSettings(model.defaultSettings, source: source)
         for (id, rawValue) in supplied {
             if let setting = model.selectSettings.first(where: { $0.id == id }) {
                 let options = model.availableOptions(for: setting, source: source)
