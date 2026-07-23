@@ -6,14 +6,16 @@ extension EditorViewModel {
 
     // MARK: - Add / move
 
-    func addClips(assets: [MediaAsset], trackIndex: Int, startFrame: Int, linkedAudioTrackIndex: Int? = nil, segments: [String: ClosedRange<Double>] = [:]) {
-        guard timeline.tracks.indices.contains(trackIndex) else { return }
+    @discardableResult
+    func addClips(assets: [MediaAsset], trackIndex: Int, startFrame: Int, linkedAudioTrackIndex: Int? = nil, segments: [String: ClosedRange<Double>] = [:]) -> [String] {
+        guard timeline.tracks.indices.contains(trackIndex) else { return [] }
         // Pin by id: clearRegion's pruneEmptyTracks can shift indices.
         let visualTrackId = timeline.tracks[trackIndex].id
         let audioTrackId: String? = linkedAudioTrackIndex.flatMap {
             timeline.tracks.indices.contains($0) ? timeline.tracks[$0].id : nil
         }
 
+        var created: [String] = []
         withTimelineSwap(actionName: "Add Clips") {
             let totalDur = assets.reduce(0) { $0 + clipDurationFrames(for: $1, segment: segments[$1.id]) }
             clearRegion(trackIndex: trackIndex, start: startFrame, end: startFrame + totalDur, prune: false)
@@ -30,13 +32,14 @@ extension EditorViewModel {
                 timeline.tracks.firstIndex(where: { $0.id == id })
             }
 
-            createClips(
+            created = createClips(
                 from: assets, trackIndex: resolvedTrackIndex, startFrame: startFrame,
                 linkedAudioTrackIndex: resolvedAudioIndex, segments: segments
             )
             sortClips(trackIndex: resolvedTrackIndex)
             pruneEmptyTracks()
         }
+        return created
     }
 
     /// Moved clips share a single delta from the drag, so they don't collide with each other.

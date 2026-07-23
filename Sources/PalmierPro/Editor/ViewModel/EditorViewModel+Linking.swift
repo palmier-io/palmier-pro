@@ -410,32 +410,37 @@ extension EditorViewModel {
     }
 
     /// Shared placement for media dropped on the timeline (panel assets and Finder files).
+    /// Returns the created clip ids.
+    @discardableResult
     func placeDroppedAssets(
         _ assets: [MediaAsset],
         cursor: TrackDropTarget,
         atFrame: Int,
         segments: [String: ClosedRange<Double>] = [:],
+        splitStraddlers: Bool = false,
         ripple: Bool
-    ) {
+    ) -> [String] {
         undo.perform("Add Clips") {
             let plan = resolveDropPlan(cursor: cursor, assets: assets, atFrame: atFrame, segments: segments)
             let (visualIdx, audioIdx) = materialize(plan: plan)
 
-            @MainActor func insert(_ assets: [MediaAsset], trackIndex: Int, linkedAudio: Int?) {
+            @MainActor func insert(_ assets: [MediaAsset], trackIndex: Int, linkedAudio: Int?) -> [String] {
                 if ripple {
-                    rippleInsertClips(assets: assets, trackIndex: trackIndex, atFrame: atFrame, segments: segments)
+                    return rippleInsertClips(assets: assets, trackIndex: trackIndex, atFrame: atFrame, segments: segments, splitStraddlers: splitStraddlers)
                 } else {
-                    addClips(assets: assets, trackIndex: trackIndex, startFrame: atFrame, linkedAudioTrackIndex: linkedAudio, segments: segments)
+                    return addClips(assets: assets, trackIndex: trackIndex, startFrame: atFrame, linkedAudioTrackIndex: linkedAudio, segments: segments)
                 }
             }
+            var created: [String] = []
             let visualAssets = plan.visualAssets
             if !visualAssets.isEmpty, let vIdx = visualIdx {
-                insert(visualAssets, trackIndex: vIdx, linkedAudio: audioIdx)
+                created += insert(visualAssets, trackIndex: vIdx, linkedAudio: audioIdx)
             }
             let audioOnlyAssets = plan.audioOnlyAssets
             if !audioOnlyAssets.isEmpty, let aIdx = audioIdx {
-                insert(audioOnlyAssets, trackIndex: aIdx, linkedAudio: nil)
+                created += insert(audioOnlyAssets, trackIndex: aIdx, linkedAudio: nil)
             }
+            return created
         }
     }
 

@@ -117,6 +117,9 @@ struct PreviewContainerView: View {
 
             Spacer()
 
+            if !isTimeline, activeMediaAsset?.sourceMarks != nil {
+                clearMarksButton
+            }
             if isTimeline || editor.activePreviewTab.clipType == .video {
                 captureFrameButton
             }
@@ -154,6 +157,18 @@ struct PreviewContainerView: View {
         }
         .padding(.horizontal, AppTheme.Spacing.lg)
         .frame(height: 36)
+    }
+
+    private var clearMarksButton: some View {
+        Button(action: editor.clearSourceMarks) {
+            Image(systemName: "xmark.square")
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .frame(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.mdLg)
+                .hoverHighlight()
+                .help("Clear Source In/Out (⌥X)")
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Capture frame
@@ -644,6 +659,17 @@ struct PreviewContainerView: View {
                 Capsule()
                     .fill(Color.white.opacity(AppTheme.Opacity.soft))
                     .frame(height: barHeight)
+                if !isTimeline, let asset = activeMediaAsset, let segment = asset.markedSegment {
+                    PreviewScrubMarkedRange(
+                        segment: segment,
+                        duration: asset.duration,
+                        geometry: .init(
+                            size: geo.size,
+                            barHeight: barHeight,
+                            thumbSize: thumbSize
+                        )
+                    )
+                }
                 PreviewScrubProgress(
                     isTimeline: isTimeline,
                     durationFrames: duration,
@@ -805,6 +831,30 @@ private struct PreviewTimecodeText: View {
         }
         .monospacedDigit()
         .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
+    }
+}
+
+private struct PreviewScrubMarkedRange: View {
+    let segment: ClosedRange<Double>
+    let duration: Double
+    let geometry: PreviewScrubProgress.Geometry
+
+    var body: some View {
+        let g = geometry
+        let lowerX = g.size.width * CGFloat(segment.lowerBound / duration)
+        let upperX = g.size.width * CGFloat(segment.upperBound / duration)
+        ZStack(alignment: .leading) {
+            Capsule()
+                .fill(AppTheme.Accent.primary.opacity(AppTheme.Opacity.medium))
+                .frame(width: max(0, upperX - lowerX), height: g.barHeight)
+                .offset(x: lowerX)
+            ForEach(Array([lowerX, upperX].enumerated()), id: \.offset) { _, x in
+                RoundedRectangle(cornerRadius: AppTheme.Radius.xs)
+                    .fill(AppTheme.Accent.primary)
+                    .frame(width: AppTheme.BorderWidth.medium, height: g.thumbSize)
+                    .position(x: x, y: g.size.height / 2)
+            }
+        }
     }
 }
 

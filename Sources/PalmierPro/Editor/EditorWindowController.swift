@@ -138,14 +138,22 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
         case 34: // I key
             if rangeMarkShortcut {
-                editorViewModel.markTimelineRangeStart()
+                if case .mediaAsset = editorViewModel.activePreviewTab {
+                    editorViewModel.markSourceIn()
+                } else {
+                    editorViewModel.markTimelineRangeStart()
+                }
                 return true
             }
             return false
 
         case 31: // O key
             if rangeMarkShortcut {
-                editorViewModel.markTimelineRangeEnd()
+                if case .mediaAsset = editorViewModel.activePreviewTab {
+                    editorViewModel.markSourceOut()
+                } else {
+                    editorViewModel.markTimelineRangeEnd()
+                }
                 return true
             }
             return false
@@ -257,6 +265,10 @@ extension EditorWindowController: EditorActions {
     @objc func splitAtPlayhead(_ sender: Any?) { editorViewModel.splitAtPlayhead() }
     @objc func trimStartToPlayhead(_ sender: Any?) { editorViewModel.trimStartToPlayhead() }
     @objc func trimEndToPlayhead(_ sender: Any?) { editorViewModel.trimEndToPlayhead() }
+    @objc func appendSourceToEnd(_ sender: Any?) { editorViewModel.appendSourceToEnd() }
+    @objc func insertSourceAtPlayhead(_ sender: Any?) { editorViewModel.insertSourceAtPlayhead() }
+    @objc func overwriteSourceAtPlayhead(_ sender: Any?) { editorViewModel.overwriteSourceAtPlayhead() }
+    @objc func clearSourceMarks(_ sender: Any?) { editorViewModel.clearSourceMarks() }
     @objc func selectForwardOnTrack(_ sender: Any?) { editorViewModel.selectForwardFromCurrentSelection(scope: .track) }
     @objc func selectForwardOnAllTracks(_ sender: Any?) { editorViewModel.selectForwardFromCurrentSelection(scope: .allTracks) }
     @objc func deleteSelectedClips(_ sender: Any?) { editorViewModel.deleteSelectedClips() }
@@ -341,6 +353,10 @@ extension EditorWindowController: EditorActions {
         case #selector(setLayoutVertical(_:)):
             menuItem.state = editorViewModel.layoutPreset == .vertical ? .on : .off
             return true
+        case #selector(appendSourceToEnd(_:)), #selector(insertSourceAtPlayhead(_:)), #selector(overwriteSourceAtPlayhead(_:)):
+            return !editorViewModel.threePointSourceAssets.isEmpty
+        case #selector(clearSourceMarks(_:)):
+            return editorViewModel.canClearSourceMarks
         case #selector(copy(_:)), #selector(cut(_:)):
             return canHandleClipboardShortcut() && !editorViewModel.selectedClipIds.isEmpty
         case #selector(selectForwardOnTrack(_:)), #selector(selectForwardOnAllTracks(_:)):
