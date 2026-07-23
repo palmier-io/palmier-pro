@@ -1191,3 +1191,21 @@
 "AI Transitions: Select a gap betweeen two clips and generate a transition using AI." = "AI 转场：选择两个片段之间的间隙，并使用 AI 生成转场。";
 "Slip edit: press T to slip edit a clip (Shifting the underlying content without changing the duration)." = "滑移编辑：按 T 键滑移编辑片段（在不改变时长的情况下移动底层内容）。";
 "Audio Synchronization: More accurate audio synchronization between clips." = "音频同步：提高片段之间音频同步的准确性。";
+/* v0.6.14 */
+"The timeline changed while captions were being prepared. Generate captions again." = "时间线在准备字幕期间发生了变化。请重新生成字幕。";
+"Older interchange format, best when Premiere Pro is the destination. Supports basic edits and keyframes, but not text, color, effects, edge softness, or edge rounding." = "较旧的交换格式，最适合导入 Premiere Pro。支持基本编辑和关键帧，但不支持文本、调色、特效、边缘柔化或边角圆化。";
+"Newer timeline format with better support for DaVinci Resolve and Final Cut Pro. Supports basic edits, keyframes, and text, but not color, effects, edge softness, or edge rounding." = "较新的时间线格式，更好地支持 DaVinci Resolve 和 Final Cut Pro。支持基本编辑、关键帧和文本，但不支持调色、特效、边缘柔化或边角圆化。";
+"Height" = "高度";
+"Edge Softness" = "边缘柔化";
+"Edge Rounding" = "边角圆化";
+"Reset Image Adjustment" = "重置图像调整";
+"Reset Edge Softness" = "重置边缘柔化";
+"Change Edge Softness" = "更改边缘柔化";
+"Reset Edge Rounding" = "重置边角圆化";
+"Change Edge Rounding" = "更改边角圆化";
+"Playback Speed" = "播放速度";
+"Agent can set fade in and fade out for audio and video clips" = "Agent 可为音频和视频片段设置淡入和淡出";
+"Preview playback speed control: Watch your timeline in 0.5x, 2x, 4x, or 10x speed, without modifying the timeline" = "预览播放速度控制：以 0.5 倍、2 倍、4 倍或 10 倍速度查看时间线，而不修改时间线";
+"Text rotation: You can now rotate text clips" = "文本旋转：现在可以旋转文本片段";
+"Better rendering for large timelines" = "改善大型时间线的渲染";
+"Better project management: In home page, you can search, select and delete multiple projects" = "改进项目管理：首页现在支持搜索、选择和批量删除项目";
