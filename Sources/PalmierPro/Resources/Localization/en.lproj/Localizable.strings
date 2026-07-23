@@ -1171,3 +1171,21 @@
 "AI Transitions: Select a gap betweeen two clips and generate a transition using AI." = "AI Transitions: Select a gap betweeen two clips and generate a transition using AI.";
 "Slip edit: press T to slip edit a clip (Shifting the underlying content without changing the duration)." = "Slip edit: press T to slip edit a clip (Shifting the underlying content without changing the duration).";
 "Audio Synchronization: More accurate audio synchronization between clips." = "Audio Synchronization: More accurate audio synchronization between clips.";
+/* v0.6.14 */
+"The timeline changed while captions were being prepared. Generate captions again." = "The timeline changed while captions were being prepared. Generate captions again.";
+"Older interchange format, best when Premiere Pro is the destination. Supports basic edits and keyframes, but not text, color, effects, edge softness, or edge rounding." = "Older interchange format, best when Premiere Pro is the destination. Supports basic edits and keyframes, but not text, color, effects, edge softness, or edge rounding.";
+"Newer timeline format with better support for DaVinci Resolve and Final Cut Pro. Supports basic edits, keyframes, and text, but not color, effects, edge softness, or edge rounding." = "Newer timeline format with better support for DaVinci Resolve and Final Cut Pro. Supports basic edits, keyframes, and text, but not color, effects, edge softness, or edge rounding.";
+"Height" = "Height";
+"Edge Softness" = "Edge Softness";
+"Edge Rounding" = "Edge Rounding";
+"Reset Image Adjustment" = "Reset Image Adjustment";
+"Reset Edge Softness" = "Reset Edge Softness";
+"Change Edge Softness" = "Change Edge Softness";
+"Reset Edge Rounding" = "Reset Edge Rounding";
+"Change Edge Rounding" = "Change Edge Rounding";
+"Playback Speed" = "Playback Speed";
+"Agent can set fade in and fade out for audio and video clips" = "Agent can set fade in and fade out for audio and video clips";
+"Preview playback speed control: Watch your timeline in 0.5x, 2x, 4x, or 10x speed, without modifying the timeline" = "Preview playback speed control: Watch your timeline in 0.5x, 2x, 4x, or 10x speed, without modifying the timeline";
+"Text rotation: You can now rotate text clips" = "Text rotation: You can now rotate text clips";
+"Better rendering for large timelines" = "Better rendering for large timelines";
+"Better project management: In home page, you can search, select and delete multiple projects" = "Better project management: In home page, you can search, select and delete multiple projects";
