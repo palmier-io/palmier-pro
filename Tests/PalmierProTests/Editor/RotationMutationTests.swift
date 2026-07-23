@@ -21,7 +21,8 @@ struct RotationMutationTests {
 
         #expect(editor.clipFor(id: "first")?.transform.rotation == 90)
         #expect(editor.clipFor(id: "second")?.transform.rotation == 90)
-        #expect(editor.undo.undoLatest() == "Change Rotation")
+        #expect(undoManager.undoActionName == "Change Rotation")
+        #expect(editor.undo.undoLatest())
         #expect(editor.clipFor(id: "first")?.transform.rotation == 0)
         #expect(editor.clipFor(id: "second")?.transform.rotation == 0)
         #expect(!undoManager.canUndo)
