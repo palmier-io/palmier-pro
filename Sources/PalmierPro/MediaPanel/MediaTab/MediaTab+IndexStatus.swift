@@ -18,15 +18,22 @@ private struct MediaSearchIndexStatus: View {
             statusButton(icon: "sparkle.magnifyingglass", label: "Smart search") {
                 model.download()
             }
-            .help("Downloads a \(modelSizeLabel) on-device model so you can search media visually.")
+            .help(L10n.format(
+                "Downloads a %@ on-device model so you can search media visually.",
+                modelSizeLabel
+            ))
         case .downloading(let fraction):
-            statusIndicator("Downloading \(Int(fraction * 100))%",
+            statusIndicator(L10n.format("Downloading %d%%", Int(fraction * 100)),
                             help: "Downloading the on-device model that powers visual search.",
                             progress: fraction)
         case .preparing:
-            statusIndicator("Preparing…", help: "Getting the search model ready.")
+            statusIndicator(L10n.string("Preparing…"), help: "Getting the search model ready.")
         case .ready where search.indexingActive:
-            statusIndicator("Indexing \(min(search.batchCompleted + 1, search.batchTotal))/\(search.batchTotal)",
+            statusIndicator(L10n.format(
+                                "Indexing %d/%d",
+                                min(search.batchCompleted + 1, search.batchTotal),
+                                search.batchTotal
+                            ),
                             help: "Analyzing media so you can search it.",
                             progress: search.indexingProgress)
         case .failed where model.enabled:
@@ -50,7 +57,7 @@ private struct MediaSearchIndexStatus: View {
         Button(action: action) {
             HStack(spacing: AppTheme.Spacing.xxs) {
                 Image(systemName: icon)
-                Text(label)
+                L10n.text(label)
             }
             .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
             .foregroundStyle(AppTheme.Text.secondaryColor)
@@ -58,18 +65,22 @@ private struct MediaSearchIndexStatus: View {
         .buttonStyle(.plain)
     }
 
-    private func statusIndicator(_ label: String, help: String, progress: Double? = nil) -> some View {
+    private func statusIndicator(
+        _ formattedLabel: String,
+        help: String,
+        progress: Double? = nil
+    ) -> some View {
         HStack(spacing: AppTheme.Spacing.xs) {
             if let progress {
                 progressRing(progress)
             } else {
                 ProgressView().controlSize(.mini)
             }
-            Text(label)
+            Text(verbatim: formattedLabel)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
         }
-        .help(help)
+        .help(L10n.string(help))
     }
 
     private func progressRing(_ value: Double) -> some View {

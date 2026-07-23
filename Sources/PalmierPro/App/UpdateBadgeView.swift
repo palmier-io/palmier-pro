@@ -11,10 +11,10 @@ struct UpdateSidebarCard: View {
             } label: {
                 HStack(spacing: AppTheme.Spacing.sm) {
                     VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
-                        Text("Click to install update")
+                        L10n.text("Click to install update")
                             .font(.system(size: AppTheme.FontSize.smMd, weight: .medium))
                             .foregroundStyle(AppTheme.Text.primaryColor)
-                        Text(updater.updateVersion.map { "Version \($0)" } ?? "New version available")
+                        Text(verbatim: updateSubtitle)
                             .font(.system(size: AppTheme.FontSize.xs))
                             .foregroundStyle(AppTheme.Text.tertiaryColor)
                     }
@@ -40,6 +40,11 @@ struct UpdateSidebarCard: View {
             .transition(.opacity.combined(with: .move(edge: .bottom)))
         }
     }
+
+    private var updateSubtitle: String {
+        updater.updateVersion.map { L10n.format("Version %@", $0) }
+            ?? L10n.string("New version available")
+    }
 }
 
 struct UpdateProjectBadge: View {
@@ -50,16 +55,20 @@ struct UpdateProjectBadge: View {
             Button {
                 updater.checkForUpdates(nil)
             } label: {
-                Label("Update", systemImage: "arrow.down.circle.fill")
-                    .font(.system(size: AppTheme.FontSize.sm, weight: .semibold))
-                    .foregroundStyle(AppTheme.Update.accent)
-                    .lineLimit(1)
-                    .padding(.horizontal, AppTheme.Spacing.smMd)
-                    .frame(height: AppTheme.IconSize.lg)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(AppTheme.Update.accent.opacity(AppTheme.Opacity.muted))
-                    )
+                Label {
+                    L10n.text("Update")
+                } icon: {
+                    Image(systemName: "arrow.down.circle.fill")
+                }
+                .font(.system(size: AppTheme.FontSize.sm, weight: .semibold))
+                .foregroundStyle(AppTheme.Update.accent)
+                .lineLimit(1)
+                .padding(.horizontal, AppTheme.Spacing.smMd)
+                .frame(height: AppTheme.IconSize.lg)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(AppTheme.Update.accent.opacity(AppTheme.Opacity.muted))
+                )
             }
             .buttonStyle(.plain)
             .help(helpText)
@@ -70,8 +79,8 @@ struct UpdateProjectBadge: View {
 
     private var helpText: String {
         if let version = updater.updateVersion {
-            return "Install update v\(version)"
+            return L10n.format("Install update v%@", version)
         }
-        return "Install update"
+        return L10n.string("Install update")
     }
 }

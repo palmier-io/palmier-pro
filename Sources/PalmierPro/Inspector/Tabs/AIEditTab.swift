@@ -110,9 +110,9 @@ struct AIEditTab: View {
     private var rerunDescription: String {
         guard let gen = asset.generationInput,
               let cost = CostEstimator.cost(for: gen) else {
-            return "Regenerate with the same parameters"
+            return L10n.string("Regenerate with the same parameters")
         }
-        return "Regenerate · \(CostEstimator.format(cost))"
+        return L10n.format("Regenerate · %@", CostEstimator.format(cost))
     }
 
     // MARK: - Replace toggle
@@ -157,7 +157,7 @@ struct AIEditTab: View {
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(isOn.wrappedValue ? AppTheme.Accent.primary : AppTheme.Text.tertiaryColor)
                 .frame(width: AppTheme.Spacing.lgXl, alignment: .center)
-            Text(label)
+            L10n.text(label)
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
             Spacer(minLength: AppTheme.Spacing.xs)
@@ -165,10 +165,10 @@ struct AIEditTab: View {
                 .toggleStyle(.switch)
                 .controlSize(.mini)
                 .labelsHidden()
-                .accessibilityLabel(label)
-                .accessibilityHint(help)
+                .accessibilityLabel(L10n.string(label))
+                .accessibilityHint(L10n.string(help))
         }
-        .help(help)
+        .help(L10n.string(help))
     }
 
     private var timelineClip: Clip? {
@@ -207,7 +207,7 @@ struct AIEditTab: View {
         let paidBlocked = (action == .upscale || action == .edit) && !account.isPaid
         let isEnabled = availability.isAvailable && !paidBlocked && aiDisabledReason == nil
         let disabledReason = aiDisabledReason
-            ?? (paidBlocked ? "Requires a paid plan" : availability.reason)
+            ?? (paidBlocked ? L10n.string("Requires a paid plan") : availability.reason)
 
         descriptiveActionRow(
             icon: icon,
@@ -240,7 +240,7 @@ struct AIEditTab: View {
         let paidBlocked = model?.paidOnly == true && !account.isPaid
         let isEnabled = availability.isAvailable && !paidBlocked && aiDisabledReason == nil
         let disabledReason = aiDisabledReason
-            ?? (paidBlocked ? "Requires a paid plan" : availability.reason)
+            ?? (paidBlocked ? L10n.string("Requires a paid plan") : availability.reason)
 
         descriptiveActionRow(
             icon: kind.iconName,
@@ -272,10 +272,10 @@ struct AIEditTab: View {
                 .foregroundStyle(isEnabled ? AppTheme.Text.secondaryColor : AppTheme.Text.mutedColor)
                 .frame(width: AppTheme.Spacing.lgXl, alignment: .center)
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
-                Text(title)
+                L10n.text(title)
                     .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                     .foregroundStyle(isEnabled ? AppTheme.Text.primaryColor : AppTheme.Text.mutedColor)
-                Text(disabledReason ?? description)
+                L10n.text(disabledReason ?? description)
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(disabledReason != nil ? AppTheme.Text.secondaryColor : AppTheme.Text.tertiaryColor)
                     .fixedSize(horizontal: false, vertical: true)
@@ -301,7 +301,7 @@ struct AIEditTab: View {
     private func actionTrigger(action: EditAction, title: String, isEnabled: Bool) -> some View {
         switch action {
         case .upscale:
-            Menu(title) {
+            Menu {
                 ForEach(UpscaleModelConfig.models(for: asset.type)) { model in
                     Button {
                         runUpscale(model)
@@ -309,6 +309,8 @@ struct AIEditTab: View {
                         Text(upscaleLabel(for: model))
                     }
                 }
+            } label: {
+                L10n.text(title)
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
@@ -316,9 +318,11 @@ struct AIEditTab: View {
             .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
             .disabled(!isEnabled)
         case .createVideo:
-            Menu(title) {
+            Menu {
                 Button("Set as first frame") { sendToVideo(asReference: false) }
                 Button("Set as reference") { sendToVideo(asReference: true) }
+            } label: {
+                L10n.text(title)
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
@@ -326,8 +330,10 @@ struct AIEditTab: View {
             .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
             .disabled(!isEnabled)
         case .edit, .generateMusic, .generateSFX, .rerun:
-            Button(title) {
+            Button {
                 present(action)
+            } label: {
+                L10n.text(title)
             }
             .buttonStyle(.capsule(.secondary))
             .controlSize(.small)
@@ -424,8 +430,8 @@ struct AIEditTab: View {
     private var shouldReplace: Bool { replaceClipSource && clipId != nil }
 
     private var aiDisabledReason: String? {
-        if account.isMisconfigured { return "AI is unavailable" }
-        if !account.isSignedIn { return "Sign in to use AI" }
+        if account.isMisconfigured { return L10n.string("AI is unavailable") }
+        if !account.isSignedIn { return L10n.string("Sign in to use AI") }
         return nil
     }
 

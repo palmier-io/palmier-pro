@@ -103,6 +103,12 @@ enum CostEstimator {
 
     static func format(_ credits: Int?) -> String {
         guard let credits else { return "—" }
+        if credits <= 0 { return L10n.string("0 credits") }
+        if credits == 1 { return L10n.string("1 credit") }
+        return L10n.format("%d credits", credits)
+    }
+
+    static func agentFormat(_ credits: Int) -> String {
         if credits <= 0 { return "0 credits" }
         if credits == 1 { return "1 credit" }
         return "\(credits) credits"

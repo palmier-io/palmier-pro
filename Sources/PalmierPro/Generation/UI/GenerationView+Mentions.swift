@@ -8,7 +8,7 @@ extension GenerationView {
         return ClipType.allCases.flatMap { type -> [RefTag] in
             let noun = tagNoun(for: type)
             return (0..<refCount(for: type)).map { i in
-                RefTag(label: "\(noun)\(i + 1)", kindLabel: type.rawValue)
+                RefTag(label: "\(noun)\(i + 1)", kindLabel: type.trackLabel)
             }
         }
     }
@@ -27,7 +27,7 @@ extension GenerationView {
         let tags = matchedRefTags
         return VStack(alignment: .leading, spacing: 0) {
             if tags.isEmpty {
-                Text("No matches")
+                L10n.text("No matches")
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Text.mutedColor)
                     .padding(AppTheme.Spacing.md)
@@ -37,7 +37,7 @@ extension GenerationView {
                         Text("@\(tag.label)")
                             .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                             .foregroundStyle(AppTheme.Text.primaryColor)
-                        Text(tag.kindLabel)
+                        L10n.text(tag.kindLabel)
                             .font(.system(size: AppTheme.FontSize.xxs))
                             .foregroundStyle(AppTheme.Text.tertiaryColor)
                         Spacer(minLength: 0)

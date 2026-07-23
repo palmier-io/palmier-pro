@@ -54,7 +54,7 @@ struct FinderTimelineDropTests {
         #expect(e.mediaAssets.count == 1)
         #expect(!e.timeline.tracks[0].clips.isEmpty)
 
-        #expect(e.undo.undoLatest() == "Add Media")
+        #expect(e.undo.undoLatest())
         #expect(e.mediaAssets.isEmpty)
         #expect(e.timeline.tracks.allSatisfy { $0.clips.isEmpty })
         #expect(!um.canUndo)

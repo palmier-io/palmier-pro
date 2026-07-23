@@ -96,6 +96,13 @@ struct GenerationView: View {
     enum FramesRefsMode: String, CaseIterable {
         case firstLast = "First/Last"
         case reference = "Reference"
+
+        var title: String {
+            switch self {
+            case .firstLast: L10n.string("First/Last")
+            case .reference: L10n.string("Reference")
+            }
+        }
     }
 
     struct RefTag: Hashable, Identifiable {
@@ -179,6 +186,8 @@ struct GenerationView: View {
                         .hoverHighlight()
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(L10n.string("Close"))
+                .help(L10n.string("Close"))
             }
             .padding(.horizontal, AppTheme.Spacing.sm)
 
@@ -367,7 +376,7 @@ struct GenerationView: View {
                 .disabled(!isPromptEnabled)
 
             if prompt.isEmpty {
-                Text(promptPlaceholder)
+                Text(verbatim: promptPlaceholder)
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.mutedColor)
                     .padding(.horizontal, AppTheme.Spacing.md)
@@ -377,7 +386,7 @@ struct GenerationView: View {
         }
         .frame(height: promptHeight)
         .opacity(isPromptEnabled ? AppTheme.Opacity.opaque : AppTheme.Opacity.muted)
-        .accessibilityHint(isPromptEnabled ? "" : "This model does not use a prompt")
+        .accessibilityHint(isPromptEnabled ? "" : L10n.string("This model does not use a prompt"))
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measuredPromptHeight = $0 }
     }
 
@@ -402,7 +411,7 @@ struct GenerationView: View {
                 .padding(.vertical, AppTheme.Spacing.xs)
 
             if text.wrappedValue.isEmpty {
-                Text(placeholder)
+                L10n.text(placeholder)
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.mutedColor)
                     .padding(.horizontal, AppTheme.Spacing.md)

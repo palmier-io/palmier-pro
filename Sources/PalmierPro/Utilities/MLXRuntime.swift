@@ -8,7 +8,7 @@ enum MLXRuntime {
 
     struct Unavailable: Error, LocalizedError {
         var errorDescription: String? {
-            "MLX analysis is unavailable in unbundled builds (missing mlx.metallib)"
+            L10n.string("MLX analysis is unavailable in unbundled builds (missing mlx.metallib)")
         }
     }
 

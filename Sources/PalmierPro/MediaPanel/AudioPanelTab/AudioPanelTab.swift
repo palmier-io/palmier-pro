@@ -3,6 +3,13 @@ import SwiftUI
 struct AudioPanelTab: View {
     private enum Tab: String, CaseIterable {
         case speech = "Speech", music = "Music"
+
+        var title: String {
+            switch self {
+            case .speech: L10n.string("Speech")
+            case .music: L10n.string("Music")
+            }
+        }
     }
 
     @State private var tab: Tab = .speech

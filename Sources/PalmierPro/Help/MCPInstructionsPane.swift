@@ -67,7 +67,7 @@ struct MCPInstructionsPane: View {
         ) {
             Button("Dismiss") { claudeInstallError = nil }
         } message: {
-            Text(claudeInstallError ?? "Try again.")
+            Text(verbatim: claudeInstallError ?? L10n.string("Try again."))
         }
     }
 
@@ -166,10 +166,10 @@ struct MCPInstructionsPane: View {
             ExternalAgentLogo(agent: agent, size: AppTheme.IconSize.lgXl)
 
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-                Text(name)
+                Text(verbatim: name)
                     .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.regular))
                     .foregroundStyle(AppTheme.Text.primaryColor)
-                Text(description)
+                L10n.text(description)
                     .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .fixedSize(horizontal: false, vertical: true)
@@ -180,7 +180,7 @@ struct MCPInstructionsPane: View {
     private func externalAction(_ label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: AppTheme.Spacing.xxs) {
-                Text(label)
+                L10n.text(label)
                 Image(systemName: "arrow.up.right")
                     .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.regular))
             }
@@ -199,11 +199,13 @@ struct MCPInstructionsPane: View {
 
     private func openClaudeDesktopBundle() {
         guard let bundleURL = claudeDesktopBundleURL else {
-            claudeInstallError = "The Palmier Pro connector could not be found. Reinstall Palmier Pro, then try again."
+            claudeInstallError = L10n.string(
+                "The Palmier Pro connector could not be found. Reinstall Palmier Pro, then try again."
+            )
             return
         }
         guard let claudeURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.anthropic.claudefordesktop") else {
-            claudeInstallError = "Install Claude Desktop, then try again."
+            claudeInstallError = L10n.string("Install Claude Desktop, then try again.")
             return
         }
 
@@ -214,7 +216,9 @@ struct MCPInstructionsPane: View {
         ) { _, error in
             guard error != nil else { return }
             Task { @MainActor in
-                claudeInstallError = "Claude Desktop could not open the Palmier Pro connector. Update Claude Desktop, then try again."
+                claudeInstallError = L10n.string(
+                    "Claude Desktop could not open the Palmier Pro connector. Update Claude Desktop, then try again."
+                )
             }
         }
     }
@@ -232,7 +236,7 @@ private struct CodeBlockView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: AppTheme.Spacing.smMd) {
-            Text(content)
+            Text(verbatim: content)
                 .font(.system(size: fontSize, weight: AppTheme.FontWeight.regular, design: .monospaced))
                 .foregroundStyle(foreground)
                 .textSelection(.enabled)
@@ -268,7 +272,7 @@ private struct ManualFallback: View {
 
             if expanded {
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-                    Text(intro)
+                    L10n.text(intro)
                         .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                         .fixedSize(horizontal: false, vertical: true)
@@ -300,7 +304,8 @@ private struct CopyButton: View {
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
-        .help(copied ? "Copied" : "Copy")
+        .accessibilityLabel(copied ? L10n.string("Copied") : L10n.string("Copy"))
+        .help(copied ? L10n.string("Copied") : L10n.string("Copy"))
     }
 
     private func copy() {

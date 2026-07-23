@@ -73,7 +73,10 @@ extension EditorViewModel {
         NSSound.beep()
     }
 
-    func multicamMoveViolation(moves: [(clipId: String, toTrack: Int, toFrame: Int)]) -> String? {
+    func multicamMoveViolation(
+        moves: [(clipId: String, toTrack: Int, toFrame: Int)],
+        localized: Bool = false
+    ) -> String? {
         let infos = moves.compactMap { m in clipFor(id: m.clipId).map { ($0, m.toTrack, m.toFrame) } }
         let movedIds = Set(infos.map { $0.0.id })
         let horizontal = infos.contains { $0.0.startFrame != $0.2 }
@@ -82,12 +85,21 @@ extension EditorViewModel {
                 && findClip(id: info.0.id)?.trackIndex != info.1
         }
         guard horizontal || laneChange else { return nil }
-        if laneChange { return "Can't move a multicam camera clip to another track — the group's program track stays fixed." }
+        if laneChange {
+            return L10n.message(
+                "Can't move a multicam camera clip to another track — the group's program track stays fixed.",
+                localized: localized
+            )
+        }
         for gid in Set(infos.compactMap { $0.0.multicamGroupId }) {
             let leftBehind = Set(multicamClips(of: gid).map { $0.clip.id }).subtracting(movedIds)
             if !leftBehind.isEmpty {
                 let name = multicamGroup(id: gid)?.name ?? "Multicam"
-                return "Can't move part of multicam group \"\(name)\" — its clips stay in sync and move together."
+                return L10n.message(
+                    "Can't move part of multicam group “%@” — its clips stay in sync and move together.",
+                    localized: localized,
+                    name
+                )
             }
         }
         return nil
@@ -541,7 +553,7 @@ extension EditorViewModel {
     private func switchOrToast(groupId: String, request: AngleSwitchRequest) {
         do { _ = try switchMulticamAngles(groupId: groupId, requests: [request]) }
         catch let error as ToolError { mediaPanelToast = MediaPanelToast(stringLiteral: error.message) }
-        catch { mediaPanelToast = "Couldn't switch angle." }
+        catch { mediaPanelToast = MediaPanelToast(message: L10n.string("Couldn't switch angle.")) }
     }
 
     func switchMulticamRange(groupId: String, range: Range<Int>, angle: String) {

@@ -9,9 +9,9 @@ enum ExportError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .unsupportedPreset: "Export preset not supported on this system"
-        case .invalidFormat: "Invalid export format"
-        case .xmlEncodingFailed: "Couldn't encode the timeline as XML"
+        case .unsupportedPreset: L10n.string("Export preset not supported on this system")
+        case .invalidFormat: L10n.string("Invalid export format")
+        case .xmlEncodingFailed: L10n.string("Couldn't encode the timeline as XML")
         }
     }
 }

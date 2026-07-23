@@ -41,7 +41,7 @@ struct ScrubbableNumberField: View {
     var body: some View {
         HStack(spacing: AppTheme.Spacing.xs) {
             if let trailingLabel {
-                Text(trailingLabel)
+                Text(verbatim: trailingLabel)
                     .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .fixedSize()
@@ -62,7 +62,7 @@ struct ScrubbableNumberField: View {
                             editFocused = false
                         }
                 } else {
-                    Text(displayText)
+                    Text(verbatim: displayText)
                         .font(.system(size: AppTheme.FontSize.sm, weight: .medium).monospacedDigit())
                         .foregroundStyle(isMixed ? AppTheme.Text.tertiaryColor : ScrubbableTheme.accent)
                         .frame(maxWidth: .infinity, alignment: .trailing)

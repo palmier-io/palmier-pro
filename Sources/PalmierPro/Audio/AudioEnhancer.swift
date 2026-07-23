@@ -12,8 +12,8 @@ enum AudioEnhancer {
 
         var errorDescription: String? {
             switch self {
-            case .noAudioTrack: "Source has no audio track"
-            case .writeFailed: "Could not write enhanced audio"
+            case .noAudioTrack: L10n.string("Source has no audio track")
+            case .writeFailed: L10n.string("Could not write enhanced audio")
             }
         }
     }

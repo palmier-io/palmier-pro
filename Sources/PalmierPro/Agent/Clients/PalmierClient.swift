@@ -71,7 +71,7 @@ enum PalmierClientError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .unauthenticated: "Sign in to use the AI agent."
+        case .unauthenticated: L10n.string("Sign in to use the AI agent.")
         case .insufficientCredits(let m): m
         case .upstream(let m): m
         }

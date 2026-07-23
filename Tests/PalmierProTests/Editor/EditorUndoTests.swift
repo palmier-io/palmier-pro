@@ -40,9 +40,9 @@ struct EditorUndoTests {
         #expect(manager.undoActionName == "Second")
         undo.perform("No-op") {}
         #expect(manager.undoActionName == "Second")
-        #expect(undo.undoLatest() == "Second")
+        #expect(undo.undoLatest())
         #expect(counter.value == 1)
-        #expect(undo.undoLatest() == "First")
+        #expect(undo.undoLatest())
         #expect(counter.value == 0)
         manager.redo()
         #expect(counter.value == 1)
@@ -73,7 +73,7 @@ struct EditorUndoTests {
 
         #expect(manager.groupingLevel == 0)
         #expect(manager.undoActionName == "Outer")
-        #expect(undo.undoLatest() == "Outer")
+        #expect(undo.undoLatest())
         #expect(first.value == 0)
         #expect(second.value == 0)
         #expect(manager.canUndo == false)
@@ -113,6 +113,19 @@ struct EditorUndoTests {
         // leaks into other tests.
         manager.removeAllActions()
         #expect(manager.groupingLevel == 0)
+    }
+
+    @Test func nativeMenuUsesLocalizedNameWithoutAffectingUndoExecution() {
+        let undo = EditorUndo(localizeActionName: { "本地化：\($0)" })
+        let manager = UndoManager()
+        let counter = UndoCounter()
+        undo.attach(manager)
+
+        setCounter(1, actionName: "Trim Clip", counter: counter, undo: undo)
+
+        #expect(manager.undoActionName == "本地化：Trim Clip")
+        #expect(undo.undoLatest())
+        #expect(counter.value == 0)
     }
 
     @Test func throwingScopesRestoreUndoState() {

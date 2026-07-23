@@ -7,6 +7,14 @@ enum ExportDestination: String, CaseIterable, Identifiable {
     case palmierProject = "Palmier Project"
 
     var id: String { rawValue }
+
+    var localizedName: String {
+        switch self {
+        case .video: L10n.string("Video")
+        case .timeline: L10n.string("Timeline")
+        case .palmierProject: L10n.string("Palmier Project")
+        }
+    }
 }
 
 enum TimelineExportFormat: String, CaseIterable, Identifiable {
@@ -38,15 +46,15 @@ enum TimelineExportFormat: String, CaseIterable, Identifiable {
 
     var summary: String {
         switch self {
-        case .xmeml: "Older interchange format, best when Premiere Pro is the destination. Supports basic edits and keyframes, but not text, color, effects, edge softness, or edge rounding."
-        case .fcpxml: "Newer timeline format with better support for DaVinci Resolve and Final Cut Pro. Supports basic edits, keyframes, and text, but not color, effects, edge softness, or edge rounding."
+        case .xmeml: L10n.string("Older interchange format, best when Premiere Pro is the destination. Supports basic edits and keyframes, but not text, color, effects, edge softness, or edge rounding.")
+        case .fcpxml: L10n.string("Newer timeline format with better support for DaVinci Resolve and Final Cut Pro. Supports basic edits, keyframes, and text, but not color, effects, edge softness, or edge rounding.")
         }
     }
 
     var compatibilityLabel: String {
         switch self {
-        case .xmeml: "Premiere Pro and DaVinci Resolve"
-        case .fcpxml: "DaVinci Resolve and Final Cut Pro"
+        case .xmeml: L10n.string("Premiere Pro and DaVinci Resolve")
+        case .fcpxml: L10n.string("DaVinci Resolve and Final Cut Pro")
         }
     }
 }
@@ -105,7 +113,7 @@ struct ExportView: View {
     }
 
     private var settingsHeader: some View {
-        Text("Export")
+        L10n.text("Export")
             .font(.system(size: AppTheme.FontSize.title2, weight: AppTheme.FontWeight.regular))
             .tracking(AppTheme.Tracking.normal)
             .foregroundStyle(AppTheme.Text.primaryColor)
@@ -183,7 +191,7 @@ struct ExportView: View {
             settingRow(label: "Codec") {
                 Picker("", selection: $codec) {
                     ForEach(VideoCodec.allCases) { codec in
-                        Text(codec.rawValue).tag(codec)
+                        L10n.text(codec.rawValue).tag(codec)
                     }
                 }
                 .labelsHidden()
@@ -192,7 +200,7 @@ struct ExportView: View {
             Divider().opacity(AppTheme.Opacity.moderate)
 
             settingRow(label: "File Type") {
-                Text(codec.containerLabel)
+                Text(verbatim: codec.containerLabel)
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
 
@@ -201,7 +209,7 @@ struct ExportView: View {
             settingRow(label: "Resolution") {
                 Picker("", selection: $resolution) {
                     ForEach(ExportResolution.allCases) { resolution in
-                        Text(resolution.rawValue).tag(resolution)
+                        Text(verbatim: resolution.localizedName).tag(resolution)
                     }
                 }
                 .labelsHidden()
@@ -210,7 +218,7 @@ struct ExportView: View {
             Divider().opacity(AppTheme.Opacity.moderate)
 
             settingRow(label: "Frame Rate") {
-                Text("\(exportTimeline.fps) fps")
+                Text(verbatim: "\(exportTimeline.fps) fps")
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
         }
@@ -241,7 +249,7 @@ struct ExportView: View {
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
             Picker("", selection: $fcpxmlTarget) {
                 ForEach(FCPXMLTarget.allCases) { target in
-                    Text(target.displayName).tag(target)
+                    L10n.text(target.displayName).tag(target)
                 }
             }
             .labelsHidden()
@@ -253,14 +261,14 @@ struct ExportView: View {
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
             Picker("", selection: $fcpxmlVersion) {
                 ForEach(FCPXMLVersion.allCases) { version in
-                    Text(version.rawValue).tag(version)
+                    L10n.text(version.rawValue).tag(version)
                 }
             }
             .labelsHidden()
             .controlSize(.small)
             .font(.system(size: AppTheme.FontSize.xs))
             .fixedSize()
-            Text(fcpxmlVersion.compatibilityNote)
+            L10n.text(fcpxmlVersion.compatibilityNote)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .lineLimit(1)
@@ -276,7 +284,12 @@ struct ExportView: View {
                 .foregroundStyle(AppTheme.Text.secondaryColor)
 
             if palmierSummary.missing > 0 {
-                Text("\(palmierSummary.missing) media file\(palmierSummary.missing == 1 ? "" : "s") missing - they'll be skipped.")
+                Text(verbatim: palmierSummary.missing == 1
+                    ? L10n.string("1 media file missing — it'll be skipped.")
+                    : L10n.format(
+                        "%d media files missing — they'll be skipped.",
+                        palmierSummary.missing
+                    ))
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Status.errorColor)
             }
@@ -298,7 +311,7 @@ struct ExportView: View {
     private var logHeader: some View {
         let pendingCount = projectJobs.count { $0.status.isPending }
         return HStack(spacing: AppTheme.Spacing.sm) {
-            Text("Export Queue")
+            L10n.text("Export Queue")
                 .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.semibold))
                 .foregroundStyle(AppTheme.Text.primaryColor)
 
@@ -322,7 +335,7 @@ struct ExportView: View {
     private var exportLog: some View {
         Group {
             if projectJobs.isEmpty {
-                Text("No exports yet")
+                L10n.text("No exports yet")
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.mutedColor)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -353,7 +366,7 @@ struct ExportView: View {
             exportStatusIcon(job.status)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
-                .accessibilityLabel(job.status.rawValue.capitalized)
+                .accessibilityLabel(job.status.localizedName)
 
             Text(job.filename)
                 .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
@@ -447,19 +460,22 @@ struct ExportView: View {
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
-        .help(help)
-        .accessibilityLabel(help)
+        .help(L10n.string(help))
+        .accessibilityLabel(L10n.string(help))
     }
 
     // MARK: - Bottom bar
 
     private var settingsBottomBar: some View {
-        HStack {
+        let actionTitle = exportQueue.hasActivity
+            ? L10n.string("Add to Queue")
+            : L10n.string("Export")
+        return HStack {
             exportSummary
             Spacer()
-            Button("Close") { editor.showExportDialog = false }
+            Button(L10n.string("Close")) { editor.showExportDialog = false }
                 .keyboardShortcut(.cancelAction)
-            Button(exportQueue.hasActivity ? "Add to Queue" : "Export") { startExport() }
+            Button(actionTitle) { startExport() }
                 .buttonStyle(.glassProminent)
                 .buttonBorderShape(.capsule)
                 .keyboardShortcut(.defaultAction)
@@ -503,7 +519,7 @@ struct ExportView: View {
 
     private func settingRow<Control: View>(label: String, @ViewBuilder control: () -> Control) -> some View {
         HStack {
-            Text(label)
+            L10n.text(label)
                 .font(.system(size: AppTheme.FontSize.md))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
             Spacer()
@@ -520,7 +536,7 @@ struct ExportView: View {
             HStack(spacing: AppTheme.Spacing.sm) {
                 RadioIndicator(selected: selected)
 
-                Text(option.rawValue)
+                Text(verbatim: option.localizedName)
                     .font(.system(size: AppTheme.FontSize.md, weight: selected ? AppTheme.FontWeight.semibold : AppTheme.FontWeight.medium))
                     .foregroundStyle(selected ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
                     .lineLimit(1)
@@ -545,25 +561,25 @@ struct ExportView: View {
 
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
                     HStack(spacing: AppTheme.Spacing.xs) {
-                        Text(format.rawValue)
+                        L10n.text(format.rawValue)
                             .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.semibold))
                             .foregroundStyle(AppTheme.Text.primaryColor)
-                        Text(format.extensionLabel)
+                        L10n.text(format.extensionLabel)
                             .font(.system(size: AppTheme.FontSize.xs))
                             .foregroundStyle(AppTheme.Text.tertiaryColor)
                         if !format.versionLabel.isEmpty {
-                            Text(format.versionLabel)
+                            L10n.text(format.versionLabel)
                                 .font(.system(size: AppTheme.FontSize.xs))
                                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                         }
                     }
 
-                    Text(format.summary)
+                    Text(verbatim: format.summary)
                         .font(.system(size: AppTheme.FontSize.xs))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("Compatibility: \(format.compatibilityLabel)")
+                    Text(verbatim: L10n.format("Compatibility: %@", format.compatibilityLabel))
                         .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
                         .foregroundStyle(AppTheme.Text.secondaryColor)
                         .fixedSize(horizontal: false, vertical: true)

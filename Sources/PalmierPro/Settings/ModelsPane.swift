@@ -43,7 +43,9 @@ struct ModelsPane: View {
             searchBar
 
             if sections.isEmpty {
-                Text(catalog.isLoaded ? "No models match \"\(query)\"." : "Loading models…")
+            Text(verbatim: catalog.isLoaded
+                ? L10n.format("No models match “%@”.", query)
+                : L10n.string("Loading models…"))
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .padding(.top, AppTheme.Spacing.lg)

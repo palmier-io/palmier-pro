@@ -31,7 +31,10 @@ For a bundled debug build that launches the `.app` and streams OSLog:
 ## Test
 
 ```bash
+node scripts/check-localization.mjs
 swift test
 ```
+
+See [docs/localization.md](docs/localization.md) when adding or changing visible UI text.
 
 By contributing, you agree your contributions are licensed under [GPLv3](LICENSE).

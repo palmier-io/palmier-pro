@@ -111,7 +111,7 @@ struct AssetThumbnailView: View {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        panel.message = "Choose the source file for \"\(asset.name)\""
+        panel.message = L10n.format("Choose the source file for “%@”", asset.name)
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             editor.relinkAsset(id: asset.id, to: url)
@@ -213,7 +213,8 @@ struct AssetThumbnailView: View {
             .overlay(Circle().strokeBorder(Color.white.opacity(AppTheme.Opacity.muted), lineWidth: AppTheme.BorderWidth.hairline))
             .padding(AppTheme.Spacing.xs)
             .transition(.opacity)
-            .help("Add to chat")
+            .accessibilityLabel(L10n.string("Add to chat"))
+            .help(L10n.string("Add to chat"))
         }
     }
 

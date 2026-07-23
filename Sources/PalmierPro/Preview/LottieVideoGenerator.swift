@@ -286,10 +286,10 @@ enum LottieVideoGenerator {
 
         var errorDescription: String? {
             switch self {
-            case .invalidAnimation: "could not read a Lottie animation from the file"
-            case .writeFailed: "could not write lottie video"
-            case .pixelBufferCreationFailed: "could not create pixel buffer"
-            case .appendFailed(let frame): "could not append lottie frame \(frame)"
+            case .invalidAnimation: L10n.string("Could not read a Lottie animation from the file")
+            case .writeFailed: L10n.string("Could not write Lottie video")
+            case .pixelBufferCreationFailed: L10n.string("Could not create pixel buffer")
+            case .appendFailed(let frame): L10n.format("Could not append Lottie frame %d", frame)
             }
         }
     }

@@ -25,7 +25,9 @@ struct TopOffField<Trailing: View>: View {
                     .frame(width: AppTheme.Settings.creditInputWidth)
                     .themedSurface(fieldFill, cornerRadius: AppTheme.Radius.sm)
                     .disabled(account.isBuyingCredits)
-                Text(credits == 1 ? "= 1 credit" : "= \(credits.formatted()) credits")
+                Text(verbatim: credits == 1
+                    ? L10n.string("= 1 credit")
+                    : L10n.format("= %@ credits", credits.formatted()))
                     .font(.system(size: AppTheme.FontSize.sm))
                     .monospacedDigit()
                     .foregroundStyle(
@@ -40,7 +42,7 @@ struct TopOffField<Trailing: View>: View {
             HStack(spacing: AppTheme.Spacing.sm) {
                 Button(action: onBuy) {
                     HStack(spacing: AppTheme.Spacing.xs) {
-                        Text(buttonLabel)
+                        Text(verbatim: buttonLabel)
                         if showsExternalLinkIcon {
                             Image(systemName: "arrow.up.right")
                                 .font(.system(
@@ -71,7 +73,7 @@ struct TopOffField<Trailing: View>: View {
     }
 
     private var buttonLabel: String {
-        isValid ? "Buy $\(dollars)" : "Buy"
+        isValid ? L10n.format("Buy $%d", dollars) : L10n.string("Buy")
     }
 }
 

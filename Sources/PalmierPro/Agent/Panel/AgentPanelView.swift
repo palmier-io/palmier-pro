@@ -107,7 +107,8 @@ struct AgentPanelView: View {
         }
         .buttonStyle(.plain)
         .focusable(false)
-        .help("New chat")
+        .accessibilityLabel(L10n.string("New chat"))
+        .help(L10n.string("New chat"))
     }
 
     @State private var showHistory = false
@@ -122,7 +123,8 @@ struct AgentPanelView: View {
         }
         .buttonStyle(.plain)
         .focusable(false)
-        .help("Chat history")
+        .accessibilityLabel(L10n.string("Chat history"))
+        .help(L10n.string("Chat history"))
         .popover(isPresented: $showHistory, arrowEdge: .top) {
             ChatHistoryList(
                 sessions: service.sessions.sorted { $0.updatedAt > $1.updatedAt },
@@ -250,7 +252,8 @@ struct AgentPanelView: View {
         }
         .buttonStyle(.plain)
         .focusable(false)
-        .help("Scroll to latest")
+        .accessibilityLabel(L10n.string("Scroll to latest"))
+        .help(L10n.string("Scroll to latest"))
     }
 
     @ViewBuilder
@@ -263,7 +266,7 @@ struct AgentPanelView: View {
                     .multilineTextAlignment(.leading)
                 if let cta = errorCTA(for: err) {
                     Button(action: cta.action) {
-                        Text(cta.title)
+                        L10n.text(cta.title)
                             .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                     }
                     .buttonStyle(.capsule(.secondary))
@@ -434,7 +437,7 @@ private struct AgentStarterPromptButton: View {
                     .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .frame(width: AppTheme.IconSize.smMd, height: AppTheme.IconSize.smMd)
-                Text(starterPrompt.title)
+                L10n.text(starterPrompt.title)
                     .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                     .multilineTextAlignment(.leading)
@@ -484,6 +487,8 @@ private struct ChatTabView: View {
                         }
                         .buttonStyle(.plain)
                         .focusable(false)
+                        .accessibilityLabel(L10n.string("Close Tab"))
+                        .help(L10n.string("Close Tab"))
                     }
                 }
                 Rectangle()

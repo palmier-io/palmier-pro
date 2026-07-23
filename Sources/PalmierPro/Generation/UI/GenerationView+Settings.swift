@@ -29,8 +29,8 @@ extension GenerationView {
                     .hoverHighlight(cornerRadius: AppTheme.Radius.concentric(outer: AppTheme.Radius.sm, padding: AppTheme.Spacing.xxs))
                 }
                 .buttonStyle(.plain)
-                .help(type.rawValue)
-                .accessibilityLabel(type.rawValue)
+                .help(L10n.string(type.rawValue))
+                .accessibilityLabel(L10n.string(type.rawValue))
             }
         }
         .padding(AppTheme.Spacing.xxs)
@@ -105,7 +105,9 @@ extension GenerationView {
                 Image(systemName: "person.wave.2")
                     .font(.system(size: AppTheme.FontSize.xxs))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
-                Text(selectedVoice.isEmpty ? (audioModel.defaultVoice ?? "Voice") : selectedVoice)
+                Text(verbatim: selectedVoice.isEmpty
+                    ? (audioModel.defaultVoice ?? L10n.string("Voice"))
+                    : selectedVoice)
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                     .lineLimit(1)
@@ -160,8 +162,8 @@ extension GenerationView {
             if audioModel.hasDurationControl, !audioUsesSource {
                 parts.append("\(selectedAudioDuration)s")
             }
-            if audioModel.supportsInstrumental && instrumental { parts.append("Instrumental") }
-            return parts.isEmpty ? "Settings" : parts.joined(separator: " \u{00B7} ")
+            if audioModel.supportsInstrumental && instrumental { parts.append(L10n.string("Instrumental")) }
+            return parts.isEmpty ? L10n.string("Settings") : parts.joined(separator: " \u{00B7} ")
         }
         if currentResolutions != nil { parts.append(resolutionLabel(selectedResolution)) }
         if currentQualities != nil { parts.append(selectedQuality) }
@@ -186,7 +188,7 @@ extension GenerationView {
     var settingsButton: some View {
         Button { showSettingsPopover.toggle() } label: {
             HStack(spacing: AppTheme.Spacing.xs) {
-                Text(settingsSummary)
+                Text(verbatim: settingsSummary)
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .lineLimit(1)
@@ -228,7 +230,13 @@ extension GenerationView {
                             dragValueAdjustment: { $0.rounded() },
                             onChanged: { selectedAudioDuration = Int($0.rounded()) }
                         ) { selectedAudioDuration = Int($0.rounded()) }
-                        .help("Duration (\(range.minimum)-\(range.maximum) seconds)")
+                        .help(
+                            L10n.format(
+                                "Duration (%d-%d seconds)",
+                                range.minimum,
+                                range.maximum
+                            )
+                        )
                     }
                 }
             }
@@ -283,7 +291,7 @@ extension GenerationView {
         format: @escaping (T) -> String
     ) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            Text(label)
+            L10n.text(label)
                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
             if options.count <= 5, gridMinWidth == nil {

@@ -189,23 +189,49 @@ extension EditorViewModel {
     }
 
     /// Ripple-delete timeline-frame `ranges` anchored to `anchorClipId`
-    func rippleDeleteRanges(anchorClipId: String, ranges: [FrameRange]) -> RippleRangesOutcome {
+    func rippleDeleteRanges(
+        anchorClipId: String,
+        ranges: [FrameRange],
+        localized: Bool = true
+    ) -> RippleRangesOutcome {
         guard let anchorLoc = findClip(id: anchorClipId) else {
-            return .refused("Clip not found: \(anchorClipId)")
+            return .refused(L10n.message(
+                "Clip not found: %@",
+                localized: localized,
+                anchorClipId
+            ))
         }
-        return rippleDeleteRangesOnTrack(trackIndex: anchorLoc.trackIndex, ranges: ranges)
+        return rippleDeleteRangesOnTrack(
+            trackIndex: anchorLoc.trackIndex,
+            ranges: ranges,
+            localized: localized
+        )
     }
 
     /// Ripple-deletes frame ranges on a track, including linked and sync-locked tracks. Tracks in `ignoreSyncLockTrackIndices` are unlocked for this call.
-    func rippleDeleteRangesOnTrack(trackIndex: Int, ranges: [FrameRange], ignoreSyncLockTrackIndices: Set<Int> = []) -> RippleRangesOutcome {
+    func rippleDeleteRangesOnTrack(
+        trackIndex: Int,
+        ranges: [FrameRange],
+        ignoreSyncLockTrackIndices: Set<Int> = [],
+        localized: Bool = true
+    ) -> RippleRangesOutcome {
         guard timeline.tracks.indices.contains(trackIndex) else {
-            return .refused("Track index out of range: \(trackIndex)")
+            return .refused(L10n.message(
+                "Track index out of range: %d",
+                localized: localized,
+                trackIndex
+            ))
         }
         let ignoredTrackIds = Set(ignoreSyncLockTrackIndices.compactMap {
             timeline.tracks.indices.contains($0) ? timeline.tracks[$0].id : nil
         })
         let merged = RippleEngine.mergeRanges(ranges.filter { $0.length > 0 })
-        guard !merged.isEmpty else { return .refused("No non-empty ranges to delete") }
+        guard !merged.isEmpty else {
+            return .refused(L10n.message(
+                "No non-empty ranges to delete",
+                localized: localized
+            ))
+        }
         let totalRemoved = merged.reduce(0) { $0 + $1.length }
 
         let anchorTrackId = timeline.tracks[trackIndex].id
@@ -234,8 +260,17 @@ extension EditorViewModel {
         let shiftingIds = clearTrackIds.union(
             timeline.tracks.filter { $0.syncLocked && !ignoredTrackIds.contains($0.id) }.map(\.id)
         )
-        if let reason = multicamAtomicityViolation(shiftingTrackIds: shiftingIds) {
-            mediaPanelToast = MediaPanelToast(stringLiteral: reason)
+        if let reason = multicamAtomicityViolation(
+            shiftingTrackIds: shiftingIds,
+            localized: localized
+        ) {
+            let toastReason = localized
+                ? reason
+                : multicamAtomicityViolation(
+                    shiftingTrackIds: shiftingIds,
+                    localized: true
+                ) ?? reason
+            mediaPanelToast = MediaPanelToast(stringLiteral: toastReason)
             return .refused(reason)
         }
 
@@ -244,7 +279,11 @@ extension EditorViewModel {
             let track = timeline.tracks[ti]
             guard !clearTrackIds.contains(track.id), track.syncLocked, !ignoredTrackIds.contains(track.id) else { continue }
             let shifts = RippleEngine.computeRippleShiftsForRanges(clips: track.clips, removedRanges: merged)
-            if let reason = validateShifts(trackIndex: ti, shifts: shifts) {
+            if let reason = validateShifts(
+                trackIndex: ti,
+                shifts: shifts,
+                localized: localized
+            ) {
                 return .refused(reason)
             }
         }
@@ -533,7 +572,11 @@ extension EditorViewModel {
     // MARK: - Validation
 
     /// Dry-run: returns a blocking reason (collision or negative startFrame) or nil if safe.
-    fileprivate func validateShifts(trackIndex: Int, shifts: [ClipShift]) -> String? {
+    fileprivate func validateShifts(
+        trackIndex: Int,
+        shifts: [ClipShift],
+        localized: Bool = true
+    ) -> String? {
         guard !shifts.isEmpty, timeline.tracks.indices.contains(trackIndex) else { return nil }
         let track = timeline.tracks[trackIndex]
         let label = timelineTrackDisplayLabel(at: trackIndex)
@@ -542,13 +585,21 @@ extension EditorViewModel {
         for clip in track.clips {
             let start = shiftMap[clip.id] ?? clip.startFrame
             if start < 0 {
-                return "Sync-locked track \"\(label)\" would move past the timeline start."
+                return L10n.message(
+                    "Sync-locked track “%@” would move past the timeline start.",
+                    localized: localized,
+                    label
+                )
             }
             intervals.append(FrameRange(start: start, end: start + clip.durationFrames))
         }
         intervals.sort { $0.start < $1.start }
         for i in 1..<intervals.count where intervals[i].start < intervals[i-1].end {
-            return "Sync-locked track \"\(label)\" doesn't have room to ripple."
+            return L10n.message(
+                "Sync-locked track “%@” doesn't have room to ripple.",
+                localized: localized,
+                label
+            )
         }
         return nil
     }
@@ -568,19 +619,33 @@ extension EditorViewModel {
             .map { timeline.tracks[$0].id })
     }
 
-    func multicamManualRippleViolation(shiftingTrackIds: Set<String>, atFrame frame: Int) -> String? {
-        if let reason = multicamAtomicityViolation(shiftingTrackIds: shiftingTrackIds) { return reason }
+    func multicamManualRippleViolation(
+        shiftingTrackIds: Set<String>,
+        atFrame frame: Int,
+        localized: Bool = true
+    ) -> String? {
+        if let reason = multicamAtomicityViolation(
+            shiftingTrackIds: shiftingTrackIds,
+            localized: localized
+        ) { return reason }
         for track in timeline.tracks where shiftingTrackIds.contains(track.id) {
             if let clip = track.clips.first(where: {
                 $0.multicamGroupId != nil && $0.startFrame < frame && $0.endFrame > frame
             }), let group = multicamGroup(of: clip) {
-                return "Can't ripple through multicam group \"\(group.name)\" — split its clips at the edit point, or remove silence/words to cut time."
+                return L10n.message(
+                    "Can't ripple through multicam group “%@” — split its clips at the edit point, or remove silence/words to cut time.",
+                    localized: localized,
+                    group.name
+                )
             }
         }
         return nil
     }
 
-    func multicamAtomicityViolation(shiftingTrackIds: Set<String>) -> String? {
+    func multicamAtomicityViolation(
+        shiftingTrackIds: Set<String>,
+        localized: Bool = true
+    ) -> String? {
         var groupTracks: [String: Set<String>] = [:]
         for track in timeline.tracks {
             for gid in Set(track.clips.compactMap(\.multicamGroupId)) {
@@ -594,7 +659,12 @@ extension EditorViewModel {
             let stranded = timeline.tracks.indices
                 .filter { !shiftingTrackIds.contains(timeline.tracks[$0].id) && trackIds.contains(timeline.tracks[$0].id) }
                 .map { timelineTrackDisplayLabel(at: $0) }
-            return "Can't shift part of multicam group \"\(name)\" — \(stranded.joined(separator: ", ")) would stay behind and desync."
+            return L10n.message(
+                "Can't shift part of multicam group “%@” — %@ would stay behind and desync.",
+                localized: localized,
+                name,
+                stranded.joined(separator: ", ")
+            )
         }
         return nil
     }

@@ -72,7 +72,7 @@ extension EditorViewModel {
     func identifySpeakers(transcribeMissing: Bool = false) {
         guard !speakerIdentifyInFlight else { return }
         if transcribeMissing, !AccountService.shared.isSignedIn {
-            speakerIdentifyError = "Sign in to use Cloud transcription."
+            speakerIdentifyError = L10n.string("Sign in to use Cloud transcription.")
             return
         }
         speakerIdentifyPhase = transcribeMissing ? "Transcribing…" : "Identifying…"

@@ -19,7 +19,7 @@ struct AIEditMenu: View {
                                 Button {
                                     SettingsWindowController.shared.show(tab: .account)
                                 } label: {
-                                    Label("\(model.displayName) (Paid)", systemImage: "lock.fill")
+                                    Label(L10n.format("%@ (Paid)", model.displayName), systemImage: "lock.fill")
                                 }
                             } else {
                                 Button(model.displayName) { runUpscale(model) }

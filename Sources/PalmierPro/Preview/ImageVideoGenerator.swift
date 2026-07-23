@@ -214,13 +214,13 @@ enum ImageVideoGenerator {
         var errorDescription: String? {
             switch self {
             case .imageLoadFailed:
-                "could not load image"
+                L10n.string("Could not load image")
             case .pixelBufferCreationFailed:
-                "could not create pixel buffer"
+                L10n.string("Could not create pixel buffer")
             case .appendFailed(let seconds):
-                "could not append still frame at \(String(format: "%.3f", seconds))s"
+                L10n.format("Could not append still frame at %.3fs", seconds)
             case .writeFailed:
-                "could not write still video"
+                L10n.string("Could not write still video")
             }
         }
     }

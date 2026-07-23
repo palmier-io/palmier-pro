@@ -36,8 +36,8 @@ enum Matte {
         case renderFailed, noProject
         var errorDescription: String? {
             switch self {
-            case .renderFailed: "Couldn't render matte image."
-            case .noProject: "Open a project before creating a matte."
+            case .renderFailed: L10n.string("Couldn't render matte image.")
+            case .noProject: L10n.string("Open a project before creating a matte.")
             }
         }
     }

@@ -10,11 +10,11 @@ extension EditSubmitter {
 
         var errorDescription: String? {
             switch self {
-            case .notGenerated: "This asset was not AI-generated"
-            case .unknownModel(let id): "Model no longer available: \(id)"
-            case .missingSource: "Cannot rerun: source not recorded"
+            case .notGenerated: L10n.string("This asset was not AI-generated")
+            case .unknownModel(let id): L10n.format("Model no longer available: %@", id)
+            case .missingSource: L10n.string("Cannot rerun: source not recorded")
             case .invalid(let msg): msg
-            case .unauthorized: "Subscribe to Palmier to rerun generations"
+            case .unauthorized: L10n.string("Subscribe to Palmier to rerun generations")
             }
         }
     }
@@ -37,7 +37,10 @@ extension EditSubmitter {
 
         if let videoModel = VideoModelConfig.allModels.first(where: { $0.id == modelId }) {
             if let err = videoModel.validate(
-                duration: gen.duration, aspectRatio: gen.aspectRatio, resolution: gen.resolution
+                duration: gen.duration,
+                aspectRatio: gen.aspectRatio,
+                resolution: gen.resolution,
+                localized: true
             ) {
                 throw RerunError.invalid(err)
             }
@@ -111,7 +114,7 @@ extension EditSubmitter {
             let refCount = (preUploaded ?? []).count
             if let err = imageModel.validate(
                 aspectRatio: gen.aspectRatio, resolution: gen.resolution, quality: gen.quality,
-                imageRefCount: refCount, numImages: count
+                imageRefCount: refCount, numImages: count, localized: true
             ) {
                 throw RerunError.invalid(err)
             }
@@ -171,7 +174,7 @@ extension EditSubmitter {
                 sourceURL: sourceURL,
                 targetLanguage: gen.targetLanguage
             )
-            if let err = audioModel.validate(params: params) {
+            if let err = audioModel.validate(params: params, localized: true) {
                 throw RerunError.invalid(err)
             }
             return editor.generationService.generate(

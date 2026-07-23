@@ -2,6 +2,7 @@ import SwiftUI
 
 struct EditorPanelGroup<Content: View, HeaderAccessory: View>: View {
     let title: String
+    private let localizesTitle: Bool
     private let isExpanded: Binding<Bool>?
     private let contentSpacing: CGFloat
     private let onReset: (() -> Void)?
@@ -11,6 +12,7 @@ struct EditorPanelGroup<Content: View, HeaderAccessory: View>: View {
 
     init(
         _ title: String,
+        localizesTitle: Bool = true,
         isExpanded: Binding<Bool>? = nil,
         contentSpacing: CGFloat = AppTheme.Spacing.smMd,
         onReset: (() -> Void)? = nil,
@@ -18,6 +20,7 @@ struct EditorPanelGroup<Content: View, HeaderAccessory: View>: View {
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.title = title
+        self.localizesTitle = localizesTitle
         self.isExpanded = isExpanded
         self.contentSpacing = contentSpacing
         self.onReset = onReset
@@ -50,7 +53,7 @@ struct EditorPanelGroup<Content: View, HeaderAccessory: View>: View {
             }
             .buttonStyle(.plain)
             .focusable(false)
-            .accessibilityLabel("\(expanded ? "Collapse" : "Expand") \(title)")
+            .accessibilityLabel(expansionAccessibilityLabel)
 
             HStack(spacing: AppTheme.Spacing.sm) {
                 HStack(spacing: AppTheme.Spacing.sm) {
@@ -78,7 +81,7 @@ struct EditorPanelGroup<Content: View, HeaderAccessory: View>: View {
     }
 
     private var titleLabel: some View {
-        Text(title)
+        Text(verbatim: localizesTitle ? L10n.string(title) : title)
             .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium))
             .foregroundStyle(AppTheme.Text.primaryColor)
             .lineLimit(1)
@@ -86,6 +89,13 @@ struct EditorPanelGroup<Content: View, HeaderAccessory: View>: View {
 
     private var expanded: Bool {
         isExpanded?.wrappedValue ?? localIsExpanded
+    }
+
+    private var expansionAccessibilityLabel: String {
+        let localizedTitle = localizesTitle ? L10n.string(title) : title
+        return expanded
+            ? L10n.format("Collapse %@", localizedTitle)
+            : L10n.format("Expand %@", localizedTitle)
     }
 
     private func toggleExpansion() {
@@ -108,6 +118,7 @@ struct EditorPanelGroup<Content: View, HeaderAccessory: View>: View {
 extension EditorPanelGroup where HeaderAccessory == EmptyView {
     init(
         _ title: String,
+        localizesTitle: Bool = true,
         isExpanded: Binding<Bool>? = nil,
         contentSpacing: CGFloat = AppTheme.Spacing.smMd,
         onReset: (() -> Void)? = nil,
@@ -115,6 +126,7 @@ extension EditorPanelGroup where HeaderAccessory == EmptyView {
     ) {
         self.init(
             title,
+            localizesTitle: localizesTitle,
             isExpanded: isExpanded,
             contentSpacing: contentSpacing,
             onReset: onReset,

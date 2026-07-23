@@ -47,11 +47,30 @@ struct InspectorView: View {
         case audio = "Audio"
         case multicam = "Multicam"
         case ai = "AI Edit"
+
+        var title: String {
+            switch self {
+            case .text: L10n.string("Content")
+            case .textAnimate: L10n.string("Animate")
+            case .video: L10n.string("Video")
+            case .effects: L10n.string("Adjust")
+            case .audio: L10n.string("Audio")
+            case .multicam: L10n.string("Multicam")
+            case .ai: L10n.string("AI Edit")
+            }
+        }
     }
 
     enum AssetTab: String, Hashable {
         case details = "Details"
         case ai = "AI Edit"
+
+        var title: String {
+            switch self {
+            case .details: L10n.string("Details")
+            case .ai: L10n.string("AI Edit")
+            }
+        }
     }
 
     @State private var preferredTab: ClipTab = .video
@@ -103,7 +122,7 @@ struct InspectorView: View {
     private var marqueeSelectionSummary: some View {
         VStack {
             Spacer()
-            Text("\(editor.selectedClipIds.count) selected")
+            Text(verbatim: L10n.format("%d selected", editor.selectedClipIds.count))
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
             Spacer()
@@ -168,12 +187,12 @@ struct InspectorView: View {
         truncate: Text.TruncationMode = .tail
     ) -> some View {
         HStack(spacing: AppTheme.Spacing.sm) {
-            Text(label)
+            L10n.text(label)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .fixedSize()
             Spacer()
-            Text(value)
+            Text(verbatim: value)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .lineLimit(1)
@@ -197,7 +216,7 @@ struct InspectorView: View {
         @ViewBuilder menu: @escaping () -> MenuContent
     ) -> some View {
         HStack(spacing: AppTheme.Spacing.sm) {
-            Text(label)
+            L10n.text(label)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .fixedSize()
@@ -221,7 +240,7 @@ struct InspectorView: View {
                 editor.applyTimelineSettings(fps: editor.timeline.fps, width: preset.width, height: preset.height)
             } label: {
                 HStack {
-                    Text(preset.label)
+                    L10n.text(preset.label)
                     Spacer()
                     if editor.timeline.width == preset.width && editor.timeline.height == preset.height {
                         Image(systemName: "checkmark")
@@ -238,7 +257,7 @@ struct InspectorView: View {
                 editor.applyTimelineSettings(fps: fps, width: editor.timeline.width, height: editor.timeline.height)
             } label: {
                 HStack {
-                    Text("\(fps) fps")
+                Text(verbatim: "\(fps) fps")
                     Spacer()
                     if editor.timeline.fps == fps {
                         Image(systemName: "checkmark")
@@ -256,7 +275,7 @@ struct InspectorView: View {
                 editor.applyTimelineSettings(fps: editor.timeline.fps, width: w, height: h)
             } label: {
                 HStack {
-                    Text(preset.label)
+                    L10n.text(preset.label)
                     Spacer()
                     if preset.matches(width: editor.timeline.width, height: editor.timeline.height) {
                         Image(systemName: "checkmark")
@@ -653,9 +672,12 @@ struct InspectorView: View {
             .buttonStyle(.plain)
             .disabled(!inRange)
             .opacity(inRange ? 1 : 0.4)
-            .help(!inRange ? "Move playhead inside the clip"
-                  : onKeyframe ? "Remove keyframe at playhead"
-                  : "Add keyframe at playhead")
+            .accessibilityLabel(!inRange ? L10n.string("Move playhead inside the clip")
+                : onKeyframe ? L10n.string("Remove keyframe at playhead")
+                : L10n.string("Add keyframe at playhead"))
+            .help(!inRange ? L10n.string("Move playhead inside the clip")
+                : onKeyframe ? L10n.string("Remove keyframe at playhead")
+                : L10n.string("Add keyframe at playhead"))
             keyframeNavButton(systemName: "chevron.right", help: "Go to next keyframe", enabled: next != nil) {
                 if let f = next { editor.seekToFrame(f) }
             }
@@ -682,7 +704,8 @@ struct InspectorView: View {
         .buttonStyle(.plain)
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.3)
-        .help(help)
+        .accessibilityLabel(L10n.string(help))
+        .help(L10n.string(help))
     }
 
     @ViewBuilder
@@ -792,7 +815,7 @@ struct InspectorView: View {
     // MARK: - Section helpers
 
     func sectionTitleLabel(title: String) -> some View {
-        Text(title)
+        L10n.text(title)
             .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium))
             .foregroundStyle(AppTheme.Text.primaryColor)
             .fixedSize()
@@ -832,14 +855,16 @@ struct InspectorView: View {
         ) {
             Menu {
                 ForEach(BlendMode.allCases, id: \.self) { m in
-                    Button(m.displayName) {
+                    Button {
                         commitPropertiesToClips(clips, actionName: "Blend Mode") {
                             $0.blendMode = (m == .normal ? nil : m)
                         }
+                    } label: {
+                        L10n.text(m.displayName)
                     }
                 }
             } label: {
-                EditorMenuValue(text: mixed ? "—" : current.displayName)
+                EditorMenuValue(text: mixed ? "—" : L10n.string(current.displayName))
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
         }
@@ -904,7 +929,8 @@ struct InspectorView: View {
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
-        .help(help)
+        .accessibilityLabel(L10n.string(help))
+        .help(L10n.string(help))
     }
 
     // MARK: - Crop
@@ -958,13 +984,13 @@ struct InspectorView: View {
                     if preset == active {
                         Label(preset.label, systemImage: "checkmark")
                     } else {
-                        Text(preset.label)
+                        L10n.text(preset.label)
                     }
                 }
             }
         } label: {
             HStack(spacing: AppTheme.Spacing.xs) {
-                Text(active.label)
+                L10n.text(active.label)
                     .font(.system(size: AppTheme.FontSize.sm, weight: .medium).monospacedDigit())
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                 Image(systemName: "chevron.down")
@@ -1058,7 +1084,7 @@ struct InspectorView: View {
     @ViewBuilder
     private func fileSection(_ asset: MediaAsset) -> some View {
         metadataSection(title: "File") {
-            plainMetadataRow(label: "Type", value: asset.type.trackLabel)
+            plainMetadataRow(label: "Type", value: L10n.string(asset.type.trackLabel))
             if asset.type != .audio, let width = asset.sourceWidth, let height = asset.sourceHeight {
                 plainMetadataRow(label: "Dimensions", value: "\(width) × \(height)")
             }
@@ -1078,7 +1104,7 @@ struct InspectorView: View {
 
     private func assetIdentityHeader(_ asset: MediaAsset) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
-            Text(asset.name)
+            Text(verbatim: asset.name)
                 .font(.system(size: AppTheme.FontSize.lg, weight: .semibold))
                 .foregroundStyle(AppTheme.Text.primaryColor)
                 .lineLimit(2)
@@ -1112,7 +1138,7 @@ struct InspectorView: View {
                 Spacer()
                 PromptCopyButton(text: prompt)
             }
-            Text(prompt)
+            Text(verbatim: prompt)
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .textSelection(.enabled)
@@ -1187,7 +1213,8 @@ struct PromptCopyButton: View {
                 .contentTransition(.symbolEffect(.replace))
         }
         .buttonStyle(.plain)
-        .help(copied ? "Copied" : "Copy prompt")
+        .accessibilityLabel(copied ? L10n.string("Copied") : L10n.string("Copy prompt"))
+        .help(copied ? L10n.string("Copied") : L10n.string("Copy prompt"))
     }
 
     private func copy() {

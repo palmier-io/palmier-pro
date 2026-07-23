@@ -45,8 +45,12 @@ struct CaptionTab: View {
         return selectedClipTargets   // Auto resolves its source during generation
     }
     private var automaticSourceSummary: String {
-        if !selectedClipTargets.isEmpty { return "Selected Clips · \(selectedClipTargets.count)" }
-        return editor.captionTargets(ids: []).isEmpty ? "No audio" : "Auto"
+        if !selectedClipTargets.isEmpty {
+            return L10n.format("Selected Clips · %d", selectedClipTargets.count)
+        }
+        return editor.captionTargets(ids: []).isEmpty
+            ? L10n.string("No audio")
+            : L10n.string("Auto")
     }
     private var effectiveCount: Int {
         isAutoSource ? editor.captionTargets(ids: []).count : sourceClipIds.count
@@ -59,7 +63,7 @@ struct CaptionTab: View {
     }
     private var cloudModeUnavailableMessage: String? {
         guard provider == .cloud else { return nil }
-        guard account.isSignedIn else { return "Sign in to use Cloud." }
+        guard account.isSignedIn else { return L10n.string("Sign in to use Cloud.") }
         return nil
     }
     private var canGenerateCaptions: Bool {
@@ -69,11 +73,28 @@ struct CaptionTab: View {
         "\(provider.rawValue)|\(sourceClipIds.joined(separator: ","))|\(isAutoSource)|\(locale?.identifier ?? "")"
     }
     private var costHelpText: String {
-        guard let cost = estimatedCloudCost else { return "Estimated cost. Actual billing may differ slightly." }
-        guard cost > 0 else { return "Cached — no credits used." }
-        guard let remaining = remainingCloudCredits else { return "\(CostEstimator.format(cost)) estimated. Actual billing may differ." }
-        if cost > remaining { return "\(CostEstimator.format(cost)) needed. Only \(remaining.formatted()) remaining." }
-        return "\(CostEstimator.format(cost)). \((remaining - cost).formatted()) remaining after this generation."
+        guard let cost = estimatedCloudCost else {
+            return L10n.string("Estimated cost. Actual billing may differ slightly.")
+        }
+        guard cost > 0 else { return L10n.string("Cached — no credits used.") }
+        guard let remaining = remainingCloudCredits else {
+            return L10n.format(
+                "%@ estimated. Actual billing may differ.",
+                CostEstimator.format(cost)
+            )
+        }
+        if cost > remaining {
+            return L10n.format(
+                "%@ needed. Only %@ remaining.",
+                CostEstimator.format(cost),
+                remaining.formatted()
+            )
+        }
+        return L10n.format(
+            "%@. %@ remaining after this generation.",
+            CostEstimator.format(cost),
+            (remaining - cost).formatted()
+        )
     }
 
     private static let translateLanguages = [
@@ -83,7 +104,9 @@ struct CaptionTab: View {
 
     private var sourceSummary: String {
         guard let selectedTrackId else { return automaticSourceSummary }
-        guard let index = editor.timeline.tracks.firstIndex(where: { $0.id == selectedTrackId }) else { return "No track" }
+        guard let index = editor.timeline.tracks.firstIndex(where: { $0.id == selectedTrackId }) else {
+            return L10n.string("No track")
+        }
         return "\(trackTitle(index)) · \(sourceClipIds.count)"
     }
 
@@ -165,7 +188,9 @@ struct CaptionTab: View {
                             Button(languageName(loc)) { locale = loc }
                         }
                     }
-                } label: { EditorMenuValue(text: locale.map(languageName) ?? "Auto", expanded: true) }
+                } label: {
+                    EditorMenuValue(text: locale.map(languageName) ?? L10n.string("Auto"), expanded: true)
+                }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
                 .frame(maxWidth: .infinity)
             }
@@ -179,7 +204,9 @@ struct CaptionTab: View {
                     ForEach(1...8, id: \.self) { n in
                         Button("\(n)") { maxWords = n }
                     }
-                } label: { EditorMenuValue(text: maxWords.map(String.init) ?? "None", expanded: true) }
+                } label: {
+                    EditorMenuValue(text: maxWords.map(String.init) ?? L10n.string("None"), expanded: true)
+                }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
                 .frame(maxWidth: .infinity)
             }
@@ -213,11 +240,14 @@ struct CaptionTab: View {
                     if editor.timeline.tracks.indices.contains(index) {
                         let track = editor.timeline.tracks[index]
                         let count = editor.captionTargets(trackIds: [track.id]).count
+                        let countLabel = count == 1
+                            ? L10n.format("%@ · %d clip", trackTitle(index), count)
+                            : L10n.format("%@ · %d clips", trackTitle(index), count)
                         Button {
                             selectedTrackId = track.id
                         } label: {
                             Label(
-                                "\(trackTitle(index)) · \(count) \(count == 1 ? "clip" : "clips")",
+                                countLabel,
                                 systemImage: selectedTrackId == track.id ? "checkmark" : ""
                             )
                         }
@@ -240,7 +270,7 @@ struct CaptionTab: View {
     }
 
     private var cloudCreditHelp: String {
-        "Cloud auto-detects languages, produces more accurate transcripts, can identify speakers, and uses 25 credits/hr when a transcript is not cached."
+        L10n.string("Cloud auto-detects languages, produces more accurate transcripts, can identify speakers, and uses 25 credits/hr when a transcript is not cached.")
     }
 
     private func providerOption(_ option: TranscriptionProvider, title: String) -> some View {
@@ -250,7 +280,7 @@ struct CaptionTab: View {
         } label: {
             HStack(spacing: AppTheme.Spacing.xs) {
                 RadioIndicator(selected: selected, size: AppTheme.IconSize.xxs, innerPadding: AppTheme.Spacing.xxs)
-                Text(title)
+                Text(verbatim: title)
                     .font(.system(size: AppTheme.FontSize.sm, weight: selected ? AppTheme.FontWeight.semibold : AppTheme.FontWeight.medium))
                     .foregroundStyle(selected ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
                     .lineLimit(1)
@@ -259,7 +289,7 @@ struct CaptionTab: View {
         }
         .buttonStyle(.plain)
         .focusable(false)
-        .help(option == .cloud ? cloudCreditHelp : "Local runs with Apple's SpeechAnalyzer.")
+        .help(option == .cloud ? cloudCreditHelp : L10n.string("Local runs with Apple's SpeechAnalyzer."))
     }
 
     private func rememberSelectedClipTargets() {
@@ -403,7 +433,7 @@ struct CaptionTab: View {
 
     private func posField(_ label: String, value: CGFloat, onChange: @escaping (CGFloat) -> Void) -> some View {
         HStack(spacing: AppTheme.Spacing.xxs) {
-            Text(label)
+            L10n.text(label)
                 .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
             ScrubbableNumberField(
@@ -422,9 +452,11 @@ struct CaptionTab: View {
             HStack(spacing: AppTheme.Spacing.sm) {
                 Button(action: generate) {
                     HStack(spacing: AppTheme.Spacing.xs) {
-                        Text(cloudModeUnavailableMessage ?? "Generate Captions")
+                        L10n.text(cloudModeUnavailableMessage ?? "Generate Captions")
                         if cloudModeUnavailableMessage == nil, provider == .cloud, let cost = estimatedCloudCost {
-                            Image(systemName: "dollarsign.circle.fill").font(.system(size: AppTheme.FontSize.xs))
+                            Image(systemName: "dollarsign.circle.fill")
+                                .font(.system(size: AppTheme.FontSize.xs))
+                                .accessibilityHidden(true)
                             Text("\(cost)").monospacedDigit()
                         }
                     }
@@ -474,7 +506,9 @@ struct CaptionTab: View {
                         return
                     }
                 }
-                if try await editor.generateCaptions(for: request).isEmpty { note = "No speech detected." }
+                if try await editor.generateCaptions(for: request).isEmpty {
+                    note = L10n.string("No speech detected.")
+                }
             } catch {
                 note = error.localizedDescription
             }
@@ -483,13 +517,17 @@ struct CaptionTab: View {
 
     private func cloudUnavailableMessage(cost: Int?, provider mode: TranscriptionProvider? = nil) -> String? {
         guard (mode ?? provider) == .cloud else { return nil }
-        guard account.isSignedIn else { return "Sign in to use Cloud." }
+        guard account.isSignedIn else { return L10n.string("Sign in to use Cloud.") }
         guard let cost else { return nil }
         guard cost > 0 else { return nil }
         guard let remaining = remainingCloudCredits else { return nil }
-        guard remaining > 0 else { return "Add credits to use Cloud." }
+        guard remaining > 0 else { return L10n.string("Add credits to use Cloud.") }
         if cost > remaining {
-            return "\(CostEstimator.format(cost)) needed. Only \(remaining.formatted()) remaining."
+            return L10n.format(
+                "%@ needed. Only %@ remaining.",
+                CostEstimator.format(cost),
+                remaining.formatted()
+            )
         }
         return nil
     }

@@ -1,7 +1,29 @@
 import Foundation
 
-func unsupportedValue(model displayName: String, field: String, value: String, allowed: [String]) -> String {
-    "\(displayName) does not support \(field) '\(value)'. Valid: \(allowed.joined(separator: ", "))."
+func unsupportedValue(
+    model displayName: String,
+    field: String,
+    value: String,
+    allowed: [String],
+    localized: Bool = false
+) -> String {
+    let shownField = switch field {
+    case "duration": localized ? L10n.string("duration") : field
+    case "aspect ratio": localized ? L10n.string("aspect ratio") : field
+    case "resolution": localized ? L10n.string("resolution") : field
+    case "quality": localized ? L10n.string("quality") : field
+    case "voice": localized ? L10n.string("voice") : field
+    case "target language": localized ? L10n.string("target language") : field
+    default: field
+    }
+    return L10n.message(
+        "%@ does not support %@ '%@'. Valid: %@.",
+        localized: localized,
+        displayName,
+        shownField,
+        value,
+        allowed.joined(separator: ", ")
+    )
 }
 
 struct VideoModelConfig: Identifiable, Sendable {
@@ -43,18 +65,36 @@ struct VideoModelConfig: Identifiable, Sendable {
         return dict[""]
     }
 
-    func validate(duration: Int, aspectRatio: String, resolution: String?) -> String? {
+    func validate(
+        duration: Int,
+        aspectRatio: String,
+        resolution: String?,
+        localized: Bool = false
+    ) -> String? {
         if !durations.isEmpty, !durations.contains(duration) {
             return unsupportedValue(
                 model: displayName, field: "duration",
-                value: "\(duration)s", allowed: durations.map { "\($0)s" }
+                value: "\(duration)s", allowed: durations.map { "\($0)s" },
+                localized: localized
             )
         }
         if !aspectRatios.isEmpty, !aspectRatio.isEmpty, !aspectRatios.contains(aspectRatio) {
-            return unsupportedValue(model: displayName, field: "aspect ratio", value: aspectRatio, allowed: aspectRatios)
+            return unsupportedValue(
+                model: displayName,
+                field: "aspect ratio",
+                value: aspectRatio,
+                allowed: aspectRatios,
+                localized: localized
+            )
         }
         if let allowed = resolutions, let r = resolution, !r.isEmpty, !allowed.contains(r) {
-            return unsupportedValue(model: displayName, field: "resolution", value: r, allowed: allowed)
+            return unsupportedValue(
+                model: displayName,
+                field: "resolution",
+                value: r,
+                allowed: allowed,
+                localized: localized
+            )
         }
         return nil
     }

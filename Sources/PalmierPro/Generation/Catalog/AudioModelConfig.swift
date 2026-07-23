@@ -41,11 +41,11 @@ struct AudioModelConfig: Identifiable, Sendable {
 
         var label: String {
             switch self {
-            case .tts: "Speech"
-            case .music: "Music"
-            case .sfx: "Sound Effects"
-            case .cleanup: "Voice Cleanup"
-            case .dubbing: "Dubbing"
+            case .tts: L10n.string("Speech")
+            case .music: L10n.string("Music")
+            case .sfx: L10n.string("Sound Effects")
+            case .cleanup: L10n.string("Voice Cleanup")
+            case .dubbing: L10n.string("Dubbing")
             }
         }
     }
@@ -87,7 +87,7 @@ struct AudioModelConfig: Identifiable, Sendable {
     var minPromptLength: Int { caps.minPromptLength }
 
     var inputs: [Input] { (caps.inputs ?? ["text"]).compactMap(Input.init(rawValue:)) }
-    var promptLabel: String { caps.promptLabel ?? "Describe the sound" }
+    var promptLabel: String { caps.promptLabel ?? L10n.string("Describe the sound") }
     var minSeconds: Int { caps.minSeconds ?? 1 }
     var maxSeconds: Int { caps.maxSeconds ?? 600 }
     var targetLanguages: [String]? { caps.targetLanguages }
@@ -104,18 +104,30 @@ struct AudioModelConfig: Identifiable, Sendable {
     }
 
     static func languageName(_ code: String, locale: Locale = .current) -> String {
-        guard !code.isEmpty else { return "Target Language" }
+        guard !code.isEmpty else { return L10n.string("Target Language") }
         return locale.localizedString(forLanguageCode: code)?.capitalized
             ?? code.uppercased()
     }
 
-    func validate(spanSeconds: Double) -> String? {
+    func validate(spanSeconds: Double, localized: Bool = false) -> String? {
         let s = Int(spanSeconds.rounded())
         if s < minSeconds {
-            return "\(displayName) needs at least \(minSeconds)s of source media (selection is \(s)s)."
+            return L10n.message(
+                "%@ needs at least %ds of source media (selection is %ds).",
+                localized: localized,
+                displayName,
+                minSeconds,
+                s
+            )
         }
         if s > maxSeconds {
-            return "\(displayName) accepts at most \(maxSeconds)s of source media (selection is \(s)s)."
+            return L10n.message(
+                "%@ accepts at most %ds of source media (selection is %ds).",
+                localized: localized,
+                displayName,
+                maxSeconds,
+                s
+            )
         }
         return nil
     }
@@ -137,19 +149,32 @@ struct AudioModelConfig: Identifiable, Sendable {
         return pricing
     }
 
-    func validate(params: AudioGenerationParams) -> String? {
+    func validate(params: AudioGenerationParams, localized: Bool = false) -> String? {
         let promptLen = params.prompt.trimmingCharacters(in: .whitespaces).count
         if inputs.contains(.text), promptLen < minPromptLength {
-            return "\(displayName) requires prompt ≥ \(minPromptLength) characters (got \(promptLen))."
+            return L10n.message(
+                "%@ requires prompt ≥ %d characters (got %d).",
+                localized: localized,
+                displayName,
+                minPromptLength,
+                promptLen
+            )
         }
         if let allowed = voices, let v = params.voice, !v.isEmpty, !allowed.contains(v) {
             let shown = Array(allowed.prefix(6)) + (allowed.count > 6 ? ["…"] : [])
-            return unsupportedValue(model: displayName, field: "voice", value: v, allowed: shown)
+            return unsupportedValue(
+                model: displayName,
+                field: "voice",
+                value: v,
+                allowed: shown,
+                localized: localized
+            )
         }
         if let allowed = durations, let d = params.durationSeconds, !allowed.contains(d) {
             return unsupportedValue(
                 model: displayName, field: "duration",
-                value: "\(d)s", allowed: allowed.map { "\($0)s" }
+                value: "\(d)s", allowed: allowed.map { "\($0)s" },
+                localized: localized
             )
         }
         if let range = durationRange, let duration = params.durationSeconds,
@@ -158,14 +183,15 @@ struct AudioModelConfig: Identifiable, Sendable {
         }
         if let allowed = targetLanguages {
             guard let language = params.targetLanguage, !language.isEmpty else {
-                return "Choose a target language."
+                return L10n.message("Choose a target language.", localized: localized)
             }
             if !allowed.contains(language) {
                 return unsupportedValue(
                     model: displayName,
                     field: "target language",
                     value: language,
-                    allowed: allowed
+                    allowed: allowed,
+                    localized: localized
                 )
             }
         }

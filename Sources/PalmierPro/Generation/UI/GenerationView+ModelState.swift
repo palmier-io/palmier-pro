@@ -150,7 +150,9 @@ extension GenerationView {
     }
 
     private var audioPromptHint: String {
-        audioModel.minPromptLength > 1 ? " (min \(audioModel.minPromptLength) chars)" : ""
+        audioModel.minPromptLength > 1
+            ? L10n.format(" (min %d chars)", audioModel.minPromptLength)
+            : ""
     }
 
     var supportsAudioToggle: Bool {
@@ -163,14 +165,14 @@ extension GenerationView {
 
     var promptPlaceholder: String {
         switch selectedType {
-        case .image: "Describe the image"
-        case .video: "Describe the video"
+        case .image: L10n.string("Describe the image")
+        case .video: L10n.string("Describe the video")
         case .audio:
             switch audioModel.category {
-            case .tts: "Text to speak\(audioPromptHint)"
-            case .music: "Describe the music style or mood\(audioPromptHint)"
-            case .sfx: "Describe the sound\(audioPromptHint)"
-            case .cleanup, .dubbing: "No prompt needed"
+            case .tts: L10n.format("Text to speak%@", audioPromptHint)
+            case .music: L10n.format("Describe the music style or mood%@", audioPromptHint)
+            case .sfx: L10n.format("Describe the sound%@", audioPromptHint)
+            case .cleanup, .dubbing: L10n.string("No prompt needed")
             }
         }
     }

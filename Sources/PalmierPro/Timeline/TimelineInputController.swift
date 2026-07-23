@@ -575,9 +575,12 @@ final class TimelineInputController {
             case .newTrackAt(let insertIndex):
                 guard let leadTrackType = resolvedLeadTrackType(for: drag) else { break }
                 if !drag.isDuplicate,
-                   let reason = editor.multicamMoveViolation(moves: resolved.map {
-                       (clipId: $0.participant.clipId, toTrack: $0.trackIndex, toFrame: $0.frame + frameDelta)
-                   }) {
+                   let reason = editor.multicamMoveViolation(
+                       moves: resolved.map {
+                           (clipId: $0.participant.clipId, toTrack: $0.trackIndex, toFrame: $0.frame + frameDelta)
+                       },
+                       localized: true
+                   ) {
                     editor.refuseWithToast(reason)
                     break
                 }
@@ -1204,9 +1207,9 @@ final class TimelineInputController {
 
     private func newTrackActionName(count: Int, isDuplicate: Bool) -> String {
         switch (isDuplicate, count) {
-        case (true, 1): return "Duplicate Clip to New Track"
-        case (true, _): return "Duplicate Clips to New Track"
-        default:        return "Move Clip to New Track"
+        case (true, 1): return L10n.string("Duplicate Clip to New Track")
+        case (true, _): return L10n.string("Duplicate Clips to New Track")
+        default:        return L10n.string("Move Clip to New Track")
         }
     }
 

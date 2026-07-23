@@ -7,7 +7,7 @@ enum BackendError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .notConfigured: "Palmier backend not configured."
+        case .notConfigured: L10n.string("Palmier backend not configured.")
         case .transport(let message): message
         case .api(_, _, let message): message
         }

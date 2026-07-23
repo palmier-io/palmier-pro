@@ -80,7 +80,8 @@ private struct TimelineTabBarContent: View, Equatable {
         .menuIndicator(.hidden)
         .fixedSize()
         .padding(.leading, AppTheme.Spacing.xs)
-        .help("All timelines")
+        .accessibilityLabel(L10n.string("All timelines"))
+        .help(L10n.string("All timelines"))
     }
 
     private func tabItem(_ tab: TimelineTabInfo) -> some View {
@@ -155,7 +156,8 @@ private struct TimelineTabBarContent: View, Equatable {
                 .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
         }
         .buttonStyle(.plain)
-        .help("New timeline")
+        .accessibilityLabel(L10n.string("New timeline"))
+        .help(L10n.string("New timeline"))
     }
 
 }

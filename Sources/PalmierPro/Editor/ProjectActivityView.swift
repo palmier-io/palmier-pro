@@ -17,12 +17,12 @@ struct ProjectActivityView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
             HStack {
-                Text("Project Activity")
+                L10n.text("Project Activity")
                     .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                 Spacer()
                 if !entries.isEmpty {
-                    Text("\(CostEstimator.format(total)) used")
+                    Text(verbatim: L10n.format("%@ used", CostEstimator.format(total)))
                         .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                         .monospacedDigit()
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
@@ -30,7 +30,7 @@ struct ProjectActivityView: View {
             }
 
             if entries.isEmpty {
-                Text("No generations yet")
+                L10n.text("No generations yet")
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Text.mutedColor)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -95,7 +95,11 @@ struct ProjectActivityButton: View {
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
-        .help("Project Activity · \(CostEstimator.format(editor.totalGenerationCost)) used")
+        .accessibilityLabel(L10n.string("Project Activity"))
+        .help(L10n.format(
+            "Project Activity · %@ used",
+            CostEstimator.format(editor.totalGenerationCost)
+        ))
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {
             ProjectActivityView(entries: editor.generationLogEntries)
         }

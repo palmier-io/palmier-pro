@@ -95,6 +95,8 @@ struct ProjectCard: View {
                         .glassEffect(.regular, in: .circle)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(L10n.string("Delete Project"))
+                .help(L10n.string("Delete Project"))
                 .padding(AppTheme.Spacing.smMd)
                 .transition(.opacity.combined(with: .scale))
             }

@@ -309,7 +309,7 @@ final class AccountService {
     func signInWithGoogle() async {
         guard !isMisconfigured else { return }
         guard !isSigningIn else {
-            lastError = "Sign-in is already in progress."
+            lastError = L10n.string("Sign-in is already in progress.")
             Log.account.notice(
                 "sign in ignored provider=google reason=in_progress",
                 telemetry: "Sign in ignored",
@@ -365,7 +365,11 @@ final class AccountService {
     func buyCredits(dollars: Int) {
         guard let convex else { return }
         guard (TopOffLimits.minDollars...TopOffLimits.maxDollars).contains(dollars) else {
-            lastError = "Amount must be $\(TopOffLimits.minDollars)–$\(TopOffLimits.maxDollars)."
+            lastError = L10n.format(
+                "Amount must be $%d–$%d.",
+                TopOffLimits.minDollars,
+                TopOffLimits.maxDollars
+            )
             return
         }
         if isBuyingCredits { return }
@@ -433,7 +437,7 @@ final class AccountService {
               let host = url.host,
               Self.allowedBillingHosts.contains(host)
         else {
-            lastError = "Refused to open untrusted URL."
+            lastError = L10n.string("Refused to open untrusted URL.")
             return
         }
         NSWorkspace.shared.open(url, configuration: .init(), completionHandler: nil)
@@ -444,9 +448,9 @@ final class AccountService {
 
 extension AccountService {
     var displayPrimaryText: String {
-        if !isSignedIn { return "Signed out" }
+        if !isSignedIn { return L10n.string("Signed out") }
         let user = account?.user
-        return user?.displayName ?? user?.email ?? "Signed in"
+        return user?.displayName ?? user?.email ?? L10n.string("Signed in")
     }
 
     var displaySecondaryText: String? {

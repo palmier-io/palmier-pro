@@ -66,7 +66,7 @@ extension GenerationView {
                     }
                 } label: {
                     VStack(spacing: AppTheme.Spacing.xxs) {
-                        Text(mode.rawValue)
+                        Text(verbatim: mode.title)
                             .font(.system(size: AppTheme.FontSize.xs, weight: framesRefsMode == mode ? .semibold : .medium))
                             .foregroundStyle(framesRefsMode == mode
                                 ? AppTheme.Text.primaryColor
@@ -171,7 +171,7 @@ extension GenerationView {
         let inflight = editor.mediaAssets.filter(\.isGenerating).count
         Log.generation.notice("addRefAsset id=\(asset.id.prefix(8)) type=\(asset.type.rawValue) existing=\(refImages.count)+\(refVideos.count)+\(refAudios.count) inflightGen=\(inflight)")
         if allRefs.contains(where: { $0.id == asset.id }) {
-            flashDropError("\(asset.name) is already a reference")
+            flashDropError(L10n.format("%@ is already a reference", asset.name))
             return
         }
         var selection = videoInputAssets(for: videoModel)
@@ -180,11 +180,15 @@ extension GenerationView {
         case .video: selection.videoRefs.append(asset)
         case .audio: selection.audioRefs.append(asset)
         case .text, .lottie, .sequence:
-            let supported = ClipType.allCases.filter { refCap(for: $0) > 0 }.map(\.rawValue).joined(separator: " and ")
-            flashDropError("\(videoModel.displayName) only accepts \(supported) references.")
+            let supported = ListFormatter.localizedString(
+                byJoining: ClipType.allCases
+                    .filter { refCap(for: $0) > 0 }
+                    .map { L10n.string($0.trackLabel) }
+            )
+            flashDropError(L10n.format("%@ only accepts %@ references.", videoModel.displayName, supported))
             return
         }
-        if let err = selection.validate(for: videoModel) {
+        if let err = selection.validate(for: videoModel, localized: true) {
             flashDropError(err)
             return
         }
@@ -266,9 +270,9 @@ extension GenerationView {
                     iconName: "photo.badge.plus"
                 ) { asset in
                     if asset.type != .image {
-                        flashDropError("Drop image here.")
+                        flashDropError(L10n.string("Drop image here."))
                     } else if imageReferences.contains(where: { $0.id == asset.id }) {
-                        flashDropError("\(asset.name) is already a reference")
+                        flashDropError(L10n.format("%@ is already a reference", asset.name))
                     } else {
                         imageReferences.append(asset)
                     }
@@ -324,8 +328,8 @@ extension GenerationView {
     }
 
     private var audioSourceLabel: String {
-        if audioSourceTypes == [.audio] { return "Source Audio" }
-        if audioSourceTypes == [.video] { return "Source Video" }
-        return "Source Media"
+        if audioSourceTypes == [.audio] { return L10n.string("Source Audio") }
+        if audioSourceTypes == [.video] { return L10n.string("Source Video") }
+        return L10n.string("Source Media")
     }
 }

@@ -103,7 +103,11 @@ extension ToolExecutor {
 
         let snapshot = timelineSnapshot(editor)
         let outcome = editor.undo.perform("Remove Words (Agent)") {
-            editor.rippleDeleteRangesOnTrack(trackIndex: primaryTrack, ranges: primaryRanges)
+            editor.rippleDeleteRangesOnTrack(
+                trackIndex: primaryTrack,
+                ranges: primaryRanges,
+                localized: false
+            )
         }
         guard case .ok(let report) = outcome else {
             if case .refused(let reason) = outcome { throw ToolError("Ripple delete refused: \(reason)") }
@@ -128,7 +132,7 @@ extension ToolExecutor {
         try validateUnknownKeys(args, allowed: [], path: "remove_silence")
         let snapshot = timelineSnapshot(editor)
         let result = editor.undo.perform("Remove Silence (Agent)") {
-            editor.removeAllDeadAir()
+            editor.removeAllDeadAir(localized: false)
         }
         guard let result else {
             throw ToolError("No dead air on the timeline. Speech analysis may still be running, or the audio has no quiet non-speech sections.")

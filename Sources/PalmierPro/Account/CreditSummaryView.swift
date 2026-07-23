@@ -24,7 +24,12 @@ struct CreditSummaryView: View {
                     compactView(left: left, budget: budget, remaining: remaining)
                 }
                 .buttonStyle(.plain)
-                .help("Manage credits")
+                .accessibilityLabel(L10n.format(
+                    "%@ of %@ credits remaining this period",
+                    left.formatted(),
+                    budget.formatted()
+                ))
+                .help(L10n.string("Manage credits"))
                 .popover(isPresented: $showActions, arrowEdge: .bottom) {
                     CreditActionsPopover(isPresented: $showActions)
                 }
@@ -52,6 +57,7 @@ struct CreditSummaryView: View {
             Image(systemName: "dollarsign.circle.fill")
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(barColor(remaining))
+                .accessibilityHidden(true)
             Text(left.formatted())
                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                 .monospacedDigit()
@@ -65,7 +71,11 @@ struct CreditSummaryView: View {
         .overlay(
             Capsule().stroke(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.hairline)
         )
-        .help("\(left.formatted()) of \(budget.formatted()) credits remaining this period")
+        .help(L10n.format(
+            "%@ of %@ credits remaining this period",
+            left.formatted(),
+            budget.formatted()
+        ))
     }
 
     /// Tint by remaining ratio — full bar is healthy, drained bar is alarming.
@@ -137,7 +147,7 @@ private struct CreditActionsPopover: View {
 
     @ViewBuilder
     private func sectionCaption(_ text: String) -> some View {
-        Text(text)
+        L10n.text(text)
             .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
             .foregroundStyle(AppTheme.Text.tertiaryColor)
     }

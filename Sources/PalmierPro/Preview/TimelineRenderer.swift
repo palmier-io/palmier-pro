@@ -6,7 +6,7 @@ import Foundation
 enum TimelineRenderer {
     struct RenderError: LocalizedError {
         let reason: String
-        var errorDescription: String? { "Could not render selection: \(reason)" }
+        var errorDescription: String? { L10n.format("Could not render selection: %@", reason) }
     }
 
     /// Exports frames [startFrame, startFrame + frameCount) of timeline.
@@ -22,8 +22,8 @@ enum TimelineRenderer {
         includeAudio: Bool = true,
         preset: String = AVAssetExportPresetMediumQuality
     ) async throws -> URL {
-        guard timeline.fps > 0 else { throw RenderError(reason: "invalid fps") }
-        guard frameCount > 0 else { throw RenderError(reason: "empty selection") }
+        guard timeline.fps > 0 else { throw RenderError(reason: L10n.string("Invalid FPS")) }
+        guard frameCount > 0 else { throw RenderError(reason: L10n.string("Empty selection")) }
 
         let canvas = CGSize(width: timeline.width, height: timeline.height)
         let renderSize = Self.renderSize(canvas: canvas, shortSide: shortSide)
@@ -38,7 +38,7 @@ enum TimelineRenderer {
         )
 
         guard let session = AVAssetExportSession(asset: result.composition, presetName: preset) else {
-            throw RenderError(reason: "export preset unsupported")
+            throw RenderError(reason: L10n.string("Export preset unsupported"))
         }
         if includeAudio {
             session.audioMix = result.audioMix

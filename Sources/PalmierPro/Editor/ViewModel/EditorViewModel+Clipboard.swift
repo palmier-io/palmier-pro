@@ -75,7 +75,12 @@ extension EditorViewModel {
             // A pasted nest must not make this timeline contain itself.
             if entry.clip.sourceClipType == .sequence,
                wouldCreateNestCycle(nesting: entry.clip.mediaRef, into: activeTimelineId) {
-                mediaPanelToast = "Can't paste \"\(clipDisplayLabel(for: entry.clip))\" here — it would nest this timeline inside itself."
+                mediaPanelToast = MediaPanelToast(
+                    message: L10n.format(
+                        "Can't paste “%@” here — it would nest this timeline inside itself.",
+                        clipDisplayLabel(for: entry.clip)
+                    )
+                )
                 continue
             }
             placements.append(ClonePlacement(
