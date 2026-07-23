@@ -439,7 +439,7 @@ extension ToolExecutor {
             supplied = [:]
         }
 
-        var resolved = model.defaultSettings
+        var resolved = UpscaleSettings()
         for (id, rawValue) in supplied {
             if let setting = model.selectSettings.first(where: { $0.id == id }) {
                 let options = model.availableOptions(for: setting, source: source)
@@ -466,7 +466,7 @@ extension ToolExecutor {
                 throw ToolError("Unknown upscale setting '\(id)'. Available: \(valid)")
             }
         }
-        return model.normalizedSettings(resolved, source: source)
+        return resolved
     }
 
     private func trimmedSource(

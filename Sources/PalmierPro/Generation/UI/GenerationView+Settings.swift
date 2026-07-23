@@ -3,7 +3,7 @@ import SwiftUI
 private enum GenerationSettingsLayout {
     static let popoverWidth: CGFloat = 220
     static let imagePopoverWidth: CGFloat = 270
-    static let upscalePopoverWidth: CGFloat = 340
+    static let upscalePopoverWidth: CGFloat = 280
     static let upscalePopoverMaxHeight: CGFloat = 500
     static let imageAspectGridMinWidth: CGFloat = 78
     static let gridButtonMinHeight: CGFloat = 30
