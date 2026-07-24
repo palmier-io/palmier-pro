@@ -48,6 +48,20 @@ final class ScrubAudioEngine {
     nonisolated private static let fillStride = cacheFrameCount - grainFrameCount
     nonisolated private static let mixInvalidationDebounce = Duration.milliseconds(250)
 
+    nonisolated private static let readerTeardownQueue = DispatchQueue(
+        label: "io.palmier.pro.scrub-reader-teardown",
+        qos: .userInitiated
+    )
+
+    private struct ReaderBox: @unchecked Sendable {
+        let reader: AVAssetReader
+    }
+
+    nonisolated private static func finishReading(_ reader: AVAssetReader) {
+        let box = ReaderBox(reader: reader)
+        readerTeardownQueue.async { box.reader.cancelReading() }
+    }
+
     private let meter: AudioMeterHub
     private let output = ScrubAudioOutput(sampleRate: sampleRate)
 
@@ -456,13 +470,19 @@ final class ScrubAudioEngine {
         ])
         output.audioMix = source.audioMix
         output.alwaysCopiesSampleData = false
-        guard reader.canAdd(output) else { return nil }
+        guard reader.canAdd(output) else {
+            finishReading(reader)
+            return nil
+        }
         reader.add(output)
         reader.timeRange = CMTimeRange(
             start: CMTime(value: startSample, timescale: sampleTimescale),
             duration: CMTime(value: frameCount, timescale: sampleTimescale)
         )
-        guard reader.startReading() else { return nil }
+        guard reader.startReading() else {
+            finishReading(reader)
+            return nil
+        }
         return (reader, output)
     }
 
@@ -483,13 +503,11 @@ final class ScrubAudioEngine {
         guard let (reader, output) = makeReader(
             source: source, tracks: tracks, startSample: startSample, frameCount: Int64(frameCount)
         ) else { return nil }
+        defer { finishReading(reader) }
 
         var runningOffset = 0
         while let sampleBuffer = output.copyNextSampleBuffer() {
-            if Task.isCancelled {
-                reader.cancelReading()
-                return nil
-            }
+            if Task.isCancelled { return nil }
             guard let description = CMSampleBufferGetFormatDescription(sampleBuffer),
                   let streamDescription = CMAudioFormatDescriptionGetStreamBasicDescription(description),
                   let sampleFormat = AVAudioFormat(streamDescription: streamDescription)
@@ -545,6 +563,7 @@ final class ScrubAudioEngine {
               let (reader, output) = makeReader(
                 source: source, tracks: tracks, startSample: from, frameCount: to - from
               ) else { return }
+        defer { finishReading(reader) }
 
         let windowLen = cacheFrameCount
         let stride = Int64(fillStride)
@@ -570,7 +589,7 @@ final class ScrubAudioEngine {
         }
 
         while let sampleBuffer = output.copyNextSampleBuffer() {
-            if Task.isCancelled { reader.cancelReading(); return }
+            if Task.isCancelled { return }
             guard let description = CMSampleBufferGetFormatDescription(sampleBuffer),
                   let streamDescription = CMAudioFormatDescriptionGetStreamBasicDescription(description),
                   let sampleFormat = AVAudioFormat(streamDescription: streamDescription)
@@ -605,7 +624,7 @@ final class ScrubAudioEngine {
                 right[base + sourceIndex] = quantize(rightChannel[sourceIndex])
             }
             filledEnd = max(filledEnd, abs + Int64(sampleCount))
-            if !(await drainFull()) { reader.cancelReading(); return }
+            if !(await drainFull()) { return }
         }
 
         guard reader.status == .completed else { return }
