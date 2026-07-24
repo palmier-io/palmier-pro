@@ -4,7 +4,7 @@
 
 # Palmier Pro
 
-**AI를 위해 만든 비디오 편집기.**
+**AI를 위한 비디오 편집기.**
 
 <a href="https://github.com/palmier-io/palmier-pro/releases/latest/download/PalmierPro.dmg">
   <img src="../../assets/macos-badge.png" alt="macOS용 Palmier Pro 다운로드" width="180" />
@@ -46,7 +46,7 @@ Palmier Pro는 Mac용 오픈 소스 비디오 편집기입니다. 사용자와 a
 
 ### Swift 네이티브 비디오 편집기
 
-Palmier Pro는 Swift로 처음부터 만들었습니다. 기준은 Premiere Pro이며, AI를 워크플로에 통합하는 Palmier Pro만의 방식을 적용했습니다.
+Palmier Pro는 Swift로 처음부터 만들었습니다. Premiere Pro를 모티브로 했으며, AI를 워크플로에 통합하는 Palmier Pro만의 방식을 적용했습니다.
 
 ### 내장 생성형 AI
 
@@ -72,7 +72,7 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 
 **Cursor**
 
-가장 쉬운 방법은 앱 안에서 `Help` -> `MCP Instructions` -> `Install in Cursor`를 여는 것입니다. 수동으로 설치하려면 `~/.cursor/mcp.json`에 다음을 추가하세요.
+가장 쉬운 방법은 앱 안에서 `Help` -> `MCP Instructions` -> `Install in Cursor`를 선택하는 것입니다. 수동으로 설치하려면 `~/.cursor/mcp.json`에 다음을 추가하세요.
 
 ```
 {
@@ -87,7 +87,7 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 
 **Claude Desktop**
 
-앱에는 Claude Desktop에 Desktop Extension을 한 번에 설치할 수 있는 [mcpb](https://github.com/modelcontextprotocol/mcpb)가 포함되어 있습니다. `Help` -> `MCP Instructions` -> `Install in Claude Desktop`를 여세요.
+앱에는 Claude Desktop에 Desktop Extension을 한 번에 설치할 수 있는 [mcpb](https://github.com/modelcontextprotocol/mcpb)가 포함되어 있습니다. `Help` -> `MCP Instructions` -> `Install in Claude Desktop`을 선택하세요.
 
 ## FAQ
 
@@ -97,7 +97,7 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 
 **무료인가요?**
 
-편집기는 무료입니다. 로그인 없이 다운로드할 수 있으며 CapCut이나 Adobe Premiere 같은 비디오 편집기로 사용할 수 있습니다. MCP 서버도 무료로 사용할 수 있고, Claude Code, Claude Desktop, Cursor로 타임라인 편집기와 상호작용을 시작할 수 있습니다.
+편집기는 무료입니다. 로그인 없이 다운로드할 수 있으며 CapCut이나 Adobe Premiere 같은 비디오 편집기로 사용할 수 있습니다. MCP 서버도 무료로 사용할 수 있고, Claude Code, Claude Desktop, Cursor를 타임라인 편집기와 연동할 수 있습니다.
 
 생성형 AI 기능은 로그인과 구독이 필요합니다.
 
