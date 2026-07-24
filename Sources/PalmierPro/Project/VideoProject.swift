@@ -28,7 +28,7 @@ private typealias DocumentCloseCallback = @convention(c) (
     AnyObject, Selector, NSDocument, Bool, UnsafeMutableRawPointer?
 ) -> Void
 
-final class VideoProject: NSDocument {
+class VideoProject: NSDocument {
 
     static let typeIdentifier = Project.typeIdentifier
 
@@ -198,6 +198,9 @@ final class VideoProject: NSDocument {
     }
 
     override func write(to url: URL, ofType typeName: String) throws {
+        var mainThreadUnblocked = false
+        defer { if !mainThreadUnblocked { unblockUserInteraction() } }
+
         if !snapshotPreparedForWrite {
             guard Thread.isMainThread else {
                 Log.project.error("save: snapshot not prepared for off-main write()")
@@ -218,6 +221,7 @@ final class VideoProject: NSDocument {
         snapshotPreparedForWrite = false
         snapshotSourceProjectURL = nil
         unblockUserInteraction()
+        mainThreadUnblocked = true
 
         guard let file, let data = try? JSONEncoder().encode(file) else {
             Log.project.error("save: project snapshot missing at write()")
