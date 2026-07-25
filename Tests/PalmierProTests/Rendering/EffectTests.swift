@@ -101,6 +101,32 @@ struct EffectModelTests {
             }
         }
     }
+
+    @Test func invertEffectReturnsComplementaryChannels() throws {
+        let descriptor = try #require(EffectRegistry.descriptor(id: "stylize.invert"))
+        let input = CIImage(color: CIColor(red: 0.2, green: 0.4, blue: 0.75))
+            .cropped(to: CGRect(x: 0, y: 0, width: 1, height: 1))
+        let output = descriptor.render(
+            input,
+            effect: descriptor.makeEffect(),
+            atOffset: 0
+        )
+        let context = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()])
+        var pixel = [Float](repeating: 0, count: 4)
+        context.render(
+            output,
+            toBitmap: &pixel,
+            rowBytes: MemoryLayout<Float>.size * 4,
+            bounds: output.extent,
+            format: .RGBAf,
+            colorSpace: nil
+        )
+
+        #expect(abs(Double(pixel[0]) - 0.8) < 0.001)
+        #expect(abs(Double(pixel[1]) - 0.6) < 0.001)
+        #expect(abs(Double(pixel[2]) - 0.25) < 0.001)
+        #expect(abs(Double(pixel[3]) - 1) < 0.001)
+    }
 }
 
 @Suite("Effects — rendering")
@@ -163,6 +189,7 @@ struct EffectRenderingTests {
             "detail.clarity": ["clarity": 1, "dehaze": 0],
             "key.chroma": ["keyHue": 0.333, "tolerance": 0.5],
             "stylize.glow": ["intensity": 1, "radius": 20, "threshold": 0],
+            "stylize.invert": [:],
             "blur.noiseReduction": ["amount": 1],
             "blur.motion": ["radius": 20, "angle": 0],
         ]
