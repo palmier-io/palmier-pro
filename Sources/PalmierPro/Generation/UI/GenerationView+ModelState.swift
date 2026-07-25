@@ -1,5 +1,11 @@
 import SwiftUI
 
+struct VideoModelProviderGroup: Identifiable {
+    let name: String
+    let models: [(index: Int, model: VideoModelConfig)]
+    var id: String { name }
+}
+
 // Model catalog selection and per-model capability state.
 extension GenerationView {
 
@@ -47,6 +53,16 @@ extension GenerationView {
         videoModels.enumerated()
             .filter { ModelPreferences.shared.isEnabled($0.element.id) && isAvailable($0.element.paidOnly) }
             .map { (index: $0.offset, model: $0.element) }
+    }
+    var enabledVideoModelsByProvider: [VideoModelProviderGroup] {
+        var names: [String] = []
+        var modelsByName: [String: [(index: Int, model: VideoModelConfig)]] = [:]
+        for item in enabledVideoModels {
+            let name = item.model.providerName ?? "Other"
+            if modelsByName[name] == nil { names.append(name) }
+            modelsByName[name, default: []].append(item)
+        }
+        return names.map { VideoModelProviderGroup(name: $0, models: modelsByName[$0] ?? []) }
     }
     var enabledImageModels: [(index: Int, model: ImageModelConfig)] {
         imageModels.enumerated()

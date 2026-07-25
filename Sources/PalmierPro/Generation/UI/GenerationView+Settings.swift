@@ -67,8 +67,12 @@ extension GenerationView {
         Menu {
             switch selectedType {
             case .video:
-                ForEach(enabledVideoModels, id: \.index) { item in
-                    Button(item.model.displayName) { selectedVideoModelIndex = item.index }
+                ForEach(enabledVideoModelsByProvider) { group in
+                    Section(group.name) {
+                        ForEach(group.models, id: \.index) { item in
+                            Button(item.model.displayName) { selectedVideoModelIndex = item.index }
+                        }
+                    }
                 }
             case .image:
                 ForEach(enabledImageModels, id: \.index) { item in

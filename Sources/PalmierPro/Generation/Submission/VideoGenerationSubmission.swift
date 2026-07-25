@@ -11,6 +11,7 @@ struct VideoGenerationSubmission {
     let buildParams: ([String]) -> BackendGenerationParams
     let snapshotRefs: (@Sendable (inout GenerationInput, [String]) -> Void)?
     let preprocessRef: (@Sendable (Int, MediaAsset) async throws -> URL?)?
+    let preprocessSourceVideo: (@Sendable (URL) async throws -> URL?)?
 
     @MainActor
     @discardableResult
@@ -32,6 +33,7 @@ struct VideoGenerationSubmission {
             buildParams: buildParams,
             snapshotRefs: snapshotRefs,
             preprocessRef: preprocessRef,
+            preprocessSourceVideo: preprocessSourceVideo,
             fileExtension: "mp4",
             projectURL: projectURL,
             editor: editor,
@@ -55,6 +57,10 @@ struct VideoGenerationSubmission {
         if model.requiresSourceVideo {
             let references = inputAssets.editReferences
             genInput.imageURLAssetIds = assetIds(references)
+            let preprocessSourceVideo = model.caps.maxSourceVideoResolution.map { resolution in
+                { @Sendable url in try await VideoCompressor.compressIfNeeded(
+                    url: url, maxResolution: resolution) }
+            }
 
             return VideoGenerationSubmission(
                 genInput: genInput,
@@ -77,7 +83,8 @@ struct VideoGenerationSubmission {
                     ))
                 },
                 snapshotRefs: nil,
-                preprocessRef: nil
+                preprocessRef: nil,
+                preprocessSourceVideo: preprocessSourceVideo
             )
         }
 
@@ -131,7 +138,8 @@ struct VideoGenerationSubmission {
                 return .video(params)
             },
             snapshotRefs: snapshotRefs,
-            preprocessRef: preprocessRef
+            preprocessRef: preprocessRef,
+            preprocessSourceVideo: nil
         )
     }
 
