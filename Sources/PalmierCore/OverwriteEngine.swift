@@ -1,10 +1,10 @@
-import Foundation
-
 /// Pure functions for overwrite editing: computing how to clear a region
 /// of the timeline by removing, trimming, or splitting existing clips.
-enum OverwriteEngine {
+/// Stdlib-only — the new clip id generated on a split is supplied by the
+/// caller via `idProvider`, keeping the engine deterministic and portable.
+public enum OverwriteEngine {
 
-    enum Action {
+    public enum Action: Equatable, Sendable {
         case remove(clipId: String)
 
         case trimEnd(clipId: String, newDuration: Int)
@@ -23,10 +23,12 @@ enum OverwriteEngine {
 
     /// Given a region [regionStart, regionEnd) on a track, returns the actions
     /// needed to clear that region so a new clip can be placed there.
-    static func computeOverwrite(
-        clips: [Clip],
+    /// `idProvider` supplies the id for any new clip created by a split.
+    public static func computeOverwrite<C: RippleClip>(
+        clips: [C],
         regionStart: Int,
-        regionEnd: Int
+        regionEnd: Int,
+        idProvider: () -> String
     ) -> [Action] {
         guard regionEnd > regionStart else { return [] }
         var actions: [Action] = []
@@ -49,7 +51,7 @@ enum OverwriteEngine {
                 actions.append(.split(
                     clipId: clip.id,
                     leftDuration: leftDuration,
-                    rightId: UUID().uuidString,
+                    rightId: idProvider(),
                     rightStartFrame: rightStartFrame,
                     rightTrimStart: rightTrimStart,
                     rightDuration: rightDuration

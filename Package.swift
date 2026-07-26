@@ -7,6 +7,7 @@ let package = Package(
     platforms: [.macOS(.v26)],
     products: [
         .executable(name: "PalmierPro", targets: ["PalmierPro"]),
+        .library(name: "PalmierCore", targets: ["PalmierCore"]),
     ],
     traits: [
         .trait(name: "BundledSpeech", description: "Include on-device speech models and MLX."),
@@ -26,9 +27,15 @@ let package = Package(
         .package(url: "https://github.com/soniqo/speech-swift", exact: "0.0.21"),
     ],
     targets: [
+        .target(
+            name: "PalmierCore",
+            dependencies: [],
+            path: "Sources/PalmierCore"
+        ),
         .executableTarget(
             name: "PalmierPro",
             dependencies: [
+                "PalmierCore",
                 .product(name: "MCP", package: "swift-sdk"),
                 .product(name: "Sparkle", package: "Sparkle"),
                 .product(
@@ -88,9 +95,15 @@ let package = Package(
             name: "PalmierProTests",
             dependencies: [
                 "PalmierPro",
+                "PalmierCore",
                 .product(name: "MCP", package: "swift-sdk"),
             ],
             path: "Tests/PalmierProTests"
+        ),
+        .testTarget(
+            name: "PalmierCoreTests",
+            dependencies: ["PalmierCore"],
+            path: "Tests/PalmierCore"
         ),
     ]
 )

@@ -1,33 +1,11 @@
-import Foundation
-
-/// A proposed new start frame for a single clip, produced by the ripple engine
-/// and applied by the caller.
-struct ClipShift: Equatable, Sendable {
-    let clipId: String
-    let newStartFrame: Int
-}
-
-/// A half-open `[start, end)` frame interval on a single track. Used to describe
-/// the gaps that a ripple edit needs to close.
-struct FrameRange: Equatable, Sendable {
-    let start: Int
-    let end: Int
-    var length: Int { end - start }
-}
-
-/// A user-selected empty gap on a single track
-struct GapSelection: Equatable, Sendable {
-    let trackIndex: Int
-    let range: FrameRange
-}
-
 /// Pure functions for ripple editing: computing how clips shift after
-/// insertions or deletions.
-enum RippleEngine {
+/// insertions or deletions. Stdlib-only — no Foundation, no UI, no concrete
+/// timeline model. Portable across platforms.
+public enum RippleEngine {
 
     /// After removing clips from a track, compute new start frames for
     /// remaining clips that should shift backward to close the gap.
-    static func computeRippleShifts(clips: [Clip], removedIds: Set<String>) -> [ClipShift] {
+    public static func computeRippleShifts<C: RippleClip>(clips: [C], removedIds: Set<String>) -> [ClipShift] {
         let removedRanges = clips
             .filter { removedIds.contains($0.id) }
             .map { FrameRange(start: $0.startFrame, end: $0.endFrame) }
@@ -39,7 +17,10 @@ enum RippleEngine {
 
     /// Shift clips leftward to close the gaps defined by `removedRanges`.
     /// Used when ranges come from a different track (sync-locked ripple).
-    static func computeRippleShiftsForRanges(clips: [Clip], removedRanges: [FrameRange]) -> [ClipShift] {
+    public static func computeRippleShiftsForRanges<C: RippleClip>(
+        clips: [C],
+        removedRanges: [FrameRange]
+    ) -> [ClipShift] {
         let merged = mergeRanges(removedRanges)
         guard !merged.isEmpty else { return [] }
 
@@ -56,8 +37,8 @@ enum RippleEngine {
     }
 
     /// Push all clips at or after `insertFrame` forward by `pushAmount` frames.
-    static func computeRipplePush(
-        clips: [Clip],
+    public static func computeRipplePush<C: RippleClip>(
+        clips: [C],
         insertFrame: Int,
         pushAmount: Int,
         excludeIds: Set<String> = []
@@ -67,9 +48,7 @@ enum RippleEngine {
             .map { ClipShift(clipId: $0.id, newStartFrame: $0.startFrame + pushAmount) }
     }
 
-    // MARK: - Helpers
-
-    static func mergeRanges(_ ranges: [FrameRange]) -> [FrameRange] {
+    public static func mergeRanges(_ ranges: [FrameRange]) -> [FrameRange] {
         let sorted = ranges.sorted { $0.start < $1.start }
         var merged: [FrameRange] = []
         for range in sorted {

@@ -720,7 +720,8 @@ extension EditorViewModel {
         let actions = OverwriteEngine.computeOverwrite(
             clips: timeline.tracks[trackIndex].clips.filter { !excluding.contains($0.id) },
             regionStart: start,
-            regionEnd: end
+            regionEnd: end,
+            idProvider: { UUID().uuidString }
         )
 
         for action in actions {
