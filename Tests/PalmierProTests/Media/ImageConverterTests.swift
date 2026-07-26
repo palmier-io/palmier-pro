@@ -7,9 +7,10 @@ import UniformTypeIdentifiers
 
 @Suite("Generation reference image conversion")
 struct ImageConverterTests {
-    @Test func recognizesHEICAndHEIFExtensions() {
+    @Test func recognizesReferenceFormatsThatNeedConversion() {
         #expect(ImageConverter.requiresConversion(URL(fileURLWithPath: "/tmp/ref.HEIC")))
         #expect(ImageConverter.requiresConversion(URL(fileURLWithPath: "/tmp/ref.heif")))
+        #expect(ImageConverter.requiresConversion(URL(fileURLWithPath: "/tmp/ref.tiff")))
         #expect(!ImageConverter.requiresConversion(URL(fileURLWithPath: "/tmp/ref.jpg")))
         #expect(!ImageConverter.requiresConversion(URL(fileURLWithPath: "/tmp/ref.png")))
     }

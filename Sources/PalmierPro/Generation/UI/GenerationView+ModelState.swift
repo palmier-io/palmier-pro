@@ -148,6 +148,7 @@ extension GenerationView {
         case .image: return !imageModel.aspectRatios.isEmpty || imageModel.resolutions != nil || imageModel.qualities != nil || imageModel.maxImages > 1
         case .audio:
             return audioModel.supportsInstrumental
+                || audioModel.supportsMultilingual
                 || (!audioUsesSource && audioModel.hasDurationControl)
         case .upscale:
             return true
@@ -216,6 +217,7 @@ extension GenerationView {
         case .video: "Describe the video"
         case .audio:
             switch audioModel.category {
+            case .general: "Describe the audio scene\(audioPromptHint)"
             case .tts: "Text to speak\(audioPromptHint)"
             case .music: "Describe the music style or mood\(audioPromptHint)"
             case .sfx: "Describe the sound\(audioPromptHint)"

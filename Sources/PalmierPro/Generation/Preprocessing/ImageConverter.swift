@@ -10,7 +10,7 @@ enum ImageConverter {
     }
 
     nonisolated static func requiresConversion(_ url: URL) -> Bool {
-        ["heic", "heif"].contains(url.pathExtension.lowercased())
+        ["heic", "heif", "tiff"].contains(url.pathExtension.lowercased())
     }
 
     @concurrent

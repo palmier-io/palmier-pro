@@ -203,6 +203,7 @@ extension GenerationView {
                 parts.append("\(selectedAudioDuration)s")
             }
             if audioModel.supportsInstrumental && instrumental { parts.append("Instrumental") }
+            if audioModel.supportsMultilingual && multilingual { parts.append("Multilingual") }
             return parts.isEmpty ? "Settings" : parts.joined(separator: " \u{00B7} ")
         }
         if currentResolutions != nil { parts.append(resolutionLabel(selectedResolution)) }
@@ -315,6 +316,13 @@ extension GenerationView {
                         .controlSize(.small)
                         .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
+                }
+                if selectedType == .audio && audioModel.supportsMultilingual {
+                    Toggle("Multilingual", isOn: $multilingual)
+                        .controlSize(.small)
+                        .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        .help("Use for non-English or mixed-language audio.")
                 }
                 if selectedType == .video, videoModel.audioDiscountRate != nil {
                     let discount = videoModel.audioDiscount(for: effectiveResolution)

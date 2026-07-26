@@ -234,6 +234,17 @@ extension ToolExecutor {
         try requirePlan(for: model.id, paidOnly: model.paidOnly)
 
         let prompt = (args.string("prompt") ?? "").trimmingCharacters(in: .whitespaces)
+        let inputAssets = AudioGenerationSubmission.InputAssets(
+            imageRefs: try args.stringArray("referenceImageMediaRefs").map {
+                try asset($0, editor: editor, label: "Image reference")
+            },
+            audioRefs: try args.stringArray("referenceAudioMediaRefs").map {
+                try asset($0, editor: editor, label: "Audio reference")
+            }
+        )
+        if let error = inputAssets.validate(for: model) {
+            throw ToolError(error)
+        }
         let acceptsVideo = model.inputs.contains(.video)
         let sourceMediaRef = args.string("sourceMediaRef")
             ?? args.string("videoSourceMediaRef")
@@ -305,7 +316,9 @@ extension ToolExecutor {
             videoURL: videoURL,
             sourceURL: nil,
             targetLanguage: model.targetLanguages != nil
-                ? args.string("targetLanguage") : nil
+                ? args.string("targetLanguage") : nil,
+            multilingual: model.supportsMultilingual
+                ? (args.bool("multilingual") ?? false) : nil
         )
         if let err = model.validate(params: params) {
             throw ToolError(err)
@@ -321,7 +334,8 @@ extension ToolExecutor {
             lyrics: params.lyrics,
             styleInstructions: params.styleInstructions,
             instrumental: model.supportsInstrumental ? instrumental : nil,
-            targetLanguage: params.targetLanguage
+            targetLanguage: params.targetLanguage,
+            multilingual: params.multilingual
         )
         if let sourceAsset {
             genInput.audioInput = sourceAsset.type == .video
@@ -336,15 +350,19 @@ extension ToolExecutor {
             genInput.setAudioSourceAsset(sourceAsset)
         }
 
-        let references = sourceAsset.map { [$0] } ?? []
-        let folderId = try resolveFolder(args, editor: editor, fallbackReferences: references)
+        let sourceReferences = sourceAsset.map { [$0] } ?? []
+        let folderId = try resolveFolder(
+            args,
+            editor: editor,
+            fallbackReferences: sourceReferences + inputAssets.references
+        )
         let submission = AudioGenerationSubmission.make(
             genInput: genInput,
             model: model,
             params: params,
             name: args.string("name"),
             folderId: folderId,
-            references: references
+            references: model.supportsReferences ? inputAssets.references : sourceReferences
         )
 
         if let startFrame = placementStartFrame, let sourceSpan = spanSeconds {
@@ -567,6 +585,7 @@ extension ToolExecutor {
             "category": m.category.rawValue,
             "inputs": m.inputs.map(\.rawValue),
             "minPromptLength": m.minPromptLength,
+            "supportsMultilingual": m.supportsMultilingual,
             "supportsLyrics": m.supportsLyrics,
             "supportsInstrumental": m.supportsInstrumental,
             "supportsStyleInstructions": m.supportsStyleInstructions,
@@ -577,6 +596,17 @@ extension ToolExecutor {
         }
         if let defaultVoice = m.defaultVoice { info["defaultVoice"] = defaultVoice }
         if let durations = m.durations { info["durations"] = durations }
+        if m.maxReferenceImages > 0 { info["maxReferenceImages"] = m.maxReferenceImages }
+        if m.maxReferenceAudios > 0 { info["maxReferenceAudios"] = m.maxReferenceAudios }
+        if let maxReferenceAudioSeconds = m.maxReferenceAudioSeconds {
+            info["maxReferenceAudioSeconds"] = maxReferenceAudioSeconds
+        }
+        if let referenceAudioExtensions = m.referenceAudioExtensions {
+            info["referenceAudioExtensions"] = Array(referenceAudioExtensions).sorted()
+        }
+        if m.referenceImagesAndAudiosExclusive {
+            info["referenceImagesAndAudiosExclusive"] = true
+        }
         if m.acceptsSourceMedia {
             info["minSeconds"] = m.minSeconds
             info["maxSeconds"] = m.maxSeconds

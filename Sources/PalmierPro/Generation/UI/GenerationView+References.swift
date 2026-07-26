@@ -7,20 +7,33 @@ extension GenerationView {
     var totalRefCount: Int { allRefs.count }
 
     var isRefCapReached: Bool {
-        if let total = videoModel.maxTotalReferences, totalRefCount >= total { return true }
-        let imgFull = videoModel.maxReferenceImages == 0 || refImages.count >= videoModel.maxReferenceImages
-        let vidFull = videoModel.maxReferenceVideos == 0 || refVideos.count >= videoModel.maxReferenceVideos
-        let audFull = videoModel.maxReferenceAudios == 0 || refAudios.count >= videoModel.maxReferenceAudios
-        return imgFull && vidFull && audFull
+        if selectedType == .video,
+           let total = videoModel.maxTotalReferences, totalRefCount >= total { return true }
+        return !activeReferenceTypes.isEmpty && activeReferenceTypes.allSatisfy {
+            refCount(for: $0) >= refCap(for: $0)
+        }
+    }
+
+    private var activeReferenceTypes: [ClipType] {
+        let supported = [ClipType.image, .video, .audio].filter { refCap(for: $0) > 0 }
+        guard selectedType == .audio, audioModel.referenceImagesAndAudiosExclusive else {
+            return supported
+        }
+        if !refImages.isEmpty { return [.image] }
+        if !refAudios.isEmpty { return [.audio] }
+        return supported
     }
 
     var showsRefSections: Bool {
-        guard selectedType == .video, videoModel.supportsReferences else { return false }
-        if videoModel.requiresSourceVideo { return false }
-        if videoModel.framesAndReferencesExclusive {
-            return framesRefsMode == .reference
+        switch selectedType {
+        case .video:
+            guard videoModel.supportsReferences, !videoModel.requiresSourceVideo else { return false }
+            return !videoModel.framesAndReferencesExclusive || framesRefsMode == .reference
+        case .audio:
+            return audioModel.supportsReferences && !audioUsesSource
+        case .image, .upscale:
+            return false
         }
-        return true
     }
 
     var showsFrameStrip: Bool {
@@ -90,9 +103,9 @@ extension GenerationView {
         .hoverHighlight()
     }
 
-    // MARK: - Unified video references strip (Seedance/Kling/Grok reference-to-video)
+    // MARK: - Reference strip
 
-    var videoReferenceSections: some View {
+    var referenceSections: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
             HStack(spacing: AppTheme.Spacing.xs) {
                 Text("References")
@@ -117,7 +130,7 @@ extension GenerationView {
                 if !isRefCapReached {
                     RefDropZone(
                         isTargeted: $refsTargeted,
-                        accepting: Set(ClipType.allCases),
+                        accepting: Set(activeReferenceTypes),
                         iconName: "plus"
                     ) { asset in
                         addRefAsset(asset)
@@ -127,8 +140,8 @@ extension GenerationView {
         }
     }
 
-    private var allRefCardItems: [(asset: MediaAsset, tag: String, type: ClipType)] {
-        ClipType.allCases.flatMap { type -> [(asset: MediaAsset, tag: String, type: ClipType)] in
+    private var allRefCardItems: [(asset: MediaAsset, tag: String?, type: ClipType)] {
+        ClipType.allCases.flatMap { type -> [(asset: MediaAsset, tag: String?, type: ClipType)] in
             let assets: [MediaAsset]
             switch type {
             case .image: assets = refImages
@@ -138,13 +151,22 @@ extension GenerationView {
             }
             let noun = tagNoun(for: type)
             return assets.enumerated().map {
-                (asset: $1, tag: "@\(noun)\($0 + 1)", type: type)
+                let tag = selectedType == .audio && type == .image
+                    ? nil : "@\(noun)\($0 + 1)"
+                return (asset: $1, tag: tag, type: type)
             }
         }
     }
 
     func refCap(for type: ClipType) -> Int {
-        switch type {
+        if selectedType == .audio {
+            switch type {
+            case .image: return audioModel.maxReferenceImages
+            case .audio: return audioModel.maxReferenceAudios
+            case .video, .text, .lottie, .sequence: return 0
+            }
+        }
+        return switch type {
         case .image: videoModel.maxReferenceImages
         case .video: videoModel.maxReferenceVideos
         case .audio: videoModel.maxReferenceAudios
@@ -164,7 +186,7 @@ extension GenerationView {
     /// Tag noun used in `@Image1` / `@Video1` / `@Audio1` / `@Element1` labels.
     func tagNoun(for type: ClipType) -> String {
         switch type {
-        case .image: videoModel.referenceTagNoun
+        case .image: selectedType == .video ? videoModel.referenceTagNoun : "Image"
         case .video: "Video"
         case .audio: "Audio"
         case .text: "Text"
@@ -180,19 +202,34 @@ extension GenerationView {
             flashDropError("\(asset.name) is already a reference")
             return
         }
-        var selection = videoInputAssets(for: videoModel)
-        switch asset.type {
-        case .image: selection.imageRefs.append(asset)
-        case .video: selection.videoRefs.append(asset)
-        case .audio: selection.audioRefs.append(asset)
-        case .text, .lottie, .sequence:
-            let supported = ClipType.allCases.filter { refCap(for: $0) > 0 }.map(\.rawValue).joined(separator: " and ")
-            flashDropError("\(videoModel.displayName) only accepts \(supported) references.")
-            return
-        }
-        if let err = selection.validate(for: videoModel) {
-            flashDropError(err)
-            return
+        if selectedType == .audio {
+            var selection = audioInputAssets(for: audioModel)
+            switch asset.type {
+            case .image: selection.imageRefs.append(asset)
+            case .audio: selection.audioRefs.append(asset)
+            case .video, .text, .lottie, .sequence:
+                flashDropError("\(audioModel.displayName) only accepts image or audio references.")
+                return
+            }
+            if let err = selection.validate(for: audioModel) {
+                flashDropError(err)
+                return
+            }
+        } else {
+            var selection = videoInputAssets(for: videoModel)
+            switch asset.type {
+            case .image: selection.imageRefs.append(asset)
+            case .video: selection.videoRefs.append(asset)
+            case .audio: selection.audioRefs.append(asset)
+            case .text, .lottie, .sequence:
+                let supported = activeReferenceTypes.map(\.rawValue).joined(separator: " and ")
+                flashDropError("\(videoModel.displayName) only accepts \(supported) references.")
+                return
+            }
+            if let err = selection.validate(for: videoModel) {
+                flashDropError(err)
+                return
+            }
         }
         switch asset.type {
         case .image: refImages.append(asset)
@@ -238,14 +275,13 @@ extension GenerationView {
 
     private var refCounterLabel: String {
         let total = totalRefCount
-        if let cap = videoModel.maxTotalReferences {
+        if selectedType == .video, let cap = videoModel.maxTotalReferences {
             let shortLabel: (ClipType) -> String = { switch $0 { case .image: "img"; case .video: "vid"; case .audio: "aud"; case .text: "txt"; case .lottie: "lot"; case .sequence: "seq" } }
-            let parts = ClipType.allCases
-                .filter { refCap(for: $0) > 0 }
+            let parts = activeReferenceTypes
                 .map { "\(refCount(for: $0)) \(shortLabel($0))" }
             return "\(total)/\(cap) · \(parts.joined(separator: " · "))"
         }
-        let singleCap = ClipType.allCases.map(refCap(for:)).max() ?? 0
+        let singleCap = activeReferenceTypes.map(refCap).max() ?? 0
         return "\(total)/\(singleCap)"
     }
 

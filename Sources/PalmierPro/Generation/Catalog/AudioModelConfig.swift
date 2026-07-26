@@ -10,10 +10,13 @@ struct AudioGenerationParams: Encodable, Sendable {
     var videoURL: String? = nil
     var sourceURL: String? = nil
     var targetLanguage: String? = nil
+    var referenceImageURL: String? = nil
+    var referenceAudioURLs: [String]? = nil
+    var multilingual: Bool? = nil
 
     enum CodingKeys: String, CodingKey {
         case kind, prompt, voice, lyrics, styleInstructions, instrumental, durationSeconds
-        case videoURL, sourceURL, targetLanguage
+        case videoURL, sourceURL, targetLanguage, referenceImageURL, referenceAudioURLs, multilingual
     }
 
     func encode(to encoder: Encoder) throws {
@@ -28,11 +31,15 @@ struct AudioGenerationParams: Encodable, Sendable {
         try c.encodeIfPresent(videoURL, forKey: .videoURL)
         try c.encodeIfPresent(sourceURL, forKey: .sourceURL)
         try c.encodeIfPresent(targetLanguage, forKey: .targetLanguage)
+        try c.encodeIfPresent(referenceImageURL, forKey: .referenceImageURL)
+        try c.encodeIfPresent(referenceAudioURLs, forKey: .referenceAudioURLs)
+        try c.encodeIfPresent(multilingual, forKey: .multilingual)
     }
 }
 
 struct AudioModelConfig: Identifiable, Sendable {
     enum Category: String, Sendable, Hashable, CaseIterable {
+        case general
         case tts
         case music
         case sfx
@@ -41,6 +48,7 @@ struct AudioModelConfig: Identifiable, Sendable {
 
         var label: String {
             switch self {
+            case .general: "General"
             case .tts: "Speech"
             case .music: "Music"
             case .sfx: "Sound Effects"
@@ -85,6 +93,15 @@ struct AudioModelConfig: Identifiable, Sendable {
     var durationRange: AudioDurationRange? { caps.durationRange }
     var hasDurationControl: Bool { durations != nil || durationRange != nil }
     var minPromptLength: Int { caps.minPromptLength }
+    var maxReferenceImages: Int { caps.maxReferenceImages ?? 0 }
+    var maxReferenceAudios: Int { caps.maxReferenceAudios ?? 0 }
+    var maxReferenceAudioSeconds: Double? { caps.maxReferenceAudioSeconds }
+    var referenceAudioExtensions: Set<String>? { caps.referenceAudioExtensions.map(Set.init) }
+    var referenceImagesAndAudiosExclusive: Bool {
+        caps.referenceImagesAndAudiosExclusive ?? false
+    }
+    var supportsMultilingual: Bool { caps.supportsMultilingual ?? false }
+    var supportsReferences: Bool { maxReferenceImages > 0 || maxReferenceAudios > 0 }
 
     var inputs: [Input] { (caps.inputs ?? ["text"]).compactMap(Input.init(rawValue:)) }
     var promptLabel: String { caps.promptLabel ?? "Describe the sound" }

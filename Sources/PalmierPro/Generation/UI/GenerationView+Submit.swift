@@ -163,6 +163,11 @@ extension GenerationView {
         )
     }
 
+    func audioInputAssets(for model: AudioModelConfig) -> AudioGenerationSubmission.InputAssets {
+        guard model.supportsReferences else { return AudioGenerationSubmission.InputAssets() }
+        return AudioGenerationSubmission.InputAssets(imageRefs: refImages, audioRefs: refAudios)
+    }
+
     private func preflightValidation(audioDuration: Int) -> String? {
         switch selectedType {
         case .video:
@@ -190,12 +195,14 @@ extension GenerationView {
                 numImages: imageCount
             )
         case .audio:
+            let inputAssets = audioInputAssets(for: audioModel)
             if audioUsesSource {
                 guard audioSource != nil else { return "Add source media." }
                 return audioModel.validate(spanSeconds: effectiveAudioSourceSpanSeconds)
                     ?? audioModel.validate(params: audioParams(audioDuration: audioDuration))
             }
             return audioModel.validate(params: audioParams(audioDuration: audioDuration))
+                ?? inputAssets.validate(for: audioModel)
         case .upscale:
             guard let source = upscaleSource else { return "Add source media." }
             guard upscaleModel.supportedTypes.contains(source.type) else {
@@ -225,7 +232,8 @@ extension GenerationView {
             durationSeconds: (audioModel.hasDurationControl || audioModel.acceptsSourceMedia) ? audioDuration : nil,
             videoURL: videoURL,
             sourceURL: nil,
-            targetLanguage: audioModel.targetLanguages != nil ? selectedTargetLanguage : nil
+            targetLanguage: audioModel.targetLanguages != nil ? selectedTargetLanguage : nil,
+            multilingual: audioModel.supportsMultilingual ? multilingual : nil
         )
     }
 
@@ -266,6 +274,8 @@ extension GenerationView {
                 ? instrumental : nil,
             targetLanguage: selectedType == .audio && audioModel.targetLanguages != nil
                 ? selectedTargetLanguage : nil,
+            multilingual: selectedType == .audio && audioModel.supportsMultilingual
+                ? multilingual : nil,
             generateAudio: supportsAudioToggle ? generateAudio : nil
         )
         let imageCount: Int = {
@@ -378,6 +388,7 @@ extension GenerationView {
             autoOpenPreview(imageAssetId)
         case .audio:
             let model = audioModel
+            let inputAssets = audioInputAssets(for: model)
             let onCompleteAudio = makeOnComplete(false)
             let sourceAsset = model.acceptsSourceMedia ? audioSource : nil
             if let sourceAsset {
@@ -396,8 +407,10 @@ extension GenerationView {
                 params: audioParams(audioDuration: audioDuration),
                 folderId: editFolderId
                     ?? sourceAsset?.folderId
+                    ?? inputAssets.references.last?.folderId
                     ?? editor.mediaPanelCurrentFolderId,
-                references: sourceAsset.map { [$0] } ?? [],
+                references: model.supportsReferences
+                    ? inputAssets.references : sourceAsset.map { [$0] } ?? [],
                 trimmedSourceOverride: sourceAsset.flatMap(audioSourceTrimmedSource)
             ).submit(
                 service: editor.generationService,
@@ -491,6 +504,7 @@ extension GenerationView {
         } else if selectedType == .audio {
             selectedTargetLanguage = initialAudioTargetLanguage
         }
+        multilingual = stored.multilingual ?? false
         lyrics = stored.lyrics ?? ""
         styleInstructions = stored.styleInstructions ?? ""
         instrumental = stored.instrumental ?? false
@@ -532,8 +546,13 @@ extension GenerationView {
         case .image:
             imageReferences = primary
         case .audio:
-            audioSource = (stored.referenceAudioAssetIds ?? []).compactMap(lookup).first
-                ?? (stored.referenceVideoAssetIds ?? []).compactMap(lookup).first
+            if audioModel.supportsReferences {
+                refImages = (stored.referenceImageAssetIds ?? []).compactMap(lookup)
+                refAudios = (stored.referenceAudioAssetIds ?? []).compactMap(lookup)
+            } else {
+                audioSource = (stored.referenceAudioAssetIds ?? []).compactMap(lookup).first
+                    ?? (stored.referenceVideoAssetIds ?? []).compactMap(lookup).first
+            }
         case .upscale:
             upscaleSource = primary.first ?? asset
         }
@@ -549,6 +568,7 @@ extension GenerationView {
 
     func resetAudioState() {
         let model = audioModel
+        multilingual = false
         selectedVoice = model.defaultVoice ?? ""
         selectedTargetLanguage = initialAudioTargetLanguage
         if !model.supportsLyrics { lyrics = "" }
