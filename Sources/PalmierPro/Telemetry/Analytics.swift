@@ -1,8 +1,24 @@
 import Foundation
+#if PRODUCTION_TELEMETRY
 import PostHog
+#endif
 
 enum Analytics {
     typealias Payload = [String: Any]
+
+    struct SessionActivation {
+        private(set) var isActivated: Bool
+
+        init(isActivated: Bool = false) {
+            self.isActivated = isActivated
+        }
+
+        mutating func activate() -> Bool {
+            guard !isActivated else { return false }
+            isActivated = true
+            return true
+        }
+    }
 
     enum Event: String {
         case appOpened = "app opened"
@@ -14,11 +30,13 @@ enum Analytics {
         case exportFailed = "export failed"
         case agentSessionStarted = "agent session started"
         case agentToolCalled = "agent tool called"
-        case mcpSessionStarted = "mcp session started"
+        case mcpSessionActivated = "mcp session activated"
     }
 
+    #if PRODUCTION_TELEMETRY
     private static let projectToken = Bundle.main.object(forInfoDictionaryKey: "PostHogProjectToken") as? String ?? ""
     private static let host = Bundle.main.object(forInfoDictionaryKey: "PostHogHost") as? String ?? PostHogConfig.defaultHost
+    #endif
     private static let enabledKey = "io.palmier.pro.analytics.enabled"
 
     static var isEnabled: Bool {
@@ -29,12 +47,14 @@ enum Analytics {
         }
         set {
             UserDefaults.standard.set(newValue, forKey: enabledKey)
+            #if PRODUCTION_TELEMETRY
             guard didStart else { return }
             if newValue {
                 PostHogSDK.shared.optIn()
             } else {
                 PostHogSDK.shared.optOut()
             }
+            #endif
         }
     }
 
@@ -45,6 +65,7 @@ enum Analytics {
     private static let lock = NSLock()
 
     static func start() {
+        #if PRODUCTION_TELEMETRY
         guard !didStart else { return }
         guard !projectToken.isEmpty else { return }
 
@@ -66,25 +87,34 @@ enum Analytics {
 
         PostHogSDK.shared.setup(config)
         didStart = true
+        #endif
     }
 
     static func identifyUser(id: String?, properties: Payload = [:]) {
+        #if PRODUCTION_TELEMETRY
         guard didStart, isEnabled else { return }
         guard let id, !id.isEmpty else { return }
         let userProperties = cleanedCustomPayload(properties)
         PostHogSDK.shared.identify(id, userProperties: userProperties.isEmpty ? nil : userProperties)
+        #endif
     }
 
     static func resetUser() {
+        #if PRODUCTION_TELEMETRY
         guard didStart else { return }
         PostHogSDK.shared.reset()
+        #endif
     }
 
     @discardableResult
     static func capture(_ event: Event, properties: Payload = [:]) -> Bool {
+        #if PRODUCTION_TELEMETRY
         guard didStart, isEnabled else { return false }
         PostHogSDK.shared.capture(event.rawValue, properties: cleanedPayload(properties))
         return true
+        #else
+        return false
+        #endif
     }
 
     static func captureProjectActive(projectId: String?, properties: Payload = [:]) {
@@ -115,7 +145,7 @@ enum Analytics {
             Event.exportFailed.rawValue,
             Event.agentSessionStarted.rawValue,
             Event.agentToolCalled.rawValue,
-            Event.mcpSessionStarted.rawValue,
+            Event.mcpSessionActivated.rawValue,
             "$identify",
         ])
     }
@@ -170,6 +200,7 @@ enum Analytics {
     private static var allowedCapturePropertyKeys: Set<String> {
         Set([
             "active_day",
+            "client_info",
             "export_duration_seconds",
             "failure_reason",
             "format",

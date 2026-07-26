@@ -105,30 +105,26 @@ extension EditorViewModel {
 
     /// Splits at one or more project frames in a single undoable action
     func splitClips(at points: [(trackIndex: Int, atFrame: Int)]) -> [String] {
-        undoManager?.beginUndoGrouping()
-        defer {
-            undoManager?.endUndoGrouping()
-            undoManager?.setActionName(points.count > 1 ? "Split Clips" : "Split Clip")
-        }
-        var rightIds: [String] = []
-        for p in points {
-            guard p.trackIndex >= 0, p.trackIndex < timeline.tracks.count,
-                  let clip = timeline.tracks[p.trackIndex].clips.first(where: {
-                      p.atFrame > $0.startFrame && p.atFrame < $0.endFrame
-                  })
-            else { continue }
-            let groupIds: Set<String> = clip.linkGroupId != nil
-                ? Set([clip.id] + linkedPartnerIds(of: clip.id))
-                : [clip.id]
-            let rights = groupIds.compactMap { splitSingleClip(clipId: $0, atFrame: p.atFrame) }
-            // Regroup the right halves so each side is its own linked pair.
-            if groupIds.count > 1 && !rights.isEmpty {
-                let newGroup = UUID().uuidString
-                mutateClips(ids: Set(rights), actionName: "Split Clip") { $0.linkGroupId = newGroup }
+        undo.perform(points.count > 1 ? "Split Clips" : "Split Clip") {
+            var rightIds: [String] = []
+            for p in points {
+                guard p.trackIndex >= 0, p.trackIndex < timeline.tracks.count,
+                      let clip = timeline.tracks[p.trackIndex].clips.first(where: {
+                          p.atFrame > $0.startFrame && p.atFrame < $0.endFrame
+                      })
+                else { continue }
+                let groupIds: Set<String> = clip.linkGroupId != nil
+                    ? Set([clip.id] + linkedPartnerIds(of: clip.id))
+                    : [clip.id]
+                let rights = groupIds.compactMap { splitSingleClip(clipId: $0, atFrame: p.atFrame) }
+                if groupIds.count > 1 && !rights.isEmpty {
+                    let newGroup = UUID().uuidString
+                    mutateClips(ids: Set(rights), actionName: "Split Clip") { $0.linkGroupId = newGroup }
+                }
+                rightIds.append(contentsOf: rights)
             }
-            rightIds.append(contentsOf: rights)
+            return rightIds
         }
-        return rightIds
     }
 
     @discardableResult
@@ -141,7 +137,7 @@ extension EditorViewModel {
         timeline.tracks[loc.trackIndex].clips.append(right)
         sortClips(trackIndex: loc.trackIndex)
 
-        registerTimelineUndo { vm in
+        registerTimelineUndo("Split Clip") { vm in
             vm.removeClipInternal(id: right.id)
             if let newLoc = vm.findClip(id: left.id) {
                 vm.timeline.tracks[newLoc.trackIndex].clips[newLoc.clipIndex] = clip
@@ -233,14 +229,14 @@ extension EditorViewModel {
         setClipSpeed(at: loc, newSpeed: newSpeed)
     }
 
-    func commitClipSpeed(ids: [String], newSpeed: Double) {
+    func commitClipSpeed(ids: [String], newSpeed: Double, ripple: Bool = true) {
         guard !refusesMulticamRetime(clipIds: ids) else { return }
         let before: Timeline = preDragTimeline ?? timeline
         for id in ids {
             guard let loc = findClip(id: id) else { continue }
             guard timeline.tracks[loc.trackIndex].clips[loc.clipIndex].supportsRetiming else { continue }
             if timeline.tracks[loc.trackIndex].clips[loc.clipIndex].speed != newSpeed {
-                setClipSpeed(at: loc, newSpeed: newSpeed)
+                setClipSpeed(at: loc, newSpeed: newSpeed, ripple: ripple)
             }
         }
         let after = timeline
@@ -251,35 +247,34 @@ extension EditorViewModel {
     }
 
     func registerTimelineSwap(undoState: Timeline, redoState: Timeline, actionName: String) {
-        registerTimelineUndo { vm in
+        registerTimelineUndo(actionName) { vm in
             vm.timeline = undoState
             vm.notifyTimelineChanged()
             vm.registerTimelineSwap(undoState: redoState, redoState: undoState, actionName: actionName)
         }
-        undoManager?.setActionName(actionName)
     }
 
     /// Run `work` as a single atomic mutation, registering one timeline-swap undo
     func withTimelineSwap(actionName: String, refreshVisuals: Bool = true, _ work: () -> Void) {
         let before = timeline
-        undoManager?.disableUndoRegistration()
-        work()
-        undoManager?.enableUndoRegistration()
+        undo.withoutRegistration(work)
         let after = timeline
         guard before != after else { return }
-        // Skip when nested: an outer withTimelineSwap is still suppressing
-        // registrations and will capture our diff in its own swap.
-        guard undoManager?.isUndoRegistrationEnabled ?? true else { return }
+        guard undo.isRegistrationEnabled else { return }
         registerTimelineSwap(undoState: before, redoState: after, actionName: actionName)
         notifyTimelineChanged(refreshVisuals: refreshVisuals)
     }
 
-    fileprivate func setClipSpeed(at loc: ClipLocation, newSpeed: Double) {
+    nonisolated static func retimedDurationFrames(durationFrames: Int, speed: Double, newSpeed: Double) -> Int {
+        max(1, Int((Double(durationFrames) * speed / newSpeed).rounded()))
+    }
+
+    fileprivate func setClipSpeed(at loc: ClipLocation, newSpeed: Double, ripple: Bool = true) {
         let ti = loc.trackIndex
         let clip = timeline.tracks[ti].clips[loc.clipIndex]
         let basis = dragBefore[clip.id] ?? clip
-        let sourceFrames = Double(basis.durationFrames) * basis.speed
-        let newDuration = max(1, Int((sourceFrames / newSpeed).rounded()))
+        let newDuration = Self.retimedDurationFrames(
+            durationFrames: basis.durationFrames, speed: basis.speed, newSpeed: newSpeed)
         let oldDuration = clip.durationFrames
         let oldEnd = clip.endFrame
 
@@ -292,7 +287,7 @@ extension EditorViewModel {
         timeline.tracks[ti].clips[loc.clipIndex].clampFadesToDuration()
 
         let rippleDelta = (clip.startFrame + newDuration) - oldEnd
-        if rippleDelta != 0 {
+        if ripple, rippleDelta != 0 {
             let chainIds = timeline.tracks[ti].contiguousClipIds(fromEnd: oldEnd, excludeId: clip.id)
             for ci in timeline.tracks[ti].clips.indices where chainIds.contains(timeline.tracks[ti].clips[ci].id) {
                 timeline.tracks[ti].clips[ci].startFrame += rippleDelta
@@ -332,7 +327,7 @@ extension EditorViewModel {
         redoTarget: [(id: String, clip: Clip)],
         actionName: String
     ) {
-        registerTimelineUndo { vm in
+        registerTimelineUndo(actionName) { vm in
             for entry in undoTarget {
                 if let loc = vm.findClip(id: entry.id) {
                     vm.timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = entry.clip
@@ -341,7 +336,6 @@ extension EditorViewModel {
             vm.registerClipStateSwap(undoTarget: redoTarget, redoTarget: undoTarget, actionName: actionName)
             vm.notifyTimelineChanged()
         }
-        undoManager?.setActionName(actionName)
     }
 
     func applyClipProperty(clipId: String, rebuild: Bool = false, _ modify: (inout Clip) -> Void) {
@@ -401,25 +395,6 @@ extension EditorViewModel {
         }
     }
 
-    /// Apply live, commit one undo entry after `debounce` of quiet —
-    /// for continuous controls without drag-end events (ColorPicker).
-    func debouncedCommitClipProperty(
-        clipId: String,
-        key: String,
-        debounce: Duration = .milliseconds(400),
-        _ modify: @escaping (inout Clip) -> Void
-    ) {
-        applyClipProperty(clipId: clipId, rebuild: true, modify)
-        let taskKey = "\(clipId):\(key)"
-        pendingDebouncedCommits[taskKey]?.cancel()
-        pendingDebouncedCommits[taskKey] = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: debounce)
-            guard !Task.isCancelled, let self else { return }
-            self.commitClipProperty(clipId: clipId, modify)
-            self.pendingDebouncedCommits.removeValue(forKey: taskKey)
-        }
-    }
-
     func debouncedCommitClipProperties(
         clipIds: [String],
         key: String,
@@ -442,6 +417,24 @@ extension EditorViewModel {
     }
 
     // MARK: - Text-style mutation helpers
+
+    func applyTextContent(clipId: String, content: String) {
+        let canvasW = Double(timeline.width)
+        let canvasH = Double(timeline.height)
+        applyClipProperty(clipId: clipId, rebuild: true) { clip in
+            clip.textContent = content
+            _ = self.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
+        }
+    }
+
+    func commitTextContent(clipId: String, content: String) {
+        let canvasW = Double(timeline.width)
+        let canvasH = Double(timeline.height)
+        commitClipProperty(clipId: clipId, actionName: "Change Text") { clip in
+            clip.textContent = content
+            _ = self.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
+        }
+    }
 
     func applyTextStyle(clipId: String, fitToContent: Bool = false, _ modify: @escaping (inout TextStyle) -> Void) {
         let canvasW = Double(timeline.width)
@@ -495,18 +488,6 @@ extension EditorViewModel {
         }
     }
 
-    func debouncedCommitTextStyle(
-        clipId: String,
-        key: String,
-        _ modify: @escaping (inout TextStyle) -> Void
-    ) {
-        debouncedCommitClipProperty(clipId: clipId, key: key) { clip in
-            var style = clip.textStyle ?? TextStyle()
-            modify(&style)
-            clip.textStyle = style
-        }
-    }
-
     func debouncedCommitTextStyles(
         clipIds: [String],
         key: String,
@@ -519,7 +500,11 @@ extension EditorViewModel {
         }
     }
 
-    func commitClipProperty(clipId: String, _ modify: (inout Clip) -> Void) {
+    func commitClipProperty(
+        clipId: String,
+        actionName: String = "Change Clip Property",
+        _ modify: (inout Clip) -> Void
+    ) {
         guard let loc = findClip(id: clipId) else { return }
         let current = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
         var clip = current
@@ -528,7 +513,12 @@ extension EditorViewModel {
         guard current != clip || before != clip else { return }
         timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = clip
         if before != clip {
-            registerClipPropertySwap(clipId: clipId, undoTarget: before, redoTarget: clip)
+            registerClipPropertySwap(
+                clipId: clipId,
+                undoTarget: before,
+                redoTarget: clip,
+                actionName: actionName
+            )
         }
         if clip.mediaType == .text {
             videoEngine?.refreshVisuals()
@@ -537,7 +527,11 @@ extension EditorViewModel {
         }
     }
 
-    func commitClipProperties(clipIds: [String], _ modify: (inout Clip) -> Void) {
+    func commitClipProperties(
+        clipIds: [String],
+        actionName: String = "Change Clip Property",
+        _ modify: (inout Clip) -> Void
+    ) {
         var touchedText = false
         var touchedVisual = false
         var before: [(id: String, clip: Clip)] = []
@@ -561,26 +555,35 @@ extension EditorViewModel {
             }
         }
         if !before.isEmpty {
-            registerClipStateSwap(undoTarget: before, redoTarget: after, actionName: "Change Clip Property")
+            registerClipStateSwap(undoTarget: before, redoTarget: after, actionName: actionName)
         }
         if touchedText { videoEngine?.refreshVisuals() }
         if touchedVisual { notifyTimelineChanged() }
     }
 
     /// Bidirectional undo/redo for a single clip's property change.
-    fileprivate func registerClipPropertySwap(clipId: String, undoTarget: Clip, redoTarget: Clip) {
-        registerTimelineUndo { vm in
+    fileprivate func registerClipPropertySwap(
+        clipId: String,
+        undoTarget: Clip,
+        redoTarget: Clip,
+        actionName: String
+    ) {
+        registerTimelineUndo(actionName) { vm in
             if let loc = vm.findClip(id: clipId) {
                 vm.timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = undoTarget
             }
-            vm.registerClipPropertySwap(clipId: clipId, undoTarget: redoTarget, redoTarget: undoTarget)
+            vm.registerClipPropertySwap(
+                clipId: clipId,
+                undoTarget: redoTarget,
+                redoTarget: undoTarget,
+                actionName: actionName
+            )
             if undoTarget.mediaType == .text {
                 vm.videoEngine?.refreshVisuals()
             } else {
                 vm.notifyTimelineChanged()
             }
         }
-        undoManager?.setActionName("Change Clip Property")
     }
 
     /// Flag the selected clip (and any linked clips sharing its `mediaRef`)
@@ -619,6 +622,9 @@ extension EditorViewModel {
         guard let loc = findClip(id: clipId) else { return }
         let oldMediaRef = timeline.tracks[loc.trackIndex].clips[loc.clipIndex].mediaRef
         guard oldMediaRef != newAssetId else { return }
+        if let asset = mediaAssetsById[newAssetId] {
+            prepareMediaVisuals(for: asset)
+        }
 
         let targetIds = linkedClipIdsSharingMedia(anchor: clipId)
 
@@ -635,7 +641,7 @@ extension EditorViewModel {
             }
         }
 
-        registerTimelineUndo { vm in
+        registerTimelineUndo("Replace Clip Source") { vm in
             for id in targetIds {
                 if let l = vm.findClip(id: id) {
                     vm.timeline.tracks[l.trackIndex].clips[l.clipIndex].mediaRef = oldMediaRef
@@ -647,7 +653,6 @@ extension EditorViewModel {
             }
             vm.notifyTimelineChanged()
         }
-        undoManager?.setActionName("Replace Clip Source")
         notifyTimelineChanged()
     }
 
@@ -702,11 +707,10 @@ extension EditorViewModel {
         for id in ids { closePreviewTab(id: PreviewTab.mediaAssetTabId(for: id)) }
         selectedMediaAssetIds.removeAll()
 
-        registerTimelineUndo { vm in
+        registerTimelineUndo("Delete Media") { vm in
             vm.restoreMediaLibraryUndoSnapshot(before, actionName: "Delete Media")
             vm.selectedMediaAssetIds.removeAll()
         }
-        undoManager?.setActionName("Delete Media")
         if !clipIdsToRemove.isEmpty {
             notifyTimelineChanged()
         }

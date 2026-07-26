@@ -379,6 +379,7 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
                         .allowsHitTesting(false)
                 }
         )
+        hc.sizingOptions = []
         hc.view.setAccessibilityIdentifier(panel.accessibilityID)
         return hc
     }

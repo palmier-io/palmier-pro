@@ -1,5 +1,7 @@
 import AVFoundation
+#if BUNDLED_SPEECH
 import SpeechEnhancement
+#endif
 
 enum AudioEnhancer {
     static let cache = DiskCache(named: "EnhancedAudio")
@@ -16,22 +18,11 @@ enum AudioEnhancer {
         }
     }
 
-    private static let modelBox = ModelBox()
-
-    private actor ModelBox {
-        private var enhancer: SpeechEnhancer?
-
-        func enhance(audio: [Float], sampleRate: Int) async throws -> [Float] {
-            if enhancer == nil { enhancer = try await SpeechEnhancer.fromPretrained() }
-            return try enhancer!.enhanceChunked(audio: audio, sampleRate: sampleRate)
-        }
-    }
-
-    private static var sampleRate: Double { Double(SpeechEnhancer.sampleRate) }
-
     static func denoisedAudio(for sourceURL: URL, mediaRef: String) async throws -> URL {
         let outputURL = denoisedURL(for: sourceURL, mediaRef: mediaRef)
         if FileManager.default.fileExists(atPath: outputURL.path) { return outputURL }
+        #if BUNDLED_SPEECH
+        let start = ContinuousClock.now
         var dry = try await readChannels(from: sourceURL)
         guard dry.contains(where: { !$0.isEmpty }) else { throw EnhanceError.noAudioTrack }
         var wet: [[Float]] = []
@@ -41,7 +32,12 @@ enum AudioEnhancer {
         }
         removeStaleCaches(for: mediaRef, keeping: outputURL)
         try write(channels: wet, to: outputURL)
+        let elapsed = Double(start.duration(to: .now).components.seconds)
+        Log.preview.notice("denoise ok mediaRef=\(mediaRef) seconds=\(String(format: "%.0f", elapsed))")
         return outputURL
+        #else
+        throw MLXRuntime.Unavailable()
+        #endif
     }
 
     static func cachedDenoisedURL(for sourceURL: URL, mediaRef: String) -> URL? {
@@ -52,6 +48,22 @@ enum AudioEnhancer {
     private static func denoisedURL(for sourceURL: URL, mediaRef: String) -> URL {
         cache.directory.appendingPathComponent("\(mediaRef)_\(DiskCache.sizeMtimeTag(for: sourceURL))_wet.caf")
     }
+
+    #if BUNDLED_SPEECH
+    private static let modelBox = ModelBox()
+
+    private actor ModelBox {
+        private var enhancer: SpeechEnhancer?
+
+        func enhance(audio: [Float], sampleRate: Int) async throws -> [Float] {
+            try await MLXRuntime.beginInference()
+            defer { MLXRuntime.endInference() }
+            if enhancer == nil { enhancer = try await SpeechEnhancer.fromPretrained() }
+            return try enhancer!.enhanceChunked(audio: audio, sampleRate: sampleRate)
+        }
+    }
+
+    private static var sampleRate: Double { Double(SpeechEnhancer.sampleRate) }
 
     private static func removeStaleCaches(for mediaRef: String, keeping keep: URL) {
         let fm = FileManager.default
@@ -110,4 +122,5 @@ enum AudioEnhancer {
         try file.write(from: outBuffer)
         try FileIO.moveReplacingDestination(from: tempURL, to: outputURL)
     }
+    #endif
 }

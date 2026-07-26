@@ -188,9 +188,19 @@ struct MediaTab: View {
 
     private func toastBanner(_ toast: MediaPanelToast) -> some View {
         HStack(spacing: AppTheme.Spacing.sm) {
-            Image(systemName: toast.kind == .success ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                .font(.system(size: AppTheme.FontSize.smMd, weight: .semibold))
-                .foregroundStyle(toast.kind == .success ? AppTheme.Status.successColor : AppTheme.Accent.timecodeColor)
+            switch toast.kind {
+            case .progress:
+                ProgressView()
+                    .controlSize(.small)
+            case .success:
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: AppTheme.FontSize.smMd, weight: .semibold))
+                    .foregroundStyle(AppTheme.Status.successColor)
+            case .warning:
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: AppTheme.FontSize.smMd, weight: .semibold))
+                    .foregroundStyle(AppTheme.Accent.timecodeColor)
+            }
             Text(toast.message)
                 .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                 .foregroundStyle(AppTheme.Text.primaryColor)
@@ -210,8 +220,12 @@ struct MediaTab: View {
         .shadow(AppTheme.Shadow.lg)
         .padding(.horizontal, AppTheme.Spacing.lgXl)
         .padding(.bottom, AppTheme.Spacing.lgXl)
-        .onTapGesture { editor.dismissMediaPanelToast() }
+        .onTapGesture {
+            guard toast.kind != .progress else { return }
+            editor.dismissMediaPanelToast()
+        }
         .task(id: toast) {
+            guard toast.kind != .progress else { return }
             try? await Task.sleep(for: .seconds(4))
             guard !Task.isCancelled else { return }
             editor.dismissMediaPanelToast()

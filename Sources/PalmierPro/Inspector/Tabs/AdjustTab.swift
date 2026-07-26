@@ -2,6 +2,26 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+struct AdjustSectionState {
+    let hasEffects: Bool
+    let isEnabled: Bool
+
+    init(effectIds: Set<String>, clips: [Clip], chromaKeySamplingClipId: String?) {
+        var hasEffects = false
+        var hasEnabledEffect = false
+        for clip in clips {
+            for effect in clip.effects ?? [] where effectIds.contains(effect.type) {
+                hasEffects = true
+                hasEnabledEffect = hasEnabledEffect || effect.enabled
+            }
+        }
+        self.hasEffects = hasEffects
+        let isSamplingChromaKey = effectIds.contains("key.chroma")
+            && clips.contains { $0.id == chromaKeySamplingClipId }
+        isEnabled = !hasEffects || hasEnabledEffect || isSamplingChromaKey
+    }
+}
+
 extension InspectorView {
 
     // MARK: - Effects Tab
@@ -100,11 +120,11 @@ extension InspectorView {
 
     private var effectsEffectIds: Set<String> {
         Set((detailControls + blurControls + motionBlurControls + vignetteControls + grainControls + glowControls + chromaKeyControls).map(\.effectId))
+            .union(["stylize.invert"])
     }
 
     @ViewBuilder
-    func effectsTabContent() -> some View {
-        let clips = nonTextVisualClips
+    func effectsTabContent(clips: [Clip]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             adjustSection(title: "Basic Correction", effectIds: basicEffectIds, clips: clips) {
                 adjustSubgroup(title: "Tone", controls: toneControls, clips: clips)
@@ -131,73 +151,82 @@ extension InspectorView {
                 adjustSubgroup(title: "Film Grain", controls: grainControls, clips: clips)
                 adjustSubgroup(title: "Glow", controls: glowControls, clips: clips)
                 adjustSubgroup(title: "Chroma Key", controls: chromaKeyControls, clips: clips)
+                adjustToggleRow(
+                    title: "Invert Colors",
+                    isOn: Binding(
+                        get: { invertApplied(to: clips) },
+                        set: { setInvertApplied($0, clips: clips) }
+                    )
+                )
             }
         }
     }
 
     // MARK: Section chrome
 
+    private var adjustSectionChildLabelInset: CGFloat { AppTheme.IconSize.xs }
+
+    private var adjustSubgroupInset: CGFloat { AppTheme.Spacing.smMd }
+
+    private var adjustSubgroupChildLabelInset: CGFloat {
+        adjustSubgroupInset + AppTheme.IconSize.xxs + AppTheme.Spacing.xs
+    }
+
     @ViewBuilder
     private func adjustSection<Content: View>(
         title: String,
         effectIds: Set<String>,
         clips: [Clip],
-        @ViewBuilder content: () -> Content
+        @ViewBuilder content: @escaping () -> Content
     ) -> some View {
-        let expanded = !collapsedAdjustSections.contains(title)
-        let hasEffects = anyAdjusted(effectIds, clips: clips)
-        let isOn = !hasEffects || sectionEnabled(effectIds, clips: clips)
-        VStack(spacing: 0) {
-            HStack(spacing: AppTheme.Spacing.sm) {
-                Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                    .font(.system(size: AppTheme.FontSize.xxs))
-                    .foregroundStyle(AppTheme.Text.mutedColor)
-                    .frame(width: AppTheme.IconSize.xxs, alignment: .center)
-                sectionTitleLabel(title: title)
-                Spacer(minLength: AppTheme.Spacing.sm)
-                if hasEffects {
-                    resetButton(
-                        onReset: { resetEffects(effectIds, clips: clips, actionName: "Reset \(title)") },
-                        help: "Reset \(title.lowercased())"
+        let state = adjustSectionState(effectIds, clips: clips)
+        EditorPanelGroup(
+            title,
+            isExpanded: adjustSectionExpandedBinding(title),
+            contentSpacing: AppTheme.Spacing.md,
+            contentInsets: EdgeInsets(
+                top: AppTheme.Spacing.md,
+                leading: AppTheme.Spacing.lg,
+                bottom: AppTheme.Spacing.md,
+                trailing: AppTheme.Spacing.lg
+            ),
+            headerAccessory: {
+                if state.hasEffects {
+                    EditorResetButton(
+                        title: title,
+                        action: { resetEffects(effectIds, clips: clips, actionName: "Reset \(title)") }
                     )
                 }
                 Toggle("", isOn: Binding(
-                    get: { isOn },
+                    get: { state.isEnabled },
                     set: { setSectionEnabled(effectIds, clips: clips, enabled: $0) }
                 ))
                 .toggleStyle(.checkbox)
                 .labelsHidden()
-                .disabled(!hasEffects)
-                .help(hasEffects ? "Enable \(title.lowercased())" : "No adjustments yet")
+                .disabled(!state.hasEffects)
+                .help(state.hasEffects ? "Enable \(title.lowercased())" : "No adjustments yet")
+                .accessibilityLabel("Enable \(title)")
             }
-            .padding(.horizontal, AppTheme.Spacing.lg)
-            .padding(.vertical, AppTheme.Spacing.smMd)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(AppTheme.Background.raisedColor)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                if expanded { collapsedAdjustSections.insert(title) }
-                else { collapsedAdjustSections.remove(title) }
+        ) {
+            Group {
+                content()
             }
-            .overlay(alignment: .bottom) {
-                if expanded { sectionDivider }
-            }
-            if expanded {
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-                    content()
-                }
-                .padding(.horizontal, AppTheme.Spacing.lg)
-                .padding(.vertical, AppTheme.Spacing.md)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            .disabled(!state.isEnabled)
+            .opacity(state.isEnabled ? AppTheme.Opacity.opaque : AppTheme.Opacity.medium)
         }
-        .overlay(alignment: .bottom) { sectionDivider }
     }
 
-    private var sectionDivider: some View {
-        Rectangle()
-            .fill(AppTheme.Border.primaryColor)
-            .frame(height: AppTheme.BorderWidth.hairline)
+    private func adjustSectionExpandedBinding(_ title: String) -> Binding<Bool> {
+        Binding(
+            get: { !collapsedAdjustSections.contains(title) },
+            set: { expanded in
+                if expanded {
+                    collapsedAdjustSections.remove(title)
+                } else {
+                    collapsedAdjustSections.insert(title)
+                }
+            }
+        )
     }
 
     @ViewBuilder
@@ -209,7 +238,7 @@ extension InspectorView {
                     .font(.system(size: AppTheme.FontSize.xxs))
                     .foregroundStyle(AppTheme.Text.mutedColor)
                     .frame(width: AppTheme.IconSize.xxs, alignment: .center)
-                sectionTitleLabel(title: title)
+                adjustSubgroupTitleLabel(title: title)
                 Spacer(minLength: 0)
                 if title == "Chroma Key", clips.count == 1, let clip = clips.first {
                     let sampling = editor.chromaKeySamplingClipId == clip.id
@@ -223,6 +252,7 @@ extension InspectorView {
                     .accessibilityLabel(sampling ? "Cancel Key Color Sampling" : "Sample Key Color")
                 }
             }
+            .padding(.leading, adjustSubgroupInset)
             .contentShape(Rectangle())
             .onTapGesture {
                 if expanded { collapsedAdjustSubgroups.insert(title) }
@@ -234,6 +264,67 @@ extension InspectorView {
                         adjustmentRow(control, clips: clips)
                     }
                 }
+            }
+        }
+    }
+
+    private func adjustSubgroupTitleLabel(title: String) -> some View {
+        Text(title)
+            .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+            .foregroundStyle(AppTheme.Text.secondaryColor)
+            .fixedSize()
+    }
+
+    private func adjustRowLabel(_ title: String, inset: CGFloat) -> some View {
+        Text(title)
+            .font(.system(size: AppTheme.FontSize.sm))
+            .foregroundStyle(AppTheme.Text.secondaryColor)
+            .lineLimit(1)
+            .padding(.leading, inset)
+            .frame(width: AppTheme.Slider.labelColumn, alignment: .leading)
+    }
+
+    private func adjustToggleRow(title: String, isOn: Binding<Bool>) -> some View {
+        HStack(spacing: AppTheme.Spacing.xs) {
+            Color.clear
+                .frame(width: AppTheme.IconSize.xxs, height: AppTheme.IconSize.xxs)
+            adjustSubgroupTitleLabel(title: title)
+            Spacer(minLength: 0)
+            Toggle("", isOn: isOn)
+                .toggleStyle(.checkbox)
+                .labelsHidden()
+                .accessibilityLabel(title)
+        }
+        .padding(.leading, adjustSubgroupInset)
+    }
+
+    private func invertApplied(to clips: [Clip]) -> Bool {
+        !clips.isEmpty && clips.allSatisfy { clip in
+            (clip.effects ?? []).contains { $0.type == "stylize.invert" && $0.enabled }
+        }
+    }
+
+    private func setInvertApplied(_ applied: Bool, clips: [Clip]) {
+        let currentClips = clips.compactMap { editor.clipFor(id: $0.id) }
+        guard !applied || (
+            currentClips.count == clips.count
+                && sectionEnabled(effectsEffectIds, clips: currentClips)
+        ) else { return }
+        commitEffects(
+            clips,
+            actionName: applied ? "Apply Invert Colors" : "Remove Invert Colors"
+        ) { [self] effects in
+            if applied {
+                if let index = effects.firstIndex(where: { $0.type == "stylize.invert" }) {
+                    effects[index].enabled = true
+                } else if let descriptor = EffectRegistry.descriptor(id: "stylize.invert") {
+                    effects.insert(
+                        descriptor.makeEffect(),
+                        at: alwaysOnInsertIndex(effects, for: "stylize.invert")
+                    )
+                }
+            } else {
+                effects.removeAll { $0.type == "stylize.invert" }
             }
         }
     }
@@ -387,10 +478,7 @@ extension InspectorView {
 
     private func lutFileRow(path: String?, clips: [Clip]) -> some View {
         HStack(spacing: AppTheme.Spacing.sm) {
-            Text("File")
-                .font(.system(size: AppTheme.FontSize.sm))
-                .foregroundStyle(AppTheme.Text.secondaryColor)
-                .frame(width: AppTheme.Slider.labelColumn, alignment: .leading)
+            adjustRowLabel("File", inset: adjustSectionChildLabelInset)
             Button { chooseLUT(clips: clips) } label: {
                 HStack(spacing: AppTheme.Spacing.xs) {
                     Image(systemName: "square.stack.3d.up")
@@ -422,11 +510,7 @@ extension InspectorView {
         let range = spec?.range ?? 0...1
         let value = lutIntensity(in: clips)
         return HStack(spacing: AppTheme.Spacing.sm) {
-            Text("Intensity")
-                .font(.system(size: AppTheme.FontSize.sm))
-                .foregroundStyle(AppTheme.Text.secondaryColor)
-                .lineLimit(1)
-                .frame(width: AppTheme.Slider.labelColumn, alignment: .leading)
+            adjustRowLabel("Intensity", inset: adjustSectionChildLabelInset)
             AdjustSlider(
                 value: value, range: range, defaultValue: spec?.defaultValue ?? 1,
                 onChanged: { setLUTIntensity($0, clips: clips, commit: false) },
@@ -434,7 +518,7 @@ extension InspectorView {
             )
             ScrubbableNumberField(
                 value: value, range: range, displayMultiplier: 100, format: "%.0f",
-                valueSuffix: "%", dragSensitivity: 0.5, fieldWidth: 50,
+                valueSuffix: "%", dragSensitivity: 0.5, fieldWidth: AppTheme.EditorPanel.numericFieldWidth,
                 onChanged: { setLUTIntensity($0 / 100, clips: clips, commit: false) }
             ) { setLUTIntensity($0 / 100, clips: clips, commit: true) }
         }
@@ -497,11 +581,7 @@ extension InspectorView {
            let spec = descriptor.params.first(where: { $0.key == control.paramKey }) {
             let label = control.label ?? spec.label
             HStack(spacing: AppTheme.Spacing.sm) {
-                Text(label)
-                    .font(.system(size: AppTheme.FontSize.sm))
-                    .foregroundStyle(AppTheme.Text.secondaryColor)
-                    .lineLimit(1)
-                    .frame(width: AppTheme.Slider.labelColumn, alignment: .leading)
+                adjustRowLabel(label, inset: adjustSubgroupChildLabelInset)
                 AdjustSlider(
                     value: sharedClipValue(clips) { controlValue($0, control, spec) } ?? spec.defaultValue,
                     range: spec.range,
@@ -516,7 +596,7 @@ extension InspectorView {
                     format: effectParamFormat(spec),
                     valueSuffix: spec.unit.isEmpty ? "" : " \(spec.unit)",
                     dragSensitivity: effectParamSensitivity(spec),
-                    fieldWidth: 50,
+                    fieldWidth: AppTheme.EditorPanel.numericFieldWidth,
                     onChanged: { setControlParam(control, label: label, value: $0, clips: clips, commit: false) }
                 ) { setControlParam(control, label: label, value: $0, clips: clips, commit: true) }
             }
@@ -566,10 +646,6 @@ extension InspectorView {
         EffectRegistry.insertIndex(effects, for: effectId)
     }
 
-    private func anyAdjusted(_ ids: Set<String>, clips: [Clip]) -> Bool {
-        clips.contains { ($0.effects ?? []).contains { ids.contains($0.type) } }
-    }
-
     private func resetEffects(_ ids: Set<String>, clips: [Clip], actionName: String) {
         commitEffects(clips, actionName: actionName) { effects in
             effects.removeAll { ids.contains($0.type) }
@@ -577,7 +653,15 @@ extension InspectorView {
     }
 
     private func sectionEnabled(_ ids: Set<String>, clips: [Clip]) -> Bool {
-        !clips.contains { ($0.effects ?? []).contains { ids.contains($0.type) && !$0.enabled } }
+        adjustSectionState(ids, clips: clips).isEnabled
+    }
+
+    private func adjustSectionState(_ ids: Set<String>, clips: [Clip]) -> AdjustSectionState {
+        AdjustSectionState(
+            effectIds: ids,
+            clips: clips,
+            chromaKeySamplingClipId: editor.chromaKeySamplingClipId
+        )
     }
 
     private func setSectionEnabled(_ ids: Set<String>, clips: [Clip], enabled: Bool) {
@@ -609,13 +693,10 @@ extension InspectorView {
     private func commitEffects(
         _ clips: [Clip], actionName: String, _ mutate: @escaping (inout [Effect]) -> Void
     ) {
-        editor.undoManager?.beginUndoGrouping()
-        editor.commitClipProperties(clipIds: clips.map(\.id)) { c in
+        editor.commitClipProperties(clipIds: clips.map(\.id), actionName: actionName) { c in
             var effects = c.effects ?? []
             mutate(&effects)
             c.effects = effects.isEmpty ? nil : effects
         }
-        editor.undoManager?.endUndoGrouping()
-        editor.undoManager?.setActionName(actionName)
     }
 }

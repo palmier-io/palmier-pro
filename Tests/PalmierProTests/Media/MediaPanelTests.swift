@@ -69,7 +69,7 @@ struct FolderReadTests {
         try Data().write(to: nested.appendingPathComponent("child.wav"))
         try Data().write(to: nested.appendingPathComponent("ignored.txt"))
 
-        let summary = await e.importFinderItems([root], into: nil)
+        let summary = try await e.importFinderItems([root], into: nil)
 
         #expect(summary.assetCount == 2)
         #expect(summary.folderCount == 2)
@@ -91,7 +91,7 @@ struct FolderReadTests {
             try? FileManager.default.removeItem(at: root)
         }
 
-        let summary = await e.importFinderItems([root], into: nil)
+        let summary = try await e.importFinderItems([root], into: nil)
 
         #expect(summary.assetCount == 0)
         #expect(summary.folderCount == 0)

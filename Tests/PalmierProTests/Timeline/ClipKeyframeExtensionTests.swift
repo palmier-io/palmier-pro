@@ -6,7 +6,7 @@ import Testing
 @Suite("Clip keyframe extensions")
 struct ClipKeyframeExtensionTests {
 
-    // MARK: - keyframeFrames + allKeyframeFrames
+    // MARK: - keyframeFrames
 
     @Test func keyframeFramesAreAbsoluteNotClipRelative() {
         var clip = Fixtures.clip(start: 100, duration: 60)
@@ -20,16 +20,6 @@ struct ClipKeyframeExtensionTests {
         let clip = Fixtures.clip(start: 0, duration: 30)
         #expect(clip.keyframeFrames(for: .opacity).isEmpty)
         #expect(clip.keyframeFrames(for: .position).isEmpty)
-    }
-
-    @Test func allKeyframeFramesIsSortedUnionAcrossProperties() {
-        var clip = Fixtures.clip(start: 100, duration: 100)
-        clip.upsertKeyframe(in: \.opacityTrack, frame: 110, value: 1.0)
-        clip.upsertKeyframe(in: \.scaleTrack, frame: 150, value: AnimPair(a: 1, b: 1))
-        clip.upsertKeyframe(in: \.opacityTrack, frame: 180, value: 0.5)
-        clip.upsertKeyframe(in: \.rotationTrack, frame: 110, value: 90) // same frame as opacity
-        // Union dedupes; ascending sort.
-        #expect(clip.allKeyframeFrames == [110, 150, 180])
     }
 
     // MARK: - upsertKeyframe
@@ -72,25 +62,6 @@ struct ClipKeyframeExtensionTests {
         clip.upsertKeyframe(in: \.opacityTrack, frame: 110, value: 0.5)
         clip.removeKeyframe(for: .opacity, at: 999) // not present
         #expect(clip.opacityTrack?.keyframes.count == 1)
-    }
-
-    // MARK: - clearKeyframes
-
-    @Test func clearKeyframesDropsTheEntireTrack() {
-        var clip = Fixtures.clip(start: 0, duration: 30)
-        clip.upsertKeyframe(in: \.opacityTrack, frame: 10, value: 0.5)
-        clip.upsertKeyframe(in: \.opacityTrack, frame: 20, value: 1.0)
-        clip.clearKeyframes(for: .opacity)
-        #expect(clip.opacityTrack == nil)
-    }
-
-    @Test func clearKeyframesOnlyAffectsTheNamedProperty() {
-        var clip = Fixtures.clip(start: 0, duration: 30)
-        clip.upsertKeyframe(in: \.opacityTrack, frame: 10, value: 0.5)
-        clip.upsertKeyframe(in: \.rotationTrack, frame: 10, value: 45)
-        clip.clearKeyframes(for: .opacity)
-        #expect(clip.opacityTrack == nil)
-        #expect(clip.rotationTrack?.keyframes.count == 1)
     }
 
     // MARK: - setInterpolation

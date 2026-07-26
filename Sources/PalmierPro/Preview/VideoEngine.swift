@@ -11,6 +11,12 @@ enum PreviewSeekMode: String {
 
 @MainActor
 final class VideoEngine {
+    enum VisualRefreshAction: Equatable {
+        case meterPlayback
+        case seekToActiveFrame
+        case none
+    }
+
     private(set) var player = AVPlayer()
     private let scrubAudioEngine: ScrubAudioEngine
 
@@ -19,7 +25,24 @@ final class VideoEngine {
     weak var editor: EditorViewModel?
 
     private var timeObserver: Any?
-    private var rebuildTask: Task<Void, Never>?
+    private var playbackEndObserver: NSObjectProtocol?
+    private(set) var rebuildTask: Task<Void, Never>?
+    private var rebuildGeneration = 0
+    private(set) var sourcePreviewTask: Task<Void, Never>?
+    private var sourcePreviewGeneration = 0
+    private var sourceTrackStart: CMTime = .zero
+
+    private enum SourcePreviewError: LocalizedError {
+        case noVideoTrack
+        case invalidTimeRange
+
+        var errorDescription: String? {
+            switch self {
+            case .noVideoTrack: "No video track is available."
+            case .invalidTimeRange: "The video track has no valid duration."
+            }
+        }
+    }
 
     private var trackMappings: [TrackMapping] = []
     private var clipNaturalSizes: [String: CGSize] = [:]
@@ -34,26 +57,41 @@ final class VideoEngine {
     init(editor: EditorViewModel) {
         self.editor = editor
         scrubAudioEngine = ScrubAudioEngine(meter: editor.audioMeter)
-        setupTimeObserver()
+        player.defaultRate = editor.playbackRate.rawValue
+        installTimeObserver(for: editor.playbackRate)
+        installPlaybackEndObserver()
     }
 
     func teardown() {
-        rebuildTask?.cancel()
-        rebuildTask = nil
+        invalidateRebuild()
+        cancelSourcePreviewLoad()
         compositionCache.removeAll()
         invalidateSeekState()
         scrubAudioEngine.teardown()
         if let timeObserver { player.removeTimeObserver(timeObserver) }
         timeObserver = nil
+        if let playbackEndObserver { NotificationCenter.default.removeObserver(playbackEndObserver) }
+        playbackEndObserver = nil
     }
 
     // MARK: - Playback
+
+    func setPlaybackRate(_ rate: PreviewPlaybackRate) {
+        player.defaultRate = rate.rawValue
+        installTimeObserver(for: rate)
+        if !rate.allowsAudioMetering {
+            scrubAudioEngine.stopPlaybackMetering()
+        }
+        if editor?.isPlaying == true, player.timeControlStatus != .paused {
+            player.rate = rate.rawValue
+        }
+    }
 
     func play() {
         guard let editor else { return }
         scrubAudioEngine.stopScrubbing()
         editor.isPlaying = true
-        guard rebuildTask == nil else { return }
+        guard rebuildTask == nil, sourcePreviewTask == nil else { return }
         let frame = playbackStartFrame(for: editor)
         seek(to: frame, mode: .exact)
         player.play()
@@ -68,6 +106,7 @@ final class VideoEngine {
     func resumePlayback() {
         scrubAudioEngine.stopScrubbing()
         editor?.isPlaying = true
+        guard sourcePreviewTask == nil else { return }
         player.play()
     }
 
@@ -78,7 +117,11 @@ final class VideoEngine {
     func seek(to frame: Int, mode: PreviewSeekMode = .exact) {
         guard let editor else { return }
 
-        let time = CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(editor.timeline.fps))
+        let time = SourceMediaTimebase.absoluteTime(
+            relativeFrame: frame,
+            fps: editor.timeline.fps,
+            trackStart: sourceTrackStart
+        )
         let tolerance: CMTime = mode == .interactiveScrub
             ? interactiveTolerance(activeLayerCount: activeVideoLayerCount(at: frame, editor: editor))
             : .zero
@@ -102,6 +145,7 @@ final class VideoEngine {
     // MARK: - Preview Items
 
     func previewAsset(_ asset: MediaAsset) {
+        cancelSourcePreviewLoad()
         if asset.type == .lottie {
             // AVPlayer can't read Lottie JSON — bake (cached) to a playable mov first.
             let url = asset.url, ref = asset.id
@@ -115,13 +159,63 @@ final class VideoEngine {
             }
             return
         }
+        if asset.type == .video {
+            loadSourcePreview(id: asset.id, url: asset.url)
+            return
+        }
         replacePlayerItem(AVPlayerItem(url: asset.url), reason: "previewAsset")
+    }
+
+    private func loadSourcePreview(id: String, url: URL) {
+        let generation = sourcePreviewGeneration
+        replacePlayerItem(nil, reason: "previewAssetLoading")
+        sourcePreviewTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            var shouldPause = false
+            defer {
+                if generation == self.sourcePreviewGeneration {
+                    self.sourcePreviewTask = nil
+                    if shouldPause { self.pause() }
+                }
+            }
+            let trackStart: CMTime
+            do {
+                trackStart = try await Self.loadVideoTrackStart(url: url)
+            } catch {
+                guard !Task.isCancelled,
+                      self.isCurrentSourcePreview(id: id, url: url, generation: generation) else { return }
+                shouldPause = true
+                Log.preview.warning(
+                    "source preview timing load failed asset=\(id.prefix(8)): \(error.localizedDescription)"
+                )
+                return
+            }
+            guard !Task.isCancelled,
+                  self.isCurrentSourcePreview(id: id, url: url, generation: generation) else { return }
+            self.replacePlayerItem(
+                AVPlayerItem(url: url),
+                reason: "previewAsset",
+                sourceTrackStart: trackStart
+            )
+            guard let editor = self.editor else { return }
+            let time = SourceMediaTimebase.absoluteTime(
+                relativeFrame: editor.playheadState.sourceFrame,
+                fps: editor.timeline.fps,
+                trackStart: trackStart
+            )
+            let didSeek = await self.seekPlayer(to: time)
+            guard !Task.isCancelled,
+                  self.isCurrentSourcePreview(id: id, url: url, generation: generation) else { return }
+            shouldPause = !didSeek
+            if didSeek, editor.isPlaying { self.player.play() }
+        }
     }
 
     func activateTab(_ tab: PreviewTab) {
         guard let editor else { return }
-        rebuildTask?.cancel()
-        rebuildTask = nil
+        invalidateRebuild()
+        cancelSourcePreviewLoad()
+        sourceTrackStart = .zero
         invalidateSeekState()
         pause()
 
@@ -139,11 +233,46 @@ final class VideoEngine {
         }
     }
 
-    private func replacePlayerItem(_ item: AVPlayerItem?, reason: String) {
+    private func replacePlayerItem(
+        _ item: AVPlayerItem?,
+        reason: String,
+        sourceTrackStart: CMTime = .zero
+    ) {
         invalidateSeekState()
+        self.sourceTrackStart = sourceTrackStart
         scrubAudioEngine.configure(asset: item?.asset, audioMix: item?.audioMix)
         player.replaceCurrentItem(with: item)
         Log.preview.debug("seek state invalidated reason=\(reason)")
+    }
+
+    @concurrent
+    private static func loadVideoTrackStart(url: URL) async throws -> CMTime {
+        let asset = AVURLAsset(url: url)
+        guard let track = try await asset.loadTracks(withMediaType: .video).first else {
+            throw SourcePreviewError.noVideoTrack
+        }
+        let timeRange = try await track.load(.timeRange)
+        try Task.checkCancellation()
+        guard timeRange.isValid,
+              timeRange.start.isNumeric,
+              timeRange.duration.isNumeric,
+              timeRange.duration > .zero else { throw SourcePreviewError.invalidTimeRange }
+        return timeRange.start
+    }
+
+    // The URL check catches in-place asset replacement, which doesn't bump the generation.
+    private func isCurrentSourcePreview(id: String, url: URL, generation: Int) -> Bool {
+        guard generation == sourcePreviewGeneration,
+              case .mediaAsset(let activeId, _, _) = editor?.activePreviewTab,
+              activeId == id,
+              editor?.mediaAssets.first(where: { $0.id == id })?.url == url else { return false }
+        return true
+    }
+
+    private func cancelSourcePreviewLoad() {
+        sourcePreviewTask?.cancel()
+        sourcePreviewTask = nil
+        sourcePreviewGeneration &+= 1
     }
 
     // MARK: - Composition
@@ -158,7 +287,7 @@ final class VideoEngine {
 
     func rebuild() {
         guard let editor, editor.activePreviewTab == .timeline else { return }
-        rebuildTask?.cancel()
+        let generation = invalidateRebuild()
 
         let mediaURLs = editor.mediaResolver.expectedURLMap()
         let missingMediaRefs = editor.missingMediaRefs
@@ -178,7 +307,6 @@ final class VideoEngine {
             missingMediaRefs: missingMediaRefs
         )
         if let cached = compositionCache[timelineId], cached.inputs == inputs {
-            rebuildTask = nil
             apply(cached.result, resolveTimeline: resolveTimeline, editor: editor)
             return
         }
@@ -196,13 +324,15 @@ final class VideoEngine {
                     renderSize: CGSize(width: snapshot.width, height: snapshot.height)
                 )
             } catch {
+                guard generation == rebuildGeneration else { return }
+                rebuildTask = nil
                 if !Task.isCancelled {
                     Log.preview.error("rebuild failed: \(error.localizedDescription)")
                 }
-                rebuildTask = nil
                 return
             }
 
+            guard generation == rebuildGeneration else { return }
             rebuildTask = nil
             guard !Task.isCancelled else { return }
 
@@ -212,6 +342,14 @@ final class VideoEngine {
             compositionCache = compositionCache.filter { editor.openTimelineIds.contains($0.key) }
             apply(result, resolveTimeline: resolveTimeline, editor: editor)
         }
+    }
+
+    @discardableResult
+    private func invalidateRebuild() -> Int {
+        rebuildGeneration &+= 1
+        rebuildTask?.cancel()
+        rebuildTask = nil
+        return rebuildGeneration
     }
 
     private var compositionCache: [String: (inputs: RebuildInputs, result: CompositionResult)] = [:]
@@ -258,8 +396,15 @@ final class VideoEngine {
         currentItem.audioMix = audioMix
         currentItem.videoComposition = videoComposition
         scrubAudioEngine.configure(asset: currentItem.asset, audioMix: audioMix, resetMeter: false)
-        if editor.isPlaying {
+        switch Self.visualRefreshAction(isPlaying: editor.isPlaying, playbackRate: editor.playbackRate) {
+        case .meterPlayback:
             scrubAudioEngine.meterPlayback(at: player.currentTime())
+        case .seekToActiveFrame:
+            guard let time = playerTime(forPreviewFrame: editor.activeFrame) else { return }
+            cancelInteractiveSeek()
+            performSeek(time: time, tolerance: .zero)
+        case .none:
+            break
         }
     }
 
@@ -269,10 +414,7 @@ final class VideoEngine {
     func histogramYRGB(frame: Int? = nil, count: Int = 256) async
         -> (y: [Float], r: [Float], g: [Float], b: [Float])? {
         guard let item = player.currentItem else { return nil }
-        let time = frame.flatMap { frame -> CMTime? in
-            guard let fps = editor?.timeline.fps, fps > 0 else { return nil }
-            return CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(fps))
-        } ?? player.currentTime()
+        let time = frame.flatMap(playerTime(forPreviewFrame:)) ?? player.currentTime()
         let generator = AVAssetImageGenerator(asset: item.asset)
         generator.videoComposition = item.videoComposition
         generator.requestedTimeToleranceBefore = .zero
@@ -325,10 +467,7 @@ final class VideoEngine {
     /// saturation so achromatic pixels don't show. Drives the silhouette behind the hue curves.
     func hueHistogram(frame: Int? = nil, count: Int = 96) async -> [Float]? {
         guard let item = player.currentItem else { return nil }
-        let time = frame.flatMap { frame -> CMTime? in
-            guard let fps = editor?.timeline.fps, fps > 0 else { return nil }
-            return CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(fps))
-        } ?? player.currentTime()
+        let time = frame.flatMap(playerTime(forPreviewFrame:)) ?? player.currentTime()
         let generator = AVAssetImageGenerator(asset: item.asset)
         generator.videoComposition = item.videoComposition
         generator.requestedTimeToleranceBefore = .zero
@@ -368,8 +507,7 @@ final class VideoEngine {
 
     func sampleKeyHue(at normalizedPoint: CGPoint, frame: Int? = nil) async -> Double? {
         guard let item = player.currentItem else { return nil }
-        let time = frame.map { CMTime(value: CMTimeValue($0), timescale: CMTimeScale(editor?.timeline.fps ?? 30)) }
-            ?? player.currentTime()
+        let time = frame.flatMap(playerTime(forPreviewFrame:)) ?? player.currentTime()
         let generator = AVAssetImageGenerator(asset: item.asset)
         generator.videoComposition = item.videoComposition
         guard let cg = try? await generator.image(at: time).image else { return nil }
@@ -432,6 +570,23 @@ final class VideoEngine {
         player.seek(to: time, toleranceBefore: tolerance, toleranceAfter: tolerance)
     }
 
+    private func seekPlayer(to time: CMTime) async -> Bool {
+        await withCheckedContinuation { continuation in
+            player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { completed in
+                continuation.resume(returning: completed)
+            }
+        }
+    }
+
+    private func playerTime(forPreviewFrame frame: Int) -> CMTime? {
+        guard let fps = editor?.timeline.fps, fps > 0 else { return nil }
+        return SourceMediaTimebase.absoluteTime(
+            relativeFrame: frame,
+            fps: fps,
+            trackStart: sourceTrackStart
+        )
+    }
+
     private func invalidateSeekState() {
         player.currentItem?.cancelPendingSeeks()
         cancelInteractiveSeek()
@@ -463,32 +618,87 @@ final class VideoEngine {
 
     // MARK: - Time Observer
 
-    private func setupTimeObserver() {
-        guard let editor else { return }
-        let interval = CMTime(value: 1, timescale: CMTimeScale(editor.timeline.fps))
-        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            MainActor.assumeIsolated {
-                guard let self, let editor = self.editor else { return }
-                guard editor.isPlaying, !editor.isScrubbing else { return }
-                self.scrubAudioEngine.meterPlayback(at: time)
+    nonisolated static func visualRefreshAction(
+        isPlaying: Bool,
+        playbackRate: PreviewPlaybackRate
+    ) -> VisualRefreshAction {
+        guard isPlaying else { return .seekToActiveFrame }
+        return playbackRate.allowsAudioMetering ? .meterPlayback : .none
+    }
 
-                let frame = secondsToFrame(seconds: time.seconds, fps: editor.timeline.fps)
-                let duration = editor.activePreviewDurationFrames
-                let clamped = duration > 0 ? min(frame, duration) : frame
-                if editor.activePreviewTab == .timeline {
-                    editor.currentFrame = clamped
-                } else {
-                    editor.sourcePlayheadFrame = clamped
-                }
-                if duration > 0, frame >= duration {
-                    self.pause()
-                }
+    private func installPlaybackEndObserver() {
+        playbackEndObserver = NotificationCenter.default.addObserver(
+            forName: AVPlayerItem.didPlayToEndTimeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let object = notification.object else { return }
+            let itemIdentifier = ObjectIdentifier(object as AnyObject)
+            MainActor.assumeIsolated {
+                self?.handlePlaybackEnd(for: itemIdentifier)
             }
         }
     }
 
+    private func handlePlaybackEnd(for itemIdentifier: ObjectIdentifier) {
+        guard let item = player.currentItem,
+              ObjectIdentifier(item) == itemIdentifier,
+              let editor else { return }
+        pause()
+        let duration = playbackDurationFrames(for: editor)
+        if editor.activePreviewTab == .timeline {
+            editor.currentFrame = duration
+        } else {
+            editor.sourcePlayheadFrame = duration
+        }
+    }
+
+    private func installTimeObserver(for playbackRate: PreviewPlaybackRate) {
+        if let timeObserver {
+            player.removeTimeObserver(timeObserver)
+            self.timeObserver = nil
+        }
+        let interval = Self.playheadObserverInterval(for: playbackRate)
+        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+            MainActor.assumeIsolated {
+                self?.updatePlaybackTime(time)
+            }
+        }
+    }
+
+    private func updatePlaybackTime(_ time: CMTime) {
+        guard let editor, editor.isPlaying, !editor.isScrubbing else { return }
+        if editor.playbackRate.allowsAudioMetering {
+            scrubAudioEngine.meterPlayback(at: time)
+        }
+
+        let frame = SourceMediaTimebase.relativeFrame(
+            absoluteTime: time,
+            fps: editor.timeline.fps,
+            trackStart: sourceTrackStart
+        )
+        let duration = playbackDurationFrames(for: editor)
+        let clamped = duration > 0 ? min(frame, duration) : frame
+        if editor.activePreviewTab == .timeline {
+            editor.currentFrame = clamped
+        } else {
+            editor.sourcePlayheadFrame = clamped
+        }
+        if duration > 0, frame >= duration {
+            pause()
+        }
+    }
+
+    nonisolated static func playheadObserverInterval(for playbackRate: PreviewPlaybackRate) -> CMTime {
+        let updatesPerSecond = 30.0
+        return CMTime(
+            seconds: Double(playbackRate.rawValue) / updatesPerSecond,
+            preferredTimescale: 600
+        )
+    }
+
     private func playbackStartFrame(for editor: EditorViewModel) -> Int {
-        let duration = editor.activePreviewDurationFrames
+        let duration = playbackDurationFrames(for: editor)
         guard duration > 0 else { return 0 }
         let current = editor.activePreviewTab == .timeline ? editor.currentFrame : editor.sourcePlayheadFrame
         guard current >= duration else { return current }
@@ -498,6 +708,22 @@ final class VideoEngine {
             editor.sourcePlayheadFrame = 0
         }
         return 0
+    }
+
+    private func playbackDurationFrames(for editor: EditorViewModel) -> Int {
+        guard editor.activePreviewTab == .timeline else {
+            return editor.activePreviewDurationFrames
+        }
+        return Self.frameCount(for: compositionDuration, fps: editor.timeline.fps)
+    }
+
+    nonisolated static func frameCount(for duration: CMTime, fps: Int) -> Int {
+        guard duration.isNumeric,
+              let timescale = CMTimeScale(exactly: fps),
+              timescale > 0 else { return 0 }
+        let scaled = CMTimeConvertScale(duration, timescale: timescale, method: .roundHalfAwayFromZero)
+        guard let frames = Int(exactly: scaled.value) else { return 0 }
+        return max(0, frames)
     }
 
     private static let interactiveSeekInterval: TimeInterval = 1.0 / 30.0

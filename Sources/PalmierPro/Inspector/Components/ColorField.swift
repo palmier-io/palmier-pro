@@ -7,6 +7,7 @@ struct ColorField: View {
     let displayColor: Color
     let onUserChange: (Color) -> Void
     var supportsOpacity: Bool = true
+    var accessibilityLabel: String = "Choose color"
 
     var body: some View {
         Button(action: open) {
@@ -19,6 +20,7 @@ struct ColorField: View {
                 )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
     }
 
     private func open() {

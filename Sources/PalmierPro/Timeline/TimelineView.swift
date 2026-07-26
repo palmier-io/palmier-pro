@@ -22,6 +22,7 @@ final class TimelineView: NSView {
         super.init(frame: .zero)
         self.inputController = TimelineInputController(editor: editor, view: self)
         editor.mediaVisualCache.timelineView = self
+        editor.onCancelTimelineDrag = { [weak self] in self?.inputController.cancelActiveDrag() }
         wantsLayer = true
         layer?.backgroundColor = AppTheme.Background.surface.cgColor
         canvas.wantsLayer = true
@@ -315,6 +316,15 @@ final class TimelineView: NSView {
             return Set(editor.linkedPartnerIds(of: drag.clipId))
         }()
 
+        let slipDrag: DragState.SlipDrag? = {
+            if case .slip(let drag) = inputController.dragState { return drag }
+            return nil
+        }()
+        let slipPartnerIds: Set<String> = {
+            guard let drag = slipDrag, drag.propagateToLinked else { return [] }
+            return Set(editor.slipPropagationPartnerIds(of: drag.clipId))
+        }()
+
         // Live ripple-trim layout: downstream clips shift while the edge is dragged.
         let ripplePlan: EditorViewModel.RippleTrimPlan? = {
             guard let (drag, isLeft) = trimDrag, drag.isRipple else { return nil }
@@ -340,16 +350,22 @@ final class TimelineView: NSView {
         }
         let linkOffsets = cachedLinkOffsets
         let anglesByGroup = cachedAngleLabels
+        let selectedClipIds = editor.selectedClipIds
         func angleLabel(_ clip: Clip) -> String? {
             guard let groupId = clip.multicamGroupId else { return nil }
             return anglesByGroup[groupId]?[clip.mediaRef]
+        }
+
+        func displayName(_ clip: Clip, in rect: NSRect, isSelected: Bool) -> String? {
+            guard ClipRenderer.showsLabel(isSelected: isSelected, in: rect) else { return nil }
+            return editor.clipDisplayLabel(for: clip)
         }
 
         clipDisplayRects.removeAll(keepingCapacity: true)
         var deferredDraws: [() -> Void] = []
         for (ti, track) in editor.timeline.tracks.enumerated() {
             for clip in track.clips {
-                let isSelected = editor.selectedClipIds.contains(clip.id)
+                let isSelected = selectedClipIds.contains(clip.id)
                 let clipMissing = editor.isClipMediaOffline(clip)
                 let clipGenerating = editor.isClipMediaGenerating(clip)
 
@@ -362,7 +378,7 @@ final class TimelineView: NSView {
                         ClipRenderer.draw(previewClip, type: clip.mediaType, in: previewRect,
                                           isSelected: isSelected, opacity: CGFloat(AppTheme.Opacity.prominent), context: ctx,
                                           cache: editor.mediaVisualCache,
-                                          displayName: editor.clipDisplayLabel(for: clip),
+                                          displayName: displayName(clip, in: previewRect, isSelected: isSelected),
                                           multicamAngleLabel: angleLabel(clip),
                                           fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
                     }
@@ -377,7 +393,7 @@ final class TimelineView: NSView {
                         ClipRenderer.draw(clip, type: clip.mediaType, in: originalRect,
                                           isSelected: drag.isDuplicate && isSelected, opacity: originalOpacity, context: ctx,
                                           cache: editor.mediaVisualCache,
-                                          displayName: editor.clipDisplayLabel(for: clip),
+                                          displayName: displayName(clip, in: originalRect, isSelected: drag.isDuplicate && isSelected),
                                           multicamAngleLabel: angleLabel(clip),
                                           fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
                     }
@@ -403,7 +419,7 @@ final class TimelineView: NSView {
                         ClipRenderer.draw(ghostClip, type: clip.mediaType, in: ghostRect,
                                           isSelected: true, opacity: 0.7, context: ctx,
                                           cache: editor.mediaVisualCache,
-                                          displayName: editor.clipDisplayLabel(for: clip),
+                                          displayName: displayName(clip, in: ghostRect, isSelected: true),
                                           multicamAngleLabel: angleLabel(clip),
                                           fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
                     }
@@ -411,7 +427,7 @@ final class TimelineView: NSView {
                 }
 
                 if let (drag, isLeft) = trimDrag,
-                   clip.id == drag.clipId || trimPartnerIds.contains(clip.id),
+                   clip.id == drag.clipId || trimPartnerIds.contains(clip.id) || rippleResizeByClip[clip.id] != nil,
                    // Ripple drags with no resize preview at rest.
                    !(drag.isRipple && rippleResizeByClip[clip.id] == nil) {
                     var previewClip = clip
@@ -436,10 +452,48 @@ final class TimelineView: NSView {
                     if previewRect.intersects(dirtyRect) {
                         let chip = angleLabel(clip)
                         let cache = editor.mediaVisualCache
-                        let name = editor.clipDisplayLabel(for: clip)
+                        let name = displayName(clip, in: previewRect, isSelected: isSelected)
                         let fps = editor.timeline.fps
                         deferredDraws.append {
                             ClipRenderer.draw(previewClip, type: clip.mediaType, in: previewRect,
+                                              isSelected: isSelected, context: ctx,
+                                              cache: cache, displayName: name,
+                                              multicamAngleLabel: chip,
+                                              fps: fps, isMissing: clipMissing, isGenerating: clipGenerating)
+                        }
+                    }
+                    continue
+                }
+
+                if let drag = slipDrag, clip.id == drag.clipId || slipPartnerIds.contains(clip.id) {
+                    var previewClip = clip
+                    let sourceDelta = Int((Double(drag.deltaFrames) * clip.speed).rounded())
+                    let applied = max(-clip.trimEndFrame, min(clip.trimStartFrame, sourceDelta))
+                    previewClip.trimStartFrame = clip.trimStartFrame - applied
+                    previewClip.trimEndFrame = clip.trimEndFrame + applied
+                    // Slip never moves the clip: rect is the resting rect, only content shifts.
+                    let rect = geo.clipRect(for: clip, trackIndex: ti)
+                    clipDisplayRects[clip.id] = rect
+                    let sourceRect = slipSourceRect(for: previewClip, activeRect: rect, geometry: geo)
+                    if sourceRect.intersects(dirtyRect) {
+                        drawSlipSourceRange(
+                            clip: previewClip,
+                            sourceRect: sourceRect,
+                            activeRect: rect,
+                            isSelected: isSelected,
+                            isMissing: clipMissing,
+                            isGenerating: clipGenerating,
+                            angleLabel: angleLabel(clip),
+                            context: ctx
+                        )
+                    }
+                    if rect.intersects(dirtyRect) {
+                        let chip = angleLabel(clip)
+                        let cache = editor.mediaVisualCache
+                        let name = displayName(clip, in: rect, isSelected: isSelected)
+                        let fps = editor.timeline.fps
+                        deferredDraws.append {
+                            ClipRenderer.draw(previewClip, type: clip.mediaType, in: rect,
                                               isSelected: isSelected, context: ctx,
                                               cache: cache, displayName: name,
                                               multicamAngleLabel: chip,
@@ -458,7 +512,7 @@ final class TimelineView: NSView {
                         ClipRenderer.draw(shiftedClip, type: clip.mediaType, in: shiftedRect,
                                           isSelected: isSelected, context: ctx,
                                           cache: editor.mediaVisualCache,
-                                          displayName: editor.clipDisplayLabel(for: clip),
+                                          displayName: displayName(clip, in: shiftedRect, isSelected: isSelected),
                                           linkOffset: linkOffsets[clip.id],
                                           multicamAngleLabel: angleLabel(clip),
                                           fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
@@ -472,7 +526,7 @@ final class TimelineView: NSView {
                 ClipRenderer.draw(clip, type: clip.mediaType, in: rect,
                                   isSelected: isSelected, isHovered: hoveredClipId == clip.id, context: ctx,
                                   cache: editor.mediaVisualCache,
-                                  displayName: editor.clipDisplayLabel(for: clip),
+                                  displayName: displayName(clip, in: rect, isSelected: isSelected),
                                   linkOffset: linkOffsets[clip.id],
                                   multicamAngleLabel: angleLabel(clip),
                                   fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
@@ -489,6 +543,86 @@ final class TimelineView: NSView {
                 ctx.setFillColor(AppTheme.Status.error.cgColor)
                 ctx.fill(line)
             }
+        }
+    }
+
+    private func slipSourceRect(for clip: Clip, activeRect: NSRect, geometry geo: TimelineGeometry) -> NSRect {
+        let speed = max(clip.speed, 0.001)
+        let sourceFrames = clip.trimStartFrame + clip.sourceFramesConsumed + editor.effectiveTrimEnd(for: clip)
+        let sourceTimelineFrames = max(1, Double(sourceFrames) / speed)
+        let headTimelineFrames = Double(clip.trimStartFrame) / speed
+        return NSRect(
+            x: activeRect.minX - headTimelineFrames * geo.pixelsPerFrame,
+            y: activeRect.minY,
+            width: sourceTimelineFrames * geo.pixelsPerFrame,
+            height: activeRect.height
+        )
+    }
+
+    private func drawSlipSourceRange(
+        clip: Clip,
+        sourceRect: NSRect,
+        activeRect: NSRect,
+        isSelected: Bool,
+        isMissing: Bool,
+        isGenerating: Bool,
+        angleLabel: String?,
+        context ctx: CGContext
+    ) {
+        var sourceClip = clip
+        let speed = max(sourceClip.speed, 0.001)
+        let sourceFrames = sourceClip.trimStartFrame + sourceClip.sourceFramesConsumed + editor.effectiveTrimEnd(for: sourceClip)
+        sourceClip.durationFrames = max(1, Int((Double(sourceFrames) / speed).rounded()))
+        sourceClip.trimStartFrame = 0
+        sourceClip.trimEndFrame = 0
+
+        ClipRenderer.draw(
+            sourceClip,
+            type: clip.mediaType,
+            in: sourceRect,
+            isSelected: false,
+            opacity: CGFloat(AppTheme.Opacity.medium),
+            context: ctx,
+            cache: editor.mediaVisualCache,
+            displayName: editor.clipDisplayLabel(for: clip),
+            multicamAngleLabel: angleLabel,
+            fps: editor.timeline.fps,
+            isMissing: isMissing,
+            isGenerating: isGenerating
+        )
+
+        ctx.saveGState()
+        defer { ctx.restoreGState() }
+
+        let outside = CGMutablePath()
+        outside.addRect(sourceRect)
+        outside.addRect(activeRect)
+        ctx.addPath(outside)
+        ctx.setFillColor(AppTheme.Background.base.withAlphaComponent(AppTheme.Opacity.medium).cgColor)
+        ctx.drawPath(using: .eoFill)
+
+        let sourcePath = CGPath(
+            roundedRect: sourceRect.insetBy(dx: AppTheme.BorderWidth.hairline, dy: AppTheme.BorderWidth.hairline),
+            cornerWidth: Trim.clipCornerRadius,
+            cornerHeight: Trim.clipCornerRadius,
+            transform: nil
+        )
+        ctx.addPath(sourcePath)
+        ctx.setStrokeColor(AppTheme.Text.primary.withAlphaComponent(AppTheme.Opacity.prominent).cgColor)
+        ctx.setLineWidth(AppTheme.BorderWidth.medium)
+        ctx.strokePath()
+
+        ctx.setStrokeColor(AppTheme.Text.primary.cgColor)
+        ctx.setLineWidth(AppTheme.BorderWidth.thick)
+        ctx.stroke(activeRect.insetBy(dx: AppTheme.BorderWidth.hairline, dy: AppTheme.BorderWidth.hairline))
+
+        guard isSelected else { return }
+        ctx.setFillColor(AppTheme.Text.primary.cgColor)
+        let handleWidth = AppTheme.BorderWidth.thick
+        let handleHeight = min(activeRect.height, AppTheme.IconSize.md)
+        let y = activeRect.minY
+        for x in [activeRect.minX - handleWidth / 2, activeRect.maxX - handleWidth / 2] {
+            ctx.fill(NSRect(x: x, y: y, width: handleWidth, height: handleHeight))
         }
     }
 
@@ -833,7 +967,7 @@ final class TimelineView: NSView {
         let clickFrame = max(0, geometry.frameAt(x: point.x))
         let clickedRange = editor.validSelectedTimelineRange?.contains(frame: clickFrame) ?? false
         guard let hit = inputController.hitTestClip(at: point, trackIndex: trackIndex, geometry: geometry) else {
-            return emptyAreaMenu(trackIndex: trackIndex, frame: clickFrame, clickedRange: clickedRange)
+            return emptyAreaMenu(trackIndex: trackIndex, frame: clickFrame, clickedRange: clickedRange, point: point)
         }
         let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
         let clipRect = geometry.clipRect(for: clip, trackIndex: hit.trackIndex)
@@ -1033,7 +1167,7 @@ final class TimelineView: NSView {
         return menu.items.isEmpty ? nil : menu
     }
 
-    private func emptyAreaMenu(trackIndex: Int, frame: Int, clickedRange: Bool) -> NSMenu? {
+    private func emptyAreaMenu(trackIndex: Int, frame: Int, clickedRange: Bool, point: NSPoint) -> NSMenu? {
         let menu = NSMenu()
         if editor.canPasteClips,
            editor.timeline.tracks.indices.contains(trackIndex) {
@@ -1041,6 +1175,28 @@ final class TimelineView: NSView {
             item.target = self
             item.representedObject = ["trackIndex": trackIndex, "frame": frame] as [String: Any]
             menu.addItem(item)
+        }
+        if let gap = inputController.hitTestGap(at: point, trackIndex: trackIndex, geometry: geometry) {
+            menu.autoenablesItems = false
+            let gapInfo = ["trackIndex": gap.trackIndex, "start": gap.range.start, "end": gap.range.end] as [String: Any]
+
+            if gap.range.start > 0, editor.timeline.tracks[gap.trackIndex].type == .video {
+                let availability = editor.aiTransitionAvailability(for: gap)
+                let item = NSMenuItem(title: "Create AI Transition", action: #selector(performCreateAITransition(_:)), keyEquivalent: "")
+                item.target = self
+                item.isEnabled = availability.model != nil
+                item.toolTip = availability.refusal
+                item.representedObject = gapInfo
+                menu.addItem(item)
+            }
+
+            let refusal = editor.rippleDeleteGapRefusal(gap)
+            let deleteItem = NSMenuItem(title: "Ripple Delete Gap", action: #selector(performRippleDeleteGap(_:)), keyEquivalent: "")
+            deleteItem.target = self
+            deleteItem.isEnabled = refusal == nil
+            deleteItem.toolTip = refusal
+            deleteItem.representedObject = gapInfo
+            menu.addItem(deleteItem)
         }
         if clickedRange {
             if !menu.items.isEmpty { menu.addItem(.separator()) }
@@ -1180,6 +1336,16 @@ final class TimelineView: NSView {
         needsDisplay = true
     }
 
+    @objc private func performRippleDeleteGap(_ sender: Any?) {
+        guard let item = sender as? NSMenuItem,
+              let info = item.representedObject as? [String: Any],
+              let trackIndex = info["trackIndex"] as? Int,
+              let start = info["start"] as? Int,
+              let end = info["end"] as? Int else { return }
+        editor.rippleDelete(gap: GapSelection(trackIndex: trackIndex, range: FrameRange(start: start, end: end)))
+        needsDisplay = true
+    }
+
     @objc private func performLink(_ sender: Any?) {
         editor.linkClips(ids: editor.selectedClipIds)
         needsDisplay = true
@@ -1308,12 +1474,26 @@ final class TimelineView: NSView {
         let geo = geometry
         if externalDragAssets == nil, let urlString = sender.draggingPasteboard.string(forType: .string) {
             if SourceDragPayload.isSourcePayload(urlString) {
-                externalDragAssets = editor.sourceDragGhostAssets(from: urlString)
-                externalDragSegments = [:]
+                let ghosts = editor.sourceDragGhostAssets(from: urlString)
+                if !ghosts.isEmpty {
+                    externalDragAssets = ghosts
+                    externalDragSegments = [:]
+                }
             } else {
-                externalDragAssets = editor.assetsFromDragPayload(urlString)
-                externalDragSegments = editor.segmentsFromDragPayload(urlString)
+                let assets = editor.assetsFromDragPayload(urlString)
+                // Non-sentinel strings (e.g. alongside file URLs) fall through to the Finder path.
+                if !assets.isEmpty || !editor.timelineIdsFromDragPayload(urlString).isEmpty {
+                    externalDragAssets = assets
+                    externalDragSegments = editor.segmentsFromDragPayload(urlString)
+                }
             }
+        }
+        if externalDragAssets == nil {
+            let urls = Self.finderFileURLs(sender.draggingPasteboard)
+            let placeholders = editor.dropPlaceholderAssets(for: urls)
+            // Folders carry no placeholder ghost but still import recursively on drop.
+            guard !placeholders.isEmpty || urls.contains(where: \.hasDirectoryPath) else { return [] }
+            externalDragAssets = placeholders
         }
         externalDropTarget = geo.dropTargetAt(y: point.y)
         externalSnapState = SnapEngine.SnapState()
@@ -1324,6 +1504,7 @@ final class TimelineView: NSView {
     }
 
     override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        guard externalDragAssets != nil else { return [] }
         let point = convert(sender.draggingLocation, from: nil)
         let geo = geometry
         externalDropTarget = geo.dropTargetAt(y: point.y)
@@ -1382,61 +1563,50 @@ final class TimelineView: NSView {
         externalSnapState = SnapEngine.SnapState()
         externalDragIsRippleInsert = false
 
-        guard let urlString = sender.draggingPasteboard.string(forType: .string) else { return false }
-
         let editor = self.editor
+        let urlString = sender.draggingPasteboard.string(forType: .string)
 
-        let timelineIds = editor.timelineIdsFromDragPayload(urlString)
-        if !timelineIds.isEmpty {
-            var frame = targetFrame
-            for id in timelineIds {
-                guard editor.nestTimeline(id, cursor: cursorTarget, atFrame: frame) else { continue }
-                frame += editor.timeline(for: id)?.totalFrames ?? 0
-            }
-            needsDisplay = true
-            return true
-        }
-
-        let isSource = SourceDragPayload.isSourcePayload(urlString)
-        let assets = isSource ? editor.materializeSourceDragAssets(from: urlString)
-                              : editor.assetsFromDragPayload(urlString)
-        let segments = isSource ? [:] : editor.segmentsFromDragPayload(urlString)
-        guard !assets.isEmpty else { return false }
-
-        let mods = NSEvent.modifierFlags
-
-        let operation: @MainActor () -> Void = {
-            editor.undoManager?.beginUndoGrouping()
-
-            let plan = editor.resolveDropPlan(cursor: cursorTarget, assets: assets, atFrame: targetFrame, segments: segments)
-            let (visualIdx, audioIdx) = editor.materialize(plan: plan)
-            let ripple = mods.contains(.command)
-
-            let insert: ([MediaAsset], Int, Int?) -> Void = { assets, trackIdx, linkedAudio in
-                if ripple {
-                    editor.rippleInsertClips(assets: assets, trackIndex: trackIdx, atFrame: targetFrame, segments: segments)
-                } else {
-                    editor.addClips(assets: assets, trackIndex: trackIdx, startFrame: targetFrame, linkedAudioTrackIndex: linkedAudio, segments: segments)
+        if let urlString {
+            let timelineIds = editor.timelineIdsFromDragPayload(urlString)
+            if !timelineIds.isEmpty {
+                var frame = targetFrame
+                for id in timelineIds {
+                    guard editor.nestTimeline(id, cursor: cursorTarget, atFrame: frame) else { continue }
+                    frame += editor.timeline(for: id)?.totalFrames ?? 0
                 }
+                needsDisplay = true
+                return true
             }
 
-            let visualAssets = plan.visualAssets
-            if !visualAssets.isEmpty, let vIdx = visualIdx {
-                insert(visualAssets, vIdx, audioIdx)
+            let isSource = SourceDragPayload.isSourcePayload(urlString)
+            let assets = isSource ? editor.materializeSourceDragAssets(from: urlString)
+                                  : editor.assetsFromDragPayload(urlString)
+            if !assets.isEmpty {
+                let segments = isSource ? [:] : editor.segmentsFromDragPayload(urlString)
+                let ripple = NSEvent.modifierFlags.contains(.command)
+                editor.addClipsWithSettingsCheck(assets: assets) {
+                    editor.placeDroppedAssets(assets, cursor: cursorTarget, atFrame: targetFrame, segments: segments, ripple: ripple)
+                }
+                needsDisplay = true
+                return true
             }
-            let audioOnlyAssets = plan.audioOnlyAssets
-            if !audioOnlyAssets.isEmpty, let aIdx = audioIdx {
-                insert(audioOnlyAssets, aIdx, nil)
-            }
-
-            editor.undoManager?.endUndoGrouping()
-            editor.undoManager?.setActionName("Add Clips")
         }
 
-        editor.addClipsWithSettingsCheck(assets: assets, operation: operation)
-
-        needsDisplay = true
+        let urls = Self.finderFileURLs(sender.draggingPasteboard)
+        guard !urls.isEmpty else { return false }
+        let ripple = NSEvent.modifierFlags.contains(.command)
+        Task { @MainActor in
+            await editor.importFinderItemsToTimeline(urls, cursor: cursorTarget, atFrame: targetFrame, ripple: ripple)
+            self.needsDisplay = true
+        }
         return true
+    }
+
+    private static func finderFileURLs(_ pasteboard: NSPasteboard) -> [URL] {
+        (pasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]
+        ) as? [URL]) ?? []
     }
 }
 

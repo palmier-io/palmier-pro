@@ -24,7 +24,7 @@ extension EditorViewModel {
     func commitChromaKeySample(hue: Double, clipId: String) {
         guard chromaKeySamplingClipId == clipId, hue.isFinite else { return }
         chromaKeySamplingClipId = nil
-        commitClipProperty(clipId: clipId) { clip in
+        commitClipProperty(clipId: clipId, actionName: "Sample Key Color") { clip in
             guard let descriptor = EffectRegistry.descriptor(id: "key.chroma") else { return }
             var effects = clip.effects ?? []
             var effect = effects.first { $0.type == descriptor.id } ?? descriptor.makeEffect()
@@ -36,6 +36,5 @@ extension EditorViewModel {
             effects.insert(effect, at: EffectRegistry.insertIndex(effects, for: descriptor.id))
             clip.effects = effects
         }
-        undoManager?.setActionName("Sample Key Color")
     }
 }

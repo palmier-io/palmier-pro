@@ -4,122 +4,100 @@ struct TextTab: View {
     let clips: [Clip]
     @Environment(EditorViewModel.self) private var editor
 
+    private static let defaults = TextStyle()
+
     private var clip: Clip { clips[0] }
     private var clipIds: [String] { clips.map(\.id) }
     private var isBatch: Bool { clips.count > 1 }
-    private var style: TextStyle { clip.textStyle ?? TextStyle() }
+
+    private var isFootageFill: Bool {
+        sharedClipValue(clips) { $0.textFillMode ?? .color } == .footage
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.xxl) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
             contentField
-            InspectorSection("Typography") {
-                fontRow
-                styleRow
-                sizeSlider
-            }
-            InspectorSection("Appearance") {
-                colorRow
-                opacitySlider
-                backgroundRow
-                borderRow
-                shadowRow
-            }
-            InspectorSection("Layout") {
-                alignmentRow
-                positionSection
-            }
+            TextStyleControls(
+                selection: TextStyleSelection(
+                    styles: clips.map { $0.textStyle ?? Self.defaults },
+                    fallback: Self.defaults
+                ),
+                defaults: Self.defaults,
+                showsSolidFillControls: !isFootageFill,
+                actions: styleActions,
+                afterAlignment: {
+                    positionSection
+                    rotationSection
+                    fillModeRow
+                },
+                afterColor: { opacitySlider }
+            )
         }
     }
 
-    // MARK: - Controls
+    private var fillModeRow: some View {
+        let current = sharedClipValue(clips) { $0.textFillMode ?? .color }
+        return InspectorRow(
+            label: "Fill",
+            onReset: {
+                editor.commitClipProperties(clipIds: clipIds) { $0.textFillMode = nil }
+            }
+        ) {
+            Menu {
+                ForEach(TextFillMode.allCases, id: \.self) { mode in
+                    Button(mode.displayName) {
+                        editor.commitClipProperties(clipIds: clipIds) {
+                            $0.textFillMode = mode == .footage ? .footage : nil
+                        }
+                    }
+                }
+            } label: {
+                EditorMenuValue(text: current?.displayName ?? "—")
+            }
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
+        }
+    }
 
     private var contentField: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            InspectorRow(icon: "textformat", label: "Content")
+        EditorPanelGroup("Text") {
             TextContentField(
                 text: Binding(
                     get: { clip.textContent ?? "" },
                     set: { new in
                         guard !isBatch else { return }
-                        editor.applyClipProperty(clipId: clip.id, rebuild: true) { $0.textContent = new }
-                        editor.fitTextClipToContent(clipId: clip.id)
+                        editor.applyTextContent(clipId: clip.id, content: new)
                     }
                 ),
                 onCommit: { new in
                     guard !isBatch else { return }
-                    editor.commitClipProperty(clipId: clip.id) { $0.textContent = new }
-                    editor.fitTextClipToContent(clipId: clip.id)
+                    editor.commitTextContent(clipId: clip.id, content: new)
                 }
             )
             .disabled(isBatch)
             .opacity(isBatch ? AppTheme.Opacity.medium : AppTheme.Opacity.opaque)
-            .frame(minHeight: 80)
-            .padding(AppTheme.Spacing.xs)
-            .background(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .fill(Color.white.opacity(AppTheme.Opacity.hint))
-            )
-        }
-    }
-
-    private var fontRow: some View {
-        InspectorRow(icon: "character", label: "Font") {
-            FontPickerField(
-                current: sharedTextStyleValue { $0.fontName },
-                onPreview: { name in
-                    editor.applyTextStyles(clipIds: clipIds, fitToContent: true) { $0.fontName = name }
-                },
-                onChange: { newName in
-                    editor.commitTextStyles(clipIds: clipIds, fitToContent: true) { $0.fontName = newName }
-                },
-                onCancel: {
-                    for id in clipIds { editor.revertClipProperty(clipId: id) }
-                }
-            )
-        }
-    }
-
-    private var styleRow: some View {
-        InspectorRow(icon: "textformat", label: "Style") {
-            TextStyleTraitButtons(
-                isBold: sharedTextStyleValue { $0.isBold },
-                isItalic: sharedTextStyleValue { $0.isItalic },
-                onBold: { new in
-                    editor.commitTextStyles(clipIds: clipIds, fitToContent: true) { $0.isBold = new }
-                },
-                onItalic: { new in
-                    editor.commitTextStyles(clipIds: clipIds, fitToContent: true) { $0.isItalic = new }
-                }
-            )
-        }
-    }
-
-    private var sizeSlider: some View {
-        InspectorRow(icon: "textformat.size", label: "Size") {
-            ScrubbableNumberField(
-                value: sharedTextStyleValue { $0.fontSize },
-                range: 12...300,
-                format: "%.0f",
-                valueSuffix: " pt",
-                fieldWidth: 50,
-                onChanged: { newVal in
-                    editor.applyTextStyles(clipIds: clipIds, fitToContent: true) { $0.fontSize = newVal }
-                }
-            ) { newVal in
-                editor.commitTextStyles(clipIds: clipIds, fitToContent: true) { $0.fontSize = newVal }
-            }
+            .frame(minHeight: AppTheme.EditorPanel.textEditorMinHeight)
+            .padding(AppTheme.Spacing.smMd)
+            .editorValueField()
         }
     }
 
     private var opacitySlider: some View {
-        InspectorRow(icon: "circle.lefthalf.filled", label: "Opacity") {
+        InspectorRow(
+            label: "Opacity",
+            onReset: {
+                editor.commitClipProperties(clipIds: clipIds) {
+                    $0.opacity = 1
+                    $0.opacityTrack = nil
+                }
+            }
+        ) {
             ScrubbableNumberField(
                 value: sharedClipValue(clips) { $0.opacity },
                 range: 0...1,
                 displayMultiplier: 100,
                 format: "%.0f",
                 valueSuffix: "%",
-                fieldWidth: 50,
+                fieldWidth: AppTheme.EditorPanel.numericFieldWidth,
                 onChanged: { newVal in
                     editor.applyClipProperties(clipIds: clipIds) { $0.opacity = newVal }
                 }
@@ -129,122 +107,60 @@ struct TextTab: View {
         }
     }
 
-    private var colorRow: some View {
-        InspectorRow(icon: "paintpalette", label: "Color") {
-            ColorField(
-                displayColor: style.color.swiftUIColor,
-                onUserChange: { new in
-                    editor.debouncedCommitTextStyles(clipIds: clipIds, key: "textColor") {
-                        $0.color = TextStyle.RGBA(new)
-                    }
-                }
-            )
-        }
-    }
-
-    private var alignmentRow: some View {
-        InspectorRow(icon: "text.alignleft", label: "Alignment") {
-            Picker(
-                "",
-                selection: Binding(
-                    get: { style.alignment },
-                    set: { new in
-                        editor.commitTextStyles(clipIds: clipIds) { $0.alignment = new }
-                    }
-                )
-            ) {
-                Image(systemName: "text.alignleft").tag(TextStyle.Alignment.left)
-                Image(systemName: "text.aligncenter").tag(TextStyle.Alignment.center)
-                Image(systemName: "text.alignright").tag(TextStyle.Alignment.right)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .tint(Color.white.opacity(AppTheme.Opacity.strong))
-            .fixedSize()
-        }
-    }
-
-    private var backgroundRow: some View {
-        toggleColorRow(
-            icon: "rectangle.fill",
-            label: "Background",
-            enabled: style.background.enabled,
-            color: style.background.color.swiftUIColor,
-            debounceKey: "backgroundColor",
-            setEnabled: { $0.background.enabled = $1 },
-            setColor: { $0.background.color = $1 }
-        )
-    }
-
-    private var borderRow: some View {
-        toggleColorRow(
-            icon: "a.square",
-            label: "Outline",
-            enabled: style.border.enabled,
-            color: style.border.color.swiftUIColor,
-            debounceKey: "borderColor",
-            setEnabled: { $0.border.enabled = $1 },
-            setColor: { $0.border.color = $1 }
-        )
-    }
-
-    private func toggleColorRow(
-        icon: String,
-        label: String,
-        enabled: Bool,
-        color: Color,
-        debounceKey: String,
-        setEnabled: @escaping (inout TextStyle, Bool) -> Void,
-        setColor: @escaping (inout TextStyle, TextStyle.RGBA) -> Void
-    ) -> some View {
-        InspectorRow(icon: icon, label: label) {
-            HStack(spacing: AppTheme.Spacing.sm) {
-                ColorField(
-                    displayColor: color,
-                    onUserChange: { new in
-                        editor.debouncedCommitTextStyles(clipIds: clipIds, key: debounceKey) {
-                            setColor(&$0, TextStyle.RGBA(new))
-                        }
-                    }
-                )
-                .opacity(enabled ? AppTheme.Opacity.opaque : AppTheme.Opacity.medium)
-                .disabled(!enabled)
-                Toggle(
-                    "",
-                    isOn: Binding(
-                        get: { enabled },
-                        set: { new in editor.commitTextStyles(clipIds: clipIds) { setEnabled(&$0, new) } }
-                    )
-                )
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .controlSize(.mini)
-                .tint(Color.white.opacity(AppTheme.Opacity.strong))
-            }
-        }
-    }
-
-    private var shadowRow: some View {
-        toggleColorRow(
-            icon: "square.on.square",
-            label: "Shadow",
-            enabled: style.shadow.enabled,
-            color: style.shadow.color.swiftUIColor,
-            debounceKey: "shadowColor",
-            setEnabled: { $0.shadow.enabled = $1 },
-            setColor: { $0.shadow.color = $1 }
-        )
-    }
-
     @ViewBuilder
     private var positionSection: some View {
-        InspectorRow(icon: "arrow.up.and.down.and.arrow.left.and.right", label: "Position") {
+        InspectorRow(
+            label: "Position",
+            onReset: {
+                editor.commitClipProperties(clipIds: clipIds) {
+                    $0.transform.centerX = Transform().centerX
+                    $0.transform.centerY = Transform().centerY
+                    $0.positionTrack = nil
+                }
+            }
+        ) {
             InspectorPositionFields(clips: clips)
         }
     }
 
-    private func sharedTextStyleValue<T: Equatable>(_ extract: (TextStyle) -> T) -> T? {
-        sharedClipValue(clips) { extract($0.textStyle ?? TextStyle()) }
+    private var rotationSection: some View {
+        InspectorRow(
+            label: "Rotation",
+            onReset: {
+                editor.commitClipProperties(clipIds: clipIds, actionName: "Reset Rotation") {
+                    $0.transform.rotation = Transform().rotation
+                    $0.rotationTrack = nil
+                }
+            }
+        ) {
+            InspectorRotationField(clips: clips)
+        }
+    }
+
+    private var styleActions: TextStyleEditingActions {
+        TextStyleEditingActions(
+            apply: { fitToContent, mutation in
+                editor.applyTextStyles(
+                    clipIds: clipIds,
+                    fitToContent: fitToContent,
+                    mutation
+                )
+            },
+            commit: { fitToContent, mutation in
+                editor.commitTextStyles(
+                    clipIds: clipIds,
+                    fitToContent: fitToContent,
+                    mutation
+                )
+            },
+            commitColor: { key, mutation in
+                editor.debouncedCommitTextStyles(clipIds: clipIds, key: key, mutation)
+            },
+            cancelPending: { editor.cancelDebouncedCommit(key: $0) },
+            cancelFontPreview: { _ in
+                for id in clipIds { editor.revertClipProperty(clipId: id) }
+            }
+        )
     }
 }
 
@@ -261,7 +177,7 @@ struct TextAnimateTab: View {
 
     var body: some View {
         let anim = clip.textAnimation ?? TextAnimation()
-        InspectorSection("Animation") {
+        EditorPanelGroup("Animation") {
             CaptionPresetGallery(
                 selection: Binding(
                     get: { anim.preset },
@@ -282,7 +198,17 @@ struct TextAnimateTab: View {
     }
 
     private func highlightRow(_ anim: TextAnimation) -> some View {
-        InspectorRow(icon: "highlighter", label: "Highlight") {
+        InspectorRow(
+            label: "Highlight",
+            onReset: {
+                editor.cancelDebouncedCommit(key: "textHighlight")
+                editor.commitClipProperties(clipIds: targetIds) {
+                    guard var animation = $0.textAnimation else { return }
+                    animation.highlight = TextAnimation.defaultHighlight
+                    $0.textAnimation = animation
+                }
+            }
+        ) {
             ColorField(
                 displayColor: (anim.highlight ?? TextAnimation.defaultHighlight).swiftUIColor,
                 onUserChange: { new in

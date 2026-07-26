@@ -47,7 +47,7 @@ extension ToolExecutor {
 
         let snapshot = timelineSnapshot(editor)
         let actionName = input.clipIds.count == 1 ? "Apply Effect (Agent)" : "Apply Effect ×\(input.clipIds.count) (Agent)"
-        withUndoGroup(editor, actionName: actionName) {
+        editor.undo.perform(actionName) {
             editor.mutateClips(ids: Set(input.clipIds), actionName: actionName) { clip in
                 var stack = clip.effects ?? []
                 for type in removes { stack.removeAll { $0.type == type } }

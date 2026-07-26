@@ -4,6 +4,13 @@ import AppKit
 /// surfaces when an imported clip's settings differ from the timeline's.
 extension EditorViewModel {
 
+    private struct ProjectSettingsSnapshot: Equatable {
+        let timelines: [Timeline]
+        let currentFrame: Int
+        let sourcePlayheadFrame: Int
+        let liveViewStates: [String: TimelineViewState]
+    }
+
     struct SettingsMismatch: Identifiable {
         let id = UUID()
         let clipFPS: Int
@@ -17,6 +24,7 @@ extension EditorViewModel {
     }
 
     func applyTimelineSettings(fps: Int, width: Int, height: Int) {
+        let before = projectSettingsSnapshot()
         let prevFPS = timeline.fps
         let prevWidth = timeline.width
         let prevHeight = timeline.height
@@ -69,22 +77,44 @@ extension EditorViewModel {
             }
         }
 
-        let prevConfiguredById = timelines.map { ($0.id, $0.settingsConfigured) }
         for i in timelines.indices {
             timelines[i].fps = fps
             timelines[i].settingsConfigured = true
         }
         timeline.width = width
         timeline.height = height
-        registerTimelineUndo { vm in
-            vm.applyTimelineSettings(fps: prevFPS, width: prevWidth, height: prevHeight)
-            for (id, configured) in prevConfiguredById {
-                if let i = vm.timelines.firstIndex(where: { $0.id == id }) {
-                    vm.timelines[i].settingsConfigured = configured
-                }
-            }
+        guard before != projectSettingsSnapshot() else { return }
+        registerTimelineUndo("Change Project Settings") { $0.restoreProjectSettings(before) }
+        notifyTimelineChanged()
+    }
+
+    private func projectSettingsSnapshot() -> ProjectSettingsSnapshot {
+        projectSettingsSnapshot(timelineIds: Set(timelines.map(\.id)))
+    }
+
+    private func projectSettingsSnapshot(timelineIds: Set<String>) -> ProjectSettingsSnapshot {
+        ProjectSettingsSnapshot(
+            timelines: timelines.filter { timelineIds.contains($0.id) },
+            currentFrame: currentFrame,
+            sourcePlayheadFrame: sourcePlayheadFrame,
+            liveViewStates: liveViewStates.filter { timelineIds.contains($0.key) }
+        )
+    }
+
+    private func restoreProjectSettings(_ target: ProjectSettingsSnapshot) {
+        let timelineIds = Set(target.timelines.map(\.id))
+        let current = projectSettingsSnapshot(timelineIds: timelineIds)
+        guard current != target else { return }
+        for timeline in target.timelines {
+            guard let index = timelines.firstIndex(where: { $0.id == timeline.id }) else { continue }
+            timelines[index] = timeline
         }
-        undoManager?.setActionName("Change Project Settings")
+        currentFrame = target.currentFrame
+        sourcePlayheadFrame = target.sourcePlayheadFrame
+        for id in timelineIds {
+            liveViewStates[id] = target.liveViewStates[id]
+        }
+        registerTimelineUndo("Change Project Settings") { $0.restoreProjectSettings(current) }
         notifyTimelineChanged()
     }
 

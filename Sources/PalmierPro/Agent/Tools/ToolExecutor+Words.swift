@@ -102,10 +102,9 @@ extension ToolExecutor {
         let primaryRanges = rangesByTrack[primaryTrack]!
 
         let snapshot = timelineSnapshot(editor)
-        editor.undoManager?.beginUndoGrouping()
-        let outcome = editor.rippleDeleteRangesOnTrack(trackIndex: primaryTrack, ranges: primaryRanges)
-        editor.undoManager?.endUndoGrouping()
-        editor.undoManager?.setActionName("Remove Words (Agent)")
+        let outcome = editor.undo.perform("Remove Words (Agent)") {
+            editor.rippleDeleteRangesOnTrack(trackIndex: primaryTrack, ranges: primaryRanges)
+        }
         guard case .ok(let report) = outcome else {
             if case .refused(let reason) = outcome { throw ToolError("Ripple delete refused: \(reason)") }
             throw ToolError("Ripple delete refused.")
@@ -128,13 +127,12 @@ extension ToolExecutor {
     func removeSilence(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         try validateUnknownKeys(args, allowed: [], path: "remove_silence")
         let snapshot = timelineSnapshot(editor)
-        editor.undoManager?.beginUndoGrouping()
-        let result = editor.removeAllDeadAir()
-        editor.undoManager?.endUndoGrouping()
+        let result = editor.undo.perform("Remove Silence (Agent)") {
+            editor.removeAllDeadAir()
+        }
         guard let result else {
             throw ToolError("No dead air on the timeline. Speech analysis may still be running, or the audio has no quiet non-speech sections.")
         }
-        editor.undoManager?.setActionName("Remove Silence (Agent)")
         if let refusal = result.refusal, result.sections == 0 {
             throw ToolError("Ripple delete refused: \(refusal)")
         }

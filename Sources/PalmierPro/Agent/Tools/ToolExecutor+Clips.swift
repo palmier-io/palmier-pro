@@ -61,23 +61,34 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
     let trimStartFrame: Int?
     let trimEndFrame: Int?
     let speed: Double?
-    let volume: Double?
+    let volumeDb: Double?
     let opacity: Double?
+    let fadeInFrames: Int?
+    let fadeOutFrames: Int?
+    let fadeInInterpolation: String?
+    let fadeOutInterpolation: String?
+    let edgeRounding: Double?
+    let edgeSoftness: Double?
     let transform: ParsedTransform?
     let blendMode: String?
 
     static let allowedKeys: Set<String> = Set([
         "clipIds",
         "durationFrames", "trimStartFrame", "trimEndFrame", "speed",
-        "volume", "opacity",
+        "volumeDb", "opacity",
+        "fadeInFrames", "fadeOutFrames", "fadeInInterpolation", "fadeOutInterpolation",
+        "edgeRounding", "edgeSoftness",
         "transform",
         "blendMode",
     ])
 
     var hasAnyProperty: Bool {
         durationFrames != nil || trimStartFrame != nil || trimEndFrame != nil
-            || speed != nil || volume != nil || opacity != nil
-            || transform != nil
+            || speed != nil || volumeDb != nil || opacity != nil
+            || fadeInFrames != nil || fadeOutFrames != nil
+            || fadeInInterpolation != nil || fadeOutInterpolation != nil
+            || edgeRounding != nil || edgeSoftness != nil
+            || transform?.hasAnyField == true
             || blendMode != nil
     }
 }
@@ -97,18 +108,37 @@ fileprivate struct SetKeyframesInput: DecodableToolArgs {
     static let allowedKeys: Set<String> = ["clipId", "property", "keyframes"]
 }
 
-/// Partial transform shared between set_clip_properties and add_texts.
+/// Partial transform shared by clip and text property tools.
 struct ParsedTransform: Decodable {
     var centerX: Double?
     var centerY: Double?
     var width: Double?
     var height: Double?
+    var rotation: Double?
     var flipHorizontal: Bool?
     var flipVertical: Bool?
 
-    var hasAnyField: Bool {
+    static let allowedKeys: Set<String> = [
+        "centerX", "centerY", "width", "height", "rotation", "flipHorizontal", "flipVertical",
+    ]
+
+    var hasLayoutField: Bool {
         centerX != nil || centerY != nil || width != nil || height != nil
+    }
+
+    var hasAnyField: Bool {
+        hasLayoutField || rotation != nil
             || flipHorizontal != nil || flipVertical != nil
+    }
+
+    func apply(to clip: inout Clip) {
+        if let centerX { clip.transform.centerX = centerX }
+        if let centerY { clip.transform.centerY = centerY }
+        if let width { clip.transform.width = width }
+        if let height { clip.transform.height = height }
+        if let rotation { clip.transform.rotation = rotation; clip.rotationTrack = nil }
+        if let flipHorizontal { clip.transform.flipHorizontal = flipHorizontal }
+        if let flipVertical { clip.transform.flipVertical = flipVertical }
     }
 }
 
@@ -214,8 +244,6 @@ extension ToolExecutor {
             throw ToolError("Mixed trackIndex: \(omittedCount) of \(prepared.count) entries omitted trackIndex. Either set it on every entry or omit it on every entry (to auto-create shared tracks).")
         }
 
-        let settingsNote = applySettingsIfNeededForAgent(editor, assets: prepared.map(\.asset).filter { $0.type != .sequence })
-
         var specs: [AddClipSpec] = []
         specs.reserveCapacity(prepared.count)
         for (idx, p) in prepared.enumerated() {
@@ -231,7 +259,12 @@ extension ToolExecutor {
 
         let snapshot = timelineSnapshot(editor)
         let actionName = specs.count == 1 ? "Add Clip (Agent)" : "Add Clips (Agent)"
-        try withUndoGroup(editor, actionName: actionName) {
+        var settingsNote: String?
+        try editor.undo.perform(actionName) {
+            settingsNote = applySettingsIfNeededForAgent(
+                editor,
+                assets: prepared.map(\.asset).filter { $0.type != .sequence }
+            )
             if omittedCount == specs.count {
                 let needsVideo = specs.contains { $0.asset.type != .audio }
                 let needsAudio = specs.contains { $0.asset.type == .audio }
@@ -241,7 +274,9 @@ extension ToolExecutor {
                     videoTrackId = editor.timeline.tracks[editor.insertTrack(at: 0, type: .video)].id
                 }
                 if needsAudio {
-                    audioTrackId = editor.timeline.tracks[editor.insertTrack(at: 0, type: .audio)].id
+                    audioTrackId = editor.timeline.tracks[
+                        editor.insertTrack(at: editor.timeline.tracks.count, type: .audio)
+                    ].id
                 }
                 for i in specs.indices {
                     specs[i].trackId = (specs[i].asset.type == .audio) ? audioTrackId : videoTrackId
@@ -280,7 +315,7 @@ extension ToolExecutor {
             }
 
             let addedIds = allAdded
-            editor.registerTimelineUndo { vm in
+            editor.registerTimelineUndo(actionName) { vm in
                 vm.removeClips(ids: Set(addedIds))
             }
         }
@@ -306,7 +341,6 @@ extension ToolExecutor {
         guard input.atFrame >= 0 else { throw ToolError("atFrame must be >= 0 (got \(input.atFrame))") }
         let targetType = editor.timeline.tracks[input.trackIndex].type
 
-        // Apply settings before deriving durations: it may change FPS, which clipDurationFrames depends on.
         var resolvedAssets: [MediaAsset] = []
         resolvedAssets.reserveCapacity(input.entries.count)
         for (idx, entry) in input.entries.enumerated() {
@@ -316,8 +350,6 @@ extension ToolExecutor {
             }
             resolvedAssets.append(asset)
         }
-
-        let settingsNote = applySettingsIfNeededForAgent(editor, assets: resolvedAssets.filter { $0.type != .sequence })
 
         var specs: [EditorViewModel.RippleInsertSpec] = []
         specs.reserveCapacity(input.entries.count)
@@ -330,7 +362,14 @@ extension ToolExecutor {
         }
 
         let snapshot = timelineSnapshot(editor)
-        let ids = editor.rippleInsertClips(specs: specs, trackIndex: input.trackIndex, atFrame: input.atFrame)
+        var settingsNote: String?
+        let ids = editor.undo.perform(specs.count == 1 ? "Insert Clip (Agent)" : "Insert Clips (Agent)") {
+            settingsNote = applySettingsIfNeededForAgent(
+                editor,
+                assets: resolvedAssets.filter { $0.type != .sequence }
+            )
+            return editor.rippleInsertClips(specs: specs, trackIndex: input.trackIndex, atFrame: input.atFrame)
+        }
         guard !ids.isEmpty else {
             throw ToolError("Insert failed on track \(input.trackIndex) at frame \(input.atFrame)")
         }
@@ -348,7 +387,9 @@ extension ToolExecutor {
         }
         let expanded = editor.expandToLinkGroup(Set(clipIds))
         let snapshot = timelineSnapshot(editor)
-        editor.removeClips(ids: expanded)
+        editor.undo.perform(clipIds.count == 1 ? "Remove Clip (Agent)" : "Remove Clips (Agent)") {
+            editor.removeClips(ids: expanded)
+        }
         return mutationResult(editor, since: snapshot)
     }
 
@@ -424,7 +465,7 @@ extension ToolExecutor {
 
         let snapshot = timelineSnapshot(editor)
         let moveActionName = parsed.count == 1 ? "Move Clip (Agent)" : "Move Clips (Agent)"
-        withUndoGroup(editor, actionName: moveActionName) {
+        editor.undo.perform(moveActionName) {
             if !moves.isEmpty { editor.moveClips(moves) }
         }
 
@@ -434,6 +475,16 @@ extension ToolExecutor {
     // MARK: set_clip_properties
 
     func setClipProperties(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        if let rawTransform = args["transform"] {
+            guard let transform = rawTransform as? [String: Any] else {
+                throw ToolError("set_clip_properties.transform: expected object")
+            }
+            try validateUnknownKeys(
+                transform,
+                allowed: ParsedTransform.allowedKeys,
+                path: "set_clip_properties.transform"
+            )
+        }
         let input: SetClipPropertiesInput = try decodeToolArgs(args, path: "set_clip_properties")
         let clipIds = input.clipIds ?? []
         guard !clipIds.isEmpty else { throw ToolError("Provide a non-empty 'clipIds' array") }
@@ -446,11 +497,34 @@ extension ToolExecutor {
         if let s = input.speed, s <= 0 {
             throw ToolError("speed must be > 0 (got \(s))")
         }
-        if let v = input.volume, !(0...1).contains(v) {
-            throw ToolError("volume must be between 0 and 1 (got \(v))")
+        if let v = input.volumeDb, !(VolumeScale.floorDb...VolumeScale.ceilingDb).contains(v) {
+            throw ToolError("volumeDb must be between \(VolumeScale.floorDb) and +\(VolumeScale.ceilingDb) dB (got \(v))")
         }
         if let o = input.opacity, !(0...1).contains(o) {
             throw ToolError("opacity must be between 0 and 1 (got \(o))")
+        }
+        if let frames = input.fadeInFrames, frames < 0 {
+            throw ToolError("fadeInFrames must be >= 0 (got \(frames))")
+        }
+        if let frames = input.fadeOutFrames, frames < 0 {
+            throw ToolError("fadeOutFrames must be >= 0 (got \(frames))")
+        }
+        let fadeInInterpolation = try Self.fadeInterpolation(
+            input.fadeInInterpolation,
+            field: "fadeInInterpolation"
+        )
+        let fadeOutInterpolation = try Self.fadeInterpolation(
+            input.fadeOutInterpolation,
+            field: "fadeOutInterpolation"
+        )
+        for (name, value) in [
+            ("edgeRounding", input.edgeRounding),
+            ("edgeSoftness", input.edgeSoftness),
+        ] {
+            guard let value else { continue }
+            guard value.isFinite, (0...1).contains(value) else {
+                throw ToolError("\(name) must be between 0 and 1 (got \(value))")
+            }
         }
         if let t = input.trimStartFrame, t < 0 {
             throw ToolError("trimStartFrame must be >= 0 (got \(t))")
@@ -459,23 +533,47 @@ extension ToolExecutor {
             throw ToolError("trimEndFrame must be >= 0 (got \(t))")
         }
 
-        // Resolve clipIds + collect types for blend-mode validation.
-        var clipTypes: [String: ClipType] = [:]
+        // Resolve clipIds + collect clips for validation.
+        var targetClips: [String: Clip] = [:]
         for id in clipIds {
             guard let loc = editor.findClip(id: id) else { throw ToolError("Clip not found: \(id)") }
-            clipTypes[id] = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].mediaType
+            targetClips[id] = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
         }
 
         if clipIds.contains(where: { editor.clipFor(id: $0)?.multicamGroupId != nil }),
            input.trimStartFrame != nil || input.trimEndFrame != nil || input.durationFrames != nil || input.speed != nil {
-            throw ToolError("Timing fields would slip a multicam clip out of sync — switch angles with change_cam; split/delete and property fields (volume, opacity, transform) stay editable.")
+            throw ToolError("Timing fields would slip a multicam clip out of sync — switch angles with change_cam; split/delete and property fields (volumeDb, opacity, edgeRounding, edgeSoftness, transform) stay editable.")
+        }
+
+        if input.fadeInFrames != nil || input.fadeOutFrames != nil {
+            for id in clipIds {
+                guard var candidate = targetClips[id] else { continue }
+                _ = Self.applyTimingChanges(
+                    durationFrames: input.durationFrames,
+                    trimStartFrame: input.trimStartFrame,
+                    trimEndFrame: input.trimEndFrame,
+                    speed: input.speed,
+                    to: &candidate
+                )
+                let fadeInFrames = input.fadeInFrames ?? candidate.fadeInFrames
+                let fadeOutFrames = input.fadeOutFrames ?? candidate.fadeOutFrames
+                guard fadeInFrames <= candidate.durationFrames,
+                      fadeOutFrames <= candidate.durationFrames - fadeInFrames else {
+                    throw ToolError(
+                        "Fades for clip \(id) must fit within its resulting duration of \(candidate.durationFrames) frames "
+                            + "(fadeInFrames \(fadeInFrames) + fadeOutFrames \(fadeOutFrames))"
+                    )
+                }
+            }
         }
 
         // blendMode applies only to visual (video/image) clips. "normal" clears it.
         var blendMode: BlendMode?
         let setBlendMode = input.blendMode != nil
         if let raw = input.blendMode {
-            let nonVisual = clipTypes.filter { $0.value == .text || $0.value == .audio }.map(\.key).sorted()
+            let nonVisual = targetClips.filter {
+                $0.value.mediaType == .text || $0.value.mediaType == .audio
+            }.map(\.key).sorted()
             if !nonVisual.isEmpty {
                 throw ToolError("blendMode only applies to video/image clips: \(nonVisual.joined(separator: ", "))")
             }
@@ -484,6 +582,14 @@ extension ToolExecutor {
                     throw ToolError("invalid blendMode '\(raw)'. Valid: \(BlendMode.allCases.map(\.rawValue).joined(separator: ", "))")
                 }
                 blendMode = m
+            }
+        }
+        if input.edgeRounding != nil || input.edgeSoftness != nil {
+            let unsupported = targetClips.filter {
+                $0.value.mediaType == .audio || $0.value.mediaType == .text
+            }.map(\.key).sorted()
+            if !unsupported.isEmpty {
+                throw ToolError("edgeRounding and edgeSoftness only apply to non-text visual clips: \(unsupported.joined(separator: ", "))")
             }
         }
 
@@ -499,24 +605,36 @@ extension ToolExecutor {
         let clearedKeyframes = clipIds.filter { id in
             guard let loc = editor.findClip(id: id) else { return false }
             let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-            return (input.volume != nil && clip.volumeTrack != nil)
+            return (input.volumeDb != nil && clip.volumeTrack != nil)
                 || (input.opacity != nil && clip.opacityTrack != nil)
+                || (input.transform?.rotation != nil && clip.rotationTrack != nil)
         }
         if !clearedKeyframes.isEmpty {
-            notes.append("Setting a scalar cleared existing keyframes on: \(clearedKeyframes.joined(separator: ", ")).")
+            notes.append("Setting a static value cleared existing keyframes on: \(clearedKeyframes.joined(separator: ", ")).")
+        }
+
+        var beforeClips: [String: Clip] = [:]
+        for id in clipIds + Array(partners) {
+            beforeClips[id] = editor.clipFor(id: id)
         }
 
         let snapshot = timelineSnapshot(editor)
         let setActionName = clipIds.count == 1 ? "Set Clip Property (Agent)" : "Set Clip Properties (Agent)"
-        withUndoGroup(editor, actionName: setActionName) {
+        editor.undo.perform(setActionName) {
             for id in clipIds {
                 let changed = Self.applyPropertyChanges(
                     durationFrames: input.durationFrames,
                     trimStartFrame: input.trimStartFrame,
                     trimEndFrame: input.trimEndFrame,
                     speed: input.speed,
-                    volume: input.volume,
+                    volumeDb: input.volumeDb,
                     opacity: input.opacity,
+                    fadeInFrames: input.fadeInFrames,
+                    fadeOutFrames: input.fadeOutFrames,
+                    fadeInInterpolation: fadeInInterpolation,
+                    fadeOutInterpolation: fadeOutInterpolation,
+                    edgeRounding: input.edgeRounding,
+                    edgeSoftness: input.edgeSoftness,
                     transform: input.transform,
                     blendMode: blendMode,
                     setBlendMode: setBlendMode,
@@ -533,14 +651,24 @@ extension ToolExecutor {
                     trimStartFrame: partnerIsText ? nil : input.trimStartFrame,
                     trimEndFrame:   partnerIsText ? nil : input.trimEndFrame,
                     speed:          partnerIsText ? nil : input.speed,
-                    volume: nil, opacity: nil, transform: nil,
+                    volumeDb: nil, opacity: nil,
+                    fadeInFrames: nil, fadeOutFrames: nil,
+                    fadeInInterpolation: nil, fadeOutInterpolation: nil,
+                    edgeRounding: nil, edgeSoftness: nil, transform: nil,
                     blendMode: nil, setBlendMode: false,
                     clipId: partnerId,
                     editor: editor
                 )
             }
         }
-        return mutationResult(editor, since: snapshot, touched: clipIds + Array(partners), notes: notes)
+        let changed = beforeClips.contains { id, clip in editor.clipFor(id: id) != clip }
+        return mutationResult(
+            editor,
+            since: snapshot,
+            touched: clipIds + Array(partners),
+            extra: ["changed": changed],
+            notes: notes
+        )
     }
 
     fileprivate static func applyPropertyChanges(
@@ -548,8 +676,14 @@ extension ToolExecutor {
         trimStartFrame: Int?,
         trimEndFrame: Int?,
         speed: Double?,
-        volume: Double?,
+        volumeDb: Double?,
         opacity: Double?,
+        fadeInFrames: Int?,
+        fadeOutFrames: Int?,
+        fadeInInterpolation: Interpolation?,
+        fadeOutInterpolation: Interpolation?,
+        edgeRounding: Double?,
+        edgeSoftness: Double?,
         transform: ParsedTransform?,
         blendMode: BlendMode?,
         setBlendMode: Bool,
@@ -558,49 +692,82 @@ extension ToolExecutor {
     ) -> [String] {
         var changed: [String] = []
         editor.commitClipProperty(clipId: clipId) { clip in
-            if let v = durationFrames {
-                clip.setDuration(v)
-                changed.append("durationFrames")
-            }
-            if let v = trimStartFrame { clip.trimStartFrame = v; changed.append("trimStartFrame") }
-            if let v = trimEndFrame   { clip.trimEndFrame   = v; changed.append("trimEndFrame") }
-            if let v = speed {
-                if !clip.supportsRetiming {
-                    changed.append("speed skipped (nested timelines don't support retiming)")
-                } else {
-                    if durationFrames == nil, v > 0 {
-                        let sourceConsumed = Double(clip.durationFrames) * clip.speed
-                        clip.setDuration(max(1, safeInt((sourceConsumed / v).rounded()) ?? clip.durationFrames))
-                        changed.append("durationFrames")
-                    }
-                    clip.speed = v
-                    changed.append("speed")
-                }
-            }
+            changed.append(contentsOf: applyTimingChanges(
+                durationFrames: durationFrames,
+                trimStartFrame: trimStartFrame,
+                trimEndFrame: trimEndFrame,
+                speed: speed,
+                to: &clip
+            ))
             // Setting a scalar clears any existing keyframe track on the same property.
-            if let v = volume         { clip.volume  = v; clip.volumeTrack  = nil; changed.append("volume") }
+            if let v = volumeDb {
+                clip.volume = VolumeScale.linearFromDb(v)
+                clip.volumeTrack = nil
+                changed.append("volumeDb")
+            }
             if let v = opacity        { clip.opacity = v; clip.opacityTrack = nil; changed.append("opacity") }
+            if let v = fadeInFrames   { clip.setFade(.left, frames: v); changed.append("fadeInFrames") }
+            if let v = fadeOutFrames  { clip.setFade(.right, frames: v); changed.append("fadeOutFrames") }
+            if let v = fadeInInterpolation {
+                clip.setFadeInterpolation(.left, v)
+                changed.append("fadeInInterpolation")
+            }
+            if let v = fadeOutInterpolation {
+                clip.setFadeInterpolation(.right, v)
+                changed.append("fadeOutInterpolation")
+            }
+            if let v = edgeRounding { clip.edgeRounding = v; changed.append("edgeRounding") }
+            if let v = edgeSoftness { clip.edgeSoftness = v; changed.append("edgeSoftness") }
             if setBlendMode           { clip.blendMode = blendMode; changed.append("blendMode") }
             if let t = transform {
-                let cur = clip.transform
-                var next = Transform(
-                    center: (t.centerX ?? cur.center.x, t.centerY ?? cur.center.y),
-                    width: t.width ?? cur.width,
-                    height: t.height ?? cur.height
-                )
-                next.rotation = cur.rotation
-                next.flipHorizontal = t.flipHorizontal ?? cur.flipHorizontal
-                next.flipVertical = t.flipVertical ?? cur.flipVertical
-                clip.transform = next
+                t.apply(to: &clip)
                 changed.append("transform")
             }
         }
         return changed
     }
 
+    private static func applyTimingChanges(
+        durationFrames: Int?,
+        trimStartFrame: Int?,
+        trimEndFrame: Int?,
+        speed: Double?,
+        to clip: inout Clip
+    ) -> [String] {
+        var changed: [String] = []
+        if let v = durationFrames {
+            clip.setDuration(v)
+            changed.append("durationFrames")
+        }
+        if let v = trimStartFrame { clip.trimStartFrame = v; changed.append("trimStartFrame") }
+        if let v = trimEndFrame   { clip.trimEndFrame   = v; changed.append("trimEndFrame") }
+        if let v = speed {
+            if !clip.supportsRetiming {
+                changed.append("speed skipped (nested timelines don't support retiming)")
+            } else {
+                if durationFrames == nil, v > 0 {
+                    let sourceConsumed = Double(clip.durationFrames) * clip.speed
+                    clip.setDuration(max(1, safeInt((sourceConsumed / v).rounded()) ?? clip.durationFrames))
+                    changed.append("durationFrames")
+                }
+                clip.speed = v
+                changed.append("speed")
+            }
+        }
+        return changed
+    }
+
+    private static func fadeInterpolation(_ rawValue: String?, field: String) throws -> Interpolation? {
+        guard let rawValue else { return nil }
+        guard let value = Interpolation(rawValue: rawValue), value == .linear || value == .smooth else {
+            throw ToolError("\(field) must be 'linear' or 'smooth' (got '\(rawValue)')")
+        }
+        return value
+    }
+
     // MARK: set_keyframes
 
-    private static let keyframePropertyNames: Set<String> = ["volume", "opacity", "rotation", "position", "scale", "crop"]
+    private static let keyframePropertyNames: Set<String> = ["volumeDb", "opacity", "rotation", "position", "scale", "crop"]
 
     func setKeyframes(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         let input: SetKeyframesInput = try decodeToolArgs(args, path: "set_keyframes")
@@ -614,32 +781,52 @@ extension ToolExecutor {
             throw ToolError("Clip not found: \(input.clipId)")
         }
 
-        try withUndoGroup(editor, actionName: "Set Keyframes (Agent)") {
-            switch input.property {
-            case "volume":
-                let kfs = try Self.parseScalarKeyframes(rows, path: "keyframes")
+        let applyKeyframes: () -> Void
+        switch input.property {
+        case "volumeDb":
+            let kfs = try Self.parseScalarKeyframes(
+                rows,
+                path: "keyframes",
+                valueName: "decibels",
+                range: VolumeScale.floorDb...VolumeScale.ceilingDb
+            )
+            applyKeyframes = {
                 editor.commitClipProperty(clipId: input.clipId) { $0.volumeTrack = kfs.keyframes.isEmpty ? nil : kfs }
-            case "opacity":
-                let kfs = try Self.parseScalarKeyframes(rows, path: "keyframes")
-                editor.commitClipProperty(clipId: input.clipId) { $0.opacityTrack = kfs.keyframes.isEmpty ? nil : kfs }
-            case "rotation":
-                let kfs = try Self.parseScalarKeyframes(rows, path: "keyframes")
-                editor.commitClipProperty(clipId: input.clipId) { $0.rotationTrack = kfs.keyframes.isEmpty ? nil : kfs }
-            case "position":
-                let kfs = try Self.parsePairKeyframes(rows, path: "keyframes")
-                editor.commitClipProperty(clipId: input.clipId) { $0.positionTrack = kfs.keyframes.isEmpty ? nil : kfs }
-            case "scale":
-                let kfs = try Self.parsePairKeyframes(rows, path: "keyframes")
-                editor.commitClipProperty(clipId: input.clipId) { $0.scaleTrack = kfs.keyframes.isEmpty ? nil : kfs }
-            case "crop":
-                let kfs = try Self.parseCropKeyframes(rows, path: "keyframes")
-                editor.commitClipProperty(clipId: input.clipId) { $0.cropTrack = kfs.keyframes.isEmpty ? nil : kfs }
-            default:
-                break  // unreachable: validated above
             }
+        case "opacity":
+            let kfs = try Self.parseScalarKeyframes(rows, path: "keyframes", range: 0...1)
+            applyKeyframes = {
+                editor.commitClipProperty(clipId: input.clipId) { $0.opacityTrack = kfs.keyframes.isEmpty ? nil : kfs }
+            }
+        case "rotation":
+            let kfs = try Self.parseScalarKeyframes(rows, path: "keyframes")
+            applyKeyframes = {
+                editor.commitClipProperty(clipId: input.clipId) { $0.rotationTrack = kfs.keyframes.isEmpty ? nil : kfs }
+            }
+        case "position":
+            let kfs = try Self.parsePairKeyframes(rows, path: "keyframes")
+            applyKeyframes = {
+                editor.commitClipProperty(clipId: input.clipId) { $0.positionTrack = kfs.keyframes.isEmpty ? nil : kfs }
+            }
+        case "scale":
+            let kfs = try Self.parsePairKeyframes(rows, path: "keyframes")
+            applyKeyframes = {
+                editor.commitClipProperty(clipId: input.clipId) { $0.scaleTrack = kfs.keyframes.isEmpty ? nil : kfs }
+            }
+        case "crop":
+            let kfs = try Self.parseCropKeyframes(rows, path: "keyframes")
+            applyKeyframes = {
+                editor.commitClipProperty(clipId: input.clipId) { $0.cropTrack = kfs.keyframes.isEmpty ? nil : kfs }
+            }
+        default:
+            throw ToolError("Unknown property '\(input.property)'")
         }
 
         let snapshot = timelineSnapshot(editor)
+        editor.undo.perform("Set Keyframes (Agent)") {
+            applyKeyframes()
+        }
+
         let notes = rows.isEmpty ? ["Cleared \(input.property) keyframes."] : []
         return mutationResult(editor, since: snapshot, touched: [input.clipId], notes: notes)
     }
@@ -692,7 +879,9 @@ extension ToolExecutor {
 
         guard !points.isEmpty else { throw ToolError("No valid split points") }
         let snapshot = timelineSnapshot(editor)
-        _ = editor.splitClips(at: points)
+        editor.undo.perform(points.count == 1 ? "Split Clip (Agent)" : "Split Clips (Agent)") {
+            _ = editor.splitClips(at: points)
+        }
         return mutationResult(editor, since: snapshot)
     }
 
@@ -762,7 +951,10 @@ extension ToolExecutor {
 
         let ignoreSyncLocked = Set(input.ignoreSyncLockedTracks ?? [])
         let snapshot = timelineSnapshot(editor)
-        switch editor.rippleDeleteRangesOnTrack(trackIndex: resolvedTrackIndex, ranges: frameRanges, ignoreSyncLockTrackIndices: ignoreSyncLocked) {
+        let outcome = editor.undo.perform("Ripple Delete (Agent)") {
+            editor.rippleDeleteRangesOnTrack(trackIndex: resolvedTrackIndex, ranges: frameRanges, ignoreSyncLockTrackIndices: ignoreSyncLocked)
+        }
+        switch outcome {
         case .refused(let reason):
             throw ToolError(reason)
         case .ok(let report):
@@ -780,7 +972,11 @@ extension ToolExecutor {
 
     /// Parse `[[frame, value0, value1, ..., interp?], ...]` into a keyframe track.
     private static func parseKeyframes<V>(
-        _ rows: [Any], path: String, fieldNames: [String], build: ([Double]) -> V
+        _ rows: [Any],
+        path: String,
+        fieldNames: [String],
+        validateValues: (Int, [Double]) throws -> Void = { _, _ in },
+        build: ([Double]) -> V
     ) throws -> KeyframeTrack<V> {
         let arity = fieldNames.count
         let labels = fieldNames.joined(separator: ", ")
@@ -799,14 +995,32 @@ extension ToolExecutor {
             let values = try (0..<arity).map { k in
                 try kfDouble(row[k + 1], at: "\(path)[\(i)][\(k + 1)] (\(fieldNames[k]))")
             }
+            try validateValues(i, values)
             let interp = try kfInterp(row.count > minLen ? row[minLen] : nil, at: "\(path)[\(i)][\(minLen)] (interp)")
             out.append(Keyframe(frame: frame, value: build(values), interpolationOut: interp))
         }
         return KeyframeTrack(keyframes: sortAndDedupe(out))
     }
 
-    fileprivate static func parseScalarKeyframes(_ rows: [Any], path: String) throws -> KeyframeTrack<Double> {
-        try parseKeyframes(rows, path: path, fieldNames: ["value"]) { $0[0] }
+    fileprivate static func parseScalarKeyframes(
+        _ rows: [Any],
+        path: String,
+        valueName: String = "value",
+        range: ClosedRange<Double>? = nil
+    ) throws -> KeyframeTrack<Double> {
+        try parseKeyframes(
+            rows,
+            path: path,
+            fieldNames: [valueName],
+            validateValues: { index, values in
+                guard let range, !range.contains(values[0]) else { return }
+                throw ToolError(
+                    "\(path)[\(index)][1] (\(valueName)): must be between \(range.lowerBound) and \(range.upperBound) (got \(values[0]))"
+                )
+            }
+        ) {
+            $0[0]
+        }
     }
 
     fileprivate static func parsePairKeyframes(_ rows: [Any], path: String) throws -> KeyframeTrack<AnimPair> {
@@ -830,6 +1044,7 @@ extension ToolExecutor {
     }
 
     private static func kfInt(_ raw: Any, at path: String) throws -> Int {
+        guard !isJSONBoolean(raw) else { throw ToolError("\(path): expected integer") }
         if let v = raw as? Int { return v }
         if let v = raw as? Double, let i = safeInt(v) { return i }
         if let v = raw as? NSNumber, let i = safeInt(v.doubleValue) { return i }
@@ -837,6 +1052,7 @@ extension ToolExecutor {
     }
 
     private static func kfDouble(_ raw: Any, at path: String) throws -> Double {
+        guard !isJSONBoolean(raw) else { throw ToolError("\(path): expected number") }
         let v: Double
         if let d = raw as? Double { v = d }
         else if let i = raw as? Int { v = Double(i) }
@@ -859,7 +1075,8 @@ extension ToolExecutor {
     // MARK: manage_tracks
 
     private static func exactTrackIndex(_ raw: Any?) -> Int? {
-        guard let value = (raw as? NSNumber)?.doubleValue, !(raw is Bool), value.rounded() == value else { return nil }
+        guard let raw, !isJSONBoolean(raw),
+              let value = (raw as? NSNumber)?.doubleValue, value.rounded() == value else { return nil }
         return Int(exactly: value)
     }
 
@@ -953,7 +1170,7 @@ extension ToolExecutor {
             return ["trackId": track.id, "index": i, "label": editor.timelineTrackDisplayLabel(at: i), "type": track.type.rawValue]
         }
         var reorderResults: [(trackId: String, from: Int, to: Int)] = []
-        withUndoGroup(editor, actionName: "Manage Tracks (Agent)") {
+        editor.undo.perform("Manage Tracks (Agent)") {
             if !reorders.isEmpty {
                 let before = editor.timeline
                 for r in reorders {

@@ -2,18 +2,23 @@ import Foundation
 import MCP
 import Network
 
+struct MCPServerInstance: Sendable {
+    let server: Server
+    let onInitialize: @Sendable (Client.Info) async -> Void
+}
+
 /// HTTP server for MCP. Each client session gets its own `Server` + stateful transport
 actor MCPHTTPServer {
 
     private let port: UInt16
-    private let makeServer: @Sendable () async -> Server
-    private let onSessionStarted: @Sendable () -> Void
+    private let makeServer: @Sendable () async -> MCPServerInstance
     private nonisolated(unsafe) var listener: NWListener?
 
     private struct Session {
         let server: Server
         let transport: StatefulHTTPServerTransport
         var lastUsed: ContinuousClock.Instant
+        var toolListAnnounced = false
     }
 
     private var sessions: [String: Session] = [:]
@@ -23,11 +28,9 @@ actor MCPHTTPServer {
 
     init(
         port: UInt16,
-        onSessionStarted: @escaping @Sendable () -> Void = {},
-        makeServer: @escaping @Sendable () async -> Server
+        makeServer: @escaping @Sendable () async -> MCPServerInstance
     ) {
         self.port = port
-        self.onSessionStarted = onSessionStarted
         self.makeServer = makeServer
     }
 
@@ -143,19 +146,22 @@ actor MCPHTTPServer {
             response = await session.transport.handleRequest(request)
             if request.method.uppercased() == "DELETE", response.statusCode == 200 {
                 sessions.removeValue(forKey: claimed)
+            } else if request.method.uppercased() == "GET", response.statusCode == 200 {
+                announceToolList(sessionID: claimed)
             }
         } else if isInitialize(request) {
             let transport = StatefulHTTPServerTransport(
                 validationPipeline: StandardValidationPipeline(validators: baseValidators() + [SessionValidator()])
             )
-            let server = await makeServer()
-            try? await server.start(transport: transport)
+            let instance = await makeServer()
+            try? await instance.server.start(transport: transport) { clientInfo, _ in
+                await instance.onInitialize(clientInfo)
+            }
             response = await transport.handleRequest(request)
             if let assigned = response.headers[HTTPHeaderName.sessionID] {
                 pruneIdleSessions()
-                sessions[assigned] = Session(server: server, transport: transport, lastUsed: .now)
+                sessions[assigned] = Session(server: instance.server, transport: transport, lastUsed: .now)
                 Log.mcp.notice("session started id=\(assigned) total=\(self.sessions.count)")
-                onSessionStarted()
             } else {
                 await transport.disconnect()
             }
@@ -164,6 +170,28 @@ actor MCPHTTPServer {
             response = await fallbackPair().transport.handleRequest(request)
         }
         writeResponse(response, on: connection)
+    }
+
+    private func announceToolList(sessionID: String) {
+        guard var session = sessions[sessionID], !session.toolListAnnounced else { return }
+        session.toolListAnnounced = true
+        sessions[sessionID] = session
+        let server = session.server
+        Task {
+            do {
+                try await server.notify(ToolListChangedNotification.message())
+            } catch {
+                Log.mcp.warning("tool list_changed notify failed id=\(sessionID): \(error.localizedDescription)")
+                await self.resetToolListAnnouncement(sessionID: sessionID)
+            }
+        }
+    }
+
+    // A failed announce retries on the next GET-stream attach.
+    private func resetToolListAnnouncement(sessionID: String) {
+        guard var session = sessions[sessionID] else { return }
+        session.toolListAnnounced = false
+        sessions[sessionID] = session
     }
 
     private nonisolated func isInitialize(_ request: HTTPRequest) -> Bool {
@@ -179,8 +207,11 @@ actor MCPHTTPServer {
     private func fallbackPair() async -> (server: Server, transport: StatelessHTTPServerTransport) {
         if let fallback { return fallback }
         let pipeline = StandardValidationPipeline(validators: baseValidators())
-        let pair = (server: await makeServer(), transport: StatelessHTTPServerTransport(validationPipeline: pipeline))
-        try? await pair.server.start(transport: pair.transport)
+        let instance = await makeServer()
+        let pair = (server: instance.server, transport: StatelessHTTPServerTransport(validationPipeline: pipeline))
+        try? await pair.server.start(transport: pair.transport) { clientInfo, _ in
+            await instance.onInitialize(clientInfo)
+        }
         fallback = pair
         return pair
     }

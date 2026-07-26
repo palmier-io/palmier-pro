@@ -1,8 +1,6 @@
 import AppKit
 import Foundation
-import ImageIO
 import SwiftUI
-import UniformTypeIdentifiers
 
 enum MatteAspect: String, CaseIterable, Identifiable {
     case project = "Project", sixteenNine = "16:9", nineSixteen = "9:16"
@@ -65,14 +63,8 @@ enum Matte {
         ) else { throw Error.renderFailed }
         ctx.setFillColor(red: CGFloat(color.r), green: CGFloat(color.g), blue: CGFloat(color.b), alpha: 1)
         ctx.fill(CGRect(x: 0, y: 0, width: ew, height: eh))
-        guard let image = ctx.makeImage() else { throw Error.renderFailed }
-        let buf = NSMutableData()
-        guard let dest = CGImageDestinationCreateWithData(buf, UTType.png.identifier as CFString, 1, nil) else {
-            throw Error.renderFailed
-        }
-        CGImageDestinationAddImage(dest, image, nil)
-        guard CGImageDestinationFinalize(dest) else { throw Error.renderFailed }
-        return buf as Data
+        guard let image = ctx.makeImage(), let data = ImageEncoder.encodePNG(image) else { throw Error.renderFailed }
+        return data
     }
 }
 

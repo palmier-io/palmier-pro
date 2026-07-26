@@ -10,6 +10,11 @@ struct BeatAnalysis: Codable, Sendable, Equatable {
     let downbeats: [Double]
 }
 
+struct BeatAnalysisCacheEntry: Sendable {
+    let analysis: BeatAnalysis
+    let fileTag: String
+}
+
 /// Detects beats and downbeats on-device using the bundled Beat This Core ML model.
 final class BeatDetector: @unchecked Sendable {
     enum DetectError: Error {
@@ -35,10 +40,14 @@ final class BeatDetector: @unchecked Sendable {
     static let cache = DiskCache(named: "BeatAnalysis")
     private static let shared = try? BeatDetector()
     private static let pipelineGate = AsyncSemaphore(value: 2)
+    private static let cacheLookupGate = AsyncSemaphore(value: 2)
 
     @concurrent
     static func analysis(for sourceURL: URL, mediaRef: String, force: Bool = false) async throws -> BeatAnalysis {
-        if !force, let cached = cachedAnalysis(for: sourceURL, mediaRef: mediaRef) { return cached }
+        if !force, let cached = await cachedAnalysis(for: sourceURL, mediaRef: mediaRef) {
+            return cached.analysis
+        }
+        try Task.checkCancellation()
         guard let detector = shared else { throw DetectError.modelMissing }
         try await pipelineGate.wait()
         defer { Task { await pipelineGate.signal() } }
@@ -51,13 +60,28 @@ final class BeatDetector: @unchecked Sendable {
         return analysis
     }
 
-    static func cachedAnalysis(for sourceURL: URL, mediaRef: String) -> BeatAnalysis? {
-        guard let data = try? Data(contentsOf: analysisURL(for: sourceURL, mediaRef: mediaRef)) else { return nil }
-        return try? JSONDecoder().decode(BeatAnalysis.self, from: data)
+    @concurrent
+    static func cachedAnalysis(for sourceURL: URL, mediaRef: String) async -> BeatAnalysisCacheEntry? {
+        do {
+            try await cacheLookupGate.wait()
+        } catch {
+            return nil
+        }
+        defer { Task { await cacheLookupGate.signal() } }
+        guard !Task.isCancelled else { return nil }
+        let fileTag = DiskCache.sizeMtimeTag(for: sourceURL)
+        guard let data = try? Data(contentsOf: analysisURL(mediaRef: mediaRef, fileTag: fileTag)),
+              let analysis = try? JSONDecoder().decode(BeatAnalysis.self, from: data) else { return nil }
+        guard !Task.isCancelled else { return nil }
+        return BeatAnalysisCacheEntry(analysis: analysis, fileTag: fileTag)
     }
 
     private static func analysisURL(for sourceURL: URL, mediaRef: String) -> URL {
-        cache.directory.appendingPathComponent("\(mediaRef)_\(DiskCache.sizeMtimeTag(for: sourceURL))_beats.json")
+        analysisURL(mediaRef: mediaRef, fileTag: DiskCache.sizeMtimeTag(for: sourceURL))
+    }
+
+    private static func analysisURL(mediaRef: String, fileTag: String) -> URL {
+        cache.directory.appendingPathComponent("\(mediaRef)_\(fileTag)_beats.json")
     }
 
     private static func removeStaleCaches(for mediaRef: String, keeping keep: URL) {

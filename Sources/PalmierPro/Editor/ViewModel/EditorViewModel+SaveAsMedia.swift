@@ -13,15 +13,11 @@ extension EditorViewModel {
             return
         }
         let sourceName = mediaResolver.displayName(for: clip.mediaRef)
+        guard (try? projectPackageCoordinator.beginMutation()) != nil else { return }
 
-        let mediaDir: URL
-        if let projectURL {
-            mediaDir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
-            try? FileManager.default.createDirectory(at: mediaDir, withIntermediateDirectories: true)
-        } else {
-            mediaDir = FileManager.default.temporaryDirectory
-        }
-        let destURL = mediaDir.appendingPathComponent(Self.uniqueClipFilename(for: clip.mediaType))
+        let filename = Self.uniqueClipFilename(for: clip.mediaType)
+        let mediaDir = projectURL?.appendingPathComponent(Project.mediaDirectoryName) ?? FileManager.default.temporaryDirectory
+        let destURL = mediaDir.appendingPathComponent(filename)
 
         let placeholder = MediaAsset(url: destURL, type: clip.mediaType, name: "\(sourceName) (clip)")
         placeholder.generationStatus = .generating
@@ -34,11 +30,14 @@ extension EditorViewModel {
         let speed = clip.speed
         let mediaType = clip.mediaType
 
-        Task { @MainActor [weak self] in
+        Task { @MainActor in
+            defer { self.projectPackageCoordinator.endMutation() }
+            let stagedURL = FileIO.temporaryFileURL(pathExtension: mediaType == .video ? "mp4" : "m4a")
+            defer { try? FileManager.default.removeItem(at: stagedURL) }
             do {
                 try await Self.exportClipRange(
                     sourceURL: sourceURL,
-                    destURL: destURL,
+                    destURL: stagedURL,
                     fps: fps,
                     trimStartFrame: trimStartFrame,
                     sourceFramesConsumed: sourceFramesConsumed,
@@ -46,11 +45,17 @@ extension EditorViewModel {
                     speed: speed,
                     mediaType: mediaType
                 )
+                placeholder.url = try await self.commitStagedProjectMedia(
+                    stagedURL,
+                    filename: filename,
+                    workAlreadyAdmitted: true
+                )
                 placeholder.generationStatus = .none
-                await self?.finalizeImportedAsset(placeholder)
-                Log.project.notice("saveClipAsMedia ok clip=\(clipId) out=\(destURL.lastPathComponent)")
+                await self.finalizeImportedAsset(placeholder)
+                Log.project.notice("saveClipAsMedia ok clip=\(clipId) out=\(placeholder.url.lastPathComponent)")
             } catch {
                 placeholder.generationStatus = .failed(error.localizedDescription)
+                self.updateManifestMetadata(for: [placeholder])
                 Log.project.error("saveClipAsMedia failed clip=\(clipId): \(error.localizedDescription)")
             }
         }
@@ -62,15 +67,11 @@ extension EditorViewModel {
         let startFrame = range.startFrame
         let frameCount = range.endFrame - range.startFrame
         guard frameCount > 0 else { return }
+        guard (try? projectPackageCoordinator.beginMutation()) != nil else { return }
 
-        let mediaDir: URL
-        if let projectURL {
-            mediaDir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
-            try? FileManager.default.createDirectory(at: mediaDir, withIntermediateDirectories: true)
-        } else {
-            mediaDir = FileManager.default.temporaryDirectory
-        }
-        let destURL = mediaDir.appendingPathComponent(Self.uniqueClipFilename(for: .video))
+        let filename = Self.uniqueClipFilename(for: .video)
+        let mediaDir = projectURL?.appendingPathComponent(Project.mediaDirectoryName) ?? FileManager.default.temporaryDirectory
+        let destURL = mediaDir.appendingPathComponent(filename)
 
         let placeholder = MediaAsset(url: destURL, type: .video, name: "Timeline range")
         placeholder.generationStatus = .rendering
@@ -81,7 +82,8 @@ extension EditorViewModel {
         let missingMediaRefs = self.missingMediaRefs
         let resolveTimeline = timelineResolver()
 
-        Task { @MainActor [weak self] in
+        Task { @MainActor in
+            defer { self.projectPackageCoordinator.endMutation() }
             do {
                 let tempURL = try await TimelineRenderer.render(
                     timeline: timeline,
@@ -92,13 +94,17 @@ extension EditorViewModel {
                     frameCount: frameCount,
                     preset: AVAssetExportPresetHighestQuality
                 )
-                try? FileManager.default.removeItem(at: destURL)
-                try FileManager.default.moveItem(at: tempURL, to: destURL)
+                placeholder.url = try await self.commitStagedProjectMedia(
+                    tempURL,
+                    filename: filename,
+                    workAlreadyAdmitted: true
+                )
                 placeholder.generationStatus = .none
-                await self?.finalizeImportedAsset(placeholder)
-                Log.project.notice("saveTimelineRangeAsMedia ok frames=\(startFrame)..<\(startFrame + frameCount) out=\(destURL.lastPathComponent)")
+                await self.finalizeImportedAsset(placeholder)
+                Log.project.notice("saveTimelineRangeAsMedia ok frames=\(startFrame)..<\(startFrame + frameCount) out=\(placeholder.url.lastPathComponent)")
             } catch {
                 placeholder.generationStatus = .failed(error.localizedDescription)
+                self.updateManifestMetadata(for: [placeholder])
                 Log.project.error("saveTimelineRangeAsMedia failed: \(error.localizedDescription)")
             }
         }

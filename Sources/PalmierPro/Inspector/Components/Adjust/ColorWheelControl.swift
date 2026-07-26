@@ -15,9 +15,8 @@ struct ColorWheelControl: View {
     var body: some View {
         VStack(spacing: AppTheme.Spacing.sm) {
             Text(title)
-                .font(.system(size: AppTheme.FontSize.xxs, weight: .semibold))
-                .tracking(AppTheme.Tracking.wide)
-                .foregroundStyle(AppTheme.Text.mutedColor)
+                .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
             ColorWheelPad(x: x, y: y, onChanged: onColorChanged, onCommit: onColorCommit)
             AdjustSlider(
                 value: master,

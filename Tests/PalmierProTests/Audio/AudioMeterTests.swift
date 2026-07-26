@@ -38,4 +38,28 @@ struct AudioMeterTests {
         state.resetClipping()
         #expect(!state.display(at: 3).clipped)
     }
+
+    @Test func segmentLayoutMatchesMeterBounds() {
+        let layout = AudioMeterSegmentLayout(height: 100)
+
+        #expect(layout.count == 50)
+        #expect(layout.segmentRect(at: 0, x: 0).maxY == 100)
+        #expect(layout.segmentRect(at: layout.count - 1, x: 0).minY == 0)
+    }
+
+    @Test func activeSegmentsClampLevelsAndRejectNonFiniteValues() {
+        let layout = AudioMeterSegmentLayout(height: 100)
+
+        #expect(layout.activeSegmentCount(for: AudioMeterChannelState.floorDb) == 0)
+        #expect(layout.activeSegmentCount(for: -30) == 25)
+        #expect(layout.activeSegmentCount(for: AudioMeterChannelState.ceilingDb) == layout.count)
+        #expect(layout.activeSegmentCount(for: .nan) == 0)
+        #expect(layout.activeSegmentCount(for: .infinity) == 0)
+    }
+
+    @Test func invalidMeterHeightsProduceNoSegments() {
+        #expect(AudioMeterSegmentLayout(height: 0).count == 0)
+        #expect(AudioMeterSegmentLayout(height: -.infinity).count == 0)
+        #expect(AudioMeterSegmentLayout(height: .nan).count == 0)
+    }
 }

@@ -6,6 +6,7 @@ enum DragState {
     case moveClip(MoveClipDrag)
     case trimLeft(TrimDrag)
     case trimRight(TrimDrag)
+    case slip(SlipDrag)
     case audioVolumeKf(AudioVolumeKfDrag)
     case fadeKnee(FadeKneeDrag)
     case marquee(MarqueeDrag)
@@ -47,8 +48,6 @@ enum DragState {
 
         var all: [Participant] { [lead] + companions }
 
-        func isLead(_ p: Participant) -> Bool { p.clipId == lead.clipId }
-
         var trackDelta: Int {
             if case .existingTrack(let idx) = dropTarget {
                 return idx - lead.originalTrack
@@ -81,6 +80,17 @@ enum DragState {
         /// When true, trim applies to link-group partners too.
         let propagateToLinked: Bool
         let isRipple: Bool
+        var deltaFrames: Int = 0
+    }
+
+    struct SlipDrag {
+        let clipId: String
+        let grabFrame: Int
+        /// Timeline-frame caps from source headroom across the slip group:
+        /// dragging right consumes head material, left consumes tail material.
+        let maxRightDelta: Int
+        let maxLeftDelta: Int
+        let propagateToLinked: Bool
         var deltaFrames: Int = 0
     }
 

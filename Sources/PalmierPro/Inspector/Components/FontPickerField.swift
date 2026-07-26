@@ -24,12 +24,8 @@ struct FontPickerField: View {
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
             .padding(.horizontal, AppTheme.Spacing.smMd)
-            .padding(.vertical, AppTheme.Spacing.xs)
-            .frame(maxWidth: 160, alignment: .trailing)
-            .background(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .fill(Color.white.opacity(AppTheme.Opacity.hint))
-            )
+            .frame(maxWidth: AppTheme.EditorPanel.fontMenuWidth, alignment: .trailing)
+            .editorValueField()
         }
         .buttonStyle(.plain)
         .fixedSize()

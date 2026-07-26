@@ -8,6 +8,7 @@ struct PreviewContainerView: View {
     private var isImage: Bool { editor.activePreviewTab.clipType == .image }
 
     @State private var hoveredTabId: String?
+    @State private var failedImagePreviewKey: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -44,18 +45,23 @@ struct PreviewContainerView: View {
                     } else {
                         TransformOverlayView()
                     }
+                    if let slip = editor.slipPreview, isTimeline {
+                        SlipTwoUpView(state: slip)
+                    }
                 }
                 .frame(width: scaledWidth, height: scaledHeight)
                 .simultaneousGesture(
-                    SpatialTapGesture(count: 2)
+                    SpatialTapGesture()
                         .onEnded { value in
                             guard isTimeline,
+                                  !editor.cropEditingActive,
+                                  editor.chromaKeySamplingClipId == nil,
                                   let id = PreviewHitTester.clipID(
                                     at: value.location,
                                     viewSize: CGSize(width: scaledWidth, height: scaledHeight),
                                     editor: editor
                                   ) else { return }
-                            editor.selectedClipIds = editor.expandToLinkGroup([id])
+                            editor.selectPreviewClip(id)
                         }
                 )
                 .overlay(
@@ -114,7 +120,20 @@ struct PreviewContainerView: View {
             if isTimeline || editor.activePreviewTab.clipType == .video {
                 captureFrameButton
             }
-            settingsMenuButton(label: zoomBadgeLabel, help: "Canvas Zoom") { zoomMenuItems }
+            settingsMenuButton(
+                systemImage: "speedometer",
+                label: editor.playbackRate.label,
+                help: "Playback Speed"
+            ) {
+                playbackRateMenuItems
+            }
+            settingsMenuButton(
+                systemImage: "magnifyingglass",
+                label: zoomBadgeLabel,
+                help: "Canvas Zoom"
+            ) {
+                zoomMenuItems
+            }
         }
         .padding(.horizontal, AppTheme.Spacing.lg)
         .frame(height: 36)
@@ -125,7 +144,13 @@ struct PreviewContainerView: View {
     private var imageSettingsBar: some View {
         HStack(spacing: AppTheme.Spacing.sm) {
             Spacer()
-            settingsMenuButton(label: zoomBadgeLabel, help: "Canvas Zoom") { zoomMenuItems }
+            settingsMenuButton(
+                systemImage: "magnifyingglass",
+                label: zoomBadgeLabel,
+                help: "Canvas Zoom"
+            ) {
+                zoomMenuItems
+            }
         }
         .padding(.horizontal, AppTheme.Spacing.lg)
         .frame(height: 36)
@@ -146,7 +171,24 @@ struct PreviewContainerView: View {
         .tourAnchor(.screenshotButton)
     }
 
-    // MARK: - Project settings
+    // MARK: - Preview settings
+
+    @ViewBuilder
+    private var playbackRateMenuItems: some View {
+        ForEach(PreviewPlaybackRate.allCases, id: \.self) { rate in
+            Button {
+                editor.setPlaybackRate(rate)
+            } label: {
+                HStack {
+                    Text(rate.label)
+                    Spacer()
+                    if editor.playbackRate == rate {
+                        Image(systemName: "checkmark")
+                    }
+                }
+            }
+        }
+    }
 
     @ViewBuilder
     private var zoomMenuItems: some View {
@@ -179,6 +221,7 @@ struct PreviewContainerView: View {
     }
 
     private func settingsMenuButton<MenuContent: View>(
+        systemImage: String,
         label: String,
         help: String,
         @ViewBuilder menu: @escaping () -> MenuContent
@@ -186,36 +229,63 @@ struct PreviewContainerView: View {
         Menu {
             menu()
         } label: {
-            badgeLabel(label)
+            badgeLabel(systemImage: systemImage, text: label)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
         .hoverHighlight()
         .help(help)
+        .accessibilityLabel(help)
+        .accessibilityValue(label)
     }
 
-    private func badgeLabel(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: AppTheme.FontSize.xxs, weight: .bold, design: .rounded))
-            .foregroundStyle(AppTheme.Text.secondaryColor)
-            .padding(.horizontal, AppTheme.Spacing.sm)
-            .frame(height: AppTheme.IconSize.mdLg)
+    private func badgeLabel(systemImage: String, text: String) -> some View {
+        HStack(spacing: AppTheme.Spacing.xs) {
+            Image(systemName: systemImage)
+                .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.semibold))
+            Text(text)
+                .font(.system(
+                    size: AppTheme.FontSize.xxs,
+                    weight: AppTheme.FontWeight.bold,
+                    design: .rounded
+                ))
+        }
+        .foregroundStyle(AppTheme.Text.secondaryColor)
+        .padding(.horizontal, AppTheme.Spacing.sm)
+        .frame(height: AppTheme.IconSize.mdLg)
     }
 
     // MARK: - Image preview
 
     private var imagePreview: some View {
-        Group {
-            if let asset = activeMediaAsset, let image = asset.thumbnail ?? NSImage(contentsOf: asset.url) {
+        let assetKey = activeMediaAsset.map {
+            "\($0.id)|\($0.url.path)|\($0.generationStatus.serialized)|\(editor.isMediaOffline($0.id))"
+        }
+        return Group {
+            if let asset = activeMediaAsset, let image = asset.thumbnail {
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
+            } else if let assetKey, failedImagePreviewKey == assetKey {
+                Image(systemName: "photo")
+                    .font(.system(size: AppTheme.FontSize.xl))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+            } else {
+                ProgressView()
+                    .controlSize(.small)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.black)
         .allowsHitTesting(false)
+        .task(id: assetKey) {
+            failedImagePreviewKey = nil
+            guard let asset = activeMediaAsset else { return }
+            await asset.loadPreviewThumbnail()
+            guard !Task.isCancelled, asset.thumbnail == nil else { return }
+            failedImagePreviewKey = assetKey
+        }
     }
 
     private func fitSize(in container: CGSize, aspect: CGFloat) -> CGSize {

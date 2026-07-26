@@ -4,6 +4,12 @@ extension EditorViewModel {
         case allTracks
     }
 
+    func selectPreviewClip(_ clipId: String) {
+        selectedGap = nil
+        guard !selectedClipIds.contains(clipId) else { return }
+        selectedClipIds = expandToLinkGroup([clipId])
+    }
+
     func selectForwardFromCurrentSelection(scope: SelectForwardScope) {
         guard let anchorId = forwardSelectionAnchorId() else { return }
         selectForward(from: anchorId, scope: scope)

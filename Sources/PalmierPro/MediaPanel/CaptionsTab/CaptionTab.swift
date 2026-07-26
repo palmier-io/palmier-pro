@@ -4,15 +4,16 @@ struct CaptionTab: View {
     @Environment(EditorViewModel.self) var editor
     @Bindable private var account = AccountService.shared
 
-    @State private var style: TextStyle = {
+    @State private var style: TextStyle = CaptionTab.defaultStyle
+    @State private var center = AppTheme.Caption.defaultCenter
+
+    private static var defaultStyle: TextStyle {
         var s = TextStyle(fontSize: AppTheme.Caption.defaultFontSize)
         s.shadow.enabled = false
         return s
-    }()
-    @State private var center = AppTheme.Caption.defaultCenter
+    }
     @State private var selectedTrackId: String?
     @State private var selectedClipTargets: [String] = []
-    @State private var textCase: EditorViewModel.CaptionCase = .auto
     @State private var provider: TranscriptionProvider = .cloud
     @State private var animationPreset: TextAnimation.Preset = .none
     @State private var animationHighlight: TextStyle.RGBA = TextAnimation.defaultHighlight
@@ -88,22 +89,15 @@ struct CaptionTab: View {
 
     var body: some View {
         ZStack {
-            VStack(spacing: 0) {
+            VStack(spacing: AppTheme.Spacing.zero) {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: AppTheme.Spacing.mdLg) {
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
                         sourceSection
-                        sectionDivider
                         settingsSection
-                        sectionDivider
                         styleSection
-                        sectionDivider
                         animationSection
-                        sectionDivider
                         placementSection
                     }
-                    .padding(.horizontal, AppTheme.Spacing.lgXl)
-                    .padding(.top, AppTheme.Spacing.md)
-                    .padding(.bottom, AppTheme.Spacing.md)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
 
@@ -122,7 +116,14 @@ struct CaptionTab: View {
                 .sorted { languageName($0) < languageName($1) }
         }
         .onAppear { rememberSelectedClipTargets() }
-        .onChange(of: editor.selectedClipIds) { _, _ in rememberSelectedClipTargets() }
+        .onChange(of: editor.selectedClipIds) { _, _ in
+            guard !editor.isMarqueeSelecting else { return }
+            rememberSelectedClipTargets()
+        }
+        .onChange(of: editor.isMarqueeSelecting) { wasSelecting, isSelecting in
+            guard wasSelecting, !isSelecting else { return }
+            rememberSelectedClipTargets()
+        }
         .task(id: costEstimateKey) {
             estimatedCloudCost = nil
             guard provider == .cloud, effectiveCount > 0 else { return }
@@ -135,30 +136,27 @@ struct CaptionTab: View {
         }
     }
 
-    private var sectionDivider: some View {
-        Rectangle()
-            .fill(AppTheme.Border.subtleColor)
-            .frame(height: AppTheme.BorderWidth.hairline)
-    }
-
     private var sourceSection: some View {
-        InspectorSection("Source", isExpanded: $sourceExpanded) {
+        EditorPanelGroup("Source", isExpanded: $sourceExpanded) {
             InspectorRow(
-                icon: "waveform",
                 label: "Source",
-                labelHelp: "Uses selected clips when available, otherwise all captionable audio. Choose a track to limit captions."
+                labelHelp: "Uses selected clips when available, otherwise all captionable audio. Choose a track to limit captions.",
+                onReset: {
+                    selectedTrackId = nil
+                    selectedClipTargets = []
+                }
             ) { sourceMenu }
             InspectorRow(
-                icon: "captions.bubble",
                 label: "Mode",
-                labelHelp: "Local runs with Apple's SpeechAnalyzer. Cloud uses credits and a more accurate model with more capabilities."
+                labelHelp: "Local runs with Apple's SpeechAnalyzer. Cloud uses credits and a more accurate model with more capabilities.",
+                onReset: { provider = .cloud }
             ) { providerPicker }
         }
     }
 
     private var settingsSection: some View {
-        InspectorSection("Settings", isExpanded: $settingsExpanded) {
-            InspectorRow(icon: "globe", label: "Language") {
+        EditorPanelGroup("Settings", isExpanded: $settingsExpanded) {
+            InspectorRow(label: "Language", onReset: { locale = nil }) {
                 Menu {
                     Button("Auto") { locale = nil }
                     if !supportedLocales.isEmpty {
@@ -167,23 +165,30 @@ struct CaptionTab: View {
                             Button(languageName(loc)) { locale = loc }
                         }
                     }
-                } label: { menuValueLabel(locale.map(languageName) ?? "Auto") }
-                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
+                } label: { EditorMenuValue(text: locale.map(languageName) ?? "Auto", expanded: true) }
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
+                .frame(maxWidth: .infinity)
             }
-            InspectorRow(icon: "number", label: "Max words", labelHelp: "Cap the words shown per caption. None fits each line to the box.") {
+            InspectorRow(
+                label: "Max words",
+                labelHelp: "Cap the words shown per caption. None fits each line to the box.",
+                onReset: { maxWords = nil }
+            ) {
                 Menu {
                     Button("None") { maxWords = nil }
                     ForEach(1...8, id: \.self) { n in
                         Button("\(n)") { maxWords = n }
                     }
-                } label: { menuValueLabel(maxWords.map(String.init) ?? "None") }
-                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
+                } label: { EditorMenuValue(text: maxWords.map(String.init) ?? "None", expanded: true) }
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
+                .frame(maxWidth: .infinity)
             }
-            InspectorRow(icon: "exclamationmark.bubble", label: "Censor profanity") {
+            InspectorRow(label: "Censor profanity", onReset: { censorProfanity = false }) {
                 Toggle("", isOn: $censorProfanity)
                     .labelsHidden()
                     .toggleStyle(.switch)
                     .controlSize(.mini)
+                    .accessibilityLabel("Censor profanity")
                     .tint(AppTheme.Text.primaryColor.opacity(AppTheme.Opacity.strong))
                     .disabled(provider == .cloud)
                     .opacity(provider == .cloud ? AppTheme.Opacity.muted : AppTheme.Opacity.opaque)
@@ -220,9 +225,10 @@ struct CaptionTab: View {
                 }
             }
         } label: {
-            menuValueLabel(sourceSummary)
+            EditorMenuValue(text: sourceSummary, expanded: true)
         }
-        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
+        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
+        .frame(maxWidth: .infinity)
     }
 
     private var providerPicker: some View {
@@ -271,81 +277,36 @@ struct CaptionTab: View {
     }
 
     private var styleSection: some View {
-        InspectorSection("Style", isExpanded: $styleExpanded) {
-            InspectorRow(icon: "character", label: "Font") {
-                FontPickerField(current: style.fontName, onPreview: { style.fontName = $0 }, onChange: { style.fontName = $0 }, onCancel: {})
+        TextStyleControls(
+            selection: TextStyleSelection(styles: [style], fallback: Self.defaultStyle),
+            defaults: Self.defaultStyle,
+            styleExpanded: $styleExpanded,
+            groupsExpandedByDefault: false,
+            actions: styleActions
+        )
+    }
+
+    private var styleActions: TextStyleEditingActions {
+        TextStyleEditingActions(
+            apply: { _, mutation in mutation(&style) },
+            commit: { _, mutation in mutation(&style) },
+            commitColor: { _, mutation in mutation(&style) },
+            cancelPending: { _ in },
+            cancelFontPreview: { originalFont in
+                if let originalFont { style.fontName = originalFont }
             }
-            InspectorRow(icon: "textformat", label: "Style") {
-                TextStyleTraitButtons(
-                    isBold: style.isBold,
-                    isItalic: style.isItalic,
-                    onBold: { style.isBold = $0 },
-                    onItalic: { style.isItalic = $0 }
-                )
-            }
-            InspectorRow(icon: "textformat.size", label: "Size") {
-                ScrubbableNumberField(
-                    value: style.fontSize,
-                    range: AppTheme.Caption.minFontSize...AppTheme.Caption.maxFontSize,
-                    format: "%.0f",
-                    valueSuffix: " pt",
-                    onChanged: { style.fontSize = $0 }
-                ) { style.fontSize = $0 }
-            }
-            InspectorRow(icon: "paintpalette", label: "Color") {
-                ColorField(displayColor: style.color.swiftUIColor, onUserChange: { style.color = TextStyle.RGBA($0) })
-            }
-            InspectorRow(icon: "rectangle.fill", label: "Background") {
-                HStack(spacing: AppTheme.Spacing.sm) {
-                    ColorField(displayColor: style.background.color.swiftUIColor) {
-                        style.background.color = TextStyle.RGBA($0)
-                    }
-                    .opacity(style.background.enabled ? AppTheme.Opacity.opaque : AppTheme.Opacity.medium)
-                    .disabled(!style.background.enabled)
-                    Toggle("", isOn: $style.background.enabled)
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                        .controlSize(.mini)
-                        .tint(AppTheme.Text.primaryColor.opacity(AppTheme.Opacity.strong))
-                }
-            }
-            InspectorRow(icon: "a.square", label: "Outline") {
-                HStack(spacing: AppTheme.Spacing.sm) {
-                    ColorField(displayColor: style.border.color.swiftUIColor) {
-                        style.border.color = TextStyle.RGBA($0)
-                    }
-                    .opacity(style.border.enabled ? AppTheme.Opacity.opaque : AppTheme.Opacity.medium)
-                    .disabled(!style.border.enabled)
-                    Toggle("", isOn: $style.border.enabled)
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                        .controlSize(.mini)
-                        .tint(AppTheme.Text.primaryColor.opacity(AppTheme.Opacity.strong))
-                }
-            }
-            InspectorRow(icon: "textformat", label: "Case") {
-                Menu {
-                    ForEach(EditorViewModel.CaptionCase.allCases, id: \.self) { c in
-                        Button(c.label) { textCase = c }
-                    }
-                } label: {
-                    HStack(spacing: AppTheme.Spacing.xxs) {
-                        Text(textCase.label)
-                        Image(systemName: "chevron.up.chevron.down").font(.system(size: AppTheme.FontSize.xxs))
-                    }
-                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-                }
-                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
-            }
-        }
+        )
     }
 
     private var animationSection: some View {
-        InspectorSection("Animation", isExpanded: $animationExpanded) {
+        EditorPanelGroup("Animation", isExpanded: $animationExpanded) {
             CaptionPresetGallery(selection: $animationPreset, highlight: animationHighlight)
             if animationPreset.usesHighlight {
-                InspectorRow(icon: "highlighter", label: "Highlight", labelHelp: "Color for the active word.") {
+                InspectorRow(
+                    label: "Highlight",
+                    labelHelp: "Color for the active word.",
+                    onReset: { animationHighlight = TextAnimation.defaultHighlight }
+                ) {
                     ColorField(displayColor: animationHighlight.swiftUIColor, onUserChange: { animationHighlight = TextStyle.RGBA($0) })
                 }
             }
@@ -353,7 +314,7 @@ struct CaptionTab: View {
     }
 
     private var placementSection: some View {
-        InspectorSection("Placement", isExpanded: $placementExpanded) {
+        EditorPanelGroup("Placement", isExpanded: $placementExpanded) {
             previewBox
             HStack(spacing: AppTheme.Spacing.mdLg) {
                 Spacer(minLength: AppTheme.Spacing.xs)
@@ -364,7 +325,9 @@ struct CaptionTab: View {
     }
 
     private var agentMenu: some View {
-        Menu {
+        EditorAgentMenu(
+            help: "Let Agent create captions for you. Choose a predefined task, or ask Agent in the chat."
+        ) {
             Button {
                 captionTask("remove filler words (um, uh, er, like, you know) from the captions, keeping each caption's timing unchanged.")
             } label: { Label("Remove filler words", systemImage: "text.badge.minus") }
@@ -381,22 +344,7 @@ struct CaptionTab: View {
                     }
                 }
             } label: { Label("Translate", systemImage: "globe") }
-        } label: {
-            HStack(spacing: AppTheme.Spacing.xs) {
-                Text("Agent Mode")
-                Image(systemName: "chevron.down").font(.system(size: AppTheme.FontSize.xs))
-            }
-            .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.semibold))
-            .foregroundStyle(AppTheme.aiGradient)
-            .lineLimit(1)
-            .fixedSize()
-            .padding(.horizontal, AppTheme.Spacing.mdLg)
-            .padding(.vertical, AppTheme.Spacing.smMd)
-            .background(RoundedRectangle(cornerRadius: AppTheme.Radius.sm).fill(AppTheme.Background.raisedColor))
-            .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.sm).strokeBorder(AppTheme.aiGradient.opacity(AppTheme.Opacity.medium), lineWidth: AppTheme.BorderWidth.thin))
         }
-        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
-        .help("Let Agent create captions for you. Choose a predefined task, or ask Agent in the chat.")
     }
 
     private func captionTask(_ task: String) {
@@ -408,16 +356,6 @@ struct CaptionTab: View {
         service.newChat()
         service.draft = prompt
         editor.agentPanelVisible = true
-    }
-
-    private func menuValueLabel(_ text: String) -> some View {
-        HStack(spacing: AppTheme.Spacing.xxs) {
-            Text(text)
-            Image(systemName: "chevron.up.chevron.down").font(.system(size: AppTheme.FontSize.xxs))
-        }
-        .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
-        .foregroundStyle(AppTheme.Text.tertiaryColor)
-        .lineLimit(1)
     }
 
     private var previewBox: some View {
@@ -480,14 +418,7 @@ struct CaptionTab: View {
     }
 
     private var generateBar: some View {
-        VStack(spacing: AppTheme.Spacing.sm) {
-            if let note {
-                Text(note)
-                    .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
-                    .foregroundStyle(AppTheme.Status.errorColor)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+        EditorActionFooter(message: note) {
             HStack(spacing: AppTheme.Spacing.sm) {
                 Button(action: generate) {
                     HStack(spacing: AppTheme.Spacing.xs) {
@@ -497,27 +428,16 @@ struct CaptionTab: View {
                             Text("\(cost)").monospacedDigit()
                         }
                     }
-                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.semibold))
-                    .foregroundStyle(canGenerateCaptions ? AppTheme.Background.baseColor : AppTheme.Text.secondaryColor)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, AppTheme.Spacing.smMd)
-                    .background(
-                        RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                            .fill(canGenerateCaptions ? AppTheme.Accent.primary : AppTheme.Background.prominentColor)
-                    )
                 }
-                .buttonStyle(.plain).focusable(false)
+                .buttonStyle(.editorPrimary)
+                .focusable(false)
                 .disabled(!canGenerateCaptions)
                 .help(provider == .cloud ? costHelpText : "")
 
                 agentMenu
             }
-        }
-        .padding(.horizontal, AppTheme.Spacing.lgXl)
-        .padding(.vertical, AppTheme.Spacing.md)
-        .overlay(alignment: .top) {
-            Rectangle().fill(AppTheme.Border.subtleColor).frame(height: AppTheme.BorderWidth.hairline)
         }
     }
 
@@ -533,7 +453,6 @@ struct CaptionTab: View {
             autoDetect: isAutoSource,
             style: style,
             center: center,
-            textCase: textCase,
             censorProfanity: provider == .local && censorProfanity,
             locale: locale,
             maxWords: maxWords,

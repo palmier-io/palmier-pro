@@ -18,6 +18,13 @@ struct PendingAudioPlacement {
     let actionName: String
 }
 
+struct PendingTransitionPlacement {
+    let timelineId: String
+    let trackIndex: Int
+    let gapStartFrame: Int
+    let gapLengthFrames: Int
+}
+
 @Observable
 @MainActor
 final class EditorViewModel {
@@ -95,6 +102,7 @@ final class EditorViewModel {
     }
     var activeFrame: Int { playheadState.timelineFrame }
     var isPlaying: Bool = false
+    private(set) var playbackRate: PreviewPlaybackRate = .normal
     var selectedClipIds: Set<String> = []
     var isMarqueeSelecting: Bool = false
     var selectedGap: GapSelection?
@@ -111,6 +119,7 @@ final class EditorViewModel {
         }
     }
     var canvasOffset: CGSize = .zero
+    var rotationSnapGuidesVisible: Bool = false
     var timelineVisibleWidth: Double = 0
     var timelineRenderRevision: Int = 0
     /// Live horizontal scroll of the timeline panel, mirrored from AppKit for view-state stash.
@@ -120,17 +129,22 @@ final class EditorViewModel {
     var toolMode: ToolMode = .pointer
     var showExportDialog: Bool = false
     var showGenerationPanel: Bool = false {
-        didSet { if showGenerationPanel && !oldValue { showMediaPanelMediaTab() } }
+        didSet {
+            if showGenerationPanel && !oldValue { showMediaPanelMediaTab() } else if !showGenerationPanel && oldValue { clearPendingGenerationPanelState() }
+        }
     }
     /// AIEditTab input consumed by GenerationView.
     var pendingPanelSeed: PendingPanelSeed?
     var pendingEditReplacementClipId: String?
     var pendingEditTrimmedSource: TrimmedSource?
     var pendingEditAudioPlacement: PendingAudioPlacement?
+    var pendingEditTransitionPlacement: PendingTransitionPlacement?
     /// Clip ids currently awaiting an AI-generated replacement.
     var pendingReplacements: Set<String> = []
     var cropEditingActive: Bool = false
     var chromaKeySamplingClipId: String?
+    /// Two-up in/out frames shown in the viewer while a slip drag is active.
+    var slipPreview: SlipPreviewState?
     var cropAspectLock: CropAspectLock = .free
     var previewTabs: [PreviewTab] = [.timeline]
     var activePreviewTabId: String = PreviewTab.timeline.id
@@ -244,8 +258,10 @@ final class EditorViewModel {
     var mediaPanelPasteRequestTick: Int = 0
     var mediaPanelShowMediaTabTick: Int = 0
     var mediaPanelToast: MediaPanelToast?
-    @ObservationIgnored var mediaImportTail: Task<MediaImportSummary, Never>?
+    @ObservationIgnored var mediaImportTail: Task<MediaImportSummary, Error>?
     @ObservationIgnored var mediaImportSequence: Int = 0
+    @ObservationIgnored var frameCaptureTask: Task<Void, Never>?
+    @ObservationIgnored var transitionSeedTask: Task<Void, Never>?
     @ObservationIgnored var pendingManifestMetadataUpdates: [String: MediaAsset] = [:]
     @ObservationIgnored var pendingManifestMetadataFlushTask: Task<Void, Never>?
 
@@ -291,8 +307,10 @@ final class EditorViewModel {
 
     // MARK: - Document bridge
 
-    weak var undoManager: UndoManager?
+    @ObservationIgnored let undo = EditorUndo()
+    @ObservationIgnored let projectPackageCoordinator = ProjectPackageCoordinator()
     @ObservationIgnored var onProjectCheckpointRequired: (() -> Void)?
+    @ObservationIgnored var onCancelTimelineDrag: (() -> Void)?
     var isDocumentEdited: Bool = false
 
     func telemetrySnapshot() -> [String: Any] {
@@ -346,6 +364,12 @@ final class EditorViewModel {
     var pendingSettingsContinuation: (@MainActor () -> Void)?
 
     // MARK: - Playback
+
+    func setPlaybackRate(_ rate: PreviewPlaybackRate) {
+        guard playbackRate != rate else { return }
+        playbackRate = rate
+        videoEngine?.setPlaybackRate(rate)
+    }
 
     func togglePlayback() {
         if let videoEngine {
@@ -425,7 +449,7 @@ final class EditorViewModel {
     var pendingRebuildTask: Task<Void, Never>?
 
     func notifyTimelineChanged(refreshVisuals: Bool = true) {
-        guard undoManager?.isUndoRegistrationEnabled ?? true else { return }
+        guard undo.isRegistrationEnabled else { return }
         enhancePendingDenoises()
         pendingRebuildTask?.cancel()
         pendingRebuildTask = nil
@@ -464,6 +488,7 @@ final class EditorViewModel {
         trimEndFrame: Int? = nil
     ) -> [String] {
         guard timeline.tracks.indices.contains(trackIndex) else { return [] }
+        prepareMediaVisuals(for: asset)
         let targetIsVideo = timeline.tracks[trackIndex].type == .video
         let shouldLink = addLinkedAudio && targetIsVideo && asset.hasAudio
             && (asset.type == .video || asset.type == .sequence)

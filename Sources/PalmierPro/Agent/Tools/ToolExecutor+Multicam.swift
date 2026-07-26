@@ -36,12 +36,12 @@ extension ToolExecutor {
         }
 
         let masterRef = try resolveMasterRef(args.string("master"), specs: specs, editor: editor)
-        let sync = await editor.syncMulticamMembers(
+        let sync = try await editor.syncMulticamMembers(
             specs: specs, masterRef: masterRef,
             searchWindowSeconds: args.double("searchWindowSeconds") ?? EditorViewModel.SyncDefaults.memberSearchWindowSeconds
         )
 
-        let (groupId, clipIds) = try withUndoGroup(editor, actionName: "Create Multicam (Agent)") {
+        let (groupId, clipIds) = try editor.undo.perform("Create Multicam (Agent)") {
             try editor.createMulticamGroup(
                 specs: specs, syncMaps: sync.maps, masterRef: masterRef,
                 name: args.string("name"), startFrame: args.int("startFrame")
@@ -64,7 +64,7 @@ extension ToolExecutor {
     private func ungroupSection(_ editor: EditorViewModel, _ args: [String: Any]) throws -> String {
         try validateUnknownKeys(args, allowed: ["groupId"], path: "manage_multicam.ungroup")
         let groupId = try requireGroup(editor, args.string("groupId"))
-        withUndoGroup(editor, actionName: "Ungroup Multicam (Agent)") {
+        editor.undo.perform("Ungroup Multicam (Agent)") {
             editor.ungroupMulticam(groupId: groupId)
         }
         return groupId
@@ -104,7 +104,7 @@ extension ToolExecutor {
         }
 
         let snapshot = timelineSnapshot(editor)
-        let outcome = try withUndoGroup(editor, actionName: "Switch Angle (Agent)") {
+        let outcome = try editor.undo.perform("Switch Angle (Agent)") {
             try editor.switchMulticamAngles(groupId: groupId, requests: requests)
         }
 

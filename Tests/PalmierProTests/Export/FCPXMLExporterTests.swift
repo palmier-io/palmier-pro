@@ -412,13 +412,14 @@ struct FCPXMLExporterTests {
         let clip = Fixtures.clip(id: "c", mediaRef: "media-v", start: 0, duration: 30, trimStart: 10)
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
 
-        // 00:00:14:44 @ 50 quanta = 744; the timeline runs 30fps → 744/50×30 = 446 frames = 223/15s.
+        // 00:00:14:44 @ 50 quanta = 744; exact rational 744/50 = 372/25s — NOT quantized to the
+        // 30fps timeline (446/30s), which conformed in-points 2–3 frames off in Resolve.
         let tc = SourceTimecode(frame: 744, quanta: 50, dropFrame: false)
         let xml = FCPXMLExporter.render(timeline: timeline, resolver: resolver, startTimecodes: ["media-v": tc])
 
-        #expect(xml.contains("<asset id=\"asset1\" name=\"media-v.mp4\" start=\"223/15s\""))
+        #expect(xml.contains("<asset id=\"asset1\" name=\"media-v.mp4\" start=\"372/25s\""))
         // The compound reads the asset from its timecode origin (offset stays 0 — 0-based spine).
-        #expect(xml.contains("start=\"223/15s\" offset=\"0s\""))
+        #expect(xml.contains("start=\"372/25s\" offset=\"0s\""))
         // The outer ref-clip stays 0-based against the compound: trimStart 10 / 30fps = 1/3s.
         #expect(xml.contains("<ref-clip ref=\"media1\" name=\"media-v.mp4\" lane=\"1\" offset=\"0s\" start=\"1/3s\""))
     }
@@ -802,15 +803,19 @@ struct FCPXMLExporterTests {
         var text = Fixtures.clip(id: "title", mediaRef: "text", mediaType: .text, start: 0, duration: 60)
         text.textContent = "HOOK"
         var style = TextStyle(fontSize: 96)
-        style.border = TextStyle.Fill(enabled: true, color: TextStyle.RGBA(r: 0, g: 0, b: 0, a: 1))
+        style.border = TextStyle.Outline(
+            enabled: true,
+            color: TextStyle.RGBA(r: 0, g: 0, b: 0, a: 1),
+            width: 7
+        )
+        style.fontScale = 2
         text.textStyle = style
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [text])])
 
         let xml = try await export(timeline, resolver: resolver, tmpDir: tmpDir)
 
-        // 4% of the 96pt font (NSAttributedString's stroke convention) = 3.84pt.
         #expect(xml.contains("strokeColor=\"0 0 0 1\""))
-        #expect(xml.contains("strokeWidth=\"3.84\""))
+        #expect(xml.contains("strokeWidth=\"14\""))
     }
 
     @Test func disabledBorderOmitsStroke() async throws {
@@ -824,6 +829,21 @@ struct FCPXMLExporterTests {
 
         #expect(!xml.contains("strokeColor="))
         #expect(!xml.contains("strokeWidth="))
+    }
+
+    @Test func textScaleExportsAsIndependentTitleTransform() async throws {
+        let (resolver, tmpDir) = try makeResolver(entries: [])
+        var text = Fixtures.clip(id: "title", mediaRef: "text", mediaType: .text, start: 0, duration: 60)
+        text.textContent = "WIDE"
+        var style = TextStyle()
+        style.widthScale = 1.5
+        style.heightScale = 0.75
+        text.textStyle = style
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [text])])
+
+        let xml = try await export(timeline, resolver: resolver, tmpDir: tmpDir)
+
+        #expect(xml.contains("<adjust-transform scale=\"1.5 0.75\" anchor=\"0 0\" position=\"0 0\"/>"))
     }
 
     @Test func titleFontSizeDoesNotScaleWithSequenceHeight() async throws {

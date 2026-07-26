@@ -53,6 +53,8 @@ enum AppTheme {
         /// Warm off-white
         static let primary = Color(red: 0.961, green: 0.937, blue: 0.894)
 
+        static let link = Color(nsColor: .linkColor)
+
         /// Vibrant highlight used by the onboarding tour spotlight.
         static let spotlight = Color(red: 1.0, green: 0.27, blue: 0.27)
         static let spotlightGradient = LinearGradient(
@@ -88,6 +90,7 @@ enum AppTheme {
         static let panelWidth: CGFloat = 32
         static let barWidth: CGFloat = 8
         static let refreshInterval: Double = 1.0 / 30.0
+        static let accessibilityRefreshInterval: Duration = .milliseconds(250)
         static let rulerStepDb: Float = 6
         static let rulerMajorStepDb: Float = 12
         static let yellowThresholdDb: Float = -20
@@ -129,21 +132,6 @@ enum AppTheme {
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
-
-    static let aiGradientDark = LinearGradient(
-        stops: [
-            .init(color: Color(white: 0.11), location: 0.00),
-            .init(color: Color(white: 0.06), location: 1.00),
-        ],
-        startPoint: .top,
-        endPoint: .bottom
-    )
-
-    // MARK: - Glass
-
-    enum Glass {
-        static let primaryTint = Accent.primary.opacity(0.05)
-    }
 
     // MARK: - Status
 
@@ -291,6 +279,7 @@ enum AppTheme {
         static let toolImagePreviewMaxHeight: CGFloat = 50
         static let projectCardWidth: CGFloat = 150
         static let projectCardHeight: CGFloat = 120
+        static let projectSearchWidth: CGFloat = 260
         static let timelineClipBorderMinWidth: CGFloat = 8
         static let timelineClipDetailMinWidth: CGFloat = 32
         static let timelineTabRenameWidth: CGFloat = 120
@@ -302,19 +291,49 @@ enum AppTheme {
         static let updateOverlayWidth: CGFloat = 640
     }
 
+    enum Settings {
+        static let sidebarWidth: CGFloat = 220
+        static let contentMaxWidth: CGFloat = 640
+        static let creditInputWidth: CGFloat = 56
+        static let skillsSearchWidth: CGFloat = 260
+        static let skillRowIconFrame: CGFloat = 42
+        static let skillStatusWidth: CGFloat = 124
+        static let skillActionWidth: CGFloat = 72
+        static let skillDetailWidth: CGFloat = 720
+        static let skillDetailMinHeight: CGFloat = 600
+        static let skillToastWidth: CGFloat = 380
+        static let skillMenuWidth: CGFloat = 168
+        static let skillToastDuration: Duration = .seconds(5)
+    }
+
+    enum EditorPanel {
+        static let defaultWidth: CGFloat = 340
+        static let minimumWidth: CGFloat = 240
+        static let labelColumnWidth: CGFloat = 88
+        static let rowMinHeight: CGFloat = 22
+        static let groupHeaderHeight: CGFloat = 28
+        static let tabBarHeight: CGFloat = 34
+        static let fieldMinHeight: CGFloat = 22
+        static let numericFieldWidth: CGFloat = 56
+        static let compactNumericFieldWidth: CGFloat = 36
+        static let fontMenuWidth: CGFloat = 160
+        static let textEditorMinHeight: CGFloat = 96
+    }
+
     enum Window {
-        static let homeDefault = NSSize(width: 1200, height: 880)
+        static let homeDefault = NSSize(width: 1200, height: 800)
         static let homeMin = NSSize(width: 760, height: 480)
-        static let projectMin = NSSize(width: 960, height: 600)
+        static let projectMin = NSSize(
+            width: 960 + GenerationPanel.minimumWidthAdjustment,
+            height: 600
+        )
         static let projectTitlebarTrailingWidth: CGFloat = 280
-        static let settingsDefault = NSSize(width: 1200, height: 900)
+        static let settingsDefault = NSSize(width: 1200, height: 800)
         static let settingsMin = NSSize(width: 860, height: 640)
     }
 
     enum Caption {
         static let defaultFontSize: Double = 48
-        static let minFontSize: Double = 12
-        static let maxFontSize: Double = 300
         static let minPosition: Double = 0
         static let maxPosition: Double = 1
         static let centerSnapValue: CGFloat = 0.5
@@ -325,6 +344,8 @@ enum AppTheme {
     }
 
     enum GenerationPanel {
+        static let typeTabWidth: CGFloat = IconSize.xl + Spacing.lg
+        static let minimumWidthAdjustment: CGFloat = typeTabWidth + Spacing.xxl
         static let mediaAreaMinHeight: CGFloat = 120
         static let loadingHeight: CGFloat = 180
         static let promptMinHeight: CGFloat = 40
@@ -374,6 +395,7 @@ enum AppTheme {
         static let hover: Double = 0.15
         static let transition: Double = 0.2
         static let pulse: Double = 0.8
+        static let slipPreviewRefresh: Duration = .milliseconds(67)
     }
 }
 

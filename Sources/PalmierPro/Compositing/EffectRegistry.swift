@@ -272,6 +272,19 @@ enum EffectRegistry {
 
     private static let stylize: [EffectDescriptor] = [
         EffectDescriptor(
+            id: "stylize.invert", displayName: "Invert", category: "Stylize",
+            params: [],
+            apply: { image, _, _ in
+                return image.applyingFilter("CIColorMatrix", parameters: [
+                    "inputRVector": CIVector(x: -1, y: 0, z: 0, w: 0),
+                    "inputGVector": CIVector(x: 0, y: -1, z: 0, w: 0),
+                    "inputBVector": CIVector(x: 0, y: 0, z: -1, w: 0),
+                    "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
+                    "inputBiasVector": CIVector(x: 1, y: 1, z: 1, w: 0),
+                ])
+            }
+        ),
+        EffectDescriptor(
             id: "stylize.grain", displayName: "Film Grain", category: "Stylize",
             params: [
                 EffectParamSpec(key: "amount", label: "Amount", range: 0...1, defaultValue: 0, unit: ""),
@@ -351,7 +364,8 @@ enum EffectRegistry {
         "color.exposure", "color.contrast", "color.highlightsShadows", "color.blacksWhites",
         "color.temperature", "color.vibrance", "color.saturation", "color.wheels", "color.curves",
         "color.hueCurves", "color.lut", "detail.clarity", "key.chroma", "blur.gaussian", "blur.sharpen",
-        "blur.noiseReduction", "blur.motion", "stylize.grain", "stylize.vignette", "stylize.glow",
+        "blur.noiseReduction", "blur.motion", "stylize.invert", "stylize.grain", "stylize.vignette",
+        "stylize.glow",
     ]
 
     static func insertIndex(_ effects: [Effect], for id: String) -> Int {

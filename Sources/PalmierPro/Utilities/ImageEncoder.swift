@@ -9,6 +9,7 @@ enum ImageEncoder {
     static let maxBytes = 3_500_000
     /// Internal downsample target.
     static let maxLongestEdge = 1568
+    static let libraryThumbnailMaxPixelSize = 320
 
     struct Output: Sendable {
         let data: Data
@@ -29,11 +30,17 @@ enum ImageEncoder {
         return output
     }
 
-    /// JPEG-encode an already-decoded `CGImage`. Shared with video frame sampling.
     nonisolated static func encodeJPEG(_ image: CGImage, quality: CGFloat) -> Data? {
         let buffer = NSMutableData()
         guard let dest = CGImageDestinationCreateWithData(buffer, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
         CGImageDestinationAddImage(dest, image, [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
+        return CGImageDestinationFinalize(dest) ? buffer as Data : nil
+    }
+
+    nonisolated static func encodePNG(_ image: CGImage) -> Data? {
+        let buffer = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(buffer, UTType.png.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(dest, image, nil)
         return CGImageDestinationFinalize(dest) ? buffer as Data : nil
     }
 
@@ -57,6 +64,11 @@ enum ImageEncoder {
 
     nonisolated static func thumbnail(url: URL, maxPixelSize: Int) -> CGImage? {
         guard let source = imageSource(url: url) else { return nil }
+        return makeThumbnail(source: source, maxPixelSize: maxPixelSize)
+    }
+
+    nonisolated static func thumbnail(data: Data, maxPixelSize: Int) -> CGImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         return makeThumbnail(source: source, maxPixelSize: maxPixelSize)
     }
 

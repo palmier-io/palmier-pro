@@ -71,6 +71,9 @@ struct MusicGenerationSubmission {
             duration: durationSeconds,
             aspectRatio: ""
         )
+        genInput.audioInput = mode == .textToMusic
+            ? AudioModelConfig.Input.text.rawValue
+            : AudioModelConfig.Input.video.rawValue
         genInput.createdAt = Date()
 
         onPhase(.generating)

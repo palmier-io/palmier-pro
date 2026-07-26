@@ -48,7 +48,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             MainActor.assumeIsolated {
                 guard let self, let editor = object as? NSTextView,
                       editor.window === self.window, let storage = editor.textStorage else { return }
-                self.editorViewModel.undoManager?.removeAllActions(withTarget: storage)
+                self.editorViewModel.undo.removeAllActions(withTarget: storage)
             }
         }
     }
@@ -129,6 +129,13 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             }
             return false
 
+        case 17: // T key
+            if !cmd {
+                editorViewModel.toolMode = .trim
+                return true
+            }
+            return false
+
         case 34: // I key
             if rangeMarkShortcut {
                 editorViewModel.markTimelineRangeStart()
@@ -188,6 +195,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
                 editorViewModel.maximizedPanel = nil
                 return true
             }
+            editorViewModel.onCancelTimelineDrag?()
+            editorViewModel.slipPreview = nil
             editorViewModel.selectedClipIds.removeAll()
             editorViewModel.clearTimelineRange()
             editorViewModel.toolMode = .pointer
@@ -258,12 +267,6 @@ extension EditorWindowController: EditorActions {
             editorViewModel.rippleDeleteSelectedClips()
         }
     }
-    @objc func playPause(_ sender: Any?) { editorViewModel.togglePlayback() }
-    @objc func stepFrameForward(_ sender: Any?) { editorViewModel.stepForward() }
-    @objc func stepFrameBackward(_ sender: Any?) { editorViewModel.stepBackward() }
-    @objc func skipFramesForward(_ sender: Any?) { editorViewModel.skipForward() }
-    @objc func skipFramesBackward(_ sender: Any?) { editorViewModel.skipBackward() }
-
     @objc func importMedia(_ sender: Any?) {
         // Handled by MediaTab directly
     }

@@ -10,16 +10,17 @@ struct SidebarRowButton: View {
         Button(action: action) {
             HStack(spacing: AppTheme.Spacing.smMd) {
                 Image(systemName: systemImage)
-                    .font(.system(size: AppTheme.FontSize.smMd))
-                    .frame(width: AppTheme.Spacing.lgXl)
-                Text(label)
                     .font(.system(size: AppTheme.FontSize.md))
+                    .frame(width: AppTheme.IconSize.sm)
+                Text(label)
+                    .font(.system(size: AppTheme.FontSize.mdLg, weight: AppTheme.FontWeight.regular))
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, AppTheme.Spacing.smMd)
+            .padding(.horizontal, AppTheme.Spacing.md)
             .padding(.vertical, AppTheme.Spacing.sm)
             .foregroundStyle(AppTheme.Text.primaryColor)
-            .hoverHighlight(cornerRadius: AppTheme.Radius.sm, isActive: isSelected)
+            .hoverHighlight(cornerRadius: AppTheme.Radius.xl, isActive: isSelected)
+            .contentShape(Capsule(style: .continuous))
         }
         .buttonStyle(.plain)
     }

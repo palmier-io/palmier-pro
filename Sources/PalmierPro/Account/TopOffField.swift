@@ -4,6 +4,9 @@ struct TopOffField<Trailing: View>: View {
     @Binding var dollars: Int
     var controlSize: ControlSize = .regular
     var fillWidth: Bool = true
+    var fieldFill: Color = AppTheme.Background.surfaceColor
+    var buttonFill: AnyShapeStyle? = nil
+    var showsExternalLinkIcon: Bool = false
     var onBuy: () -> Void
     @ViewBuilder var trailing: () -> Trailing
 
@@ -16,8 +19,11 @@ struct TopOffField<Trailing: View>: View {
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                 TextField("", value: $dollars, format: .number)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 56)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, AppTheme.Spacing.smMd)
+                    .padding(.vertical, AppTheme.Spacing.xs)
+                    .frame(width: AppTheme.Settings.creditInputWidth)
+                    .themedSurface(fieldFill, cornerRadius: AppTheme.Radius.sm)
                     .disabled(account.isBuyingCredits)
                 Text(credits == 1 ? "= 1 credit" : "= \(credits.formatted()) credits")
                     .font(.system(size: AppTheme.FontSize.sm))
@@ -33,10 +39,20 @@ struct TopOffField<Trailing: View>: View {
 
             HStack(spacing: AppTheme.Spacing.sm) {
                 Button(action: onBuy) {
-                    Text(buttonLabel)
+                    HStack(spacing: AppTheme.Spacing.xs) {
+                        Text(buttonLabel)
+                        if showsExternalLinkIcon {
+                            Image(systemName: "arrow.up.right")
+                                .font(.system(
+                                    size: AppTheme.FontSize.xs,
+                                    weight: AppTheme.FontWeight.semibold
+                                ))
+                                .accessibilityHidden(true)
+                        }
+                    }
                         .frame(maxWidth: fillWidth ? .infinity : nil)
                 }
-                .buttonStyle(.capsule(.secondary, size: capsuleSize))
+                .buttonStyle(.capsule(.secondary, size: capsuleSize, fill: buttonFill))
                 .disabled(account.isBuyingCredits || !isValid)
 
                 trailing()
@@ -64,12 +80,18 @@ extension TopOffField where Trailing == EmptyView {
         dollars: Binding<Int>,
         controlSize: ControlSize = .regular,
         fillWidth: Bool = true,
+        fieldFill: Color = AppTheme.Background.surfaceColor,
+        buttonFill: AnyShapeStyle? = nil,
+        showsExternalLinkIcon: Bool = false,
         onBuy: @escaping () -> Void
     ) {
         self.init(
             dollars: dollars,
             controlSize: controlSize,
             fillWidth: fillWidth,
+            fieldFill: fieldFill,
+            buttonFill: buttonFill,
+            showsExternalLinkIcon: showsExternalLinkIcon,
             onBuy: onBuy,
             trailing: { EmptyView() }
         )

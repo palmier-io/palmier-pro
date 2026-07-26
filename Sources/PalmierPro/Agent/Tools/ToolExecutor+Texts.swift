@@ -1,31 +1,93 @@
 import Foundation
 
-struct ParsedTextStylePatch {
-    let fontName: String?
-    let fontSize: Double?
-    let isBold: Bool?
-    let isItalic: Bool?
+struct ParsedTextColorPatch {
+    let value: TextStyle.RGBA
+    let includesOpacity: Bool
+}
+
+struct ParsedTextOutlinePatch {
+    let enabled: Bool?
     let color: TextStyle.RGBA?
-    let alignment: TextStyle.Alignment?
-    let borderColor: TextStyle.RGBA?
-    let backgroundColor: TextStyle.RGBA?
+    let width: Double?
+
+    var hasAnyField: Bool { enabled != nil || color != nil || width != nil }
+    var affectsLayout: Bool { enabled != nil || width != nil }
+}
+
+struct ParsedTextShadowPatch {
+    let enabled: Bool?
+    let color: ParsedTextColorPatch?
+    let opacity: Double?
+    let offsetX: Double?
+    let offsetY: Double?
+    let blur: Double?
 
     var hasAnyField: Bool {
-        fontName != nil || fontSize != nil || isBold != nil || isItalic != nil
-            || color != nil || alignment != nil
-            || borderColor != nil
-            || backgroundColor != nil
+        enabled != nil || color != nil || opacity != nil || offsetX != nil || offsetY != nil || blur != nil
     }
 
     var affectsLayout: Bool {
-        fontName != nil || fontSize != nil || isBold != nil || isItalic != nil
+        enabled != nil || offsetX != nil || offsetY != nil || blur != nil
     }
 }
 
-let agentTextStylePatchAllowedKeys: Set<String> = [
-    "fontName", "fontSize", "isBold", "isItalic", "color", "alignment",
-    "borderColor", "backgroundColor",
-]
+struct ParsedTextBackgroundPatch {
+    let enabled: Bool?
+    let color: ParsedTextColorPatch?
+    let opacity: Double?
+    let paddingX: Double?
+    let paddingY: Double?
+    let offsetX: Double?
+    let offsetY: Double?
+    let cornerRadius: Double?
+    let outlineColor: TextStyle.RGBA?
+    let outlineWidth: Double?
+
+    var hasAnyField: Bool {
+        enabled != nil || color != nil || opacity != nil || paddingX != nil || paddingY != nil
+            || offsetX != nil || offsetY != nil || cornerRadius != nil
+            || outlineColor != nil || outlineWidth != nil
+    }
+
+    var affectsLayout: Bool { enabled != nil || paddingX != nil || paddingY != nil }
+}
+
+struct ParsedTextStylePatch {
+    let fontName: String?
+    let fontSize: Double?
+    let widthScale: Double?
+    let heightScale: Double?
+    let isBold: Bool?
+    let isItalic: Bool?
+    let isUnderlined: Bool?
+    let isStruckThrough: Bool?
+    let isOverlined: Bool?
+    let tracking: Double?
+    let lineSpacing: Double?
+    let fontCase: TextStyle.FontCase?
+    let color: TextStyle.RGBA?
+    let alignment: TextStyle.Alignment?
+    let outline: ParsedTextOutlinePatch?
+    let shadow: ParsedTextShadowPatch?
+    let background: ParsedTextBackgroundPatch?
+
+    var hasAnyField: Bool {
+        fontName != nil || fontSize != nil || widthScale != nil || heightScale != nil
+            || isBold != nil || isItalic != nil
+            || isUnderlined != nil || isStruckThrough != nil || isOverlined != nil
+            || tracking != nil || lineSpacing != nil || fontCase != nil
+            || color != nil || alignment != nil || outline?.hasAnyField == true
+            || shadow?.hasAnyField == true || background?.hasAnyField == true
+    }
+
+    var affectsLayout: Bool {
+        fontName != nil || fontSize != nil || widthScale != nil || heightScale != nil
+            || isBold != nil || isItalic != nil
+            || tracking != nil || lineSpacing != nil || fontCase != nil
+            || outline?.affectsLayout == true || shadow?.affectsLayout == true
+            || background?.affectsLayout == true
+    }
+}
 
 fileprivate struct PartialTextSpec {
     let trackId: String?
@@ -35,51 +97,247 @@ fileprivate struct PartialTextSpec {
     let style: TextStyle
     let transform: Transform?
     let animation: TextAnimation?
+    let fillMode: TextFillMode?
 }
 
 extension ToolExecutor {
     private static let addTextsAllowedKeys: Set<String> = Set([
         "trackIndex", "startFrame", "endFrame", "content",
-        "transform", "animation", "highlightColor",
-    ]).union(agentTextStylePatchAllowedKeys)
+        "style", "transform", "animation", "highlightColor", "fillMode",
+    ])
 
     private static let updateTextAllowedKeys: Set<String> = Set([
         "clipIds", "captionGroupId", "content",
-        "transform", "animation", "highlightColor",
-    ]).union(agentTextStylePatchAllowedKeys)
+        "style", "transform", "animation", "highlightColor", "fillMode",
+    ])
 
-    func parseTextStylePatch(_ args: [String: Any], path: String) throws -> ParsedTextStylePatch {
+    func parseTextStylePatch(_ args: [String: Any], path: String) throws -> ParsedTextStylePatch? {
+        guard args.keys.contains("style") else { return nil }
+        guard let style = args["style"] as? [String: Any] else {
+            throw ToolError("\(path).style: expected object")
+        }
+        return try parseTextStylePatchObject(style, path: "\(path).style")
+    }
+
+    private func parseTextStylePatchObject(_ args: [String: Any], path: String) throws -> ParsedTextStylePatch {
+        try validateUnknownKeys(
+            args,
+            allowed: [
+                "fontName", "fontSize", "widthScale", "heightScale",
+                "bold", "italic", "underline", "strikethrough", "overline",
+                "tracking", "lineSpacing", "fontCase",
+                "color", "alignment", "outline", "shadow", "background",
+            ],
+            path: path
+        )
+
+        let outline = try parseOutlinePatch(args["outline"], path: "\(path).outline")
+        let shadow = try parseShadowPatch(args["shadow"], path: "\(path).shadow")
+        let background = try parseBackgroundPatch(args["background"], path: "\(path).background")
+
         return ParsedTextStylePatch(
-            fontName: args.string("fontName"),
-            fontSize: args.double("fontSize"),
-            isBold: args.bool("isBold"),
-            isItalic: args.bool("isItalic"),
-            color: try parseColorHex(args.string("color"), path: "\(path).color"),
-            alignment: try parseAlignment(args.string("alignment"), path: path),
-            borderColor: try parseColorHex(args.string("borderColor"), path: "\(path).borderColor"),
-            backgroundColor: try parseColorHex(args.string("backgroundColor"), path: "\(path).backgroundColor")
+            fontName: try optionalString(args, key: "fontName", path: path),
+            fontSize: try optionalNumber(args, key: "fontSize", path: path, range: 12...300),
+            widthScale: try optionalNumber(args, key: "widthScale", path: path, range: TextStyle.axisScaleRange),
+            heightScale: try optionalNumber(args, key: "heightScale", path: path, range: TextStyle.axisScaleRange),
+            isBold: try optionalBool(args, key: "bold", path: path),
+            isItalic: try optionalBool(args, key: "italic", path: path),
+            isUnderlined: try optionalBool(args, key: "underline", path: path),
+            isStruckThrough: try optionalBool(args, key: "strikethrough", path: path),
+            isOverlined: try optionalBool(args, key: "overline", path: path),
+            tracking: try optionalNumber(args, key: "tracking", path: path, range: -20...100),
+            lineSpacing: try optionalNumber(args, key: "lineSpacing", path: path, range: -100...300),
+            fontCase: try parseFontCase(args, path: path),
+            color: try optionalColor(args, key: "color", path: path)?.value,
+            alignment: try parseTextAlignment(args, path: path),
+            outline: outline,
+            shadow: shadow,
+            background: background
         )
     }
 
-    static func applyTextStylePatch(_ patch: ParsedTextStylePatch, to style: inout TextStyle) -> [String] {
-        var changed: [String] = []
-        if let f = patch.fontName { style.fontName = f; changed.append("fontName") }
-        if let s = patch.fontSize { style.fontSize = s; changed.append("fontSize") }
-        if let b = patch.isBold { style.isBold = b; changed.append("isBold") }
-        if let i = patch.isItalic { style.isItalic = i; changed.append("isItalic") }
-        if let c = patch.color { style.color = c; changed.append("color") }
-        if let a = patch.alignment { style.alignment = a; changed.append("alignment") }
-        if let c = patch.borderColor {
-            style.border.color = c
-            style.border.enabled = true
-            changed.append("borderColor")
+    private func parseOutlinePatch(_ raw: Any?, path: String) throws -> ParsedTextOutlinePatch? {
+        guard let raw else { return nil }
+        guard let args = raw as? [String: Any] else { throw ToolError("\(path): expected object") }
+        try validateUnknownKeys(args, allowed: ["enabled", "color", "width"], path: path)
+        return .init(
+            enabled: try optionalBool(args, key: "enabled", path: path),
+            color: try optionalColor(args, key: "color", path: path)?.value,
+            width: try optionalNumber(args, key: "width", path: path, range: 0...40)
+        )
+    }
+
+    private func parseShadowPatch(_ raw: Any?, path: String) throws -> ParsedTextShadowPatch? {
+        guard let raw else { return nil }
+        guard let args = raw as? [String: Any] else { throw ToolError("\(path): expected object") }
+        try validateUnknownKeys(args, allowed: ["enabled", "color", "opacity", "offset", "blur"], path: path)
+        let offset = try optionalPair(args, key: "offset", path: path, range: -200...200)
+        return .init(
+            enabled: try optionalBool(args, key: "enabled", path: path),
+            color: try optionalColor(args, key: "color", path: path),
+            opacity: try optionalNumber(args, key: "opacity", path: path, range: 0...1),
+            offsetX: offset?.x,
+            offsetY: offset?.y,
+            blur: try optionalNumber(args, key: "blur", path: path, range: 0...100)
+        )
+    }
+
+    private func parseBackgroundPatch(_ raw: Any?, path: String) throws -> ParsedTextBackgroundPatch? {
+        guard let raw else { return nil }
+        guard let args = raw as? [String: Any] else { throw ToolError("\(path): expected object") }
+        try validateUnknownKeys(
+            args,
+            allowed: ["enabled", "color", "opacity", "padding", "center", "cornerRadius", "outline"],
+            path: path
+        )
+        let padding = try optionalPair(args, key: "padding", path: path, range: 0...300)
+        let center = try optionalPair(args, key: "center", path: path, range: -500...500)
+        let outline = try optionalObject(args, key: "outline", path: path)
+        if let outline { try validateUnknownKeys(outline, allowed: ["color", "width"], path: "\(path).outline") }
+        return .init(
+            enabled: try optionalBool(args, key: "enabled", path: path),
+            color: try optionalColor(args, key: "color", path: path),
+            opacity: try optionalNumber(args, key: "opacity", path: path, range: 0...1),
+            paddingX: padding?.x,
+            paddingY: padding?.y,
+            offsetX: center?.x,
+            offsetY: center?.y,
+            cornerRadius: try optionalNumber(args, key: "cornerRadius", path: path, range: 0...300),
+            outlineColor: try outline.flatMap { try optionalColor($0, key: "color", path: "\(path).outline")?.value },
+            outlineWidth: try outline.flatMap { try optionalNumber($0, key: "width", path: "\(path).outline", range: 0...40) }
+        )
+    }
+
+    private func optionalColor(_ args: [String: Any], key: String, path: String) throws -> ParsedTextColorPatch? {
+        guard args.keys.contains(key) else { return nil }
+        guard let raw = args[key] as? String else { throw ToolError("\(path).\(key): expected string") }
+        guard let value = try parseColorHex(raw, path: "\(path).\(key)") else { return nil }
+        let digits = raw.trimmingCharacters(in: .whitespacesAndNewlines).drop(while: { $0 == "#" })
+        return .init(value: value, includesOpacity: digits.count == 8)
+    }
+
+    private func optionalString(_ args: [String: Any], key: String, path: String) throws -> String? {
+        guard args.keys.contains(key) else { return nil }
+        guard let value = args[key] as? String, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw ToolError("\(path).\(key): expected non-empty string")
         }
-        if let c = patch.backgroundColor {
-            style.background.color = c
-            style.background.enabled = true
-            changed.append("backgroundColor")
+        return value
+    }
+
+    private func optionalBool(_ args: [String: Any], key: String, path: String) throws -> Bool? {
+        guard args.keys.contains(key) else { return nil }
+        guard let value = args[key] as? Bool else { throw ToolError("\(path).\(key): expected boolean") }
+        return value
+    }
+
+    private func optionalNumber(
+        _ args: [String: Any],
+        key: String,
+        path: String,
+        range: ClosedRange<Double>? = nil
+    ) throws -> Double? {
+        guard args.keys.contains(key) else { return nil }
+        guard let raw = args[key], !isJSONBoolean(raw) else {
+            throw ToolError("\(path).\(key): expected finite number")
         }
-        return changed
+        let value: Double
+        if let raw = raw as? Double {
+            value = raw
+        } else if let raw = raw as? Int {
+            value = Double(raw)
+        } else if let raw = raw as? NSNumber {
+            value = raw.doubleValue
+        } else {
+            throw ToolError("\(path).\(key): expected finite number")
+        }
+        guard value.isFinite else {
+            throw ToolError("\(path).\(key): expected finite number")
+        }
+        if let range, !range.contains(value) {
+            throw ToolError("\(path).\(key): must be between \(range.lowerBound) and \(range.upperBound)")
+        }
+        return value
+    }
+
+    private func optionalObject(_ args: [String: Any], key: String, path: String) throws -> [String: Any]? {
+        guard args.keys.contains(key) else { return nil }
+        guard let value = args[key] as? [String: Any] else { throw ToolError("\(path).\(key): expected object") }
+        return value
+    }
+
+    private func optionalPair(
+        _ args: [String: Any],
+        key: String,
+        path: String,
+        range: ClosedRange<Double>
+    ) throws -> (x: Double?, y: Double?)? {
+        guard let pair = try optionalObject(args, key: key, path: path) else { return nil }
+        let pairPath = "\(path).\(key)"
+        try validateUnknownKeys(pair, allowed: ["x", "y"], path: pairPath)
+        return (
+            try optionalNumber(pair, key: "x", path: pairPath, range: range),
+            try optionalNumber(pair, key: "y", path: pairPath, range: range)
+        )
+    }
+
+    private func parseFontCase(_ args: [String: Any], path: String) throws -> TextStyle.FontCase? {
+        guard args.keys.contains("fontCase") else { return nil }
+        guard let raw = args["fontCase"] as? String, let value = TextStyle.FontCase(rawValue: raw) else {
+            throw ToolError("\(path).fontCase: expected mixed, uppercase, or lowercase")
+        }
+        return value
+    }
+
+    private func parseTextAlignment(_ args: [String: Any], path: String) throws -> TextStyle.Alignment? {
+        guard args.keys.contains("alignment") else { return nil }
+        guard let raw = args["alignment"] as? String else { throw ToolError("\(path).alignment: expected string") }
+        return try parseAlignment(raw, path: "\(path).alignment")
+    }
+
+    static func applyTextStylePatch(_ patch: ParsedTextStylePatch, to style: inout TextStyle) {
+        if let f = patch.fontName { style.fontName = f }
+        if let s = patch.fontSize { style.fontSize = s }
+        if let s = patch.widthScale { style.widthScale = s }
+        if let s = patch.heightScale { style.heightScale = s }
+        if let b = patch.isBold { style.isBold = b }
+        if let i = patch.isItalic { style.isItalic = i }
+        if let u = patch.isUnderlined { style.isUnderlined = u }
+        if let s = patch.isStruckThrough { style.isStruckThrough = s }
+        if let o = patch.isOverlined { style.isOverlined = o }
+        if let t = patch.tracking { style.tracking = t }
+        if let l = patch.lineSpacing { style.lineSpacing = l }
+        if let f = patch.fontCase { style.fontCase = f }
+        if let c = patch.color { style.color = c }
+        if let a = patch.alignment { style.alignment = a }
+        if let outline = patch.outline {
+            if let e = outline.enabled { style.border.enabled = e }
+            if let c = outline.color { style.border.color = c }
+            if let w = outline.width { style.border.width = w }
+        }
+        if let shadow = patch.shadow {
+            if let e = shadow.enabled { style.shadow.enabled = e }
+            if let c = shadow.color {
+                if c.includesOpacity { style.shadow.color = c.value } else { style.shadow.color.setRGB(from: c.value) }
+            }
+            if let o = shadow.opacity { style.shadow.color.a = o }
+            if let x = shadow.offsetX { style.shadow.offsetX = x }
+            if let y = shadow.offsetY { style.shadow.offsetY = y }
+            if let b = shadow.blur { style.shadow.blur = b }
+        }
+        if let background = patch.background {
+            if let e = background.enabled { style.background.enabled = e }
+            if let c = background.color {
+                if c.includesOpacity { style.background.color = c.value } else { style.background.color.setRGB(from: c.value) }
+            }
+            if let o = background.opacity { style.background.color.a = o }
+            if let x = background.paddingX { style.background.paddingX = x }
+            if let y = background.paddingY { style.background.paddingY = y }
+            if let x = background.offsetX { style.background.offsetX = x }
+            if let y = background.offsetY { style.background.offsetY = y }
+            if let r = background.cornerRadius { style.background.cornerRadius = r }
+            if let c = background.outlineColor { style.background.outlineColor = c }
+            if let w = background.outlineWidth { style.background.outlineWidth = w }
+        }
     }
 
     /// Returns a TextAnimation for an agent 'animation' spec, or nil if 'off' or not set.
@@ -93,6 +351,14 @@ extension ToolExecutor {
         return anim
     }
 
+    private func parseTextFillMode(_ raw: String?, path: String) throws -> TextFillMode? {
+        guard let raw else { return nil }
+        guard let mode = TextFillMode(rawValue: raw) else {
+            throw ToolError("\(path).fillMode: expected color or footage")
+        }
+        return mode
+    }
+
     private func parseAddTextTransform(
         _ tDict: [String: Any]?,
         content: String, style: TextStyle,
@@ -100,31 +366,49 @@ extension ToolExecutor {
         path: String
     ) throws -> Transform? {
         guard let tDict else { return nil }
-        try validateUnknownKeys(tDict, allowed: ["centerX", "centerY", "width", "height"], path: "\(path).transform")
-        let cX = tDict.double("centerX"), cY = tDict.double("centerY")
-        let w = tDict.double("width"), h = tDict.double("height")
-        if cX == nil && cY == nil && w == nil && h == nil { return nil }
+        try validateUnknownKeys(tDict, allowed: ["centerX", "centerY", "width", "height", "rotation"], path: "\(path).transform")
+        let cX = try optionalNumber(tDict, key: "centerX", path: "\(path).transform")
+        let cY = try optionalNumber(tDict, key: "centerY", path: "\(path).transform")
+        let w = try optionalNumber(tDict, key: "width", path: "\(path).transform")
+        let h = try optionalNumber(tDict, key: "height", path: "\(path).transform")
+        let rotation = try optionalNumber(tDict, key: "rotation", path: "\(path).transform")
+
+        func autoFit(centerX: Double, centerY: Double) -> Transform {
+            let natural = TextLayout.naturalSize(content: content, style: style, maxWidth: CGFloat(canvas.w) * 0.9, canvasHeight: CGFloat(canvas.h))
+            return Transform(
+                centerX: centerX,
+                centerY: centerY,
+                width: Double(natural.width) / canvas.w,
+                height: Double(natural.height) / canvas.h,
+                rotation: rotation ?? 0
+            )
+        }
+
+        if cX == nil && cY == nil && w == nil && h == nil {
+            guard rotation != nil else { return nil }
+            return autoFit(centerX: 0.5, centerY: 0.5)
+        }
         guard let cx = cX, let cy = cY else {
             throw ToolError("\(path): transform must be either {centerX, centerY} for auto-fit, or all four of {centerX, centerY, width, height}")
         }
         if let ww = w, let hh = h {
-            return Transform(center: (cx, cy), width: ww, height: hh)
+            return Transform(centerX: cx, centerY: cy, width: ww, height: hh, rotation: rotation ?? 0)
         }
         guard w == nil && h == nil else {
             throw ToolError("\(path): transform must be either {centerX, centerY} for auto-fit, or all four of {centerX, centerY, width, height}")
         }
-        let natural = TextLayout.naturalSize(content: content, style: style, maxWidth: CGFloat(canvas.w) * 0.9, canvasHeight: CGFloat(canvas.h))
-        return Transform(center: (cx, cy), width: Double(natural.width) / canvas.w, height: Double(natural.height) / canvas.h)
+        return autoFit(centerX: cx, centerY: cy)
     }
 
     private func parseUpdateTextTransform(_ tDict: [String: Any]?, path: String) throws -> ParsedTransform? {
         guard let tDict else { return nil }
-        try validateUnknownKeys(tDict, allowed: ["centerX", "centerY", "width", "height"], path: "\(path).transform")
+        try validateUnknownKeys(tDict, allowed: ["centerX", "centerY", "width", "height", "rotation"], path: "\(path).transform")
         let transform = ParsedTransform(
-            centerX: tDict.double("centerX"),
-            centerY: tDict.double("centerY"),
-            width: tDict.double("width"),
-            height: tDict.double("height"),
+            centerX: try optionalNumber(tDict, key: "centerX", path: "\(path).transform"),
+            centerY: try optionalNumber(tDict, key: "centerY", path: "\(path).transform"),
+            width: try optionalNumber(tDict, key: "width", path: "\(path).transform"),
+            height: try optionalNumber(tDict, key: "height", path: "\(path).transform"),
+            rotation: try optionalNumber(tDict, key: "rotation", path: "\(path).transform"),
             flipHorizontal: nil,
             flipVertical: nil
         )
@@ -170,10 +454,12 @@ extension ToolExecutor {
             let durationFrames = endFrame - startFrame
 
             var style = TextStyle()
-            _ = Self.applyTextStylePatch(try parseTextStylePatch(entry, path: path), to: &style)
+            if let patch = try parseTextStylePatch(entry, path: path) {
+                Self.applyTextStylePatch(patch, to: &style)
+            }
 
             let transform = try parseAddTextTransform(
-                entry["transform"] as? [String: Any],
+                optionalObject(entry, key: "transform", path: path),
                 content: content, style: style,
                 canvas: (Double(editor.timeline.width), Double(editor.timeline.height)),
                 path: path
@@ -186,7 +472,8 @@ extension ToolExecutor {
                 content: content,
                 style: style,
                 transform: transform,
-                animation: try parseTextAnimation(preset: entry.string("animation"), highlightColor: entry.string("highlightColor"), path: path)
+                animation: try parseTextAnimation(preset: entry.string("animation"), highlightColor: entry.string("highlightColor"), path: path),
+                fillMode: try parseTextFillMode(entry.string("fillMode"), path: path)
             ))
         }
 
@@ -198,7 +485,7 @@ extension ToolExecutor {
 
         let snapshot = timelineSnapshot(editor)
         let actionName = partials.count == 1 ? "Add Text (Agent)" : "Add Texts (Agent)"
-        try withUndoGroup(editor, actionName: actionName) {
+        try editor.undo.perform(actionName) {
             var createdTrackId: String? = nil
             let resolvedTrackId: String?
             if omittedCount == partials.count {
@@ -221,7 +508,8 @@ extension ToolExecutor {
                     content: p.content,
                     style: p.style,
                     transform: p.transform,
-                    animation: p.animation
+                    animation: p.animation,
+                    fillMode: p.fillMode
                 )
             }
 
@@ -231,7 +519,7 @@ extension ToolExecutor {
                 throw ToolError("Failed to place any text clips")
             }
 
-            editor.registerTimelineUndo { vm in
+            editor.registerTimelineUndo(actionName) { vm in
                 vm.removeClips(ids: Set(ids))
             }
         }
@@ -263,12 +551,16 @@ extension ToolExecutor {
         guard !clipIds.isEmpty else { throw ToolError("Provide a non-empty 'clipIds' array or a 'captionGroupId'") }
 
         let textStylePatch = try parseTextStylePatch(args, path: "update_text")
-        let transform = try parseUpdateTextTransform(args["transform"] as? [String: Any], path: "update_text")
+        let transform = try parseUpdateTextTransform(
+            optionalObject(args, key: "transform", path: "update_text"),
+            path: "update_text"
+        )
         let animation = try parseTextAnimation(preset: args.string("animation"), highlightColor: args.string("highlightColor"), path: "update_text")
         let shouldSetAnimation = args.string("animation") != nil
         let highlightOnly = shouldSetAnimation ? nil : try parseColorHex(args.string("highlightColor"), path: "update_text")
+        let fillMode = try parseTextFillMode(args.string("fillMode"), path: "update_text")
 
-        guard hasContent || textStylePatch.hasAnyField || transform != nil || shouldSetAnimation || highlightOnly != nil else {
+        guard hasContent || textStylePatch?.hasAnyField == true || transform != nil || shouldSetAnimation || highlightOnly != nil || fillMode != nil else {
             throw ToolError("update_text needs at least one text property to apply")
         }
 
@@ -291,13 +583,23 @@ extension ToolExecutor {
                 notes.append("Content change cleared word timings on \(timingCleared.count) clip\(timingCleared.count == 1 ? "" : "s") — karaoke highlighting falls back to plain text there.")
             }
         }
+        if transform?.rotation != nil {
+            let cleared = clipIds.filter { editor.clipFor(id: $0)?.rotationTrack != nil }
+            if !cleared.isEmpty {
+                notes.append("Static rotation cleared existing rotation keyframes on: \(cleared.joined(separator: ", ")).")
+            }
+        }
 
+        var beforeClips: [String: Clip] = [:]
+        for id in clipIds {
+            beforeClips[id] = editor.clipFor(id: id)
+        }
         let snapshot = timelineSnapshot(editor)
         let actionName = clipIds.count == 1 ? "Update Text (Agent)" : "Update Texts (Agent)"
-        let shouldFitToContent = transform == nil && (hasContent || textStylePatch.affectsLayout)
+        let shouldFitToContent = transform?.hasLayoutField != true && (hasContent || textStylePatch?.affectsLayout == true)
         let canvasW = Double(editor.timeline.width)
         let canvasH = Double(editor.timeline.height)
-        withUndoGroup(editor, actionName: actionName) {
+        editor.undo.perform(actionName) {
             editor.commitClipProperties(clipIds: clipIds) { clip in
                 if let content {
                     if clip.textContent != content {
@@ -305,22 +607,13 @@ extension ToolExecutor {
                     }
                     clip.textContent = content
                 }
-                if textStylePatch.hasAnyField {
+                if let textStylePatch, textStylePatch.hasAnyField {
                     var style = clip.textStyle ?? TextStyle()
-                    _ = Self.applyTextStylePatch(textStylePatch, to: &style)
+                    Self.applyTextStylePatch(textStylePatch, to: &style)
                     clip.textStyle = style
                 }
                 if let t = transform {
-                    let cur = clip.transform
-                    var next = Transform(
-                        center: (t.centerX ?? cur.center.x, t.centerY ?? cur.center.y),
-                        width: t.width ?? cur.width,
-                        height: t.height ?? cur.height
-                    )
-                    next.rotation = cur.rotation
-                    next.flipHorizontal = cur.flipHorizontal
-                    next.flipVertical = cur.flipVertical
-                    clip.transform = next
+                    t.apply(to: &clip)
                 }
                 if shouldSetAnimation {
                     if let animation {
@@ -339,12 +632,22 @@ extension ToolExecutor {
                     a.highlight = hl
                     clip.textAnimation = a
                 }
+                if let fillMode {
+                    clip.textFillMode = fillMode == .footage ? .footage : nil
+                }
                 if shouldFitToContent {
                     _ = editor.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
                 }
             }
         }
 
-        return mutationResult(editor, since: snapshot, touched: clipIds, notes: notes)
+        let changed = beforeClips.contains { id, clip in editor.clipFor(id: id) != clip }
+        return mutationResult(
+            editor,
+            since: snapshot,
+            touched: clipIds,
+            extra: ["changed": changed],
+            notes: notes
+        )
     }
 }

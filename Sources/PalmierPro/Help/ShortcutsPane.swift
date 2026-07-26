@@ -1,8 +1,6 @@
 import SwiftUI
 
 struct ShortcutsPane: View {
-    private static let shortcutKeyColumnWidth: CGFloat = 118
-
     private static let allShortcuts: [ShortcutGroup] = [
         ShortcutGroup(title: "Playback", shortcuts: [
             ("Space", "Play / Pause"),
@@ -65,42 +63,48 @@ struct ShortcutsPane: View {
 
     var body: some View {
         ScrollView {
-            HStack(alignment: .top, spacing: 24) {
+            HStack(alignment: .top, spacing: AppTheme.Spacing.xlXxl) {
                 shortcutColumn(groups: Self.leftColumn)
                 shortcutColumn(groups: Self.rightColumn)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 20)
+            .frame(maxWidth: AppTheme.Settings.contentMaxWidth, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .topLeading)
+            .padding(.horizontal, AppTheme.Spacing.xlXxl)
+            .padding(.bottom, AppTheme.Spacing.xxl)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .scrollEdgeEffectStyle(.soft, for: .top)
     }
 
     private func shortcutColumn(groups: [ShortcutGroup]) -> some View {
-        VStack(alignment: .leading, spacing: 20) {
-            ForEach(groups, id: \.title) { group in
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(group.title)
-                        .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
-                        .textCase(.uppercase)
-                        .tracking(0.3)
+        Grid(
+            alignment: .leading,
+            horizontalSpacing: AppTheme.Spacing.md,
+            verticalSpacing: AppTheme.Spacing.sm
+        ) {
+            ForEach(Array(groups.enumerated()), id: \.element.title) { index, group in
+                if index > 0 {
+                    Color.clear
+                        .frame(height: AppTheme.Spacing.md)
+                        .gridCellColumns(2)
+                }
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(group.shortcuts, id: \.0) { shortcut, description in
-                            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                                Text(shortcut)
-                                    .font(.system(.caption2, design: .monospaced))
-                                    .foregroundStyle(AppTheme.Text.primaryColor)
-                                    .fontWeight(.semibold)
-                                    .frame(width: Self.shortcutKeyColumnWidth, alignment: .leading)
+                Text(group.title)
+                    .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.regular))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
+                    .gridCellColumns(2)
 
-                                Text(description)
-                                    .font(.system(size: AppTheme.FontSize.sm))
-                                    .foregroundStyle(AppTheme.Text.secondaryColor)
-                                    .fixedSize(horizontal: true, vertical: false)
-                            }
-                        }
+                ForEach(group.shortcuts, id: \.0) { shortcut, description in
+                    GridRow(alignment: .firstTextBaseline) {
+                        Text(shortcut)
+                            .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.regular, design: .monospaced))
+                            .foregroundStyle(AppTheme.Text.primaryColor)
+                            .fixedSize()
+
+                        Text(description)
+                            .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
+                            .foregroundStyle(AppTheme.Text.secondaryColor)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
@@ -116,6 +120,6 @@ struct ShortcutGroup {
 
 #Preview {
     ShortcutsPane()
-        .frame(width: 700, height: 520)
+        .frame(width: AppTheme.Settings.contentMaxWidth, height: AppTheme.Settings.skillDetailMinHeight)
         .background(AppTheme.Background.surfaceColor)
 }

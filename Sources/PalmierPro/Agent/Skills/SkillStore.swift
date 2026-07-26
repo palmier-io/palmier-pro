@@ -88,11 +88,10 @@ final class SkillStore {
     }
 
     nonisolated private static func parseSkill(id: String, path: URL, text: String) -> ParsedSkill? {
-        let (fields, body) = SkillFrontmatter.parse(text)
-        guard let name = fields["name"], let description = fields["description"] else { return nil }
+        guard let parsed = SkillFrontmatter.requiredFields(text) else { return nil }
         return ParsedSkill(
-            skill: Skill(id: id, name: name, description: description, path: path),
-            body: body,
+            skill: Skill(id: id, name: parsed.name, description: parsed.description, path: path),
+            body: parsed.body,
             sha: sha12(Data(text.utf8))
         )
     }
@@ -209,9 +208,17 @@ final class SkillStore {
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
-    func save(_ skill: Skill, raw: String) {
-        try? raw.write(to: skill.path, atomically: true, encoding: .utf8)
-        reload()
+    @discardableResult
+    func save(_ skill: Skill, raw: String) -> Bool {
+        guard Self.parseSkill(id: skill.id, path: skill.path, text: raw) != nil else { return false }
+        do {
+            try raw.write(to: skill.path, atomically: true, encoding: .utf8)
+            reload()
+            return true
+        } catch {
+            Log.agent.error("save skill \(skill.id) failed: \(error.localizedDescription)")
+            return false
+        }
     }
 
     /// Copies under a `palmier-` prefix so we only overwrite our own prior copy

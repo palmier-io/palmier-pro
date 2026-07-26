@@ -11,7 +11,6 @@ enum LUTStoreError: LocalizedError {
 }
 
 /// Parses .cube 3D LUT files into CIColorCube-ready RGBA float data.
-/// Cached by path + mtime, like AlphaVideoNormalizer's tag scheme.
 enum LUTLoader {
 
     struct CubeLUT {
@@ -25,37 +24,51 @@ enum LUTLoader {
     static func store(path: String, projectId: String?) throws -> String {
         let sourceURL = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
         guard FileManager.default.fileExists(atPath: sourceURL.path) else { throw LUTStoreError.noFile(sourceURL.path) }
-        guard load(path: sourceURL.path) != nil else { throw LUTStoreError.invalid(sourceURL.lastPathComponent) }
+        guard let lut = loadFromDisk(path: sourceURL.path) else { throw LUTStoreError.invalid(sourceURL.lastPathComponent) }
         let lutDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("PalmierPro/luts/\(projectId ?? "default")", isDirectory: true)
         try FileManager.default.createDirectory(at: lutDir, withIntermediateDirectories: true)
         let dest = lutDir.appendingPathComponent(sourceURL.lastPathComponent)
-        if sourceURL.standardizedFileURL == dest.standardizedFileURL { return dest.path }   // already stored
-        if FileManager.default.fileExists(atPath: dest.path) { try FileManager.default.removeItem(at: dest) }
-        try FileManager.default.copyItem(at: sourceURL, to: dest)
+        if sourceURL.standardizedFileURL != dest.standardizedFileURL {
+            if FileManager.default.fileExists(atPath: dest.path) { try FileManager.default.removeItem(at: dest) }
+            try FileManager.default.copyItem(at: sourceURL, to: dest)
+        }
+        cache(lut, path: dest.path)
         return dest.path
     }
 
     private static let lock = NSLock()
-    nonisolated(unsafe) private static var cache: [String: (mtime: Date, lut: CubeLUT)] = [:]
+    nonisolated(unsafe) private static var cachedLUTs: [String: CubeLUT] = [:]
 
     static func load(path: String) -> CubeLUT? {
-        let mtime = (try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate] as? Date)
-            .flatMap { $0 } ?? .distantPast
-
         lock.lock()
-        if let entry = cache[path], entry.mtime == mtime {
+        if let lut = cachedLUTs[path] {
             lock.unlock()
-            return entry.lut
+            return lut
         }
         lock.unlock()
 
+        guard let lut = loadFromDisk(path: path) else { return nil }
+        return cacheIfAbsent(lut, path: path)
+    }
+
+    private static func loadFromDisk(path: String) -> CubeLUT? {
         guard let text = try? String(contentsOfFile: path, encoding: .utf8),
               let lut = parse(text) else { return nil }
+        return lut
+    }
 
+    private static func cache(_ lut: CubeLUT, path: String) {
         lock.lock()
-        cache[path] = (mtime, lut)
+        cachedLUTs[path] = lut
         lock.unlock()
+    }
+
+    private static func cacheIfAbsent(_ lut: CubeLUT, path: String) -> CubeLUT {
+        lock.lock()
+        defer { lock.unlock() }
+        if let cached = cachedLUTs[path] { return cached }
+        cachedLUTs[path] = lut
         return lut
     }
 

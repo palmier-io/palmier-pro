@@ -1,10 +1,14 @@
 import AVFoundation
+#if BUNDLED_SPEECH
 import SpeechVAD
+#endif
 
 /// Silero VAD speech detection; results cache as JSON sidecars keyed to the source file (AudioEnhancer's scheme).
 enum VoiceActivity {
     static let cache = DiskCache(named: "AudioAnalysis")
-    static let chunkDuration = Double(SileroVADModel.chunkSize) / Double(SileroVADModel.sampleRate)
+    static let chunkDuration = Double(chunkSize) / Double(sampleRate)
+    private static let sampleRate = 16_000
+    private static let chunkSize = 512
 
     struct Span: Codable {
         let start: Double
@@ -30,23 +34,52 @@ enum VoiceActivity {
         }
     }
 
+    static func analysis(for sourceURL: URL, mediaRef: String) async throws -> Analysis {
+        if let cached = cachedAnalysis(for: sourceURL, mediaRef: mediaRef) { return cached }
+        #if BUNDLED_SPEECH
+        try await pipelineGate.wait()
+        defer { Task { await pipelineGate.signal() } }
+        let samples: [Float]
+        do {
+            samples = try await AudioTrackReader.readMonoFloats(from: sourceURL, sampleRate: Double(sampleRate))
+        } catch AudioTrackReader.ReadError.noAudioTrack(_) {
+            return cacheNoAudioAnalysis(for: sourceURL, mediaRef: mediaRef)
+        }
+        let analysis = try await modelBox.analyze(samples: samples)
+        cache(analysis, for: sourceURL, mediaRef: mediaRef)
+        return analysis
+        #else
+        throw MLXRuntime.Unavailable()
+        #endif
+    }
+
+    #if BUNDLED_SPEECH
     private static let modelBox = ModelBox()
 
     /// Silero is not thread-safe; the actor serializes model use.
     private actor ModelBox {
         private var model: SileroVADModel?
+        private var modelLoadFailure: (any Error)?
 
         func analyze(samples: [Float]) async throws -> Analysis {
             guard !samples.isEmpty else { return Analysis(chunkCount: 0, segments: []) }
-            try MLXRuntime.beginOperation()
-            defer { MLXRuntime.endOperation() }
+            try await MLXRuntime.beginInference()
+            defer { MLXRuntime.endInference() }
 
             // .mlx pinned: the CoreML engine soft-fails per chunk on ANE errors, caching empty segments as truth.
             let vad: SileroVADModel
             if let model {
                 vad = model
             } else {
-                vad = try await SileroVADModel.fromPretrained(engine: .mlx)
+                if let modelLoadFailure { throw modelLoadFailure }
+                do {
+                    vad = try await SileroVADModel.fromPretrained(engine: .mlx)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    modelLoadFailure = error
+                    throw error
+                }
                 model = vad
             }
             let chunkCount = (samples.count + SileroVADModel.chunkSize - 1) / SileroVADModel.chunkSize
@@ -83,24 +116,37 @@ enum VoiceActivity {
     /// Two in flight: one file decodes while the previous one runs inference in the
     /// (serial) model actor, with memory bounded to two decoded files.
     private static let pipelineGate = AsyncSemaphore(value: 2)
+    #endif
 
-    static func analysis(for sourceURL: URL, mediaRef: String) async throws -> Analysis {
-        if let cached = cachedAnalysis(for: sourceURL, mediaRef: mediaRef) { return cached }
-        try await pipelineGate.wait()
-        defer { Task { await pipelineGate.signal() } }
-        let samples = try await AudioTrackReader.readMonoFloats(from: sourceURL, sampleRate: Double(SileroVADModel.sampleRate))
-        let analysis = try await modelBox.analyze(samples: samples)
+    static func cachedAnalysis(for sourceURL: URL, mediaRef: String) -> Analysis? {
+        guard let data = try? Data(contentsOf: analysisURL(for: sourceURL, mediaRef: mediaRef)) else { return nil }
+        return try? JSONDecoder().decode(Analysis.self, from: data)
+    }
+
+    static func isDamagedMedia(_ error: Error) -> Bool {
+        let nsError: NSError
+        if let readError = error as? AudioTrackReader.ReadError,
+           case .readFailed(_, let underlying) = readError,
+           let underlying {
+            nsError = underlying
+        } else {
+            nsError = error as NSError
+        }
+        return nsError.domain == AVFoundationErrorDomain && nsError.code == -11829
+    }
+
+    private static func cache(_ analysis: Analysis, for sourceURL: URL, mediaRef: String) {
         let outputURL = analysisURL(for: sourceURL, mediaRef: mediaRef)
         removeStaleCaches(for: mediaRef, keeping: outputURL)
         if let data = try? JSONEncoder().encode(analysis) {
             try? data.write(to: outputURL)
         }
-        return analysis
     }
 
-    static func cachedAnalysis(for sourceURL: URL, mediaRef: String) -> Analysis? {
-        guard let data = try? Data(contentsOf: analysisURL(for: sourceURL, mediaRef: mediaRef)) else { return nil }
-        return try? JSONDecoder().decode(Analysis.self, from: data)
+    static func cacheNoAudioAnalysis(for sourceURL: URL, mediaRef: String) -> Analysis {
+        let analysis = Analysis(chunkCount: 0, segments: [])
+        cache(analysis, for: sourceURL, mediaRef: mediaRef)
+        return analysis
     }
 
     private static func analysisURL(for sourceURL: URL, mediaRef: String) -> URL {

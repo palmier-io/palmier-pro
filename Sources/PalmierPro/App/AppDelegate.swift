@@ -36,11 +36,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         if isTerminating { return .terminateLater }
         isTerminating = true
-        if MLXRuntime.beginTermination() { return .terminateNow }
+        let projects = AppState.shared.openProjects
 
         Task { @MainActor in
-            await MLXRuntime.waitUntilIdle()
-            sender.reply(toApplicationShouldTerminate: true)
+            do {
+                for project in projects {
+                    try await project.saveBeforeClosing()
+                }
+                if !MLXRuntime.beginTermination() {
+                    await MLXRuntime.waitUntilIdle()
+                }
+                sender.reply(toApplicationShouldTerminate: true)
+            } catch {
+                projects.forEach { $0.editorViewModel.projectPackageCoordinator.cancelClosing() }
+                isTerminating = false
+                sender.presentError(error)
+                sender.reply(toApplicationShouldTerminate: false)
+            }
         }
         return .terminateLater
     }

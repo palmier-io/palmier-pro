@@ -53,6 +53,8 @@ struct ProjectRoundTripTests {
         clip.transform = Transform(centerX: 0.4, centerY: 0.6, width: 0.5, height: 0.5, rotation: 45,
                                    flipHorizontal: true, flipVertical: false)
         clip.crop = Crop(left: 0.1, top: 0.2, right: 0.3, bottom: 0.4)
+        clip.edgeRounding = 0.35
+        clip.edgeSoftness = 0.2
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
 
         let decoded = try roundTrip(timeline)
@@ -62,6 +64,8 @@ struct ProjectRoundTripTests {
         #expect(dc.transform.rotation == 45)
         #expect(dc.transform.flipHorizontal == true)
         #expect(dc.crop == Crop(left: 0.1, top: 0.2, right: 0.3, bottom: 0.4))
+        #expect(dc.edgeRounding == 0.35)
+        #expect(dc.edgeSoftness == 0.2)
     }
 
     @Test func clipKeyframesSurviveRoundTrip() throws {
@@ -155,8 +159,42 @@ struct ProjectRoundTripTests {
         #expect(clip.fadeInInterpolation == .linear)
         #expect(clip.transform == Transform())
         #expect(clip.crop == Crop())
+        #expect(clip.edgeRounding == 0)
+        #expect(clip.edgeSoftness == 0)
         #expect(clip.linkGroupId == nil)
         #expect(clip.textContent == nil)
+    }
+
+    @Test(arguments: [-0.1, 1.1])
+    func clipInvalidEdgeRoundingDecodesAsDefault(_ value: Double) throws {
+        let json = """
+        {
+          "mediaRef": "media-1",
+          "startFrame": 0,
+          "durationFrames": 30,
+          "edgeRounding": \(value)
+        }
+        """
+
+        let clip = try JSONDecoder().decode(Clip.self, from: Data(json.utf8))
+
+        #expect(clip.edgeRounding == 0)
+    }
+
+    @Test(arguments: [-0.1, 1.1])
+    func clipInvalidEdgeSoftnessDecodesAsDefault(_ value: Double) throws {
+        let json = """
+        {
+          "mediaRef": "media-1",
+          "startFrame": 0,
+          "durationFrames": 30,
+          "edgeSoftness": \(value)
+        }
+        """
+
+        let clip = try JSONDecoder().decode(Clip.self, from: Data(json.utf8))
+
+        #expect(clip.edgeSoftness == 0)
     }
 
     @Test func transformMigratesLegacyXYToCenterXY() throws {
@@ -176,8 +214,7 @@ struct ProjectRoundTripTests {
         #expect(t.centerX != 0.5 || t.centerY != 0.5)
     }
 
-    @Test func textStyleMissingFontScaleDecodesAsOne() throws {
-        // fontScale was added later — older text styles should default to 1.0.
+    @Test func textStyleMissingScaleFieldsDecodesAsOne() throws {
         let json = """
         {
           "fontName": "Helvetica-Bold",
@@ -193,6 +230,73 @@ struct ProjectRoundTripTests {
         """
         let style = try JSONDecoder().decode(TextStyle.self, from: Data(json.utf8))
         #expect(style.fontScale == 1.0)
+        #expect(style.widthScale == 1.0)
+        #expect(style.heightScale == 1.0)
+        #expect(style.tracking == 0)
+        #expect(style.lineSpacing == 0)
+        #expect(style.fontCase == .mixed)
+        #expect(!style.isUnderlined && !style.isStruckThrough && !style.isOverlined)
+    }
+
+    @Test func textStyleLegacyDecorationsPickUpAdjustableDefaults() throws {
+        let json = """
+        {
+          "border": {
+            "enabled": true,
+            "color": {"r": 0, "g": 0, "b": 0, "a": 1}
+          },
+          "background": {
+            "enabled": true,
+            "color": {"r": 0.1, "g": 0.2, "b": 0.3, "a": 0.5}
+          }
+        }
+        """
+
+        let style = try JSONDecoder().decode(TextStyle.self, from: Data(json.utf8))
+
+        #expect(style.border.enabled)
+        #expect(style.border.width == 4)
+        #expect(style.background.enabled)
+        #expect(style.background.paddingX == 0)
+        #expect(style.background.paddingY == 0)
+        #expect(style.background.cornerRadius == 0)
+        #expect(style.background.outlineWidth == 0)
+    }
+
+    @Test func textStyleDecorationAdjustmentsRoundTrip() throws {
+        var style = TextStyle()
+        style.widthScale = 1.4
+        style.heightScale = 0.75
+        style.tracking = 8
+        style.lineSpacing = 18
+        style.fontCase = .uppercase
+        style.isUnderlined = true
+        style.isStruckThrough = true
+        style.isOverlined = true
+        style.border = .init(enabled: true, color: .init(r: 1, g: 0, b: 0, a: 1), width: 9)
+        style.shadow = .init(
+            enabled: true,
+            color: .init(r: 0, g: 0, b: 0, a: 0.35),
+            offsetX: 12,
+            offsetY: 18,
+            blur: 24
+        )
+        style.background = .init(
+            enabled: true,
+            color: .init(r: 0, g: 0, b: 1, a: 0.7),
+            paddingX: 32,
+            paddingY: 16,
+            cornerRadius: 20,
+            offsetX: 4,
+            offsetY: -6,
+            outlineColor: .init(r: 1, g: 1, b: 1, a: 1),
+            outlineWidth: 3
+        )
+
+        let data = try JSONEncoder().encode(style)
+        let decoded = try JSONDecoder().decode(TextStyle.self, from: data)
+
+        #expect(decoded == style)
     }
 
     // MARK: - MediaManifest

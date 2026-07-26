@@ -28,6 +28,7 @@ final class TimelineInputController {
     private static let timelineRangeEdgeHitSlop: CGFloat = 8
     private static let trimLeftCursor = makeTrimCursor(edge: .left)
     private static let trimRightCursor = makeTrimCursor(edge: .right)
+    private static let slipCursor = makeSlipCursor()
 
     init(editor: EditorViewModel, view: TimelineView) {
         self.editor = editor
@@ -37,32 +38,72 @@ final class TimelineInputController {
     // MARK: - Mouse down
 
 
-    private func trimHeadroom(for clip: Clip, linked: Bool) -> (left: Int, right: Int) {
-        var clips = [clip]
-        if linked {
-            clips += editor.linkedPartnerIds(of: clip.id).compactMap { editor.clipFor(id: $0) }
+    private func trimHeadroom(for clip: Clip, edge: EditorViewModel.TrimEdge, linked: Bool, ripple: Bool) -> (left: Int, right: Int) {
+        let clips: [Clip]
+        if ripple {
+            clips = editor.rippleTrimTargets(clipId: clip.id, edge: edge, propagateToLinked: linked)
+        } else {
+            var resolved = [clip]
+            if linked {
+                resolved += editor.linkedPartnerIds(of: clip.id).compactMap { editor.clipFor(id: $0) }
+            }
+            clips = resolved
         }
         var left = Int.max
         var right = Int.max
         for c in clips {
-            if let bounds = editor.multicamTrimBounds(for: c) {
+            if !ripple, let bounds = editor.multicamTrimBounds(for: c) {
                 left = min(left, bounds.left)
                 right = min(right, bounds.right)
-            } else if c.id == clip.id {
+            } else {
                 left = min(left, c.trimStartFrame)
-                right = min(right, effectiveTrimEnd(for: c))
+                right = min(right, editor.effectiveTrimEnd(for: c))
             }
         }
         return (left == .max ? clip.trimStartFrame : left,
-                right == .max ? effectiveTrimEnd(for: clip) : right)
+                right == .max ? editor.effectiveTrimEnd(for: clip) : right)
     }
 
-    /// Nest trim limits come from the child's live length, not creation time.
-    private func effectiveTrimEnd(for clip: Clip) -> Int {
-        guard clip.sourceClipType == .sequence, let child = editor.timeline(for: clip.mediaRef) else {
-            return clip.trimEndFrame
+    /// Timeline-frame slip caps: the tightest source headroom across the clip
+    /// and (when linked) its partners, through each clip's own speed.
+    private func slipHeadroom(for clip: Clip, linked: Bool) -> (right: Int, left: Int) {
+        var clips = [clip]
+        if linked {
+            clips += editor.linkedPartnerIds(of: clip.id).compactMap { editor.clipFor(id: $0) }
         }
-        return max(0, child.totalFrames - clip.trimStartFrame - clip.durationFrames)
+        var right = Int.max
+        var left = Int.max
+        for c in clips where editor.isSlipEligible(c) {
+            let speed = max(c.speed, 0.001)
+            right = min(right, Int((Double(c.trimStartFrame) / speed).rounded(.down)))
+            left = min(left, Int((Double(editor.effectiveTrimEnd(for: c)) / speed).rounded(.down)))
+        }
+        return (right == .max ? 0 : right, left == .max ? 0 : left)
+    }
+
+    /// Viewer two-up for a slip drag: the previewed in/out source frames of the
+    /// slipped clip (or its linked video partner when the grab is on audio).
+    private func slipPreviewState(for clip: Clip, deltaFrames: Int, linked: Bool) -> SlipPreviewState? {
+        var display = clip
+        if display.mediaType != .video || display.sourceClipType == .sequence {
+            guard linked,
+                  let partner = editor.linkedPartnerIds(of: clip.id)
+                    .compactMap({ editor.clipFor(id: $0) })
+                    .first(where: { $0.mediaType == .video && $0.sourceClipType != .sequence })
+            else { return nil }
+            display = partner
+        }
+        guard let url = editor.mediaResolver.expectedURL(for: display.mediaRef) else { return nil }
+        let sourceDelta = Int((Double(deltaFrames) * display.speed).rounded())
+        let applied = max(-display.trimEndFrame, min(display.trimStartFrame, sourceDelta))
+        let inFrame = display.trimStartFrame - applied
+        let outFrame = inFrame + max(0, display.sourceFramesConsumed - 1)
+        return SlipPreviewState(
+            url: url,
+            inSourceFrame: inFrame,
+            outSourceFrame: outFrame,
+            fps: editor.timeline.fps
+        )
     }
 
     func mouseDown(with event: NSEvent, geometry: TimelineGeometry) {
@@ -185,7 +226,8 @@ final class TimelineInputController {
                 dragState = .idle
             } else if let edge = trimEdge {
                 Self.trimCursor(for: edge).set()
-                let headroom = trimHeadroom(for: clip, linked: linkedOn)
+                let modelEdge: EditorViewModel.TrimEdge = edge == .left ? .left : .right
+                let headroom = trimHeadroom(for: clip, edge: modelEdge, linked: linkedOn, ripple: rippleTrim)
                 let drag = DragState.TrimDrag(
                     clipId: clip.id,
                     trackIndex: hit.trackIndex,
@@ -198,6 +240,25 @@ final class TimelineInputController {
                     isRipple: rippleTrim
                 )
                 dragState = edge == .left ? .trimLeft(drag) : .trimRight(drag)
+            } else if editor.toolMode == .trim {
+                if clip.multicamGroupId != nil {
+                    editor.refuseWithToast("Can't slip a multicam clip — it would go out of sync with the group.")
+                    dragState = .idle
+                } else if clip.mediaType == .image || clip.mediaType == .text {
+                    dragState = .idle
+                } else {
+                    Self.slipCursor.set()
+                    if editor.isPlaying { editor.pause() }
+                    let headroom = slipHeadroom(for: clip, linked: linkedOn)
+                    dragState = .slip(DragState.SlipDrag(
+                        clipId: clip.id,
+                        grabFrame: geometry.frameAt(x: point.x),
+                        maxRightDelta: headroom.right,
+                        maxLeftDelta: headroom.left,
+                        propagateToLinked: linkedOn
+                    ))
+                    editor.slipPreview = slipPreviewState(for: clip, deltaFrames: 0, linked: linkedOn)
+                }
             } else {
                 let grabFrame = geometry.frameAt(x: point.x)
                 var companions: [DragState.Participant] = []
@@ -226,11 +287,11 @@ final class TimelineInputController {
             }
         } else {
             view.setHoveredClipId(nil)
+            editor.isMarqueeSelecting = true
             if !event.modifierFlags.contains(.shift) {
                 editor.selectedClipIds.removeAll()
             }
             editor.selectedGap = hitTestGap(at: point, trackIndex: trackIndex, geometry: geometry)
-            editor.isMarqueeSelecting = true
             dragState = .marquee(DragState.MarqueeDrag(origin: point, baseSelection: editor.selectedClipIds))
         }
 
@@ -391,6 +452,17 @@ final class TimelineInputController {
             }
             dragState = .trimRight(drag)
 
+        case .slip(var drag):
+            snapIndicatorX = nil
+            let delta = max(-drag.maxLeftDelta, min(drag.maxRightDelta, frame - drag.grabFrame))
+            if delta != drag.deltaFrames, let clip = editor.clipFor(id: drag.clipId) {
+                editor.slipPreview = slipPreviewState(for: clip, deltaFrames: delta, linked: drag.propagateToLinked)
+                invalidateSlipRects(for: drag, newDeltaFrames: delta, geometry: geometry)
+            }
+            drag.deltaFrames = delta
+            dragState = .slip(drag)
+            return
+
         case .audioVolumeKf(let drag):
             dragState = .audioVolumeKf(applyVolumeKfDrag(drag, cursorFrame: frame, cursorY: point.y, geometry: geometry))
 
@@ -422,13 +494,14 @@ final class TimelineInputController {
             }
             dragState = .marquee(marq)
             // Touch only what changed.
-            view.setNeedsDisplay(previousRect.union(marq.current).insetBy(dx: -2, dy: -2))
+            let padding = AppTheme.BorderWidth.thick
+            view.setNeedsDisplay(previousRect.union(marq.current).insetBy(dx: -padding, dy: -padding))
             if selected != editor.selectedClipIds {
                 let flipped = selected.symmetricDifference(editor.selectedClipIds)
                 editor.selectedClipIds = selected
                 for (ti, track) in editor.timeline.tracks.enumerated() {
                     for clip in track.clips where flipped.contains(clip.id) {
-                        view.setNeedsDisplay(geometry.clipRect(for: clip, trackIndex: ti).insetBy(dx: -2, dy: -2))
+                        view.setNeedsDisplay(geometry.clipRect(for: clip, trackIndex: ti).insetBy(dx: -padding, dy: -padding))
                     }
                 }
             }
@@ -441,10 +514,43 @@ final class TimelineInputController {
         view.needsDisplay = true
     }
 
+    private func invalidateSlipRects(for drag: DragState.SlipDrag, newDeltaFrames: Int, geometry: TimelineGeometry) {
+        var ids = [drag.clipId]
+        if drag.propagateToLinked {
+            ids += editor.slipPropagationPartnerIds(of: drag.clipId)
+        }
+        let pad = AppTheme.BorderWidth.thick
+        for id in ids {
+            guard let loc = editor.findClip(id: id) else { continue }
+            let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            let activeRect = geometry.clipRect(for: clip, trackIndex: loc.trackIndex)
+            let oldRect = slipSourceRect(for: clip, deltaFrames: drag.deltaFrames, activeRect: activeRect, geometry: geometry)
+            let newRect = slipSourceRect(for: clip, deltaFrames: newDeltaFrames, activeRect: activeRect, geometry: geometry)
+            view.setNeedsDisplay(oldRect.union(newRect).union(activeRect).insetBy(dx: -pad, dy: -pad))
+        }
+    }
+
+    private func slipSourceRect(for clip: Clip, deltaFrames: Int, activeRect: NSRect, geometry: TimelineGeometry) -> NSRect {
+        let speed = max(clip.speed, 0.001)
+        let sourceDelta = Int((Double(deltaFrames) * speed).rounded())
+        let applied = max(-editor.effectiveTrimEnd(for: clip), min(clip.trimStartFrame, sourceDelta))
+        let trimStart = clip.trimStartFrame - applied
+        let sourceFrames = trimStart + clip.sourceFramesConsumed + editor.effectiveTrimEnd(for: clip) + applied
+        let sourceTimelineFrames = max(1, Double(sourceFrames) / speed)
+        let headTimelineFrames = Double(trimStart) / speed
+        return NSRect(
+            x: activeRect.minX - headTimelineFrames * geometry.pixelsPerFrame,
+            y: activeRect.minY,
+            width: sourceTimelineFrames * geometry.pixelsPerFrame,
+            height: activeRect.height
+        )
+    }
+
     // MARK: - Mouse up
 
     func mouseUp(with event: NSEvent, geometry: TimelineGeometry) {
         stopPlayheadAutoScroll()
+        var finalDirtyRect: NSRect?
 
         switch dragState {
         case .moveClip(let drag):
@@ -482,17 +588,17 @@ final class TimelineInputController {
                     editor.refuseWithToast(reason)
                     break
                 }
-                editor.undoManager?.beginUndoGrouping()
-                let newIdx = editor.insertTrack(at: insertIndex, type: leadTrackType)
-                let moves = resolved.map { item in
-                    let p = item.participant
-                    let hops = !pinned.contains(p.clipId) && item.trackIndex == leadTrack
-                    let shifted = item.trackIndex >= newIdx ? item.trackIndex + 1 : item.trackIndex
-                    return (clipId: p.clipId, toTrack: hops ? newIdx : shifted, toFrame: item.frame + frameDelta)
+                let actionName = newTrackActionName(count: resolved.count, isDuplicate: drag.isDuplicate)
+                editor.undo.perform(actionName) {
+                    let newIdx = editor.insertTrack(at: insertIndex, type: leadTrackType)
+                    let moves = resolved.map { item in
+                        let p = item.participant
+                        let hops = !pinned.contains(p.clipId) && item.trackIndex == leadTrack
+                        let shifted = item.trackIndex >= newIdx ? item.trackIndex + 1 : item.trackIndex
+                        return (clipId: p.clipId, toTrack: hops ? newIdx : shifted, toFrame: item.frame + frameDelta)
+                    }
+                    commitMoves(moves, isDuplicate: drag.isDuplicate)
                 }
-                commitMoves(moves, isDuplicate: drag.isDuplicate)
-                editor.undoManager?.setActionName(newTrackActionName(count: moves.count, isDuplicate: drag.isDuplicate))
-                editor.undoManager?.endUndoGrouping()
             }
 
         case .trimLeft(let drag):
@@ -523,6 +629,16 @@ final class TimelineInputController {
                 }
             }
 
+        case .slip(let drag):
+            editor.slipPreview = nil
+            if drag.deltaFrames != 0 {
+                editor.commitSlip(
+                    clipId: drag.clipId,
+                    deltaFrames: drag.deltaFrames,
+                    propagateToLinked: drag.propagateToLinked
+                )
+            }
+
         case .audioVolumeKf(let drag):
             if drag.currentFrame != drag.originalFrame || drag.currentDb != drag.originalDb {
                 editor.commitMoveVolumeKeyframe(clipId: drag.clipId)
@@ -537,8 +653,10 @@ final class TimelineInputController {
                 editor.revertClipProperty(clipId: drag.clipId)
             }
 
-        case .marquee:
+        case .marquee(let marquee):
             editor.isMarqueeSelecting = false
+            let padding = AppTheme.BorderWidth.thick
+            finalDirtyRect = marquee.current.insetBy(dx: -padding, dy: -padding)
 
         case .scrubPlayhead:
             finishPlayheadScrub()
@@ -552,6 +670,22 @@ final class TimelineInputController {
 
         dragState = .idle
         snapIndicatorX = nil
+        if let finalDirtyRect {
+            view.setNeedsDisplay(finalDirtyRect)
+        } else {
+            view.needsDisplay = true
+        }
+    }
+
+    /// Escape during an in-progress slip drag: drop the preview and the pending
+    /// drag so the eventual mouse-up commits nothing. Only slip is cancellable;
+    /// other drags have no uncommitted live mutation to unwind here.
+    func cancelActiveDrag() {
+        guard case .slip = dragState else { return }
+        editor.slipPreview = nil
+        dragState = .idle
+        snapIndicatorX = nil
+        stopPlayheadAutoScroll()
         view.needsDisplay = true
     }
 
@@ -622,6 +756,14 @@ final class TimelineInputController {
                 NSCursor.openHand.set()
                 return
             }
+            if editor.toolMode == .trim {
+                if clip.multicamGroupId == nil, clip.mediaType != .image, clip.mediaType != .text {
+                    Self.slipCursor.set()
+                } else {
+                    NSCursor.operationNotAllowed.set()
+                }
+                return
+            }
         } else {
             view.setHoveredClipId(nil)
         }
@@ -684,7 +826,54 @@ final class TimelineInputController {
         return NSCursor(image: image, hotSpot: NSPoint(x: size.width / 2, y: size.height / 2))
     }
 
+    /// Slip glyph: two fixed edge ticks with a double-headed arrow between them —
+    /// content slides while the clip edges stay put.
+    private static func makeSlipCursor() -> NSCursor {
+        let size = NSSize(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.mdLg)
+        let image = NSImage(size: size, flipped: false) { rect in
+            let midX = rect.midX
+            let midY = rect.midY
+            let ticks = NSBezierPath()
+            for direction: CGFloat in [-1, 1] {
+                let x = midX + direction * AppTheme.Spacing.md
+                ticks.move(to: NSPoint(x: x, y: midY - AppTheme.Spacing.smMd))
+                ticks.line(to: NSPoint(x: x, y: midY + AppTheme.Spacing.smMd))
+            }
+            ticks.lineCapStyle = .square
+
+            AppTheme.Background.base.setStroke()
+            ticks.lineWidth = AppTheme.BorderWidth.thick + AppTheme.BorderWidth.thin
+            ticks.stroke()
+            AppTheme.Status.error.setStroke()
+            ticks.lineWidth = AppTheme.BorderWidth.thick
+            ticks.stroke()
+
+            let arrow = NSBezierPath()
+            arrow.move(to: NSPoint(x: midX - AppTheme.Spacing.sm, y: midY))
+            arrow.line(to: NSPoint(x: midX - AppTheme.Spacing.xxs, y: midY + AppTheme.Spacing.xs))
+            arrow.line(to: NSPoint(x: midX - AppTheme.Spacing.xxs, y: midY - AppTheme.Spacing.xs))
+            arrow.close()
+            arrow.move(to: NSPoint(x: midX + AppTheme.Spacing.sm, y: midY))
+            arrow.line(to: NSPoint(x: midX + AppTheme.Spacing.xxs, y: midY + AppTheme.Spacing.xs))
+            arrow.line(to: NSPoint(x: midX + AppTheme.Spacing.xxs, y: midY - AppTheme.Spacing.xs))
+            arrow.close()
+            arrow.lineJoinStyle = .round
+            arrow.lineWidth = AppTheme.BorderWidth.thick
+            AppTheme.Text.primary.setStroke()
+            arrow.stroke()
+            AppTheme.Status.error.setFill()
+            arrow.fill()
+            return true
+        }
+        return NSCursor(image: image, hotSpot: NSPoint(x: size.width / 2, y: size.height / 2))
+    }
+
     func audioVolumeKfHit(at point: NSPoint, clip: Clip, clipRect: NSRect) -> Int? {
+        guard ClipRenderer.showsVolumeKeyframes(
+            isSelected: editor.selectedClipIds.contains(clip.id),
+            isHovered: view.hoveredClipId == clip.id,
+            in: clipRect
+        ) else { return nil }
         guard let track = clip.volumeTrack, track.isActive else { return nil }
         let geo = view.geometry
         for kf in track.keyframes {
@@ -696,7 +885,11 @@ final class TimelineInputController {
     }
 
     func fadeKneeHit(at point: NSPoint, clip: Clip, clipRect: NSRect) -> FadeEdge? {
-        guard editor.selectedClipIds.contains(clip.id) || view.hoveredClipId == clip.id else { return nil }
+        guard ClipRenderer.showsFadeControls(
+            isSelected: editor.selectedClipIds.contains(clip.id),
+            isHovered: view.hoveredClipId == clip.id,
+            in: clipRect
+        ) else { return nil }
         let geo = view.geometry
         if geo.fadeKneeRect(clip: clip, edge: .left, in: clipRect).contains(point) { return .left }
         if geo.fadeKneeRect(clip: clip, edge: .right, in: clipRect).contains(point) { return .right }
@@ -777,10 +970,9 @@ final class TimelineInputController {
         let offset = max(0, min(clip.durationFrames, Int((xInClip / pxPerFrame).rounded())))
         let absFrame = clip.startFrame + offset
         let dB = max(VolumeScale.floorDb, min(VolumeScale.ceilingDb, ClipRenderer.db(forY: point.y, in: body)))
-        editor.commitClipProperty(clipId: clip.id) { c in
+        editor.commitClipProperty(clipId: clip.id, actionName: "Add Keyframe") { c in
             c.upsertKeyframe(in: \.volumeTrack, frame: absFrame, value: dB)
         }
-        editor.undoManager?.setActionName("Add Keyframe")
         view.needsDisplay = true
         return true
     }

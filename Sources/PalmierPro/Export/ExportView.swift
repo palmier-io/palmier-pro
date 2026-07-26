@@ -38,8 +38,8 @@ enum TimelineExportFormat: String, CaseIterable, Identifiable {
 
     var summary: String {
         switch self {
-        case .xmeml: "Older interchange format, best when Premiere Pro is the destination. Supports basic edits and keyframes, but not text, color, or effects."
-        case .fcpxml: "Newer timeline format with better support for DaVinci Resolve and Final Cut Pro. Supports basic edits, keyframes, and text, but not color or effects."
+        case .xmeml: "Older interchange format, best when Premiere Pro is the destination. Supports basic edits and keyframes, but not text, color, effects, edge softness, or edge rounding."
+        case .fcpxml: "Newer timeline format with better support for DaVinci Resolve and Final Cut Pro. Supports basic edits, keyframes, and text, but not color, effects, edge softness, or edge rounding."
         }
     }
 
@@ -94,7 +94,13 @@ struct ExportView: View {
         }
         .task {
             selectedTimelineId = editor.activeTimelineId
-            palmierSummary = computePalmierSummary()
+            let entries = editor.mediaManifest.entries
+            let projectURL = editor.projectURL
+            let summary = await Task.detached(priority: .utility) {
+                Self.computePalmierSummary(entries: entries, projectURL: projectURL)
+            }.value
+            guard !Task.isCancelled else { return }
+            palmierSummary = summary
         }
     }
 
@@ -606,13 +612,16 @@ struct ExportView: View {
     }
 
     /// Quick estimate for exporting a Palmier Project
-    private func computePalmierSummary() -> (collect: Int, missing: Int, bytes: Int64) {
+    private nonisolated static func computePalmierSummary(
+        entries: [MediaManifestEntry],
+        projectURL: URL?
+    ) -> (collect: Int, missing: Int, bytes: Int64) {
         var collect = 0, missing = 0
         var bytes: Int64 = 0
-        for entry in editor.mediaManifest.entries {
+        for entry in entries {
             let url: URL? = switch entry.source {
             case .external(let path): URL(fileURLWithPath: path)
-            case .project(let rel): editor.projectURL?.appendingPathComponent(rel)
+            case .project(let rel): projectURL?.appendingPathComponent(rel)
             }
             guard let url, FileManager.default.fileExists(atPath: url.path) else { missing += 1; continue }
             if case .external = entry.source { collect += 1 }

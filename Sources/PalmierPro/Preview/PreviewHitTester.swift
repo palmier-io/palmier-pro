@@ -15,7 +15,7 @@ enum PreviewHitTester {
         for track in editor.timeline.tracks where !track.hidden {
             for clip in track.clips where clip.mediaType == .text {
                 guard clip.contains(timelineFrame: frame), clip.opacityAt(frame: frame) > 0.01 else { continue }
-                if textHit(clip, point: point, videoRect: videoRect) { topText = clip.id }
+                if textHit(clip, frame: frame, point: point, videoRect: videoRect) { topText = clip.id }
             }
         }
         if let topText { return topText }
@@ -30,12 +30,21 @@ enum PreviewHitTester {
         return nil
     }
 
-    /// Text renders as an axis-aligned `CATextLayer` from the static transform — no rotation/crop.
-    private static func textHit(_ clip: Clip, point: CGPoint, videoRect: CGRect) -> Bool {
-        clipFrame(clip.transform, videoRect: videoRect).contains(point)
+    private static func textHit(_ clip: Clip, frame: Int, point: CGPoint, videoRect: CGRect) -> Bool {
+        transformedHit(clip, frame: frame, point: point, videoRect: videoRect, crop: nil)
     }
 
     private static func videoHit(_ clip: Clip, frame: Int, point: CGPoint, videoRect: CGRect) -> Bool {
+        transformedHit(clip, frame: frame, point: point, videoRect: videoRect, crop: clip.cropAt(frame: frame))
+    }
+
+    private static func transformedHit(
+        _ clip: Clip,
+        frame: Int,
+        point: CGPoint,
+        videoRect: CGRect,
+        crop: Crop?
+    ) -> Bool {
         let t = clip.transformAt(frame: frame)
         let rect = clipFrame(t, videoRect: videoRect)
         guard rect.width > 0, rect.height > 0 else { return false }
@@ -48,13 +57,11 @@ enum PreviewHitTester {
         let lx = dx * c + dy * s
         let ly = -dx * s + dy * c
 
-        // Local rect spans ±half-extents; crop trims it (crop is source-space, so local too).
-        let crop = clip.cropAt(frame: frame)
         let halfW = rect.width / 2, halfH = rect.height / 2
-        let left = -halfW + crop.left * rect.width
-        let right = halfW - crop.right * rect.width
-        let top = -halfH + crop.top * rect.height
-        let bottom = halfH - crop.bottom * rect.height
+        let left = -halfW + (crop?.left ?? 0) * rect.width
+        let right = halfW - (crop?.right ?? 0) * rect.width
+        let top = -halfH + (crop?.top ?? 0) * rect.height
+        let bottom = halfH - (crop?.bottom ?? 0) * rect.height
         return lx >= left && lx <= right && ly >= top && ly <= bottom
     }
 

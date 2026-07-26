@@ -65,6 +65,7 @@ struct CreditSummaryView: View {
         .overlay(
             Capsule().stroke(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.hairline)
         )
+        .fixedSize(horizontal: true, vertical: false)
         .help("\(left.formatted()) of \(budget.formatted()) credits remaining this period")
     }
 

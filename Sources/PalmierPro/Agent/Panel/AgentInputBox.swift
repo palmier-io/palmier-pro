@@ -127,20 +127,15 @@ struct AgentInputBox<LeadingTools: View>: View {
     }
 
     private var bottomBar: some View {
-        VStack(spacing: 0) {
-            Rectangle()
-                .fill(Color.white.opacity(AppTheme.Opacity.hint))
-                .frame(height: AppTheme.BorderWidth.hairline)
-            HStack(spacing: AppTheme.Spacing.md) {
-                leadingTools
-                Spacer(minLength: 0)
-                GlassEffectContainer(spacing: AppTheme.Spacing.xs) {
-                    sendStopButton
-                }
+        HStack(spacing: AppTheme.Spacing.md) {
+            leadingTools
+            Spacer(minLength: 0)
+            GlassEffectContainer(spacing: AppTheme.Spacing.xs) {
+                sendStopButton
             }
-            .padding(.horizontal, AppTheme.Spacing.sm)
-            .padding(.vertical, AppTheme.Spacing.sm)
         }
+        .padding(.horizontal, AppTheme.Spacing.sm)
+        .padding(.vertical, AppTheme.Spacing.sm)
     }
 
     @ViewBuilder

@@ -2,14 +2,23 @@
   "changelogURL": "https://github.com/palmier-io/palmier-pro/releases",
   "entries": [
     {
-      "version": "0.6.4",
-      "date": "2026-07-09",
+      "version": "0.6.14",
+      "date": "2026-07-21",
       "sections": [
         {
           "heading": "New",
           "items": [
-            "Multicam editing: Agent can now work with multiple camera footage with better tools. Especially useful for podcast or other multi-camera setups.",
-            "10-bit HDR export: New HEVC 10-bit HDR export option."
+            "Agent can set fade in and fade out for audio and video clips",
+            "Preview playback speed control: Watch your timeline in 0.5x, 2x, 4x, or 10x speed, without modifying the timeline",
+            "Text rotation: You can now rotate text clips"
+          ]
+        },
+        {
+          "heading": "Improved",
+          "items": [
+            "Agent can set fade in and fade out for audio and video clips",
+            "Better rendering for large timelines",
+            "Better project management: In home page, you can search, select and delete multiple projects"
           ]
         }
       ]

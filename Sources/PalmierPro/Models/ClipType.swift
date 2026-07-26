@@ -41,7 +41,7 @@ enum ClipType: String, Codable, Sendable, CaseIterable {
     init?(fileExtension ext: String) {
         switch ext {
         case "mov", "mp4", "m4v": self = .video
-        case "mp3", "wav", "aac", "m4a", "aiff", "aif", "aifc", "flac": self = .audio
+        case "mp3", "wav", "aac", "m4a", "aiff", "aif", "aifc", "caf", "flac": self = .audio
         case "png", "jpg", "jpeg", "tiff", "heic", "webp": self = .image
         case "json", "lottie": self = .lottie
         default: return nil

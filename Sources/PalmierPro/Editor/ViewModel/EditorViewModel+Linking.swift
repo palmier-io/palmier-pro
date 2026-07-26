@@ -185,6 +185,65 @@ extension EditorViewModel {
         trimClips(edits)
     }
 
+    /// Nest trim limits come from the child's live length, not creation time.
+    func effectiveTrimEnd(for clip: Clip) -> Int {
+        guard clip.sourceClipType == .sequence, let child = timeline(for: clip.mediaRef) else {
+            return clip.trimEndFrame
+        }
+        return max(0, child.totalFrames - clip.trimStartFrame - clip.durationFrames)
+    }
+
+    /// Slip: shift which source range plays without moving the clip on the timeline.
+    /// Positive delta (drag right) reveals earlier material: trimStart -= d, trimEnd += d.
+    /// A clip's trim can be slipped only if it has bounded source material and isn't part of a multicam group.
+    func isSlipEligible(_ clip: Clip) -> Bool {
+        clip.mediaType != .image && clip.mediaType != .text && clip.multicamGroupId == nil
+    }
+
+    /// Linked partners of `clipId` whose trim should slip along with it — the same
+    /// eligibility filter `commitSlip` applies, so live preview and commit agree.
+    func slipPropagationPartnerIds(of clipId: String) -> [String] {
+        linkedPartnerIds(of: clipId).filter { clipFor(id: $0).map(isSlipEligible) ?? false }
+    }
+
+    func commitSlip(clipId: String, deltaFrames: Int, propagateToLinked: Bool) {
+        guard let loc = findClip(id: clipId) else { return }
+        let lead = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+        var targets = [lead]
+        if propagateToLinked {
+            targets += slipPropagationPartnerIds(of: clipId).compactMap { pid in
+                findClip(id: pid).map { timeline.tracks[$0.trackIndex].clips[$0.clipIndex] }
+            }
+        }
+        targets = targets.filter(isSlipEligible)
+        guard !targets.isEmpty else { return }
+
+        // Clamp the shared timeline delta to the tightest headroom in the group.
+        var delta = deltaFrames
+        for t in targets {
+            let speed = max(t.speed, 0.001)
+            delta = min(delta, Int((Double(t.trimStartFrame) / speed).rounded(.down)))
+            delta = max(delta, -Int((Double(effectiveTrimEnd(for: t)) / speed).rounded(.down)))
+        }
+        guard delta != 0 else { return }
+
+        // Per-clip source shift, clamped to each clip's live trim headroom (nested
+        // tail room, not stale trimEndFrame) so rounding through speed never drives a
+        // trim negative. Slow-motion clips can round a non-zero delta to zero here.
+        func appliedSourceDelta(for c: Clip) -> Int {
+            let sourceDelta = Int((Double(delta) * c.speed).rounded())
+            return max(-effectiveTrimEnd(for: c), min(c.trimStartFrame, sourceDelta))
+        }
+        guard targets.contains(where: { appliedSourceDelta(for: $0) != 0 }) else { return }
+
+        mutateClips(ids: Set(targets.map(\.id)),
+                    actionName: targets.count == 1 ? "Slip Clip" : "Slip Clips") { c in
+            let applied = appliedSourceDelta(for: c)
+            c.trimStartFrame -= applied
+            c.trimEndFrame += applied
+        }
+    }
+
     func trimValues(for clip: Clip, edge: TrimEdge, delta: Int) -> (trimStart: Int, trimEnd: Int) {
         let sourceDelta = Int((Double(delta) * clip.speed).rounded())
         // Image/Text clips have no source-material bound, so their trim fields can go negative
@@ -348,6 +407,36 @@ extension EditorViewModel {
         let visualTarget = hasAnyVisual ? resolveVisualDropTarget(cursor: cursor) : nil
         let audioTarget = hasAnyAudio ? resolveAudioDropTarget(cursor: cursor) : nil
         return DropPlan(placements: placements, visualTarget: visualTarget, audioTarget: audioTarget)
+    }
+
+    /// Shared placement for media dropped on the timeline (panel assets and Finder files).
+    func placeDroppedAssets(
+        _ assets: [MediaAsset],
+        cursor: TrackDropTarget,
+        atFrame: Int,
+        segments: [String: ClosedRange<Double>] = [:],
+        ripple: Bool
+    ) {
+        undo.perform("Add Clips") {
+            let plan = resolveDropPlan(cursor: cursor, assets: assets, atFrame: atFrame, segments: segments)
+            let (visualIdx, audioIdx) = materialize(plan: plan)
+
+            @MainActor func insert(_ assets: [MediaAsset], trackIndex: Int, linkedAudio: Int?) {
+                if ripple {
+                    rippleInsertClips(assets: assets, trackIndex: trackIndex, atFrame: atFrame, segments: segments)
+                } else {
+                    addClips(assets: assets, trackIndex: trackIndex, startFrame: atFrame, linkedAudioTrackIndex: linkedAudio, segments: segments)
+                }
+            }
+            let visualAssets = plan.visualAssets
+            if !visualAssets.isEmpty, let vIdx = visualIdx {
+                insert(visualAssets, trackIndex: vIdx, linkedAudio: audioIdx)
+            }
+            let audioOnlyAssets = plan.audioOnlyAssets
+            if !audioOnlyAssets.isEmpty, let aIdx = audioIdx {
+                insert(audioOnlyAssets, trackIndex: aIdx, linkedAudio: nil)
+            }
+        }
     }
 
     func materialize(plan: DropPlan) -> (visual: Int?, audio: Int?) {

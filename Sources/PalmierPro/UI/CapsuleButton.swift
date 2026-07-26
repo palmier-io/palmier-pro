@@ -31,15 +31,16 @@ struct CapsuleButtonStyle: ButtonStyle {
                 : AnyShapeStyle(AppTheme.Text.secondaryColor)
         }
         private var background: AnyShapeStyle {
-            guard isEnabled else { return AnyShapeStyle(AppTheme.Background.prominentColor) }
+            guard isEnabled else { return AnyShapeStyle(AppTheme.Background.raisedColor) }
+            if let fill { return fill }
             return variant == .prominent
-                ? (fill ?? AnyShapeStyle(AppTheme.Accent.primary))
+                ? AnyShapeStyle(AppTheme.Accent.primary)
                 : AnyShapeStyle(AppTheme.Background.prominentColor)
         }
 
         var body: some View {
             configuration.label
-                .font(.system(size: fontSize, weight: .medium))
+                .font(.system(size: fontSize, weight: AppTheme.FontWeight.medium))
                 .foregroundStyle(foreground)
                 .padding(.horizontal, hPadding)
                 .padding(.vertical, vPadding)

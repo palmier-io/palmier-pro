@@ -935,3 +935,49 @@ struct XMEMLNestExportTests {
         #expect(xml.contains("<linkclipref>clipitem-\(audio.id)</linkclipref>"))
     }
 }
+
+extension XMLExporterTests {
+    // MARK: - File-rate in/out (PAL-166 follow-up: Resolve rejected timeline-rate in/out)
+
+    @Test func slowerSourceEmitsFileRateInOutAndDuration() throws {
+        // 29.97 source on a 60fps timeline: trim 240 timeline frames = 4s ≈ 119.88 → 120 file frames.
+        let dir = NSTemporaryDirectory()
+        var entry = MediaManifestEntry(
+            id: "rx", name: "rx", type: .video,
+            source: .external(absolutePath: (dir as NSString).appendingPathComponent("rx.mp4")),
+            duration: 15.2
+        )
+        entry.sourceFPS = 29.97
+        FileManager.default.createFile(atPath: (dir as NSString).appendingPathComponent("rx.mp4"), contents: Data())
+        var manifest = MediaManifest()
+        manifest.entries = [entry]
+        let resolver = MediaResolver(manifest: { manifest }, projectURL: { nil })
+
+        let clip = Fixtures.clip(id: "c", mediaRef: "rx", start: 300, duration: 300, trimStart: 240)
+        var timeline = Fixtures.timeline(fps: 60, tracks: [Fixtures.videoTrack(clips: [clip])])
+        timeline.width = 1920
+        timeline.height = 1080
+
+        let xml = XMLExporter.render(timeline: timeline, resolver: resolver)
+
+        // clipitem rate = file rate; in/out/duration in 29.97-frame units; start/end stay timeline frames.
+        #expect(xml.contains("<in>120</in>"))
+        #expect(xml.contains("<out>270</out>"))
+        #expect(xml.contains("<start>300</start>"))
+        #expect(xml.contains("<end>600</end>"))
+        // file duration 15.2s × 29.97 ≈ 456, not 912 timeline frames.
+        #expect(xml.contains("<duration>456</duration>"))
+    }
+
+    @Test func matchingRateKeepsTimelineFrameInOut() throws {
+        let dir = NSTemporaryDirectory()
+        let (resolver, _) = try makeResolver(entries: [videoManifestEntry(id: "same", in: dir)])
+        let clip = Fixtures.clip(id: "c", mediaRef: "same", start: 0, duration: 30, trimStart: 12)
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
+
+        let xml = XMLExporter.render(timeline: timeline, resolver: resolver)
+
+        #expect(xml.contains("<in>12</in>"))
+        #expect(xml.contains("<out>42</out>"))
+    }
+}

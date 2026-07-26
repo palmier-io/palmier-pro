@@ -82,6 +82,8 @@ struct AudioModelConfig: Identifiable, Sendable {
     var supportsInstrumental: Bool { caps.supportsInstrumental }
     var supportsStyleInstructions: Bool { caps.supportsStyleInstructions }
     var durations: [Int]? { caps.durations }
+    var durationRange: AudioDurationRange? { caps.durationRange }
+    var hasDurationControl: Bool { durations != nil || durationRange != nil }
     var minPromptLength: Int { caps.minPromptLength }
 
     var inputs: [Input] { (caps.inputs ?? ["text"]).compactMap(Input.init(rawValue:)) }
@@ -121,10 +123,18 @@ struct AudioModelConfig: Identifiable, Sendable {
     var pricing: Pricing {
         switch entry.audioPricing {
         case .perThousandChars(let rate): return .perThousandChars(rate)
-        case .perSecond(let rate): return .perSecond(rate)
+        case .perSecond(let rate, _): return .perSecond(rate)
         case .flat(let price): return .flat(price)
         case .none: return .unknown
         }
+    }
+
+    func pricing(for input: Input?) -> Pricing {
+        if input == .text,
+           case .perSecond(_, let textRate?) = entry.audioPricing {
+            return .perSecond(textRate)
+        }
+        return pricing
     }
 
     func validate(params: AudioGenerationParams) -> String? {
@@ -141,6 +151,10 @@ struct AudioModelConfig: Identifiable, Sendable {
                 model: displayName, field: "duration",
                 value: "\(d)s", allowed: allowed.map { "\($0)s" }
             )
+        }
+        if let range = durationRange, let duration = params.durationSeconds,
+           !(range.minimum...range.maximum).contains(duration) {
+            return "\(displayName) duration must be \(range.minimum)-\(range.maximum) seconds."
         }
         if let allowed = targetLanguages {
             guard let language = params.targetLanguage, !language.isEmpty else {

@@ -87,16 +87,7 @@ struct ModelsPane: View {
                     }
                 }
             }
-            .padding(.horizontal, AppTheme.Spacing.md)
             .padding(.vertical, AppTheme.Spacing.xs)
-            .background(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.md)
-                    .fill(Color.white.opacity(AppTheme.Opacity.subtle))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.md)
-                    .strokeBorder(AppTheme.Border.primaryColor, lineWidth: AppTheme.BorderWidth.thin)
-            )
         }
     }
 
@@ -120,7 +111,8 @@ struct ModelsPane: View {
                 ))
                 .labelsHidden()
                 .toggleStyle(.switch)
-                .controlSize(.small)
+                .controlSize(.mini)
+                .accessibilityLabel(row.displayName)
             }
         }
         .padding(.vertical, AppTheme.Spacing.smMd)
