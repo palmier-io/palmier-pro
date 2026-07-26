@@ -540,69 +540,6 @@ extension EditorViewModel {
         return mediaAssetsById[clip.mediaRef]?.isGenerating ?? false
     }
 
-    enum MediaSelectionDirection {
-        case left, right, up, down
-
-        func step(columnCount: Int) -> Int {
-            switch self {
-            case .left: -1
-            case .right: +1
-            case .up: -columnCount
-            case .down: +columnCount
-            }
-        }
-
-        var startsFromEnd: Bool { self == .left || self == .up }
-    }
-
-    func moveMediaSelection(direction: MediaSelectionDirection) {
-        let ordered = mediaPanelOrderedItemIds
-        guard !ordered.isEmpty else { return }
-        let selectedKeys = mediaPanelSelectedKeys()
-
-        let next: String
-        if let anchor = ordered.last(where: { selectedKeys.contains($0) }),
-           let idx = ordered.firstIndex(of: anchor) {
-            let raw = idx + direction.step(columnCount: max(1, mediaPanelColumnCount))
-            let target = max(0, min(ordered.count - 1, raw))
-            guard target != idx else { return }
-            next = ordered[target]
-        } else {
-            next = direction.startsFromEnd ? ordered[ordered.count - 1] : ordered[0]
-        }
-
-        selectMediaPanelItem(next)
-    }
-
-    private func mediaPanelSelectedKeys() -> Set<String> {
-        var keys = selectedMediaAssetIds
-        keys.formUnion(selectedFolderIds.map(MediaPanelItemKey.folder))
-        keys.formUnion(selectedTimelineIds.map(MediaPanelItemKey.timeline))
-        return keys
-    }
-
-    func selectMediaPanelItem(_ key: String) {
-        if let folderId = MediaPanelItemKey.folderId(from: key) {
-            guard folder(id: folderId) != nil else { return }
-            mediaPanelScrollTarget = key
-            selectedFolderIds = [folderId]
-            selectedMediaAssetIds.removeAll()
-            selectedTimelineIds.removeAll()
-            return
-        }
-        if let timelineId = MediaPanelItemKey.timelineId(from: key) {
-            guard timeline(for: timelineId) != nil else { return }
-            mediaPanelScrollTarget = key
-            selectedTimelineIds = [timelineId]
-            selectedFolderIds.removeAll()
-            selectedMediaAssetIds.removeAll()
-            return
-        }
-        guard let asset = mediaAssets.first(where: { $0.id == key }) else { return }
-        mediaPanelScrollTarget = key
-        selectMediaAsset(asset)
-    }
-
     func renameMediaAsset(id: String, name: String) {
         guard let asset = mediaAssets.first(where: { $0.id == id }) else { return }
         let oldName = asset.name

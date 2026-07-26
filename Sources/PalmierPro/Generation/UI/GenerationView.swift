@@ -24,6 +24,7 @@ struct GenerationView: View {
     @State var instrumental = false
     @State var selectedAudioDuration = 30
     @State var selectedTargetLanguage = ""
+    @State var multilingual = false
     @State var generateAudio = true
     @State var upscaleSettings = UpscaleSettings()
     @State var showSettingsPopover = false
@@ -302,7 +303,10 @@ struct GenerationView: View {
         }
         .onChange(of: selectedAudioModelIndex) { _, _ in
             guard !isPopulatingPanel else { return }
-            if selectedType == .audio { resetAudioState() }
+            if selectedType == .audio {
+                resetRefPools()
+                resetAudioState()
+            }
         }
         .onChange(of: selectedUpscaleModelIndex) { _, _ in
             guard !isPopulatingPanel else { return }
@@ -324,12 +328,14 @@ struct GenerationView: View {
         } else if selectedType == .video {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
                 if showsFrameStrip { videoFrameStrip }
-                if showsRefSections { videoReferenceSections }
+                if showsRefSections { referenceSections }
             }
         } else if selectedType == .image && imageModel.supportsImageReference {
             imageReferenceStrip
-        } else if selectedType == .audio && audioModel.acceptsSourceMedia {
+        } else if selectedType == .audio && audioUsesSource {
             audioSourceStrip
+        } else if selectedType == .audio && showsRefSections {
+            referenceSections
         }
     }
 

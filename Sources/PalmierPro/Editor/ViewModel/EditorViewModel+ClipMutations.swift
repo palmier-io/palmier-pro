@@ -690,10 +690,6 @@ extension EditorViewModel {
         removeClips(ids: selectedClipIds)
     }
 
-    func deleteSelectedMediaAssets() {
-        deleteMediaAssets(ids: selectedMediaAssetIds)
-    }
-
     func deleteMediaAssets(ids: Set<String>) {
         guard !ids.isEmpty else { return }
         guard mediaAssets.contains(where: { ids.contains($0.id) }) else { return }

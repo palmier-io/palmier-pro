@@ -98,6 +98,10 @@ struct MediaTab: View {
                     VStack(spacing: 0) {
                         if showsEmptyState {
                             emptyStateView
+                                .onAppear {
+                                    publishGridState(orderedIds: [], columnCount: 1)
+                                    editor.clearMediaPanelSelection()
+                                }
                         } else if !trimmedSearchQuery.isEmpty {
                             searchResults
                         } else {
@@ -108,6 +112,9 @@ struct MediaTab: View {
                             }
                         }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .contentShape(Rectangle())
+                    .contextMenu { mediaBrowserContextMenu }
                 }
                 .overlay {
                     if isDropTargeted { dropHighlight.allowsHitTesting(false) }
@@ -136,7 +143,6 @@ struct MediaTab: View {
             mediaPanelHeight = newValue
         }
         .onExitCommand { if editor.pendingSwapClipId != nil { editor.cancelMediaSwap() } }
-        .background(KeyCommandSink(onNewFolder: createNewFolderInCurrent, onNavigateUp: navigateUp))
         .onChange(of: editor.folders.map(\.id)) { _, _ in pruneStaleFolderState() }
         .onChange(of: editor.mediaPanelRevealAssetId) { _, target in
             guard let target else { return }
@@ -147,6 +153,12 @@ struct MediaTab: View {
             guard let target else { return }
             openFolder(id: target)
             editor.mediaPanelOpenFolderId = nil
+        }
+        .onChange(of: editor.mediaPanelNavigateUpRequestTick) { _, _ in
+            navigateUp()
+        }
+        .onChange(of: editor.mediaPanelNewFolderRequestTick) { _, _ in
+            createNewFolderInCurrent()
         }
         .onChange(of: editor.mediaPanelPasteRequestTick) { _, _ in
             handleClipboardPaste()
@@ -263,7 +275,7 @@ struct MediaTab: View {
         }
         currentFolderId = id
         viewMode = .folder
-        editor.selectedFolderIds.removeAll()
+        editor.clearMediaPanelSelection()
     }
 
     // MARK: - Toolbar
@@ -625,6 +637,16 @@ struct MediaTab: View {
         }
     }
 
+    @ViewBuilder
+    private var mediaBrowserContextMenu: some View {
+        Button(action: createNewFolderInCurrent) {
+            Label("New Folder", systemImage: "folder.badge.plus")
+        }
+        Button(action: importMedia) {
+            Label("Import Media…", systemImage: "square.and.arrow.down")
+        }
+    }
+
     private func organizeWithAgent() {
         let folderHint = currentFolderId.map { _ in " Work within the current folder." } ?? ""
         let service = editor.agentService
@@ -654,7 +676,10 @@ struct MediaTab: View {
     // MARK: - Folder commands
 
     private func createNewFolderInCurrent() {
-        let id = editor.createFolder(name: "New Folder", in: currentFolderId)
+        searchQuery = ""
+        setViewMode(.folder)
+        renamingTimelineId = nil
+        let id = editor.createMediaPanelFolder(in: currentFolderId)
         renamingFolderId = id
     }
 
@@ -685,6 +710,7 @@ struct MediaTab: View {
                     let startOnCell = assetFrames.values.contains { $0.contains(value.startLocation) }
                     if startOnCell { return }
                     let extending = NSEvent.modifierFlags.contains(.shift)
+                    if !extending { editor.clearMediaPanelSelection() }
                     marqueeSelection.begin(
                         baseAssets: extending ? editor.selectedMediaAssetIds : [],
                         baseFolders: extending ? editor.selectedFolderIds : [],
@@ -720,6 +746,7 @@ struct MediaTab: View {
                 }
             }
             .onEnded { _ in
+                editor.pruneMediaPanelSelectionAnchor()
                 marqueeSelection.reset()
             }
     }
@@ -827,45 +854,5 @@ struct MarqueeSelection {
         baseAssets = []
         baseFolders = []
         baseTimelines = []
-    }
-}
-
-// MARK: - Cmd+Shift+N / Cmd+Up keyboard shortcuts
-
-private struct KeyCommandSink: NSViewRepresentable {
-    let onNewFolder: () -> Void
-    let onNavigateUp: () -> Void
-
-    func makeNSView(context: Context) -> SinkView {
-        let v = SinkView()
-        v.onNewFolder = onNewFolder
-        v.onNavigateUp = onNavigateUp
-        return v
-    }
-
-    func updateNSView(_ nsView: SinkView, context: Context) {
-        nsView.onNewFolder = onNewFolder
-        nsView.onNavigateUp = onNavigateUp
-    }
-
-    final class SinkView: NSView {
-        var onNewFolder: (() -> Void)?
-        var onNavigateUp: (() -> Void)?
-
-        override var acceptsFirstResponder: Bool { true }
-
-        override func keyDown(with event: NSEvent) {
-            let cmd = event.modifierFlags.contains(.command)
-            let shift = event.modifierFlags.contains(.shift)
-            if cmd, shift, event.charactersIgnoringModifiers?.lowercased() == "n" {
-                onNewFolder?()
-                return
-            }
-            if cmd, event.keyCode == 126 {
-                onNavigateUp?()
-                return
-            }
-            super.keyDown(with: event)
-        }
     }
 }

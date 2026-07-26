@@ -102,10 +102,12 @@ extension EditorViewModel {
         switch activePreviewTab {
         case .timeline:
             selectedMediaAssetIds.removeAll()
+            pruneMediaPanelSelectionAnchor()
         case .mediaAsset(let id, _, _):
             selectedClipIds.removeAll()
             selectedFolderIds.removeAll()
             selectedMediaAssetIds = [id]
+            mediaPanelSelectionAnchor = id
         }
     }
 

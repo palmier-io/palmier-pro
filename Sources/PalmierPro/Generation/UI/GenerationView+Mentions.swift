@@ -1,10 +1,15 @@
 import SwiftUI
 
-// Prompt @-autocomplete for reference tags (Seedance/Kling/Grok reference mode).
+// Prompt @-autocomplete for models that reference inputs by ordered tags.
 extension GenerationView {
 
     var availableRefTags: [RefTag] {
         guard showsRefSections else { return [] }
+        if selectedType == .audio {
+            return refAudios.indices.map {
+                RefTag(label: "Audio\($0 + 1)", kindLabel: ClipType.audio.rawValue)
+            }
+        }
         return ClipType.allCases.flatMap { type -> [RefTag] in
             let noun = tagNoun(for: type)
             return (0..<refCount(for: type)).map { i in

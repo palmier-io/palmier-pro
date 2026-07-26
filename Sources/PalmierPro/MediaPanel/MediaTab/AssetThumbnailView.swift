@@ -94,7 +94,9 @@ struct AssetThumbnailView: View {
         Button("Reveal in Finder") { revealInFinder(ids: ids) }
         Button("Copy Path") { copyPaths(ids: ids) }
         Divider()
-        Button("Delete", role: .destructive) { deleteAssets(ids: ids) }
+        Button("Delete", role: .destructive) {
+            editor.deleteMediaPanelItems(targeting: asset.id)
+        }
     }
 
     private var contextTargetIds: [String] {
@@ -134,11 +136,6 @@ struct AssetThumbnailView: View {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(paths.joined(separator: "\n"), forType: .string)
-    }
-
-    private func deleteAssets(ids: [String]) {
-        editor.selectedMediaAssetIds = Set(ids)
-        editor.deleteSelectedMediaAssets()
     }
 
     private var thumbnailContent: some View {
@@ -328,17 +325,7 @@ struct AssetThumbnailView: View {
             return
         }
 
-        let shiftHeld = NSEvent.modifierFlags.contains(.shift)
-
-        if shiftHeld {
-            if editor.selectedMediaAssetIds.contains(asset.id) {
-                editor.selectedMediaAssetIds.remove(asset.id)
-            } else {
-                editor.selectedMediaAssetIds.insert(asset.id)
-            }
-            editor.openPreviewTab(for: asset)   // tab follows, but keep multi-selection intact
-        } else {
-            editor.selectMediaAsset(asset)
-        }
+        let mode = MediaPanelSelectionMode(modifierFlags: NSEvent.modifierFlags)
+        editor.selectMediaPanelItem(asset.id, mode: mode)
     }
 }

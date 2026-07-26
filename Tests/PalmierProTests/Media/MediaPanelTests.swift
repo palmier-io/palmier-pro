@@ -580,6 +580,125 @@ struct MoveMediaSelectionTests {
     }
 }
 
+@Suite("Media panel interactions")
+@MainActor
+struct MediaPanelInteractionTests {
+    @Test func modifierFlagsUseMacSelectionConventions() {
+        #expect(MediaPanelSelectionMode(modifierFlags: []) == .replacing)
+        #expect(MediaPanelSelectionMode(modifierFlags: [.command]) == .toggling)
+        #expect(MediaPanelSelectionMode(modifierFlags: [.shift]) == .range)
+        #expect(MediaPanelSelectionMode(modifierFlags: [.command, .shift]) == .extendingRange)
+    }
+
+    @Test func commandAndShiftSelectionWorkAcrossKinds() {
+        let e = editor()
+        let folderId = e.createFolder(name: "Bin")
+        let first = asset(name: "first")
+        let second = asset(name: "second")
+        for clip in [first, second] { e.importMediaAsset(clip) }
+        let folderKey = MediaPanelItemKey.folder(folderId)
+        let timelineKey = MediaPanelItemKey.timeline(e.activeTimelineId)
+        e.mediaPanelOrderedItemIds = [folderKey, timelineKey, first.id, second.id]
+
+        e.selectMediaPanelItem(folderKey, mode: .replacing)
+        e.selectMediaPanelItem(second.id, mode: .toggling)
+
+        #expect(e.selectedFolderIds == [folderId])
+        #expect(e.selectedMediaAssetIds == [second.id])
+        #expect(e.mediaPanelSelectionAnchor == second.id)
+
+        e.selectMediaPanelItem(folderKey, mode: .replacing)
+        e.selectMediaPanelItem(first.id, mode: .range)
+
+        #expect(e.selectedFolderIds == [folderId])
+        #expect(e.selectedTimelineIds == [e.activeTimelineId])
+        #expect(e.selectedMediaAssetIds == [first.id])
+        #expect(e.mediaPanelSelectionAnchor == folderKey)
+    }
+
+    @Test func marqueeSelectionEstablishesAVisibleRangeAnchor() {
+        let e = editor()
+        let clips = (0..<3).map { asset(name: "clip-\($0)") }
+        for clip in clips { e.importMediaAsset(clip) }
+        e.mediaPanelOrderedItemIds = clips.map(\.id)
+        e.selectedMediaAssetIds = [clips[0].id, clips[1].id]
+        e.mediaPanelSelectionAnchor = nil
+
+        e.pruneMediaPanelSelectionAnchor()
+        e.selectMediaPanelItem(clips[2].id, mode: .range)
+
+        #expect(e.selectedMediaAssetIds == Set(clips.map(\.id)))
+        #expect(e.mediaPanelSelectionAnchor == clips[0].id)
+    }
+
+    @Test func orderIncludesVisibleSectionsAndDeduplicatesAssets() {
+        let ids = MediaTab.searchOrderedAssetIds(
+            momentAssetIds: ["moment", "shared"],
+            spokenAssetIds: ["spoken", "shared"],
+            fileAssetIds: ["file", "shared"],
+            collapsedSectionTitles: ["Spoken"]
+        )
+
+        #expect(ids == ["moment", "shared", "file"])
+    }
+
+    @Test func creationSelectsAndRevealsFolderAndRestoresSelectionOnUndo() {
+        let e = editor()
+        let parentId = e.createFolder(name: "Parent")
+        let clip = asset(name: "clip")
+        e.importMediaAsset(clip)
+        e.selectMediaPanelItem(clip.id)
+        let undoManager = UndoManager()
+        e.undo.attach(undoManager)
+
+        let folderId = e.createMediaPanelFolder(in: parentId)
+
+        #expect(e.folder(id: folderId)?.parentFolderId == parentId)
+        #expect(e.selectedFolderIds == [folderId])
+        #expect(e.selectedMediaAssetIds.isEmpty)
+        #expect(e.mediaPanelScrollTarget == MediaPanelItemKey.folder(folderId))
+        #expect(e.undo.undoLatest() == "New Folder")
+        #expect(e.folder(id: folderId) == nil)
+        #expect(e.selectedMediaAssetIds == [clip.id])
+    }
+
+    @Test func mainMenuUsesStandardNewFolderShortcut() throws {
+        _ = NSApplication.shared
+        let mainMenu = MainMenuBuilder.buildMenu()
+        let fileMenu = try #require(mainMenu.items.compactMap(\.submenu).first { $0.title == "File" })
+        let item = try #require(fileMenu.items.first { $0.action == #selector(EditorActions.newMediaFolder(_:)) })
+
+        #expect(item.title == "New Folder")
+        #expect(item.keyEquivalent == "n")
+        #expect(item.keyEquivalentModifierMask == [.command, .shift])
+    }
+
+    @Test func mixedDeleteIsOneUndoableAction() {
+        let e = editor()
+        let folderId = e.createFolder(name: "Bin")
+        let selectedAssets = (0..<2).map { asset(name: "selected-\($0)") }
+        let keep = asset(name: "keep")
+        for clip in selectedAssets + [keep] { e.importMediaAsset(clip) }
+        let folderKey = MediaPanelItemKey.folder(folderId)
+        e.mediaPanelOrderedItemIds = [folderKey] + selectedAssets.map(\.id) + [keep.id]
+        e.selectMediaPanelItem(folderKey, mode: .replacing)
+        for clip in selectedAssets { e.selectMediaPanelItem(clip.id, mode: .toggling) }
+        let undoManager = UndoManager()
+        e.undo.attach(undoManager)
+
+        e.deleteMediaPanelItems(targeting: folderKey)
+
+        #expect(e.folder(id: folderId) == nil)
+        #expect(e.mediaAssets.map(\.id) == [keep.id])
+        #expect(e.undo.undoLatest() == "Delete Media Items")
+        #expect(e.folder(id: folderId) != nil)
+        #expect(Set(e.mediaAssets.map(\.id)) == Set(selectedAssets.map(\.id) + [keep.id]))
+        #expect(e.selectedFolderIds == [folderId])
+        #expect(e.selectedMediaAssetIds == Set(selectedAssets.map(\.id)))
+        #expect(e.mediaPanelSelectionAnchor == selectedAssets.last?.id)
+    }
+}
+
 // MARK: - handlePanelFinderDrop
 
 @Suite("MediaTab — handlePanelFinderDrop")
