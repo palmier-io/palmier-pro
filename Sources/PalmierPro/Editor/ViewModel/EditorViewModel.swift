@@ -250,11 +250,14 @@ final class EditorViewModel {
     // MARK: - Media panel navigation routing
 
     var mediaPanelOrderedItemIds: [String] = []
+    @ObservationIgnored var mediaPanelSelectionAnchor: String?
     var mediaPanelColumnCount: Int = 1
     var mediaPanelScrollTarget: String?
     var mediaPanelRevealAssetId: String?
     var mediaPanelOpenFolderId: String?
     var mediaPanelCurrentFolderId: String?
+    var mediaPanelNavigateUpRequestTick: Int = 0
+    var mediaPanelNewFolderRequestTick: Int = 0
     var mediaPanelPasteRequestTick: Int = 0
     var mediaPanelShowMediaTabTick: Int = 0
     var mediaPanelToast: MediaPanelToast?

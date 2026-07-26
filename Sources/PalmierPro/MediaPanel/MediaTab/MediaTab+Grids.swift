@@ -67,16 +67,15 @@ extension MediaTab {
         )
     }
 
-    func clearSelections() {
-        if !editor.selectedMediaAssetIds.isEmpty { editor.selectedMediaAssetIds.removeAll() }
-        if !editor.selectedFolderIds.isEmpty { editor.selectedFolderIds.removeAll() }
-        if !editor.selectedTimelineIds.isEmpty { editor.selectedTimelineIds.removeAll() }
-    }
-
     func publishOrderedIds(_ ids: [String]) {
         if editor.mediaPanelOrderedItemIds != ids {
             editor.mediaPanelOrderedItemIds = ids
         }
+    }
+
+    func publishGridState(orderedIds: [String], columnCount: Int) {
+        publishOrderedIds(orderedIds)
+        if editor.mediaPanelColumnCount != columnCount { editor.mediaPanelColumnCount = columnCount }
     }
 }
 
@@ -113,7 +112,7 @@ extension MediaTab {
                 assetFrames = frames
                 if editor.mediaPanelColumnCount != cols { editor.mediaPanelColumnCount = cols }
             }
-            .onAppear { publishOrderedIds(orderedIds) }
+            .onAppear { publishGridState(orderedIds: orderedIds, columnCount: cols) }
             .onChange(of: orderedIds) { _, ids in publishOrderedIds(ids) }
             .onChange(of: editor.mediaPanelScrollTarget) { _, target in
                 guard let target else { return }
@@ -122,7 +121,7 @@ extension MediaTab {
                 }
                 editor.mediaPanelScrollTarget = nil
             }
-            .onTapGesture { clearSelections() }
+            .onTapGesture { editor.clearMediaPanelSelection() }
             .overlay { marqueeOverlay }
             .gesture(marqueeGesture)
         }
@@ -227,7 +226,7 @@ extension MediaTab {
                     assetFrames = frames
                     if editor.mediaPanelColumnCount != dims.cols { editor.mediaPanelColumnCount = dims.cols }
                 }
-                .onAppear { publishOrderedIds(orderedIds) }
+                .onAppear { publishGridState(orderedIds: orderedIds, columnCount: dims.cols) }
                 .onChange(of: orderedIds) { _, ids in publishOrderedIds(ids) }
                 .onChange(of: editor.mediaPanelScrollTarget) { _, target in
                     guard let target else { return }
@@ -236,7 +235,7 @@ extension MediaTab {
                     }
                     editor.mediaPanelScrollTarget = nil
                 }
-                .onTapGesture { clearSelections() }
+                .onTapGesture { editor.clearMediaPanelSelection() }
                 .overlay { marqueeOverlay }
                 .gesture(marqueeGesture)
             }
@@ -300,7 +299,7 @@ extension MediaTab {
                         }
                         Divider()
                         Button("Delete", role: .destructive) {
-                            editor.deleteFolders(ids: [folderId])
+                            editor.deleteMediaPanelItems(targeting: MediaPanelItemKey.folder(folderId))
                         }
                     }
                 } else {
@@ -425,7 +424,7 @@ extension MediaTab {
                 get: { renamingTimelineId == timeline.id },
                 set: { renamingTimelineId = $0 ? timeline.id : nil }
             ),
-            onTap: { handleTimelineTap(timeline) },
+            onTap: { handleTileTap(MediaPanelItemKey.timeline(timeline.id)) },
             onOpen: { editor.activateTimeline(timeline.id) },
             onCommitRename: { newName in
                 editor.renameTimeline(timeline.id, to: newName)
@@ -433,7 +432,9 @@ extension MediaTab {
             },
             onCancelRename: { renamingTimelineId = nil },
             onDuplicate: { editor.duplicateTimeline(timeline.id) },
-            onDelete: { editor.deleteTimeline(timeline.id) }
+            onDelete: {
+                editor.deleteMediaPanelItems(targeting: MediaPanelItemKey.timeline(timeline.id))
+            }
         )
         .draggable(MediaTab.timelineDragString(forTimelineId: timeline.id)) {
             TileDragPreview(icon: "film.stack", name: timeline.name)
@@ -452,26 +453,8 @@ extension MediaTab {
         return nil
     }
 
-    fileprivate func handleTimelineTap(_ timeline: Timeline) {
-        handleTileTap(timeline.id, select: \.selectedTimelineIds,
-                      clearing: [\.selectedMediaAssetIds, \.selectedFolderIds])
-    }
-
-    fileprivate func handleTileTap(
-        _ id: String,
-        select selection: ReferenceWritableKeyPath<EditorViewModel, Set<String>>,
-        clearing others: [ReferenceWritableKeyPath<EditorViewModel, Set<String>>]
-    ) {
-        if NSEvent.modifierFlags.contains(.shift) {
-            if editor[keyPath: selection].contains(id) {
-                editor[keyPath: selection].remove(id)
-            } else {
-                editor[keyPath: selection].insert(id)
-            }
-        } else {
-            editor[keyPath: selection] = [id]
-            for other in others { editor[keyPath: other].removeAll() }
-        }
+    fileprivate func handleTileTap(_ key: String) {
+        editor.selectMediaPanelItem(key, mode: MediaPanelSelectionMode(modifierFlags: NSEvent.modifierFlags))
     }
 
     fileprivate func folderTile(_ folder: MediaFolder) -> some View {
@@ -489,14 +472,16 @@ extension MediaTab {
                     get: { renamingFolderId == folder.id },
                     set: { renamingFolderId = $0 ? folder.id : nil }
                 ),
-                onTap: { handleFolderTap(folder) },
+                onTap: { handleTileTap(MediaPanelItemKey.folder(folder.id)) },
                 onOpen: { openFolder(id: folder.id) },
                 onCommitRename: { newName in
                     editor.renameFolder(id: folder.id, name: newName)
                     renamingFolderId = nil
                 },
                 onCancelRename: { renamingFolderId = nil },
-                onDelete: { editor.deleteFolders(ids: [folder.id]) }
+                onDelete: {
+                    editor.deleteMediaPanelItems(targeting: MediaPanelItemKey.folder(folder.id))
+                }
             )
             .draggable(MediaTab.folderDragString(forFolderId: folder.id)) {
                 TileDragPreview(icon: "folder.fill", name: folder.name)
@@ -506,11 +491,6 @@ extension MediaTab {
             handleProviderDrop(providers, into: folder.id)
             return true
         }
-    }
-
-    fileprivate func handleFolderTap(_ folder: MediaFolder) {
-        handleTileTap(folder.id, select: \.selectedFolderIds,
-                      clearing: [\.selectedMediaAssetIds, \.selectedTimelineIds])
     }
 
     @ViewBuilder

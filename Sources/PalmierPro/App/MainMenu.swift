@@ -40,6 +40,9 @@ enum MainMenuBuilder {
         let menu = NSMenu(title: "File")
         let newItem = menu.addItem(withTitle: "New", action: #selector(AppDelegate.newProject(_:)), keyEquivalent: "n")
         newItem.target = NSApp.delegate
+        let newFolderItem = NSMenuItem(title: "New Folder", action: #selector(EditorActions.newMediaFolder(_:)), keyEquivalent: "n")
+        newFolderItem.keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(newFolderItem)
         let openItem = menu.addItem(withTitle: "Open…", action: #selector(AppDelegate.openProject(_:)), keyEquivalent: "o")
         openItem.target = NSApp.delegate
         menu.addItem(.separator())
@@ -189,6 +192,7 @@ enum MainMenuBuilder {
     func deleteSelectedClips(_ sender: Any?)
     func rippleDeleteSelected(_ sender: Any?)
     func importMedia(_ sender: Any?)
+    func newMediaFolder(_ sender: Any?)
     func showExport(_ sender: Any?)
     func toggleMediaPanel(_ sender: Any?)
     func toggleInspectorPanel(_ sender: Any?)

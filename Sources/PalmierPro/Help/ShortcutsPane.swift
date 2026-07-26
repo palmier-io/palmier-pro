@@ -36,6 +36,7 @@ struct ShortcutsPane: View {
         ]),
         ShortcutGroup(title: "File", shortcuts: [
             ("Cmd + N", "New"),
+            ("Cmd + Shift + N", "New Folder"),
             ("Cmd + O", "Open"),
             ("Cmd + S", "Save"),
             ("Cmd + Shift + S", "Save As"),
