@@ -2,23 +2,22 @@
   "changelogURL": "https://github.com/palmier-io/palmier-pro/releases",
   "entries": [
     {
-      "version": "0.6.14",
-      "date": "2026-07-21",
+      "version": "0.6.15",
+      "date": "2026-07-26",
       "sections": [
         {
-          "heading": "New",
+          "heading": "AI Features",
           "items": [
-            "Agent can set fade in and fade out for audio and video clips",
-            "Preview playback speed control: Watch your timeline in 0.5x, 2x, 4x, or 10x speed, without modifying the timeline",
-            "Text rotation: You can now rotate text clips"
+            "Seed Audio 1.0: Generate music, multilingual speech, sound effects all in one model",
+            "Sonilo Music and Sound Effects: Create music and sound effects from a text prompt with Sonilo",
+            "More upscale controls: Many more video upscale options with ByteDance Upscaler and Topaz, including upscaling to 60 fps and 4k."
           ]
         },
         {
           "heading": "Improved",
           "items": [
-            "Agent can set fade in and fade out for audio and video clips",
-            "Better rendering for large timelines",
-            "Better project management: In home page, you can search, select and delete multiple projects"
+            "Better media panel usability: Select, navigate, and delete multiple media browser items with standard Mac controls",
+            "New effect: Invert Colors in the Adjust inspector"
           ]
         }
       ]
