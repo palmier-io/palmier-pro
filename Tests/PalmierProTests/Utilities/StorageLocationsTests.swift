@@ -3,6 +3,29 @@ import Testing
 
 @testable import PalmierPro
 
+/// Unique temporary tree, removed when the test's reference goes out of scope.
+private final class Scratch {
+    let root: URL
+
+    init() throws {
+        root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("storage-scratch-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    }
+
+    @discardableResult
+    func directory(_ path: String) throws -> URL {
+        let url = root.appendingPathComponent(path, isDirectory: true)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    deinit {
+        try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: root.path)
+        try? FileManager.default.removeItem(at: root)
+    }
+}
+
 @Suite struct StorageLocationsTests {
     @Test func usableDirectoryCreatesMissingIntermediates() throws {
         let root = FileManager.default.temporaryDirectory
@@ -120,6 +143,85 @@ import Testing
         }
         #expect(owned.contains(caches.appendingPathComponent("PalmierPro", isDirectory: true)))
         #expect(owned.contains(support.appendingPathComponent("PalmierPro/Models", isDirectory: true)))
+    }
+
+    // MARK: - Deleting abandoned trees
+
+    @Test func reapDeletesAQueuedTreeAndItsContents() throws {
+        let scratch = try Scratch()
+        let tree = try scratch.directory("Caches/PalmierPro")
+        try Data("cached".utf8).write(to: tree.appendingPathComponent("entry.bin"))
+
+        #expect(StorageLocations.reap([tree.path]).isEmpty)
+        #expect(FileManager.default.fileExists(atPath: tree.path) == false)
+    }
+
+    @Test func reapIgnoresPathsThatAreAlreadyGone() throws {
+        let scratch = try Scratch()
+        let absent = scratch.root.appendingPathComponent("never-existed", isDirectory: true)
+        #expect(StorageLocations.reap([absent.path]).isEmpty)
+    }
+
+    /// An unplugged volume fails its delete, and the path has to survive for a later launch.
+    @Test func reapKeepsWhatItCouldNotDelete() throws {
+        let scratch = try Scratch()
+        let locked = try scratch.directory("locked")
+        let trapped = try scratch.directory("locked/tree")
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: locked.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked.path) }
+
+        #expect(StorageLocations.reap([trapped.path]) == [trapped.path])
+        #expect(FileManager.default.fileExists(atPath: trapped.path))
+    }
+
+    @Test func reapReportsOnlyTheFailuresFromAMixedBatch() throws {
+        let scratch = try Scratch()
+        let deletable = try scratch.directory("deletable")
+        let locked = try scratch.directory("locked")
+        let trapped = try scratch.directory("locked/tree")
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: locked.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked.path) }
+
+        #expect(StorageLocations.reap([deletable.path, trapped.path]) == [trapped.path])
+        #expect(FileManager.default.fileExists(atPath: deletable.path) == false)
+    }
+
+    // MARK: - Sweeping stale scratch
+
+    @Test func sweepRemovesEntriesOlderThanTheCutoffAndKeepsTheRest() throws {
+        let scratch = try Scratch()
+        let stale = scratch.root.appendingPathComponent("timeline-render.mp4")
+        let fresh = scratch.root.appendingPathComponent("trim.mp4")
+        try Data("old".utf8).write(to: stale)
+        try Data("new".utf8).write(to: fresh)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSinceNow: -30 * 24 * 60 * 60)], ofItemAtPath: stale.path
+        )
+
+        StorageLocations.sweep(scratch.root, before: Date(timeIntervalSinceNow: -7 * 24 * 60 * 60))
+
+        #expect(FileManager.default.fileExists(atPath: stale.path) == false)
+        #expect(FileManager.default.fileExists(atPath: fresh.path))
+    }
+
+    @Test func sweepRemovesStaleSubdirectoriesWholesale() throws {
+        let scratch = try Scratch()
+        let staged = try scratch.directory("palmier-model-abc")
+        try Data().write(to: staged.appendingPathComponent("weights.bin"))
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSinceNow: -30 * 24 * 60 * 60)], ofItemAtPath: staged.path
+        )
+
+        StorageLocations.sweep(scratch.root, before: Date(timeIntervalSinceNow: -7 * 24 * 60 * 60))
+
+        #expect(FileManager.default.fileExists(atPath: staged.path) == false)
+    }
+
+    @Test func sweepOfAMissingDirectoryIsANoOp() {
+        let absent = FileManager.default.temporaryDirectory
+            .appendingPathComponent("storage-gone-\(UUID().uuidString)", isDirectory: true)
+        StorageLocations.sweep(absent, before: Date())
+        #expect(FileManager.default.fileExists(atPath: absent.path) == false)
     }
 
     // MARK: - Defaults

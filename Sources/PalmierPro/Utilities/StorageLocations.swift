@@ -130,7 +130,6 @@ enum StorageLocations {
     /// fast drive actually frees the old one. Failures stay queued for a later launch, which is
     /// how an unplugged volume is eventually reclaimed.
     private static func reapAbandonedDirectories() {
-        let fm = FileManager.default
         let current = ownedDirectories.map(\.standardizedFileURL.path)
         let recorded = UserDefaults.standard.stringArray(forKey: ownedDefaultsKey)
         let queued = abandonedDirectories(
@@ -141,9 +140,15 @@ enum StorageLocations {
         // Persist the queue before deleting, so quitting mid-reap doesn't lose track of the tree.
         UserDefaults.standard.set(queued, forKey: abandonedDefaultsKey)
         UserDefaults.standard.set(current, forKey: ownedDefaultsKey)
+        UserDefaults.standard.set(reap(queued), forKey: abandonedDefaultsKey)
+    }
 
+    /// Deletes each path, returning those that survived so they can stay queued. Takes its work
+    /// explicitly so the destructive step is exercisable against a scratch tree in tests.
+    static func reap(_ paths: [String]) -> [String] {
+        let fm = FileManager.default
         var remaining: [String] = []
-        for path in queued where fm.fileExists(atPath: path) {
+        for path in paths where fm.fileExists(atPath: path) {
             do {
                 try fm.removeItem(atPath: path)
             } catch {
@@ -151,7 +156,7 @@ enum StorageLocations {
                 remaining.append(path)
             }
         }
-        UserDefaults.standard.set(remaining, forKey: abandonedDefaultsKey)
+        return remaining
     }
 
     /// A configured scratch root gets no system reaping, and several files staged there are
@@ -159,10 +164,15 @@ enum StorageLocations {
     /// The cutoff is far past any single session, so nothing an open project references is hit.
     private static func sweepTemporaryDirectory() {
         guard ownsTemporaryDirectory else { return }
+        sweep(temporaryDirectory, before: Date(timeIntervalSinceNow: -temporaryFileLifetime))
+    }
+
+    /// Deletes entries last modified before `cutoff`. Best effort — an entry still in use fails
+    /// its removal and is retried on a later launch.
+    static func sweep(_ directory: URL, before cutoff: Date) {
         let fm = FileManager.default
-        let cutoff = Date(timeIntervalSinceNow: -temporaryFileLifetime)
         guard let entries = try? fm.contentsOfDirectory(
-            at: temporaryDirectory, includingPropertiesForKeys: [.contentModificationDateKey]
+            at: directory, includingPropertiesForKeys: [.contentModificationDateKey]
         ) else { return }
         for entry in entries {
             let modified = try? entry.resourceValues(forKeys: [.contentModificationDateKey])
