@@ -1,12 +1,7 @@
 import SwiftUI
 
-/// Persisted per-project speaker identity.
-struct SpeakerRegistryEntry: Codable, Sendable, Identifiable {
-    var id: Int
-    var name: String
-    var color: [Double]
-    var centroid: [Float]
-}
+// SpeakerRegistryEntry lives in PalmierCore (SpeakerRegistryEntry.swift) and is
+// re-exported via @_exported import PalmierCore.
 
 struct ProjectSpeaker: Identifiable {
     let id: Int
