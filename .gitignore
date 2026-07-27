@@ -1,7 +1,11 @@
 .DS_Store
 .swiftpm/
 .build/
+.build-*/
 .vscode/
+
+# Local agent/editor working state
+.zcode/
 
 # Xcode
 xcuserdata/
