@@ -36,11 +36,11 @@ struct Mat3CGAffineTransformParityTests {
     }
 
     @Test func concatenatingMatchesCGAffineTransform() {
-        // Diagnostic captures to empirically determine CGAffineTransform.concatenating semantics.
+        // Diagnostic: print CGAffineTransform.concatenating result to derive correct formula.
         let t1 = Mat3(a: 2, b: 0, c: 0, d: 2, tx: 10, ty: -5)
         let t2 = Mat3(a: 3, b: 0, c: 0, d: 4, tx: 100, ty: 50)
         let cgr = cg(t1).concatenating(cg(t2))
-        #expect(false, "DIAG t1=(2,0,0,2,10,-5) concat t2=(3,0,0,4,100,50) => CG(a:\(cgr.a) b:\(cgr.b) c:\(cgr.c) d:\(cgr.d) tx:\(cgr.tx) ty:\(cgr.ty))")
+        print("DIAG_A concat: t1=(2,0,0,2,10,-5) t2=(3,0,0,4,100,50) CG= a:\(cgr.a) b:\(cgr.b) c:\(cgr.c) d:\(cgr.d) tx:\(cgr.tx) ty:\(cgr.ty)")
         let ts = sampleTransforms()
         for t1 in ts {
             for t2 in ts {
