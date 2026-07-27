@@ -24,6 +24,12 @@ public struct TextStyle: Codable, Sendable, Equatable, Hashable {
 
     public init() {}
 
+    /// Convenience init overriding just fontSize; everything else defaults.
+    public init(fontSize: Double) {
+        self.init()
+        self.fontSize = fontSize
+    }
+
     public enum Alignment: String, Codable, Sendable, CaseIterable, Hashable {
         case left
         case center

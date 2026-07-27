@@ -19,6 +19,12 @@ public struct TimelineViewState: Codable, Sendable, Equatable {
     public var scrollOffsetX: Double = 0
 
     public init() {}
+
+    public init(playheadFrame: Int = 0, zoomScale: Double = 4.0, scrollOffsetX: Double = 0) {
+        self.playheadFrame = playheadFrame
+        self.zoomScale = zoomScale
+        self.scrollOffsetX = scrollOffsetX
+    }
 }
 
 public struct Timeline: Codable, Sendable, Equatable, Identifiable {
@@ -32,6 +38,12 @@ public struct Timeline: Codable, Sendable, Equatable, Identifiable {
     public var tracks: [Track] = []
 
     public init() {}
+
+    /// Convenience init overriding just the name; id/fps/size default.
+    public init(name: String) {
+        self.init()
+        self.name = name
+    }
 
     public var totalFrames: Int {
         var maxFrame = 0
