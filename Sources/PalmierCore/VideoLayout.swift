@@ -1,24 +1,37 @@
 import Foundation
 
-struct LayoutRect: Equatable, Sendable {
-    var x: Double
-    var y: Double
-    var w: Double
-    var h: Double
+public struct LayoutRect: Equatable, Sendable {
+    public var x: Double
+    public var y: Double
+    public var w: Double
+    public var h: Double
+
+    public init(x: Double, y: Double, w: Double, h: Double) {
+        self.x = x
+        self.y = y
+        self.w = w
+        self.h = h
+    }
 }
 
-struct LayoutSlot: Equatable, Sendable {
-    let id: String
-    let rect: LayoutRect
-    var z: Int = 0
+public struct LayoutSlot: Equatable, Sendable {
+    public let id: String
+    public let rect: LayoutRect
+    public var z: Int
+
+    public init(id: String, rect: LayoutRect, z: Int = 0) {
+        self.id = id
+        self.rect = rect
+        self.z = z
+    }
 }
 
-enum LayoutFit: String, Sendable {
+public enum LayoutFit: String, Sendable {
     case fill
     case fit
 }
 
-enum VideoLayout: String, CaseIterable, Sendable {
+public enum VideoLayout: String, CaseIterable, Sendable {
     case full
     case sideBySide = "side_by_side"
     case topBottom = "top_bottom"
@@ -30,7 +43,7 @@ enum VideoLayout: String, CaseIterable, Sendable {
     case mainSidebar = "main_sidebar"
     case threeUp = "three_up"
 
-    var displayName: String {
+    public var displayName: String {
         switch self {
         case .full: "Full Frame"
         case .sideBySide: "Side by Side"
@@ -48,7 +61,7 @@ enum VideoLayout: String, CaseIterable, Sendable {
     private static let pipInset = 0.28
     private static let pipMargin = 0.035
 
-    var slots: [LayoutSlot] {
+    public var slots: [LayoutSlot] {
         switch self {
         case .full:
             return [LayoutSlot(id: "main", rect: LayoutRect(x: 0, y: 0, w: 1, h: 1))]

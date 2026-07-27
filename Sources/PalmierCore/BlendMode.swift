@@ -1,12 +1,12 @@
 import Foundation
 
 /// How a visual clip composites over the layers below it. `normal` = source-over.
-enum BlendMode: String, Codable, Sendable, CaseIterable {
+public enum BlendMode: String, Codable, Sendable, CaseIterable {
     case normal, darken, multiply, colorBurn, lighten, screen, colorDodge
     case overlay, softLight, hardLight, difference, exclusion
     case hue, saturation, color, luminosity
 
-    var displayName: String {
+    public var displayName: String {
         switch self {
         case .normal: "Normal"
         case .darken: "Darken"
@@ -28,7 +28,7 @@ enum BlendMode: String, Codable, Sendable, CaseIterable {
     }
 
     /// Core Image blend-filter name; nil for `normal` (plain source-over compositing).
-    var ciFilterName: String? {
+    public var ciFilterName: String? {
         switch self {
         case .normal: nil
         case .darken: "CIDarkenBlendMode"

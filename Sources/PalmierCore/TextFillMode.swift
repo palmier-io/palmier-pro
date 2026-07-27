@@ -1,10 +1,10 @@
 import Foundation
 
-enum TextFillMode: String, Codable, Sendable, CaseIterable {
+public enum TextFillMode: String, Codable, Sendable, CaseIterable {
     case color
     case footage
 
-    var displayName: String {
+    public var displayName: String {
         switch self {
         case .color: "Color"
         case .footage: "Footage"

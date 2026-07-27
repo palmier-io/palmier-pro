@@ -1,4 +1,4 @@
-enum ClipType: String, Codable, Sendable, CaseIterable {
+public enum ClipType: String, Codable, Sendable, CaseIterable {
     case video
     case audio
     case image
@@ -6,7 +6,7 @@ enum ClipType: String, Codable, Sendable, CaseIterable {
     case lottie
     case sequence
 
-    var sfSymbolName: String {
+    public var sfSymbolName: String {
         switch self {
         case .video: "film"
         case .audio: "waveform"
@@ -17,7 +17,7 @@ enum ClipType: String, Codable, Sendable, CaseIterable {
         }
     }
 
-    var trackLabel: String {
+    public var trackLabel: String {
         switch self {
         case .video: "Video"
         case .audio: "Audio"
@@ -28,17 +28,17 @@ enum ClipType: String, Codable, Sendable, CaseIterable {
         }
     }
 
-    var trackLabelPrefix: String { String(trackLabel.prefix(1)) }
+    public var trackLabelPrefix: String { String(trackLabel.prefix(1)) }
 
-    var isVisual: Bool {
+    public var isVisual: Bool {
         self != .audio
     }
 
-    func isCompatible(with other: ClipType) -> Bool {
+    public func isCompatible(with other: ClipType) -> Bool {
         self == other || (self.isVisual && other.isVisual)
     }
 
-    init?(fileExtension ext: String) {
+    public init?(fileExtension ext: String) {
         switch ext {
         case "mov", "mp4", "m4v": self = .video
         case "mp3", "wav", "aac", "m4a", "aiff", "aif", "aifc", "caf", "flac": self = .audio
