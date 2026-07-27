@@ -2,27 +2,13 @@ import Foundation
 
 // Generic keyframe machinery (Interpolation, Keyframe, KeyframeTrack, AnimPair,
 // smoothstep, KeyframeInterpolatable, AnimatableProperty) lives in PalmierCore
-// and is re-exported. Only the type-specific conformance and Clip helpers that
-// depend on app-side model types (Crop, Clip) remain here.
-
-extension Crop: KeyframeInterpolatable {
-    static func keyframeInterpolate(_ a: Crop, _ b: Crop, t: Double) -> Crop {
-        Crop(
-            left: Double.keyframeInterpolate(a.left, b.left, t: t),
-            top: Double.keyframeInterpolate(a.top, b.top, t: t),
-            right: Double.keyframeInterpolate(a.right, b.right, t: t),
-            bottom: Double.keyframeInterpolate(a.bottom, b.bottom, t: t)
-        )
-    }
-}
+// and is re-exported. The Crop: KeyframeInterpolatable conformance also moved
+// to core once Crop moved. Only the Clip keyframe helpers that drive app-side
+// inspector behavior remain here.
 
 // MARK: - Clip keyframe helpers
 
 extension Clip {
-    func contains(timelineFrame frame: Int) -> Bool {
-        frame >= startFrame && frame < endFrame
-    }
-
     /// Absolute timeline frame → clip-relative offset (used internally in track storage)
     private func toOffset(_ timelineFrame: Int) -> Int { timelineFrame - startFrame }
     /// Clip-relative offset → absolute timeline frame (used in public API)

@@ -111,6 +111,17 @@ public struct AnimPair: Codable, Sendable, Equatable, KeyframeInterpolatable {
     }
 }
 
+extension Crop: KeyframeInterpolatable {
+    public static func keyframeInterpolate(_ a: Crop, _ b: Crop, t: Double) -> Crop {
+        Crop(
+            left: Double.keyframeInterpolate(a.left, b.left, t: t),
+            top: Double.keyframeInterpolate(a.top, b.top, t: t),
+            right: Double.keyframeInterpolate(a.right, b.right, t: t),
+            bottom: Double.keyframeInterpolate(a.bottom, b.bottom, t: t)
+        )
+    }
+}
+
 /// Identifies which clip property an inspector lane / stamp button drives.
 public enum AnimatableProperty: String, CaseIterable, Sendable {
     case opacity, position, scale, rotation, crop, volume
