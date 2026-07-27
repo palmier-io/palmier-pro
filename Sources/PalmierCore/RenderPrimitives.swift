@@ -41,18 +41,19 @@ public struct Mat3: Hashable, Sendable, Equatable {
 
     public static let identity = Mat3()
 
-    /// Compose `self` after `other` (i.e. apply `other` first, then `self`).
-    /// Matches `CGAffineTransform.concatenating` semantics so a macOS bridge
-    /// can replace `t1.concatenating(t2)` with `bridge(t1).concatenating(bridge(t2))`
-    /// and get identical results.
+    /// Compose transforms matching `CGAffineTransform.concatenating` semantics:
+    /// `t1.concatenating(t2)` applies `t1` first then `t2`, i.e. matrix product
+    /// `T2 * T1` where T is laid out as `[a b tx; c d ty; 0 0 1]` (CG's documented
+    /// `[1,1]=a [1,2]=b [2,1]=c [2,2]=d` positions). Verified empirically against
+    /// CGAffineTransform on macOS (see Mat3CGAffineTransformParityTests).
     public func concatenating(_ other: Mat3) -> Mat3 {
         Mat3(
-            a: a * other.a + c * other.b,
-            b: b * other.a + d * other.b,
-            c: a * other.c + c * other.d,
-            d: b * other.c + d * other.d,
-            tx: a * other.tx + c * other.ty + tx,
-            ty: b * other.tx + d * other.ty + ty
+            a: other.a * a + other.b * c,
+            b: other.a * b + other.b * d,
+            c: other.c * a + other.d * c,
+            d: other.c * b + other.d * d,
+            tx: other.a * tx + other.b * ty + other.tx,
+            ty: other.c * tx + other.d * ty + other.ty
         )
     }
 
@@ -64,10 +65,11 @@ public struct Mat3: Hashable, Sendable, Equatable {
         let newB = -b * inv
         let newC = -c * inv
         let newD = a * inv
+        // Layout [a b tx; c d ty]: inverse translation is -(linear * translation).
         return Mat3(
             a: newA, b: newB, c: newC, d: newD,
-            tx: -(newA * tx + newC * ty),
-            ty: -(newB * tx + newD * ty)
+            tx: -(newA * tx + newB * ty),
+            ty: -(newC * tx + newD * ty)
         )
     }
 }
