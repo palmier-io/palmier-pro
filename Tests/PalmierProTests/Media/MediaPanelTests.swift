@@ -657,7 +657,8 @@ struct MediaPanelInteractionTests {
         #expect(e.selectedFolderIds == [folderId])
         #expect(e.selectedMediaAssetIds.isEmpty)
         #expect(e.mediaPanelScrollTarget == MediaPanelItemKey.folder(folderId))
-        #expect(e.undo.undoLatest() == "New Folder")
+        #expect(undoManager.undoActionName == "New Folder")
+        #expect(e.undo.undoLatest())
         #expect(e.folder(id: folderId) == nil)
         #expect(e.selectedMediaAssetIds == [clip.id])
     }
@@ -690,7 +691,8 @@ struct MediaPanelInteractionTests {
 
         #expect(e.folder(id: folderId) == nil)
         #expect(e.mediaAssets.map(\.id) == [keep.id])
-        #expect(e.undo.undoLatest() == "Delete Media Items")
+        #expect(undoManager.undoActionName == "Delete Media Items")
+        #expect(e.undo.undoLatest())
         #expect(e.folder(id: folderId) != nil)
         #expect(Set(e.mediaAssets.map(\.id)) == Set(selectedAssets.map(\.id) + [keep.id]))
         #expect(e.selectedFolderIds == [folderId])

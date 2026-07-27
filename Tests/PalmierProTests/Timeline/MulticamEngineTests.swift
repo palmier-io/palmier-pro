@@ -636,7 +636,7 @@ struct MulticamTests {
         )
 
         #expect(manager.undoActionName == "Ripple Trim")
-        #expect(h.editor.undo.undoLatest() == "Ripple Trim")
+        #expect(h.editor.undo.undoLatest())
         #expect(h.editor.timeline == before)
     }
 
