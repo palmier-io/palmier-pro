@@ -12,7 +12,7 @@ struct OverwriteEngineTests {
     }
 
     @Test func noClipsProducesNoActions() {
-        #expect(OverwriteEngine.computeOverwrite(clips: [], regionStart: 0, regionEnd: 100, idProvider: { UUID().uuidString }).isEmpty)
+        #expect(OverwriteEngine.computeOverwrite(clips: [] as [Clip], regionStart: 0, regionEnd: 100, idProvider: { UUID().uuidString }).isEmpty)
     }
 
     @Test func clipFullyOutsideRegionIsIgnored() {
