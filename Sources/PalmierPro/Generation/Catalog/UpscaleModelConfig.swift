@@ -1,11 +1,5 @@
 import Foundation
 
-struct UpscaleSettings: Codable, Sendable, Equatable {
-    var selections: [String: String] = [:]
-    var numbers: [String: Double] = [:]
-    var toggles: [String: Bool] = [:]
-}
-
 struct UpscaleGenerationParams: Encodable, Sendable {
     let sourceURL: String
     let durationSeconds: Int

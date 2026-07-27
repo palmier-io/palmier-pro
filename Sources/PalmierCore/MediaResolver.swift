@@ -1,36 +1,36 @@
 import Foundation
 
 /// Resolves asset IDs to file URLs using the media manifest.
-final class MediaResolver: @unchecked Sendable {
+public final class MediaResolver: @unchecked Sendable {
     private let manifest: () -> MediaManifest
     private let projectURL: () -> URL?
 
-    init(manifest: @escaping () -> MediaManifest, projectURL: @escaping () -> URL?) {
+    public init(manifest: @escaping () -> MediaManifest, projectURL: @escaping () -> URL?) {
         self.manifest = manifest
         self.projectURL = projectURL
     }
 
-    func resolveURL(for assetId: String) -> URL? {
+    public func resolveURL(for assetId: String) -> URL? {
         guard let url = expectedURL(for: assetId) else { return nil }
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
-    func expectedURL(for assetId: String) -> URL? {
+    public func expectedURL(for assetId: String) -> URL? {
         guard let entry = entry(for: assetId) else { return nil }
         return Self.expectedURL(for: entry, projectURL: projectURL())
     }
 
-    func expectedURLMap() -> [String: URL] {
+    public func expectedURLMap() -> [String: URL] {
         Self.expectedURLMap(entries: manifest().entries, projectURL: projectURL())
     }
 
-    func snapshot() -> MediaResolver {
+    public func snapshot() -> MediaResolver {
         let manifest = manifest()
         let projectURL = projectURL()
         return MediaResolver(manifest: { manifest }, projectURL: { projectURL })
     }
 
-    static func expectedURLMap(entries: [MediaManifestEntry], projectURL: URL?) -> [String: URL] {
+    public static func expectedURLMap(entries: [MediaManifestEntry], projectURL: URL?) -> [String: URL] {
         var seenIds: Set<String> = []
         var urls: [String: URL] = [:]
         urls.reserveCapacity(entries.count)
@@ -50,14 +50,14 @@ final class MediaResolver: @unchecked Sendable {
         }
     }
 
-    func isMissing(for assetId: String) -> Bool {
+    public func isMissing(for assetId: String) -> Bool {
         guard let url = expectedURL(for: assetId) else { return true }
         return !FileManager.default.fileExists(atPath: url.path)
     }
 
     /// Compute the set of asset IDs whose backing file is missing on disk, from a
     /// snapshot of manifest entries + the project base path
-    static func missingAssetIds(entries: [MediaManifestEntry], projectPath: String?) -> Set<String> {
+    public static func missingAssetIds(entries: [MediaManifestEntry], projectPath: String?) -> Set<String> {
         var missing: Set<String> = []
         for entry in entries {
             let path: String?
@@ -75,11 +75,11 @@ final class MediaResolver: @unchecked Sendable {
         return missing
     }
 
-    func displayName(for assetId: String) -> String {
+    public func displayName(for assetId: String) -> String {
         entry(for: assetId)?.name ?? "Offline"
     }
 
-    func entry(for assetId: String) -> MediaManifestEntry? {
+    public func entry(for assetId: String) -> MediaManifestEntry? {
         manifest().entries.first(where: { $0.id == assetId })
     }
 }
