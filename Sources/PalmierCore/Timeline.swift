@@ -101,9 +101,22 @@ public struct Track: Codable, Sendable, Equatable, Identifiable {
     /// on 64-bit); clamped to [32, 200] on decode to match the app's TrackSize.
     public var displayHeight: Double = 50
 
-    public init(type: ClipType, clips: [Clip] = []) {
+    public init(
+        id: String = UUID().uuidString,
+        type: ClipType,
+        muted: Bool = false,
+        hidden: Bool = false,
+        syncLocked: Bool = true,
+        clips: [Clip] = [],
+        displayHeight: Double = 50
+    ) {
+        self.id = id
         self.type = type
+        self.muted = muted
+        self.hidden = hidden
+        self.syncLocked = syncLocked
         self.clips = clips
+        self.displayHeight = displayHeight
     }
 
     public var endFrame: Int {
