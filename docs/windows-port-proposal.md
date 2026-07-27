@@ -232,20 +232,39 @@ can be regenerated and tracked as the extraction proceeds.
 Verified evidence for the first extraction slice (`PalmierCore`), recorded per
 the project rule "Report exactly what was run."
 
-**Environment blocker.** The swift.org 6.3.3 Windows installer fails to
-extract files on the development machine (Burn bootstrapper reports exit 0 but
-lays down nothing across 6 attempts: winget silent, winget GUI, Repair,
-elevated RunAs, and elevated `/install /quiet` from admin PowerShell after
-clearing orphaned MSI registrations). Root cause not isolated. Native Windows
-Swift is deferred until the host's Burn/MSI issue is resolved.
+**Environment note (corrected).** The swift.org 6.3.3 Windows installer works
+fine — it installs to a **per-user** path (`%LOCALAPPDATA%\Programs\Swift`, as
+declared in the Burn manifest's `InstallRoot`), NOT the older
+`C:\Library\Developer\Toolchains\` convention. An earlier version of this
+document claimed the installer was broken; that was wrong. Every install
+attempt succeeded; the files were landing in the per-user location all along,
+and the wrong path was being checked. Apologies for the noise.
 
-**Working verification path: `swift:6.3` in Docker Desktop** (Linux Swift
-6.3.3, x86_64). The macOS-26 platform pin in `Package.swift` does not block
-SwiftPM resolution on Linux, but the root package's test target depends on
-AppKit/AVFoundation/Metal and will not build there. `PalmierCore` is therefore
-verified in isolation: build the core target against the root package, and run
-the core tests against a throwaway standalone package that symlinks only
-`Sources/PalmierCore` and `Tests/PalmierCore`.
+**Primary verification path: native Windows Swift** (`x86_64-unknown-windows-msvc`).
+The toolchain at `%LOCALAPPDATA%\Programs\Swift` needs the MSVC environment
+sourced plus both the Toolchains and Runtimes `usr\bin` on `PATH`, and the
+Windows SDK exposed via `SDKROOT`. A reusable batch wrapper:
+
+```bat
+@echo off
+call "C:\Program Files (x86)\Microsoft Visual Studio\<ver>\<edition>\VC\Auxiliary\Build\vcvars64.bat"
+set "SWIFT_ROOT=%LOCALAPPDATA%\Programs\Swift"
+set "TC=%SWIFT_ROOT%\Toolchains\6.3.3+Asserts\usr"
+set "PATH=%TC%\bin;%SWIFT_ROOT%\Runtimes\6.3.3\usr\bin;%PATH%"
+set "SDKROOT=%SWIFT_ROOT%\Platforms\6.3.3\Windows.platform\Developer\SDKs\Windows.sdk"
+set "SWIFT_DRIVER_WINDOWS_SDK=Windows.sdk"
+swift --version   # → Swift 6.3.3, Target: x86_64-unknown-windows-msvc
+```
+
+The root `Package.swift` cannot build on Windows (Sparkle/Sentry/Lottie/MLX
+xcframeworks are Apple-only), so `PalmierCore` is verified in isolation: a
+throwaway `Package.swift` symlinks only `Sources/PalmierCore` and
+`Tests/PalmierCore`, avoiding the macOS-only dependency graph entirely.
+
+**Fallback verification path: `swift:6.3` in Docker Desktop** (Linux Swift
+6.3.3, x86_64) — same isolated-package technique. Useful when the host's MSVC
+environment isn't easily sourced. Linux is a valid second witness for core
+portability; native Windows is authoritative for Windows-target work.
 
 **Commands actually run and results:**
 
