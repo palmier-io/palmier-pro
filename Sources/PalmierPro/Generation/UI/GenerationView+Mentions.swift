@@ -7,7 +7,8 @@ extension GenerationView {
         guard showsRefSections else { return [] }
         if selectedType == .audio {
             return refAudios.indices.map {
-                RefTag(label: "Audio\($0 + 1)", kindLabel: ClipType.audio.rawValue)
+                // The mention token is part of the prompt protocol and must stay stable.
+                RefTag(label: String(format: "Audio%d", $0 + 1), kindLabel: ClipType.audio.trackLabel)
             }
         }
         return ClipType.allCases.flatMap { type -> [RefTag] in

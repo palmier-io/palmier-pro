@@ -286,7 +286,11 @@ extension GenerationView {
                                 dragValueAdjustment: { $0.rounded() },
                                 onChanged: { selectedAudioDuration = Int($0.rounded()) }
                             ) { selectedAudioDuration = Int($0.rounded()) }
-                            .help("Duration (\(range.minimum)-\(range.maximum) seconds)")
+                            .help(L10n.format(
+                                "Duration (%d-%d seconds)",
+                                range.minimum,
+                                range.maximum
+                            ))
                         }
                     }
                 }
@@ -333,7 +337,9 @@ extension GenerationView {
                         .controlSize(.small)
                         .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
-                        .help(savings.map { "Turn off to save \($0)% on generation cost." } ?? "Turn off to skip audio generation.")
+                        .help(savings.map {
+                            L10n.format("Turn off to save %d%% on generation cost.", $0)
+                        } ?? L10n.string("Turn off to skip audio generation."))
                 }
             }
             .padding(AppTheme.Spacing.lg)
