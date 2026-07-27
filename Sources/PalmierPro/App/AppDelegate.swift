@@ -4,6 +4,15 @@ import ClerkKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isTerminating = false
 
+    /// Resolves the storage roots before any window can touch them. Only a configured root does
+    /// file I/O here, so the default setup never risks a blocking touch from the main thread.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        Task.detached(priority: .userInitiated) {
+            StorageLocations.prepare()
+            Project.ensureStorageDirectory()
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Activate the app (required when launched from CLI, not a .app bundle)
         NSApp.setActivationPolicy(.regular)
@@ -13,9 +22,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = Updater.shared
 
         HomeWindowController.shared.showWindow(nil)
-        Task.detached(priority: .utility) {
-            Project.ensureStorageDirectory()
-        }
 
         AppNotifications.configure()
 

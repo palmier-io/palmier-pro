@@ -16,7 +16,7 @@ extension EditorViewModel {
         guard (try? projectPackageCoordinator.beginMutation()) != nil else { return }
 
         let filename = Self.uniqueClipFilename(for: clip.mediaType)
-        let mediaDir = projectURL?.appendingPathComponent(Project.mediaDirectoryName) ?? FileManager.default.temporaryDirectory
+        let mediaDir = projectURL?.appendingPathComponent(Project.mediaDirectoryName) ?? StorageLocations.temporaryDirectory
         let destURL = mediaDir.appendingPathComponent(filename)
 
         let placeholder = MediaAsset(url: destURL, type: clip.mediaType, name: "\(sourceName) (clip)")
@@ -70,7 +70,7 @@ extension EditorViewModel {
         guard (try? projectPackageCoordinator.beginMutation()) != nil else { return }
 
         let filename = Self.uniqueClipFilename(for: .video)
-        let mediaDir = projectURL?.appendingPathComponent(Project.mediaDirectoryName) ?? FileManager.default.temporaryDirectory
+        let mediaDir = projectURL?.appendingPathComponent(Project.mediaDirectoryName) ?? StorageLocations.temporaryDirectory
         let destURL = mediaDir.appendingPathComponent(filename)
 
         let placeholder = MediaAsset(url: destURL, type: .video, name: "Timeline range")
