@@ -150,7 +150,7 @@ final class TimelineHeaderView: NSView {
 
     // MARK: - Input handling (mute/hide/resize)
 
-    private var resizeDrag: (trackIndex: Int, originalHeight: CGFloat)?
+    private var resizeDrag: (trackIndex: Int, originalHeight: Double)?
     private var reorderDrag: (id: String, before: Timeline)?
 
     private func hitTestResizeHandle(at point: NSPoint) -> Int? {
@@ -217,9 +217,9 @@ final class TimelineHeaderView: NSView {
         guard let drag = resizeDrag else { return }
         let geo = TimelineGeometry(editor: editor, bounds: bounds)
         let trackTop = geo.trackY(at: drag.trackIndex)
-        let newHeight = max(TrackSize.minHeight, min(TrackSize.maxHeight, point.y - trackTop))
-        if editor.timeline.tracks[drag.trackIndex].displayHeight != newHeight {
-            editor.timeline.tracks[drag.trackIndex].displayHeight = newHeight
+        let clamped = max(Double(TrackSize.minHeight), min(Double(TrackSize.maxHeight), Double(point.y - trackTop)))
+        if editor.timeline.tracks[drag.trackIndex].displayHeight != clamped {
+            editor.timeline.tracks[drag.trackIndex].displayHeight = clamped
             needsDisplay = true
         }
     }

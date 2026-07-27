@@ -23,7 +23,7 @@ struct TimelineGeometry {
         self.init(
             pixelsPerFrame: editor.zoomScale,
             headerWidth: headerWidth,
-            trackHeights: editor.timeline.tracks.map(\.displayHeight),
+            trackHeights: editor.timeline.tracks.map { CGFloat($0.displayHeight) },
             bounds: bounds
         )
     }

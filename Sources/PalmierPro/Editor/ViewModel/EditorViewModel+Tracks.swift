@@ -131,10 +131,11 @@ extension EditorViewModel {
         guard timeline.tracks.indices.contains(trackIndex) else { return }
         let trackId = timeline.tracks[trackIndex].id
         let prev = timeline.tracks[trackIndex].displayHeight
-        timeline.tracks[trackIndex].displayHeight = max(TrackSize.minHeight, min(TrackSize.maxHeight, height))
+        let clamped = max(Double(TrackSize.minHeight), min(Double(TrackSize.maxHeight), Double(height)))
+        timeline.tracks[trackIndex].displayHeight = clamped
         registerTimelineUndo("Resize Track") { vm in
             guard let i = vm.timeline.tracks.firstIndex(where: { $0.id == trackId }) else { return }
-            vm.setTrackHeight(trackIndex: i, height: prev)
+            vm.setTrackHeight(trackIndex: i, height: CGFloat(prev))
         }
     }
 }
