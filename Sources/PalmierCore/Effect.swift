@@ -1,14 +1,14 @@
 import Foundation
 
 /// One entry in a clip's ordered effect stack
-struct Effect: Codable, Sendable, Equatable, Identifiable {
-    var id: String = UUID().uuidString
-    var type: String
-    var enabled: Bool = true
-    var params: [String: EffectParam] = [:]
+public struct Effect: Codable, Sendable, Equatable, Identifiable {
+    public var id: String = UUID().uuidString
+    public var type: String
+    public var enabled: Bool = true
+    public var params: [String: EffectParam] = [:]
 
-    init(id: String = UUID().uuidString, type: String, enabled: Bool = true,
-         params: [String: EffectParam] = [:]) {
+    public init(id: String = UUID().uuidString, type: String, enabled: Bool = true,
+                params: [String: EffectParam] = [:]) {
         self.id = id
         self.type = type
         self.enabled = enabled
@@ -19,7 +19,7 @@ struct Effect: Codable, Sendable, Equatable, Identifiable {
         case id, type, enabled, params
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
             id: (try? c.decode(String.self, forKey: .id)) ?? UUID().uuidString,
@@ -31,19 +31,19 @@ struct Effect: Codable, Sendable, Equatable, Identifiable {
 }
 
 /// A single effect parameter
-struct EffectParam: Codable, Sendable, Equatable {
-    var value: Double?
-    var string: String?
-    var track: KeyframeTrack<Double>?
+public struct EffectParam: Codable, Sendable, Equatable {
+    public var value: Double?
+    public var string: String?
+    public var track: KeyframeTrack<Double>?
 
-    init(value: Double? = nil, string: String? = nil, track: KeyframeTrack<Double>? = nil) {
+    public init(value: Double? = nil, string: String? = nil, track: KeyframeTrack<Double>? = nil) {
         self.value = value
         self.string = string
         self.track = track
     }
 
     /// Effective numeric value at a clip-relative frame offset.
-    func resolved(at offset: Int, default defaultValue: Double) -> Double {
+    public func resolved(at offset: Int, default defaultValue: Double) -> Double {
         if let track, track.isActive {
             return track.sample(at: offset, fallback: value ?? defaultValue)
         }
@@ -51,7 +51,7 @@ struct EffectParam: Codable, Sendable, Equatable {
     }
 }
 
-extension Effect {
+public extension Effect {
     /// Convenience for static numeric params.
     static func make(_ type: String, _ values: [String: Double] = [:]) -> Effect {
         Effect(type: type, params: values.mapValues { EffectParam(value: $0) })
