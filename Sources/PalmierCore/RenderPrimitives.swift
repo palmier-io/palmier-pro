@@ -41,19 +41,21 @@ public struct Mat3: Hashable, Sendable, Equatable {
 
     public static let identity = Mat3()
 
-    /// Compose transforms matching `CGAffineTransform.concatenating` semantics:
-    /// `t1.concatenating(t2)` applies `t1` first then `t2`, i.e. matrix product
-    /// `T2 * T1` where T is laid out as `[a b tx; c d ty; 0 0 1]` (CG's documented
-    /// `[1,1]=a [1,2]=b [2,1]=c [2,2]=d` positions). Verified empirically against
-    /// CGAffineTransform on macOS (see Mat3CGAffineTransformParityTests).
+    /// Compose transforms matching `CGAffineTransform.concatenating` semantics.
+    /// `t1.concatenating(t2)` is the matrix product `T1 * T2` with layout
+    /// `[a b tx; c d ty; 0 0 1]` (Apple: a=[1,1], b=[1,2], c=[2,1], d=[2,2]) —
+    /// i.e. apply `t2` to a point first, then `t1`. Verified empirically against
+    /// CGAffineTransform on macOS across diagonal, rotation, and flipY cases
+    /// (see Mat3CGAffineTransformParityTests); the earlier doc-only derivations
+    /// got the matrix layout / multiplication order wrong twice.
     public func concatenating(_ other: Mat3) -> Mat3 {
         Mat3(
-            a: other.a * a + other.b * c,
-            b: other.a * b + other.b * d,
-            c: other.c * a + other.d * c,
-            d: other.c * b + other.d * d,
-            tx: other.a * tx + other.b * ty + other.tx,
-            ty: other.c * tx + other.d * ty + other.ty
+            a: a * other.a + b * other.c,
+            b: a * other.b + b * other.d,
+            c: c * other.a + d * other.c,
+            d: c * other.b + d * other.d,
+            tx: tx * other.a + ty * other.c + other.tx,
+            ty: tx * other.b + ty * other.d + other.ty
         )
     }
 
