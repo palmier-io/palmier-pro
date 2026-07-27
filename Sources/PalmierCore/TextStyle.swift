@@ -30,6 +30,48 @@ public struct TextStyle: Codable, Sendable, Equatable, Hashable {
         self.fontSize = fontSize
     }
 
+    /// Full memberwise init (synthesized memberwise inits are internal; this
+    /// public form covers every partial shape callers use via default args).
+    public init(
+        fontName: String = "Helvetica-Bold",
+        fontSize: Double = 96,
+        fontScale: Double = 1.0,
+        widthScale: Double = 1.0,
+        heightScale: Double = 1.0,
+        tracking: Double = 0,
+        lineSpacing: Double = 0,
+        fontCase: FontCase = .mixed,
+        isBold: Bool = true,
+        isItalic: Bool = false,
+        isUnderlined: Bool = false,
+        isStruckThrough: Bool = false,
+        isOverlined: Bool = false,
+        color: RGBA = RGBA(),
+        alignment: Alignment = .center,
+        shadow: Shadow = Shadow(),
+        background: Background = Background(),
+        border: Outline = Outline()
+    ) {
+        self.fontName = fontName
+        self.fontSize = fontSize
+        self.fontScale = fontScale
+        self.widthScale = widthScale
+        self.heightScale = heightScale
+        self.tracking = tracking
+        self.lineSpacing = lineSpacing
+        self.fontCase = fontCase
+        self.isBold = isBold
+        self.isItalic = isItalic
+        self.isUnderlined = isUnderlined
+        self.isStruckThrough = isStruckThrough
+        self.isOverlined = isOverlined
+        self.color = color
+        self.alignment = alignment
+        self.shadow = shadow
+        self.background = background
+        self.border = border
+    }
+
     public enum Alignment: String, Codable, Sendable, CaseIterable, Hashable {
         case left
         case center
@@ -79,6 +121,20 @@ public struct TextStyle: Codable, Sendable, Equatable, Hashable {
         public var blur: Double = 6
 
         public init() {}
+
+        public init(
+            enabled: Bool = true,
+            color: RGBA = RGBA(r: 0, g: 0, b: 0, a: 0.6),
+            offsetX: Double = 0,
+            offsetY: Double = -2,
+            blur: Double = 6
+        ) {
+            self.enabled = enabled
+            self.color = color
+            self.offsetX = offsetX
+            self.offsetY = offsetY
+            self.blur = blur
+        }
     }
 
     public struct Outline: Codable, Sendable, Equatable, Hashable {

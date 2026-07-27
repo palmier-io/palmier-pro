@@ -56,7 +56,7 @@ struct AITransitionPlacementTests {
         let view = TimelineView(editor: e)
         let geometry = TimelineGeometry(
             pixelsPerFrame: 1,
-            trackHeights: e.timeline.tracks.map(\.displayHeight)
+            trackHeights: e.timeline.tracks.map { CGFloat($0.displayHeight) }
         )
         let point = NSPoint(x: 130, y: Double(geometry.trackY(at: 0)) + 10)
 
