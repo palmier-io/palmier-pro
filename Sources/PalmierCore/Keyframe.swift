@@ -87,8 +87,8 @@ public protocol KeyframeInterpolatable {
     static func keyframeInterpolate(_ a: Self, _ b: Self, t: Double) -> Self
 }
 
-public extension Double {
-    static func keyframeInterpolate(_ a: Double, _ b: Double, t: Double) -> Double {
+extension Double: KeyframeInterpolatable {
+    public static func keyframeInterpolate(_ a: Double, _ b: Double, t: Double) -> Double {
         a + (b - a) * t
     }
 }
