@@ -129,31 +129,60 @@ struct AudioGenerationSubmission {
         var references: [MediaAsset] { imageRefs + audioRefs }
 
         @MainActor
-        func validate(for model: AudioModelConfig) -> String? {
+        func validate(for model: AudioModelConfig, localized: Bool = false) -> String? {
             if imageRefs.count > model.maxReferenceImages {
-                return "\(model.displayName) accepts at most \(model.maxReferenceImages) image reference(s)."
+                return L10n.message(
+                    "%@ accepts at most %d image reference(s)",
+                    localized: localized,
+                    model.displayName,
+                    model.maxReferenceImages
+                )
             }
             if audioRefs.count > model.maxReferenceAudios {
-                return "\(model.displayName) accepts at most \(model.maxReferenceAudios) audio references."
+                return L10n.message(
+                    "%@ accepts at most %d audio references",
+                    localized: localized,
+                    model.displayName,
+                    model.maxReferenceAudios
+                )
             }
             if model.referenceImagesAndAudiosExclusive,
                !imageRefs.isEmpty, !audioRefs.isEmpty {
-                return "\(model.displayName) uses either image or audio references, not both."
+                return L10n.message(
+                    "%@ uses either image or audio references, not both.",
+                    localized: localized,
+                    model.displayName
+                )
             }
             if imageRefs.contains(where: { $0.type != .image }) {
-                return "Image references must be image assets."
+                return L10n.message(
+                    "Image references must be image assets.",
+                    localized: localized
+                )
             }
             for asset in audioRefs {
                 guard asset.type == .audio else {
-                    return "Audio references must be audio assets."
+                    return L10n.message(
+                        "Audio references must be audio assets.",
+                        localized: localized
+                    )
                 }
                 if let maximum = model.maxReferenceAudioSeconds,
                    !asset.duration.isFinite || asset.duration <= 0 || asset.duration > maximum {
-                    return "\(asset.name) must be valid audio no longer than \(Int(maximum)) seconds."
+                    return L10n.message(
+                        "%@ must be valid audio no longer than %d seconds.",
+                        localized: localized,
+                        asset.name,
+                        Int(maximum)
+                    )
                 }
                 if let allowed = model.referenceAudioExtensions,
                    !allowed.contains(asset.url.pathExtension.lowercased()) {
-                    return "\(asset.name) must be a WAV or MP3 file."
+                    return L10n.message(
+                        "%@ must be a WAV or MP3 file.",
+                        localized: localized,
+                        asset.name
+                    )
                 }
             }
             return nil

@@ -1214,3 +1214,8 @@
 "Zoom Out" = "Zoom Out";
 "Zoom Preview to Cursor" = "Zoom Preview to Cursor";
 "Zoom to Cursor" = "Zoom to Cursor";
+"%@ must be a WAV or MP3 file." = "%@ must be a WAV or MP3 file.";
+"%@ must be valid audio no longer than %d seconds." = "%@ must be valid audio no longer than %d seconds.";
+"%@ uses either image or audio references, not both." = "%@ uses either image or audio references, not both.";
+"Audio references must be audio assets." = "Audio references must be audio assets.";
+"Image references must be image assets." = "Image references must be image assets.";

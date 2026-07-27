@@ -1236,3 +1236,8 @@
 "More upscale controls: Many more video upscale options with ByteDance Upscaler and Topaz, including upscaling to 60 fps and 4k." = "更多画质提升控制：ByteDance Upscaler 和 Topaz 新增更多视频画质提升选项，包括提升至 60 FPS 和 4K。";
 "Better media panel usability: Select, navigate, and delete multiple media browser items with standard Mac controls" = "改进媒体面板易用性：使用标准 Mac 操作选择、浏览和删除多个媒体浏览器项目";
 "New effect: Invert Colors in the Adjust inspector" = "新效果：调整检查器新增颜色反相";
+"%@ must be a WAV or MP3 file." = "%@ 必须是 WAV 或 MP3 文件。";
+"%@ must be valid audio no longer than %d seconds." = "%@ 必须是有效音频，且不超过 %d 秒。";
+"%@ uses either image or audio references, not both." = "%@ 只能使用图像或音频参考，不能同时使用两者。";
+"Audio references must be audio assets." = "音频参考必须是音频素材。";
+"Image references must be image assets." = "图像参考必须是图像素材。";
