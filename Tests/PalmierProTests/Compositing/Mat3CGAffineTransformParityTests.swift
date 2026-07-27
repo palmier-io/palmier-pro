@@ -36,6 +36,18 @@ struct Mat3CGAffineTransformParityTests {
     }
 
     @Test func concatenatingMatchesCGAffineTransform() {
+        // Diagnostics: capture CG results for off-diagonal cases (rotation, flipY).
+        let rot = Mat3(a: 0.5, b: 0.866, c: -0.866, d: 0.5, tx: 100, ty: 50)
+        let scl = Mat3(a: 2, b: 0, c: 0, d: 2, tx: 10, ty: -5)
+        let flip = Mat3(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: 1080)
+        let r1 = cg(scl).concatenating(cg(rot))
+        print("DIAG_B scl.concat(rot): CG a:\(r1.a) b:\(r1.b) c:\(r1.c) d:\(r1.d) tx:\(r1.tx) ty:\(r1.ty)")
+        let r2 = cg(rot).concatenating(cg(scl))
+        print("DIAG_C rot.concat(scl): CG a:\(r2.a) b:\(r2.b) c:\(r2.c) d:\(r2.d) tx:\(r2.tx) ty:\(r2.ty)")
+        let r3 = cg(flip).concatenating(cg(rot))
+        print("DIAG_D flip.concat(rot): CG a:\(r3.a) b:\(r3.b) c:\(r3.c) d:\(r3.d) tx:\(r3.tx) ty:\(r3.ty)")
+        let r4 = cg(flip).concatenating(cg(flip))
+        print("DIAG_E flip.concat(flip): CG a:\(r4.a) b:\(r4.b) c:\(r4.c) d:\(r4.d) tx:\(r4.tx) ty:\(r4.ty)")
         let ts = sampleTransforms()
         for t1 in ts {
             for t2 in ts {
