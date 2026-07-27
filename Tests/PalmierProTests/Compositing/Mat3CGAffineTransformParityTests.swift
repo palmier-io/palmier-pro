@@ -48,13 +48,6 @@ struct Mat3CGAffineTransformParityTests {
     }
 
     @Test func invertedMatchesCGAffineTransform() {
-        // Diagnostic: capture CGAffineTransform.inverted for the failing 90°-rotation case.
-        let rot90 = Mat3(a: 0, b: 1, c: -1, d: 0, tx: 1920, ty: 0)
-        let inv = cg(rot90).inverted()
-        print("DIAG_I rot90.inverted: CG a:\(inv.a) b:\(inv.b) c:\(inv.c) d:\(inv.d) tx:\(inv.tx) ty:\(inv.ty)")
-        let rot = Mat3(a: 0.5, b: 0.866, c: -0.866, d: 0.5, tx: 100, ty: 50)
-        let inv2 = cg(rot).inverted()
-        print("DIAG_J rot.inverted: CG a:\(inv2.a) b:\(inv2.b) c:\(inv2.c) d:\(inv2.d) tx:\(inv2.tx) ty:\(inv2.ty)")
         for t in sampleTransforms() where (t.a * t.d - t.b * t.c) != 0 {
             let cgResult = cg(t).inverted()
             let matResult = t.inverted()

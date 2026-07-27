@@ -42,20 +42,21 @@ public struct Mat3: Hashable, Sendable, Equatable {
     public static let identity = Mat3()
 
     /// Compose transforms matching `CGAffineTransform.concatenating` semantics.
-    /// `t1.concatenating(t2)` is the matrix product `T1 * T2` with layout
-    /// `[a b tx; c d ty; 0 0 1]` (Apple: a=[1,1], b=[1,2], c=[2,1], d=[2,2]) —
-    /// i.e. apply `t2` to a point first, then `t1`. Verified empirically against
-    /// CGAffineTransform on macOS across diagonal, rotation, and flipY cases
-    /// (see Mat3CGAffineTransformParityTests); the earlier doc-only derivations
-    /// got the matrix layout / multiplication order wrong twice.
+    /// CGAffineTransform stores `(a,b,c,d,tx,ty)` but the effective 3×3 matrix
+    /// layout is `[a c tx; b d ty; 0 0 1]` (i.e. `b` and `c` are swapped vs the
+    /// stored-tuple reading), and `t1.concatenating(t2)` is the product
+    /// `T_other * T_self` — apply `self` to a point first, then `other`.
+    /// Verified empirically against CGAffineTransform on macOS across diagonal,
+    /// rotation, and flipY cases; doc-only derivation got the layout/order wrong
+    /// repeatedly because the stored-tuple order doesn't match the matrix order.
     public func concatenating(_ other: Mat3) -> Mat3 {
         Mat3(
-            a: a * other.a + b * other.c,
-            b: a * other.b + b * other.d,
-            c: c * other.a + d * other.c,
-            d: c * other.b + d * other.d,
-            tx: tx * other.a + ty * other.c + other.tx,
-            ty: tx * other.b + ty * other.d + other.ty
+            a: other.a * a + other.c * b,
+            b: other.b * a + other.d * b,
+            c: other.a * c + other.c * d,
+            d: other.b * c + other.d * d,
+            tx: other.a * tx + other.c * ty + other.tx,
+            ty: other.b * tx + other.d * ty + other.ty
         )
     }
 
@@ -63,15 +64,15 @@ public struct Mat3: Hashable, Sendable, Equatable {
         let det = a * d - b * c
         guard det != 0 else { return .identity }
         let inv = 1 / det
-        let newA = d * inv
-        let newB = -b * inv
-        let newC = -c * inv
-        let newD = a * inv
-        // Layout [a b tx; c d ty]: inverse translation is -(linear * translation).
+        // Layout [a c tx; b d ty]: inverse linear is [d -c; -b a]/det and the
+        // inverse translation is (c*ty - d*tx, b*tx - a*ty)/det.
         return Mat3(
-            a: newA, b: newB, c: newC, d: newD,
-            tx: -(newA * tx + newB * ty),
-            ty: -(newC * tx + newD * ty)
+            a: d * inv,
+            b: -b * inv,
+            c: -c * inv,
+            d: a * inv,
+            tx: (c * ty - d * tx) * inv,
+            ty: (b * tx - a * ty) * inv
         )
     }
 }
