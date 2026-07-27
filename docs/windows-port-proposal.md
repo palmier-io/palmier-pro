@@ -285,3 +285,81 @@ proves only that the extracted core is portable and the new core tests pass.
 `MSYS_NO_PATHCONV=1` and the host path produced by `pwd -W`, otherwise MSYS
 rewrites Linux-style paths into broken Windows ones.
 
+## Extraction progress (shared core)
+
+The full editor data model has been extracted into `PalmierCore` as of this
+branch. 18 commits, ~25 portable Swift files, all building clean on Linux
+Swift 6.3.3 with 7/7 isolated core tests passing. Re-export via
+`@_exported import PalmierCore` absorbs the entire blast radius: no existing
+app call site or test required an import edit.
+
+**Portable types now in `Sources/PalmierCore/`:**
+
+- Editing engines: `RippleEngine`, `OverwriteEngine`, `RippleClip` (protocol),
+  `FrameRange`, `ClipShift`, `GapSelection`
+- Clip model: `Clip`, `FadeEdge`, `Transform`, `Crop`, `CropAspectLock`,
+  `ClipType`, `BlendMode`, `Effect`/`EffectParam`, `VideoLayout`
+- Timeline model: `Timeline`, `Track`, `ClipLocation`, `TimelineViewState`
+- Animation: `Keyframe`, `KeyframeTrack`, `Interpolation`, `AnimPair`,
+  `KeyframeInterpolatable`, `AnimatableProperty`, `smoothstep`
+- Text: `TextStyle` (+ `RGBA`/`Shadow`/`Outline`/`Background`/`Alignment`/
+  `FontCase`), `TextAnimation`, `WordTiming`, `TextFillMode`
+- Media/project: `MediaManifest`/`MediaManifestEntry`/`MediaImportInput`/
+  `GenerationInput`/`MediaSource`, `MediaResolver`, `MediaFolder`,
+  `UpscaleSettings`, `MulticamSource` (+ `Member`/`MemberKind`/`SyncMap`),
+  `ProjectFile`, `SpeakerRegistryEntry`
+- Audio: `VolumeScale`
+
+**Refactors performed during extraction (behavior-preserving):**
+
+- `OverwriteEngine.computeOverwrite` takes an injected `idProvider` instead of
+  calling `UUID()` internally — engine is now pure and deterministic.
+- `Track.displayHeight: CGFloat` → `Double` (CGFloat is Double on 64-bit).
+- `TimelineViewState.zoomScale` default: `Defaults.pixelsPerFrame` → `4.0`
+  literal.
+- `TrackSize.minHeight/maxHeight` clamp in `Track.init(from:)` → inlined
+  `32`/`200` literals.
+- `TextStyle` split: data model + `scaledVisualStyle`/`displayText`/RGBA hex in
+  core; AppKit/CoreText/SwiftUI rendering surface (`resolvedFont`,
+  `paragraphStyle`, `attributes`, `nsColor`, etc.) stays in the app.
+  Bold/italic font-trait inference during decode uses a registered
+  `boldItalicInference` hook the app installs at first use
+  (`usePlatformFontTraitInference`) — `nonisolated(unsafe)` justified by the
+  set-once-before-any-decode invariant.
+- `Keyframe` split: generic machinery in core; `extension Crop:
+  KeyframeInterpolatable` and the `Clip` inspector helpers stay app-side (the
+  conformance moved to core once `Crop` did).
+
+**Bugs caught by verification (docker build), each fixed in its own commit:**
+
+- `extension Double: KeyframeInterpolatable` lost its protocol annotation when
+  made `public`, breaking `KeyframeTrack<Double>.sample`.
+- `extension Crop: KeyframeInterpolatable` had to follow `Crop` into core once
+  `Clip.cropAt` called `KeyframeTrack<Crop>.sample` from the core module.
+- `Clip.contains(timelineFrame:)` had to move into core because
+  `Clip.liveVolumeKfDb` calls it and `Clip` is now in core.
+- `Track` was missing its full public memberwise init, breaking
+  `Track.init(from:)`'s delegation.
+
+**Still in the app (not yet portable):**
+
+- `HueCurves` — blocked on `EffectRegistry` (CoreImage).
+- `GradeCurve` (CoreImage), `Matte` (AppKit), `MediaAsset` (AVFoundation),
+  `TextLayout` (CoreText) — Apple-coupled, stay app-side until those surfaces
+  gain portable abstractions.
+- All UI, all media I/O, all rendering, the `EditorViewModel`, undo, MCP host.
+
+## Honest standing
+
+The shared-core extraction sub-project (~15% of a Windows port) is **largely
+complete**. The remaining ~5% (`HueCurves` + the CoreImage/AVFoundation/AppKit
+model files) requires abstracting the rendering/media surfaces themselves,
+which overlaps with the much larger media-engine rewrite. Further core
+extraction has diminishing returns until the media layer is addressed.
+
+Next major sub-projects, in order of size: media engine (Direct3D/Media
+Foundation, ~40%), UI (WinUI 3, ~30%), then undo/ViewModel rehost, media I/O
+coordination, and updates/auth/telemetry swaps. The native Windows Swift
+toolchain remains blocked by the host's Burn/MSI installer issue and is
+required before any of that work can be verified locally.
+
