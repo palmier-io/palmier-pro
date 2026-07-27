@@ -51,8 +51,8 @@ public struct Mat3: Hashable, Sendable, Equatable {
             b: b * other.a + d * other.b,
             c: a * other.c + c * other.d,
             d: b * other.c + d * other.d,
-            tx: tx * other.a + ty * other.c + other.tx,
-            ty: tx * other.b + ty * other.d + other.ty
+            tx: a * other.tx + c * other.ty + tx,
+            ty: b * other.tx + d * other.ty + ty
         )
     }
 
