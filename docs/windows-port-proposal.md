@@ -226,3 +226,62 @@ Reproducible analysis lives in `scripts/analyze-portability.py` (added with the
 first extraction commit). It classifies every Swift file by import set and
 flags Apple-specific symbols inside Foundation-only files, so the numbers above
 can be regenerated and tracked as the extraction proceeds.
+
+## Verification record
+
+Verified evidence for the first extraction slice (`PalmierCore`), recorded per
+the project rule "Report exactly what was run."
+
+**Environment blocker.** The swift.org 6.3.3 Windows installer fails to
+extract files on the development machine (Burn bootstrapper reports exit 0 but
+lays down nothing across 6 attempts: winget silent, winget GUI, Repair,
+elevated RunAs, and elevated `/install /quiet` from admin PowerShell after
+clearing orphaned MSI registrations). Root cause not isolated. Native Windows
+Swift is deferred until the host's Burn/MSI issue is resolved.
+
+**Working verification path: `swift:6.3` in Docker Desktop** (Linux Swift
+6.3.3, x86_64). The macOS-26 platform pin in `Package.swift` does not block
+SwiftPM resolution on Linux, but the root package's test target depends on
+AppKit/AVFoundation/Metal and will not build there. `PalmierCore` is therefore
+verified in isolation: build the core target against the root package, and run
+the core tests against a throwaway standalone package that symlinks only
+`Sources/PalmierCore` and `Tests/PalmierCore`.
+
+**Commands actually run and results:**
+
+```bash
+# 1. Build the core target (resolves full dep graph first; ~10 min):
+docker run --rm -v "$(pwd):/work" -w /work swift:6.3 \
+  swift build --target PalmierCore
+# Result: Build of target 'PalmierCore' complete! — compiles clean, 0 warnings.
+
+# 2. Run the core tests in an isolated package (does not touch the repo):
+docker run --rm -v "$(pwd):/work" -w /work swift:6.3 bash -c '
+  mkdir -p /tmp/iso/Sources/PalmierCore /tmp/iso/Tests/PalmierCoreTests
+  for f in Sources/PalmierCore/*.swift; do
+    ln -s "$(pwd)/$f" "/tmp/iso/Sources/PalmierCore/$(basename $f)"; done
+  for f in Tests/PalmierCore/*.swift; do
+    ln -s "$(pwd)/$f" "/tmp/iso/Tests/PalmierCoreTests/$(basename $f)"; done
+  cat > /tmp/iso/Package.swift <<EOF
+// swift-tools-version: 6.0
+import PackageDescription
+let package = Package(name: "PalmierCoreIso", targets: [
+    .target(name: "PalmierCore", path: "Sources/PalmierCore"),
+    .testTarget(name: "PalmierCoreTests", dependencies: ["PalmierCore"],
+                path: "Tests/PalmierCoreTests"),
+])
+EOF
+  cd /tmp/iso && swift test'
+# Result: Test run with 7 tests in 2 suites passed after 0.001 seconds.
+```
+
+**What was NOT verified:** the full `PalmierPro` app build (macOS-26-only,
+cannot build on Linux/Windows) and the existing macOS test suites
+(`RippleEngineTests`, `OverwriteEngineTests`, etc.) which compile against
+`@testable import PalmierPro`. Those must be run on a Mac. The docker path
+proves only that the extracted core is portable and the new core tests pass.
+
+**Git Bash on Windows note:** Docker mounts and `-w` paths must be wrapped with
+`MSYS_NO_PATHCONV=1` and the host path produced by `pwd -W`, otherwise MSYS
+rewrites Linux-style paths into broken Windows ones.
+
