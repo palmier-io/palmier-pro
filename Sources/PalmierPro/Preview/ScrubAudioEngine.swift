@@ -91,30 +91,27 @@ final class ScrubAudioEngine {
 
     func configure(asset: AVAsset?, audioMix: AVAudioMix?, resetMeter: Bool = true) {
         let mixOnlyChange = asset != nil && asset === source?.asset
-        let anchor = lastRequestedSample ?? 0
         stopScrubbing()
         cancelFill()
         sourceGeneration &+= 1
         source = asset.map { Source(asset: $0, audioMix: audioMix, generation: sourceGeneration) }
         if mixOnlyChange {
-            scheduleMixInvalidation(anchor: anchor)
+            scheduleMixInvalidation()
         } else {
             mixInvalidationTask?.cancel()
             mixInvalidationTask = nil
             windows.removeAll()
-            if let source { startFill(from: anchor, source: source) }
         }
         if resetMeter { meter.reset() }
     }
 
-    private func scheduleMixInvalidation(anchor: Int64) {
+    private func scheduleMixInvalidation() {
         mixInvalidationTask?.cancel()
         mixInvalidationTask = Task { [weak self] in
             try? await Task.sleep(for: Self.mixInvalidationDebounce)
             guard !Task.isCancelled, let self else { return }
             self.mixInvalidationTask = nil
             self.windows.removeAll()
-            if let source = self.source { self.startFill(from: self.lastRequestedSample ?? anchor, source: source) }
         }
     }
 
