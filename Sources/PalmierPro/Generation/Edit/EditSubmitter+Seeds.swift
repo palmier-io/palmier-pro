@@ -1,13 +1,32 @@
 import Foundation
 
 extension EditSubmitter {
+    static func reframeSeed(for asset: MediaAsset) -> GenerationInput? {
+        guard asset.type == .video, let model = VideoModelConfig.reframe else { return nil }
+        let isPortrait: Bool
+        if let width = asset.sourceWidth, let height = asset.sourceHeight {
+            isPortrait = height > width
+        } else {
+            isPortrait = false
+        }
+        var stored = GenerationInput(
+            prompt: "",
+            model: model.id,
+            duration: 0,
+            aspectRatio: isPortrait ? "16:9" : "9:16",
+            resolution: model.resolutions?.contains("1080p") == true
+                ? "1080p"
+                : model.resolutions?.first
+        )
+        stored.imageURLAssetIds = [asset.id]
+        return stored
+    }
+
     static func editSeed(for asset: MediaAsset) -> GenerationInput? {
         let modelId: String
         switch asset.type {
         case .video:
-            guard let model = VideoModelConfig.allModels.first(where: { $0.requiresSourceVideo }) else {
-                return nil
-            }
+            guard let model = VideoModelConfig.edit else { return nil }
             modelId = model.id
         case .image:
             guard let model = ImageModelConfig.nanoBananaPro else { return nil }

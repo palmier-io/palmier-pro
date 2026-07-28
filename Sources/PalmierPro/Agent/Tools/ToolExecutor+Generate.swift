@@ -73,7 +73,13 @@ extension ToolExecutor {
         let audioRefs = try referenceAssets(
             args, key: "referenceAudioMediaRefs", label: "Reference audio", editor: editor)
 
-        if let err = model.validate(duration: 0, aspectRatio: "", resolution: nil) {
+        let aspectRatio = args.string("aspectRatio") ?? model.aspectRatios.first ?? ""
+        let resolution = args.string("resolution") ?? model.resolutions?.first
+        if let err = model.validate(
+            duration: 0,
+            aspectRatio: aspectRatio,
+            resolution: resolution
+        ) {
             throw ToolError(err)
         }
         let inputAssets = VideoGenerationSubmission.InputAssets(
@@ -101,7 +107,7 @@ extension ToolExecutor {
         let genInput = GenerationInput(
             prompt: prompt, model: model.id,
             duration: duration,
-            aspectRatio: "", resolution: nil
+            aspectRatio: aspectRatio, resolution: resolution
         )
         let placeholderId = VideoGenerationSubmission.make(
             genInput: genInput,
@@ -594,6 +600,7 @@ extension ToolExecutor {
             info["referenceTagNoun"] = m.referenceTagNoun
         }
         if m.requiresSourceVideo { info["requiresSourceVideo"] = true }
+        if let seconds = m.maxSourceVideoSeconds { info["maxSourceVideoSeconds"] = seconds }
         if m.requiresReferenceImage { info["requiresReferenceImage"] = true }
         if m.requiresReferenceAudio { info["requiresReferenceAudio"] = true }
         return info

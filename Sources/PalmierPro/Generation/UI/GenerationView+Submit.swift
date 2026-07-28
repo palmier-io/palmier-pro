@@ -20,7 +20,7 @@ extension GenerationView {
             if videoModel.requiresReferenceImage && imageReferences.isEmpty { return false }
             if videoModel.requiresReferenceAudio && refAudios.isEmpty { return false }
             if videoModel.isLipSync && effectiveVideoSeconds == 0 { return false }
-            if !videoModel.supportsReferences && isPromptEmpty { return false }
+            if videoModel.supportsPrompt && !videoModel.supportsReferences && isPromptEmpty { return false }
             return true
         }
         if selectedType == .video && videoModel.framesAndReferencesExclusive

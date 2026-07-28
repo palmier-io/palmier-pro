@@ -47,9 +47,6 @@ struct AIEditTab: View {
                             title: "Edit",
                             description: "Transform with a prompt or motion reference"
                         )
-                        if asset.type == .video, let model = lipSyncModel {
-                            lipSyncActionRow(model: model)
-                        }
                         actionRow(
                             action: .rerun,
                             icon: "arrow.clockwise",
@@ -57,6 +54,26 @@ struct AIEditTab: View {
                             description: "Regenerate with the same parameters",
                             detail: rerunCost
                         )
+                        if asset.type == .video, let model = VideoModelConfig.lipSync {
+                            actionRow(
+                                action: .lipSync,
+                                icon: "mouth",
+                                title: "Lip Sync",
+                                description: "Match mouth movement to replacement audio",
+                                detail: model.sourceDurationLimitLabel.map { "Up to \($0)" },
+                                triggerTitle: "Choose Audio"
+                            )
+                        }
+                        if asset.type == .video {
+                            actionRow(
+                                action: .reframe,
+                                icon: "aspectratio",
+                                title: "Reframe",
+                                description: "Change aspect ratio and extend the frame with AI",
+                                detail: VideoModelConfig.reframe?.sourceDurationLimitLabel
+                                    .map { "Up to \($0)" }
+                            )
+                        }
                         if asset.type == .image {
                             actionRow(
                                 action: .createVideo,
@@ -188,21 +205,6 @@ struct AIEditTab: View {
         trimmedSourceIfEnabled()?.durationSeconds
     }
 
-    private var lipSyncModel: VideoModelConfig? {
-        VideoModelConfig.allModels.first(where: { $0.isLipSync })
-    }
-
-    private func lipSyncAvailability(for model: VideoModelConfig) -> EditActionAvailability {
-        if asset.isGenerating {
-            return .disabled(reason: "Generation in progress")
-        }
-        let duration = effectiveDurationForAvailability ?? asset.resolvedDuration
-        if let error = model.validateSourceDuration(duration) {
-            return .disabled(reason: error)
-        }
-        return .available
-    }
-
     // MARK: - Action row
 
     @ViewBuilder
@@ -218,7 +220,7 @@ struct AIEditTab: View {
             for: asset,
             effectiveDurationOverride: effectiveDurationForAvailability
         )
-        let paidBlocked = (action == .upscale || action == .edit) && !account.isPaid
+        let paidBlocked = action.requiresPaidPlan && !account.isPaid
         let isEnabled = availability.isAvailable && !paidBlocked && aiDisabledReason == nil
         let disabledReason = aiDisabledReason
             ?? (paidBlocked ? "Requires a paid plan" : availability.reason)
@@ -243,30 +245,6 @@ struct AIEditTab: View {
             description: kind.description,
             triggerTitle: "Generate"
         )
-    }
-
-    private func lipSyncActionRow(model: VideoModelConfig) -> some View {
-        let availability = lipSyncAvailability(for: model)
-        let paidBlocked = model.paidOnly && !account.isPaid
-        let isEnabled = availability.isAvailable && !paidBlocked && aiDisabledReason == nil
-        let disabledReason = aiDisabledReason
-            ?? (paidBlocked ? "Requires a paid plan" : availability.reason)
-
-        return descriptiveActionRow(
-            icon: "mouth",
-            title: "Lip Sync",
-            description: "Match mouth movement to replacement audio",
-            detail: model.sourceDurationLimitLabel.map { "Up to \($0)" },
-            isEnabled: isEnabled,
-            disabledReason: disabledReason
-        ) {
-            Button("Choose Audio") {
-                presentLipSync(model: model)
-            }
-            .buttonStyle(.capsule(.secondary))
-            .controlSize(.small)
-            .disabled(!isEnabled)
-        }
     }
 
     @ViewBuilder
@@ -345,11 +323,6 @@ struct AIEditTab: View {
         )
     }
 
-    private func presentLipSync(model: VideoModelConfig) {
-        guard let stored = EditSubmitter.lipSyncSeed(for: asset, model: model) else { return }
-        seedPanel(stored: stored, trimmed: trimmedSourceIfEnabled())
-    }
-
     @ViewBuilder
     private func actionTrigger(action: EditAction, title: String, isEnabled: Bool) -> some View {
         switch action {
@@ -370,7 +343,7 @@ struct AIEditTab: View {
             .controlSize(.small)
             .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
             .disabled(!isEnabled)
-        case .edit, .generateMusic, .generateSFX, .rerun:
+        case .lipSync, .reframe, .edit, .generateMusic, .generateSFX, .rerun:
             Button(title) {
                 present(action)
             }
@@ -394,6 +367,13 @@ struct AIEditTab: View {
                 stored: EditSubmitter.upscaleSeed(for: asset, model: model, trimmedSource: trim),
                 trimmed: trim
             )
+        case .reframe:
+            guard let stored = EditSubmitter.reframeSeed(for: asset) else { return }
+            seedPanel(stored: stored, trimmed: trimmedSourceIfEnabled())
+        case .lipSync:
+            guard let model = VideoModelConfig.lipSync,
+                  let stored = EditSubmitter.lipSyncSeed(for: asset, model: model) else { return }
+            seedPanel(stored: stored, trimmed: trimmedSourceIfEnabled())
         case .createVideo: break // handled via menu
         case .edit:
             guard let stored = EditSubmitter.editSeed(for: asset) else { return }

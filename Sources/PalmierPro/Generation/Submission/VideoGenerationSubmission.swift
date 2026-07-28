@@ -68,9 +68,19 @@ struct VideoGenerationSubmission {
             genInput.referenceImageAssetIds = assetIds(inputAssets.imageRefs)
             genInput.referenceVideoAssetIds = assetIds(inputAssets.videoRefs)
             genInput.referenceAudioAssetIds = assetIds(inputAssets.audioRefs)
-            let preprocessSourceVideo = model.caps.maxSourceVideoResolution.map { resolution in
-                { @Sendable url in try await VideoCompressor.compressIfNeeded(
-                    url: url, maxResolution: resolution) }
+            let maxSourceVideoResolution = model.caps.maxSourceVideoResolution
+            let requiredSourceVideoEncoding = model.caps.requiredSourceVideoEncoding
+            let preprocessSourceVideo: (@Sendable (URL) async throws -> URL?)?
+            if maxSourceVideoResolution != nil || requiredSourceVideoEncoding != nil {
+                preprocessSourceVideo = { @Sendable url in
+                    try await VideoPreprocessor.transcodeIfNeeded(
+                        url: url,
+                        maxResolution: maxSourceVideoResolution,
+                        requiredEncoding: requiredSourceVideoEncoding
+                    )
+                }
+            } else {
+                preprocessSourceVideo = nil
             }
             let snapshotRefs = videoInputSnapshotter(
                 frameCount: sourceCount,
@@ -137,7 +147,7 @@ struct VideoGenerationSubmission {
         } else {
             preprocessRef = { _, asset in
                 guard asset.type == .video else { return nil }
-                return try await VideoCompressor.compressIfNeeded(url: asset.url)
+                return try await VideoPreprocessor.downscaleIfNeeded(url: asset.url)
             }
         }
 

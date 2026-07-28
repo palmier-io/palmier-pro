@@ -8,6 +8,21 @@ struct VideoModelConfig: Identifiable, Sendable {
     @MainActor
     static var allModels: [VideoModelConfig] { ModelCatalog.shared.video }
 
+    @MainActor
+    static var edit: VideoModelConfig? {
+        allModels.first(where: \.isEdit)
+    }
+
+    @MainActor
+    static var reframe: VideoModelConfig? {
+        allModels.first(where: { $0.id.contains("reframe") })
+    }
+
+    @MainActor
+    static var lipSync: VideoModelConfig? {
+        allModels.first(where: \.isLipSync)
+    }
+
     let entry: CatalogEntry
     let caps: VideoCaps
 
@@ -36,6 +51,9 @@ struct VideoModelConfig: Identifiable, Sendable {
     var maxSourceVideoSeconds: Double? { caps.maxSourceVideoSeconds }
     var requiresReferenceImage: Bool { caps.requiresReferenceImage }
     var requiresReferenceAudio: Bool { caps.requiresReferenceAudio ?? false }
+    var isEdit: Bool {
+        supportsPrompt && requiresSourceVideo && !requiresReferenceImage && !requiresReferenceAudio
+    }
     var isLipSync: Bool { !supportsPrompt && requiresSourceVideo && requiresReferenceAudio }
 
     var supportsReferences: Bool {
