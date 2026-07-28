@@ -48,6 +48,7 @@ struct MatteSheet: View {
         }
         .padding(AppTheme.Spacing.lgXl)
         .frame(width: AppTheme.Matte.sheetWidth)
+        .appSheetBackground()
     }
 
     private func row<Control: View>(icon: String, label: String, @ViewBuilder control: () -> Control) -> some View {

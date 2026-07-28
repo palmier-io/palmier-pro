@@ -88,10 +88,11 @@ extension ToolExecutor {
         let name = args["name"] as? String ?? Project.defaultProjectName
         let settingsArgs = args.filter { ["fps", "aspectRatio", "quality"].contains($0.key) }
         let settings = try settingsArgs.isEmpty ? nil : validateProjectSettings(settingsArgs)
+        let resolvedSettings = try settings?.resolve(for: Timeline())
         let doc = try await AppState.shared.createProject(named: name)
         bindProject(doc)
-        if let settings {
-            _ = try setProjectSettings(doc.editorViewModel, settings)
+        if let resolvedSettings {
+            _ = setProjectSettings(doc.editorViewModel, resolvedSettings)
         }
         notifyNowEditing(doc)
         let result = ToolResult.ok(Self.jsonString(projectSnapshot(doc, status: "created")) ?? "{}")

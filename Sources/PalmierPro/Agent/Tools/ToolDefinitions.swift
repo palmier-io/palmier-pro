@@ -122,13 +122,13 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .setProjectSettings,
-            description: "Change the project's frame rate, resolution, or aspect ratio. Pass any combination of fps, explicit width+height, aspectRatio, and quality. aspectRatio and explicit width/height are mutually exclusive; quality scales the current aspect ratio (or the selected preset when combined with aspectRatio). The timeline's existing clips are re-fitted automatically: auto-fit transforms recalculate for the new canvas size, and all frame positions/durations rescale when fps changes. Undoable.",
+            description: "Change the project's frame rate, resolution, or aspect ratio. Pass fps, explicit width+height, aspectRatio, or quality. aspectRatio accepts presets or a custom width:height value and preserves the current short-edge resolution unless quality is also supplied. Explicit width/height can't be combined with aspectRatio or quality. The timeline's existing clips are re-fitted automatically: auto-fit transforms recalculate for the new canvas size, and all frame positions/durations rescale when fps changes. Undoable.",
             inputSchema: objectSchema(
                 properties: [
                     "fps": ["type": "integer", "description": "Frame rate in frames per second. Common values: 24, 25, 30, 48, 50, 60."],
-                    "width": ["type": "integer", "description": "Canvas width in pixels. Use with height for an exact resolution. Mutually exclusive with aspectRatio."],
-                    "height": ["type": "integer", "description": "Canvas height in pixels. Use with width for an exact resolution. Mutually exclusive with aspectRatio."],
-                    "aspectRatio": ["type": "string", "enum": ["16:9", "9:16", "1:1", "4:3", "2.4:1", "9:14"], "description": "Preset aspect ratio — sets both width and height from the preset, or combined with quality to pick a specific size. Mutually exclusive with width/height."],
+                    "width": ["type": "integer", "description": "Canvas width in pixels. Requires height for an exact resolution. Mutually exclusive with aspectRatio and quality."],
+                    "height": ["type": "integer", "description": "Canvas height in pixels. Requires width for an exact resolution. Mutually exclusive with aspectRatio and quality."],
+                    "aspectRatio": ["type": "string", "description": "Canvas aspect ratio as width:height, such as '16:9', '3:2', or '2.39:1'. Preserves the current short edge, or uses quality when supplied. Mutually exclusive with width/height."],
                     "quality": ["type": "string", "enum": ["720p", "1080p", "2K", "4K"], "description": "Resolution quality preset — scales the short edge to the target while preserving the current (or specified) aspect ratio."],
                 ]
             )
@@ -1078,8 +1078,7 @@ enum ToolDefinitions {
                 "fps": ["type": "integer", "description": "Create only. Optional timeline frame rate (1-120)."],
                 "aspectRatio": [
                     "type": "string",
-                    "enum": ["16:9", "9:16", "1:1", "4:3", "2.4:1", "9:14"],
-                    "description": "Create only. Optional canvas aspect ratio.",
+                    "description": "Create only. Optional canvas aspect ratio as width:height, such as '16:9', '3:2', or '2.39:1'.",
                 ],
                 "quality": [
                     "type": "string",

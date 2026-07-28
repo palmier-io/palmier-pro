@@ -70,12 +70,13 @@ struct ProjectSettingsMismatchView: View {
         }
         .padding(AppTheme.Spacing.xl + AppTheme.Spacing.md)
         .frame(width: 360)
+        .appSheetBackground()
     }
 
     private func dismiss() {
-        editor.pendingSettingsContinuation?()
-        editor.pendingSettingsContinuation = nil
-        editor.pendingSettingsMismatch = nil
+        let continuation = editor.pendingSettingsContinuation
+        (editor.pendingSettingsContinuation, editor.pendingSettingsMismatch) = (nil, nil)
+        continuation?()
     }
 
     private var resolutionMismatch: Bool {
