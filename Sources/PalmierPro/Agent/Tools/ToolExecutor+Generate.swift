@@ -25,7 +25,7 @@ extension ToolExecutor {
     }
 
     func generate(_ editor: EditorViewModel, _ args: [String: Any], type: ClipType) throws -> ToolResult {
-        let prompt = try args.requireString("prompt")
+        let prompt = args["prompt"] == nil ? "" : try args.requireString("prompt")
         guard AccountService.shared.isSignedIn else {
             throw ToolError("Generation requires signing in to Palmier. Tell the user to sign in.")
         }
@@ -66,28 +66,48 @@ extension ToolExecutor {
         let sourceAsset = try asset(sourceRef, editor: editor, label: "Source video")
         let trimmed = try trimmedSource(args, editor: editor, source: sourceAsset)
 
-        var imageRefs: [MediaAsset] = []
-        for id in args.stringArray("referenceImageMediaRefs") {
-            imageRefs.append(try asset(id, editor: editor, label: "Reference image"))
-        }
+        let imageRefs = try referenceAssets(
+            args, key: "referenceImageMediaRefs", label: "Reference image", editor: editor)
+        let videoRefs = try referenceAssets(
+            args, key: "referenceVideoMediaRefs", label: "Reference video", editor: editor)
+        let audioRefs = try referenceAssets(
+            args, key: "referenceAudioMediaRefs", label: "Reference audio", editor: editor)
 
         if let err = model.validate(duration: 0, aspectRatio: "", resolution: nil) {
             throw ToolError(err)
         }
-        let inputAssets = VideoGenerationSubmission.InputAssets(sourceVideo: sourceAsset, imageRefs: imageRefs)
+        let inputAssets = VideoGenerationSubmission.InputAssets(
+            sourceVideo: sourceAsset,
+            imageRefs: imageRefs,
+            videoRefs: videoRefs,
+            audioRefs: audioRefs
+        )
         if let err = inputAssets.validate(for: model) {
             throw ToolError(err)
         }
 
+        let sourceVideoDuration = trimmed?.durationSeconds ?? sourceAsset.resolvedDuration
+        if let error = model.validateSourceDuration(sourceVideoDuration) {
+            throw ToolError(error)
+        }
+        guard let duration = model.billingDurationSeconds(
+            sourceVideoDuration: sourceVideoDuration,
+            sourceAudioDuration: audioRefs.first?.resolvedDuration
+        ) else {
+            throw ToolError(model.isLipSync
+                ? "Replacement audio has an invalid duration."
+                : "Source video has an invalid duration.")
+        }
         let genInput = GenerationInput(
-            prompt: prompt, model: model.id, duration: Int(sourceAsset.duration.rounded()),
+            prompt: prompt, model: model.id,
+            duration: duration,
             aspectRatio: "", resolution: nil
         )
         let placeholderId = VideoGenerationSubmission.make(
             genInput: genInput,
             model: model,
             inputAssets: inputAssets,
-            placeholderDuration: trimmed?.durationSeconds ?? (sourceAsset.duration > 0 ? sourceAsset.duration : 5),
+            placeholderDuration: sourceVideoDuration,
             trimmedSourceOverride: trimmed,
             name: args.string("name"),
             folderId: sourceAsset.folderId,
@@ -122,14 +142,12 @@ extension ToolExecutor {
             frameSlots.append(try asset(endRef, editor: editor, label: "End frame"))
         }
 
-        func refs(_ argName: String, label: String) throws -> [MediaAsset] {
-            try args.stringArray(argName).map { id in
-                try asset(id, editor: editor, label: label)
-            }
-        }
-        let imageRefs = try refs("referenceImageMediaRefs", label: "Image reference")
-        let videoRefs = try refs("referenceVideoMediaRefs", label: "Video reference")
-        let audioRefs = try refs("referenceAudioMediaRefs", label: "Audio reference")
+        let imageRefs = try referenceAssets(
+            args, key: "referenceImageMediaRefs", label: "Image reference", editor: editor)
+        let videoRefs = try referenceAssets(
+            args, key: "referenceVideoMediaRefs", label: "Video reference", editor: editor)
+        let audioRefs = try referenceAssets(
+            args, key: "referenceAudioMediaRefs", label: "Audio reference", editor: editor)
         let inputAssets = VideoGenerationSubmission.InputAssets(
             frames: frameSlots,
             imageRefs: imageRefs,
@@ -170,6 +188,17 @@ extension ToolExecutor {
             ? ", refs: \(imageRefCount)img/\(videoRefCount)vid/\(audioRefCount)aud"
             : ""
         return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), duration: \(duration)s, aspect: \(aspectRatio)\(refSummary)")
+    }
+
+    private func referenceAssets(
+        _ args: [String: Any],
+        key: String,
+        label: String,
+        editor: EditorViewModel
+    ) throws -> [MediaAsset] {
+        try args.stringArray(key).map { id in
+            try asset(id, editor: editor, label: label)
+        }
     }
 
     private func generateImage(
@@ -550,6 +579,7 @@ extension ToolExecutor {
             "supportsFirstFrame": m.supportsFirstFrame,
             "supportsLastFrame": m.supportsLastFrame,
             "supportsReferences": m.supportsReferences,
+            "supportsPrompt": m.supportsPrompt,
         ]
         if includeType { info["type"] = "video" }
         if let r = m.resolutions { info["resolutions"] = r }
@@ -563,6 +593,9 @@ extension ToolExecutor {
             if m.framesAndReferencesExclusive { info["framesAndReferencesExclusive"] = true }
             info["referenceTagNoun"] = m.referenceTagNoun
         }
+        if m.requiresSourceVideo { info["requiresSourceVideo"] = true }
+        if m.requiresReferenceImage { info["requiresReferenceImage"] = true }
+        if m.requiresReferenceAudio { info["requiresReferenceAudio"] = true }
         return info
     }
 

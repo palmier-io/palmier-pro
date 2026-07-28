@@ -54,35 +54,62 @@ struct VideoGenerationSubmission {
         generateAudio: Bool
     ) -> VideoGenerationSubmission {
         var genInput = baseInput
+        let outputName = name ?? (model.supportsPrompt ? nil : model.displayName)
         if model.requiresSourceVideo {
+            let sourceCount = inputAssets.sourceVideo == nil ? 0 : 1
+            let imageRefCount = inputAssets.imageRefs.count
+            let videoRefCount = inputAssets.videoRefs.count
+            let audioRefCount = inputAssets.audioRefs.count
             let references = inputAssets.editReferences
-            genInput.imageURLAssetIds = assetIds(references)
+            let sourceVideoDuration = trimmedSourceOverride?.hasTrim == true
+                ? trimmedSourceOverride?.durationSeconds
+                : inputAssets.sourceVideo?.resolvedDuration
+            genInput.imageURLAssetIds = assetIds(inputAssets.sourceVideo.map { [$0] } ?? [])
+            genInput.referenceImageAssetIds = assetIds(inputAssets.imageRefs)
+            genInput.referenceVideoAssetIds = assetIds(inputAssets.videoRefs)
+            genInput.referenceAudioAssetIds = assetIds(inputAssets.audioRefs)
             let preprocessSourceVideo = model.caps.maxSourceVideoResolution.map { resolution in
                 { @Sendable url in try await VideoCompressor.compressIfNeeded(
                     url: url, maxResolution: resolution) }
             }
+            let snapshotRefs = videoInputSnapshotter(
+                frameCount: sourceCount,
+                imageRefCount: imageRefCount,
+                videoRefCount: videoRefCount,
+                audioRefCount: audioRefCount
+            )
 
             return VideoGenerationSubmission(
                 genInput: genInput,
                 placeholderDuration: placeholderDuration,
                 references: references,
                 trimmedSourceOverride: trimmedSourceOverride,
-                name: name,
+                name: outputName,
                 folderId: folderId,
                 buildParams: { uploaded in
-                    .video(VideoGenerationParams(
+                    let urls = videoInputURLs(
+                        uploaded: uploaded,
+                        frameCount: sourceCount,
+                        imageRefCount: imageRefCount,
+                        videoRefCount: videoRefCount,
+                        audioRefCount: audioRefCount
+                    )
+                    return .video(VideoGenerationParams(
                         prompt: genInput.prompt,
                         duration: genInput.duration,
                         aspectRatio: genInput.aspectRatio,
                         resolution: genInput.resolution,
-                        sourceVideoURL: uploaded.first,
+                        sourceVideoDuration: sourceVideoDuration,
+                        sourceVideoURL: urls.frames.first,
                         startFrameURL: nil,
                         endFrameURL: nil,
-                        referenceImageURLs: Array(uploaded.dropFirst()),
+                        referenceImageURLs: urls.imageRefs,
+                        referenceVideoURLs: urls.videoRefs,
+                        referenceAudioURLs: urls.audioRefs,
                         generateAudio: generateAudio
                     ))
                 },
-                snapshotRefs: nil,
+                snapshotRefs: snapshotRefs,
                 preprocessRef: nil,
                 preprocessSourceVideo: preprocessSourceVideo
             )
@@ -119,7 +146,7 @@ struct VideoGenerationSubmission {
             placeholderDuration: placeholderDuration,
             references: references,
             trimmedSourceOverride: trimmedSourceOverride,
-            name: name,
+            name: outputName,
             folderId: folderId,
             buildParams: { uploaded in
                 let params = videoInputURLs(
@@ -162,7 +189,7 @@ struct VideoGenerationSubmission {
 
         @MainActor
         var editReferences: [MediaAsset] {
-            (sourceVideo.map { [$0] } ?? []) + imageRefs
+            (sourceVideo.map { [$0] } ?? []) + allRefs
         }
 
         @MainActor
@@ -186,18 +213,16 @@ struct VideoGenerationSubmission {
             guard sourceVideo.type == .video else {
                 return "sourceVideoMediaRef must reference a video asset"
             }
-            if !frames.isEmpty || !videoRefs.isEmpty || !audioRefs.isEmpty {
-                return "\(model.displayName) only accepts a source video and image references"
+            if !frames.isEmpty {
+                return "\(model.displayName) does not accept frame references"
             }
-            if !model.supportsReferences, !imageRefs.isEmpty {
-                return "\(model.displayName) does not accept image references"
+            if model.requiresReferenceImage && imageRefs.isEmpty {
+                return "\(model.displayName) requires an image reference"
             }
-            if imageRefs.count > model.maxReferenceImages {
-                return "\(model.displayName) accepts at most \(model.maxReferenceImages) image reference(s)"
+            if model.requiresReferenceAudio && audioRefs.isEmpty {
+                return "\(model.displayName) requires an audio reference"
             }
-            return validateTypes([
-                (imageRefs, .image, "referenceImageMediaRefs")
-            ])
+            return validateReferences(for: model, includingFrames: false)
         }
 
         @MainActor
@@ -217,14 +242,23 @@ struct VideoGenerationSubmission {
             if model.framesAndReferencesExclusive, !frames.isEmpty, !allRefs.isEmpty {
                 return "\(model.displayName) uses frames OR references, not both. Clear one side."
             }
+            return validateReferences(for: model, includingFrames: true)
+        }
+
+        @MainActor
+        private func validateReferences(
+            for model: VideoModelConfig,
+            includingFrames: Bool
+        ) -> String? {
+            let referenceLabel = model.requiresSourceVideo ? "reference(s)" : "references"
             if imageRefs.count > model.maxReferenceImages {
-                return "\(model.displayName) accepts at most \(model.maxReferenceImages) image references"
+                return "\(model.displayName) accepts at most \(model.maxReferenceImages) image \(referenceLabel)"
             }
             if videoRefs.count > model.maxReferenceVideos {
-                return "\(model.displayName) accepts at most \(model.maxReferenceVideos) video references"
+                return "\(model.displayName) accepts at most \(model.maxReferenceVideos) video \(referenceLabel)"
             }
             if audioRefs.count > model.maxReferenceAudios {
-                return "\(model.displayName) accepts at most \(model.maxReferenceAudios) audio references"
+                return "\(model.displayName) accepts at most \(model.maxReferenceAudios) audio \(referenceLabel)"
             }
             if let totalCap = model.maxTotalReferences, totalRefCount > totalCap {
                 return "\(model.displayName) accepts at most \(totalCap) references total"
@@ -237,12 +271,15 @@ struct VideoGenerationSubmission {
                audioRefs.reduce(0, { $0 + $1.duration }) > cap {
                 return "Combined audio reference duration exceeds \(Int(cap))s"
             }
-            return validateTypes([
-                (frames, .image, "frame references"),
+            var groups: [([MediaAsset], ClipType, String)] = [
                 (imageRefs, .image, "referenceImageMediaRefs"),
                 (videoRefs, .video, "referenceVideoMediaRefs"),
                 (audioRefs, .audio, "referenceAudioMediaRefs")
-            ])
+            ]
+            if includingFrames {
+                groups.insert((frames, .image, "frame references"), at: 0)
+            }
+            return validateTypes(groups)
         }
 
         @MainActor

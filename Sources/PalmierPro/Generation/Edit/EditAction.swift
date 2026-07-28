@@ -39,7 +39,7 @@ enum EditAction {
         case .edit:
             switch asset.type {
             case .video:
-                let duration = effectiveDurationOverride ?? Self.effectiveDuration(of: asset)
+                let duration = effectiveDurationOverride ?? asset.resolvedDuration
                 guard duration > 0 else {
                     return .disabled(reason: "Loading video metadata…")
                 }
@@ -99,14 +99,6 @@ enum EditAction {
         }
     }
 
-    /// Falls back to the recorded generation duration when AVAsset metadata hasn't loaded.
-    @MainActor
-    private static func effectiveDuration(of asset: MediaAsset) -> Double {
-        if asset.duration > 0 { return asset.duration }
-        if let gd = asset.generationInput?.duration, gd > 0 { return Double(gd) }
-        return 0
-    }
-
     @MainActor
     private static func videoAudioAvailability(
         for asset: MediaAsset,
@@ -119,7 +111,7 @@ enum EditAction {
         if asset.isGenerating {
             return .disabled(reason: "Generation in progress")
         }
-        let duration = effectiveDurationOverride ?? effectiveDuration(of: asset)
+        let duration = effectiveDurationOverride ?? asset.resolvedDuration
         guard duration > 0 else {
             return .disabled(reason: "Loading video metadata…")
         }

@@ -17,6 +17,7 @@ struct VideoModelConfig: Identifiable, Sendable {
     var paidOnly: Bool { entry.paidOnly }
     var creditsPerSecond: [String: Double] { entry.creditsPerSecond ?? [:] }
     var audioDiscountRate: [String: Double]? { entry.audioDiscountRate }
+    var supportsPrompt: Bool { caps.supportsPrompt ?? true }
 
     var durations: [Int] { caps.durations }
     var resolutions: [String]? { caps.resolutions }
@@ -32,10 +33,44 @@ struct VideoModelConfig: Identifiable, Sendable {
     var framesAndReferencesExclusive: Bool { caps.framesAndReferencesExclusive }
     var referenceTagNoun: String { caps.referenceTagNoun }
     var requiresSourceVideo: Bool { caps.requiresSourceVideo }
+    var maxSourceVideoSeconds: Double? { caps.maxSourceVideoSeconds }
     var requiresReferenceImage: Bool { caps.requiresReferenceImage }
+    var requiresReferenceAudio: Bool { caps.requiresReferenceAudio ?? false }
+    var isLipSync: Bool { !supportsPrompt && requiresSourceVideo && requiresReferenceAudio }
 
     var supportsReferences: Bool {
         maxReferenceImages > 0 || maxReferenceVideos > 0 || maxReferenceAudios > 0
+    }
+
+    var sourceDurationLimitLabel: String? {
+        guard let maximum = maxSourceVideoSeconds,
+              maximum.isFinite, maximum > 0,
+              let seconds = Int(exactly: maximum.rounded()) else { return nil }
+        if seconds.isMultiple(of: 60) {
+            let minutes = seconds / 60
+            return minutes == 1 ? "1 minute" : "\(minutes) minutes"
+        }
+        return seconds == 1 ? "1 second" : "\(seconds) seconds"
+    }
+
+    func validateSourceDuration(_ duration: Double) -> String? {
+        guard duration.isFinite, duration > 0 else {
+            return "Loading video metadata…"
+        }
+        guard let maximum = maxSourceVideoSeconds,
+              duration > maximum,
+              let limit = sourceDurationLimitLabel else { return nil }
+        return "\(displayName) supports source videos up to \(limit). Trim the clip to continue."
+    }
+
+    func billingDurationSeconds(
+        sourceVideoDuration: Double,
+        sourceAudioDuration: Double?
+    ) -> Int? {
+        let seconds = isLipSync ? sourceAudioDuration : sourceVideoDuration
+        guard let seconds, seconds.isFinite, seconds > 0,
+              let rounded = Int(exactly: seconds.rounded()) else { return nil }
+        return max(1, rounded)
     }
 
     func audioDiscount(for resolution: String?) -> Double? {
@@ -64,6 +99,7 @@ struct VideoModelConfig: Identifiable, Sendable {
 struct VideoGenerationParams: Encodable, Sendable {
     let prompt: String
     let duration: Int
+    let sourceVideoDuration: Double?
     let aspectRatio: String
     let resolution: String?
     let sourceVideoURL: String?
@@ -76,6 +112,7 @@ struct VideoGenerationParams: Encodable, Sendable {
 
     init(
         prompt: String, duration: Int, aspectRatio: String, resolution: String?,
+        sourceVideoDuration: Double? = nil,
         sourceVideoURL: String? = nil,
         startFrameURL: String? = nil, endFrameURL: String? = nil,
         referenceImageURLs: [String] = [],
@@ -83,7 +120,7 @@ struct VideoGenerationParams: Encodable, Sendable {
         referenceAudioURLs: [String] = [],
         generateAudio: Bool = true
     ) {
-        self.prompt = prompt; self.duration = duration
+        self.prompt = prompt; self.duration = duration; self.sourceVideoDuration = sourceVideoDuration
         self.aspectRatio = aspectRatio; self.resolution = resolution
         self.sourceVideoURL = sourceVideoURL
         self.startFrameURL = startFrameURL; self.endFrameURL = endFrameURL
@@ -94,7 +131,7 @@ struct VideoGenerationParams: Encodable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case kind, prompt, duration, aspectRatio, resolution, sourceVideoURL
+        case kind, prompt, duration, sourceVideoDuration, aspectRatio, resolution, sourceVideoURL
         case startFrameURL, endFrameURL, referenceImageURLs, referenceVideoURLs
         case referenceAudioURLs, generateAudio
     }
@@ -104,6 +141,7 @@ struct VideoGenerationParams: Encodable, Sendable {
         try c.encode("video", forKey: .kind)
         try c.encode(prompt, forKey: .prompt)
         try c.encode(duration, forKey: .duration)
+        try c.encodeIfPresent(sourceVideoDuration, forKey: .sourceVideoDuration)
         try c.encode(aspectRatio, forKey: .aspectRatio)
         try c.encodeIfPresent(resolution, forKey: .resolution)
         try c.encodeIfPresent(sourceVideoURL, forKey: .sourceVideoURL)

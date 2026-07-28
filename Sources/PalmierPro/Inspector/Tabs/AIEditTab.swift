@@ -20,15 +20,21 @@ struct AIEditTab: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
-                if hasScopeToggles {
-                    EditorPanelGroup("Scope", contentSpacing: AppTheme.Spacing.smMd) {
-                        if isVisualClipContext, clipId != nil { replaceToggle }
-                        if trimmedClipAvailable { trimmedClipToggle }
-                    }
+                if trimmedClipAvailable {
+                    trimmedClipToggle
+                        .padding(AppTheme.Spacing.smMd)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(AppTheme.Background.surfaceColor)
+                        .overlay(alignment: .bottom) {
+                            Rectangle()
+                                .fill(AppTheme.Border.primaryColor)
+                                .frame(height: AppTheme.BorderWidth.thin)
+                        }
                 }
 
                 if isVisualClipContext {
                     EditorPanelGroup("AI Enhance", isExpanded: $aiEnhanceExpanded, contentSpacing: AppTheme.Spacing.smMd) {
+                        if clipId != nil { replaceToggle }
                         actionRow(
                             action: .upscale,
                             icon: "sparkles.rectangle.stack",
@@ -41,6 +47,9 @@ struct AIEditTab: View {
                             title: "Edit",
                             description: "Transform with a prompt or motion reference"
                         )
+                        if asset.type == .video, let model = lipSyncModel {
+                            lipSyncActionRow(model: model)
+                        }
                         actionRow(
                             action: .rerun,
                             icon: "arrow.clockwise",
@@ -86,10 +95,6 @@ struct AIEditTab: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-    }
-
-    private var hasScopeToggles: Bool {
-        (isVisualClipContext && clipId != nil) || trimmedClipAvailable
     }
 
     private var showsAudioOutputOptions: Bool {
@@ -183,6 +188,21 @@ struct AIEditTab: View {
         trimmedSourceIfEnabled()?.durationSeconds
     }
 
+    private var lipSyncModel: VideoModelConfig? {
+        VideoModelConfig.allModels.first(where: { $0.isLipSync })
+    }
+
+    private func lipSyncAvailability(for model: VideoModelConfig) -> EditActionAvailability {
+        if asset.isGenerating {
+            return .disabled(reason: "Generation in progress")
+        }
+        let duration = effectiveDurationForAvailability ?? asset.resolvedDuration
+        if let error = model.validateSourceDuration(duration) {
+            return .disabled(reason: error)
+        }
+        return .available
+    }
+
     // MARK: - Action row
 
     @ViewBuilder
@@ -223,6 +243,30 @@ struct AIEditTab: View {
             description: kind.description,
             triggerTitle: "Generate"
         )
+    }
+
+    private func lipSyncActionRow(model: VideoModelConfig) -> some View {
+        let availability = lipSyncAvailability(for: model)
+        let paidBlocked = model.paidOnly && !account.isPaid
+        let isEnabled = availability.isAvailable && !paidBlocked && aiDisabledReason == nil
+        let disabledReason = aiDisabledReason
+            ?? (paidBlocked ? "Requires a paid plan" : availability.reason)
+
+        return descriptiveActionRow(
+            icon: "mouth",
+            title: "Lip Sync",
+            description: "Match mouth movement to replacement audio",
+            detail: model.sourceDurationLimitLabel.map { "Up to \($0)" },
+            isEnabled: isEnabled,
+            disabledReason: disabledReason
+        ) {
+            Button("Choose Audio") {
+                presentLipSync(model: model)
+            }
+            .buttonStyle(.capsule(.secondary))
+            .controlSize(.small)
+            .disabled(!isEnabled)
+        }
     }
 
     @ViewBuilder
@@ -299,6 +343,11 @@ struct AIEditTab: View {
             useTrimmedClip: useTrimmedClip,
             placeOnTimeline: placeAudioOnTimeline
         )
+    }
+
+    private func presentLipSync(model: VideoModelConfig) {
+        guard let stored = EditSubmitter.lipSyncSeed(for: asset, model: model) else { return }
+        seedPanel(stored: stored, trimmed: trimmedSourceIfEnabled())
     }
 
     @ViewBuilder

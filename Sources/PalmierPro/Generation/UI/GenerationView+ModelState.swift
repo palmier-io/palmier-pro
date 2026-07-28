@@ -130,7 +130,12 @@ extension GenerationView {
         return audioSource.type == .video ? .video : .audio
     }
     var showsPrompt: Bool {
-        selectedType != .upscale && (selectedType != .audio || audioModel.inputs.contains(.text))
+        switch selectedType {
+        case .video: videoModel.supportsPrompt
+        case .audio: audioModel.inputs.contains(.text)
+        case .image: true
+        case .upscale: false
+        }
     }
 
     var initialAudioTargetLanguage: String {
@@ -227,14 +232,22 @@ extension GenerationView {
         }
     }
 
-    var effectiveVideoSeconds: Int {
-        guard videoModel.requiresSourceVideo else { return selectedDuration }
+    var effectiveSourceVideoSeconds: Double {
+        guard videoModel.requiresSourceVideo else { return Double(selectedDuration) }
         if let trim = editor.pendingEditTrimmedSource,
            let sv = sourceVideo,
            trim.sourceURL == sv.url, trim.hasTrim {
-            return max(1, Int(trim.durationSeconds.rounded()))
+            return trim.durationSeconds
         }
-        return max(0, Int((sourceVideo?.duration ?? 0).rounded()))
+        return sourceVideo?.resolvedDuration ?? 0
+    }
+
+    var effectiveVideoSeconds: Int {
+        guard videoModel.requiresSourceVideo else { return selectedDuration }
+        return videoModel.billingDurationSeconds(
+            sourceVideoDuration: effectiveSourceVideoSeconds,
+            sourceAudioDuration: refAudios.first?.resolvedDuration
+        ) ?? 0
     }
 
     var effectiveAudioSourceSpanSeconds: Double {

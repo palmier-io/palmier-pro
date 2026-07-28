@@ -22,6 +22,18 @@ extension EditSubmitter {
         return stored
     }
 
+    static func lipSyncSeed(
+        for asset: MediaAsset,
+        model: VideoModelConfig
+    ) -> GenerationInput? {
+        guard asset.type == .video, model.isLipSync else { return nil }
+        var stored = GenerationInput(
+            prompt: "", model: model.id, duration: 0, aspectRatio: "", resolution: nil
+        )
+        stored.imageURLAssetIds = [asset.id]
+        return stored
+    }
+
     static func createVideoSeed(for asset: MediaAsset, asReference: Bool) -> GenerationInput? {
         guard let model = VideoModelConfig.allModels.first(where: {
             !$0.requiresSourceVideo && (asReference ? $0.supportsReferences : $0.supportsFirstFrame)

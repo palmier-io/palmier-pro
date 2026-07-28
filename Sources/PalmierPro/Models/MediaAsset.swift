@@ -81,6 +81,11 @@ final class MediaAsset: Identifiable {
     }
 
     var isGenerated: Bool { generationInput != nil }
+    var resolvedDuration: Double {
+        if duration.isFinite, duration > 0 { return duration }
+        if let generated = generationInput?.duration, generated > 0 { return Double(generated) }
+        return 0
+    }
     var canResumeGeneration: Bool {
         guard let generationInput else { return false }
         return generationInput.backendJobId?.isEmpty == false

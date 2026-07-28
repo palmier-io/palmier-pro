@@ -30,6 +30,7 @@ enum ModelRegistry {
 @MainActor
 final class ModelCatalog {
     static let shared = ModelCatalog()
+    private static let supportedCatalogVersion: Double = 2
 
     private(set) var video: [VideoModelConfig] = []
     private(set) var image: [ImageModelConfig] = []
@@ -56,7 +57,11 @@ final class ModelCatalog {
         guard let client = AccountService.shared.convex else { return }
 
         subscription = client
-            .subscribe(to: "models:list", yielding: [CatalogEntry].self)
+            .subscribe(
+                to: "models:list",
+                with: ["catalogVersion": Self.supportedCatalogVersion],
+                yielding: [CatalogEntry].self
+            )
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { [weak self] completion in
@@ -227,6 +232,7 @@ struct CatalogEntry: Decodable, Sendable {
 }
 
 struct VideoCaps: Decodable, Sendable {
+    let supportsPrompt: Bool?
     let durations: [Int]
     let resolutions: [String]?
     let aspectRatios: [String]
@@ -241,8 +247,10 @@ struct VideoCaps: Decodable, Sendable {
     let framesAndReferencesExclusive: Bool
     let referenceTagNoun: String
     let requiresSourceVideo: Bool
+    let maxSourceVideoSeconds: Double?
     let maxSourceVideoResolution: SourceVideoResolution?
     let requiresReferenceImage: Bool
+    let requiresReferenceAudio: Bool?
 }
 
 enum SourceVideoResolution: String, Decodable, Sendable {
