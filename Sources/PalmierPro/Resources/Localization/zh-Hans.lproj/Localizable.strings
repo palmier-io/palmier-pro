@@ -1241,3 +1241,17 @@
 "%@ uses either image or audio references, not both." = "%@ 只能使用图像或音频参考，不能同时使用两者。";
 "Audio references must be audio assets." = "音频参考必须是音频素材。";
 "Image references must be image assets." = "图像参考必须是图像素材。";
+
+/* upstream main 0eac952 */
+"%d minute" = "%d 分钟";
+"%d minutes" = "%d 分钟";
+"%d second" = "%d 秒";
+"%d seconds" = "%d 秒";
+"%@ requires an audio reference" = "%@ 需要一个音频参考";
+"%@ requires an image reference" = "%@ 需要一个图像参考";
+"%@ supports source videos up to %@. Trim the clip to continue." = "%@ 支持时长不超过 %@ 的源视频。请先裁剪片段再继续。";
+"Choose Audio" = "选择音频";
+"Lip Sync" = "口型同步";
+"Match mouth movement to replacement audio" = "使口型动作与替换音频匹配";
+"Replacement Audio" = "替换音频";
+"Up to %@" = "最长 %@";

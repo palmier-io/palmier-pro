@@ -83,24 +83,39 @@ struct VideoModelConfig: Identifiable, Sendable {
     }
 
     var sourceDurationLimitLabel: String? {
+        sourceDurationLimitLabel(localized: false)
+    }
+
+    func sourceDurationLimitLabel(localized: Bool) -> String? {
         guard let maximum = maxSourceVideoSeconds,
               maximum.isFinite, maximum > 0,
               let seconds = Int(exactly: maximum.rounded()) else { return nil }
         if seconds.isMultiple(of: 60) {
             let minutes = seconds / 60
-            return minutes == 1 ? "1 minute" : "\(minutes) minutes"
+            if minutes == 1 {
+                return L10n.message("%d minute", localized: localized, minutes)
+            }
+            return L10n.message("%d minutes", localized: localized, minutes)
         }
-        return seconds == 1 ? "1 second" : "\(seconds) seconds"
+        if seconds == 1 {
+            return L10n.message("%d second", localized: localized, seconds)
+        }
+        return L10n.message("%d seconds", localized: localized, seconds)
     }
 
-    func validateSourceDuration(_ duration: Double) -> String? {
+    func validateSourceDuration(_ duration: Double, localized: Bool = false) -> String? {
         guard duration.isFinite, duration > 0 else {
-            return "Loading video metadata…"
+            return L10n.message("Loading video metadata…", localized: localized)
         }
         guard let maximum = maxSourceVideoSeconds,
               duration > maximum,
-              let limit = sourceDurationLimitLabel else { return nil }
-        return "\(displayName) supports source videos up to \(limit). Trim the clip to continue."
+              let limit = sourceDurationLimitLabel(localized: localized) else { return nil }
+        return L10n.message(
+            "%@ supports source videos up to %@. Trim the clip to continue.",
+            localized: localized,
+            displayName,
+            limit
+        )
     }
 
     func billingDurationSeconds(

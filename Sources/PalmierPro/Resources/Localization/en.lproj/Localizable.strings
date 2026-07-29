@@ -34,6 +34,8 @@
 "%@ is already a reference" = "%@ is already a reference";
 "%@ is ready." = "%@ is ready.";
 "%@ model not available" = "%@ model not available";
+"%@ must be a WAV or MP3 file." = "%@ must be a WAV or MP3 file.";
+"%@ must be valid audio no longer than %d seconds." = "%@ must be valid audio no longer than %d seconds.";
 "%@ needed. Only %@ remaining." = "%@ needed. Only %@ remaining.";
 "%@ needs at least %ds of source media (selection is %ds)." = "%@ needs at least %ds of source media (selection is %ds).";
 "%@ of %@ credits remaining this period" = "%@ of %@ credits remaining this period";
@@ -41,11 +43,15 @@
 "%@ only accepts a source video and image references" = "%@ only accepts a source video and image references";
 "%@ only accepts image or audio references." = "%@ only accepts image or audio references.";
 "%@ only works on video" = "%@ only works on video";
+"%@ requires an audio reference" = "%@ requires an audio reference";
+"%@ requires an image reference" = "%@ requires an image reference";
 "%@ requires audio or video" = "%@ requires audio or video";
 "%@ requires prompt ≥ %d characters (got %d)." = "%@ requires prompt ≥ %d characters (got %d).";
 "%@ supports 1 image per request (got %d)." = "%@ supports 1 image per request (got %d).";
 "%@ supports 1…%d images per request (got %d)." = "%@ supports 1…%d images per request (got %d).";
+"%@ supports source videos up to %@. Trim the clip to continue." = "%@ supports source videos up to %@. Trim the clip to continue.";
 "%@ used" = "%@ used";
+"%@ uses either image or audio references, not both." = "%@ uses either image or audio references, not both.";
 "%@ uses frames OR references, not both. Clear one side." = "%@ uses frames OR references, not both. Clear one side.";
 "%@, %d skills" = "%@, %d skills";
 "%@. %@ remaining after this generation." = "%@. %@ remaining after this generation.";
@@ -56,6 +62,10 @@
 "%d credits. %@ credits remaining after this generation." = "%d credits. %@ credits remaining after this generation.";
 "%d items" = "%d items";
 "%d media files missing — they'll be skipped." = "%d media files missing — they'll be skipped.";
+"%d minute" = "%d minute";
+"%d minutes" = "%d minutes";
+"%d second" = "%d second";
+"%d seconds" = "%d seconds";
 "%d sections" = "%d sections";
 "%d selected" = "%d selected";
 "%dk credits" = "%dk credits";
@@ -161,6 +171,7 @@
 "Audio" = "Audio";
 "Audio extraction failed: %@" = "Audio extraction failed: %@";
 "Audio Ref" = "Audio Ref";
+"Audio references must be audio assets." = "Audio references must be audio assets.";
 "Audio Synchronization: More accurate audio synchronization between clips." = "Audio Synchronization: More accurate audio synchronization between clips.";
 "Auto" = "Auto";
 "Available" = "Available";
@@ -244,6 +255,7 @@
 "Choose a .cube LUT file" = "Choose a .cube LUT file";
 "Choose a crop aspect" = "Choose a crop aspect";
 "Choose a target language." = "Choose a target language.";
+"Choose Audio" = "Choose Audio";
 "Choose color" = "Choose color";
 "Choose the folder that holds your media" = "Choose the folder that holds your media";
 "Choose the source file for “%@”" = "Choose the source file for “%@”";
@@ -554,6 +566,7 @@
 "Identify Speakers" = "Identify Speakers";
 "Image" = "Image";
 "Image Ref" = "Image Ref";
+"Image references must be image assets." = "Image references must be image assets.";
 "Import" = "Import";
 "Import footage" = "Import footage";
 "Import Media" = "Import Media";
@@ -610,6 +623,7 @@
 "Line Spacing" = "Line Spacing";
 "Linear" = "Linear";
 "Link" = "Link";
+"Lip Sync" = "Lip Sync";
 "Lo-fi" = "Lo-fi";
 "Loading community skills" = "Loading community skills";
 "Loading community skills…" = "Loading community skills…";
@@ -641,6 +655,7 @@
 "Mark Speakers" = "Mark Speakers";
 "Master — defines the group's clock and transcript." = "Master — defines the group's clock and transcript.";
 "Master Audio Meter" = "Master Audio Meter";
+"Match mouth movement to replacement audio" = "Match mouth movement to replacement audio";
 "Match Timeline" = "Match Timeline";
 "Matches voices across clips, transcribing untranscribed timeline clips first (uses credits). Transcripts and voice fingerprints are cached, so re-runs are fast." = "Matches voices across clips, transcribing untranscribed timeline clips first (uses credits). Transcripts and voice fingerprints are cached, so re-runs are fast.";
 "Max" = "Max";
@@ -878,6 +893,7 @@
 "Reorder Track" = "Reorder Track";
 "Replace clip source" = "Replace clip source";
 "Replace Clip Source" = "Replace Clip Source";
+"Replacement Audio" = "Replacement Audio";
 "Report a Problem" = "Report a Problem";
 "Requires a paid plan" = "Requires a paid plan";
 "Rerun" = "Rerun";
@@ -1139,6 +1155,7 @@
 "Unlock Track Sync" = "Unlock Track Sync";
 "Unmute Track" = "Unmute Track";
 "Untitled" = "Untitled";
+"Up to %@" = "Up to %@";
 "Upbeat" = "Upbeat";
 "Update" = "Update";
 "Update available" = "Update available";
@@ -1214,8 +1231,3 @@
 "Zoom Out" = "Zoom Out";
 "Zoom Preview to Cursor" = "Zoom Preview to Cursor";
 "Zoom to Cursor" = "Zoom to Cursor";
-"%@ must be a WAV or MP3 file." = "%@ must be a WAV or MP3 file.";
-"%@ must be valid audio no longer than %d seconds." = "%@ must be valid audio no longer than %d seconds.";
-"%@ uses either image or audio references, not both." = "%@ uses either image or audio references, not both.";
-"Audio references must be audio assets." = "Audio references must be audio assets.";
-"Image references must be image assets." = "Image references must be image assets.";
