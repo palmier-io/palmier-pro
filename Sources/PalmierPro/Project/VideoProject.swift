@@ -30,6 +30,13 @@ private typealias DocumentCloseCallback = @convention(c) (
 
 class VideoProject: NSDocument {
 
+    private struct SaveRequest {
+        let url: URL
+        let typeName: String
+        let operation: NSDocument.SaveOperationType
+        let completion: (Error?) -> Void
+    }
+
     static let typeIdentifier = Project.typeIdentifier
 
     let editorViewModel = EditorViewModel()
@@ -50,6 +57,9 @@ class VideoProject: NSDocument {
     private nonisolated(unsafe) var snapshotChatSessionFiles: [(name: String, data: Data)] = []
     private nonisolated(unsafe) var snapshotSourceProjectURL: URL?
     private nonisolated(unsafe) var snapshotPreparedForWrite = false
+    // AppKit saves asynchronously, but write() consumes one shared snapshot at a time.
+    // Keep the first request active and serialize any requests behind it.
+    private var saveQueue: [SaveRequest] = []
     private var projectCheckpointAutosaveScheduled = false
     private var isSavingBeforeClose = false
 
@@ -134,17 +144,32 @@ class VideoProject: NSDocument {
     }
 
     override func save(to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType, completionHandler: @escaping (Error?) -> Void) {
-        if let date = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate {
+        let request = SaveRequest(
+            url: url,
+            typeName: typeName,
+            operation: saveOperation,
+            completion: completionHandler
+        )
+        editorViewModel.projectPackageCoordinator.saveStarted()
+        saveQueue.append(request)
+        guard saveQueue.count == 1 else { return }
+        performNextSave()
+    }
+
+    private func performNextSave() {
+        guard let request = saveQueue.first else { return }
+        if let date = try? request.url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate {
             fileModificationDate = date
         }
 
         let coordinator = editorViewModel.projectPackageCoordinator
-        coordinator.saveStarted()
         captureSaveSnapshot()
         snapshotSourceProjectURL = fileURL
-        super.save(to: url, ofType: typeName, for: saveOperation) { error in
+        super.save(to: request.url, ofType: request.typeName, for: request.operation) { error in
             coordinator.saveFinished(success: error == nil)
-            completionHandler(error)
+            request.completion(error)
+            self.saveQueue.removeFirst()
+            self.performNextSave()
         }
     }
 
@@ -195,6 +220,16 @@ class VideoProject: NSDocument {
             coordinator.cancelClosing()
             throw error
         }
+    }
+
+    override func writeSafely(
+        to url: URL,
+        ofType typeName: String,
+        for saveOperation: NSDocument.SaveOperationType
+    ) throws {
+        // NSDocument otherwise blocks the main thread while super prepares a safe-save directory.
+        unblockUserInteraction()
+        try super.writeSafely(to: url, ofType: typeName, for: saveOperation)
     }
 
     override func write(to url: URL, ofType typeName: String) throws {
