@@ -244,6 +244,12 @@ extension TextStyle.RGBA {
 }
 
 extension TextStyle {
+    nonisolated(unsafe) private static let resolvedFontCache: NSCache<NSString, NSFont> = {
+        let cache = NSCache<NSString, NSFont>()
+        cache.countLimit = 512
+        return cache
+    }()
+
     var scaledVisualStyle: TextStyle {
         guard fontScale != 1 else { return self }
         var style = self
@@ -265,14 +271,19 @@ extension TextStyle {
     }
 
     func resolvedFont(size: CGFloat) -> NSFont {
-        let base = NSFont(name: fontName, size: size) ?? NSFont.systemFont(ofSize: size)
-        let resolved = Self.font(base, size: size, bold: isBold, italic: isItalic)
-        guard widthScale != 1 || heightScale != 1 else { return resolved }
-        var transform = CGAffineTransform(
-            scaleX: CGFloat(widthScale),
-            y: CGFloat(heightScale)
-        )
-        return CTFontCreateCopyWithAttributes(resolved as CTFont, size, &transform, nil) as NSFont
+        let key = "\(fontName.utf8.count):\(fontName)|\(Double(size).bitPattern)|\(isBold)|\(isItalic)|\(widthScale.bitPattern)|\(heightScale.bitPattern)" as NSString
+        if let cached = Self.resolvedFontCache.object(forKey: key) { return cached }
+
+        let namedBase = NSFont(name: fontName, size: size)
+        let base = namedBase ?? NSFont.systemFont(ofSize: size)
+        var resolved = Self.font(base, size: size, bold: isBold, italic: isItalic)
+        if widthScale != 1 || heightScale != 1 {
+            var transform = CGAffineTransform(scaleX: CGFloat(widthScale), y: CGFloat(heightScale))
+            resolved = CTFontCreateCopyWithAttributes(resolved as CTFont, size, &transform, nil) as NSFont
+        }
+        // A bundled font may not be registered yet; do not cache its fallback.
+        if namedBase != nil { Self.resolvedFontCache.setObject(resolved, forKey: key) }
+        return resolved
     }
 
     var nsColor: NSColor { color.nsColor }

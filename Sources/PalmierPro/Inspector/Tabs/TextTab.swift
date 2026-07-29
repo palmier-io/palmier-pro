@@ -158,7 +158,7 @@ struct TextTab: View {
             },
             cancelPending: { editor.cancelDebouncedCommit(key: $0) },
             cancelFontPreview: { _ in
-                for id in clipIds { editor.revertClipProperty(clipId: id) }
+                editor.revertClipProperties(clipIds: clipIds)
             }
         )
     }
