@@ -39,7 +39,8 @@ struct AnthropicClient: AgentClient {
     func stream(
         system: String,
         tools: [AnthropicToolSchema],
-        messages: [AnthropicMessage]
+        messages: [AnthropicMessage],
+        context: AgentRequestContext
     ) -> AsyncThrowingStream<AnthropicStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
