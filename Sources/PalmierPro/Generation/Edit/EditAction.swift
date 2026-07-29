@@ -58,32 +58,32 @@ enum EditAction {
 
         case .reframe:
             guard asset.type == .video else {
-                return .disabled(reason: "Reframe only works on video")
+                return .disabled(reason: L10n.string("Reframe only works on video"))
             }
             if asset.isGenerating {
-                return .disabled(reason: "Generation in progress")
+                return .disabled(reason: L10n.string("Generation in progress"))
             }
             guard let model = VideoModelConfig.reframe else {
-                return .disabled(reason: "Reframe model not available")
+                return .disabled(reason: L10n.string("Reframe model not available"))
             }
             let duration = effectiveDurationOverride ?? asset.resolvedDuration
-            if let error = model.validateSourceDuration(duration) {
+            if let error = model.validateSourceDuration(duration, localized: true) {
                 return .disabled(reason: error)
             }
             return .available
 
         case .lipSync:
             guard asset.type == .video else {
-                return .disabled(reason: "Lip Sync only works on video")
+                return .disabled(reason: L10n.string("Lip Sync only works on video"))
             }
             if asset.isGenerating {
-                return .disabled(reason: "Generation in progress")
+                return .disabled(reason: L10n.string("Generation in progress"))
             }
             guard let model = VideoModelConfig.lipSync else {
-                return .disabled(reason: "Lip Sync model not available")
+                return .disabled(reason: L10n.string("Lip Sync model not available"))
             }
             let duration = effectiveDurationOverride ?? asset.resolvedDuration
-            if let error = model.validateSourceDuration(duration) {
+            if let error = model.validateSourceDuration(duration, localized: true) {
                 return .disabled(reason: error)
             }
             return .available
@@ -92,7 +92,7 @@ enum EditAction {
             switch asset.type {
             case .video:
                 guard VideoModelConfig.edit != nil else {
-                    return .disabled(reason: "Edit model not available")
+                    return .disabled(reason: L10n.string("Edit model not available"))
                 }
                 let duration = effectiveDurationOverride ?? asset.resolvedDuration
                 guard duration > 0 else {

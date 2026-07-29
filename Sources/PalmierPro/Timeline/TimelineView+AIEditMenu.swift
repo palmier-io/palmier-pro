@@ -76,12 +76,12 @@ extension TimelineView {
         }
 
         if !enhanceActions.isEmpty {
-            submenu.addItem(.sectionHeader(title: "AI Enhance"))
+            submenu.addItem(.sectionHeader(title: L10n.string("AI Enhance")))
             enhanceActions.forEach(addAction)
         }
         if !audioActions.isEmpty || !audioTransforms.isEmpty {
             if !submenu.items.isEmpty { submenu.addItem(.separator()) }
-            submenu.addItem(.sectionHeader(title: "AI Audio"))
+            submenu.addItem(.sectionHeader(title: L10n.string("AI Audio")))
             audioActions.filter { $0 == .rerun }.forEach(addAction)
             for kind in audioTransforms {
                 let paidBlocked = kind.model?.paidOnly == true && !isPaid

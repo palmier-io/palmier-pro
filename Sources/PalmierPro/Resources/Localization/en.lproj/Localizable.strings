@@ -157,6 +157,7 @@
 "Anthropic API Key" = "Anthropic API Key";
 "App version %@ and macOS %@ are included." = "App version %@ and macOS %@ are included.";
 "Appearance" = "Appearance";
+"Apply" = "Apply";
 "Apply Effect (Agent)" = "Apply Effect (Agent)";
 "Apply Effect ×%d (Agent)" = "Apply Effect ×%d (Agent)";
 "Apply Invert Colors" = "Apply Invert Colors";
@@ -168,6 +169,7 @@
 "Aspect" = "Aspect";
 "aspect ratio" = "aspect ratio";
 "Aspect Ratio" = "Aspect Ratio";
+"Aspect ratio %@" = "Aspect ratio %@";
 "Audio" = "Audio";
 "Audio extraction failed: %@" = "Audio extraction failed: %@";
 "Audio Ref" = "Audio Ref";
@@ -228,6 +230,7 @@
 "Censor profanity" = "Censor profanity";
 "Center" = "Center";
 "Change %@" = "Change %@";
+"Change aspect ratio and extend the frame with AI" = "Change aspect ratio and extend the frame with AI";
 "Change Clip Property" = "Change Clip Property";
 "Change Crop" = "Change Crop";
 "Change Denoise Strength" = "Change Denoise Strength";
@@ -248,6 +251,7 @@
 "Change to Match" = "Change to Match";
 "Change Transform" = "Change Transform";
 "Change Volume" = "Change Volume";
+"Changing the ratio preserves the shorter edge." = "Changing the ratio preserves the shorter edge.";
 "Chat history" = "Chat history";
 "Chat with your agent! It can generate content, edit clips, organize your assets, and much more. Start by signing in, or bring your own Anthropic API key." = "Chat with your agent! It can generate content, edit clips, organize your assets, and much more. Start by signing in, or bring your own Anthropic API key.";
 "Check for Updates…" = "Check for Updates…";
@@ -362,6 +366,8 @@
 "Crop" = "Crop";
 "Curves" = "Curves";
 "Custom" = "Custom";
+"Custom Aspect Ratio" = "Custom Aspect Ratio";
+"Custom…" = "Custom…";
 "Cut" = "Cut";
 "Darken" = "Darken";
 "Date Added" = "Date Added";
@@ -442,6 +448,7 @@
 "Edit doesn't support Lottie" = "Edit doesn't support Lottie";
 "Edit doesn't support sequences" = "Edit doesn't support sequences";
 "Edit doesn't support text" = "Edit doesn't support text";
+"Edit model not available" = "Edit model not available";
 "Edit supports up to %ds (this is %ds)" = "Edit supports up to %ds (this is %ds)";
 "Edit…" = "Edit…";
 "Edit… (Paid)" = "Edit… (Paid)";
@@ -624,6 +631,10 @@
 "Linear" = "Linear";
 "Link" = "Link";
 "Lip Sync" = "Lip Sync";
+"Lip Sync model not available" = "Lip Sync model not available";
+"Lip Sync only works on video" = "Lip Sync only works on video";
+"Lip Sync…" = "Lip Sync…";
+"Lip Sync… (Paid)" = "Lip Sync… (Paid)";
 "Lo-fi" = "Lo-fi";
 "Loading community skills" = "Loading community skills";
 "Loading community skills…" = "Loading community skills…";
@@ -851,6 +862,11 @@
 "Reference" = "Reference";
 "Reference Image" = "Reference Image";
 "References" = "References";
+"Reframe" = "Reframe";
+"Reframe model not available" = "Reframe model not available";
+"Reframe only works on video" = "Reframe only works on video";
+"Reframe…" = "Reframe…";
+"Reframe… (Paid)" = "Reframe… (Paid)";
 "Refresh" = "Refresh";
 "Refresh catalog" = "Refresh catalog";
 "Refresh Community Skills" = "Refresh Community Skills";
@@ -915,6 +931,8 @@
 "Resize Track" = "Resize Track";
 "resolution" = "resolution";
 "Resolution" = "Resolution";
+"Resolution must be at least 2 × 2 pixels." = "Resolution must be at least 2 × 2 pixels.";
+"Resolution must not exceed 8192 pixels on either edge." = "Resolution must not exceed 8192 pixels on either edge.";
 "Restart Palmier Pro to apply this change." = "Restart Palmier Pro to apply this change.";
 "result" = "result";
 "Retry" = "Retry";
@@ -1102,6 +1120,7 @@
 "The sample response was malformed." = "The sample response was malformed.";
 "The selected projects will be moved to the Trash." = "The selected projects will be moved to the Trash.";
 "The timeline changed while captions were being prepared. Generate captions again." = "The timeline changed while captions were being prepared. Generate captions again.";
+"The timeline settings changed. Close this sheet and try again." = "The timeline settings changed. Close this sheet and try again.";
 "These skills are available to the in-app agent once installed. For Claude/Codex/Cursor, add them to their respective directories." = "These skills are available to the in-app agent once installed. For Claude/Codex/Cursor, add them to their respective directories.";
 "This asset was not AI-generated" = "This asset was not AI-generated";
 "This is the timeline ruler. Shift+drag on the ruler to select a range to render. You can pick any slot to AI edit or generate music that fits that range." = "This is the timeline ruler. Shift+drag on the ruler to select a range to render. You can pick any slot to AI edit or generate music that fits that range.";
@@ -1175,6 +1194,7 @@
 "Upscale source media" = "Upscale source media";
 "Upscale…" = "Upscale…";
 "Upscale… (Paid)" = "Upscale… (Paid)";
+"Use an aspect ratio with two positive numbers, such as 3:2." = "Use an aspect ratio with two positive numbers, such as 3:2.";
 "Use for non-English or mixed-language audio." = "Use for non-English or mixed-language audio.";
 "Use manual setup instead." = "Use manual setup instead.";
 "Use trimmed portion only" = "Use trimmed portion only";

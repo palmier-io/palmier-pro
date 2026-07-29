@@ -1255,3 +1255,25 @@
 "Match mouth movement to replacement audio" = "使口型动作与替换音频匹配";
 "Replacement Audio" = "替换音频";
 "Up to %@" = "最长 %@";
+
+/* upstream main 41f2a33 */
+"Apply" = "应用";
+"Aspect ratio %@" = "宽高比：%@";
+"Change aspect ratio and extend the frame with AI" = "使用 AI 更改宽高比并扩展画面";
+"Changing the ratio preserves the shorter edge." = "更改宽高比时将保留较短边的长度。";
+"Custom Aspect Ratio" = "自定义宽高比";
+"Custom…" = "自定义…";
+"Edit model not available" = "编辑模型不可用";
+"Lip Sync model not available" = "口型同步模型不可用";
+"Lip Sync only works on video" = "口型同步仅支持视频";
+"Lip Sync…" = "口型同步…";
+"Lip Sync… (Paid)" = "口型同步…（付费）";
+"Reframe" = "AI 扩画";
+"Reframe model not available" = "AI 扩画模型不可用";
+"Reframe only works on video" = "AI 扩画仅支持视频";
+"Reframe…" = "AI 扩画…";
+"Reframe… (Paid)" = "AI 扩画…（付费）";
+"Resolution must be at least 2 × 2 pixels." = "分辨率不得低于 2 × 2 像素。";
+"Resolution must not exceed 8192 pixels on either edge." = "任一边的分辨率均不得超过 8192 像素。";
+"The timeline settings changed. Close this sheet and try again." = "时间线设置已更改。请关闭此面板后重试。";
+"Use an aspect ratio with two positive numbers, such as 3:2." = "请输入由两个正数组成的宽高比，例如 3:2。";

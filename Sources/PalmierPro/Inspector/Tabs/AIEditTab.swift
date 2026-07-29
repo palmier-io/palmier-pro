@@ -60,7 +60,7 @@ struct AIEditTab: View {
                                 icon: "mouth",
                                 title: "Lip Sync",
                                 description: "Match mouth movement to replacement audio",
-                                detail: model.sourceDurationLimitLabel.map { "Up to \($0)" },
+                                detail: durationLimitDetail(for: model),
                                 triggerTitle: "Choose Audio"
                             )
                         }
@@ -70,8 +70,7 @@ struct AIEditTab: View {
                                 icon: "aspectratio",
                                 title: "Reframe",
                                 description: "Change aspect ratio and extend the frame with AI",
-                                detail: VideoModelConfig.reframe?.sourceDurationLimitLabel
-                                    .map { "Up to \($0)" }
+                                detail: VideoModelConfig.reframe.flatMap(durationLimitDetail)
                             )
                         }
                         if asset.type == .image {
@@ -203,6 +202,10 @@ struct AIEditTab: View {
 
     private var effectiveDurationForAvailability: Double? {
         trimmedSourceIfEnabled()?.durationSeconds
+    }
+
+    private func durationLimitDetail(for model: VideoModelConfig) -> String? {
+        model.sourceDurationLimitLabel(localized: true).map { L10n.format("Up to %@", $0) }
     }
 
     // MARK: - Action row
