@@ -60,8 +60,6 @@ final class EditorViewModel {
         }
     }
     var mediaManifest = MediaManifest()
-    var generationLog = GenerationLog()
-
     // MARK: - Denoise bake state (session-scoped, keyed by mediaRef)
 
     var denoiseInFlight: Set<String> = []
@@ -332,7 +330,6 @@ final class EditorViewModel {
             "mediaByType": mediaCounts,
             "offlineMedia": offlineMediaRefs.count,
             "unprocessableMedia": unprocessableMediaRefs.count,
-            "generationLogEntries": generationLog.entries.count,
             "agentSessions": agentService.sessions.count
         ]
     }

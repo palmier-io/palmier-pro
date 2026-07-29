@@ -16,6 +16,17 @@ enum GenerationBackend {
         )
     }
 
+    static func subscribeToProjectActivity(
+        projectId: String
+    ) -> AnyPublisher<[BackendProjectActivityEntry], ClientError>? {
+        guard let convex = AccountService.shared.convex else { return nil }
+        return convex.subscribe(
+            to: "generations:projectActivity",
+            with: ["projectId": projectId],
+            yielding: [BackendProjectActivityEntry].self,
+        )
+    }
+
     static func uploadReference(
         fileURL: URL,
         contentType: String,
@@ -82,6 +93,28 @@ struct BackendGenerationJob: Decodable, Sendable {
     let errorMessage: String?
     let costCredits: Int?
     let completedAt: Double?
+}
+
+struct BackendProjectActivityEntry: Decodable, Sendable, Identifiable {
+    enum Kind: String, Decodable, Sendable {
+        case generation
+        case failed
+        case refund
+    }
+
+    let id: String
+    let kind: Kind
+    let model: String
+    let credits: Int
+    let createdAt: Double
+
+    var creditImpact: Int {
+        kind == .refund ? -credits : credits
+    }
+
+    var createdDate: Date {
+        Date(timeIntervalSince1970: createdAt / 1_000)
+    }
 }
 
 private struct UrlResponse: Decodable, Sendable {

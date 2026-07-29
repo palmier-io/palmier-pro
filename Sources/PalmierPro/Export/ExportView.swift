@@ -681,7 +681,6 @@ struct ExportView: View {
                 try exportQueue.enqueuePalmierProject(
                     projectFile: editor.projectFileSnapshot(),
                     manifest: editor.mediaManifest,
-                    generationLog: editor.generationLog,
                     sourceProjectURL: editor.projectURL,
                     outputURL: url,
                     source: .manual,
