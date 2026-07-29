@@ -413,7 +413,8 @@ final class VideoEngine {
     /// Luma + per-channel histogram of the current composited frame (downsampled), normalized 0…1.
     func histogramYRGB(frame: Int? = nil, count: Int = 256) async
         -> (y: [Float], r: [Float], g: [Float], b: [Float])? {
-        guard let item = player.currentItem else { return nil }
+        guard let item = player.currentItem,
+              (try? await item.asset.loadTracks(withMediaType: .video).first) != nil else { return nil }
         let time = frame.flatMap(playerTime(forPreviewFrame:)) ?? player.currentTime()
         let generator = AVAssetImageGenerator(asset: item.asset)
         generator.videoComposition = item.videoComposition
@@ -466,7 +467,8 @@ final class VideoEngine {
     /// Hue distribution of the current composited frame — pixel count per hue bucket, weighted by
     /// saturation so achromatic pixels don't show. Drives the silhouette behind the hue curves.
     func hueHistogram(frame: Int? = nil, count: Int = 96) async -> [Float]? {
-        guard let item = player.currentItem else { return nil }
+        guard let item = player.currentItem,
+              (try? await item.asset.loadTracks(withMediaType: .video).first) != nil else { return nil }
         let time = frame.flatMap(playerTime(forPreviewFrame:)) ?? player.currentTime()
         let generator = AVAssetImageGenerator(asset: item.asset)
         generator.videoComposition = item.videoComposition
@@ -506,7 +508,8 @@ final class VideoEngine {
     }
 
     func sampleKeyHue(at normalizedPoint: CGPoint, frame: Int? = nil) async -> Double? {
-        guard let item = player.currentItem else { return nil }
+        guard let item = player.currentItem,
+              (try? await item.asset.loadTracks(withMediaType: .video).first) != nil else { return nil }
         let time = frame.flatMap(playerTime(forPreviewFrame:)) ?? player.currentTime()
         let generator = AVAssetImageGenerator(asset: item.asset)
         generator.videoComposition = item.videoComposition
