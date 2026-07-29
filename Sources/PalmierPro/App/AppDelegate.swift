@@ -20,6 +20,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppNotifications.configure()
 
         AppState.shared.startMCPService()
+
+        // Pre-warm NSOpenPanel to avoid main thread blocking during cold start.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard let self, !self.isTerminating else { return }
+            _ = NSOpenPanel()
+        }
     }
 
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
