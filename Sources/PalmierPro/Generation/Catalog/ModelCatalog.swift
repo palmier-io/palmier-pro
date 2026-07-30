@@ -141,6 +141,7 @@ struct CatalogEntry: Decodable, Sendable {
     let id: String
     let kind: Kind
     let displayName: String
+    let providerIconKey: String?
     let providerName: String?
     let description: String?
     let allowedEndpoints: [String]
@@ -196,7 +197,7 @@ struct CatalogEntry: Decodable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, kind, displayName, providerName, description, allowedEndpoints, responseShape, uiCapabilities
+        case id, kind, displayName, providerIconKey, providerName, description, allowedEndpoints, responseShape, uiCapabilities
         case creditsPerSecond, audioDiscountRate, creditsPerImage, qualities
         case audioPricing, creditsPerSecondUpscale, upscalePricing, paidOnly
     }
@@ -206,6 +207,7 @@ struct CatalogEntry: Decodable, Sendable {
         self.id = try c.decode(String.self, forKey: .id)
         self.kind = try c.decode(Kind.self, forKey: .kind)
         self.displayName = try c.decode(String.self, forKey: .displayName)
+        self.providerIconKey = try c.decodeIfPresent(String.self, forKey: .providerIconKey)
         self.providerName = try c.decodeIfPresent(String.self, forKey: .providerName)
         self.description = try c.decodeIfPresent(String.self, forKey: .description)
         self.allowedEndpoints = try c.decode([String].self, forKey: .allowedEndpoints)

@@ -11,6 +11,7 @@ struct ModelsPane: View {
         let id: String
         let displayName: String
         let paidOnly: Bool
+        let providerIconKey: String?
     }
 
     private struct Section: Identifiable {
@@ -30,12 +31,21 @@ struct ModelsPane: View {
         }
         return [
             Section(id: "image", title: "Image",
-                    rows: prepare(catalog.image.map { Row(id: $0.id, displayName: $0.displayName, paidOnly: $0.paidOnly) })),
+                    rows: prepare(catalog.image.map { row(for: $0.entry) })),
             Section(id: "video", title: "Video",
-                    rows: prepare(catalog.video.map { Row(id: $0.id, displayName: $0.displayName, paidOnly: $0.paidOnly) })),
+                    rows: prepare(catalog.video.map { row(for: $0.entry) })),
             Section(id: "audio", title: "Audio",
-                    rows: prepare(catalog.audio.map { Row(id: $0.id, displayName: $0.displayName, paidOnly: $0.paidOnly) })),
+                    rows: prepare(catalog.audio.map { row(for: $0.entry) })),
         ].filter { !$0.rows.isEmpty }
+    }
+
+    private func row(for entry: CatalogEntry) -> Row {
+        Row(
+            id: entry.id,
+            displayName: entry.displayName,
+            paidOnly: entry.paidOnly,
+            providerIconKey: entry.providerIconKey
+        )
     }
 
     var body: some View {
@@ -95,6 +105,10 @@ struct ModelsPane: View {
     private func modelRow(_ row: Row) -> some View {
         let locked = isLocked(row)
         HStack(spacing: AppTheme.Spacing.md) {
+            if let iconKey = row.providerIconKey {
+                ProviderLogo(iconKey: iconKey, size: AppTheme.IconSize.md)
+                    .opacity(locked ? AppTheme.Opacity.medium : AppTheme.Opacity.opaque)
+            }
             Text(row.displayName)
                 .font(.system(size: AppTheme.FontSize.md))
                 .foregroundStyle(locked ? AppTheme.Text.tertiaryColor : AppTheme.Text.primaryColor)

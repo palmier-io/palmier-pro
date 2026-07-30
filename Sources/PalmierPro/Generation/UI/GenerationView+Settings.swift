@@ -68,22 +68,36 @@ extension GenerationView {
             switch selectedType {
             case .video:
                 ForEach(enabledVideoModelsByProvider) { group in
-                    Section(group.name) {
+                    Section {
                         ForEach(group.models, id: \.index) { item in
-                            Button(item.model.displayName) { selectedVideoModelIndex = item.index }
+                            Button {
+                                selectedVideoModelIndex = item.index
+                            } label: {
+                                modelMenuLabel(item.model.entry)
+                            }
                         }
+                    } header: {
+                        modelFamilyHeader(group)
                     }
                 }
             case .image:
                 ForEach(enabledImageModels, id: \.index) { item in
-                    Button(item.model.displayName) { selectedImageModelIndex = item.index }
+                    Button {
+                        selectedImageModelIndex = item.index
+                    } label: {
+                        modelMenuLabel(item.model.entry)
+                    }
                 }
             case .audio:
                 ForEach(AudioModelConfig.Category.allCases, id: \.self) { category in
                     if let items = enabledAudioModelsByCategory[category], !items.isEmpty {
                         Section(category.label) {
                             ForEach(items, id: \.index) { item in
-                                Button(item.model.displayName) { selectedAudioModelIndex = item.index }
+                                Button {
+                                    selectedAudioModelIndex = item.index
+                                } label: {
+                                    modelMenuLabel(item.model.entry)
+                                }
                             }
                         }
                     }
@@ -93,7 +107,11 @@ extension GenerationView {
                     if let items = enabledUpscaleModelsByType[type], !items.isEmpty {
                         Section(type.trackLabel) {
                             ForEach(items, id: \.index) { item in
-                                Button(item.model.displayName) { selectedUpscaleModelIndex = item.index }
+                                Button {
+                                    selectedUpscaleModelIndex = item.index
+                                } label: {
+                                    modelMenuLabel(item.model.entry)
+                                }
                             }
                         }
                     }
@@ -107,6 +125,9 @@ extension GenerationView {
             }
         } label: {
             HStack(spacing: AppTheme.Spacing.xs) {
+                if let iconKey = currentProviderIconKey {
+                    ProviderLogo(iconKey: iconKey, size: AppTheme.IconSize.xs)
+                }
                 Text(currentModelName)
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
@@ -122,6 +143,40 @@ extension GenerationView {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .hoverHighlight()
+    }
+
+    private var currentProviderIconKey: String? {
+        switch selectedType {
+        case .video: videoModel.entry.providerIconKey
+        case .image: imageModel.entry.providerIconKey
+        case .audio: audioModel.entry.providerIconKey
+        case .upscale: upscaleModel.entry.providerIconKey
+        }
+    }
+
+    @ViewBuilder
+    private func modelMenuLabel(_ entry: CatalogEntry) -> some View {
+        if let iconKey = entry.providerIconKey {
+            Label {
+                Text(entry.displayName)
+            } icon: {
+                ProviderLogo(iconKey: iconKey, size: AppTheme.IconSize.xs)
+            }
+        } else {
+            Text(entry.displayName)
+        }
+    }
+
+    @ViewBuilder
+    private func modelFamilyHeader(_ group: VideoModelProviderGroup) -> some View {
+        if let iconKey = group.providerIconKey {
+            HStack(spacing: AppTheme.Spacing.xs) {
+                ProviderLogo(iconKey: iconKey, size: AppTheme.IconSize.xs)
+                Text(group.name)
+            }
+        } else {
+            Text(group.name)
+        }
     }
 
     var voicePicker: some View {

@@ -4,6 +4,7 @@ struct VideoModelProviderGroup: Identifiable {
     let name: String
     let models: [(index: Int, model: VideoModelConfig)]
     var id: String { name }
+    var providerIconKey: String? { models.first?.model.entry.providerIconKey }
 }
 
 // Model catalog selection and per-model capability state.
