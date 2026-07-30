@@ -15,6 +15,7 @@ final class TimelineHeaderView: NSView {
     /// Rects for mute/hide/sync-lock buttons, indexed by track. Used for hit testing.
     var muteButtonRects: [Int: NSRect] = [:]
     var hideButtonRects: [Int: NSRect] = [:]
+    var soloButtonRects: [Int: NSRect] = [:]
     var syncLockButtonRects: [Int: NSRect] = [:]
     var dragHandleRects: [Int: NSRect] = [:]
 
@@ -47,6 +48,7 @@ final class TimelineHeaderView: NSView {
 
         muteButtonRects.removeAll()
         hideButtonRects.removeAll()
+        soloButtonRects.removeAll()
         syncLockButtonRects.removeAll()
         dragHandleRects.removeAll()
         let stripWidth: CGFloat = 3
@@ -84,12 +86,18 @@ final class TimelineHeaderView: NSView {
 
 
             let iconY = y + (h - iconSize) / 2
+            let iconSpacing = iconSize + 4
             let rightmostX = headerWidth - iconSize - 6
-            let syncX = rightmostX - iconSize - 4
+            let soloX = rightmostX - iconSpacing
+            let syncX = rightmostX - iconSpacing * 2
 
             syncLockButtonRects[i] = drawToggleIcon(
                 x: syncX, y: iconY, size: iconSize, config: iconConfig, context: ctx,
                 active: track.syncLocked, onSymbol: "link", offSymbol: "personalhotspot.slash"
+            )
+            soloButtonRects[i] = drawToggleIcon(
+                x: soloX, y: iconY, size: iconSize, config: iconConfig, context: ctx,
+                active: track.soloed, onSymbol: "s.circle.fill", offSymbol: "s.circle"
             )
             if track.type == .audio {
                 muteButtonRects[i] = drawToggleIcon(
@@ -101,6 +109,15 @@ final class TimelineHeaderView: NSView {
                     x: rightmostX, y: iconY, size: iconSize, config: iconConfig, context: ctx,
                     active: !track.hidden, onSymbol: "eye", offSymbol: "eye.slash"
                 )
+            }
+
+            // Dim rows that solo is implicitly silencing (not their own mute/hide flag).
+            let implicitlySilenced = track.type == .audio
+                ? (editor.effectiveMuted(for: track) && !track.muted)
+                : (editor.effectiveHidden(for: track) && !track.hidden)
+            if implicitlySilenced, let scrim = Self.headerBg.copy(alpha: AppTheme.Opacity.medium) {
+                ctx.setFillColor(scrim)
+                ctx.fill(NSRect(x: stripWidth, y: y, width: headerWidth - stripWidth, height: h))
             }
 
             // White border at top of first track and bottom of every track
@@ -177,6 +194,13 @@ final class TimelineHeaderView: NSView {
         for (ti, rect) in hideButtonRects {
             if rect.contains(point) {
                 editor.toggleTrackHidden(trackIndex: ti)
+                needsDisplay = true
+                return
+            }
+        }
+        for (ti, rect) in soloButtonRects {
+            if rect.contains(point) {
+                editor.toggleTrackSolo(trackIndex: ti, exclusive: !event.modifierFlags.contains(.shift))
                 needsDisplay = true
                 return
             }

@@ -259,6 +259,7 @@ extension EditorWindowController: EditorActions {
     @objc func splitAtPlayhead(_ sender: Any?) { editorViewModel.splitAtPlayhead() }
     @objc func trimStartToPlayhead(_ sender: Any?) { editorViewModel.trimStartToPlayhead() }
     @objc func trimEndToPlayhead(_ sender: Any?) { editorViewModel.trimEndToPlayhead() }
+    @objc func compTakeIntoSelection(_ sender: Any?) { editorViewModel.compSelectedRangeFromSelectedTake() }
     @objc func selectForwardOnTrack(_ sender: Any?) { editorViewModel.selectForwardFromCurrentSelection(scope: .track) }
     @objc func selectForwardOnAllTracks(_ sender: Any?) { editorViewModel.selectForwardFromCurrentSelection(scope: .allTracks) }
     @objc func deleteSelectedClips(_ sender: Any?) { editorViewModel.deleteSelectedClips() }

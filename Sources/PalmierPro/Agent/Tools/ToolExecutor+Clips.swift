@@ -1120,18 +1120,19 @@ extension ToolExecutor {
             reorders.append((id, to))
         }
 
-        var flagSets: [(id: String, muted: Bool?, hidden: Bool?, syncLocked: Bool?)] = []
+        var flagSets: [(id: String, muted: Bool?, hidden: Bool?, soloed: Bool?, syncLocked: Bool?)] = []
         for (i, raw) in (args["set"] as? [Any] ?? []).enumerated() {
             guard let entry = raw as? [String: Any] else { throw ToolError("set[\(i)] must be an object") }
             let path = "set[\(i)]"
-            try validateUnknownKeys(entry, allowed: ["trackId", "index", "muted", "hidden", "syncLocked"], path: path)
+            try validateUnknownKeys(entry, allowed: ["trackId", "index", "muted", "hidden", "soloed", "syncLocked"], path: path)
             let muted = entry["muted"] as? Bool
             let hidden = entry["hidden"] as? Bool
+            let soloed = entry["soloed"] as? Bool
             let syncLocked = entry["syncLocked"] as? Bool
-            guard muted != nil || hidden != nil || syncLocked != nil else {
-                throw ToolError("\(path): pass at least one of muted, hidden, syncLocked")
+            guard muted != nil || hidden != nil || soloed != nil || syncLocked != nil else {
+                throw ToolError("\(path): pass at least one of muted, hidden, soloed, syncLocked")
             }
-            flagSets.append((try trackId(entry, path), muted, hidden, syncLocked))
+            flagSets.append((try trackId(entry, path), muted, hidden, soloed, syncLocked))
         }
 
         var removeIds: [String] = []
@@ -1186,6 +1187,7 @@ extension ToolExecutor {
                 let track = editor.timeline.tracks[idx]
                 if let m = f.muted, track.muted != m { editor.toggleTrackMute(trackIndex: idx) }
                 if let h = f.hidden, track.hidden != h { editor.toggleTrackHidden(trackIndex: idx) }
+                if let so = f.soloed, track.soloed != so { editor.setTrackSolo(trackIndex: idx, soloed: so) }
                 if let s = f.syncLocked, track.syncLocked != s { editor.toggleTrackSyncLock(trackIndex: idx) }
             }
             if !removeIds.isEmpty { editor.removeTracks(ids: removeIds) }
@@ -1196,6 +1198,7 @@ extension ToolExecutor {
             var entry: [String: Any] = ["trackId": track.id, "index": i, "label": editor.timelineTrackDisplayLabel(at: i), "type": track.type.rawValue]
             if track.muted { entry["muted"] = true }
             if track.hidden { entry["hidden"] = true }
+            if track.soloed { entry["soloed"] = true }
             if !track.syncLocked { entry["syncLocked"] = false }
             return entry
         }

@@ -658,7 +658,10 @@ final class TimelineView: NSView {
             width: maxX - minX,
             height: max(0, Double(bounds.height - geo.rulerHeight))
         )
-        ctx.setFillColor(AppTheme.Text.primary.withAlphaComponent(AppTheme.Opacity.hint).cgColor)
+        let fill = editor.isLoopEnabled
+            ? AppTheme.Accent.timecodeNSColor.withAlphaComponent(AppTheme.Opacity.muted)
+            : AppTheme.Text.primary.withAlphaComponent(AppTheme.Opacity.hint)
+        ctx.setFillColor(fill.cgColor)
         ctx.fill(rect)
     }
 
@@ -677,7 +680,10 @@ final class TimelineView: NSView {
             height: Double(geo.rulerHeight)
         )
 
-        ctx.setFillColor(AppTheme.Text.primary.withAlphaComponent(AppTheme.Opacity.soft).cgColor)
+        let rulerFill = editor.isLoopEnabled
+            ? AppTheme.Accent.timecodeNSColor.withAlphaComponent(AppTheme.Opacity.medium)
+            : AppTheme.Text.primary.withAlphaComponent(AppTheme.Opacity.soft)
+        ctx.setFillColor(rulerFill.cgColor)
         ctx.fill(rulerRect)
     }
 
@@ -690,8 +696,9 @@ final class TimelineView: NSView {
         let minX = geo.xForFrame(range.startFrame)
         let maxX = geo.xForFrame(range.endFrame)
 
-        ctx.setStrokeColor(AppTheme.Accent.timecodeNSColor.withAlphaComponent(AppTheme.Opacity.prominent).cgColor)
-        ctx.setLineWidth(AppTheme.BorderWidth.medium)
+        let edgeAlpha = editor.isLoopEnabled ? AppTheme.Opacity.opaque : AppTheme.Opacity.prominent
+        ctx.setStrokeColor(AppTheme.Accent.timecodeNSColor.withAlphaComponent(edgeAlpha).cgColor)
+        ctx.setLineWidth(editor.isLoopEnabled ? AppTheme.BorderWidth.thick : AppTheme.BorderWidth.medium)
         for x in [minX, maxX] {
             ctx.move(to: CGPoint(x: x, y: Double(scrollOffset.y)))
             ctx.addLine(to: CGPoint(x: x, y: Double(scrollOffset.y + geo.rulerHeight)))

@@ -64,6 +64,7 @@ struct TimelineContainerView: NSViewRepresentable {
             zoomScale: editor.zoomScale,
             selectedClipIds: editor.selectedClipIds,
             selectedTimelineRange: editor.selectedTimelineRange,
+            isLoopEnabled: editor.isLoopEnabled,
             pendingReplacements: editor.pendingReplacements,
             generatingAssetIds: Set(editor.mediaAssets.lazy.filter(\.isGenerating).map(\.id))
         )
@@ -106,6 +107,7 @@ struct TimelineContainerView: NSViewRepresentable {
         let zoomScale: Double
         let selectedClipIds: Set<String>
         let selectedTimelineRange: TimelineRangeSelection?
+        let isLoopEnabled: Bool
         let pendingReplacements: Set<String>
         let generatingAssetIds: Set<String>
     }

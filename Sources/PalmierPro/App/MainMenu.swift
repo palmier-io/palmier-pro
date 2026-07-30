@@ -100,6 +100,10 @@ enum MainMenuBuilder {
         trimEndItem.keyEquivalentModifierMask = []
         menu.addItem(trimEndItem)
 
+        let compItem = NSMenuItem(title: "Comp Take into Range", action: #selector(EditorActions.compTakeIntoSelection(_:)), keyEquivalent: "y")
+        compItem.keyEquivalentModifierMask = []
+        menu.addItem(compItem)
+
         menu.addItem(.separator())
 
         let deleteItem = NSMenuItem(title: "Delete", action: #selector(EditorActions.deleteSelectedClips(_:)), keyEquivalent: "\u{8}") // backspace
@@ -187,6 +191,7 @@ enum MainMenuBuilder {
     func splitAtPlayhead(_ sender: Any?)
     func trimStartToPlayhead(_ sender: Any?)
     func trimEndToPlayhead(_ sender: Any?)
+    func compTakeIntoSelection(_ sender: Any?)
     func selectForwardOnTrack(_ sender: Any?)
     func selectForwardOnAllTracks(_ sender: Any?)
     func deleteSelectedClips(_ sender: Any?)

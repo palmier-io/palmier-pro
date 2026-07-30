@@ -41,6 +41,7 @@ enum CompositionBuilder {
         resolveSourceSize: @escaping @Sendable (String) -> CGSize? = { _ in nil },
         resolveTimeline: @escaping @Sendable (String) -> Timeline? = { _ in nil },
         missingMediaRefs: Set<String> = [],
+        honorSolo: Bool = true,
         renderSize: CGSize
     ) async throws -> CompositionResult {
         Log.preview.info("build fps=\(timeline.fps) size=\(timeline.width)x\(timeline.height) tracks=\(timeline.tracks.count)")
@@ -55,7 +56,8 @@ enum CompositionBuilder {
             resolveURL: resolveURL,
             resolveSourceSize: resolveSourceSize,
             resolveTimeline: resolveTimeline,
-            missingMediaRefs: missingMediaRefs
+            missingMediaRefs: missingMediaRefs,
+            honorSolo: honorSolo
         )
 
         for (trackIdx, track) in timeline.tracks.enumerated() {
@@ -93,6 +95,7 @@ enum CompositionBuilder {
             clipTransforms: ctx.clipTransforms,
             resolveTimeline: resolveTimeline,
             compositionDuration: ctx.composition.duration,
+            honorSolo: honorSolo,
             renderSize: renderSize
         )
 
@@ -117,6 +120,7 @@ enum CompositionBuilder {
         let resolveSourceSize: @Sendable (String) -> CGSize?
         let resolveTimeline: @Sendable (String) -> Timeline?
         let missingMediaRefs: Set<String>
+        let honorSolo: Bool
         var trackMappings: [TrackMapping] = []
         var clipNaturalSizes: [String: CGSize] = [:]
         var clipTransforms: [String: CGAffineTransform] = [:]
@@ -131,7 +135,8 @@ enum CompositionBuilder {
             resolveURL: @escaping @Sendable (String) -> URL?,
             resolveSourceSize: @escaping @Sendable (String) -> CGSize?,
             resolveTimeline: @escaping @Sendable (String) -> Timeline?,
-            missingMediaRefs: Set<String>
+            missingMediaRefs: Set<String>,
+            honorSolo: Bool
         ) {
             self.composition = composition
             self.timescale = timescale
@@ -140,6 +145,7 @@ enum CompositionBuilder {
             self.resolveSourceSize = resolveSourceSize
             self.resolveTimeline = resolveTimeline
             self.missingMediaRefs = missingMediaRefs
+            self.honorSolo = honorSolo
         }
     }
 
@@ -471,7 +477,7 @@ enum CompositionBuilder {
             ctx.offlineMediaRefs.insert(carrier.mediaRef)
             return
         }
-        let flat = NestFlattener.flatten(carrier: carrier, child: child, visual: true)
+        let flat = NestFlattener.flatten(carrier: carrier, child: child, visual: true, honorSolo: ctx.honorSolo)
         for childClips in flat.videoTracks {
             try await insertVideoLane(clips: childClips, parentTrackIndex: parentTrackIndex,
                                       nestCarrier: carrier, depth: depth + 1, ctx: ctx)
@@ -491,7 +497,7 @@ enum CompositionBuilder {
             ctx.offlineMediaRefs.insert(carrier.mediaRef)
             return
         }
-        let flat = NestFlattener.flatten(carrier: carrier, child: child, visual: false)
+        let flat = NestFlattener.flatten(carrier: carrier, child: child, visual: false, honorSolo: ctx.honorSolo)
         for trackClips in flat.audioTracks {
             try await insertAudioLane(clips: trackClips, parentTrackIndex: parentTrackIndex,
                                       nest: (topCarrier, volumeScale), depth: depth + 1, ctx: ctx)
@@ -506,6 +512,7 @@ enum CompositionBuilder {
         clipTransforms: [String: CGAffineTransform] = [:],
         resolveTimeline: @Sendable (String) -> Timeline? = { _ in nil },
         compositionDuration: CMTime,
+        honorSolo: Bool = true,
         renderSize: CGSize
     ) -> (audioMix: AVMutableAudioMix, videoComposition: AVVideoComposition) {
         let timescale = CMTimeScale(timeline.fps)
@@ -519,7 +526,7 @@ enum CompositionBuilder {
                 let params = AVMutableAudioMixInputParameters(track: mapping.compositionTrack)
                 guard timeline.tracks.indices.contains(parentTrackIndex) else { return params }
                 let parentTrack = timeline.tracks[parentTrackIndex]
-                if parentTrack.muted {
+                if honorSolo ? timeline.effectiveMuted(for: parentTrack) : parentTrack.muted {
                     params.setVolume(0, at: .zero)
                     return params
                 }
@@ -533,7 +540,7 @@ enum CompositionBuilder {
                 guard timeline.tracks.indices.contains(trackIndex) else { return nil }
                 let track = timeline.tracks[trackIndex]
                 let params = AVMutableAudioMixInputParameters(track: mapping.compositionTrack)
-                if track.muted {
+                if honorSolo ? timeline.effectiveMuted(for: track) : track.muted {
                     params.setVolume(0, at: .zero)
                     return params
                 }
@@ -564,6 +571,7 @@ enum CompositionBuilder {
             clipTransforms: clipTransforms,
             resolveTimeline: resolveTimeline,
             compositionDuration: compositionDuration,
+            honorSolo: honorSolo,
             renderSize: renderSize
         )
         return (audioMix, AVVideoComposition(configuration: vcConfig))
@@ -577,6 +585,7 @@ enum CompositionBuilder {
         clipTransforms: [String: CGAffineTransform],
         resolveTimeline: @Sendable (String) -> Timeline? = { _ in nil },
         compositionDuration: CMTime,
+        honorSolo: Bool = true,
         renderSize: CGSize
     ) -> [CompositorInstruction] {
         let timescale = CMTimeScale(timeline.fps)
@@ -612,7 +621,7 @@ enum CompositionBuilder {
             guard depth < NestFlattener.maxDepth else { return nil }
             if let cached = flattenCache[carrier.id] { return cached }
             guard let child = resolveTimeline(carrier.mediaRef) else { return nil }
-            let flat = NestFlattener.flatten(carrier: carrier, child: child, visual: true)
+            let flat = NestFlattener.flatten(carrier: carrier, child: child, visual: true, honorSolo: honorSolo)
             flattenCache[carrier.id] = flat
             return flat
         }
@@ -663,7 +672,7 @@ enum CompositionBuilder {
 
         // Walk tracks in reverse to produce bottom→top entries. Text layers follow track order.
         var entries: [Entry] = []
-        for track in timeline.tracks.reversed() where !track.hidden {
+        for track in timeline.tracks.reversed() where !(honorSolo ? timeline.effectiveHidden(for: track) : track.hidden) {
             var prevEndFrame = Int.min
             for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame }) where clip.durationFrames > 0 {
                 let plan: LayerPlan

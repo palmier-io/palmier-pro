@@ -14,7 +14,8 @@ enum NestFlattener {
     }
 
     /// `carrier` = the video `.sequence` clip or its linked audio clip.
-    static func flatten(carrier: Clip, child: Timeline, visual: Bool) -> Flattened {
+    /// `honorSolo` respects the child timeline's solo audition state; pass `false` for export.
+    static func flatten(carrier: Clip, child: Timeline, visual: Bool, honorSolo: Bool = true) -> Flattened {
         var out = Flattened()
         out.childCanvas = CGSize(width: child.width, height: child.height)
         let window = carrier.trimStartFrame..<(carrier.trimStartFrame + carrier.durationFrames)
@@ -22,13 +23,15 @@ enum NestFlattener {
 
         for track in child.tracks {
             if visual {
-                guard track.type == .video, !track.hidden else { continue }
+                let hidden = honorSolo ? child.effectiveHidden(for: track) : track.hidden
+                guard track.type == .video, !hidden else { continue }
                 let clips = track.clips
                     .sorted { $0.startFrame < $1.startFrame }
                     .compactMap { remap($0, window: window, shift: shift, nestId: carrier.id) }
                 if !clips.isEmpty { out.videoTracks.append(clips) }
             } else {
-                guard track.type == .audio, !track.muted else { continue }
+                let muted = honorSolo ? child.effectiveMuted(for: track) : track.muted
+                guard track.type == .audio, !muted else { continue }
                 let clips = track.clips
                     .sorted { $0.startFrame < $1.startFrame }
                     .compactMap { remap($0, window: window, shift: shift, nestId: carrier.id) }

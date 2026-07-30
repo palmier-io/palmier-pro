@@ -80,12 +80,60 @@ extension Timeline {
     }
 }
 
+extension Timeline {
+    /// True when any track in the requested zone (audio vs. visual) is soloed.
+    func isAnySoloActive(inAudioZone: Bool) -> Bool {
+        tracks.contains { ($0.type == .audio) == inAudioZone && $0.soloed }
+    }
+
+    /// A visual track is dark when hidden, or when a video-zone solo excludes it. Derived — never stored.
+    func effectiveHidden(for track: Track) -> Bool {
+        if track.hidden { return true }
+        guard track.type != .audio else { return false }
+        return isAnySoloActive(inAudioZone: false) && !track.soloed
+    }
+
+    /// An audio track is silent when muted, or when any solo is active and the track is
+    /// neither soloed itself nor pulled in by a soloed video track's linked audio. Derived — never stored.
+    func effectiveMuted(for track: Track) -> Bool {
+        if track.muted { return true }
+        guard track.type == .audio else { return false }
+        let soloActive = isAnySoloActive(inAudioZone: false) || isAnySoloActive(inAudioZone: true)
+        guard soloActive else { return false }
+        if track.soloed { return false }
+        return !soloLinkedAudioTrackIds.contains(track.id)
+    }
+
+    /// Ids of audio tracks holding a clip whose `linkGroupId` also appears on a soloed video track.
+    private var soloLinkedAudioTrackIds: Set<String> {
+        let soloedVideoLinkIds = Set(
+            tracks
+                .filter { $0.type != .audio && $0.soloed }
+                .flatMap { $0.clips.compactMap(\.linkGroupId) }
+        )
+        guard !soloedVideoLinkIds.isEmpty else { return [] }
+        return Set(
+            tracks
+                .filter { track in
+                    track.type == .audio && track.clips.contains {
+                        guard let gid = $0.linkGroupId else { return false }
+                        return soloedVideoLinkIds.contains(gid)
+                    }
+                }
+                .map(\.id)
+        )
+    }
+}
+
 struct Track: Codable, Sendable, Equatable, Identifiable {
     var id: String = UUID().uuidString
     var type: ClipType
     var muted: Bool = false
     var hidden: Bool = false
+    var soloed: Bool = false
     var syncLocked: Bool = true
+    /// Marks the dedicated top track that comping assembles chosen takes onto.
+    var isComp: Bool = false
     var clips: [Clip] = []
 
     var displayHeight: CGFloat = 50
@@ -111,7 +159,7 @@ struct Track: Codable, Sendable, Equatable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, type, muted, hidden, syncLocked, clips, displayHeight
+        case id, type, muted, hidden, soloed, syncLocked, isComp, clips, displayHeight
     }
 }
 
@@ -123,7 +171,9 @@ extension Track {
             type: try c.decode(ClipType.self, forKey: .type),
             muted: (try? c.decode(Bool.self, forKey: .muted)) ?? false,
             hidden: (try? c.decode(Bool.self, forKey: .hidden)) ?? false,
+            soloed: (try? c.decode(Bool.self, forKey: .soloed)) ?? false,
             syncLocked: (try? c.decode(Bool.self, forKey: .syncLocked)) ?? true,
+            isComp: (try? c.decode(Bool.self, forKey: .isComp)) ?? false,
             clips: (try? c.decode([Clip].self, forKey: .clips)) ?? [],
             displayHeight: (try? c.decode(CGFloat.self, forKey: .displayHeight))
                 .map { min(max($0, TrackSize.minHeight), TrackSize.maxHeight) } ?? 50
