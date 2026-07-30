@@ -64,6 +64,7 @@
 "%d media files missing — they'll be skipped." = "%d media files missing — they'll be skipped.";
 "%d minute" = "%d minute";
 "%d minutes" = "%d minutes";
+"%d refunded" = "%d refunded";
 "%d second" = "%d second";
 "%d seconds" = "%d seconds";
 "%d sections" = "%d sections";
@@ -157,6 +158,7 @@
 "Anthropic API Key" = "Anthropic API Key";
 "App version %@ and macOS %@ are included." = "App version %@ and macOS %@ are included.";
 "Appearance" = "Appearance";
+"Activity unavailable" = "Activity unavailable";
 "Apply" = "Apply";
 "Apply Effect (Agent)" = "Apply Effect (Agent)";
 "Apply Effect ×%d (Agent)" = "Apply Effect ×%d (Agent)";
@@ -957,6 +959,7 @@
 "Sample Project" = "Sample Project";
 "Saturation" = "Saturation";
 "Save" = "Save";
+"Save this project to view activity" = "Save this project to view activity";
 "Save As" = "Save As";
 "Save as Media" = "Save as Media";
 "Save As…" = "Save As…";
@@ -994,6 +997,7 @@
 "Send Feedback…" = "Send Feedback…";
 "Send only the visible clip range to the model, not the full source." = "Send only the visible clip range to the model, not the full source.";
 "Send product usage data to help improve Palmier Pro. Media and project content are never included." = "Send product usage data to help improve Palmier Pro. Media and project content are never included.";
+"Send usage data from your interactions with Palmier Pro to help improve the app." = "Send usage data from your interactions with Palmier Pro to help improve the app.";
 "Sending…" = "Sending…";
 "Sequence" = "Sequence";
 "Server returned HTTP %d." = "Server returned HTTP %d.";

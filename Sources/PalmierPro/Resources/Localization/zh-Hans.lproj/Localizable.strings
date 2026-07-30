@@ -39,6 +39,7 @@
 "Animation" = "动画";
 "Anthropic API Key" = "Anthropic API 密钥";
 "Appearance" = "外观";
+"Activity unavailable" = "项目活动暂不可用";
 "args" = "参数";
 "Ask anything, or start with:" = "可以直接提问，或从这里开始：";
 "Ask, or type @ to reference media" = "提问，或输入 @ 引用媒体";
@@ -303,6 +304,7 @@
 "Preview" = "预览";
 "Project" = "项目";
 "Project Activity" = "项目活动";
+"Save this project to view activity" = "保存此项目后即可查看活动";
 "PROMPT" = "提示词";
 "Quit Palmier Pro" = "退出 Palmier Pro";
 "Radius" = "半径";
@@ -489,6 +491,7 @@
 "%d credits. %@ credits remaining after this generation." = "%d 积分。本次生成后剩余 %@ 积分。";
 "%d items" = "%d 项";
 "%d media files missing — they'll be skipped." = "缺少 %d 个媒体文件，将跳过这些文件。";
+"%d refunded" = "已退还 %d 积分";
 "%d sections" = "%d 段";
 "%d selected" = "已选择 %d 项";
 "%dk credits" = "%dk 积分";
@@ -1133,6 +1136,7 @@
 "Send crash and error reports to help diagnose problems. Media and project content are never included." = "发送崩溃和错误报告以帮助诊断问题。不会包含媒体和项目内容。";
 "Send crash reports" = "发送崩溃报告";
 "Send product usage data to help improve Palmier Pro. Media and project content are never included." = "发送产品使用数据以帮助改进 Palmier Pro。不会包含媒体和项目内容。";
+"Send usage data from your interactions with Palmier Pro to help improve the app." = "发送你使用 Palmier Pro 时产生的交互数据，以帮助改进应用。";
 "Server URL" = "服务器 URL";
 "Share usage data" = "共享使用数据";
 "Show in Finder" = "在 Finder 中显示";
