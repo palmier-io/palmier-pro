@@ -2,22 +2,22 @@
   "changelogURL": "https://github.com/palmier-io/palmier-pro/releases",
   "entries": [
     {
-      "version": "0.6.15",
-      "date": "2026-07-26",
+      "version": "0.6.16",
+      "date": "2026-07-29",
       "sections": [
         {
           "heading": "AI Features",
           "items": [
-            "Seed Audio 1.0: Generate music, multilingual speech, sound effects all in one model",
-            "Sonilo Music and Sound Effects: Create music and sound effects from a text prompt with Sonilo",
-            "More upscale controls: Many more video upscale options with ByteDance Upscaler and Topaz, including upscaling to 60 fps and 4k."
+            "Video Reframing: Select a clip/video, and use LTX 2.3 Reframe video model to change the aspect ratio",
+            "Lip Sync: Select a video and audio and lip sync them with Veed Lip Sync model"
           ]
         },
         {
           "heading": "Improved",
           "items": [
-            "Better media panel usability: Select, navigate, and delete multiple media browser items with standard Mac controls",
-            "New effect: Invert Colors in the Adjust inspector"
+            "Refund logs in generation history: You can now see the refund transaction details in the generation history",
+            "Custom Aspect Ratio: You can set a custom aspect ratio for your timeline",
+            "More controls in silence removal: You can control the silence threshold and padding via UI or agent"
           ]
         }
       ]
