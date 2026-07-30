@@ -211,6 +211,7 @@
 "Intensity" = "强度";
 "Italic" = "斜体";
 "Keep Current" = "保留当前设置";
+"Keeps this much audio before and after detected speech." = "在检测到的语音前后保留这么长的音频。";
 "Key Hue" = "关键色相";
 "Keyboard Shortcuts" = "键盘快捷键";
 "Keyframes" = "关键帧";
@@ -253,6 +254,7 @@
 "Media Panel" = "媒体面板";
 "Media search" = "媒体搜索";
 "Midpoint" = "中点";
+"Minimum Pause" = "最短停顿";
 "Mode" = "模式";
 "Model" = "模型";
 "Modified" = "已修改";
@@ -314,6 +316,7 @@
 "References" = "参考素材";
 "Relink Folder…" = "重新链接文件夹…";
 "Relink…" = "重新链接…";
+"Remove" = "移除";
 "Remove API key" = "移除 API 密钥";
 "Remove Dead Air" = "移除静默段";
 "Remove filler words" = "移除语气词";
@@ -367,6 +370,10 @@
 "Search skills" = "搜索技能";
 "Sequence" = "序列";
 "Select a range" = "选择范围";
+"Selected audio clips must come from one track." = "所选音频片段必须来自同一轨道。";
+"Selected clips could not be resolved." = "无法解析所选片段。";
+"Selected clips must include at least one audio clip." = "所选片段必须至少包含一个音频片段。";
+"Selected clips must share one track or belong to one linked A/V unit." = "所选片段必须位于同一轨道，或属于同一个音视频链接单元。";
 "Select a skill." = "选择一个技能。";
 "Select All" = "全选";
 "Select Forward on All Tracks" = "向前选择所有轨道";
@@ -392,6 +399,8 @@
 "Sign in with Google" = "使用 Google 登录";
 "Sign out" = "退出登录";
 "Silence Detection" = "静音检测";
+"Speech is detected on-device in the background. Dims quiet, speech-free spans on timeline waveforms." = "在后台使用设备端语音检测，并在时间线波形中弱化无语音的安静区段。";
+"Speech Padding" = "语音留白";
 "Size" = "大小";
 "Skills" = "技能";
 "Skip" = "跳过";
@@ -428,6 +437,7 @@
 "Thumbnail Size" = "缩略图大小";
 "Timeline" = "时间线";
 "Timeline Format" = "时间线格式";
+"Tints waveforms by speaker. Voices are matched across clips using cloud transcripts." = "按说话人标记波形颜色。系统会使用云端转录匹配不同片段中的声音。";
 "Tint" = "色调";
 "Toggle Agent Panel" = "切换 Agent 面板";
 "Tolerance" = "容差";
@@ -926,6 +936,7 @@
 "Regenerate · %@" = "重新生成 · %@";
 "Requires a paid plan" = "需要付费套餐";
 "Identify Speakers" = "识别说话人";
+"Ignores speech-free pauses shorter than this." = "忽略短于此时长的无语音停顿。";
 "Refresh" = "刷新";
 "Opening Google…" = "正在打开 Google…";
 "Sign In" = "登录";

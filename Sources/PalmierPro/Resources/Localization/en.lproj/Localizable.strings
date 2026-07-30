@@ -573,6 +573,7 @@
 "Hue" = "Hue";
 "Hue Curves" = "Hue Curves";
 "Identify Speakers" = "Identify Speakers";
+"Ignores speech-free pauses shorter than this." = "Ignores speech-free pauses shorter than this.";
 "Image" = "Image";
 "Image Ref" = "Image Ref";
 "Image references must be image assets." = "Image references must be image assets.";
@@ -609,6 +610,7 @@
 "Invert Colors" = "Invert Colors";
 "Italic" = "Italic";
 "Keep Current" = "Keep Current";
+"Keeps this much audio before and after detected speech." = "Keeps this much audio before and after detected speech.";
 "Keep Editing" = "Keep Editing";
 "Keep Skill" = "Keep Skill";
 "Key Hue" = "Key Hue";
@@ -687,6 +689,7 @@
 "Medium" = "Medium";
 "Mic" = "Mic";
 "Midpoint" = "Midpoint";
+"Minimum Pause" = "Minimum Pause";
 "Mixed" = "Mixed";
 "MLX analysis is unavailable in unbundled builds (missing mlx.metallib)" = "MLX analysis is unavailable in unbundled builds (missing mlx.metallib)";
 "Mode" = "Mode";
@@ -880,6 +883,7 @@
 "Relink…" = "Relink…";
 "Relinked %d of %d offline clips." = "Relinked %d of %d offline clips.";
 "Remove %@" = "Remove %@";
+"Remove" = "Remove";
 "Remove API key" = "Remove API key";
 "Remove background sound and keep speech" = "Remove background sound and keep speech";
 "Remove Clip" = "Remove Clip";
@@ -987,6 +991,10 @@
 "Select Forward on Track" = "Select Forward on Track";
 "Select media files or folders to import" = "Select media files or folders to import";
 "Select Range" = "Select Range";
+"Selected audio clips must come from one track." = "Selected audio clips must come from one track.";
+"Selected clips could not be resolved." = "Selected clips could not be resolved.";
+"Selected clips must include at least one audio clip." = "Selected clips must include at least one audio clip.";
+"Selected clips must share one track or belong to one linked A/V unit." = "Selected clips must share one track or belong to one linked A/V unit.";
 "Selected Clips · %d" = "Selected Clips · %d";
 "Selection Tool" = "Selection Tool";
 "Send" = "Send";
@@ -1067,6 +1075,8 @@
 "sourceVideoMediaRef must reference a video asset" = "sourceVideoMediaRef must reference a video asset";
 "Speakers" = "Speakers";
 "Speech" = "Speech";
+"Speech is detected on-device in the background. Dims quiet, speech-free spans on timeline waveforms." = "Speech is detected on-device in the background. Dims quiet, speech-free spans on timeline waveforms.";
+"Speech Padding" = "Speech Padding";
 "Speed" = "Speed";
 "Spill" = "Spill";
 "Split at Playhead" = "Split at Playhead";
@@ -1139,6 +1149,7 @@
 "Thumbnail Size" = "Thumbnail Size";
 "Timeline" = "Timeline";
 "Timeline Format" = "Timeline Format";
+"Tints waveforms by speaker. Voices are matched across clips using cloud transcripts." = "Tints waveforms by speaker. Voices are matched across clips using cloud transcripts.";
 "Tint" = "Tint";
 "Toggle Agent Panel" = "Toggle Agent Panel";
 "Tolerance" = "Tolerance";

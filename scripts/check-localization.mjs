@@ -449,8 +449,13 @@ const sourceGuards = [
     },
     {
         file: path.join(sourceRoot, "Agent", "Tools", "ToolExecutor+Words.swift"),
-        required: "removeAllDeadAir(localized: false)",
+        required: "removeAllDeadAir(settings: settings, localized: false)",
         error: "Agent 静音移除拒绝原因必须保持稳定英文协议",
+    },
+    {
+        file: path.join(sourceRoot, "Agent", "Tools", "ToolExecutor+Words.swift"),
+        required: "settings: settings,\n                        localized: false",
+        error: "Agent 定向静音移除拒绝原因必须保持稳定英文协议",
     },
     {
         file: path.join(sourceRoot, "Account", "AccountService.swift"),
