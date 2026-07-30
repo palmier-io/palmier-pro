@@ -8,8 +8,8 @@ enum TranscriptionProvider: String, CaseIterable, Sendable, Codable {
 
     var label: String {
         switch self {
-        case .local: "Local"
-        case .cloud: "Cloud"
+        case .local: L10n.string("Local")
+        case .cloud: L10n.string("Cloud")
         }
     }
 }
@@ -79,15 +79,15 @@ enum TranscriptionError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unsupportedLocale(let id):
-            return "On-device transcription is not available for \(id)."
+            return L10n.format("On-device transcription is not available for %@.", id)
         case .modelInstallFailed(let reason):
-            return "Could not install the on-device speech model: \(reason)"
+            return L10n.format("Could not install the on-device speech model: %@", reason)
         case .decodeFailed:
-            return "Could not parse transcription result."
+            return L10n.string("Could not parse transcription result.")
         case .audioExtractionFailed(let reason):
-            return "Audio extraction failed: \(reason)"
+            return L10n.format("Audio extraction failed: %@", reason)
         case .analysisFailed(let reason):
-            return "Transcription failed: \(reason)"
+            return L10n.format("Transcription failed: %@", reason)
         }
     }
 }
@@ -280,7 +280,9 @@ enum Transcription {
         }
 
         guard audioFile != nil else {
-            throw TranscriptionError.audioExtractionFailed("No audio samples in \(videoURL.lastPathComponent)")
+            throw TranscriptionError.audioExtractionFailed(
+                L10n.format("No audio samples in %@", videoURL.lastPathComponent)
+            )
         }
         let bytes = (try? FileManager.default.attributesOfItem(atPath: outURL.path)[.size] as? Int) ?? 0
         Log.transcription.notice(

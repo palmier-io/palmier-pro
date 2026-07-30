@@ -1,7 +1,29 @@
 import Foundation
 
-func unsupportedValue(model displayName: String, field: String, value: String, allowed: [String]) -> String {
-    "\(displayName) does not support \(field) '\(value)'. Valid: \(allowed.joined(separator: ", "))."
+func unsupportedValue(
+    model displayName: String,
+    field: String,
+    value: String,
+    allowed: [String],
+    localized: Bool = false
+) -> String {
+    let shownField = switch field {
+    case "duration": localized ? L10n.string("duration") : field
+    case "aspect ratio": localized ? L10n.string("aspect ratio") : field
+    case "resolution": localized ? L10n.string("resolution") : field
+    case "quality": localized ? L10n.string("quality") : field
+    case "voice": localized ? L10n.string("voice") : field
+    case "target language": localized ? L10n.string("target language") : field
+    default: field
+    }
+    return L10n.message(
+        "%@ does not support %@ '%@'. Valid: %@.",
+        localized: localized,
+        displayName,
+        shownField,
+        value,
+        allowed.joined(separator: ", ")
+    )
 }
 
 struct VideoModelConfig: Identifiable, Sendable {
@@ -61,24 +83,39 @@ struct VideoModelConfig: Identifiable, Sendable {
     }
 
     var sourceDurationLimitLabel: String? {
+        sourceDurationLimitLabel(localized: false)
+    }
+
+    func sourceDurationLimitLabel(localized: Bool) -> String? {
         guard let maximum = maxSourceVideoSeconds,
               maximum.isFinite, maximum > 0,
               let seconds = Int(exactly: maximum.rounded()) else { return nil }
         if seconds.isMultiple(of: 60) {
             let minutes = seconds / 60
-            return minutes == 1 ? "1 minute" : "\(minutes) minutes"
+            if minutes == 1 {
+                return L10n.message("%d minute", localized: localized, minutes)
+            }
+            return L10n.message("%d minutes", localized: localized, minutes)
         }
-        return seconds == 1 ? "1 second" : "\(seconds) seconds"
+        if seconds == 1 {
+            return L10n.message("%d second", localized: localized, seconds)
+        }
+        return L10n.message("%d seconds", localized: localized, seconds)
     }
 
-    func validateSourceDuration(_ duration: Double) -> String? {
+    func validateSourceDuration(_ duration: Double, localized: Bool = false) -> String? {
         guard duration.isFinite, duration > 0 else {
-            return "Loading video metadata…"
+            return L10n.message("Loading video metadata…", localized: localized)
         }
         guard let maximum = maxSourceVideoSeconds,
               duration > maximum,
-              let limit = sourceDurationLimitLabel else { return nil }
-        return "\(displayName) supports source videos up to \(limit). Trim the clip to continue."
+              let limit = sourceDurationLimitLabel(localized: localized) else { return nil }
+        return L10n.message(
+            "%@ supports source videos up to %@. Trim the clip to continue.",
+            localized: localized,
+            displayName,
+            limit
+        )
     }
 
     func billingDurationSeconds(
@@ -97,18 +134,36 @@ struct VideoModelConfig: Identifiable, Sendable {
         return dict[""]
     }
 
-    func validate(duration: Int, aspectRatio: String, resolution: String?) -> String? {
+    func validate(
+        duration: Int,
+        aspectRatio: String,
+        resolution: String?,
+        localized: Bool = false
+    ) -> String? {
         if !durations.isEmpty, !durations.contains(duration) {
             return unsupportedValue(
                 model: displayName, field: "duration",
-                value: "\(duration)s", allowed: durations.map { "\($0)s" }
+                value: "\(duration)s", allowed: durations.map { "\($0)s" },
+                localized: localized
             )
         }
         if !aspectRatios.isEmpty, !aspectRatio.isEmpty, !aspectRatios.contains(aspectRatio) {
-            return unsupportedValue(model: displayName, field: "aspect ratio", value: aspectRatio, allowed: aspectRatios)
+            return unsupportedValue(
+                model: displayName,
+                field: "aspect ratio",
+                value: aspectRatio,
+                allowed: aspectRatios,
+                localized: localized
+            )
         }
         if let allowed = resolutions, let r = resolution, !r.isEmpty, !allowed.contains(r) {
-            return unsupportedValue(model: displayName, field: "resolution", value: r, allowed: allowed)
+            return unsupportedValue(
+                model: displayName,
+                field: "resolution",
+                value: r,
+                allowed: allowed,
+                localized: localized
+            )
         }
         return nil
     }

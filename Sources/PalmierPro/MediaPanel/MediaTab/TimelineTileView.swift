@@ -40,6 +40,7 @@ struct TimelineTileView: View {
                 Image(systemName: "film.stack")
                     .font(.system(size: AppTheme.FontSize.xl, weight: AppTheme.FontWeight.light))
                     .foregroundStyle(AppTheme.Text.mutedColor)
+                    .accessibilityHidden(true)
             }
             if timeline.totalFrames > 0 {
                 durationBadge
@@ -65,6 +66,7 @@ struct TimelineTileView: View {
                     .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
                     .tileBadge()
                     .foregroundStyle(isActive ? AppTheme.Accent.primary : .white)
+                    .accessibilityHidden(true)
                 Spacer()
             }
             Spacer()

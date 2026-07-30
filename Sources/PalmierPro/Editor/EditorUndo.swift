@@ -3,8 +3,13 @@ import Foundation
 @MainActor
 final class EditorUndo {
     private weak var manager: UndoManager?
+    private let localizeActionName: (String) -> String
     private var transactionActive = false
     private var transactionGroupOpened = false
+
+    init(localizeActionName: @escaping (String) -> String = { L10n.string($0) }) {
+        self.localizeActionName = localizeActionName
+    }
 
     func attach(_ manager: UndoManager?) {
         self.manager = manager
@@ -27,7 +32,8 @@ final class EditorUndo {
             transactionActive = false
             transactionGroupOpened = false
             if groupOpened {
-                manager.setActionName(actionName)
+                let localizedActionName = localizeActionName(actionName)
+                manager.setActionName(localizedActionName)
                 manager.endUndoGrouping()
             }
             if restoresEventGrouping { manager.groupsByEvent = true }
@@ -64,11 +70,11 @@ final class EditorUndo {
 
     var isRegistrationEnabled: Bool { manager?.isUndoRegistrationEnabled ?? true }
 
-    func undoLatest() -> String? {
-        guard let manager, manager.canUndo else { return nil }
-        let actionName = manager.undoActionName
+    @discardableResult
+    func undoLatest() -> Bool {
+        guard let manager, manager.canUndo else { return false }
         manager.undo()
-        return actionName
+        return true
     }
 
     func removeAllActions<Target: AnyObject>(withTarget target: Target) {

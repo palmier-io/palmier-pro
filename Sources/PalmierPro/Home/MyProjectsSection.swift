@@ -56,8 +56,8 @@ struct MyProjectsSection: View {
             }
 
             if isSelecting {
-                Button("Delete \(selectedProjectIDs.count)", role: .destructive) {
-                    prepareDeletion()
+                Button(role: .destructive, action: prepareDeletion) {
+                    Text(verbatim: L10n.format("Delete %d", selectedProjectIDs.count))
                 }
                 .buttonStyle(.capsule(fill: AnyShapeStyle(AppTheme.Status.errorColor)))
                 .disabled(selectedProjectIDs.isEmpty)
@@ -173,13 +173,19 @@ struct MyProjectsSection: View {
     }
 
     private var deletionTitle: String {
-        projectsPendingDeletion.count == 1 ? "Delete Project?" : "Delete Selected Projects?"
+        L10n.string(
+            projectsPendingDeletion.count == 1
+                ? "Delete Project?"
+                : "Delete Selected Projects?"
+        )
     }
 
     private var deletionPrompt: String {
-        projectsPendingDeletion.count == 1
-            ? "The project will be moved to the Trash."
-            : "The selected projects will be moved to the Trash."
+        L10n.string(
+            projectsPendingDeletion.count == 1
+                ? "The project will be moved to the Trash."
+                : "The selected projects will be moved to the Trash."
+        )
     }
 
     private func toggleSelection(_ id: UUID) {

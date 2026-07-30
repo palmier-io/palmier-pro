@@ -17,9 +17,9 @@ struct MusicGenerationSubmission {
 
         var label: String {
             switch self {
-            case .exporting: "Exporting..."
-            case .uploading: "Uploading…"
-            case .generating: "Generating..."
+            case .exporting: L10n.string("Exporting…")
+            case .uploading: L10n.string("Uploading…")
+            case .generating: L10n.string("Generating…")
             }
         }
     }

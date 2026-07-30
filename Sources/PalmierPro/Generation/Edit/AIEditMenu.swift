@@ -92,7 +92,7 @@ struct AIEditMenu: View {
             Button {
                 SettingsWindowController.shared.show(tab: .account)
             } label: {
-                Label("\(title) (Paid)", systemImage: "lock.fill")
+                Label(L10n.format("%@ (Paid)", title), systemImage: "lock.fill")
             }
         } else {
             Button(title, action: perform)

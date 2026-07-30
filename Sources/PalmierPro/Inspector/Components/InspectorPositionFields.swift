@@ -18,7 +18,7 @@ struct InspectorPositionFields: View {
                 displayMultiplier: canvasW,
                 format: "%.0f",
                 fieldWidth: AppTheme.EditorPanel.compactNumericFieldWidth,
-                trailingLabel: "X",
+                trailingLabel: L10n.string("X"),
                 onChanged: { newX in apply(setX: newX, setY: nil) }
             ) { newX in commit(setX: newX, setY: nil) }
 
@@ -28,7 +28,7 @@ struct InspectorPositionFields: View {
                 displayMultiplier: canvasH,
                 format: "%.0f",
                 fieldWidth: AppTheme.EditorPanel.compactNumericFieldWidth,
-                trailingLabel: "Y",
+                trailingLabel: L10n.string("Y"),
                 onChanged: { newY in apply(setX: nil, setY: newY) }
             ) { newY in commit(setX: nil, setY: newY) }
         }

@@ -5,10 +5,10 @@ enum MentionTab: CaseIterable, Hashable {
 
     var label: String {
         switch self {
-        case .all: "All"
-        case .video: "Video"
-        case .image: "Image"
-        case .audio: "Audio"
+        case .all: L10n.string("All")
+        case .video: L10n.string("Video")
+        case .image: L10n.string("Image")
+        case .audio: L10n.string("Audio")
         }
     }
 
@@ -23,10 +23,10 @@ enum MentionTab: CaseIterable, Hashable {
 
     var emptyLabel: String {
         switch self {
-        case .all: "No media"
-        case .video: "No video clips"
-        case .image: "No images"
-        case .audio: "No audio"
+        case .all: L10n.string("No media")
+        case .video: L10n.string("No video clips")
+        case .image: L10n.string("No images")
+        case .audio: L10n.string("No audio")
         }
     }
 }
@@ -56,7 +56,9 @@ struct MentionPopover: View {
     @ViewBuilder
     private var contentArea: some View {
         if candidates.isEmpty {
-            Text(query.isEmpty ? tab.emptyLabel : "No matches for \"\(query)\"")
+            Text(verbatim: query.isEmpty
+                ? tab.emptyLabel
+                : L10n.format("No matches for “%@”", query))
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.mutedColor)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -111,7 +113,7 @@ struct MentionPopover: View {
     private var tabStrip: some View {
         HStack(spacing: 0) {
             ForEach(MentionTab.allCases, id: \.self) { t in
-                Text(t.label)
+                Text(verbatim: t.label)
                     .font(.system(size: AppTheme.FontSize.xs, weight: t == tab ? .semibold : .regular))
                     .foregroundStyle(t == tab ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
                     .frame(maxWidth: .infinity)
@@ -151,7 +153,7 @@ struct MentionPopover: View {
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                     .lineLimit(1)
-                Text(asset.type.rawValue)
+                L10n.text(asset.type.trackLabel)
                     .font(.system(size: AppTheme.FontSize.xxs))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }

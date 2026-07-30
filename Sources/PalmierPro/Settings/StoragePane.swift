@@ -121,7 +121,7 @@ struct StoragePane: View {
     }
 
     private var formattedSize: String {
-        if isClearing { return "Clearing…" }
+        if isClearing { return L10n.string("Clearing…") }
         return ByteCountFormatter.string(fromByteCount: cacheBytes, countStyle: .file)
     }
 

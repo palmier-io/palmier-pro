@@ -56,7 +56,10 @@ extension EditorViewModel {
         }
         guard !clipInfos.isEmpty else { return }
 
-        if let reason = multicamMoveViolation(moves: clipInfos.map { ($0.clip.id, $0.toTrack, $0.toFrame) }) {
+        if let reason = multicamMoveViolation(
+            moves: clipInfos.map { ($0.clip.id, $0.toTrack, $0.toFrame) },
+            localized: true
+        ) {
             refuseWithToast(reason)
             return
         }
@@ -198,7 +201,7 @@ extension EditorViewModel {
         guard hasMatches else { return }
         let count = timeline.tracks.reduce(0) { $0 + $1.clips.lazy.filter { ids.contains($0.id) }.count }
         selectedClipIds.subtract(ids)
-        withTimelineSwap(actionName: "Remove Clip\(count == 1 ? "" : "s")") {
+        withTimelineSwap(actionName: count == 1 ? "Remove Clip" : "Remove Clips") {
             for i in timeline.tracks.indices {
                 timeline.tracks[i].clips.removeAll { ids.contains($0.id) }
             }

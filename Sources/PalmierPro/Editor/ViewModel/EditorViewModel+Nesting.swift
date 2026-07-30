@@ -15,13 +15,21 @@ extension EditorViewModel {
     }
 
     /// Why `childId` can't nest into the active timeline, or nil if it can.
-    func nestBlockReason(childId: String) -> String? {
+    func nestBlockReason(childId: String, localized: Bool = false) -> String? {
         guard let child = timeline(for: childId) else { return nil }
         if child.totalFrames == 0 {
-            return "\"\(child.name)\" is empty. Add clips before nesting it."
+            return L10n.message(
+                "“%@” is empty. Add clips before nesting it.",
+                localized: localized,
+                child.name
+            )
         }
         if wouldCreateNestCycle(nesting: childId, into: activeTimelineId) {
-            return "Can't nest \"\(child.name)\" — it would contain itself."
+            return L10n.message(
+                "Can't nest “%@” — it would contain itself.",
+                localized: localized,
+                child.name
+            )
         }
         return nil
     }
@@ -30,7 +38,7 @@ extension EditorViewModel {
     @discardableResult
     func nestTimeline(_ childId: String, cursor: TrackDropTarget, atFrame frame: Int) -> Bool {
         guard let child = timeline(for: childId) else { return false }
-        if let reason = nestBlockReason(childId: childId) {
+        if let reason = nestBlockReason(childId: childId, localized: true) {
             mediaPanelToast = MediaPanelToast(message: reason)
             return false
         }
@@ -165,7 +173,9 @@ extension EditorViewModel {
 
         if videoCarrier.map({ carrierHasGroupLook($0, child: child) }) == true
             || audioCarrier.map({ $0.fadeInFrames > 0 || $0.fadeOutFrames > 0 || $0.volumeTrack != nil }) == true {
-            mediaPanelToast = "Nest settings discarded. Undo to restore."
+            mediaPanelToast = MediaPanelToast(
+                message: L10n.string("Nest settings discarded. Undo to restore.")
+            )
         }
     }
 

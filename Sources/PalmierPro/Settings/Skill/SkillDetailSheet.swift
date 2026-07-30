@@ -36,8 +36,8 @@ struct SkillDetailSheet: View {
     }
 
     private var deleteTitle: String {
-        guard let skill else { return "Delete skill?" }
-        return "Delete \u{201C}\(skill.name)\u{201D}?"
+        guard let skill else { return L10n.string("Delete skill?") }
+        return L10n.format("Delete “%@”?", skill.name)
     }
 
     var body: some View {
@@ -111,13 +111,15 @@ struct SkillDetailSheet: View {
             titleVisibility: .visible,
             presenting: self.skill
         ) { skill in
-            Button("Delete \u{201C}\(skill.name)\u{201D}", role: .destructive) {
+            Button(role: .destructive) {
                 store.delete(skill)
                 dismiss()
+            } label: {
+                Text(verbatim: L10n.format("Delete “%@”", skill.name))
             }
             Button("Keep Skill", role: .cancel) {}
         } message: { skill in
-            Text("This permanently removes \(displayPath(skill)).")
+            Text(verbatim: L10n.format("This permanently removes %@.", displayPath(skill)))
         }
     }
 
@@ -133,7 +135,7 @@ struct SkillDetailSheet: View {
             }
 
             HStack(spacing: AppTheme.Spacing.smMd) {
-                Text(state?.label ?? "Local")
+                L10n.text(state?.label ?? "Local")
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(state?.color ?? AppTheme.Text.tertiaryColor)
 
@@ -143,7 +145,7 @@ struct SkillDetailSheet: View {
                     if isUpdating {
                         ProgressView()
                             .controlSize(.small)
-                            .accessibilityLabel("Updating \(skill.name)")
+                            .accessibilityLabel(L10n.format("Updating %@", skill.name))
                     } else {
                         Button("Update") { update(skill) }
                             .buttonStyle(.capsule(.secondary, fill: AnyShapeStyle(AppTheme.Background.raisedColor)))
@@ -163,8 +165,10 @@ struct SkillDetailSheet: View {
                     .keyboardShortcut("s", modifiers: .command)
                 }
 
-                Button(editing ? "Preview" : "Edit") {
+                Button {
                     toggleEditing(skill)
+                } label: {
+                    L10n.text(editing ? "Preview" : "Edit")
                 }
                 .buttonStyle(.capsule(.secondary, fill: AnyShapeStyle(AppTheme.Background.raisedColor)))
 
@@ -208,7 +212,7 @@ struct SkillDetailSheet: View {
                 .onSubmit { commitTitle() }
                 .onChange(of: titleFocused) { if !titleFocused { commitTitle() } }
         } else {
-            Text(skill.name)
+            Text(verbatim: skill.name)
                 .font(.system(size: AppTheme.FontSize.xl, weight: AppTheme.FontWeight.regular))
                 .foregroundStyle(AppTheme.Text.primaryColor)
                 .lineLimit(1)
@@ -328,7 +332,7 @@ struct SkillDetailSheet: View {
                 Text("Description")
                     .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.regular))
                     .foregroundStyle(AppTheme.Text.primaryColor)
-                Text(skill.description)
+                Text(verbatim: skill.description)
                     .font(.system(size: AppTheme.FontSize.smMd))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                     .fixedSize(horizontal: false, vertical: true)
@@ -370,7 +374,7 @@ struct SkillDetailSheet: View {
                 .foregroundStyle(AppTheme.Status.successColor)
 
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
-                Text("Added to \(toast.agentLabel)")
+                Text(verbatim: L10n.format("Added to %@", toast.agentLabel))
                     .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                 Text(toast.displayPath)

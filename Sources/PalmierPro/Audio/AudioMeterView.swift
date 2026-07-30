@@ -119,7 +119,11 @@ struct AudioMeterView: View {
 
 private struct AudioMeterAccessibilityRepresentation: View {
     let meter: AudioMeterHub
-    @State private var description = "Left \(Int(AudioMeterChannelState.floorDb)) dBFS, right \(Int(AudioMeterChannelState.floorDb)) dBFS"
+    @State private var description = L10n.format(
+        "Left %d dBFS, right %d dBFS",
+        Int(AudioMeterChannelState.floorDb),
+        Int(AudioMeterChannelState.floorDb)
+    )
 
     var body: some View {
         Text("Master Audio Meter")
@@ -144,7 +148,11 @@ private struct AudioMeterAccessibilityRepresentation: View {
     }
 
     private static func value(for display: StereoAudioMeterDisplay) -> String {
-        "Left \(Int(display.left.levelDb.rounded())) dBFS, right \(Int(display.right.levelDb.rounded())) dBFS"
+        L10n.format(
+            "Left %d dBFS, right %d dBFS",
+            Int(display.left.levelDb.rounded()),
+            Int(display.right.levelDb.rounded())
+        )
     }
 }
 

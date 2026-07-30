@@ -58,7 +58,8 @@ struct ChatHistoryList: View {
                 }
                 .buttonStyle(.plain)
                 .focusable(false)
-                .help("Delete from history")
+                .accessibilityLabel(L10n.string("Delete from history"))
+                .help(L10n.string("Delete from history"))
             }
         }
         .padding(.horizontal, AppTheme.Spacing.md)

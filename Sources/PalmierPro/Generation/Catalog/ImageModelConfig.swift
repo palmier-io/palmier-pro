@@ -47,21 +47,63 @@ struct ImageModelConfig: Identifiable, Sendable {
     var supportsImageReference: Bool { caps.supportsImageReference }
     var maxImages: Int { max(1, min(4, caps.maxImages)) }
 
-    func validate(aspectRatio: String, resolution: String?, quality: String?, imageRefCount: Int, numImages: Int) -> String? {
+    func validate(
+        aspectRatio: String,
+        resolution: String?,
+        quality: String?,
+        imageRefCount: Int,
+        numImages: Int,
+        localized: Bool = false
+    ) -> String? {
         if !aspectRatios.isEmpty, !aspectRatio.isEmpty, !aspectRatios.contains(aspectRatio) {
-            return unsupportedValue(model: displayName, field: "aspect ratio", value: aspectRatio, allowed: aspectRatios)
+            return unsupportedValue(
+                model: displayName,
+                field: "aspect ratio",
+                value: aspectRatio,
+                allowed: aspectRatios,
+                localized: localized
+            )
         }
         if let allowed = resolutions, let r = resolution, !r.isEmpty, !allowed.contains(r) {
-            return unsupportedValue(model: displayName, field: "resolution", value: r, allowed: allowed)
+            return unsupportedValue(
+                model: displayName,
+                field: "resolution",
+                value: r,
+                allowed: allowed,
+                localized: localized
+            )
         }
         if let allowed = qualities, let q = quality, !q.isEmpty, !allowed.contains(q) {
-            return unsupportedValue(model: displayName, field: "quality", value: q, allowed: allowed)
+            return unsupportedValue(
+                model: displayName,
+                field: "quality",
+                value: q,
+                allowed: allowed,
+                localized: localized
+            )
         }
         if imageRefCount > 0, !supportsImageReference {
-            return "\(displayName) does not accept reference images."
+            return L10n.message(
+                "%@ does not accept reference images.",
+                localized: localized,
+                displayName
+            )
         }
         if numImages < 1 || numImages > maxImages {
-            return "\(displayName) supports 1…\(maxImages) image\(maxImages == 1 ? "" : "s") per request (got \(numImages))."
+            return maxImages == 1
+                ? L10n.message(
+                    "%@ supports 1 image per request (got %d).",
+                    localized: localized,
+                    displayName,
+                    numImages
+                )
+                : L10n.message(
+                    "%@ supports 1…%d images per request (got %d).",
+                    localized: localized,
+                    displayName,
+                    maxImages,
+                    numImages
+                )
         }
         return nil
     }
@@ -76,8 +118,8 @@ struct ImageModelConfig: Identifiable, Sendable {
     /// Human-readable label for a resolution ID.
     static func resolutionDisplayLabel(_ id: String) -> String {
         guard let (w, h) = parseWxH(id) else { return id }
-        if w == h { return "Square" }
-        let orientation = w > h ? "Landscape" : "Portrait"
+        if w == h { return L10n.string("Square") }
+        let orientation = w > h ? L10n.string("Landscape") : L10n.string("Portrait")
         let longEdge = max(w, h)
         let tier: String
         switch longEdge {

@@ -9,7 +9,7 @@ enum AudioTrackReader {
 
         var message: String {
             switch self {
-            case .noAudioTrack(let name): "No audio track in \(name)"
+            case .noAudioTrack(let name): L10n.format("No audio track in %@", name)
             case .readFailed(let reason, _): reason
             }
         }
@@ -53,7 +53,7 @@ enum AudioTrackReader {
 
         let output = AVAssetReaderTrackOutput(track: track, outputSettings: outputSettings)
         guard reader.canAdd(output) else {
-            throw ReadError.readFailed("Cannot read audio from \(url.lastPathComponent)")
+            throw ReadError.readFailed(L10n.format("Cannot read audio from %@", url.lastPathComponent))
         }
         reader.add(output)
         if let range {
@@ -66,7 +66,7 @@ enum AudioTrackReader {
         guard reader.startReading() else {
             let error = reader.error
             throw ReadError.readFailed(
-                error?.localizedDescription ?? "Reader could not start",
+                error?.localizedDescription ?? L10n.string("Reader could not start"),
                 underlying: error as NSError?
             )
         }

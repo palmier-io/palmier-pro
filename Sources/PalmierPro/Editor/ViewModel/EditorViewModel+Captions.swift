@@ -41,8 +41,8 @@ extension EditorViewModel {
 
         var errorDescription: String? {
             switch self {
-            case .noSource: "No audio clips to caption."
-            case .timelineChanged: "The timeline changed while captions were being prepared. Generate captions again."
+            case .noSource: L10n.string("No audio clips to caption.")
+            case .timelineChanged: L10n.string("The timeline changed while captions were being prepared. Generate captions again.")
             }
         }
     }

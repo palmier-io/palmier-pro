@@ -18,7 +18,7 @@ enum PreviewTab: Identifiable, Equatable {
 
     var displayName: String {
         switch self {
-        case .timeline: "Timeline"
+        case .timeline: L10n.string("Timeline")
         case .mediaAsset(_, let name, _): name
         }
     }

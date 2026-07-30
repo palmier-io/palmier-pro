@@ -52,7 +52,8 @@ struct TextClipPlaybackTests {
             instruction.layers.contains { $0.clip.id == addedClipId }
         })
 
-        #expect(editor.undo.undoLatest() == "Add Text")
+        #expect(undoManager.undoActionName == "Add Text")
+        #expect(editor.undo.undoLatest())
         try await #require(engine.rebuildTask).value
 
         let restoredItem = try #require(engine.player.currentItem)

@@ -6,8 +6,8 @@ enum VideoToAudioEditKind {
 
     var title: String {
         switch self {
-        case .music: "Generate Music"
-        case .sfx: "Generate SFX"
+        case .music: L10n.string("Generate Music")
+        case .sfx: L10n.string("Generate SFX")
         }
     }
 
@@ -34,15 +34,15 @@ enum VideoToAudioEditKind {
 
     var description: String {
         switch self {
-        case .music: "Generate music that fits the video"
-        case .sfx: "Create matching sound for the video"
+        case .music: L10n.string("Generate music that fits the video")
+        case .sfx: L10n.string("Create matching sound for the video")
         }
     }
 
     var timelineActionName: String {
         switch self {
-        case .music: "Add Music"
-        case .sfx: "Add Sound Effects"
+        case .music: L10n.string("Add Music")
+        case .sfx: L10n.string("Add Sound Effects")
         }
     }
 

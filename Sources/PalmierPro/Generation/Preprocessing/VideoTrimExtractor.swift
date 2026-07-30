@@ -5,7 +5,7 @@ import Foundation
 enum VideoTrimExtractor {
     struct ExtractionError: LocalizedError {
         let reason: String
-        var errorDescription: String? { "Trim extraction failed: \(reason)" }
+        var errorDescription: String? { L10n.format("Trim extraction failed: %@", reason) }
     }
 
     /// Returns a URL to a temp mp4 containing frames
@@ -13,16 +13,16 @@ enum VideoTrimExtractor {
     /// Caller owns the temp file and should delete it once upload completes.
     static func extract(_ trim: TrimmedSource) async throws -> URL {
         guard trim.fps > 0 else {
-            throw ExtractionError(reason: "invalid fps \(trim.fps)")
+            throw ExtractionError(reason: L10n.format("Invalid FPS: %d", trim.fps))
         }
         guard trim.sourceFramesConsumed > 0 else {
-            throw ExtractionError(reason: "empty range")
+            throw ExtractionError(reason: L10n.string("Empty range"))
         }
 
         let asset = AVURLAsset(url: trim.sourceURL)
         let videoTracks = try await asset.loadTracks(withMediaType: .video)
         guard let videoTrack = videoTracks.first else {
-            throw ExtractionError(reason: "no video track in source")
+            throw ExtractionError(reason: L10n.string("No video track in source"))
         }
         let audioTracks = try await asset.loadTracks(withMediaType: .audio)
 
@@ -31,7 +31,7 @@ enum VideoTrimExtractor {
             withMediaType: .video,
             preferredTrackID: kCMPersistentTrackID_Invalid
         ) else {
-            throw ExtractionError(reason: "could not create video track")
+            throw ExtractionError(reason: L10n.string("Could not create video track"))
         }
 
         try compVideo.insertTimeRange(trim.timeRange, of: videoTrack, at: .zero)
@@ -52,7 +52,7 @@ enum VideoTrimExtractor {
             asset: composition,
             presetName: AVAssetExportPresetHighestQuality
         ) else {
-            throw ExtractionError(reason: "export preset unsupported")
+            throw ExtractionError(reason: L10n.string("Export preset unsupported"))
         }
 
         // Pin output fps — without this the composition's timescale

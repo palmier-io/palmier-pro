@@ -36,7 +36,7 @@ struct GeneratingOverlay: View {
 
     private var content: some View {
         VStack(spacing: size.spacing) {
-            Text(label)
+            L10n.text(label)
                 .font(.system(size: size.fontSize, weight: .semibold))
                 .foregroundStyle(AppTheme.aiGradient)
             progressBar

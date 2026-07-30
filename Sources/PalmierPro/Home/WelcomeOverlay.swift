@@ -72,8 +72,12 @@ struct WelcomeOverlay: View {
                 .buttonStyle(.capsule(.prominent, size: .regular))
                 .keyboardShortcut(.defaultAction)
         } else {
-            Button(account.isSigningIn ? "Opening Google…" : "Sign In") {
+            Button {
                 Task { await account.signInWithGoogle() }
+            } label: {
+                Text(verbatim: account.isSigningIn
+                    ? L10n.string("Opening Google…")
+                    : L10n.string("Sign In"))
             }
                 .buttonStyle(.capsule(.prominent, size: .regular))
                 .keyboardShortcut(.defaultAction)

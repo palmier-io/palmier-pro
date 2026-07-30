@@ -4,7 +4,7 @@ import Foundation
 enum VideoPreprocessor {
     struct CompressionError: LocalizedError {
         let reason: String
-        var errorDescription: String? { "Video compression failed: \(reason)" }
+        var errorDescription: String? { L10n.format("Video compression failed: %@", reason) }
     }
 
     static func downscaleIfNeeded(url: URL, maxLongSide: Int = 1100) async throws -> URL? {
@@ -64,7 +64,7 @@ enum VideoPreprocessor {
 
         let exportPreset = exceedsResolution ? preset : AVAssetExportPresetHighestQuality
         guard let session = AVAssetExportSession(asset: asset, presetName: exportPreset) else {
-            throw CompressionError(reason: "export preset unsupported")
+            throw CompressionError(reason: L10n.string("Export preset unsupported"))
         }
         if exceedsResolution, let maxLongSide {
             let scale = min(maxLongSide / longSide, (maxShortSide ?? maxLongSide) / shortSide)

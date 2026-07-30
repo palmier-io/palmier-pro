@@ -283,10 +283,10 @@ final class ToolExecutor {
     }
 
     func undo(_ editor: EditorViewModel) throws -> ToolResult {
-        guard let actionName = editor.undo.undoLatest() else {
+        guard editor.undo.undoLatest() else {
             throw ToolError("Nothing to undo.")
         }
-        return .ok("Undid: \(actionName). The timeline is restored to its state before that edit; re-read with get_timeline or get_transcript before editing again.")
+        return .ok("Undid the latest edit. The timeline is restored to its state before that edit; re-read with get_timeline or get_transcript before editing again.")
     }
 
     // Shared helpers used by tool extensions in other files.

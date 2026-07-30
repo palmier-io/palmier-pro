@@ -15,8 +15,8 @@ enum AudioEnvelopeError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .noAudioTrack(let name): "No audio track in \(name)."
-        case .readFailed(let reason): "Could not read audio: \(reason)."
+        case .noAudioTrack(let name): L10n.format("No audio track in %@.", name)
+        case .readFailed(let reason): L10n.format("Could not read audio: %@.", reason)
         }
     }
 }

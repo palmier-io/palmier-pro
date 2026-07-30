@@ -12,12 +12,12 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .account: return "Account"
-        case .general: return "General"
-        case .models: return "Models"
-        case .agent: return "Agent"
-        case .skills: return "Skills"
-        case .storage: return "Storage"
+        case .account: return L10n.string("Account")
+        case .general: return L10n.string("General")
+        case .models: return L10n.string("Models")
+        case .agent: return L10n.string("Agent")
+        case .skills: return L10n.string("Skills")
+        case .storage: return L10n.string("Storage")
         }
     }
 
@@ -109,7 +109,7 @@ private struct SettingsDetail: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(tab.label)
+            Text(verbatim: tab.label)
                 .font(.system(size: AppTheme.FontSize.title1, weight: AppTheme.FontWeight.regular))
                 .foregroundStyle(AppTheme.Text.primaryColor)
                 .frame(
@@ -167,7 +167,7 @@ struct SettingsSection<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
-            Text(title)
+            L10n.text(title)
                 .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.regular))
                 .foregroundStyle(AppTheme.Text.primaryColor)
 
@@ -188,7 +188,7 @@ struct SettingsGroup<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
-            Text(title)
+            L10n.text(title)
                 .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.regular))
                 .foregroundStyle(AppTheme.Text.primaryColor)
             content()
@@ -204,10 +204,10 @@ struct SettingsToggleRow: View {
     var body: some View {
         HStack(alignment: .center, spacing: AppTheme.Spacing.md) {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-                Text(title)
+                L10n.text(title)
                     .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.regular))
                     .foregroundStyle(AppTheme.Text.primaryColor)
-                Text(subtitle)
+                L10n.text(subtitle)
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .fixedSize(horizontal: false, vertical: true)
@@ -219,8 +219,8 @@ struct SettingsToggleRow: View {
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .controlSize(.mini)
-                .accessibilityLabel(title)
-                .accessibilityHint(subtitle)
+                .accessibilityLabel(L10n.string(title))
+                .accessibilityHint(L10n.string(subtitle))
         }
         .frame(maxWidth: .infinity)
     }
@@ -239,7 +239,7 @@ final class SettingsWindowController: NSWindowController {
         let window = NSWindow(contentViewController: hosting)
         window.setContentSize(AppTheme.Window.settingsDefault)
         window.minSize = AppTheme.Window.settingsMin
-        window.title = "Settings"
+        window.title = L10n.string("Settings")
         window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = AppTheme.Background.base.withAlphaComponent(0.4)
         window.isOpaque = false

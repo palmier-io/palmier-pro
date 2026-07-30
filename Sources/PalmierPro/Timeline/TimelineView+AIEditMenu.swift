@@ -17,25 +17,29 @@ extension TimelineView {
             let paidBlocked = action.requiresPaidPlan && !isPaid
             switch action {
             case .upscale:
-                let upscaleItem = NSMenuItem(title: paidBlocked ? "Upscale… (Paid)" : "Upscale…", action: #selector(self.performAIEditUpscale(_:)), keyEquivalent: "")
+                let upscaleItem = NSMenuItem(
+                    title: L10n.string(paidBlocked ? "Upscale… (Paid)" : "Upscale…"),
+                    action: #selector(self.performAIEditUpscale(_:)),
+                    keyEquivalent: ""
+                )
                 upscaleItem.target = self
                 upscaleItem.representedObject = clipId
                 upscaleItem.isEnabled = aiAllowed && !paidBlocked
                 submenu.addItem(upscaleItem)
             case .reframe:
-                let item = NSMenuItem(title: paidBlocked ? "Reframe… (Paid)" : "Reframe…", action: #selector(self.performAIEditReframe(_:)), keyEquivalent: "")
+                let item = NSMenuItem(title: L10n.string(paidBlocked ? "Reframe… (Paid)" : "Reframe…"), action: #selector(self.performAIEditReframe(_:)), keyEquivalent: "")
                 item.target = self
                 item.representedObject = clipId
                 item.isEnabled = aiAllowed && !paidBlocked
                 submenu.addItem(item)
             case .lipSync:
-                let item = NSMenuItem(title: paidBlocked ? "Lip Sync… (Paid)" : "Lip Sync…", action: #selector(self.performAIEditLipSync(_:)), keyEquivalent: "")
+                let item = NSMenuItem(title: L10n.string(paidBlocked ? "Lip Sync… (Paid)" : "Lip Sync…"), action: #selector(self.performAIEditLipSync(_:)), keyEquivalent: "")
                 item.target = self
                 item.representedObject = clipId
                 item.isEnabled = aiAllowed && !paidBlocked
                 submenu.addItem(item)
             case .edit:
-                let item = NSMenuItem(title: paidBlocked ? "Edit… (Paid)" : "Edit…", action: #selector(self.performAIEditEdit(_:)), keyEquivalent: "")
+                let item = NSMenuItem(title: L10n.string(paidBlocked ? "Edit… (Paid)" : "Edit…"), action: #selector(self.performAIEditEdit(_:)), keyEquivalent: "")
                 item.target = self
                 item.representedObject = clipId
                 item.isEnabled = aiAllowed && !paidBlocked
@@ -48,17 +52,17 @@ extension TimelineView {
                 item.isEnabled = aiAllowed
                 submenu.addItem(item)
             case .rerun:
-                let item = NSMenuItem(title: "Rerun", action: #selector(self.performAIEditRerun(_:)), keyEquivalent: "")
+                let item = NSMenuItem(title: L10n.string("Rerun"), action: #selector(self.performAIEditRerun(_:)), keyEquivalent: "")
                 item.target = self
                 item.representedObject = clipId
                 item.isEnabled = aiAllowed
                 submenu.addItem(item)
             case .createVideo:
-                let createItem = NSMenuItem(title: "Create Video", action: nil, keyEquivalent: "")
+                let createItem = NSMenuItem(title: L10n.string("Create Video"), action: nil, keyEquivalent: "")
                 let createMenu = NSMenu()
                 createMenu.autoenablesItems = false
                 let mk: (String, Bool) -> NSMenuItem = { title, asReference in
-                    let item = NSMenuItem(title: title, action: #selector(self.performAIEditCreateVideo(_:)), keyEquivalent: "")
+                    let item = NSMenuItem(title: L10n.string(title), action: #selector(self.performAIEditCreateVideo(_:)), keyEquivalent: "")
                     item.target = self
                     item.representedObject = ["clipId": clipId, "asReference": asReference]
                     item.isEnabled = aiAllowed
@@ -72,16 +76,16 @@ extension TimelineView {
         }
 
         if !enhanceActions.isEmpty {
-            submenu.addItem(.sectionHeader(title: "AI Enhance"))
+            submenu.addItem(.sectionHeader(title: L10n.string("AI Enhance")))
             enhanceActions.forEach(addAction)
         }
         if !audioActions.isEmpty || !audioTransforms.isEmpty {
             if !submenu.items.isEmpty { submenu.addItem(.separator()) }
-            submenu.addItem(.sectionHeader(title: "AI Audio"))
+            submenu.addItem(.sectionHeader(title: L10n.string("AI Audio")))
             audioActions.filter { $0 == .rerun }.forEach(addAction)
             for kind in audioTransforms {
                 let paidBlocked = kind.model?.paidOnly == true && !isPaid
-                let title = paidBlocked ? "\(kind.menuTitle) (Paid)" : kind.menuTitle
+                let title = paidBlocked ? L10n.format("%@ (Paid)", kind.menuTitle) : kind.menuTitle
                 let item = NSMenuItem(
                     title: title,
                     action: #selector(performAIEditAudioTransform(_:)),

@@ -58,7 +58,7 @@ struct EditorAgentMenu<MenuContent: View>: View {
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .focusable(false)
-        .help(help)
-        .accessibilityLabel("Agent Mode")
+        .help(L10n.string(help))
+        .accessibilityLabel(L10n.string("Agent Mode"))
     }
 }

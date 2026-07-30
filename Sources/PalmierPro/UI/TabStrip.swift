@@ -49,5 +49,7 @@ struct TabCloseButton: View {
                 .hoverHighlight(cornerRadius: AppTheme.Radius.xs)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(L10n.string("Close"))
+        .help(L10n.string("Close"))
     }
 }

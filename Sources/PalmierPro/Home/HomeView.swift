@@ -60,7 +60,7 @@ private struct WelcomeTitle: View {
     @Bindable private var account = AccountService.shared
 
     var body: some View {
-        Text(title)
+        Text(verbatim: title)
             .font(.system(size: AppTheme.FontSize.title2, weight: .light))
             .tracking(AppTheme.Tracking.tight)
             .foregroundStyle(AppTheme.Text.primaryColor)
@@ -68,9 +68,9 @@ private struct WelcomeTitle: View {
 
     private var title: String {
         if let first = account.account?.user.firstName {
-            return "Welcome to Palmier Pro, \(first)"
+            return String(format: L10n.string("Welcome to Palmier Pro, %@"), first)
         }
-        return "Welcome to Palmier Pro"
+        return L10n.string("Welcome to Palmier Pro")
     }
 }
 
@@ -138,7 +138,7 @@ final class HomeWindowController: NSWindowController {
         let window = NSWindow(contentViewController: hostingController)
         window.setContentSize(AppTheme.Window.homeDefault)
         window.minSize = AppTheme.Window.homeMin
-        window.title = "Palmier Pro"
+        window.title = L10n.string("Palmier Pro")
         window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = AppTheme.Background.base.withAlphaComponent(0.4)
         window.isOpaque = false

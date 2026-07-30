@@ -2,10 +2,21 @@ import Foundation
 
 enum LUTStoreError: LocalizedError {
     case noFile(String), invalid(String)
+
     var errorDescription: String? {
+        description(localized: true)
+    }
+
+    var protocolDescription: String {
+        description(localized: false)
+    }
+
+    private func description(localized: Bool) -> String {
         switch self {
-        case .noFile(let path): "No file at path: \(path)"
-        case .invalid(let name): "Not a valid .cube 3D LUT: \(name)"
+        case .noFile(let path):
+            L10n.message("No file at path: %@", localized: localized, path)
+        case .invalid(let name):
+            L10n.message("Not a valid .cube 3D LUT: %@", localized: localized, name)
         }
     }
 }

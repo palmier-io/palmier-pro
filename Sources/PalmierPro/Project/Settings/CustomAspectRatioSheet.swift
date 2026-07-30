@@ -86,26 +86,29 @@ struct CustomAspectRatioSheet: View {
 
     private func ratioField(_ label: String, text: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            Text(label)
+            L10n.text(label)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
             TextField("", text: text)
                 .textFieldStyle(.roundedBorder)
                 .font(.system(size: AppTheme.FontSize.md).monospacedDigit())
                 .frame(width: AppTheme.EditorPanel.numericFieldWidth)
-                .accessibilityLabel("Aspect ratio \(label.lowercased())")
+                .accessibilityLabel(L10n.format(
+                    "Aspect ratio %@",
+                    L10n.string(label).lowercased()
+                ))
         }
     }
 
     private var validation: (resolution: (width: Int, height: Int)?, message: String?) {
         guard editor.activeTimelineId == context.timelineID,
               (editor.timeline.width, editor.timeline.height) == (context.width, context.height) else {
-            return (nil, "The timeline settings changed. Close this sheet and try again.")
+            return (nil, L10n.string("The timeline settings changed. Close this sheet and try again."))
         }
         do {
             return (try context.resolution(horizontal: horizontalText, vertical: verticalText), nil)
         } catch {
-            return (nil, error.localizedDescription)
+            return (nil, L10n.string(error.localizedDescription))
         }
     }
 

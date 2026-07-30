@@ -106,18 +106,25 @@ extension EditorViewModel {
     @discardableResult
     func removeDeadAir(
         clipIds: [String],
-        settings: SilenceRemovalSettings
+        settings: SilenceRemovalSettings,
+        localized: Bool = true
     ) throws -> (sections: Int, removedFrames: Int, refusal: String?)? {
         let targets = clipIds.compactMap { id -> (trackIndex: Int, clip: Clip)? in
             guard let loc = findClip(id: id) else { return nil }
             return (loc.trackIndex, timeline.tracks[loc.trackIndex].clips[loc.clipIndex])
         }
         guard targets.count == clipIds.count, !targets.isEmpty else {
-            throw DeadAirSelectionError(message: "Selected clips could not be resolved.")
+            throw DeadAirSelectionError(message: L10n.message(
+                "Selected clips could not be resolved.",
+                localized: localized
+            ))
         }
         let audioTargets = targets.filter { $0.clip.mediaType == .audio }
         guard !audioTargets.isEmpty else {
-            throw DeadAirSelectionError(message: "Selected clips must include at least one audio clip.")
+            throw DeadAirSelectionError(message: L10n.message(
+                "Selected clips must include at least one audio clip.",
+                localized: localized
+            ))
         }
 
         let trackIndices = Set(targets.map(\.trackIndex))
@@ -125,13 +132,19 @@ extension EditorViewModel {
             let linkGroups = targets.compactMap { $0.clip.linkGroupId }
             guard linkGroups.count == targets.count, Set(linkGroups).count == 1 else {
                 throw DeadAirSelectionError(
-                    message: "Selected clips must share one track or belong to one linked A/V unit."
+                    message: L10n.message(
+                        "Selected clips must share one track or belong to one linked A/V unit.",
+                        localized: localized
+                    )
                 )
             }
         }
         let audioTrackIndices = Set(audioTargets.map(\.trackIndex))
         guard audioTrackIndices.count == 1, let anchorTrackIndex = audioTrackIndices.first else {
-            throw DeadAirSelectionError(message: "Selected audio clips must come from one track.")
+            throw DeadAirSelectionError(message: L10n.message(
+                "Selected audio clips must come from one track.",
+                localized: localized
+            ))
         }
 
         let ranges = RippleEngine.mergeRanges(
@@ -139,7 +152,11 @@ extension EditorViewModel {
         )
         guard !ranges.isEmpty else { return nil }
         return undo.perform("Remove Dead Air") {
-            switch rippleDeleteRangesOnTrack(trackIndex: anchorTrackIndex, ranges: ranges) {
+            switch rippleDeleteRangesOnTrack(
+                trackIndex: anchorTrackIndex,
+                ranges: ranges,
+                localized: localized
+            ) {
             case .ok(let report):
                 return (ranges.count, report.removedFrames, nil)
             case .refused(let reason):
@@ -153,7 +170,8 @@ extension EditorViewModel {
     /// Ripples dead air per-track, updating ranges between passes. Stops if a track refuses.
     @discardableResult
     func removeAllDeadAir(
-        settings: SilenceRemovalSettings? = nil
+        settings: SilenceRemovalSettings? = nil,
+        localized: Bool = true
     ) -> (sections: Int, removedFrames: Int, refusal: String?)? {
         let effectiveSettings = settings ?? silenceRemovalSettings
         return undo.perform("Remove Dead Air") { () -> (sections: Int, removedFrames: Int, refusal: String?)? in
@@ -162,7 +180,11 @@ extension EditorViewModel {
             var refusal: String?
             for _ in timeline.tracks.indices {
                 guard let next = allDeadAir(settings: effectiveSettings).first else { break }
-                switch rippleDeleteRangesOnTrack(trackIndex: next.trackIndex, ranges: next.ranges) {
+                switch rippleDeleteRangesOnTrack(
+                    trackIndex: next.trackIndex,
+                    ranges: next.ranges,
+                    localized: localized
+                ) {
                 case .ok(let report):
                     sections += next.ranges.count
                     removedFrames += report.removedFrames

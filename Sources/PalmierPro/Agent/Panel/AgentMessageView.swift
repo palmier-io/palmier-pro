@@ -105,7 +105,7 @@ private struct CopyMessageButton: View {
         } label: {
             HStack(spacing: AppTheme.Spacing.xs) {
                 Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                Text(copied ? "Copied" : "Copy")
+                Text(verbatim: copied ? L10n.string("Copied") : L10n.string("Copy"))
             }
             .font(.system(size: AppTheme.FontSize.xs))
             .foregroundStyle(AppTheme.Text.tertiaryColor)
@@ -195,7 +195,7 @@ private struct ToolRunRow: View {
     @ViewBuilder
     private func resultSection(_ r: ToolRunResult) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            Text(r.isError ? "error" : "result")
+            Text(verbatim: r.isError ? L10n.string("error") : L10n.string("result"))
                 .font(.system(size: AppTheme.FontSize.xxs))
                 .foregroundStyle(r.isError ? .red.opacity(AppTheme.Opacity.prominent) : AppTheme.Text.mutedColor)
             ForEach(Array(r.content.enumerated()), id: \.offset) { _, block in

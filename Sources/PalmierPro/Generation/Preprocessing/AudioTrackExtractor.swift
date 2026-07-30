@@ -4,7 +4,7 @@ import Foundation
 enum AudioTrackExtractor {
     struct ExtractionError: LocalizedError {
         let reason: String
-        var errorDescription: String? { "Audio extraction failed: \(reason)" }
+        var errorDescription: String? { L10n.format("Audio extraction failed: %@", reason) }
     }
 
     static func extract(
@@ -13,7 +13,7 @@ enum AudioTrackExtractor {
     ) async throws -> URL {
         let asset = AVURLAsset(url: sourceURL)
         guard let audioTrack = try await asset.loadTracks(withMediaType: .audio).first else {
-            throw ExtractionError(reason: "source has no audio track")
+            throw ExtractionError(reason: L10n.string("Source has no audio track"))
         }
 
         let assetDuration = try await asset.load(.duration)
@@ -25,7 +25,7 @@ enum AudioTrackExtractor {
             withMediaType: .audio,
             preferredTrackID: kCMPersistentTrackID_Invalid
         ) else {
-            throw ExtractionError(reason: "could not create audio track")
+            throw ExtractionError(reason: L10n.string("Could not create audio track"))
         }
         try compositionTrack.insertTimeRange(sourceRange, of: audioTrack, at: .zero)
 
@@ -35,7 +35,7 @@ enum AudioTrackExtractor {
             asset: composition,
             presetName: AVAssetExportPresetAppleM4A
         ) else {
-            throw ExtractionError(reason: "M4A export is unavailable")
+            throw ExtractionError(reason: L10n.string("M4A export is unavailable"))
         }
         try await session.export(to: outputURL, as: .m4a)
         return outputURL

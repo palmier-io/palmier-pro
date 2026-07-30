@@ -46,8 +46,8 @@ extension GenerationView {
                     ))
                 }
                 .buttonStyle(.plain)
-                .help(type.rawValue)
-                .accessibilityLabel(type.rawValue)
+                .help(L10n.string(type.rawValue))
+                .accessibilityLabel(L10n.string(type.rawValue))
             }
         }
         .padding(AppTheme.Spacing.xxs)
@@ -136,7 +136,9 @@ extension GenerationView {
                 Image(systemName: "person.wave.2")
                     .font(.system(size: AppTheme.FontSize.xxs))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
-                Text(selectedVoice.isEmpty ? (audioModel.defaultVoice ?? "Voice") : selectedVoice)
+                Text(verbatim: selectedVoice.isEmpty
+                    ? (audioModel.defaultVoice ?? L10n.string("Voice"))
+                    : selectedVoice)
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                     .lineLimit(1)
@@ -196,15 +198,15 @@ extension GenerationView {
                     parts.append(label)
                 }
             }
-            return parts.isEmpty ? "Settings" : parts.joined(separator: " \u{00B7} ")
+            return parts.isEmpty ? L10n.string("Settings") : parts.joined(separator: " \u{00B7} ")
         }
         if selectedType == .audio {
             if audioModel.hasDurationControl, !audioUsesSource {
                 parts.append("\(selectedAudioDuration)s")
             }
-            if audioModel.supportsInstrumental && instrumental { parts.append("Instrumental") }
-            if audioModel.supportsMultilingual && multilingual { parts.append("Multilingual") }
-            return parts.isEmpty ? "Settings" : parts.joined(separator: " \u{00B7} ")
+            if audioModel.supportsInstrumental && instrumental { parts.append(L10n.string("Instrumental")) }
+            if audioModel.supportsMultilingual && multilingual { parts.append(L10n.string("Multilingual")) }
+            return parts.isEmpty ? L10n.string("Settings") : parts.joined(separator: " \u{00B7} ")
         }
         if currentResolutions != nil { parts.append(resolutionLabel(selectedResolution)) }
         if currentQualities != nil { parts.append(selectedQuality) }
@@ -219,7 +221,7 @@ extension GenerationView {
     }
 
     private var upscaleSourceFPSLabel: String {
-        upscaleSource?.sourceFPS.map { "\(max(1, Int($0.rounded()))) FPS" } ?? "Original FPS"
+        upscaleSource?.sourceFPS.map { "\(max(1, Int($0.rounded()))) FPS" } ?? L10n.string("Original FPS")
     }
 
     private func resolutionLabel(_ id: String) -> String {
@@ -233,7 +235,7 @@ extension GenerationView {
     var settingsButton: some View {
         Button { showSettingsPopover.toggle() } label: {
             HStack(spacing: AppTheme.Spacing.xs) {
-                Text(settingsSummary)
+                Text(verbatim: settingsSummary)
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .lineLimit(1)
@@ -284,7 +286,11 @@ extension GenerationView {
                                 dragValueAdjustment: { $0.rounded() },
                                 onChanged: { selectedAudioDuration = Int($0.rounded()) }
                             ) { selectedAudioDuration = Int($0.rounded()) }
-                            .help("Duration (\(range.minimum)-\(range.maximum) seconds)")
+                            .help(L10n.format(
+                                "Duration (%d-%d seconds)",
+                                range.minimum,
+                                range.maximum
+                            ))
                         }
                     }
                 }
@@ -331,7 +337,9 @@ extension GenerationView {
                         .controlSize(.small)
                         .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
-                        .help(savings.map { "Turn off to save \($0)% on generation cost." } ?? "Turn off to skip audio generation.")
+                        .help(savings.map {
+                            L10n.format("Turn off to save %d%% on generation cost.", $0)
+                        } ?? L10n.string("Turn off to skip audio generation."))
                 }
             }
             .padding(AppTheme.Spacing.lg)
@@ -349,7 +357,7 @@ extension GenerationView {
         format: @escaping (T) -> String
     ) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            Text(label)
+            L10n.text(label)
                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
             if options.count <= 5, gridMinWidth == nil {
