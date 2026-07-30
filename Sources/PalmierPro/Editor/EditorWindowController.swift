@@ -313,9 +313,9 @@ extension EditorWindowController: EditorActions {
     @objc func toggleInspectorPanel(_ sender: Any?) { editorViewModel.inspectorPanelVisible.toggle() }
     @objc func toggleAgentPanel(_ sender: Any?) { editorViewModel.agentPanelVisible.toggle() }
     @objc func toggleMaximizePanel(_ sender: Any?) { toggleMaximizePanelAction() }
-    @objc func setLayoutDefault(_ sender: Any?) { editorViewModel.layoutPreset = .default }
-    @objc func setLayoutMedia(_ sender: Any?) { editorViewModel.layoutPreset = .media }
-    @objc func setLayoutVertical(_ sender: Any?) { editorViewModel.layoutPreset = .vertical }
+    @objc func setLayoutDefault(_ sender: Any?) { WorkspaceLayoutStore.shared.selection = .default }
+    @objc func setLayoutMedia(_ sender: Any?) { WorkspaceLayoutStore.shared.selection = .media }
+    @objc func setLayoutVertical(_ sender: Any?) { WorkspaceLayoutStore.shared.selection = .vertical }
 
     private func toggleMaximizePanelAction() {
         if editorViewModel.maximizedPanel != nil {
@@ -340,13 +340,13 @@ extension EditorWindowController: EditorActions {
             menuItem.state = editorViewModel.maximizedPanel != nil ? .on : .off
             return editorViewModel.maximizedPanel != nil || editorViewModel.focusedPanel != nil
         case #selector(setLayoutDefault(_:)):
-            menuItem.state = editorViewModel.layoutPreset == .default ? .on : .off
+            menuItem.state = WorkspaceLayoutStore.shared.selection == .default ? .on : .off
             return true
         case #selector(setLayoutMedia(_:)):
-            menuItem.state = editorViewModel.layoutPreset == .media ? .on : .off
+            menuItem.state = WorkspaceLayoutStore.shared.selection == .media ? .on : .off
             return true
         case #selector(setLayoutVertical(_:)):
-            menuItem.state = editorViewModel.layoutPreset == .vertical ? .on : .off
+            menuItem.state = WorkspaceLayoutStore.shared.selection == .vertical ? .on : .off
             return true
         case #selector(copy(_:)), #selector(cut(_:)):
             return canHandleClipboardShortcut() && !editorViewModel.selectedClipIds.isEmpty

@@ -20,7 +20,7 @@ struct SlipTwoUpView: View {
 
     var body: some View {
         ZStack {
-            Color.black
+            AppTheme.MediaOverlay.backgroundColor
             HStack(spacing: AppTheme.Spacing.xxs) {
                 pane(image: inImage, label: "Start", frame: state.inSourceFrame)
                 pane(image: outImage, label: "End", frame: state.outSourceFrame)
@@ -68,7 +68,7 @@ struct SlipTwoUpView: View {
 
     private func pane(image: CGImage?, label: String, frame: Int) -> some View {
         ZStack(alignment: .topLeading) {
-            Color.black
+            AppTheme.MediaOverlay.backgroundColor
             if let image {
                 Image(decorative: image, scale: 1)
                     .resizable()
@@ -78,14 +78,14 @@ struct SlipTwoUpView: View {
             HStack(spacing: AppTheme.Spacing.xs) {
                 Text(label)
                     .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.semibold))
-                    .foregroundStyle(AppTheme.Text.primaryColor)
+                    .foregroundStyle(AppTheme.MediaOverlay.primaryColor)
                 Text(formatTimecode(frame: frame, fps: state.fps))
                     .font(.system(size: AppTheme.FontSize.xs).monospacedDigit())
-                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .foregroundStyle(AppTheme.MediaOverlay.secondaryColor)
             }
             .padding(.horizontal, AppTheme.Spacing.sm)
             .padding(.vertical, AppTheme.Spacing.xxs)
-            .background(Color.black.opacity(AppTheme.Opacity.strong), in: RoundedRectangle(cornerRadius: AppTheme.Radius.xs))
+            .background(AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.strong), in: RoundedRectangle(cornerRadius: AppTheme.Radius.xs))
             .padding(AppTheme.Spacing.sm)
         }
         .clipped()

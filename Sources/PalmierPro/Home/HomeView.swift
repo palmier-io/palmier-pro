@@ -11,7 +11,7 @@ struct HomeView: View {
 
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.black.opacity(AppTheme.Opacity.medium))
+                .background(AppTheme.Background.baseColor.opacity(AppTheme.Opacity.medium))
         }
         .frame(
             minWidth: AppTheme.Window.homeMin.width,
@@ -139,7 +139,6 @@ final class HomeWindowController: NSWindowController {
         window.setContentSize(AppTheme.Window.homeDefault)
         window.minSize = AppTheme.Window.homeMin
         window.title = "Palmier Pro"
-        window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = AppTheme.Background.base.withAlphaComponent(0.4)
         window.isOpaque = false
         window.titleVisibility = .hidden

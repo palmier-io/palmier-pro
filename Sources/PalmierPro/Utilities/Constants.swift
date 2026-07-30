@@ -1,27 +1,5 @@
 import Foundation
 
-enum LayoutPreset: String, CaseIterable {
-    case `default`
-    case media
-    case vertical
-
-    var label: String {
-        switch self {
-        case .default: "Default"
-        case .media: "Media"
-        case .vertical: "Vertical"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .default: "rectangle.split.3x1"
-        case .media: "sidebar.left"
-        case .vertical: "sidebar.right"
-        }
-    }
-}
-
 enum Layout {
     // Media panel
     static let mediaPanelDefault: CGFloat = 500

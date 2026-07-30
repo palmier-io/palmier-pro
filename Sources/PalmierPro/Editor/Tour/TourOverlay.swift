@@ -56,7 +56,7 @@ struct TourOverlay: View {
     }
 
     private func scrim(cutout: CGRect?) -> some View {
-        Color.black.opacity(AppTheme.Opacity.strong)
+        AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.strong)
             .reverseMask {
                 if let cutout {
                     RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)

@@ -579,11 +579,11 @@ struct MediaTab: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             Capsule(style: .continuous)
-                .fill(Color.white.opacity(AppTheme.Opacity.subtle))
+                .fill(AppTheme.Interaction.fill(AppTheme.Opacity.subtle))
         )
         .overlay(
             Capsule(style: .continuous)
-                .strokeBorder(Color.white.opacity(AppTheme.Opacity.faint), lineWidth: AppTheme.BorderWidth.thin)
+                .strokeBorder(AppTheme.Interaction.fill(AppTheme.Opacity.faint), lineWidth: AppTheme.BorderWidth.thin)
         )
     }
 
@@ -755,8 +755,8 @@ struct MediaTab: View {
     var marqueeOverlay: some View {
         if let rect = marqueeSelection.rect {
             Rectangle()
-                .stroke(Color.white.opacity(AppTheme.Opacity.strong), style: StrokeStyle(lineWidth: AppTheme.BorderWidth.thin, dash: [3, 3]))
-                .background(Rectangle().fill(Color.white.opacity(AppTheme.Opacity.soft)))
+                .stroke(AppTheme.Interaction.fill(AppTheme.Opacity.strong), style: StrokeStyle(lineWidth: AppTheme.BorderWidth.thin, dash: [3, 3]))
+                .background(Rectangle().fill(AppTheme.Interaction.fill(AppTheme.Opacity.soft)))
                 .frame(width: rect.width, height: rect.height)
                 .position(x: rect.midX, y: rect.midY)
                 .allowsHitTesting(false)

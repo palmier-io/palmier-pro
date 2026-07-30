@@ -3,6 +3,7 @@ import SwiftUI
 enum SettingsTab: String, CaseIterable, Identifiable {
     case account
     case general
+    case appearance
     case models
     case agent
     case skills
@@ -14,6 +15,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .account: return "Account"
         case .general: return "General"
+        case .appearance: return "Appearance"
         case .models: return "Models"
         case .agent: return "Agent"
         case .skills: return "Skills"
@@ -25,6 +27,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .account: return "person.circle"
         case .general: return "gearshape"
+        case .appearance: return "sun.max"
         case .models: return "square.stack.3d.up"
         case .agent: return "paperplane"
         case .skills: return "book.closed"
@@ -54,7 +57,7 @@ struct SettingsView: View {
 
             SettingsDetail(tab: selectedTab)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.black.opacity(AppTheme.Opacity.medium))
+                .background(AppTheme.Background.baseColor.opacity(AppTheme.Opacity.medium))
         }
         .frame(
             minWidth: AppTheme.Window.settingsMin.width,
@@ -137,6 +140,8 @@ private struct SettingsDetail: View {
                                 SettingsSection(title: "Privacy & Diagnostics") {
                                     PrivacyPane()
                                 }
+                            case .appearance:
+                                AppearancePane()
                             case .models:
                                 ModelsPane()
                             case .agent:
@@ -240,7 +245,6 @@ final class SettingsWindowController: NSWindowController {
         window.setContentSize(AppTheme.Window.settingsDefault)
         window.minSize = AppTheme.Window.settingsMin
         window.title = "Settings"
-        window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = AppTheme.Background.base.withAlphaComponent(0.4)
         window.isOpaque = false
         window.titleVisibility = .hidden

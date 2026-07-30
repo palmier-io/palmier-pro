@@ -801,10 +801,10 @@ final class TimelineInputController {
             bracket.line(to: NSPoint(x: capX, y: bracketBottom))
             bracket.lineCapStyle = .square
 
-            AppTheme.Background.base.setStroke()
+            AppTheme.MediaOverlay.background.setStroke()
             bracket.lineWidth = AppTheme.BorderWidth.thick + AppTheme.BorderWidth.thin
             bracket.stroke()
-            AppTheme.Status.error.setStroke()
+            AppTheme.MediaOverlay.error.setStroke()
             bracket.lineWidth = AppTheme.BorderWidth.thick
             bracket.stroke()
 
@@ -817,9 +817,9 @@ final class TimelineInputController {
             arrow.close()
             arrow.lineJoinStyle = .round
             arrow.lineWidth = AppTheme.BorderWidth.thick
-            AppTheme.Text.primary.setStroke()
+            AppTheme.MediaOverlay.primary.setStroke()
             arrow.stroke()
-            AppTheme.Status.error.setFill()
+            AppTheme.MediaOverlay.error.setFill()
             arrow.fill()
             return true
         }
@@ -841,10 +841,10 @@ final class TimelineInputController {
             }
             ticks.lineCapStyle = .square
 
-            AppTheme.Background.base.setStroke()
+            AppTheme.MediaOverlay.background.setStroke()
             ticks.lineWidth = AppTheme.BorderWidth.thick + AppTheme.BorderWidth.thin
             ticks.stroke()
-            AppTheme.Status.error.setStroke()
+            AppTheme.MediaOverlay.error.setStroke()
             ticks.lineWidth = AppTheme.BorderWidth.thick
             ticks.stroke()
 
@@ -859,9 +859,9 @@ final class TimelineInputController {
             arrow.close()
             arrow.lineJoinStyle = .round
             arrow.lineWidth = AppTheme.BorderWidth.thick
-            AppTheme.Text.primary.setStroke()
+            AppTheme.MediaOverlay.primary.setStroke()
             arrow.stroke()
-            AppTheme.Status.error.setFill()
+            AppTheme.MediaOverlay.error.setFill()
             arrow.fill()
             return true
         }

@@ -74,7 +74,7 @@ struct AgentInputBox<LeadingTools: View>: View {
                 .strokeBorder(
                     isDropTargeted ? AppTheme.Accent.primary.opacity(AppTheme.Opacity.strong)
                         : focused ? AppTheme.Accent.primary.opacity(AppTheme.Opacity.medium)
-                        : Color.white.opacity(AppTheme.Opacity.hint),
+                        : AppTheme.Interaction.fill(AppTheme.Opacity.hint),
                     lineWidth: (focused || isDropTargeted) ? AppTheme.BorderWidth.thin : AppTheme.BorderWidth.hairline
                 )
                 .allowsHitTesting(false)

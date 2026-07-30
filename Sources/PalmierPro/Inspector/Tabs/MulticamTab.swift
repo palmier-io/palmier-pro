@@ -3,8 +3,11 @@ import SwiftUI
 struct MulticamTab: View {
     @Environment(EditorViewModel.self) var editor
     let groupId: String
+    @Bindable private var timelineColors = TimelineClipColorStore.shared
 
     var body: some View {
+        let _ = timelineColors.revision
+
         if let group = editor.multicamGroup(id: groupId) {
             EditorPanelGroup(group.name.isEmpty ? "Multicam" : group.name) {
                 ForEach(group.members) { member in
@@ -18,7 +21,7 @@ struct MulticamTab: View {
         HStack(spacing: AppTheme.Spacing.sm) {
             Text(member.kind.rawValue.capitalized)
                 .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
-                .foregroundStyle(.black.opacity(AppTheme.Opacity.prominent))
+                .foregroundStyle(Color(AppTheme.TrackColor.readableForeground(on: kindColor(member.kind))).opacity(AppTheme.Opacity.prominent))
                 .padding(.horizontal, AppTheme.Spacing.xs)
                 .padding(.vertical, AppTheme.Spacing.xxs)
                 .background(Color(kindColor(member.kind)), in: RoundedRectangle(cornerRadius: AppTheme.Radius.xs))

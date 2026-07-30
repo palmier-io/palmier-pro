@@ -3,7 +3,7 @@ import SwiftUI
 struct MatteSheet: View {
     @Environment(EditorViewModel.self) private var editor
     @Binding var isPresented: Bool
-    @State private var color = Color.black
+    @State private var color = AppTheme.MediaOverlay.backgroundColor
     @State private var aspect = MatteAspect.project
     @State private var isCreating = false
     @State private var error: String?

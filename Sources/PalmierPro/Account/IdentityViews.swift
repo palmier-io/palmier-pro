@@ -29,7 +29,7 @@ struct UserAvatar: View {
         if account.isSignedIn {
             Circle().fill(AppTheme.Accent.primary.opacity(AppTheme.Opacity.medium))
         } else if signedOutStyle == .filledCircle {
-            Circle().fill(Color.white.opacity(AppTheme.Opacity.soft))
+            Circle().fill(AppTheme.Interaction.fill(AppTheme.Opacity.soft))
         }
     }
 

@@ -8,15 +8,16 @@ struct ColorField: View {
     let onUserChange: (Color) -> Void
     var supportsOpacity: Bool = true
     var accessibilityLabel: String = "Choose color"
+    var swatchSize = CGSize(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.xs)
 
     var body: some View {
         Button(action: open) {
             RoundedRectangle(cornerRadius: AppTheme.Radius.xs)
                 .fill(displayColor)
-                .frame(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.xs)
+                .frame(width: swatchSize.width, height: swatchSize.height)
                 .overlay(
                     RoundedRectangle(cornerRadius: AppTheme.Radius.xs)
-                        .stroke(Color.white.opacity(AppTheme.Opacity.medium), lineWidth: AppTheme.BorderWidth.thin)
+                        .stroke(AppTheme.Border.dividerColor, lineWidth: AppTheme.BorderWidth.thin)
                 )
         }
         .buttonStyle(.plain)

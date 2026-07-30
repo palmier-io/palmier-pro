@@ -91,7 +91,7 @@ enum ClipRenderer {
         if usesCompactRendering(in: rect) {
             let color = isMissing && !isGenerating
                 ? AppTheme.Status.error
-                : (isSelected ? AppTheme.Text.primary : colorType.themeColor)
+                : (isSelected ? AppTheme.MediaOverlay.primary : colorType.themeColor)
             context.setFillColor(color.cgColor)
             context.fill(rect)
             if opacity < 1.0 { context.restoreGState() }
@@ -157,7 +157,7 @@ enum ClipRenderer {
         }
 
         if isSelected {
-            context.setStrokeColor(AppTheme.Text.primary.cgColor)
+            context.setStrokeColor(AppTheme.Border.timelineClipSelected.cgColor)
             context.setLineWidth(AppTheme.BorderWidth.medium)
             context.addPath(path)
             context.strokePath()
@@ -165,7 +165,7 @@ enum ClipRenderer {
 
         // Subtle wash while the clip's media is being rendered/generated.
         if isGenerating {
-            context.setFillColor(NSColor.white.withAlphaComponent(AppTheme.Opacity.faint).cgColor)
+            context.setFillColor(AppTheme.MediaOverlay.primary.withAlphaComponent(AppTheme.Opacity.faint).cgColor)
             context.addPath(path)
             context.fillPath()
         }
@@ -229,7 +229,7 @@ enum ClipRenderer {
         let y = rect.maxY - 5
         let half: CGFloat = 3
         context.setFillColor(NSColor.systemYellow.withAlphaComponent(0.95).cgColor)
-        context.setStrokeColor(NSColor.black.withAlphaComponent(0.5).cgColor)
+        context.setStrokeColor(AppTheme.MediaOverlay.background.withAlphaComponent(0.5).cgColor)
         context.setLineWidth(0.5)
         for f in frames where clip.contains(timelineFrame: f) {
             let x = baseX + CGFloat(f - clip.startFrame) * pxPerFrame
@@ -244,9 +244,9 @@ enum ClipRenderer {
         }
     }
 
-    private static let beatTickColor = NSColor.systemOrange.withAlphaComponent(0.7).cgColor
-    private static let downbeatTickColor = NSColor.systemOrange.cgColor
-    private static let beatTickBackingColor = NSColor.black.withAlphaComponent(0.55).cgColor
+    private static var beatTickColor: CGColor { NSColor.systemOrange.withAlphaComponent(0.7).cgColor }
+    private static var downbeatTickColor: CGColor { NSColor.systemOrange.cgColor }
+    private static let beatTickBackingColor = AppTheme.MediaOverlay.background.withAlphaComponent(0.55).cgColor
     private static let beatTickWidth: CGFloat = 1
     private static let beatTickHeight: CGFloat = 7
     private static let downbeatTickHeight: CGFloat = 14
@@ -300,7 +300,9 @@ enum ClipRenderer {
 
     // MARK: - Waveform
 
-    private static let washColor = AppTheme.Status.error.withAlphaComponent(AppTheme.Opacity.medium).cgColor
+    private static var washColor: CGColor {
+        AppTheme.Status.error.withAlphaComponent(AppTheme.Opacity.medium).cgColor
+    }
     nonisolated(unsafe) static var speakerColors: [Int: CGColor] = [:]
     private static var markBeats: Bool { UserDefaults.standard.object(forKey: "markBeats") as? Bool ?? true }
 
@@ -336,7 +338,7 @@ enum ClipRenderer {
         let lastBar = min(barCount, Int(ceil(visible.maxX - drawRect.minX)))
         guard firstBar < lastBar else { return }
 
-        context.setFillColor(AppTheme.Text.primary.withAlphaComponent(AppTheme.Opacity.high).cgColor)
+        context.setFillColor(type.themeForegroundColor.withAlphaComponent(AppTheme.Opacity.high).cgColor)
 
         let dur = CGFloat(max(1, clip.durationFrames))
         let frameStep = dur / CGFloat(barCount)
@@ -434,8 +436,9 @@ enum ClipRenderer {
 
         let body = clipBodyRect(in: rect)
         let alpha: CGFloat = showsFadeControls ? 0.95 : 0.75
-        let lineColor = NSColor.white.withAlphaComponent(alpha).cgColor
-        let fadeColor = NSColor.white.withAlphaComponent(alpha * 0.7).cgColor
+        let foreground = clip.sourceClipType.themeForegroundColor
+        let lineColor = foreground.withAlphaComponent(alpha).cgColor
+        let fadeColor = foreground.withAlphaComponent(alpha * 0.7).cgColor
 
         // 1) Volume line — through kfs, or flat at static volume when no kfs.
         context.setStrokeColor(lineColor)
@@ -517,7 +520,7 @@ enum ClipRenderer {
 
         if showsVolumeKeyframes {
             context.setFillColor(lineColor)
-            context.setStrokeColor(NSColor.black.withAlphaComponent(0.5).cgColor)
+            context.setStrokeColor(AppTheme.MediaOverlay.background.withAlphaComponent(0.5).cgColor)
             context.setLineWidth(0.5)
 
             // 4) Keyframe diamonds — independent of the fade knees.
@@ -551,8 +554,9 @@ enum ClipRenderer {
 
         let body = clipBodyRect(in: rect)
         let alpha: CGFloat = showsFadeControls ? 0.95 : 0.75
-        let lineColor = NSColor.white.withAlphaComponent(alpha).cgColor
-        let fadeColor = NSColor.white.withAlphaComponent(alpha * 0.7).cgColor
+        let foreground = clip.sourceClipType.themeForegroundColor
+        let lineColor = foreground.withAlphaComponent(alpha).cgColor
+        let fadeColor = foreground.withAlphaComponent(alpha * 0.7).cgColor
 
         let leftOffset = min(clip.fadeInFrames, clip.durationFrames)
         let rightOffset = max(0, clip.durationFrames - clip.fadeOutFrames)
@@ -604,7 +608,7 @@ enum ClipRenderer {
         defer { context.restoreGState() }
 
         context.setFillColor(fillColor)
-        context.setStrokeColor(AppTheme.Background.base.withAlphaComponent(CGFloat(AppTheme.Opacity.strong)).cgColor)
+        context.setStrokeColor(AppTheme.MediaOverlay.background.withAlphaComponent(CGFloat(AppTheme.Opacity.strong)).cgColor)
         context.setLineWidth(AppTheme.BorderWidth.hairline)
         context.fill(rect)
         context.stroke(rect)
@@ -632,13 +636,13 @@ enum ClipRenderer {
         fill.addLine(to: end)
         fill.closeSubpath()
         context.addPath(fill)
-        context.setFillColor(AppTheme.Background.base.withAlphaComponent(CGFloat(AppTheme.Opacity.strong)).cgColor)
+        context.setFillColor(AppTheme.MediaOverlay.background.withAlphaComponent(CGFloat(AppTheme.Opacity.strong)).cgColor)
         context.fillPath()
 
         context.beginPath()
         context.move(to: start)
         context.addLine(to: end)
-        context.setStrokeColor(AppTheme.Background.base.withAlphaComponent(CGFloat(AppTheme.Opacity.prominent)).cgColor)
+        context.setStrokeColor(AppTheme.MediaOverlay.background.withAlphaComponent(CGFloat(AppTheme.Opacity.prominent)).cgColor)
         context.setLineWidth(AppTheme.BorderWidth.thin)
         context.setLineCap(.round)
         context.setLineJoin(.round)
@@ -667,7 +671,7 @@ enum ClipRenderer {
         fill.closeSubpath()
         context.saveGState()
         context.addPath(fill)
-        context.setFillColor(NSColor.black.withAlphaComponent(fillAlpha).cgColor)
+        context.setFillColor(AppTheme.MediaOverlay.background.withAlphaComponent(fillAlpha).cgColor)
         context.fillPath()
         context.restoreGState()
 
@@ -826,13 +830,21 @@ enum ClipRenderer {
 
     private static func drawLabelBar(clip: Clip, type: ClipType, in labelRect: NSRect, clipRect: NSRect, context: CGContext, displayName: String? = nil, badge: String? = nil, fps: Int) {
         var labelRect = labelRect
-        if let badge,
-           let chipRect = drawPill(badge, textColor: NSColor.black.withAlphaComponent(AppTheme.Opacity.prominent),
-                                   fill: AppTheme.TrackColor.multicam, fontSize: AppTheme.FontSize.xxs,
-                                   at: NSPoint(x: labelRect.minX + AppTheme.Spacing.xs, y: labelRect.minY + AppTheme.Spacing.xxs),
-                                   maxWidth: labelRect.width - AppTheme.Spacing.smMd, context: context) {
-            labelRect.origin.x = chipRect.maxX + AppTheme.Spacing.xxs
-            labelRect.size.width -= chipRect.width + AppTheme.Spacing.sm
+        if let badge {
+            let fill = AppTheme.TrackColor.multicam
+            let textColor = AppTheme.TrackColor.readableForeground(on: fill)
+            if let chipRect = drawPill(
+                badge,
+                textColor: textColor.withAlphaComponent(AppTheme.Opacity.prominent),
+                fill: fill,
+                fontSize: AppTheme.FontSize.xxs,
+                at: NSPoint(x: labelRect.minX + AppTheme.Spacing.xs, y: labelRect.minY + AppTheme.Spacing.xxs),
+                maxWidth: labelRect.width - AppTheme.Spacing.smMd,
+                context: context
+            ) {
+                labelRect.origin.x = chipRect.maxX + AppTheme.Spacing.xxs
+                labelRect.size.width -= chipRect.width + AppTheme.Spacing.sm
+            }
         }
 
         let timecode = formatClipDuration(frame: clip.durationFrames, fps: fps)
@@ -842,7 +854,7 @@ enum ClipRenderer {
 
         let baseAttrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: AppTheme.FontSize.xs, weight: .medium),
-            .foregroundColor: AppTheme.Text.primary,
+            .foregroundColor: clip.sourceClipType.themeForegroundColor,
         ]
         let attributed = NSMutableAttributedString(string: text, attributes: baseAttrs)
         if clip.linkGroupId != nil {
@@ -871,7 +883,7 @@ enum ClipRenderer {
 
     // MARK: - Out-of-sync offset badge
 
-    private static let offsetBadgeColor = NSColor(red: 1.0, green: 0.28, blue: 0.28, alpha: 1.0)
+    private static let offsetBadgeColor = AppTheme.MediaOverlay.error
 
     private static func drawOffsetBadge(frames: Int, in rect: NSRect, context: CGContext) {
         let text = frames > 0 ? "+\(frames)" : "\(frames)"
@@ -881,7 +893,7 @@ enum ClipRenderer {
         ]).size().width + padH * 2
         let x = rect.maxX - Trim.handleWidth - width - AppTheme.Spacing.xxs
         guard x > rect.minX + AppTheme.Spacing.sm else { return }
-        drawPill(text, textColor: .white, fill: offsetBadgeColor, fontSize: AppTheme.FontSize.xs,
+        drawPill(text, textColor: AppTheme.MediaOverlay.primary, fill: offsetBadgeColor, fontSize: AppTheme.FontSize.xs,
                  at: NSPoint(x: x, y: rect.minY + AppTheme.Spacing.xxs), maxWidth: width, context: context)
     }
 

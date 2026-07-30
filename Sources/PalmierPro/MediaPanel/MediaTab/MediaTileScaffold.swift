@@ -31,7 +31,7 @@ struct MediaTileScaffold<Artwork: View, MenuItems: View>: View {
                 .padding(.vertical, AppTheme.Spacing.xxs)
                 .background(
                     RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                        .fill(isRenaming ? Color.white.opacity(AppTheme.Opacity.faint) : .clear)
+                        .fill(isRenaming ? AppTheme.Interaction.fill(AppTheme.Opacity.faint) : .clear)
                 )
         }
         .frame(maxWidth: .infinity)
@@ -88,10 +88,10 @@ struct MediaTileScaffold<Artwork: View, MenuItems: View>: View {
 
 extension View {
     func tileBadge() -> some View {
-        foregroundStyle(.white)
+        foregroundStyle(AppTheme.MediaOverlay.primaryColor)
             .padding(.horizontal, AppTheme.Spacing.sm)
             .padding(.vertical, AppTheme.Spacing.xxs)
-            .background(.ultraThinMaterial, in: .capsule)
+            .background(AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.strong), in: .capsule)
             .padding(AppTheme.Spacing.xs)
     }
 }

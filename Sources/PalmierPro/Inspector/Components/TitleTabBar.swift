@@ -50,7 +50,7 @@ struct TitleTabBar: View {
 
     private func tabBackground(active: Bool, hovered: Bool) -> Color {
         if active { return AppTheme.Background.surfaceColor }
-        if hovered { return Color.white.opacity(AppTheme.Opacity.faint) }
+        if hovered { return AppTheme.Interaction.fill(AppTheme.Opacity.faint) }
         return Color.clear
     }
 }

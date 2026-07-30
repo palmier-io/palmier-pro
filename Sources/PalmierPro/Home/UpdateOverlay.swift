@@ -9,7 +9,7 @@ struct UpdateOverlay: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack {
-                Color.black.opacity(AppTheme.Opacity.strong)
+                AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.strong)
                     .ignoresSafeArea()
                 card
                     .frame(width: AppTheme.ComponentSize.updateOverlayWidth)

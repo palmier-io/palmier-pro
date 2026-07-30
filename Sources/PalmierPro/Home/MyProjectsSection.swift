@@ -120,12 +120,12 @@ struct MyProjectsSection: View {
         .padding(.vertical, AppTheme.Spacing.xs)
         .background(
             Capsule(style: .continuous)
-                .fill(Color.white.opacity(AppTheme.Opacity.subtle))
+                .fill(AppTheme.Interaction.fill(AppTheme.Opacity.subtle))
         )
         .overlay(
             Capsule(style: .continuous)
                 .strokeBorder(
-                    Color.white.opacity(AppTheme.Opacity.faint),
+                    AppTheme.Interaction.fill(AppTheme.Opacity.faint),
                     lineWidth: AppTheme.BorderWidth.thin
                 )
         )
@@ -256,7 +256,7 @@ private struct NewProjectCard: View {
                 .clipped()
 
             LinearGradient(
-                colors: [.clear, .black.opacity(AppTheme.Opacity.high)],
+                colors: [.clear, AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.high)],
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -265,7 +265,7 @@ private struct NewProjectCard: View {
 
             Text("Untitled")
                 .font(.system(size: AppTheme.FontSize.smMd, weight: .regular))
-                .foregroundStyle(.white)
+                .foregroundStyle(AppTheme.MediaOverlay.primaryColor)
                 .lineLimit(1)
                 .padding(.horizontal, AppTheme.Spacing.md)
                 .padding(.bottom, AppTheme.Spacing.smMd)
@@ -276,11 +276,11 @@ private struct NewProjectCard: View {
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.Radius.mdLg, style: .continuous)
                 .strokeBorder(
-                    Color.white.opacity(isHovered ? AppTheme.Opacity.muted : AppTheme.Opacity.hint),
+                    AppTheme.Interaction.fill(isHovered ? AppTheme.Opacity.muted : AppTheme.Opacity.hint),
                     lineWidth: AppTheme.BorderWidth.hairline
                 )
         )
-        .shadow(color: .black.opacity(isHovered ? 0.4 : 0.2), radius: isHovered ? 12 : 4, y: isHovered ? 4 : 2)
+        .shadow(color: AppTheme.MediaOverlay.backgroundColor.opacity(isHovered ? 0.4 : 0.2), radius: isHovered ? 12 : 4, y: isHovered ? 4 : 2)
         .scaleEffect(isHovered ? 1.03 : 1.0)
         .padding(AppTheme.Spacing.xs)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHovered)

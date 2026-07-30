@@ -11,7 +11,7 @@ struct AssetThumbnailView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
             ZStack {
-                Rectangle().fill(Color.black)
+                Rectangle().fill(AppTheme.MediaOverlay.backgroundColor)
                 thumbnailContent
             }
             .aspectRatio(16.0 / 9.0, contentMode: .fit)
@@ -58,7 +58,7 @@ struct AssetThumbnailView: View {
             .padding(.vertical, AppTheme.Spacing.xxs)
             .background(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .fill(isRenaming ? Color.white.opacity(AppTheme.Opacity.faint) : .clear)
+                    .fill(isRenaming ? AppTheme.Interaction.fill(AppTheme.Opacity.faint) : .clear)
             )
         }
         .frame(maxWidth: .infinity)
@@ -146,7 +146,7 @@ struct AssetThumbnailView: View {
                         Color.clear
                             .overlay { Image(nsImage: image).resizable().scaledToFill().blur(radius: 12) }
                             .clipped()
-                        Color.black.opacity(AppTheme.Opacity.strong)
+                        AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.strong)
                     }
                     GeneratingOverlay(label: asset.generatingLabel)
                 }
@@ -162,7 +162,7 @@ struct AssetThumbnailView: View {
             } else {
                 Image(systemName: asset.type.sfSymbolName)
                     .font(.system(size: AppTheme.FontSize.xl))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .foregroundStyle(AppTheme.MediaOverlay.tertiaryColor)
             }
         }
     }
@@ -202,12 +202,15 @@ struct AssetThumbnailView: View {
             Button { editor.agentService.attachMention(for: asset) } label: {
                 Image(systemName: "bubble.left")
                     .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(AppTheme.MediaOverlay.primaryColor)
                     .frame(width: AppTheme.IconSize.smMd, height: AppTheme.IconSize.smMd)
             }
             .buttonStyle(.plain)
-            .background(.black.opacity(AppTheme.Opacity.strong), in: .circle)
-            .overlay(Circle().strokeBorder(Color.white.opacity(AppTheme.Opacity.muted), lineWidth: AppTheme.BorderWidth.hairline))
+            .background(AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.strong), in: .circle)
+            .overlay(Circle().strokeBorder(
+                AppTheme.MediaOverlay.primaryColor.opacity(AppTheme.Opacity.muted),
+                lineWidth: AppTheme.BorderWidth.hairline
+            ))
             .padding(AppTheme.Spacing.xs)
             .transition(.opacity)
             .help("Add to chat")
@@ -217,10 +220,10 @@ struct AssetThumbnailView: View {
     private var sourceBadge: some View {
         Text("AI")
             .font(.system(size: AppTheme.FontSize.xxs, weight: .semibold))
-            .foregroundStyle(AppTheme.aiGradient)
+            .foregroundStyle(AppTheme.MediaOverlay.aiGradient)
             .padding(.horizontal, AppTheme.Spacing.sm)
             .padding(.vertical, AppTheme.Spacing.xxs)
-            .background(Color.black.opacity(AppTheme.Opacity.prominent), in: .capsule)
+            .background(AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.prominent), in: .capsule)
     }
 
     private var durationBadge: some View {
@@ -237,10 +240,10 @@ struct AssetThumbnailView: View {
                 .foregroundStyle(.red.opacity(AppTheme.Opacity.prominent))
             Text("Failed")
                 .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
-                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .foregroundStyle(AppTheme.MediaOverlay.secondaryColor)
             Text(error)
                 .font(.system(size: AppTheme.FontSize.xxs))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .foregroundStyle(AppTheme.MediaOverlay.tertiaryColor)
                 .multilineTextAlignment(.center)
                 .lineLimit(3)
                 .truncationMode(.tail)
@@ -253,10 +256,10 @@ struct AssetThumbnailView: View {
         VStack(spacing: AppTheme.Spacing.xxs) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: AppTheme.FontSize.mdLg))
-                .foregroundStyle(AppTheme.Status.errorColor)
+                .foregroundStyle(AppTheme.MediaOverlay.errorColor)
             Text("Media Offline")
                 .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
-                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .foregroundStyle(AppTheme.MediaOverlay.secondaryColor)
         }
         .help("Palmier couldn't load this source file. It may be missing, on an ejected drive, or unreadable.")
     }

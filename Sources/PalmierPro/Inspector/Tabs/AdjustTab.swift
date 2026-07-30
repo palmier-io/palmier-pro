@@ -496,7 +496,7 @@ extension InspectorView {
                 .frame(maxWidth: .infinity)
                 .background(
                     RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                        .fill(Color.white.opacity(AppTheme.Opacity.hint))
+                        .fill(AppTheme.Interaction.fill(AppTheme.Opacity.hint))
                 )
             }
             .buttonStyle(.plain)

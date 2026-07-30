@@ -551,6 +551,6 @@ private struct TileDragPreview: View {
         .padding(.horizontal, AppTheme.Spacing.smMd)
         .padding(.vertical, AppTheme.Spacing.sm)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
-        .shadow(color: .black.opacity(AppTheme.Opacity.medium), radius: 4, y: 2)
+        .shadow(color: AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.medium), radius: 4, y: 2)
     }
 }

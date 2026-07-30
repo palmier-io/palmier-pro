@@ -38,7 +38,7 @@ struct GeneratingOverlay: View {
         VStack(spacing: size.spacing) {
             Text(label)
                 .font(.system(size: size.fontSize, weight: .semibold))
-                .foregroundStyle(AppTheme.aiGradient)
+                .foregroundStyle(AppTheme.MediaOverlay.aiGradient)
             progressBar
         }
     }
@@ -47,9 +47,9 @@ struct GeneratingOverlay: View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color.white.opacity(AppTheme.Opacity.muted))
+                    .fill(AppTheme.MediaOverlay.primaryColor.opacity(AppTheme.Opacity.muted))
                 Capsule()
-                    .fill(Color.white.opacity(AppTheme.Opacity.strong))
+                    .fill(AppTheme.MediaOverlay.primaryColor.opacity(AppTheme.Opacity.strong))
                     .frame(width: geo.size.width * progress)
             }
         }
@@ -72,7 +72,7 @@ private struct ShimmerModifier: ViewModifier {
                         LinearGradient(
                             stops: [
                                 .init(color: .clear, location: 0),
-                                .init(color: .white.opacity(0.42), location: 0.48),
+                                .init(color: AppTheme.MediaOverlay.primaryColor.opacity(0.42), location: 0.48),
                                 .init(color: .clear, location: 1),
                             ],
                             startPoint: .top,

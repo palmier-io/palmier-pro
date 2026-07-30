@@ -79,7 +79,7 @@ struct ModelsPane: View {
         .padding(.vertical, AppTheme.Spacing.smMd)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.Radius.md)
-                .fill(Color.white.opacity(AppTheme.Opacity.subtle))
+                .fill(AppTheme.Interaction.fill(AppTheme.Opacity.subtle))
         )
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.Radius.md)

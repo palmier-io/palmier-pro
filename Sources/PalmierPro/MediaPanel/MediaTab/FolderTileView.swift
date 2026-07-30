@@ -24,7 +24,7 @@ struct FolderTileView: View {
             onCancelRename: onCancelRename
         ) {
             RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                .fill(Color(white: 1.0, opacity: AppTheme.Opacity.subtle))
+                .fill(AppTheme.Interaction.fill(AppTheme.Opacity.subtle))
             Image(systemName: "folder.fill")
                 .font(.system(size: AppTheme.FontSize.display, weight: AppTheme.FontWeight.light))
                 .foregroundStyle(AppTheme.Accent.primary.opacity(AppTheme.Opacity.prominent))

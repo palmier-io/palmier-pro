@@ -5,7 +5,7 @@ private struct ReferenceAssetPreview: View {
 
     var body: some View {
         ZStack {
-            Color.black
+            AppTheme.MediaOverlay.backgroundColor
             if let thumbnail = asset.thumbnail {
                 Image(nsImage: thumbnail)
                     .resizable()
@@ -13,7 +13,7 @@ private struct ReferenceAssetPreview: View {
             } else {
                 Image(systemName: asset.type.sfSymbolName)
                     .font(.system(size: AppTheme.FontSize.xl))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .foregroundStyle(AppTheme.MediaOverlay.tertiaryColor)
             }
         }
         .accessibilityElement(children: .ignore)
@@ -42,10 +42,10 @@ struct RefCard: View {
                     Text(tag)
                         .font(.system(size: AppTheme.FontSize.xxs, weight: .medium))
                         .monospacedDigit()
-                        .foregroundStyle(.white)
+                        .foregroundStyle(AppTheme.MediaOverlay.primaryColor)
                         .padding(.horizontal, AppTheme.Spacing.xs)
                         .padding(.vertical, AppTheme.Spacing.xxs)
-                        .background(Color.black.opacity(AppTheme.Opacity.strong), in: Capsule())
+                        .background(AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.strong), in: Capsule())
                         .padding(AppTheme.Spacing.xs)
                 }
             }
@@ -53,7 +53,7 @@ struct RefCard: View {
                 Button { onRemove() } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: AppTheme.FontSize.smMd))
-                        .foregroundStyle(.white.opacity(AppTheme.Opacity.prominent))
+                        .foregroundStyle(AppTheme.MediaOverlay.primaryColor.opacity(AppTheme.Opacity.prominent))
                         .shadow(radius: 2)
                         .frame(width: AppTheme.IconSize.smMd, height: AppTheme.IconSize.smMd)
                         .contentShape(Rectangle())
@@ -79,7 +79,9 @@ struct RefDropZone: View {
             .frame(width: AppTheme.GenerationPanel.referenceTileWidth, height: AppTheme.GenerationPanel.referenceTileHeight)
             .background(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .fill(isTargeted ? AppTheme.Accent.primary.opacity(AppTheme.Opacity.faint) : Color.white.opacity(AppTheme.Opacity.subtle))
+                    .fill(isTargeted
+                        ? AppTheme.Accent.primary.opacity(AppTheme.Opacity.faint)
+                        : AppTheme.Interaction.fill(AppTheme.Opacity.subtle))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
@@ -127,7 +129,7 @@ struct FrameSlot: View {
                         Button { onClear() } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: AppTheme.FontSize.smMd))
-                                .foregroundStyle(.white.opacity(AppTheme.Opacity.prominent))
+                                .foregroundStyle(AppTheme.MediaOverlay.primaryColor.opacity(AppTheme.Opacity.prominent))
                                 .shadow(radius: 2)
                                 .frame(width: AppTheme.IconSize.smMd, height: AppTheme.IconSize.smMd)
                                 .contentShape(Rectangle())

@@ -165,7 +165,7 @@ struct GenerationView: View {
         .overlay {
             RoundedRectangle(cornerRadius: AppTheme.Radius.xl, style: .continuous)
                 .strokeBorder(
-                    Color.white.opacity(AppTheme.Opacity.hint),
+                    AppTheme.Interaction.fill(AppTheme.Opacity.hint),
                     lineWidth: AppTheme.BorderWidth.hairline
                 )
                 .allowsHitTesting(false)
@@ -251,7 +251,7 @@ struct GenerationView: View {
                 .strokeBorder(
                     isPromptFocused
                         ? AppTheme.Accent.primary.opacity(AppTheme.Opacity.medium)
-                        : Color.white.opacity(AppTheme.Opacity.hint),
+                        : AppTheme.Interaction.fill(AppTheme.Opacity.hint),
                     lineWidth: isPromptFocused ? AppTheme.BorderWidth.thin : AppTheme.BorderWidth.hairline
                 )
                 .allowsHitTesting(false)
@@ -343,7 +343,7 @@ struct GenerationView: View {
 
     private var resizeHandle: some View {
         Capsule()
-            .fill(Color.white.opacity(AppTheme.Opacity.soft))
+            .fill(AppTheme.Interaction.fill(AppTheme.Opacity.soft))
             .frame(width: 24, height: 2)
             .frame(maxWidth: .infinity, minHeight: AppTheme.Spacing.md)
             .contentShape(Rectangle())
@@ -401,7 +401,7 @@ struct GenerationView: View {
     // MARK: - Secondary fields (lyrics / style instructions)
 
     private var inputDivider: some View {
-        Rectangle().fill(Color.white.opacity(AppTheme.Opacity.hint)).frame(height: AppTheme.BorderWidth.hairline)
+        Rectangle().fill(AppTheme.Interaction.fill(AppTheme.Opacity.hint)).frame(height: AppTheme.BorderWidth.hairline)
     }
 
     private func secondaryField(

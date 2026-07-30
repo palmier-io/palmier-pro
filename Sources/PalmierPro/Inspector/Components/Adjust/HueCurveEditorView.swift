@@ -37,9 +37,9 @@ struct HueCurveEditorView: View {
                     Canvas { ctx, _ in
                         if hueHist.count > 1 {
                             ctx.fill(histogramPath(hueHist, size),
-                                     with: .color(.white.opacity(AppTheme.Opacity.muted)))
+                                     with: .color(AppTheme.MediaOverlay.primaryColor.opacity(AppTheme.Opacity.muted)))
                             ctx.stroke(histogramLine(hueHist, size),
-                                       with: .color(.white.opacity(AppTheme.Opacity.prominent)),
+                                       with: .color(AppTheme.MediaOverlay.primaryColor.opacity(AppTheme.Opacity.prominent)),
                                        lineWidth: AppTheme.BorderWidth.thin)
                         }
                         var grid = Path()

@@ -44,7 +44,7 @@ struct ClipRulerBlock: View {
                     .overlay(alignment: .leading) {
                         Text(editor.clipDisplayLabel(for: clip))
                             .font(.system(size: AppTheme.FontSize.xxs, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.95))
+                            .foregroundStyle(AppTheme.MediaOverlay.primaryColor.opacity(0.95))
                             .padding(.horizontal, AppTheme.Spacing.sm)
                             .lineLimit(1)
                     }
@@ -89,7 +89,7 @@ struct KeyframesLaneRow: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
-                Rectangle().fill(.white.opacity(AppTheme.Opacity.subtle))
+                Rectangle().fill(AppTheme.Interaction.fill(AppTheme.Opacity.subtle))
                 Canvas { ctx, size in
                     let half = KeyframesMetrics.diamondSize / 2
                     let y = size.height / 2
@@ -102,7 +102,11 @@ struct KeyframesLaneRow: View {
                         d.addLine(to: CGPoint(x: x - half, y: y))
                         d.closeSubpath()
                         ctx.fill(d, with: .color(tint))
-                        ctx.stroke(d, with: .color(.black.opacity(0.4)), lineWidth: AppTheme.BorderWidth.hairline)
+                        ctx.stroke(
+                            d,
+                            with: .color(AppTheme.MediaOverlay.backgroundColor.opacity(0.4)),
+                            lineWidth: AppTheme.BorderWidth.hairline
+                        )
                     }
                 }
 
@@ -258,6 +262,7 @@ struct KeyframesLaneRow: View {
 struct KeyframesPanel: View {
     let clip: Clip
     @Environment(EditorViewModel.self) private var editor
+    private let timelineColors = TimelineClipColorStore.shared
     @State private var snapX: CGFloat?
 
     private static let videoRows: [(AnimatableProperty, String)] = [
@@ -275,7 +280,10 @@ struct KeyframesPanel: View {
         clip.mediaType == .audio ? Self.audioRows : Self.videoRows
     }
 
-    private var tint: Color { Color(nsColor: clip.sourceClipType.themeColor) }
+    private var tint: Color {
+        _ = timelineColors.revision
+        return Color(nsColor: clip.sourceClipType.themeColor)
+    }
     private var span: Int { max(1, clip.endFrame - clip.startFrame) }
 
     var body: some View {

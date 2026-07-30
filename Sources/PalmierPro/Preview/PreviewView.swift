@@ -67,13 +67,18 @@ final class PreviewNSView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layer?.backgroundColor = AppTheme.Background.surface.cgColor
+        updateAppearanceColors()
         playerLayer.videoGravity = .resizeAspect
         layer?.addSublayer(playerLayer)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateAppearanceColors()
+    }
 
     override func layout() {
         super.layout()
@@ -94,5 +99,11 @@ final class PreviewNSView: NSView {
         let delta = event.scrollingDeltaY * sensitivity
         if delta == 0 { return }
         onCmdScroll(delta, topDown, bounds.size)
+    }
+
+    private func updateAppearanceColors() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = AppTheme.Background.surface.cgColor
+        }
     }
 }

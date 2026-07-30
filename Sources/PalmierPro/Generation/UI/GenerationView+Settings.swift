@@ -38,7 +38,7 @@ extension GenerationView {
                             outer: AppTheme.Radius.sm,
                             padding: AppTheme.Spacing.xxs
                         ))
-                            .fill(selectedType == type ? Color.white.opacity(AppTheme.Opacity.faint) : .clear)
+                            .fill(selectedType == type ? AppTheme.Interaction.fill(AppTheme.Opacity.faint) : .clear)
                     )
                     .hoverHighlight(cornerRadius: AppTheme.Radius.concentric(
                         outer: AppTheme.Radius.sm,
@@ -53,7 +53,7 @@ extension GenerationView {
         .padding(AppTheme.Spacing.xxs)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                .fill(Color.white.opacity(AppTheme.Opacity.subtle))
+                .fill(AppTheme.Interaction.fill(AppTheme.Opacity.subtle))
         )
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
@@ -431,7 +431,9 @@ extension GenerationView {
                                 .padding(.vertical, 4)
                                 .background(
                                     RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                                        .fill(selection.wrappedValue == option ? Color.white.opacity(AppTheme.Opacity.soft) : Color.white.opacity(AppTheme.Opacity.subtle))
+                                        .fill(selection.wrappedValue == option
+                                            ? AppTheme.Interaction.fill(AppTheme.Opacity.soft)
+                                            : AppTheme.Interaction.fill(AppTheme.Opacity.subtle))
                                 )
                         }
                         .buttonStyle(.plain)

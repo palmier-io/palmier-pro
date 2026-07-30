@@ -59,7 +59,7 @@ struct TextStyleTraitButtons: View {
                 .frame(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.md)
                 .background(
                     RoundedRectangle(cornerRadius: AppTheme.Radius.xsSm)
-                        .fill(isActive ? AppTheme.Accent.primary : Color.white.opacity(AppTheme.Opacity.hint))
+                        .fill(isActive ? AppTheme.Accent.primary : AppTheme.Interaction.fill(AppTheme.Opacity.hint))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: AppTheme.Radius.xsSm)

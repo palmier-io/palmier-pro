@@ -303,7 +303,6 @@ final class FeedbackWindowController: NSWindowController {
         window.setContentSize(NSSize(width: 480, height: 480))
         window.minSize = NSSize(width: 480, height: 420)
         window.title = "Send feedback"
-        window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = AppTheme.Background.base.withAlphaComponent(0.4)
         window.isOpaque = false
         window.titleVisibility = .hidden

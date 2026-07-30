@@ -147,12 +147,12 @@ extension MediaTab {
     private func momentThumb(_ asset: MediaAsset?, time: Double) -> some View {
         if let asset, asset.type == .image {
             ZStack {
-                Rectangle().fill(Color.black)
+                Rectangle().fill(AppTheme.MediaOverlay.backgroundColor)
                 if let thumb = asset.thumbnail {
                     Image(nsImage: thumb).resizable().aspectRatio(contentMode: .fit)
                 } else {
                     Image(systemName: "photo")
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        .foregroundStyle(AppTheme.MediaOverlay.tertiaryColor)
                 }
             }
             .task(id: searchThumbnailTaskID(for: asset)) {
@@ -197,12 +197,12 @@ extension MediaTab {
     private func fileCard(_ asset: MediaAsset) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
             ZStack {
-                Rectangle().fill(Color.black)
+                Rectangle().fill(AppTheme.MediaOverlay.backgroundColor)
                 if let thumb = asset.thumbnail {
                     Image(nsImage: thumb).resizable().aspectRatio(contentMode: .fit)
                 } else {
                     Image(systemName: asset.type.sfSymbolName)
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        .foregroundStyle(AppTheme.MediaOverlay.tertiaryColor)
                 }
             }
             .aspectRatio(16.0 / 9.0, contentMode: .fit)
@@ -286,7 +286,7 @@ private struct MomentThumbnail: View {
 
     var body: some View {
         ZStack {
-            Rectangle().fill(Color.black)
+            Rectangle().fill(AppTheme.MediaOverlay.backgroundColor)
             if let image {
                 Image(decorative: image, scale: 1)
                     .resizable()

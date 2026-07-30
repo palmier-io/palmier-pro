@@ -75,7 +75,7 @@ struct AgentPane: View {
             .padding(.vertical, AppTheme.Spacing.smMd)
             .background(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .fill(Color.black.opacity(AppTheme.Opacity.muted))
+                    .fill(AppTheme.Background.baseColor.opacity(AppTheme.Opacity.medium))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
