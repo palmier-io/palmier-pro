@@ -4,17 +4,20 @@ import SwiftUI
 struct InspectorRow<Trailing: View>: View {
     let label: String
     let labelHelp: String?
+    let labelAlignment: Alignment
     let onReset: (() -> Void)?
     @ViewBuilder let trailing: () -> Trailing
 
     init(
         label: String,
         labelHelp: String? = nil,
+        labelAlignment: Alignment = .trailing,
         onReset: (() -> Void)? = nil,
         @ViewBuilder trailing: @escaping () -> Trailing
     ) {
         self.label = label
         self.labelHelp = labelHelp
+        self.labelAlignment = labelAlignment
         self.onReset = onReset
         self.trailing = trailing
     }
@@ -34,7 +37,7 @@ struct InspectorRow<Trailing: View>: View {
                 .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .lineLimit(1)
-                .frame(width: AppTheme.EditorPanel.labelColumnWidth, alignment: .trailing)
+                .frame(width: AppTheme.EditorPanel.labelColumnWidth, alignment: labelAlignment)
 
             trailing()
                 .frame(maxWidth: .infinity, alignment: .trailing)

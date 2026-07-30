@@ -227,6 +227,12 @@ final class EditorViewModel {
         }
     }
 
+    var silenceRemovalSettings = SilenceRemovalSettings.default {
+        didSet {
+            mediaVisualCache.timelineView?.needsDisplay = true
+        }
+    }
+
     var markBeats: Bool = {
         UserDefaults.standard.object(forKey: "markBeats") as? Bool ?? true
     }() {

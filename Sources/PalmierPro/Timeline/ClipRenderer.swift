@@ -74,6 +74,7 @@ enum ClipRenderer {
         opacity: CGFloat = 1.0,
         context: CGContext,
         cache: MediaVisualCache? = nil,
+        deadAirRanges: @autoclosure () -> [Range<Double>] = [],
         displayName: String? = nil,
         linkOffset: Int? = nil,
         multicamAngleLabel: String? = nil,
@@ -124,8 +125,7 @@ enum ClipRenderer {
             drawTiledImage(image: image, in: thumbRect, clipRect: rect, cornerRadius: cornerRadius, context: context)
         } else if type == .audio, let samples = cache?.samples(for: clip.mediaRef), !samples.isEmpty {
             let audioRect = CGRect(x: contentX, y: contentY, width: contentWidth, height: mainHeight)
-            let mask = markDeadAir ? cache?.deadAirMask(for: clip.mediaRef) : nil
-            drawWaveform(samples: samples, deadAirMask: mask,
+            drawWaveform(samples: samples, deadAirRanges: deadAirRanges(),
                          speakerMask: speakerColors.isEmpty ? nil : cache?.speakerMask(for: clip.mediaRef),
                          clip: clip, type: colorType, in: audioRect, context: context)
         }
@@ -302,12 +302,11 @@ enum ClipRenderer {
 
     private static let washColor = AppTheme.Status.error.withAlphaComponent(AppTheme.Opacity.medium).cgColor
     nonisolated(unsafe) static var speakerColors: [Int: CGColor] = [:]
-    private static var markDeadAir: Bool { UserDefaults.standard.object(forKey: "markDeadAir") as? Bool ?? true }
     private static var markBeats: Bool { UserDefaults.standard.object(forKey: "markBeats") as? Bool ?? true }
 
     private static func drawWaveform(
         samples: [Float],
-        deadAirMask: [Bool]?,
+        deadAirRanges: [Range<Double>],
         speakerMask: [Int]? = nil,
         clip: Clip,
         type: ClipType,
@@ -349,11 +348,8 @@ enum ClipRenderer {
         let needsPerBarVolume = (clip.volumeTrack?.isActive ?? false) || clip.fadeInFrames > 0 || clip.fadeOutFrames > 0
         let staticShift = CGFloat(VolumeScale.dbFromLinear(clip.volume)) / dbRange
 
-        // Dead-air shading maps the mask through the same source fractions as samples.
-        let maskCount = deadAirMask?.count ?? 0
-        let maskStart = max(0, min(maskCount, Int(startFrac * Double(maskCount))))
-        let maskEnd = max(maskStart, min(maskCount, Int(endFrac * Double(maskCount))))
-        let maskVisCount = maskEnd - maskStart
+        let visibleSourceStart = Double(clip.trimStartFrame)
+        let visibleSourceEnd = Double(clip.trimStartFrame + clip.sourceFramesConsumed)
         var washes: [CGRect] = []
         let spkCount = speakerMask?.count ?? 0
         let spkStart = max(0, min(spkCount, Int(startFrac * Double(spkCount))))
@@ -363,6 +359,7 @@ enum ClipRenderer {
 
         var bars: [CGRect] = []
         bars.reserveCapacity(lastBar - firstBar)
+        var deadAirRangeIndex = 0
         for i in firstBar..<lastBar {
             // Peak-detect (min, since 0=loud) over the bar's range so zero crossings don't flatten loud audio.
             let sStart = sampleStart + i * visCount / barCount
@@ -395,10 +392,15 @@ enum ClipRenderer {
                 bars.append(bar)
             }
 
-            if let deadAirMask, maskVisCount > 0 {
-                let m0 = maskStart + i * maskVisCount / barCount
-                let m1 = min(maskEnd, max(m0 + 1, maskStart + (i + 1) * maskVisCount / barCount))
-                if deadAirMask[m0..<m1].contains(true) {
+            if !deadAirRanges.isEmpty {
+                let m0 = visibleSourceStart + Double(i) * (visibleSourceEnd - visibleSourceStart) / Double(barCount)
+                let m1 = visibleSourceStart + Double(i + 1) * (visibleSourceEnd - visibleSourceStart) / Double(barCount)
+                while deadAirRangeIndex < deadAirRanges.count,
+                      deadAirRanges[deadAirRangeIndex].upperBound <= m0 {
+                    deadAirRangeIndex += 1
+                }
+                if deadAirRangeIndex < deadAirRanges.count,
+                   deadAirRanges[deadAirRangeIndex].lowerBound < m1 {
                     washes.append(CGRect(x: drawRect.minX + CGFloat(i), y: drawRect.minY, width: 1, height: drawRect.height))
                 }
             }

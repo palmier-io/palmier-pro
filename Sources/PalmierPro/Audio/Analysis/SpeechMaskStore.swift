@@ -4,7 +4,8 @@ import Foundation
 @MainActor
 final class SpeechMaskStore {
     private var speechMasks: [String: [Bool]] = [:]
-    private var deadAirMasks: [String: [Bool]] = [:]
+    private var quietNonSpeechMasks: [String: [Bool]] = [:]
+    private var deadAirMasks: [String: (settings: SilenceRemovalSettings, mask: [Bool])] = [:]
     private var failed: Set<String> = []
     private var epoch: [String: Int] = [:]
     private var inFlight: Set<String> = [] {
@@ -44,6 +45,7 @@ final class SpeechMaskStore {
                 self.inFlight.remove(key)
                 if let mask {
                     self.speechMasks[key] = mask
+                    self.quietNonSpeechMasks.removeValue(forKey: key)
                     self.deadAirMasks.removeValue(forKey: key)
                     if !mask.isEmpty { self.onMaskReady?() }
                 } else {
@@ -58,6 +60,7 @@ final class SpeechMaskStore {
         for key in inFlight { epoch[key, default: 0] += 1 }
         inFlight.removeAll()
         speechMasks.removeAll()
+        quietNonSpeechMasks.removeAll()
         deadAirMasks.removeAll()
         failed.removeAll()
     }
@@ -66,6 +69,7 @@ final class SpeechMaskStore {
         epoch[mediaRef, default: 0] += 1
         inFlight.remove(mediaRef)
         speechMasks.removeValue(forKey: mediaRef)
+        quietNonSpeechMasks.removeValue(forKey: mediaRef)
         deadAirMasks.removeValue(forKey: mediaRef)
         failed.remove(mediaRef)
     }
@@ -75,21 +79,47 @@ final class SpeechMaskStore {
     // Marks a span as dead air if its median level is `speechGap` below the file's speech level, using normalized waveform values.
     private nonisolated static let speechGap: Float = 0.24      // 12 dB
     private nonisolated static let noSpeechFloor: Float = 0.56  // absolute fallback ≈ -28 dB
-    private nonisolated static let minCells = 8                 // ≈ 0.26 s
+    /// Quiet, non-speech cells before minimum-pause and speech-padding policy is applied.
+    nonisolated func quietNonSpeechMask(
+        for mediaRef: String,
+        samples: [Float]?
+    ) -> [Bool]? {
+        MainActor.assumeIsolated {
+            quietNonSpeechMaskIsolated(for: mediaRef, samples: samples)
+        }
+    }
 
     /// Derived lazily once the speech mask and waveform samples both exist.
-    nonisolated func deadAirMask(for mediaRef: String, samples: [Float]?) -> [Bool]? {
+    nonisolated func deadAirMask(
+        for mediaRef: String,
+        samples: [Float]?,
+        settings: SilenceRemovalSettings
+    ) -> [Bool]? {
         MainActor.assumeIsolated {
-            if let cached = deadAirMasks[mediaRef] { return cached }
-            guard let speech = speechMasks[mediaRef], !speech.isEmpty,
-                  let samples, !samples.isEmpty else { return nil }
-            let mask = Self.buildDeadAirMask(speech: speech, samples: samples)
-            deadAirMasks[mediaRef] = mask
+            if let cached = deadAirMasks[mediaRef], cached.settings == settings { return cached.mask }
+            guard let quietNonSpeech = quietNonSpeechMaskIsolated(
+                for: mediaRef,
+                samples: samples
+            ) else { return nil }
+            let mask = SilenceRemovalPlanner.removableMask(from: quietNonSpeech, settings: settings)
+            deadAirMasks[mediaRef] = (settings, mask)
             return mask
         }
     }
 
-    private nonisolated static func buildDeadAirMask(speech: [Bool], samples: [Float]) -> [Bool] {
+    private func quietNonSpeechMaskIsolated(
+        for mediaRef: String,
+        samples: [Float]?
+    ) -> [Bool]? {
+        if let cached = quietNonSpeechMasks[mediaRef] { return cached }
+        guard let speech = speechMasks[mediaRef], !speech.isEmpty,
+              let samples, !samples.isEmpty else { return nil }
+        let mask = Self.buildQuietNonSpeechMask(speech: speech, samples: samples)
+        quietNonSpeechMasks[mediaRef] = mask
+        return mask
+    }
+
+    private nonisolated static func buildQuietNonSpeechMask(speech: [Bool], samples: [Float]) -> [Bool] {
         let n = speech.count
         func cellPeak(_ c: Int) -> Float {
             let s0 = c * samples.count / n
@@ -111,7 +141,7 @@ final class SpeechMaskStore {
             guard !speech[i] else { i += 1; continue }
             var j = i
             while j < n && !speech[j] { j += 1 }
-            if j - i >= Self.minCells, median((i..<j).map(cellPeak)) >= quietFloor {
+            if median((i..<j).map(cellPeak)) >= quietFloor {
                 for c in i..<j { dead[c] = true }
             }
             i = j

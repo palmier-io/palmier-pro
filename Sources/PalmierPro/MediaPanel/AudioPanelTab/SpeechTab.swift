@@ -21,10 +21,11 @@ struct SpeechTab: View {
     }
 
     private var speakersSection: some View {
-        EditorPanelGroup("Speakers") {
+        EditorPanelGroup("Speakers", contentInsets: sectionContentInsets) {
             InspectorRow(
                 label: "Mark Speakers",
                 labelHelp: "Tints waveforms by speaker. Voices are matched across clips using cloud transcripts.",
+                labelAlignment: .leading,
                 onReset: { editor.markSpeakers = false }
             ) {
                 Toggle("", isOn: Binding(
@@ -36,12 +37,12 @@ struct SpeechTab: View {
                 .labelsHidden()
                 .accessibilityLabel("Mark Speakers")
             }
-            HStack(spacing: AppTheme.Spacing.sm) {
-                Button(editor.projectSpeakers.isEmpty ? "Identify Speakers" : "Refresh") { editor.identifySpeakers(transcribeMissing: true) }
-                    .controlSize(.small)
-                    .disabled(editor.speakerIdentifyInFlight)
-                    .help("Matches voices across clips, transcribing untranscribed timeline clips first (uses credits). Transcripts and voice fingerprints are cached, so re-runs are fast.")
+            Button(editor.projectSpeakers.isEmpty ? "Identify Speakers" : "Refresh") {
+                editor.identifySpeakers(transcribeMissing: true)
             }
+            .buttonStyle(.capsule(.secondary))
+            .disabled(editor.speakerIdentifyInFlight)
+            .help("Matches voices across clips, transcribing untranscribed timeline clips first (uses credits). Transcripts and voice fingerprints are cached, so re-runs are fast.")
             if let error = editor.speakerIdentifyError {
                 Text(error)
                     .font(.system(size: AppTheme.FontSize.xs))
@@ -83,10 +84,11 @@ struct SpeechTab: View {
     }
 
     private var silenceSection: some View {
-        EditorPanelGroup("Silence Detection") {
+        EditorPanelGroup("Silence Detection", contentInsets: sectionContentInsets) {
             InspectorRow(
                 label: "Mark Silence",
                 labelHelp: "Speech is detected on-device in the background. Dims quiet, speech-free spans on timeline waveforms.",
+                labelAlignment: .leading,
                 onReset: { editor.markDeadAir = false }
             ) {
                 Toggle("", isOn: Binding(
@@ -109,15 +111,74 @@ struct SpeechTab: View {
                         .foregroundStyle(AppTheme.Text.mutedColor)
                 }
             }
+            silenceTimingControls
             removeSilenceRow
         }
+    }
+
+    private var silenceTimingControls: some View {
+        Group {
+            InspectorRow(
+                label: "Minimum Pause",
+                labelHelp: "Ignores speech-free pauses shorter than this.",
+                labelAlignment: .leading,
+                onReset: {
+                    editor.setMinimumSilenceDuration(SilenceRemovalSettings.default.minimumPauseSeconds)
+                }
+            ) {
+                durationField(
+                    label: "Minimum Pause",
+                    value: editor.silenceRemovalSettings.minimumPauseSeconds,
+                    range: SilenceRemovalSettings.minimumPauseRange,
+                    step: 0.05,
+                    set: editor.setMinimumSilenceDuration
+                )
+            }
+            InspectorRow(
+                label: "Speech Padding",
+                labelHelp: "Keeps this much audio before and after detected speech.",
+                labelAlignment: .leading,
+                onReset: {
+                    editor.setSpeechPaddingDuration(SilenceRemovalSettings.default.speechPaddingSeconds)
+                }
+            ) {
+                durationField(
+                    label: "Speech Padding",
+                    value: editor.silenceRemovalSettings.speechPaddingSeconds,
+                    range: SilenceRemovalSettings.speechPaddingRange,
+                    step: 0.025,
+                    set: editor.setSpeechPaddingDuration
+                )
+            }
+        }
+    }
+
+    private func durationField(
+        label: String,
+        value: Double,
+        range: ClosedRange<Double>,
+        step: Double,
+        set: @escaping (Double) -> Void
+    ) -> some View {
+        ScrubbableNumberField(
+            value: value,
+            range: range,
+            displayMultiplier: 1_000,
+            format: "%.0f",
+            valueSuffix: " ms",
+            dragSensitivity: 10,
+            dragValueAdjustment: { ($0 / step).rounded() * step },
+            onChanged: set,
+            onCommit: set
+        )
+        .accessibilityLabel(label)
     }
 
     private var removeSilenceRow: some View {
         let count = editor.allDeadAir().reduce(0) { $0 + $1.ranges.count }
         return HStack(spacing: AppTheme.Spacing.sm) {
-            Button("Remove Silence") { editor.removeAllDeadAir() }
-                .controlSize(.small)
+            Button("Remove") { editor.removeAllDeadAir() }
+                .buttonStyle(.capsule(.secondary))
                 .disabled(count == 0)
                 .help("Ripple-deletes every silent section; downstream clips close the gaps.")
             if count > 0 {
@@ -126,5 +187,14 @@ struct SpeechTab: View {
                     .foregroundStyle(AppTheme.Text.mutedColor)
             }
         }
+    }
+
+    private var sectionContentInsets: EdgeInsets {
+        EdgeInsets(
+            top: AppTheme.Spacing.smMd,
+            leading: AppTheme.Spacing.mdLg,
+            bottom: AppTheme.Spacing.smMd,
+            trailing: AppTheme.Spacing.mdLg
+        )
     }
 }

@@ -715,8 +715,30 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .removeSilence,
-            description: "Remove dead air — quiet, speech-free sections — from the timeline's audio, ripple-closing the gaps. Sections come from on-device speech detection (the same spans marked red on waveforms): non-speech runs whose level sits well below the recording's own speech level, so music beds and loud ambience are never cut, and speech-boundary slop keeps the cuts from feeling clipped. Cuts linked A/V partners and honors sync lock; the whole pass is one undoable action.\n\nUse this to tighten pacing (long pauses, dead space between takes) before or instead of word-level edits: remove_silence handles pauses, remove_words handles fillers and flubbed lines. No transcript needed. If it reports no dead air, speech analysis may still be running in the background — wait a moment and retry. Takes no arguments.",
-            inputSchema: objectSchema(properties: [:], required: [])
+            description: "Remove dead air — quiet, speech-free sections — from the timeline's audio, ripple-closing the gaps. Sections come from on-device speech detection (the same spans marked red on waveforms): non-speech runs whose level sits well below the recording's own speech level, so music beds and loud ambience are never cut. Cuts linked A/V partners and honors sync lock; the whole pass is one undoable action.\n\nOmit clipIds to process the whole timeline, or pass clip IDs from get_timeline to process only those clips. A scoped selection must include audio from exactly one track, and all selected clips must share one track or belong to one linked A/V unit. By default, this uses the current Minimum Pause and Speech Padding controls. Pass either optional value as a one-shot override without changing those controls. Use this to tighten pacing (long pauses, dead space between takes) before or instead of word-level edits: remove_silence handles pauses, remove_words handles fillers and flubbed lines. No transcript needed. If it reports no dead air, speech analysis may still be running in the background — wait a moment and retry.",
+            inputSchema: objectSchema(
+                properties: [
+                    "clipIds": [
+                        "type": "array",
+                        "items": ["type": "string"],
+                        "minItems": 1,
+                        "description": "Optional timeline clip IDs from get_timeline. Restricts removal to these clips; linked A/V partners are cut with them. Include audio clips from exactly one track, and select clips from one track or one link group. Omit to process the whole timeline.",
+                    ],
+                    "minimumPauseSeconds": [
+                        "type": "number",
+                        "minimum": SilenceRemovalSettings.minimumPauseRange.lowerBound,
+                        "maximum": SilenceRemovalSettings.minimumPauseRange.upperBound,
+                        "description": "Minimum quiet, speech-free pause to remove. Omit to use the current Minimum Pause control.",
+                    ],
+                    "speechPaddingSeconds": [
+                        "type": "number",
+                        "minimum": SilenceRemovalSettings.speechPaddingRange.lowerBound,
+                        "maximum": SilenceRemovalSettings.speechPaddingRange.upperBound,
+                        "description": "Audio to keep before and after detected speech. Omit to use the current Speech Padding control.",
+                    ],
+                ],
+                required: []
+            )
         ),
         AgentTool(
             name: .detectBeats,

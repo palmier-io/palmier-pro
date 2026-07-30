@@ -212,7 +212,10 @@ private struct ToolRunRow: View {
     private func prettyPrinted(_ json: String) -> String {
         guard let data = json.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data),
-              let pretty = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted]),
+              let pretty = try? JSONSerialization.data(
+                  withJSONObject: roundJSONFloatingPointNumbers(obj, toPlaces: 3),
+                  options: [.prettyPrinted]
+              ),
               let s = String(data: pretty, encoding: .utf8),
               !s.isEmpty, s != "{}" else {
             return "(no args)"
