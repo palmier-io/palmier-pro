@@ -80,6 +80,82 @@ struct FolderReadTests {
         #expect(e.assetsIn(folderId: nestedFolder.id).map(\.name) == ["child"])
     }
 
+    @Test func importFinderItemsReportsNestedUnsupportedFileWhenNothingImports() async throws {
+        let e = editor()
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("folder-import-\(UUID().uuidString)", isDirectory: true)
+        let nested = root.appendingPathComponent("Nested", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        try Data().write(to: nested.appendingPathComponent("ignored.txt"))
+
+        _ = try await e.importFinderItems([root], into: nil)
+
+        #expect(e.mediaPanelToast?.message.contains("ignored.txt") == true)
+    }
+
+    @Test func importFinderItemsStaysQuietWhenNonMediaAccompaniesImportedMedia() async throws {
+        let e = editor()
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("folder-import-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data().write(to: root.appendingPathComponent("clip.mp4"))
+        try Data().write(to: root.appendingPathComponent("clip.thm"))
+        try Data().write(to: root.appendingPathComponent("notes.txt"))
+
+        let summary = try await e.importFinderItems([root], into: nil)
+
+        #expect(summary.assetCount == 1)
+        #expect(e.mediaPanelToast == nil)
+    }
+
+    @Test func importFinderItemsReportsUnsupportedFileDroppedDirectly() async throws {
+        let e = editor()
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("direct-\(UUID().uuidString).txt")
+        defer { try? FileManager.default.removeItem(at: file) }
+        try Data().write(to: file)
+
+        _ = try await e.importFinderItems([file], into: nil)
+
+        #expect(e.mediaPanelToast?.message.contains(file.lastPathComponent) == true)
+    }
+
+    @Test func importFinderItemsReportsEveryRejectedFileNotJustTheLast() async throws {
+        let e = editor()
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("folder-import-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        for name in ["notes.txt", "readme.md", "sheet.csv"] {
+            try Data().write(to: root.appendingPathComponent(name))
+        }
+
+        _ = try await e.importFinderItems([root], into: nil)
+
+        #expect(e.mediaPanelToast?.message.contains("3 items") == true)
+    }
+
+    @Test func importFinderItemsReportsFolderThatCannotBeRead() async throws {
+        let e = editor()
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("folder-import-denied-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: root.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root.path)
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        _ = try await e.importFinderItems([root], into: nil)
+
+        #expect(e.mediaPanelToast?.message.contains(root.lastPathComponent) == true)
+    }
+
     @Test func importFinderItemsDoesNotCreateRootFolderWhenDirectoryCannotBeRead() async throws {
         let e = editor()
         let root = FileManager.default.temporaryDirectory

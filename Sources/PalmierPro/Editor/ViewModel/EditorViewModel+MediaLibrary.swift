@@ -45,7 +45,32 @@ private struct MediaImportPlan: Sendable {
     var folders: [Folder] = []
     var files: [File] = []
     var rejectedUnsupportedNames: [String] = []
+    var rejectedNestedUnsupportedNames: [String] = []
     var rejectedLottieNames: [String] = []
+    var rejectedUnreadableFolderNames: [String] = []
+
+    var rejectionToast: MediaPanelToast? {
+        // Non-media inside a dropped folder is expected filtering, not a failure,
+        // so it is only worth reporting when the drop imported nothing at all.
+        let unsupported = files.isEmpty
+            ? rejectedUnsupportedNames + rejectedNestedUnsupportedNames
+            : rejectedUnsupportedNames
+        let groups: [(names: [String], reason: String, tag: String)] = [
+            (unsupported, "unsupported file type", "unsupported"),
+            (rejectedLottieNames, "not a Lottie animation", "not Lottie"),
+            (rejectedUnreadableFolderNames, "couldn't be read", "unreadable")
+        ].filter { !$0.names.isEmpty }
+        guard let first = groups.first else { return nil }
+        if groups.count == 1 {
+            guard first.names.count > 1 else {
+                return "Can't import \"\(first.names[0])\" — \(first.reason)."
+            }
+            return "Can't import \(first.names.count) items — \(first.reason)."
+        }
+        let total = groups.reduce(0) { $0 + $1.names.count }
+        let detail = groups.map { "\($0.names.count) \($0.tag)" }.joined(separator: ", ")
+        return "Can't import \(total) items — \(detail)."
+    }
 }
 
 private enum MediaImportScanner {
@@ -89,7 +114,10 @@ private enum MediaImportScanner {
         parent: MediaImportPlan.Parent,
         into plan: inout MediaImportPlan
     ) {
-        guard let entries = directoryEntries(at: url) else { return }
+        guard let entries = directoryEntries(at: url) else {
+            plan.rejectedUnreadableFolderNames.append(url.lastPathComponent)
+            return
+        }
         let folderIndex = plan.folders.count
         plan.folders.append(.init(name: url.lastPathComponent, parent: parent))
         scan(entries: entries, parent: .plannedFolder(folderIndex), into: &plan)
@@ -110,7 +138,11 @@ private enum MediaImportScanner {
         into plan: inout MediaImportPlan
     ) {
         guard let type = ClipType(fileExtension: url.pathExtension.lowercased()) else {
-            if isRootItem { plan.rejectedUnsupportedNames.append(url.lastPathComponent) }
+            if isRootItem {
+                plan.rejectedUnsupportedNames.append(url.lastPathComponent)
+            } else {
+                plan.rejectedNestedUnsupportedNames.append(url.lastPathComponent)
+            }
             return
         }
         if type == .lottie, !LottieVideoGenerator.isLottie(at: url) {
@@ -343,10 +375,8 @@ extension EditorViewModel {
             return importedAssets
         }
 
-        if let name = plan.rejectedUnsupportedNames.last {
-            mediaPanelToast = "Can't import \"\(name)\" — unsupported file type."
-        } else if let name = plan.rejectedLottieNames.last {
-            mediaPanelToast = "Can't import \"\(name)\" — not a Lottie animation."
+        if let toast = plan.rejectionToast {
+            mediaPanelToast = toast
         }
 
         let summary = MediaImportSummary(
