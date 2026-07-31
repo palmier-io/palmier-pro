@@ -45,12 +45,18 @@ private struct MediaImportPlan: Sendable {
     var folders: [Folder] = []
     var files: [File] = []
     var rejectedUnsupportedNames: [String] = []
+    var rejectedNestedUnsupportedNames: [String] = []
     var rejectedLottieNames: [String] = []
     var rejectedUnreadableFolderNames: [String] = []
 
     var rejectionToast: MediaPanelToast? {
+        // Non-media inside a dropped folder is expected filtering, not a failure,
+        // so it is only worth reporting when the drop imported nothing at all.
+        let unsupported = files.isEmpty
+            ? rejectedUnsupportedNames + rejectedNestedUnsupportedNames
+            : rejectedUnsupportedNames
         let groups: [(names: [String], reason: String, tag: String)] = [
-            (rejectedUnsupportedNames, "unsupported file type", "unsupported"),
+            (unsupported, "unsupported file type", "unsupported"),
             (rejectedLottieNames, "not a Lottie animation", "not Lottie"),
             (rejectedUnreadableFolderNames, "couldn't be read", "unreadable")
         ].filter { !$0.names.isEmpty }
@@ -80,7 +86,7 @@ private enum MediaImportScanner {
             if isDirectory(root.url) {
                 scanFolder(at: root.url, parent: parent, into: &plan)
             } else {
-                scanFile(at: root.url, parent: parent, into: &plan)
+                scanFile(at: root.url, parent: parent, isRootItem: true, into: &plan)
             }
         }
         return plan
@@ -98,7 +104,7 @@ private enum MediaImportScanner {
             if isDirectory(entry) {
                 scanFolder(at: entry, parent: parent, into: &plan)
             } else {
-                scanFile(at: entry, parent: parent, into: &plan)
+                scanFile(at: entry, parent: parent, isRootItem: false, into: &plan)
             }
         }
     }
@@ -128,10 +134,15 @@ private enum MediaImportScanner {
     private static func scanFile(
         at url: URL,
         parent: MediaImportPlan.Parent,
+        isRootItem: Bool,
         into plan: inout MediaImportPlan
     ) {
         guard let type = ClipType(fileExtension: url.pathExtension.lowercased()) else {
-            plan.rejectedUnsupportedNames.append(url.lastPathComponent)
+            if isRootItem {
+                plan.rejectedUnsupportedNames.append(url.lastPathComponent)
+            } else {
+                plan.rejectedNestedUnsupportedNames.append(url.lastPathComponent)
+            }
             return
         }
         if type == .lottie, !LottieVideoGenerator.isLottie(at: url) {

@@ -80,7 +80,7 @@ struct FolderReadTests {
         #expect(e.assetsIn(folderId: nestedFolder.id).map(\.name) == ["child"])
     }
 
-    @Test func importFinderItemsReportsUnsupportedFileNestedInFolder() async throws {
+    @Test func importFinderItemsReportsNestedUnsupportedFileWhenNothingImports() async throws {
         let e = editor()
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("folder-import-\(UUID().uuidString)", isDirectory: true)
@@ -93,6 +93,35 @@ struct FolderReadTests {
         _ = try await e.importFinderItems([root], into: nil)
 
         #expect(e.mediaPanelToast?.message.contains("ignored.txt") == true)
+    }
+
+    @Test func importFinderItemsStaysQuietWhenNonMediaAccompaniesImportedMedia() async throws {
+        let e = editor()
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("folder-import-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data().write(to: root.appendingPathComponent("clip.mp4"))
+        try Data().write(to: root.appendingPathComponent("clip.thm"))
+        try Data().write(to: root.appendingPathComponent("notes.txt"))
+
+        let summary = try await e.importFinderItems([root], into: nil)
+
+        #expect(summary.assetCount == 1)
+        #expect(e.mediaPanelToast == nil)
+    }
+
+    @Test func importFinderItemsReportsUnsupportedFileDroppedDirectly() async throws {
+        let e = editor()
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("direct-\(UUID().uuidString).txt")
+        defer { try? FileManager.default.removeItem(at: file) }
+        try Data().write(to: file)
+
+        _ = try await e.importFinderItems([file], into: nil)
+
+        #expect(e.mediaPanelToast?.message.contains(file.lastPathComponent) == true)
     }
 
     @Test func importFinderItemsReportsEveryRejectedFileNotJustTheLast() async throws {
