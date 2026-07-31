@@ -133,7 +133,7 @@ final class HomeWindowController: NSWindowController {
     static let shared = HomeWindowController()
 
     private init() {
-        let hostingController = NSHostingController(rootView: HomeView().tint(AppTheme.Accent.primary))
+        let hostingController = NSHostingController(rootView: HomeView().appLocalization().tint(AppTheme.Accent.primary))
         hostingController.sizingOptions = .minSize
         let window = NSWindow(contentViewController: hostingController)
         window.setContentSize(AppTheme.Window.homeDefault)

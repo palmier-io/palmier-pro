@@ -156,14 +156,21 @@ rm -rf "$(dirname "$MCPB_FRESH")"
 if [ -d "$RES_BUNDLE/Images" ]; then
   cp -R "$RES_BUNDLE/Images" "$APP/Contents/Resources/"
 fi
-# .lproj folders must live at the bundle root for macOS to resolve them —
-# flatten out of Resources/Localization/ even though that's just an org folder.
-if [ -d "$RES_BUNDLE/Localization" ]; then
-  for locale_dir in "$RES_BUNDLE/Localization"/*.lproj; do
-    [ -d "$locale_dir" ] && cp -R "$locale_dir" "$APP/Contents/Resources/"
+# .lproj folders must live at the bundle root for macOS to resolve them.
+LOCALIZATION_COUNT=0
+for locale_dir in "$RES_BUNDLE"/*.lproj; do
+  [ -d "$locale_dir" ] || continue
+  for strings_file in Localizable.strings InfoPlist.strings; do
+    if [ ! -f "$locale_dir/$strings_file" ]; then
+      echo "!! missing $strings_file in $locale_dir" >&2
+      exit 1
+    fi
   done
-else
-  echo "!! missing Localization/ in SwiftPM resource bundle at $RES_BUNDLE" >&2
+  cp -R "$locale_dir" "$APP/Contents/Resources/"
+  LOCALIZATION_COUNT=$((LOCALIZATION_COUNT + 1))
+done
+if [ "$LOCALIZATION_COUNT" -eq 0 ]; then
+  echo "!! no compiled localizations in SwiftPM resource bundle at $RES_BUNDLE" >&2
   exit 1
 fi
 if [ -d "$RES_BUNDLE/Changelog" ]; then

@@ -298,7 +298,7 @@ final class FeedbackWindowController: NSWindowController {
 
     private init() {
         let initialView = FeedbackView(screenshot: nil).tint(AppTheme.Accent.primary)
-        let hosting = NSHostingController(rootView: AnyView(initialView))
+        let hosting = NSHostingController(rootView: AnyView(initialView.appLocalization()))
         let window = NSWindow(contentViewController: hosting)
         window.setContentSize(NSSize(width: 480, height: 480))
         window.minSize = NSSize(width: 480, height: 420)
@@ -324,6 +324,7 @@ final class FeedbackWindowController: NSWindowController {
         hosting?.rootView = AnyView(
             FeedbackView(screenshot: screenshot, prefill: prefill)
                 .id(UUID())
+                .appLocalization()
                 .tint(AppTheme.Accent.primary)
         )
         showWindow(nil)

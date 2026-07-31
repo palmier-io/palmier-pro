@@ -29,16 +29,6 @@
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>io.palmier.pro</string>
-	<key>CFBundleLocalizations</key>
-	<array>
-		<string>en</string>
-		<string>es</string>
-		<string>fr</string>
-		<string>de</string>
-		<string>ja</string>
-		<string>pt-BR</string>
-		<string>zh-Hans</string>
-	</array>
 	<key>CFBundleName</key>
 	<string>Palmier Pro</string>
 	<key>CFBundlePackageType</key>

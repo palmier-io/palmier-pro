@@ -1,6 +1,23 @@
-/* Agent panel — signed-out / no-credits state */
-"Log in for 250 free credits" = "Log in for 250 free credits";
+/* English source localization. */
+
+"Account" = "Account";
+"Agent" = "Agent";
+"Appearance" = "Appearance";
+"Changes take effect after restarting Palmier Pro." = "Changes take effect after restarting Palmier Pro.";
+"Export Queue" = "Export Queue";
 "First-time sign-ups only" = "First-time sign-ups only";
-"or use your own Anthropic key" = "or use your own Anthropic key";
-"Subscribe" = "Subscribe";
+"General" = "General";
+"Language" = "Language";
+"Language for the editor UI" = "Language for the editor UI";
+"Log in for 250 free credits" = "Log in for 250 free credits";
+"Models" = "Models";
+"Notifications" = "Notifications";
 "Open Settings" = "Open Settings";
+"Privacy & Diagnostics" = "Privacy & Diagnostics";
+"Restart Palmier Pro" = "Restart Palmier Pro";
+"Settings" = "Settings";
+"Skills" = "Skills";
+"Storage" = "Storage";
+"Subscribe" = "Subscribe";
+"System Language" = "System Language";
+"or use your own Anthropic key" = "or use your own Anthropic key";

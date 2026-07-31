@@ -13,7 +13,7 @@ UserDefaults.standard.set(10, forKey: "NSInitialToolTipDelay")
 
 let app = NSApplication.shared
 AppAppearanceStore.shared.apply()
-let delegate = AppDelegate()
+let delegate = AppDelegate.shared
 app.delegate = delegate
 app.mainMenu = MainMenuBuilder.buildMenu()
 app.run()
