@@ -130,7 +130,7 @@ extension EditorViewModel {
         let timelineIds = timelines.filter { selectedTimelines.contains($0.id) }
             .prefix(max(0, timelines.count - 1)).map(\.id)
         if selectedTimelines.count > timelineIds.count {
-            mediaPanelToast = "Can't delete every timeline — the project needs at least one."
+            mediaPanelToast = MediaPanelToast(message: L10n.string("Can't delete every timeline — the project needs at least one."))
         }
 
         let itemCount = folderIds.count + assetIds.count + timelineIds.count

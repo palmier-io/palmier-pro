@@ -30,11 +30,11 @@ struct ModelsPane: View {
             return matched.filter { !isLocked($0) } + matched.filter { isLocked($0) }
         }
         return [
-            Section(id: "image", title: "Image",
+            Section(id: "image", title: L10n.string("Image"),
                     rows: prepare(catalog.image.map { row(for: $0.entry) })),
-            Section(id: "video", title: "Video",
+            Section(id: "video", title: L10n.string("Video"),
                     rows: prepare(catalog.video.map { row(for: $0.entry) })),
-            Section(id: "audio", title: "Audio",
+            Section(id: "audio", title: L10n.string("Audio"),
                     rows: prepare(catalog.audio.map { row(for: $0.entry) })),
         ].filter { !$0.rows.isEmpty }
     }
@@ -53,7 +53,9 @@ struct ModelsPane: View {
             searchBar
 
             if sections.isEmpty {
-                Text(catalog.isLoaded ? "No models match \"\(query)\"." : "Loading models…")
+                Text(catalog.isLoaded
+                    ? L10n.string("No models match \"\(query)\".")
+                    : L10n.string("Loading models…"))
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .padding(.top, AppTheme.Spacing.lg)
@@ -70,7 +72,7 @@ struct ModelsPane: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.mutedColor)
-            TextField("Search models", text: $query)
+            TextField(L10n.string("Search models"), text: $query)
                 .textFieldStyle(.plain)
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.primaryColor)
@@ -114,12 +116,12 @@ struct ModelsPane: View {
                 .foregroundStyle(locked ? AppTheme.Text.tertiaryColor : AppTheme.Text.primaryColor)
             Spacer(minLength: AppTheme.Spacing.lg)
             if locked {
-                Button("Subscribe") {
+                Button(L10n.string("Subscribe")) {
                     SettingsWindowController.shared.show(tab: .account)
                 }
                 .buttonStyle(.capsule(.secondary))
             } else {
-                Toggle("", isOn: Binding(
+                Toggle(String(), isOn: Binding(
                     get: { prefs.isEnabled(row.id) },
                     set: { prefs.setEnabled(row.id, $0) }
                 ))

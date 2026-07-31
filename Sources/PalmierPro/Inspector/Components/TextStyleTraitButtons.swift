@@ -16,23 +16,23 @@ struct TextStyleTraitButtons: View {
         HStack(spacing: AppTheme.Spacing.xs) {
             traitButton(
                 systemName: "bold",
-                label: "Bold",
+                label: L10n.string("Bold"),
                 state: isBold,
                 action: { onBold(!(isBold ?? false)) }
             )
             traitButton(
                 systemName: "italic",
-                label: "Italic",
+                label: L10n.string("Italic"),
                 state: isItalic,
                 action: { onItalic(!(isItalic ?? false)) }
             )
-            traitButton(systemName: "underline", label: "Underline", state: isUnderlined) {
+            traitButton(systemName: "underline", label: L10n.string("Underline"), state: isUnderlined) {
                 onUnderline(!(isUnderlined ?? false))
             }
-            traitButton(systemName: "strikethrough", label: "Strikethrough", state: isStruckThrough) {
+            traitButton(systemName: "strikethrough", label: L10n.string("Strikethrough"), state: isStruckThrough) {
                 onStrikethrough(!(isStruckThrough ?? false))
             }
-            traitButton(systemName: "textformat", label: "Overline", state: isOverlined, overline: true) {
+            traitButton(systemName: "textformat", label: L10n.string("Overline"), state: isOverlined, overline: true) {
                 onOverline(!(isOverlined ?? false))
             }
         }
@@ -70,7 +70,7 @@ struct TextStyleTraitButtons: View {
                 )
         }
         .buttonStyle(.plain)
-        .help(label)
-        .accessibilityLabel(label)
+        .help(L10n.string(key: label))
+        .accessibilityLabel(L10n.string(key: label))
     }
 }

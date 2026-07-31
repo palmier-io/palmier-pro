@@ -13,9 +13,9 @@ enum AppAppearance: String, CaseIterable, Identifiable, Sendable {
 
     var label: String {
         switch self {
-        case .system: "System"
-        case .light: "Light"
-        case .dark: "Dark"
+        case .system: L10n.key("System")
+        case .light: L10n.key("Light")
+        case .dark: L10n.key("Dark")
         }
     }
 

@@ -34,6 +34,10 @@ enum ExportResolution: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    var title: String {
+        self == .matchTimeline ? L10n.key("Match Timeline") : rawValue
+    }
+
     var shortSidePixels: Int? {
         switch self {
         case .r720p: 720

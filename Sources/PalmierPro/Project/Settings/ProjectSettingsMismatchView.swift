@@ -6,57 +6,57 @@ struct ProjectSettingsMismatchView: View {
 
     var body: some View {
         VStack(spacing: AppTheme.Spacing.xl) {
-            Text("Clip Settings Mismatch")
+            Text(L10n.string("Clip Settings Mismatch"))
                 .font(.system(size: AppTheme.FontSize.xl, weight: .semibold))
                 .foregroundStyle(AppTheme.Text.primaryColor)
 
-            Text("The clip you're adding has different settings than the current project.")
+            Text(L10n.string("The clip you're adding has different settings than the current project."))
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .multilineTextAlignment(.center)
 
             Grid(alignment: .leading, horizontalSpacing: AppTheme.Spacing.xl, verticalSpacing: AppTheme.Spacing.sm) {
                 GridRow {
-                    Text("")
-                    Text("Project")
+                    Text(verbatim: "")
+                    Text(L10n.string("Project"))
                         .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    Text("Clip")
+                    Text(L10n.string("Clip"))
                         .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                 }
                 GridRow {
-                    Text("FPS")
+                    Text(verbatim: "FPS")
                         .font(.system(size: AppTheme.FontSize.sm))
                         .foregroundStyle(AppTheme.Text.secondaryColor)
-                    Text("\(editor.timeline.fps)")
+                    Text(verbatim: "\(editor.timeline.fps)")
                         .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
                         .foregroundStyle(AppTheme.Text.primaryColor)
-                    Text("\(mismatch.clipFPS)")
+                    Text(verbatim: "\(mismatch.clipFPS)")
                         .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
                         .foregroundStyle(mismatch.clipFPS != editor.timeline.fps ? .orange : AppTheme.Text.primaryColor)
                 }
                 GridRow {
-                    Text("Resolution")
+                    Text(L10n.string("Resolution"))
                         .font(.system(size: AppTheme.FontSize.sm))
                         .foregroundStyle(AppTheme.Text.secondaryColor)
-                    Text("\(editor.timeline.width) x \(editor.timeline.height)")
+                    Text(verbatim: "\(editor.timeline.width) x \(editor.timeline.height)")
                         .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
                         .foregroundStyle(AppTheme.Text.primaryColor)
-                    Text("\(mismatch.clipWidth) x \(mismatch.clipHeight)")
+                    Text(verbatim: "\(mismatch.clipWidth) x \(mismatch.clipHeight)")
                         .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
                         .foregroundStyle(resolutionMismatch ? .orange : AppTheme.Text.primaryColor)
                 }
             }
 
             HStack(spacing: AppTheme.Spacing.md) {
-                Button("Keep Current") {
+                Button(L10n.string("Keep Current")) {
                     dismiss()
                 }
                 .buttonStyle(.capsule(.secondary, size: .regular))
                 .controlSize(.regular)
 
-                Button("Change to Match") {
+                Button(L10n.string("Change to Match")) {
                     editor.applyTimelineSettings(
                         fps: mismatch.clipFPS,
                         width: mismatch.clipWidth,

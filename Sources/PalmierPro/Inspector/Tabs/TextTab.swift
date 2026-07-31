@@ -38,28 +38,28 @@ struct TextTab: View {
     private var fillModeRow: some View {
         let current = sharedClipValue(clips) { $0.textFillMode ?? .color }
         return InspectorRow(
-            label: "Fill",
+            label: L10n.string("Fill"),
             onReset: {
                 editor.commitClipProperties(clipIds: clipIds) { $0.textFillMode = nil }
             }
         ) {
             Menu {
                 ForEach(TextFillMode.allCases, id: \.self) { mode in
-                    Button(mode.displayName) {
+                    Button(L10n.string(key: mode.displayName)) {
                         editor.commitClipProperties(clipIds: clipIds) {
                             $0.textFillMode = mode == .footage ? .footage : nil
                         }
                     }
                 }
             } label: {
-                EditorMenuValue(text: current?.displayName ?? "—")
+                EditorMenuValue(text: current.map { L10n.string(key: $0.displayName) } ?? "—")
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
         }
     }
 
     private var contentField: some View {
-        EditorPanelGroup("Text") {
+        EditorPanelGroup(L10n.string("Text")) {
             TextContentField(
                 text: Binding(
                     get: { clip.textContent ?? "" },
@@ -83,7 +83,7 @@ struct TextTab: View {
 
     private var opacitySlider: some View {
         InspectorRow(
-            label: "Opacity",
+            label: L10n.string("Opacity"),
             onReset: {
                 editor.commitClipProperties(clipIds: clipIds) {
                     $0.opacity = 1
@@ -110,7 +110,7 @@ struct TextTab: View {
     @ViewBuilder
     private var positionSection: some View {
         InspectorRow(
-            label: "Position",
+            label: L10n.string("Position"),
             onReset: {
                 editor.commitClipProperties(clipIds: clipIds) {
                     $0.transform.centerX = Transform().centerX
@@ -125,7 +125,7 @@ struct TextTab: View {
 
     private var rotationSection: some View {
         InspectorRow(
-            label: "Rotation",
+            label: L10n.string("Rotation"),
             onReset: {
                 editor.commitClipProperties(clipIds: clipIds, actionName: "Reset Rotation") {
                     $0.transform.rotation = Transform().rotation
@@ -177,7 +177,7 @@ struct TextAnimateTab: View {
 
     var body: some View {
         let anim = clip.textAnimation ?? TextAnimation()
-        EditorPanelGroup("Animation") {
+        EditorPanelGroup(L10n.string("Animation")) {
             CaptionPresetGallery(
                 selection: Binding(
                     get: { anim.preset },
@@ -199,7 +199,7 @@ struct TextAnimateTab: View {
 
     private func highlightRow(_ anim: TextAnimation) -> some View {
         InspectorRow(
-            label: "Highlight",
+            label: L10n.string("Highlight"),
             onReset: {
                 editor.cancelDebouncedCommit(key: "textHighlight")
                 editor.commitClipProperties(clipIds: targetIds) {

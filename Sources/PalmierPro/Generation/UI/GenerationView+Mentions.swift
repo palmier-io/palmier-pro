@@ -7,13 +7,13 @@ extension GenerationView {
         guard showsRefSections else { return [] }
         if selectedType == .audio {
             return refAudios.indices.map {
-                RefTag(label: "Audio\($0 + 1)", kindLabel: ClipType.audio.rawValue)
+                RefTag(label: "Audio\($0 + 1)", kind: .audio)
             }
         }
         return ClipType.allCases.flatMap { type -> [RefTag] in
             let noun = tagNoun(for: type)
             return (0..<refCount(for: type)).map { i in
-                RefTag(label: "\(noun)\(i + 1)", kindLabel: type.rawValue)
+                RefTag(label: "\(noun)\(i + 1)", kind: type)
             }
         }
     }
@@ -32,17 +32,17 @@ extension GenerationView {
         let tags = matchedRefTags
         return VStack(alignment: .leading, spacing: 0) {
             if tags.isEmpty {
-                Text("No matches")
+                Text(L10n.string("No matches"))
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Text.mutedColor)
                     .padding(AppTheme.Spacing.md)
             } else {
                 ForEach(Array(tags.enumerated()), id: \.element.id) { index, tag in
                     HStack(spacing: AppTheme.Spacing.sm) {
-                        Text("@\(tag.label)")
+                        Text(verbatim: "@\(tag.label)")
                             .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                             .foregroundStyle(AppTheme.Text.primaryColor)
-                        Text(tag.kindLabel)
+                        Text(tag.kind.localizedTrackLabel)
                             .font(.system(size: AppTheme.FontSize.xxs))
                             .foregroundStyle(AppTheme.Text.tertiaryColor)
                         Spacer(minLength: 0)

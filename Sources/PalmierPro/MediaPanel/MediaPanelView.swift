@@ -7,6 +7,13 @@ struct MediaPanelView: View {
 
     enum PanelTab: String, CaseIterable {
         case media = "Media", captions = "Captions", audio = "Audio"
+        var title: String {
+            switch self {
+            case .media: L10n.key("Media")
+            case .captions: L10n.key("Captions")
+            case .audio: L10n.key("Audio")
+            }
+        }
         var icon: String {
             switch self {
             case .media: "folder"
@@ -40,7 +47,7 @@ struct MediaPanelView: View {
         }
         .overlay(alignment: .topLeading) {
             if let hoveredTab {
-                hoverLabel(hoveredTab.rawValue)
+                hoverLabel(L10n.string(key: hoveredTab.title))
                     .id(hoveredTab)
                     .offset(
                         x: AppTheme.MediaPanel.tabRailWidth + AppTheme.Spacing.xs,
@@ -103,7 +110,7 @@ struct MediaPanelView: View {
                 hoveredTab = hovering ? tab : (hoveredTab == tab ? nil : hoveredTab)
             }
         }
-        .accessibilityLabel(tab.rawValue)
+        .accessibilityLabel(L10n.string(key: tab.title))
         .zIndex(hovered ? 1 : 0)
     }
 

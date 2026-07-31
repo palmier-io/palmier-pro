@@ -12,9 +12,9 @@ enum AccountTier: String, Decodable, Sendable {
 
     var planLabel: String {
         switch self {
-        case .none: return "Free"
-        case .pro: return "Pro plan"
-        case .max: return "Max plan"
+        case .none: return L10n.key("Free")
+        case .pro: return L10n.key("Pro plan")
+        case .max: return L10n.key("Max plan")
         }
     }
 
@@ -444,9 +444,9 @@ final class AccountService {
 
 extension AccountService {
     var displayPrimaryText: String {
-        if !isSignedIn { return "Signed out" }
+        if !isSignedIn { return L10n.string("Signed out") }
         let user = account?.user
-        return user?.displayName ?? user?.email ?? "Signed in"
+        return user?.displayName ?? user?.email ?? L10n.string("Signed in")
     }
 
     var displaySecondaryText: String? {

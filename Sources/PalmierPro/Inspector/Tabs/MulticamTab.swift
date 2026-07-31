@@ -9,7 +9,7 @@ struct MulticamTab: View {
         let _ = timelineColors.revision
 
         if let group = editor.multicamGroup(id: groupId) {
-            EditorPanelGroup(group.name.isEmpty ? "Multicam" : group.name) {
+            EditorPanelGroup(group.name.isEmpty ? L10n.string("Multicam") : group.name) {
                 ForEach(group.members) { member in
                     memberRow(member, group: group)
                 }
@@ -19,7 +19,7 @@ struct MulticamTab: View {
 
     private func memberRow(_ member: MulticamSource.Member, group: MulticamSource) -> some View {
         HStack(spacing: AppTheme.Spacing.sm) {
-            Text(member.kind.rawValue.capitalized)
+            Text(localizedKind(member.kind))
                 .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
                 .foregroundStyle(Color(AppTheme.TrackColor.readableForeground(on: kindColor(member.kind))).opacity(AppTheme.Opacity.prominent))
                 .padding(.horizontal, AppTheme.Spacing.xs)
@@ -34,23 +34,31 @@ struct MulticamTab: View {
                 Image(systemName: "star.fill")
                     .font(.system(size: AppTheme.FontSize.xxs))
                     .foregroundStyle(AppTheme.Accent.timecodeColor)
-                    .help("Master — defines the group's clock and transcript.")
+                    .help(L10n.string("Master — defines the group's clock and transcript."))
             }
 
             Spacer(minLength: AppTheme.Spacing.sm)
 
             if member.usable {
-                Text(String(format: "%+.2fs · %.0f%%", member.sync.offsetSeconds, member.sync.confidence * 100))
+                Text(verbatim: String(format: "%+.2fs · %.0f%%", member.sync.offsetSeconds, member.sync.confidence * 100))
                     .font(.system(size: AppTheme.FontSize.xxs))
                     .monospacedDigit()
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    .help("Starts \(String(format: "%.2f", member.sync.offsetSeconds))s into the group's clock; matched the master with \(String(format: "%.0f", member.sync.confidence * 100))% confidence.")
+                    .help(L10n.string("Starts \(String(format: "%.2f", member.sync.offsetSeconds))s into the group's clock; matched the master with \(String(format: "%.0f", member.sync.confidence * 100))% confidence."))
             } else {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: AppTheme.FontSize.xxs))
                     .foregroundStyle(AppTheme.Status.errorColor)
-                    .help("Not synced — unusable as an angle.")
+                    .help(L10n.string("Not synced — unusable as an angle."))
             }
+        }
+    }
+
+    private func localizedKind(_ kind: MulticamSource.MemberKind) -> String {
+        switch kind {
+        case .angle: L10n.string("Angle")
+        case .mic: L10n.string("Mic")
+        case .both: L10n.string("Both")
         }
     }
 

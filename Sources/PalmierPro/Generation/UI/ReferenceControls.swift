@@ -17,7 +17,7 @@ private struct ReferenceAssetPreview: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(asset.name), \(asset.type.trackLabel)")
+        .accessibilityLabel(Text(verbatim: "\(asset.name), \(asset.type.localizedTrackLabel)"))
         .task(id: "\(asset.id)|\(asset.url.path)|\(asset.generationStatus.serialized)") {
             guard case .none = asset.generationStatus else { return }
             await asset.loadLibraryThumbnail()
@@ -59,7 +59,7 @@ struct RefCard: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Remove \(asset.name)")
+                .accessibilityLabel(L10n.string("Remove \(asset.name)"))
             }
     }
 }
@@ -115,7 +115,7 @@ struct FrameSlot: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            Text(label)
+            Text(L10n.string(key: label))
                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
 
@@ -135,7 +135,7 @@ struct FrameSlot: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Remove \(asset.name)")
+                        .accessibilityLabel(L10n.string("Remove \(asset.name)"))
                     }
             } else {
                 RefDropZone(

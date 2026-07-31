@@ -33,60 +33,60 @@ struct AIEditTab: View {
                 }
 
                 if isVisualClipContext {
-                    EditorPanelGroup("AI Enhance", isExpanded: $aiEnhanceExpanded, contentSpacing: AppTheme.Spacing.smMd) {
+                    EditorPanelGroup(L10n.string("AI Enhance"), isExpanded: $aiEnhanceExpanded, contentSpacing: AppTheme.Spacing.smMd) {
                         if clipId != nil { replaceToggle }
                         actionRow(
                             action: .upscale,
                             icon: "sparkles.rectangle.stack",
-                            title: "Upscale",
-                            description: "Enhance resolution or frame rate with AI"
+                            title: L10n.string("Upscale"),
+                            description: L10n.string("Enhance resolution or frame rate with AI")
                         )
                         actionRow(
                             action: .edit,
                             icon: "wand.and.stars",
-                            title: "Edit",
-                            description: "Transform with a prompt or motion reference"
+                            title: L10n.string("Edit"),
+                            description: L10n.string("Transform with a prompt or motion reference")
                         )
                         actionRow(
                             action: .rerun,
                             icon: "arrow.clockwise",
-                            title: "Rerun",
-                            description: "Regenerate with the same parameters",
+                            title: L10n.string("Rerun"),
+                            description: L10n.string("Regenerate with the same parameters"),
                             detail: rerunCost
                         )
                         if asset.type == .video, let model = VideoModelConfig.lipSync {
                             actionRow(
                                 action: .lipSync,
                                 icon: "mouth",
-                                title: "Lip Sync",
-                                description: "Match mouth movement to replacement audio",
-                                detail: model.sourceDurationLimitLabel.map { "Up to \($0)" },
-                                triggerTitle: "Choose Audio"
+                                title: L10n.string("Lip Sync"),
+                                description: L10n.string("Match mouth movement to replacement audio"),
+                                detail: model.sourceDurationLimitLabel.map { L10n.string("Up to \($0)") },
+                                triggerTitle: L10n.string("Choose Audio")
                             )
                         }
                         if asset.type == .video {
                             actionRow(
                                 action: .reframe,
                                 icon: "aspectratio",
-                                title: "Reframe",
-                                description: "Change aspect ratio and extend the frame with AI",
+                                title: L10n.string("Reframe"),
+                                description: L10n.string("Change aspect ratio and extend the frame with AI"),
                                 detail: VideoModelConfig.reframe?.sourceDurationLimitLabel
-                                    .map { "Up to \($0)" }
+                                    .map { L10n.string("Up to \($0)") }
                             )
                         }
                         if asset.type == .image {
                             actionRow(
                                 action: .createVideo,
                                 icon: "video.badge.plus",
-                                title: "Create Video",
-                                description: "Use as first frame or reference"
+                                title: L10n.string("Create Video"),
+                                description: L10n.string("Use as first frame or reference")
                             )
                         }
                     }
                 }
 
                 if asset.type == .video || asset.type == .audio {
-                    EditorPanelGroup("AI Audio", isExpanded: $aiAudioExpanded, contentSpacing: AppTheme.Spacing.smMd) {
+                    EditorPanelGroup(L10n.string("AI Audio"), isExpanded: $aiAudioExpanded, contentSpacing: AppTheme.Spacing.smMd) {
                         if showsAudioOutputOptions {
                             audioPlacementToggle
                         }
@@ -94,8 +94,8 @@ struct AIEditTab: View {
                             actionRow(
                                 action: .rerun,
                                 icon: "arrow.clockwise",
-                                title: "Rerun",
-                                description: "Regenerate with the same parameters",
+                                title: L10n.string("Rerun"),
+                                description: L10n.string("Regenerate with the same parameters"),
                                 detail: rerunCost
                             )
                         }
@@ -127,7 +127,7 @@ struct AIEditTab: View {
               let cost = CostEstimator.cost(for: gen) else {
             return nil
         }
-        return CostEstimator.format(cost)
+        return CostEstimator.localizedDescription(cost)
     }
 
     // MARK: - Replace toggle
@@ -135,8 +135,8 @@ struct AIEditTab: View {
     private var replaceToggle: some View {
         scopeToggleRow(
             icon: "arrow.triangle.2.circlepath",
-            label: "Replace clip source",
-            help: "Swap the clip's media when generation completes. Speed, volume, trim, and transform are preserved.",
+            label: L10n.string("Replace clip source"),
+            help: L10n.string("Swap the clip's media when generation completes. Speed, volume, trim, and transform are preserved."),
             isOn: $replaceClipSource
         )
     }
@@ -146,8 +146,8 @@ struct AIEditTab: View {
     private var trimmedClipToggle: some View {
         scopeToggleRow(
             icon: "scissors",
-            label: "Use trimmed portion only",
-            help: "Send only the visible clip range to the model, not the full source.",
+            label: L10n.string("Use trimmed portion only"),
+            help: L10n.string("Send only the visible clip range to the model, not the full source."),
             isOn: $useTrimmedClip
         )
     }
@@ -155,8 +155,8 @@ struct AIEditTab: View {
     private var audioPlacementToggle: some View {
         scopeToggleRow(
             icon: "plus.rectangle.on.rectangle",
-            label: "Place on timeline",
-            help: "Add generated audio to an audio track at this clip's start.",
+            label: L10n.string("Place on timeline"),
+            help: L10n.string("Add generated audio to an audio track at this clip's start."),
             isOn: $placeAudioOnTimeline
         )
     }
@@ -172,18 +172,18 @@ struct AIEditTab: View {
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(isOn.wrappedValue ? AppTheme.Accent.primary : AppTheme.Text.tertiaryColor)
                 .frame(width: AppTheme.Spacing.lgXl, alignment: .center)
-            Text(label)
+            Text(L10n.string(key: label))
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
             Spacer(minLength: AppTheme.Spacing.xs)
-            Toggle("", isOn: isOn)
+            Toggle(String(), isOn: isOn)
                 .toggleStyle(.switch)
                 .controlSize(.mini)
                 .labelsHidden()
-                .accessibilityLabel(label)
-                .accessibilityHint(help)
+                .accessibilityLabel(L10n.string(key: label))
+                .accessibilityHint(L10n.string(key: help))
         }
-        .help(help)
+        .help(L10n.string(key: help))
     }
 
     private var timelineClip: Clip? {
@@ -223,7 +223,7 @@ struct AIEditTab: View {
         let paidBlocked = action.requiresPaidPlan && !account.isPaid
         let isEnabled = availability.isAvailable && !paidBlocked && aiDisabledReason == nil
         let disabledReason = aiDisabledReason
-            ?? (paidBlocked ? "Requires a paid plan" : availability.reason)
+            ?? (paidBlocked ? L10n.string("Requires a paid plan") : availability.reason)
 
         descriptiveActionRow(
             icon: icon,
@@ -241,9 +241,9 @@ struct AIEditTab: View {
         actionRow(
             action: kind.action,
             icon: kind.iconName,
-            title: kind.title,
-            description: kind.description,
-            triggerTitle: "Generate"
+            title: L10n.string(key: kind.title),
+            description: L10n.string(key: kind.description),
+            triggerTitle: L10n.string("Generate")
         )
     }
 
@@ -257,16 +257,16 @@ struct AIEditTab: View {
         let paidBlocked = model?.paidOnly == true && !account.isPaid
         let isEnabled = availability.isAvailable && !paidBlocked && aiDisabledReason == nil
         let disabledReason = aiDisabledReason
-            ?? (paidBlocked ? "Requires a paid plan" : availability.reason)
+            ?? (paidBlocked ? L10n.string("Requires a paid plan") : availability.reason)
 
         descriptiveActionRow(
             icon: kind.iconName,
-            title: kind.title,
-            description: kind.description,
+            title: L10n.string(key: kind.title),
+            description: L10n.string(key: kind.description),
             isEnabled: isEnabled,
             disabledReason: disabledReason
         ) {
-            Button("Generate") {
+            Button(L10n.string("Generate")) {
                 presentAudioTransform(kind)
             }
             .buttonStyle(.capsule(.secondary))
@@ -290,7 +290,7 @@ struct AIEditTab: View {
                 .foregroundStyle(isEnabled ? AppTheme.Text.secondaryColor : AppTheme.Text.mutedColor)
                 .frame(width: AppTheme.Spacing.lgXl, alignment: .center)
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
-                Text(title)
+                Text(L10n.string(key: title))
                     .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                     .foregroundStyle(isEnabled ? AppTheme.Text.primaryColor : AppTheme.Text.mutedColor)
                 if let disabledReason {
@@ -335,8 +335,8 @@ struct AIEditTab: View {
             .disabled(!isEnabled)
         case .createVideo:
             Menu(title) {
-                Button("Set as first frame") { sendToVideo(asReference: false) }
-                Button("Set as reference") { sendToVideo(asReference: true) }
+                Button(L10n.string("Set as first frame")) { sendToVideo(asReference: false) }
+                Button(L10n.string("Set as reference")) { sendToVideo(asReference: true) }
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
@@ -426,8 +426,8 @@ struct AIEditTab: View {
     private var shouldReplace: Bool { replaceClipSource && clipId != nil }
 
     private var aiDisabledReason: String? {
-        if account.isMisconfigured { return "AI is unavailable" }
-        if !account.isSignedIn { return "Sign in to use AI" }
+        if account.isMisconfigured { return L10n.string("AI is unavailable") }
+        if !account.isSignedIn { return L10n.string("Sign in to use AI") }
         return nil
     }
 

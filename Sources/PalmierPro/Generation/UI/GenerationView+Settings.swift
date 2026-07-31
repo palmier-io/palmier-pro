@@ -27,7 +27,7 @@ extension GenerationView {
                                 weight: selectedType == type ? .semibold : .medium
                             ))
                             .foregroundStyle(selectedType == type ? type.accentColor : AppTheme.Text.tertiaryColor)
-                        Text(type.rawValue)
+                        Text(L10n.string(key: type.title))
                             .font(.system(size: AppTheme.FontSize.xxs, weight: .medium))
                             .foregroundStyle(selectedType == type ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
                     }
@@ -46,8 +46,8 @@ extension GenerationView {
                     ))
                 }
                 .buttonStyle(.plain)
-                .help(type.rawValue)
-                .accessibilityLabel(type.rawValue)
+                .help(L10n.string(key: type.title))
+                .accessibilityLabel(L10n.string(key: type.title))
             }
         }
         .padding(AppTheme.Spacing.xxs)
@@ -91,7 +91,7 @@ extension GenerationView {
             case .audio:
                 ForEach(AudioModelConfig.Category.allCases, id: \.self) { category in
                     if let items = enabledAudioModelsByCategory[category], !items.isEmpty {
-                        Section(category.label) {
+                        Section(category.localizedLabel) {
                             ForEach(items, id: \.index) { item in
                                 Button {
                                     selectedAudioModelIndex = item.index
@@ -105,7 +105,7 @@ extension GenerationView {
             case .upscale:
                 ForEach([ClipType.image, .video], id: \.self) { type in
                     if let items = enabledUpscaleModelsByType[type], !items.isEmpty {
-                        Section(type.trackLabel) {
+                        Section(type.localizedTrackLabel) {
                             ForEach(items, id: \.index) { item in
                                 Button {
                                     selectedUpscaleModelIndex = item.index
@@ -121,7 +121,7 @@ extension GenerationView {
             Button {
                 SettingsWindowController.shared.show(tab: .models)
             } label: {
-                Label("Add models…", systemImage: "plus")
+                Label(L10n.string("Add models…"), systemImage: "plus")
             }
         } label: {
             HStack(spacing: AppTheme.Spacing.xs) {
@@ -191,7 +191,7 @@ extension GenerationView {
                 Image(systemName: "person.wave.2")
                     .font(.system(size: AppTheme.FontSize.xxs))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
-                Text(selectedVoice.isEmpty ? (audioModel.defaultVoice ?? "Voice") : selectedVoice)
+                Text(verbatim: selectedVoice.isEmpty ? (audioModel.defaultVoice ?? L10n.string("Voice")) : selectedVoice)
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                     .lineLimit(1)
@@ -212,7 +212,9 @@ extension GenerationView {
         Menu {
             if let languages = audioModel.targetLanguages {
                 ForEach(languages, id: \.self) { code in
-                    Button(AudioModelConfig.languageName(code)) { selectedTargetLanguage = code }
+                    Button(AudioModelConfig.languageName(code, locale: AppLocalization.shared.activeLocale)) {
+                        selectedTargetLanguage = code
+                    }
                 }
             }
         } label: {
@@ -220,7 +222,10 @@ extension GenerationView {
                 Image(systemName: "globe")
                     .font(.system(size: AppTheme.FontSize.xxs))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
-                Text(AudioModelConfig.languageName(selectedTargetLanguage))
+                Text(AudioModelConfig.languageName(
+                    selectedTargetLanguage,
+                    locale: AppLocalization.shared.activeLocale
+                ))
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                     .lineLimit(1)
@@ -235,7 +240,7 @@ extension GenerationView {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .hoverHighlight()
-        .help("Target Language")
+        .help(L10n.string("Target Language"))
     }
 
     // MARK: - Settings
@@ -251,15 +256,15 @@ extension GenerationView {
                     parts.append(label)
                 }
             }
-            return parts.isEmpty ? "Settings" : parts.joined(separator: " \u{00B7} ")
+            return parts.isEmpty ? L10n.string("Settings") : parts.joined(separator: " \u{00B7} ")
         }
         if selectedType == .audio {
             if audioModel.hasDurationControl, !audioUsesSource {
                 parts.append("\(selectedAudioDuration)s")
             }
-            if audioModel.supportsInstrumental && instrumental { parts.append("Instrumental") }
-            if audioModel.supportsMultilingual && multilingual { parts.append("Multilingual") }
-            return parts.isEmpty ? "Settings" : parts.joined(separator: " \u{00B7} ")
+            if audioModel.supportsInstrumental && instrumental { parts.append(L10n.string("Instrumental")) }
+            if audioModel.supportsMultilingual && multilingual { parts.append(L10n.string("Multilingual")) }
+            return parts.isEmpty ? L10n.string("Settings") : parts.joined(separator: " \u{00B7} ")
         }
         if currentResolutions != nil { parts.append(resolutionLabel(selectedResolution)) }
         if currentQualities != nil { parts.append(selectedQuality) }
@@ -274,7 +279,7 @@ extension GenerationView {
     }
 
     private var upscaleSourceFPSLabel: String {
-        upscaleSource?.sourceFPS.map { "\(max(1, Int($0.rounded()))) FPS" } ?? "Original FPS"
+        upscaleSource?.sourceFPS.map { "\(max(1, Int($0.rounded()))) FPS" } ?? L10n.string("Original FPS")
     }
 
     private func resolutionLabel(_ id: String) -> String {
@@ -321,14 +326,14 @@ extension GenerationView {
         } else {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
                 if selectedType == .video {
-                    settingsPicker("Duration", selection: $selectedDuration, options: videoModel.durations) { "\($0)s" }
+                    settingsPicker(L10n.string("Duration"), selection: $selectedDuration, options: videoModel.durations) { "\($0)s" }
                 }
                 if selectedType == .audio, !audioUsesSource {
                     if let durations = audioModel.durations {
-                        settingsPicker("Duration", selection: $selectedAudioDuration, options: durations) { "\($0)s" }
+                        settingsPicker(L10n.string("Duration"), selection: $selectedAudioDuration, options: durations) { "\($0)s" }
                     } else if let range = audioModel.durationRange {
                         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-                            Text("Duration")
+                            Text(L10n.string("Duration"))
                                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                             ScrubbableNumberField(
@@ -339,13 +344,13 @@ extension GenerationView {
                                 dragValueAdjustment: { $0.rounded() },
                                 onChanged: { selectedAudioDuration = Int($0.rounded()) }
                             ) { selectedAudioDuration = Int($0.rounded()) }
-                            .help("Duration (\(range.minimum)-\(range.maximum) seconds)")
+                            .help(L10n.string("Duration (\(range.minimum)-\(range.maximum) seconds)"))
                         }
                     }
                 }
                 if !currentAspectRatios.isEmpty {
                     settingsPicker(
-                        "Aspect Ratio",
+                        L10n.string("Aspect Ratio"),
                         selection: $selectedAspectRatio,
                         options: currentAspectRatios,
                         gridMinWidth: selectedType == .image ? GenerationSettingsLayout.imageAspectGridMinWidth : nil
@@ -354,39 +359,40 @@ extension GenerationView {
                     }
                 }
                 if let resolutions = currentResolutions {
-                    settingsPicker("Resolution", selection: $selectedResolution, options: resolutions) { resolutionLabel($0) }
+                    settingsPicker(L10n.string("Resolution"), selection: $selectedResolution, options: resolutions) { resolutionLabel($0) }
                 }
                 if let qualities = currentQualities {
-                    settingsPicker("Quality", selection: $selectedQuality, options: qualities) { $0.capitalized }
+                    settingsPicker(L10n.string("Quality"), selection: $selectedQuality, options: qualities) { $0.capitalized }
                 }
                 if selectedType == .image, imageModel.maxImages > 1 {
                     settingsPicker(
-                        "Count",
+                        L10n.string("Count"),
                         selection: $selectedNumImages,
                         options: Array(1...imageModel.maxImages)
                     ) { "\($0)" }
                 }
                 if selectedType == .audio && audioModel.supportsInstrumental {
-                    Toggle("Instrumental", isOn: $instrumental)
+                    Toggle(L10n.string("Instrumental"), isOn: $instrumental)
                         .controlSize(.small)
                         .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                 }
                 if selectedType == .audio && audioModel.supportsMultilingual {
-                    Toggle("Multilingual", isOn: $multilingual)
+                    Toggle(L10n.string("Multilingual"), isOn: $multilingual)
                         .controlSize(.small)
                         .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
-                        .help("Use for non-English or mixed-language audio.")
+                        .help(L10n.string("Use for non-English or mixed-language audio."))
                 }
                 if selectedType == .video, videoModel.audioDiscountRate != nil {
                     let discount = videoModel.audioDiscount(for: effectiveResolution)
                     let savings = discount.map { Int(((1 - $0) * 100).rounded()) }
-                    Toggle("Generate audio", isOn: $generateAudio)
+                    Toggle(L10n.string("Generate audio"), isOn: $generateAudio)
                         .controlSize(.small)
                         .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
-                        .help(savings.map { "Turn off to save \($0)% on generation cost." } ?? "Turn off to skip audio generation.")
+                        .help(savings.map { L10n.string("Turn off to save \($0)% on generation cost.") }
+                            ?? L10n.string("Turn off to skip audio generation."))
                 }
             }
             .padding(AppTheme.Spacing.lg)
@@ -404,11 +410,11 @@ extension GenerationView {
         format: @escaping (T) -> String
     ) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            Text(label)
+            Text(verbatim: label)
                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
             if options.count <= 5, gridMinWidth == nil {
-                Picker("", selection: selection) {
+                Picker(String(), selection: selection) {
                     ForEach(options, id: \.self) { Text(format($0)).tag($0) }
                 }
                 .pickerStyle(.segmented)

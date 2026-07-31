@@ -14,17 +14,17 @@ struct MatteSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
-            row(icon: "paintpalette", label: "Color") {
+            row(icon: "paintpalette", label: L10n.string("Color")) {
                 ColorField(displayColor: color, onUserChange: { color = $0 }, supportsOpacity: false)
             }
-            row(icon: "aspectratio", label: "Aspect") {
-                Picker("", selection: $aspect) {
+            row(icon: "aspectratio", label: L10n.string("Aspect")) {
+                Picker(String(), selection: $aspect) {
                     ForEach(MatteAspect.allCases) { Text($0.rawValue).tag($0) }
                 }
                 .labelsHidden()
             }
-            row(icon: "ruler", label: "Size") {
-                Text("\(dims.width) × \(dims.height)")
+            row(icon: "ruler", label: L10n.string("Size")) {
+                Text(verbatim: "\(dims.width) × \(dims.height)")
                     .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .monospacedDigit()
@@ -35,7 +35,7 @@ struct MatteSheet: View {
                     .foregroundStyle(AppTheme.Status.errorColor)
             }
             Button(action: create) {
-                Text(isCreating ? "Creating…" : "Create Matte")
+                Text(isCreating ? L10n.string("Creating…") : L10n.string("Create Matte"))
                     .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.semibold))
                     .foregroundStyle(AppTheme.Background.baseColor)
                     .frame(maxWidth: .infinity)

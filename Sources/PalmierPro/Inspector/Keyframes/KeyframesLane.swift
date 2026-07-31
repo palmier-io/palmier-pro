@@ -243,16 +243,16 @@ struct KeyframesLaneRow: View {
     private func contextMenu(for frame: Int) -> some View {
         let current = editor.interpolation(clipId: clip.id, property: property, atFrame: frame) ?? .smooth
         Button { editor.setInterpolation(clipId: clip.id, property: property, frame: frame, interpolation: .linear) } label: {
-            Label("Linear", systemImage: current == .linear ? "checkmark" : "")
+            Label(L10n.string("Linear"), systemImage: current == .linear ? "checkmark" : "")
         }
         Button { editor.setInterpolation(clipId: clip.id, property: property, frame: frame, interpolation: .smooth) } label: {
-            Label("Smooth", systemImage: current == .smooth ? "checkmark" : "")
+            Label(L10n.string("Smooth"), systemImage: current == .smooth ? "checkmark" : "")
         }
         Button { editor.setInterpolation(clipId: clip.id, property: property, frame: frame, interpolation: .hold) } label: {
-            Label("Hold", systemImage: current == .hold ? "checkmark" : "")
+            Label(L10n.string("Hold"), systemImage: current == .hold ? "checkmark" : "")
         }
         Divider()
-        Button("Delete Keyframe", role: .destructive) {
+        Button(L10n.string("Delete Keyframe"), role: .destructive) {
             editor.removeKeyframe(clipId: clip.id, property: property, at: frame)
         }
     }

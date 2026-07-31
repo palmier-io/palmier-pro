@@ -28,7 +28,7 @@ struct TitleTabBar: View {
         return Button {
             onSelect(title)
         } label: {
-            Text(title)
+            Text(L10n.string(key: title))
                 .font(.system(size: AppTheme.FontSize.sm, weight: active ? AppTheme.FontWeight.medium : AppTheme.FontWeight.regular))
                 .lineLimit(1)
                 .foregroundStyle(active ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)

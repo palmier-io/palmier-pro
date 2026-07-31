@@ -9,49 +9,49 @@ struct AIEditMenu: View {
         if availableActions.isEmpty && availableAudioTransforms.isEmpty {
             EmptyView()
         } else if !aiAllowed {
-            Button("AI Edit") {}.disabled(true)
+            Button(L10n.string("AI Edit")) {}.disabled(true)
         } else {
-            Menu("AI Edit") {
+            Menu(L10n.string("AI Edit")) {
                 if !enhanceActions.isEmpty {
-                    Section("AI Enhance") {
+                    Section(L10n.string("AI Enhance")) {
                         if enhanceActions.contains(.upscale) {
-                            editActionButton("Upscale…", action: .upscale) { runUpscale() }
+                            editActionButton(L10n.string("Upscale…"), action: .upscale) { runUpscale() }
                         }
                         if enhanceActions.contains(.edit) {
-                            editActionButton("Edit…", action: .edit) { edit() }
+                            editActionButton(L10n.string("Edit…"), action: .edit) { edit() }
                         }
                         if enhanceActions.contains(.rerun) {
-                            Button("Rerun") { rerun() }
+                            Button(L10n.string("Rerun")) { rerun() }
                         }
                         if enhanceActions.contains(.lipSync) {
-                            editActionButton("Lip Sync…", action: .lipSync) { lipSync() }
+                            editActionButton(L10n.string("Lip Sync…"), action: .lipSync) { lipSync() }
                         }
                         if enhanceActions.contains(.reframe) {
-                            editActionButton("Reframe…", action: .reframe) { reframe() }
+                            editActionButton(L10n.string("Reframe…"), action: .reframe) { reframe() }
                         }
                         if enhanceActions.contains(.createVideo) {
-                            Menu("Create Video") {
-                                Button("Set as first frame") { createVideo(asReference: false) }
-                                Button("Set as reference") { createVideo(asReference: true) }
+                            Menu(L10n.string("Create Video")) {
+                                Button(L10n.string("Set as first frame")) { createVideo(asReference: false) }
+                                Button(L10n.string("Set as reference")) { createVideo(asReference: true) }
                             }
                         }
                     }
                 }
                 if !audioActions.isEmpty || !availableAudioTransforms.isEmpty {
-                    Section("AI Audio") {
+                    Section(L10n.string("AI Audio")) {
                         if audioActions.contains(.rerun) {
-                            Button("Rerun") { rerun() }
+                            Button(L10n.string("Rerun")) { rerun() }
                         }
                         ForEach(availableAudioTransforms, id: \.category) { kind in
-                            Button(kind.menuTitle) { audioTransform(kind: kind) }
+                            Button(L10n.string(key: kind.menuTitle)) { audioTransform(kind: kind) }
                         }
                         if audioActions.contains(.generateMusic) {
-                            Button("\(VideoToAudioEditKind.music.title)…") {
+                            Button(L10n.string(key: VideoToAudioEditKind.music.menuTitle)) {
                                 videoAudio(kind: .music)
                             }
                         }
                         if audioActions.contains(.generateSFX) {
-                            Button("\(VideoToAudioEditKind.sfx.title)…") {
+                            Button(L10n.string(key: VideoToAudioEditKind.sfx.menuTitle)) {
                                 videoAudio(kind: .sfx)
                             }
                         }
@@ -92,7 +92,7 @@ struct AIEditMenu: View {
             Button {
                 SettingsWindowController.shared.show(tab: .account)
             } label: {
-                Label("\(title) (Paid)", systemImage: "lock.fill")
+                Label(L10n.string("\(title) (Paid)"), systemImage: "lock.fill")
             }
         } else {
             Button(title, action: perform)

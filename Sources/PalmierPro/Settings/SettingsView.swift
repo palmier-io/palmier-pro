@@ -17,7 +17,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .general: return L10n.key("General")
         case .appearance: return L10n.key("Appearance")
         case .models: return L10n.key("Models")
-        case .agent: return L10n.key("Agent")
+        case .agent: return "Agent"
         case .skills: return L10n.key("Skills")
         case .storage: return L10n.key("Storage")
         }

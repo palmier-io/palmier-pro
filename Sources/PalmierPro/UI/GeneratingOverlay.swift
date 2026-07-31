@@ -11,7 +11,7 @@ struct GeneratingOverlay: View {
         var barHeight: CGFloat { self == .preview ? 4 : 3 }
     }
 
-    var label: String = "Generating…"
+    var label: String = L10n.key("Generating…")
     var size: Size = .thumbnail
 
     @State private var progress: CGFloat = 0
@@ -36,7 +36,7 @@ struct GeneratingOverlay: View {
 
     private var content: some View {
         VStack(spacing: size.spacing) {
-            Text(label)
+            Text(L10n.string(key: label))
                 .font(.system(size: size.fontSize, weight: .semibold))
                 .foregroundStyle(AppTheme.MediaOverlay.aiGradient)
             progressBar

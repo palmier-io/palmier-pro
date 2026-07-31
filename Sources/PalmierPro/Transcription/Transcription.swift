@@ -8,8 +8,8 @@ enum TranscriptionProvider: String, CaseIterable, Sendable, Codable {
 
     var label: String {
         switch self {
-        case .local: "Local"
-        case .cloud: "Cloud"
+        case .local: L10n.key("Local")
+        case .cloud: L10n.key("Cloud")
         }
     }
 }

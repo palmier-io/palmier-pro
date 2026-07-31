@@ -15,12 +15,12 @@ enum TimelineClipColor: String, CaseIterable, Identifiable, Sendable {
 
     var label: String {
         switch self {
-        case .video: "Video"
-        case .audio: "Audio"
-        case .image: "Image"
-        case .text: "Text"
-        case .animation: "Animation"
-        case .sequence: "Sequence"
+        case .video: L10n.key("Video")
+        case .audio: L10n.key("Audio")
+        case .image: L10n.key("Image")
+        case .text: L10n.key("Text")
+        case .animation: L10n.key("Animation")
+        case .sequence: L10n.key("Sequence")
         }
     }
 

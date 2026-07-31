@@ -17,6 +17,8 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Show toolchain
         run: swift --version
@@ -27,6 +29,18 @@ jobs:
           path: .build
           key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
+
+      - name: Check localization
+        run: |
+          localization_args=()
+          if [[ "${{ github.event_name }}" == "pull_request" ]] &&
+             ! git diff --quiet HEAD^1 HEAD -- \
+               ':(glob)Sources/PalmierPro/Resources/Localization/*.lproj/*.strings' \
+               ':(exclude,glob)Sources/PalmierPro/Resources/Localization/en.lproj/*.strings'; then
+            localization_args+=(--require-complete)
+          fi
+          scripts/localization/sync.sh "${localization_args[@]}"
+          git diff --exit-code -- Sources/PalmierPro/Resources/Localization/en.lproj/Localizable.strings
 
       - name: Test
         run: swift test

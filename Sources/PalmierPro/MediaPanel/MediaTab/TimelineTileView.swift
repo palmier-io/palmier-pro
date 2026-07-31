@@ -48,11 +48,11 @@ struct TimelineTileView: View {
                 timelineBadge
             }
         } menuItems: {
-            Button("Open") { onOpen() }
-            Button("Rename") { isRenaming = true }
-            Button("Duplicate") { onDuplicate() }
+            Button(L10n.string("Open")) { onOpen() }
+            Button(L10n.string("Rename")) { isRenaming = true }
+            Button(L10n.string("Duplicate")) { onDuplicate() }
             Divider()
-            Button("Delete", role: .destructive) { onDelete() }
+            Button(L10n.string("Delete"), role: .destructive) { onDelete() }
                 .disabled(!canDelete)
         }
     }

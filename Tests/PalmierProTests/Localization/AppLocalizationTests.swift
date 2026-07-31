@@ -13,6 +13,10 @@ struct AppLocalizationTests {
             #expect(localization.string("System Language") == "System Language")
             #expect(localization.string(key: "System Language") == "System Language")
             #expect(localization.string(key: "Export Queue") == "Export Queue")
+            #expect(localization.string(key: "Moments") == "Moments")
+            #expect(localization.string(key: "Spoken") == "Spoken")
+            #expect(localization.string(key: "Files") == "Files")
+            #expect(localization.string("\(1234) credits") == "1,234 credits")
             #expect(
                 BundledResource.bundle.localizedString(
                     forKey: "CFBundleTypeName",
@@ -34,6 +38,22 @@ struct AppLocalizationTests {
             #expect(localization.selection == .language("en"))
             #expect(defaults.string(forKey: AppLanguage.defaultsKey) == "en")
             #expect(!localization.requiresRestart)
+        }
+    }
+
+    @Test(arguments: [
+        ("zh-Hans", "导出"),
+        ("zh-Hant", "匯出"),
+    ])
+    func bundledChineseLocalizationCanBeSelected(identifier: String, export: String) throws {
+        try withDefaults { defaults in
+            defaults.set(identifier, forKey: AppLanguage.defaultsKey)
+
+            let localization = AppLocalization(defaults: defaults)
+
+            #expect(localization.availableLanguages.contains(.language(identifier)))
+            #expect(localization.activeIdentifier == identifier)
+            #expect(localization.string("Export") == export)
         }
     }
 

@@ -17,14 +17,14 @@ extension MediaTab {
         return ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 if !visualHits.isEmpty {
-                    momentHeader("Moments", icon: "sparkle.magnifyingglass", count: visualHits.count, collapsible: true)
-                    if !collapsedSearchSections.contains("Moments") {
+                    momentHeader(L10n.key("Moments"), icon: "sparkle.magnifyingglass", count: visualHits.count, collapsible: true)
+                    if !collapsedSearchSections.contains(L10n.key("Moments")) {
                         resultsGrid { ForEach(visualHits.indices, id: \.self) { momentCard(visualHits[$0]) } }
                     }
                 }
                 if !spokenHits.isEmpty {
-                    momentHeader("Spoken", icon: "waveform", count: spokenHits.count, collapsible: true)
-                    if !collapsedSearchSections.contains("Spoken") {
+                    momentHeader(L10n.key("Spoken"), icon: "waveform", count: spokenHits.count, collapsible: true)
+                    if !collapsedSearchSections.contains(L10n.key("Spoken")) {
                         VStack(spacing: AppTheme.Spacing.sm) {
                             ForEach(spokenHits.indices, id: \.self) { spokenRow(spokenHits[$0]) }
                         }
@@ -32,11 +32,11 @@ extension MediaTab {
                     }
                 }
                 if !nameMatches.isEmpty {
-                    momentHeader("Files", icon: "doc", count: nameMatches.count)
+                    momentHeader(L10n.key("Files"), icon: "doc", count: nameMatches.count)
                     resultsGrid { ForEach(nameMatches) { fileCard($0) } }
                 }
                 if visualHits.isEmpty, spokenHits.isEmpty, nameMatches.isEmpty {
-                    Text("No matches for “\(trimmedSearchQuery)”")
+                    Text(L10n.string("No matches for “\(trimmedSearchQuery)”"))
                         .font(.system(size: AppTheme.FontSize.sm))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                         .frame(maxWidth: .infinity)
@@ -57,8 +57,8 @@ extension MediaTab {
         collapsedSectionTitles: Set<String>
     ) -> [String] {
         let sections = [
-            collapsedSectionTitles.contains("Moments") ? [] : momentAssetIds,
-            collapsedSectionTitles.contains("Spoken") ? [] : spokenAssetIds,
+            collapsedSectionTitles.contains(L10n.key("Moments")) ? [] : momentAssetIds,
+            collapsedSectionTitles.contains(L10n.key("Spoken")) ? [] : spokenAssetIds,
             fileAssetIds,
         ]
         var seen: Set<String> = []
@@ -93,9 +93,9 @@ extension MediaTab {
                 }
                 Image(systemName: icon)
                     .font(.system(size: AppTheme.FontSize.xs))
-                Text(title)
+                Text(L10n.string(key: title))
                     .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
-                Text("\(count)")
+                Text(verbatim: "\(count)")
                     .font(.system(size: AppTheme.FontSize.xs).monospacedDigit())
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                 Spacer()
@@ -124,12 +124,12 @@ extension MediaTab {
                 .aspectRatio(16.0 / 9.0, contentMode: .fit)
                 .frame(maxWidth: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
-            Text(asset?.name ?? "")
+            Text(verbatim: asset?.name ?? String())
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .lineLimit(1)
             if !isImage {
-                Text("\(timecode(range.lowerBound))–\(timecode(range.upperBound))")
+                Text(verbatim: "\(timecode(range.lowerBound))–\(timecode(range.upperBound))")
                     .font(.system(size: AppTheme.FontSize.xxs).monospacedDigit())
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
@@ -176,7 +176,7 @@ extension MediaTab {
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                     .lineLimit(3)
-                Text("\(asset?.name ?? "") · \(timecode(hit.start))")
+                Text(verbatim: "\(asset?.name ?? "") · \(timecode(hit.start))")
                     .font(.system(size: AppTheme.FontSize.xxs))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .lineLimit(1)

@@ -80,7 +80,7 @@ private struct TimelineTabBarContent: View, Equatable {
         .menuIndicator(.hidden)
         .fixedSize()
         .padding(.leading, AppTheme.Spacing.xs)
-        .help("All timelines")
+        .help(L10n.string("All timelines"))
     }
 
     private func tabItem(_ tab: TimelineTabInfo) -> some View {
@@ -116,15 +116,15 @@ private struct TimelineTabBarContent: View, Equatable {
         .gesture(TapGesture(count: 2).onEnded { renamingTabId = tab.id })
         .simultaneousGesture(TapGesture().onEnded { editor.activateTimeline(tab.id) })
         .contextMenu {
-            Button("Rename") { renamingTabId = tab.id }
-            Button("Duplicate") { editor.duplicateTimeline(tab.id) }
+            Button(L10n.string("Rename")) { renamingTabId = tab.id }
+            Button(L10n.string("Duplicate")) { editor.duplicateTimeline(tab.id) }
             Divider()
-            Button("Close Tab") { editor.closeTimelineTab(tab.id) }
+            Button(L10n.string("Close Tab")) { editor.closeTimelineTab(tab.id) }
                 .disabled(tabs.count <= 1)
-            Button("Close Other Tabs") { editor.closeOtherTimelineTabs(keeping: tab.id) }
+            Button(L10n.string("Close Other Tabs")) { editor.closeOtherTimelineTabs(keeping: tab.id) }
                 .disabled(tabs.count <= 1)
             Divider()
-            Button("Delete Timeline", role: .destructive) { editor.deleteTimeline(tab.id) }
+            Button(L10n.string("Delete Timeline"), role: .destructive) { editor.deleteTimeline(tab.id) }
                 .disabled(allTabs.count <= 1)
         }
         .animation(.easeOut(duration: AppTheme.Anim.hover), value: isActive)
@@ -155,7 +155,7 @@ private struct TimelineTabBarContent: View, Equatable {
                 .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
         }
         .buttonStyle(.plain)
-        .help("New timeline")
+        .help(L10n.string("New timeline"))
     }
 
 }

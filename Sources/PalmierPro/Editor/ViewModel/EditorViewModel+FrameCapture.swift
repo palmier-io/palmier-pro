@@ -11,7 +11,7 @@ struct FrameCaptureReceipt {
     let height: Int
     let timelineId: String?
     let actualSourceSeconds: Double?
-    let warning: String?
+    let destinationFolderWasRemoved: Bool
 }
 
 extension EditorViewModel {
@@ -144,9 +144,7 @@ extension EditorViewModel {
             height: rendered.height,
             timelineId: capturedTimelineId,
             actualSourceSeconds: rendered.actualSourceSeconds,
-            warning: destinationFolderStillExists
-                ? nil
-                : "The destination folder was removed, so the frame was saved at the top level of Media."
+            destinationFolderWasRemoved: !destinationFolderStillExists
         )
     }
 
@@ -174,10 +172,14 @@ extension EditorViewModel {
             defer { frameCaptureTask = nil }
             do {
                 let receipt = try await captureFrameToMedia(source: source, folderId: folderId)
+                let message = receipt.destinationFolderWasRemoved
+                    ? L10n.string(
+                        "Captured \(receipt.asset.name). The destination folder was removed, so the frame was saved at the top level of Media."
+                    )
+                    : L10n.string("Captured \(receipt.asset.name).")
                 mediaPanelToast = MediaPanelToast(
-                    message: receipt.warning.map { "Captured \(receipt.asset.name). \($0)" }
-                        ?? "Captured \(receipt.asset.name).",
-                    kind: receipt.warning == nil ? .success : .warning
+                    message: message,
+                    kind: receipt.destinationFolderWasRemoved ? .warning : .success
                 )
             } catch is CancellationError {
                 return

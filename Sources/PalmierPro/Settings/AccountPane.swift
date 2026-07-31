@@ -7,7 +7,7 @@ struct AccountPane: View {
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
             if account.isLoading {
-                Text("Loading…")
+                Text(L10n.string("Loading…"))
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             } else if account.isSignedIn {
@@ -33,7 +33,7 @@ struct AccountPane: View {
                 unpaidSection
             }
 
-            Button("Sign out") {
+            Button(L10n.string("Sign out")) {
                 Task { await account.signOut() }
             }
             .buttonStyle(.capsule(.secondary, size: .regular))
@@ -43,16 +43,16 @@ struct AccountPane: View {
 
     @ViewBuilder
     private var unpaidSection: some View {
-        SettingsGroup(title: "Subscription") {
+        SettingsGroup(title: L10n.string("Subscription")) {
             if account.availablePlans.isEmpty {
                 HStack(spacing: AppTheme.Spacing.sm) {
-                    Button("Upgrade to Pro") {
+                    Button(L10n.string("Upgrade to Pro")) {
                         Task { await account.subscribe(tier: .pro) }
                     }
                     .buttonStyle(.capsule(.prominent, size: .regular))
                     .pointerStyle(.link)
 
-                    Button("Upgrade to Max") {
+                    Button(L10n.string("Upgrade to Max")) {
                         Task { await account.subscribe(tier: .max) }
                     }
                     .buttonStyle(accountSecondaryButtonStyle)
@@ -68,7 +68,7 @@ struct AccountPane: View {
                     }
                 }
 
-                Text("Credits cover AI generation and chat.")
+                Text(L10n.string("Credits cover AI generation and chat."))
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .fixedSize(horizontal: false, vertical: true)
@@ -81,22 +81,22 @@ struct AccountPane: View {
             cardCaption(plan.tier.planLabel)
 
             HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.xs) {
-                Text("$\(plan.effectiveMonthlyPriceUsd)")
+                Text(verbatim: "$\(plan.effectiveMonthlyPriceUsd)")
                     .font(.system(size: AppTheme.FontSize.xl, weight: AppTheme.FontWeight.semibold))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                 if plan.hasDiscount {
-                    Text("$\(plan.monthlyPriceUsd)")
+                    Text(verbatim: "$\(plan.monthlyPriceUsd)")
                         .font(.system(size: AppTheme.FontSize.sm))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                         .strikethrough()
                 }
-                Text("/ month")
+                Text(L10n.string("/ month"))
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
 
             if let credits = plan.monthlyBudgetCredits {
-                Text("\(credits.formatted()) credits / month")
+                Text(L10n.string("\(credits) credits / month"))
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                     .monospacedDigit()
@@ -109,7 +109,7 @@ struct AccountPane: View {
     }
 
     private func upgradeButton(for plan: AvailablePlan, isPrimary: Bool) -> some View {
-        let label = "Upgrade to \(plan.tier.upgradeLabel)"
+        let label = L10n.string("Upgrade to \(plan.tier.upgradeLabel)")
         return Button {
             Task { await account.subscribe(tier: plan.tier) }
         } label: {
@@ -124,17 +124,17 @@ struct AccountPane: View {
     }
 
     private var subscriptionSection: some View {
-        SettingsGroup(title: "Subscription") {
+        SettingsGroup(title: L10n.string("Subscription")) {
             card {
                 HStack(alignment: .center, spacing: AppTheme.Spacing.md) {
                     VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-                        Text(account.tier.planLabel)
+                        Text(L10n.string(key: account.tier.planLabel))
                             .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.regular))
                             .foregroundStyle(AppTheme.Text.primaryColor)
 
                         if account.account?.user.cancelAtPeriodEnd == true,
                            let date = formattedPeriodEnd {
-                            Text("Cancels \(date)")
+                            Text(L10n.string("Cancels \(date)"))
                                 .font(.system(size: AppTheme.FontSize.sm))
                                 .foregroundStyle(AppTheme.Status.warningColor)
                         }
@@ -146,7 +146,7 @@ struct AccountPane: View {
                         Task { await account.manageSubscription() }
                     } label: {
                         HStack(spacing: AppTheme.Spacing.xs) {
-                            Text("Manage subscription")
+                            Text(L10n.string("Manage subscription"))
                             Image(systemName: "arrow.up.right")
                                 .font(.system(
                                     size: AppTheme.FontSize.xs,
@@ -163,7 +163,7 @@ struct AccountPane: View {
     }
 
     private var creditsSection: some View {
-        SettingsGroup(title: "Credits") {
+        SettingsGroup(title: L10n.string("Credits")) {
             HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
                 remainingCard
                 buyCard
@@ -173,7 +173,7 @@ struct AccountPane: View {
 
     private var remainingCard: some View {
         card {
-            cardCaption("Remaining")
+            cardCaption(L10n.string("Remaining"))
 
             Spacer(minLength: AppTheme.Spacing.sm)
 
@@ -182,7 +182,7 @@ struct AccountPane: View {
             Spacer(minLength: AppTheme.Spacing.sm)
 
             if let date = formattedPeriodEnd {
-                Text("Resets \(date)")
+                Text(L10n.string("Resets \(date)"))
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
@@ -191,7 +191,7 @@ struct AccountPane: View {
 
     private var buyCard: some View {
         card {
-            cardCaption("Buy more")
+            cardCaption(L10n.string("Buy more"))
 
             TopOffField(
                 dollars: $topOffDollars,
@@ -202,7 +202,7 @@ struct AccountPane: View {
                 account.buyCredits(dollars: topOffDollars)
             }
 
-            Text("$\(TopOffLimits.minDollars)–$\(TopOffLimits.maxDollars) · Credits expire at renewal.")
+            Text(L10n.string("$\(TopOffLimits.minDollars)–$\(TopOffLimits.maxDollars) · Credits expire at renewal."))
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .fixedSize(horizontal: false, vertical: true)
@@ -210,7 +210,7 @@ struct AccountPane: View {
     }
 
     private func cardCaption(_ text: String) -> some View {
-        Text(text)
+        Text(L10n.string(key: text))
             .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.regular))
             .foregroundStyle(AppTheme.Text.tertiaryColor)
     }
@@ -242,12 +242,12 @@ struct AccountPane: View {
 
     @ViewBuilder
     private var signedOutBody: some View {
-        Text("Sign in to subscribe and use AI generation.")
+        Text(L10n.string("Sign in to subscribe and use AI generation."))
             .font(.system(size: AppTheme.FontSize.sm))
             .foregroundStyle(AppTheme.Text.tertiaryColor)
             .fixedSize(horizontal: false, vertical: true)
 
-        Button(account.isSigningIn ? "Opening Google…" : "Sign in with Google") {
+        Button(account.isSigningIn ? L10n.string("Opening Google…") : L10n.string("Sign in with Google")) {
             Task { await account.signInWithGoogle() }
         }
         .buttonStyle(.capsule(.secondary, size: .regular))

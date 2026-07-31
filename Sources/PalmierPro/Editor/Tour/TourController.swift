@@ -126,39 +126,39 @@ final class TourController {
 
     private static func makeSteps(editor: EditorViewModel) -> [TourStep] {
         var steps: [TourStep] = [
-            TourStep(kind: .intro, title: "Tutorial",
-                     instruction: "Let's take a quick tour of the workspace and what you can do."),
-            TourStep(kind: .spotlight(.panel(.media)), title: "Media panel",
-                     instruction: "This is where all your footage and assets live."),
-            TourStep(kind: .spotlight(.element(.importButton)), title: "Import footage",
-                     instruction: "Import your footage here, or drag and drop, or copy-paste, into the media panel."),
-            TourStep(kind: .spotlight(.element(.generateButton)), title: "Generate",
-                     instruction: "Click Generate to open the generation panel."),
-            TourStep(kind: .spotlight(.element(.generation)), title: "Generation panel",
-                     instruction: "Generate video, image, or audio with different models and settings. Drag assets from the media panel above into the reference frame."),
+            TourStep(kind: .intro, title: L10n.string("Tutorial"),
+                     instruction: L10n.string("Let's take a quick tour of the workspace and what you can do.")),
+            TourStep(kind: .spotlight(.panel(.media)), title: L10n.string("Media panel"),
+                     instruction: L10n.string("This is where all your footage and assets live.")),
+            TourStep(kind: .spotlight(.element(.importButton)), title: L10n.string("Import footage"),
+                     instruction: L10n.string("Import your footage here, or drag and drop, or copy-paste, into the media panel.")),
+            TourStep(kind: .spotlight(.element(.generateButton)), title: L10n.string("Generate"),
+                     instruction: L10n.string("Click Generate to open the generation panel.")),
+            TourStep(kind: .spotlight(.element(.generation)), title: L10n.string("Generation panel"),
+                     instruction: L10n.string("Generate video, image, or audio with different models and settings. Drag assets from the media panel above into the reference frame.")),
         ]
         // Only shown when the "Smart search" button is present (model not yet installed).
         if smartSearchAvailable(editor: editor) {
-            steps.append(TourStep(kind: .spotlight(.element(.smartSearch)), title: "Smart search",
-                                  instruction: "Download a local model to index your media, so you or your agent can search any clips by describing them. The model runs on-device and nothing leaves your Mac."))
+            steps.append(TourStep(kind: .spotlight(.element(.smartSearch)), title: L10n.string("Smart search"),
+                                  instruction: L10n.string("Download a local model to index your media, so you or your agent can search any clips by describing them. The model runs on-device and nothing leaves your Mac.")))
         }
         steps += [
-            TourStep(kind: .spotlight(.panel(.preview)), title: "Preview",
-                     instruction: "This is your preview panel to play a selected media or the whole timeline."),
-            TourStep(kind: .spotlight(.element(.screenshotButton)), title: "Screenshot a frame",
-                     instruction: "Take a screenshot of the preview and use it as a reference for generation. Particularly useful for creating AI transitions."),
-            TourStep(kind: .spotlight(.panel(.inspector)), title: "Inspector",
-                     instruction: "This is your inspector panel. Select a clip from the timeline to edit it."),
-            TourStep(kind: .spotlight(.panel(.timeline)), title: "Timeline",
-                     instruction: "Your timeline: the top half is video, the bottom half is audio. This is where you edit. Right-click a clip for some cool AI features such as upscale, edit, or generate music."),
-            TourStep(kind: .spotlight(.element(.timelineRuler)), title: "Select a range",
-                     instruction: "This is the timeline ruler. Shift+drag on the ruler to select a range to render. You can pick any slot to AI edit or generate music that fits that range."),
-            TourStep(kind: .spotlight(.panel(.agent)), title: "AI agent",
-                     instruction: "Chat with your agent! It can generate content, edit clips, organize your assets, and much more. Start by signing in, or bring your own Anthropic API key."),
-            TourStep(kind: .spotlight(.element(.skillsButton)), title: "Skills",
-                     instruction: "Open Skills to browse community playbooks, create your own, or add them to other agents."),
-            TourStep(kind: .outro, title: "You're all set",
-                     instruction: "Start creating, or explore these to get the most out of Palmier Pro."),
+            TourStep(kind: .spotlight(.panel(.preview)), title: L10n.string("Preview"),
+                     instruction: L10n.string("This is your preview panel to play a selected media or the whole timeline.")),
+            TourStep(kind: .spotlight(.element(.screenshotButton)), title: L10n.string("Screenshot a frame"),
+                     instruction: L10n.string("Take a screenshot of the preview and use it as a reference for generation. Particularly useful for creating AI transitions.")),
+            TourStep(kind: .spotlight(.panel(.inspector)), title: L10n.string("Inspector"),
+                     instruction: L10n.string("This is your inspector panel. Select a clip from the timeline to edit it.")),
+            TourStep(kind: .spotlight(.panel(.timeline)), title: L10n.string("Timeline"),
+                     instruction: L10n.string("Your timeline: the top half is video, the bottom half is audio. This is where you edit. Right-click a clip for some cool AI features such as upscale, edit, or generate music.")),
+            TourStep(kind: .spotlight(.element(.timelineRuler)), title: L10n.string("Select a range"),
+                     instruction: L10n.string("This is the timeline ruler. Shift+drag on the ruler to select a range to render. You can pick any slot to AI edit or generate music that fits that range.")),
+            TourStep(kind: .spotlight(.panel(.agent)), title: L10n.string("AI agent"),
+                     instruction: L10n.string("Chat with your agent! It can generate content, edit clips, organize your assets, and much more. Start by signing in, or bring your own Anthropic API key.")),
+            TourStep(kind: .spotlight(.element(.skillsButton)), title: L10n.string("Skills"),
+                     instruction: L10n.string("Open Skills to browse community playbooks, create your own, or add them to other agents.")),
+            TourStep(kind: .outro, title: L10n.string("You're all set"),
+                     instruction: L10n.string("Start creating, or explore these to get the most out of Palmier Pro.")),
         ]
         return steps
     }

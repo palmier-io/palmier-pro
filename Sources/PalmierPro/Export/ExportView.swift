@@ -7,6 +7,14 @@ enum ExportDestination: String, CaseIterable, Identifiable {
     case palmierProject = "Palmier Project"
 
     var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .video: L10n.key("Video")
+        case .timeline: L10n.key("Timeline")
+        case .palmierProject: L10n.key("Palmier Project")
+        }
+    }
 }
 
 enum TimelineExportFormat: String, CaseIterable, Identifiable {
@@ -38,8 +46,8 @@ enum TimelineExportFormat: String, CaseIterable, Identifiable {
 
     var summary: String {
         switch self {
-        case .xmeml: "Older interchange format, best when Premiere Pro is the destination. Supports basic edits and keyframes, but not text, color, effects, edge softness, or edge rounding."
-        case .fcpxml: "Newer timeline format with better support for DaVinci Resolve and Final Cut Pro. Supports basic edits, keyframes, and text, but not color, effects, edge softness, or edge rounding."
+        case .xmeml: L10n.key("Older interchange format, best when Premiere Pro is the destination. Supports basic edits and keyframes, but not text, color, effects, edge softness, or edge rounding.")
+        case .fcpxml: L10n.key("Newer timeline format with better support for DaVinci Resolve and Final Cut Pro. Supports basic edits, keyframes, and text, but not color, effects, edge softness, or edge rounding.")
         }
     }
 
@@ -102,7 +110,7 @@ struct ExportView: View {
     }
 
     private var settingsHeader: some View {
-        Text("Export")
+        Text(L10n.string("Export"))
             .font(.system(size: AppTheme.FontSize.title2, weight: AppTheme.FontWeight.regular))
             .tracking(AppTheme.Tracking.normal)
             .foregroundStyle(AppTheme.Text.primaryColor)
@@ -122,8 +130,8 @@ struct ExportView: View {
                     Divider().opacity(AppTheme.Opacity.moderate)
 
                     if editor.timelines.count > 1, destination != .palmierProject {
-                        settingRow(label: "Timeline") {
-                            Picker("", selection: $selectedTimelineId) {
+                        settingRow(label: L10n.string("Timeline")) {
+                            Picker(String(), selection: $selectedTimelineId) {
                                 ForEach(editor.timelines) { timeline in
                                     Text(timeline.name).tag(timeline.id as String?)
                                 }
@@ -161,7 +169,7 @@ struct ExportView: View {
 
     private var destinationPicker: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-            Text("Destination")
+            Text(L10n.string("Destination"))
                 .font(.system(size: AppTheme.FontSize.md))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
 
@@ -177,10 +185,10 @@ struct ExportView: View {
 
     private var videoSettings: some View {
         VStack(spacing: AppTheme.Spacing.zero) {
-            settingRow(label: "Codec") {
-                Picker("", selection: $codec) {
+            settingRow(label: L10n.string("Codec")) {
+                Picker(String(), selection: $codec) {
                     ForEach(VideoCodec.allCases) { codec in
-                        Text(codec.rawValue).tag(codec)
+                        Text(verbatim: codec.rawValue).tag(codec)
                     }
                 }
                 .labelsHidden()
@@ -188,17 +196,17 @@ struct ExportView: View {
 
             Divider().opacity(AppTheme.Opacity.moderate)
 
-            settingRow(label: "File Type") {
-                Text(codec.containerLabel)
+            settingRow(label: L10n.string("File Type")) {
+                Text(verbatim: codec.containerLabel)
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
 
             Divider().opacity(AppTheme.Opacity.moderate)
 
-            settingRow(label: "Resolution") {
-                Picker("", selection: $resolution) {
+            settingRow(label: L10n.string("Resolution")) {
+                Picker(String(), selection: $resolution) {
                     ForEach(ExportResolution.allCases) { resolution in
-                        Text(resolution.rawValue).tag(resolution)
+                        Text(L10n.string(key: resolution.title)).tag(resolution)
                     }
                 }
                 .labelsHidden()
@@ -206,8 +214,8 @@ struct ExportView: View {
 
             Divider().opacity(AppTheme.Opacity.moderate)
 
-            settingRow(label: "Frame Rate") {
-                Text("\(exportTimeline.fps) fps")
+            settingRow(label: L10n.string("Frame Rate")) {
+                Text(verbatim: "\(exportTimeline.fps) fps")
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
         }
@@ -215,7 +223,7 @@ struct ExportView: View {
 
     private var timelineSettings: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-            Text("Timeline Format")
+            Text(L10n.string("Timeline Format"))
                 .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.medium))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .padding(.top, AppTheme.Spacing.md)
@@ -233,31 +241,31 @@ struct ExportView: View {
     private var fcpxmlVersionRow: some View {
         Divider().opacity(AppTheme.Opacity.moderate)
         HStack(spacing: AppTheme.Spacing.sm) {
-            Text("For")
+            Text(L10n.string("For"))
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-            Picker("", selection: $fcpxmlTarget) {
+            Picker(String(), selection: $fcpxmlTarget) {
                 ForEach(FCPXMLTarget.allCases) { target in
-                    Text(target.displayName).tag(target)
+                    Text(verbatim: target.displayName).tag(target)
                 }
             }
             .labelsHidden()
             .controlSize(.small)
             .font(.system(size: AppTheme.FontSize.xs))
             .fixedSize()
-            Text("Version")
+            Text(L10n.string("Version"))
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-            Picker("", selection: $fcpxmlVersion) {
+            Picker(String(), selection: $fcpxmlVersion) {
                 ForEach(FCPXMLVersion.allCases) { version in
-                    Text(version.rawValue).tag(version)
+                    Text(verbatim: version.rawValue).tag(version)
                 }
             }
             .labelsHidden()
             .controlSize(.small)
             .font(.system(size: AppTheme.FontSize.xs))
             .fixedSize()
-            Text(fcpxmlVersion.compatibilityNote)
+            Text(verbatim: fcpxmlVersion.compatibilityNote)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .lineLimit(1)
@@ -268,12 +276,14 @@ struct ExportView: View {
 
     private var palmierProjectSettings: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            Text("Saves a copy of this project with all media bundled inside, so it opens on any machine.")
+            Text(L10n.string("Saves a copy of this project with all media bundled inside, so it opens on any machine."))
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
 
             if palmierSummary.missing > 0 {
-                Text("\(palmierSummary.missing) media file\(palmierSummary.missing == 1 ? "" : "s") missing - they'll be skipped.")
+                Text(palmierSummary.missing == 1
+                    ? L10n.string("1 media file is missing and will be skipped.")
+                    : L10n.string("\(palmierSummary.missing) media files are missing and will be skipped."))
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Status.errorColor)
             }
@@ -295,19 +305,19 @@ struct ExportView: View {
     private var logHeader: some View {
         let pendingCount = projectJobs.count { $0.status.isPending }
         return HStack(spacing: AppTheme.Spacing.sm) {
-            Text("Export Queue")
+            Text(L10n.string("Export Queue"))
                 .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.semibold))
                 .foregroundStyle(AppTheme.Text.primaryColor)
 
             if pendingCount > 0 {
-                Text("\(pendingCount)")
+                Text(verbatim: "\(pendingCount)")
                     .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.semibold))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
             }
 
             Spacer()
 
-            exportIconButton("trash", help: "Clear Finished") {
+            exportIconButton("trash", help: L10n.string("Clear Finished")) {
                 exportQueue.clearFinished(for: projectQueueID)
             }
             .disabled(!projectJobs.contains { $0.status.isFinished })
@@ -319,7 +329,7 @@ struct ExportView: View {
     private var exportLog: some View {
         Group {
             if projectJobs.isEmpty {
-                Text("No exports yet")
+                Text(L10n.string("No exports yet"))
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.mutedColor)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -350,7 +360,7 @@ struct ExportView: View {
             exportStatusIcon(job.status)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
-                .accessibilityLabel(job.status.rawValue.capitalized)
+                .accessibilityLabel(exportStatusLabel(job.status))
 
             Text(job.filename)
                 .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
@@ -374,7 +384,7 @@ struct ExportView: View {
 
                 Group {
                     if job.status == .exporting {
-                        Text("\(Int(job.progress * 100))%")
+                        Text(verbatim: "\(Int(job.progress * 100))%")
                             .foregroundStyle(AppTheme.Text.secondaryColor)
                             .monospacedDigit()
                     } else {
@@ -394,6 +404,18 @@ struct ExportView: View {
         .help(job.error ?? job.outputURL.path)
         .overlay(alignment: .bottom) {
             Divider().opacity(AppTheme.Opacity.moderate)
+        }
+    }
+
+    private func exportStatusLabel(_ status: ExportJobStatus) -> String {
+        switch status {
+        case .waiting: L10n.string("Queued")
+        case .preparing: L10n.string("Preparing")
+        case .exporting: L10n.string("Rendering")
+        case .canceling: L10n.string("Canceling")
+        case .completed: L10n.string("Completed")
+        case .failed: L10n.string("Failed")
+        case .canceled: L10n.string("Canceled")
         }
     }
 
@@ -419,15 +441,15 @@ struct ExportView: View {
     private func exportAction(_ job: ExportJob) -> some View {
         switch job.status {
         case .waiting:
-            exportIconButton("xmark", help: "Remove from Queue") { exportQueue.cancel(job.id) }
+            exportIconButton("xmark", help: L10n.string("Remove from Queue")) { exportQueue.cancel(job.id) }
         case .preparing, .exporting:
-            exportIconButton("stop.fill", help: "Cancel Export") { exportQueue.cancel(job.id) }
+            exportIconButton("stop.fill", help: L10n.string("Cancel Export")) { exportQueue.cancel(job.id) }
         case .completed:
-            exportIconButton("folder", help: "Reveal in Finder") {
+            exportIconButton("folder", help: L10n.string("Reveal in Finder")) {
                 NSWorkspace.shared.activateFileViewerSelecting([job.outputURL])
             }
         case .failed, .canceled:
-            exportIconButton("xmark", help: "Dismiss") { exportQueue.remove(job.id) }
+            exportIconButton("xmark", help: L10n.string("Dismiss")) { exportQueue.remove(job.id) }
         case .canceling:
             EmptyView()
         }
@@ -454,9 +476,9 @@ struct ExportView: View {
         HStack {
             exportSummary
             Spacer()
-            Button("Close") { editor.showExportDialog = false }
+            Button(L10n.string("Close")) { editor.showExportDialog = false }
                 .keyboardShortcut(.cancelAction)
-            Button(exportQueue.hasActivity ? "Add to Queue" : "Export") { startExport() }
+            Button(exportQueue.hasActivity ? L10n.string("Add to Queue") : L10n.string("Export")) { startExport() }
                 .buttonStyle(.glassProminent)
                 .buttonBorderShape(.capsule)
                 .keyboardShortcut(.defaultAction)
@@ -476,20 +498,20 @@ struct ExportView: View {
             case .video:
                 HStack(spacing: AppTheme.Spacing.xs) {
                     Image(systemName: "doc")
-                    Text("~\(estimatedFileSize)")
+                    Text(verbatim: "~\(estimatedFileSize)")
                 }
                 let out = resolution.renderSize(for: CGSize(width: exportTimeline.width, height: exportTimeline.height))
-                Text("\(Int(out.width))×\(Int(out.height))")
-                Text(codec.containerLabel)
+                Text(verbatim: "\(Int(out.width))×\(Int(out.height))")
+                Text(verbatim: codec.containerLabel)
             case .timeline:
-                Text("\(exportTimeline.width)×\(exportTimeline.height)")
-                Text(timelineFormat.extensionLabel)
+                Text(verbatim: "\(exportTimeline.width)×\(exportTimeline.height)")
+                Text(verbatim: timelineFormat.extensionLabel)
             case .palmierProject:
                 HStack(spacing: AppTheme.Spacing.xs) {
                     Image(systemName: "shippingbox")
-                    Text("~\(ByteCountFormatter.string(fromByteCount: palmierSummary.bytes, countStyle: .file))")
+                    Text(verbatim: "~\(ByteCountFormatter.string(fromByteCount: palmierSummary.bytes, countStyle: .file))")
                 }
-                Text(".\(Project.fileExtension)")
+                Text(verbatim: ".\(Project.fileExtension)")
             }
         }
         .font(.system(size: AppTheme.FontSize.xs))
@@ -517,7 +539,7 @@ struct ExportView: View {
             HStack(spacing: AppTheme.Spacing.sm) {
                 RadioIndicator(selected: selected)
 
-                Text(option.rawValue)
+                Text(L10n.string(key: option.title))
                     .font(.system(size: AppTheme.FontSize.md, weight: selected ? AppTheme.FontWeight.semibold : AppTheme.FontWeight.medium))
                     .foregroundStyle(selected ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
                     .lineLimit(1)
@@ -542,25 +564,25 @@ struct ExportView: View {
 
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
                     HStack(spacing: AppTheme.Spacing.xs) {
-                        Text(format.rawValue)
+                        Text(verbatim: format.rawValue)
                             .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.semibold))
                             .foregroundStyle(AppTheme.Text.primaryColor)
-                        Text(format.extensionLabel)
+                        Text(verbatim: format.extensionLabel)
                             .font(.system(size: AppTheme.FontSize.xs))
                             .foregroundStyle(AppTheme.Text.tertiaryColor)
                         if !format.versionLabel.isEmpty {
-                            Text(format.versionLabel)
+                            Text(verbatim: format.versionLabel)
                                 .font(.system(size: AppTheme.FontSize.xs))
                                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                         }
                     }
 
-                    Text(format.summary)
+                    Text(L10n.string(key: format.summary))
                         .font(.system(size: AppTheme.FontSize.xs))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("Compatibility: \(format.compatibilityLabel)")
+                    Text(L10n.string("Compatibility: \(format.compatibilityLabel)"))
                         .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
                         .foregroundStyle(AppTheme.Text.secondaryColor)
                         .fixedSize(horizontal: false, vertical: true)

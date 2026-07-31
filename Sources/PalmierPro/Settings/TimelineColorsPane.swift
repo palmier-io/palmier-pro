@@ -19,7 +19,7 @@ struct TimelineColorsPane: View {
 
             HStack {
                 Spacer()
-                Button("Reset All") {
+                Button(L10n.string("Reset All")) {
                     colors.resetAll()
                 }
                 .buttonStyle(.capsule(.secondary, fill: AnyShapeStyle(AppTheme.Background.raisedColor)))
@@ -30,7 +30,7 @@ struct TimelineColorsPane: View {
 
     private func colorRow(_ kind: TimelineClipColor) -> some View {
         HStack(spacing: AppTheme.Spacing.md) {
-            Text(kind.label)
+            Text(L10n.string(key: kind.label))
                 .font(.system(size: AppTheme.FontSize.md))
                 .foregroundStyle(AppTheme.Text.primaryColor)
 
@@ -44,10 +44,21 @@ struct TimelineColorsPane: View {
                 displayColor: colors.color(for: kind),
                 onUserChange: { colors.set($0, for: kind) },
                 supportsOpacity: false,
-                accessibilityLabel: "Choose \(kind.label.lowercased()) clip color",
+                accessibilityLabel: colorAccessibilityLabel(kind),
                 swatchSize: CGSize(width: 64, height: AppTheme.IconSize.mdLg)
             )
         }
         .frame(minHeight: 36)
+    }
+
+    private func colorAccessibilityLabel(_ kind: TimelineClipColor) -> String {
+        switch kind {
+        case .video: L10n.string("Choose video clip color")
+        case .audio: L10n.string("Choose audio clip color")
+        case .image: L10n.string("Choose image clip color")
+        case .text: L10n.string("Choose text clip color")
+        case .animation: L10n.string("Choose animation clip color")
+        case .sequence: L10n.string("Choose sequence clip color")
+        }
     }
 }

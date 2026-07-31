@@ -71,7 +71,7 @@ struct TourOverlay: View {
     private func callout(_ step: TourStep) -> some View {
         let index = tour.stepIndex ?? 0
         return VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-            Text("Step \(index) of \(tour.spotlightCount)")
+            Text(L10n.string("Step \(index) of \(tour.spotlightCount)"))
                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
             Text(step.title)
@@ -83,13 +83,13 @@ struct TourOverlay: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: AppTheme.Spacing.sm) {
-                Button("Skip") { tour.end() }
+                Button(L10n.string("Skip")) { tour.end() }
                     .buttonStyle(.capsule)
                     .keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Back") { tour.back() }
+                Button(L10n.string("Back")) { tour.back() }
                     .buttonStyle(.capsule)
-                Button("Next") { tour.advance() }
+                Button(L10n.string("Next")) { tour.advance() }
                     .buttonStyle(.capsule(.prominent))
                     .keyboardShortcut(.defaultAction)
             }
@@ -115,11 +115,11 @@ struct TourOverlay: View {
             }
             heroImage
             HStack {
-                Button("Skip") { tour.end() }
+                Button(L10n.string("Skip")) { tour.end() }
                     .buttonStyle(.capsule(.secondary, size: .regular))
                     .keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Next") { tour.advance() }
+                Button(L10n.string("Next")) { tour.advance() }
                     .buttonStyle(.capsule(.prominent, size: .regular))
                     .keyboardShortcut(.defaultAction)
             }
@@ -155,15 +155,15 @@ struct TourOverlay: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             VStack(spacing: 0) {
-                linkRow("Skills", "book.closed.fill") { SettingsWindowController.shared.show(tab: .skills) }
-                linkRow("MCP Setup", "puzzlepiece.extension.fill") { HelpWindowController.shared.show(tab: .mcp) }
-                linkRow("Keyboard Shortcuts", "keyboard") { HelpWindowController.shared.show(tab: .shortcuts) }
-                linkRow("Documentation", "book.fill") { NSWorkspace.shared.open(Self.docsURL, configuration: .init(), completionHandler: nil) }
-                linkRow("Settings", "gearshape.fill") { SettingsWindowController.shared.show() }
+                linkRow(L10n.string("Skills"), "book.closed.fill") { SettingsWindowController.shared.show(tab: .skills) }
+                linkRow(L10n.string("MCP Setup"), "puzzlepiece.extension.fill") { HelpWindowController.shared.show(tab: .mcp) }
+                linkRow(L10n.string("Keyboard Shortcuts"), "keyboard") { HelpWindowController.shared.show(tab: .shortcuts) }
+                linkRow(L10n.string("Documentation"), "book.fill") { NSWorkspace.shared.open(Self.docsURL, configuration: .init(), completionHandler: nil) }
+                linkRow(L10n.string("Settings"), "gearshape.fill") { SettingsWindowController.shared.show() }
             }
             HStack {
                 Spacer()
-                Button("Start creating") { tour.end() }
+                Button(L10n.string("Start creating")) { tour.end() }
                     .buttonStyle(.capsule(.prominent, size: .regular))
                     .keyboardShortcut(.defaultAction)
             }

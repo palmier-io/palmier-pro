@@ -24,7 +24,7 @@ struct CreditSummaryView: View {
                     compactView(left: left, budget: budget, remaining: remaining)
                 }
                 .buttonStyle(.plain)
-                .help("Manage credits")
+                .help(L10n.string("Manage credits"))
                 .popover(isPresented: $showActions, arrowEdge: .bottom) {
                     CreditActionsPopover(isPresented: $showActions)
                 }
@@ -35,7 +35,7 @@ struct CreditSummaryView: View {
     private func fullView(left: Int, budget: Int, remaining: Double) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
             HStack(spacing: AppTheme.Spacing.xs) {
-                Text("\(left.formatted()) / \(budget.formatted())")
+                Text(verbatim: "\(left.formatted()) / \(budget.formatted())")
                     .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                     .monospacedDigit()
                     .foregroundStyle(barColor(remaining))
@@ -66,7 +66,7 @@ struct CreditSummaryView: View {
             Capsule().stroke(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.hairline)
         )
         .fixedSize(horizontal: true, vertical: false)
-        .help("\(left.formatted()) of \(budget.formatted()) credits remaining this period")
+        .help(L10n.string("\(left) of \(budget) credits remaining this period"))
     }
 
     /// Tint by remaining ratio — full bar is healthy, drained bar is alarming.
@@ -109,9 +109,9 @@ private struct CreditActionsPopover: View {
 
     @ViewBuilder
     private var freeActions: some View {
-        sectionCaption("Upgrade to add credits")
+        sectionCaption(L10n.string("Upgrade to add credits"))
         Button { openAccountSettings() } label: {
-            Text("Account settings").frame(maxWidth: .infinity)
+            Text(L10n.string("Account settings")).frame(maxWidth: .infinity)
         }
         .buttonStyle(.capsule(.prominent))
         .controlSize(.small)
@@ -121,13 +121,13 @@ private struct CreditActionsPopover: View {
 
     @ViewBuilder
     private var paidActions: some View {
-        sectionCaption("Add credits")
+        sectionCaption(L10n.string("Add credits"))
         TopOffField(dollars: $topOffDollars, controlSize: .small, fillWidth: false) {
             account.buyCredits(dollars: topOffDollars)
             isPresented = false
         } trailing: {
             Button { openAccountSettings() } label: {
-                Text("Account settings")
+                Text(L10n.string("Account settings"))
             }
             .buttonStyle(.capsule(.secondary))
             .controlSize(.small)
@@ -138,7 +138,7 @@ private struct CreditActionsPopover: View {
 
     @ViewBuilder
     private func sectionCaption(_ text: String) -> some View {
-        Text(text)
+        Text(verbatim: text)
             .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
             .foregroundStyle(AppTheme.Text.tertiaryColor)
     }

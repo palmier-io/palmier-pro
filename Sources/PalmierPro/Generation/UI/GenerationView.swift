@@ -103,11 +103,18 @@ struct GenerationView: View {
     enum FramesRefsMode: String, CaseIterable {
         case firstLast = "First/Last"
         case reference = "References"
+
+        var title: String {
+            switch self {
+            case .firstLast: L10n.key("First/Last")
+            case .reference: L10n.key("References")
+            }
+        }
     }
 
     struct RefTag: Hashable, Identifiable {
         let label: String
-        let kindLabel: String
+        let kind: ClipType
         var id: String { label }
     }
 
@@ -116,6 +123,14 @@ struct GenerationView: View {
         case video = "Video"
         case audio = "Audio"
         case upscale = "Upscale"
+        var title: String {
+            switch self {
+            case .image: L10n.key("Image")
+            case .video: L10n.key("Video")
+            case .audio: L10n.key("Audio")
+            case .upscale: L10n.key("Upscale")
+            }
+        }
         var icon: String {
             switch self {
             case .image: "photo"
@@ -155,7 +170,7 @@ struct GenerationView: View {
     private var catalogLoadingView: some View {
         VStack(spacing: AppTheme.Spacing.md) {
             ProgressView()
-            Text("Loading models…")
+            Text(L10n.string("Loading models…"))
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
         }
@@ -214,7 +229,7 @@ struct GenerationView: View {
                     if selectedType == .audio && audioModel.supportsLyrics {
                         inputDivider
                         secondaryField(
-                            placeholder: "Lyrics (optional). [Verse] and [Chorus] tags supported.",
+                            placeholder: L10n.string("Lyrics (optional). [Verse] and [Chorus] tags supported."),
                             text: $lyrics,
                             minHeight: 60, maxHeight: 120
                         )
@@ -222,7 +237,7 @@ struct GenerationView: View {
                     if selectedType == .audio && audioModel.supportsStyleInstructions {
                         inputDivider
                         secondaryField(
-                            placeholder: "Style instructions (optional). e.g., warm and slow, British accent.",
+                            placeholder: L10n.string("Style instructions (optional). e.g., warm and slow, British accent."),
                             text: $styleInstructions,
                             minHeight: 36, maxHeight: 72
                         )

@@ -12,10 +12,10 @@ struct AgentPane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xxl) {
-            SettingsSection(title: "AI Chat") {
+            SettingsSection(title: L10n.string("AI Chat")) {
                 apiKeySection
             }
-            SettingsSection(title: "Integrations") {
+            SettingsSection(title: L10n.string("Integrations")) {
                 mcpSection
             }
         }
@@ -31,19 +31,19 @@ struct AgentPane: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            Text("Anthropic API Key")
+            Text(L10n.string("Anthropic API Key"))
                 .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.medium))
                 .foregroundStyle(AppTheme.Text.primaryColor)
 
             HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
-                Text("Use your own API key for AI chat. Stored in the macOS Keychain.")
+                Text(L10n.string("Use your own API key for AI chat. Stored in the macOS Keychain."))
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Button(action: { NSWorkspace.shared.open(consoleURL, configuration: .init(), completionHandler: nil) }) {
                     HStack(spacing: AppTheme.Spacing.xxs) {
-                        Text("Get Anthropic API key")
+                        Text(L10n.string("Get Anthropic API key"))
                         Image(systemName: "arrow.up.right")
                             .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.semibold))
                     }
@@ -95,7 +95,7 @@ struct AgentPane: View {
     private var trailingControl: some View {
         let trimmed = draft.trimmingCharacters(in: .whitespaces)
         if !trimmed.isEmpty {
-            Button("Save", action: save)
+            Button(L10n.string("Save"), action: save)
                 .buttonStyle(.capsule(.prominent, size: .regular))
                 .controlSize(.large)
         } else if hasKey {
@@ -107,7 +107,7 @@ struct AgentPane: View {
             }
             .buttonStyle(.capsule(.secondary, size: .regular))
             .controlSize(.large)
-            .help("Remove API key")
+            .help(L10n.string("Remove API key"))
         }
     }
 
@@ -168,19 +168,19 @@ struct AgentPane: View {
 
     private var mcpHeader: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            Text("MCP Server")
+            Text(L10n.string("MCP Server"))
                 .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.medium))
                 .foregroundStyle(AppTheme.Text.primaryColor)
 
             HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
-                Text("Lets external clients like Cursor, Claude Desktop, Claude Code, and Codex edit your timeline.")
+                Text(L10n.string("Lets external clients like Cursor, Claude Desktop, Claude Code, and Codex edit your timeline."))
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Button(action: openInstructions) {
                     HStack(spacing: AppTheme.Spacing.xxs) {
-                        Text("Setup instructions")
+                        Text(L10n.string("Setup instructions"))
                         Image(systemName: "arrow.up.right")
                             .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.semibold))
                     }
@@ -203,14 +203,14 @@ struct AgentPane: View {
 
                 if appState.mcpService?.isRunning ?? false {
                     HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.xxs) {
-                        Text("Running on")
+                        Text(L10n.string("Running on"))
                             .foregroundStyle(AppTheme.Text.secondaryColor)
-                        Text("127.0.0.1:\(String(MCPService.port))")
+                        Text(verbatim: "127.0.0.1:\(String(MCPService.port))")
                             .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
                             .foregroundStyle(AppTheme.Text.primaryColor)
                     }
                 } else {
-                    Text("Stopped")
+                    Text(L10n.string("Stopped"))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                 }
             }
@@ -219,7 +219,7 @@ struct AgentPane: View {
             Spacer()
 
             Toggle(
-                "",
+                String(),
                 isOn: Binding(
                     get: { (appState.mcpService?.isRunning ?? false) },
                     set: { appState.setMCPEnabled($0) }
@@ -228,7 +228,7 @@ struct AgentPane: View {
             .labelsHidden()
             .toggleStyle(.switch)
             .controlSize(.mini)
-            .accessibilityLabel("MCP Server")
+            .accessibilityLabel(L10n.string("MCP Server"))
         }
         .padding(.top, AppTheme.Spacing.xs)
     }

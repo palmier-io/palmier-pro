@@ -37,17 +37,17 @@ struct CustomAspectRatioSheet: View {
     var body: some View {
         let validation = validation
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
-            Text("Custom Aspect Ratio")
+            Text(L10n.string("Custom Aspect Ratio"))
                 .font(.system(size: AppTheme.FontSize.xl, weight: AppTheme.FontWeight.semibold))
                 .foregroundStyle(AppTheme.Text.primaryColor)
 
-            Text("Changing the ratio preserves the shorter edge.")
+            Text(L10n.string("Changing the ratio preserves the shorter edge."))
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
 
             HStack(alignment: .bottom, spacing: AppTheme.Spacing.md) {
                 ratioField("Width", text: $horizontalText)
-                Text(":")
+                Text(verbatim: ":")
                     .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.medium))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                     .padding(.bottom, AppTheme.Spacing.sm)
@@ -55,7 +55,7 @@ struct CustomAspectRatioSheet: View {
             }
 
             if let resolution = validation.resolution {
-                LabeledContent("Resolution", value: "\(resolution.width) × \(resolution.height)")
+                LabeledContent(L10n.string("Resolution"), value: "\(resolution.width) × \(resolution.height)")
                     .font(.system(size: AppTheme.FontSize.sm).monospacedDigit())
                     .foregroundStyle(AppTheme.Text.secondaryColor)
             } else if let message = validation.message {
@@ -66,10 +66,10 @@ struct CustomAspectRatioSheet: View {
 
             HStack(spacing: AppTheme.Spacing.md) {
                 Spacer()
-                Button("Cancel") { dismiss() }
+                Button(L10n.string("Cancel")) { dismiss() }
                     .buttonStyle(.capsule(.secondary, size: .regular))
                     .keyboardShortcut(.cancelAction)
-                Button("Apply") {
+                Button(L10n.string("Apply")) {
                     guard let resolution = validation.resolution else { return }
                     editor.applyTimelineSettings(fps: editor.timeline.fps, width: resolution.width, height: resolution.height)
                     dismiss()
@@ -89,23 +89,35 @@ struct CustomAspectRatioSheet: View {
             Text(label)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-            TextField("", text: text)
+            TextField(String(), text: text)
                 .textFieldStyle(.roundedBorder)
                 .font(.system(size: AppTheme.FontSize.md).monospacedDigit())
                 .frame(width: AppTheme.EditorPanel.numericFieldWidth)
-                .accessibilityLabel("Aspect ratio \(label.lowercased())")
+                .accessibilityLabel(L10n.string("Aspect ratio: \(label)"))
         }
     }
 
     private var validation: (resolution: (width: Int, height: Int)?, message: String?) {
         guard editor.activeTimelineId == context.timelineID,
               (editor.timeline.width, editor.timeline.height) == (context.width, context.height) else {
-            return (nil, "The timeline settings changed. Close this sheet and try again.")
+            return (nil, L10n.string("The timeline settings changed. Close this sheet and try again."))
         }
         do {
             return (try context.resolution(horizontal: horizontalText, vertical: verticalText), nil)
         } catch {
-            return (nil, error.localizedDescription)
+            return (nil, localizedValidationMessage(error))
+        }
+    }
+
+    private func localizedValidationMessage(_ error: Error) -> String {
+        guard let error = error as? AspectRatioError else { return error.localizedDescription }
+        switch error.code {
+        case .invalidFormat:
+            return L10n.string("Use an aspect ratio with two positive numbers, such as 3:2.")
+        case .resolutionTooSmall:
+            return L10n.string("Resolution must be at least 2 × 2 pixels.")
+        case .resolutionTooLarge:
+            return L10n.string("Resolution must not exceed 8192 pixels on either edge.")
         }
     }
 

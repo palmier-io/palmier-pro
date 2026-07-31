@@ -22,18 +22,18 @@ struct WelcomeOverlay: View {
     private var card: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-                Text("Welcome to Palmier Pro")
+                Text(L10n.string("Welcome to Palmier Pro"))
                     .font(.system(size: AppTheme.FontSize.title2, weight: .light))
                     .tracking(AppTheme.Tracking.tight)
                     .foregroundStyle(AppTheme.Text.primaryColor)
-                Text("A video editor built for AI. Generate, and edit all in one place.")
+                Text(L10n.string("A video editor built for AI. Generate, and edit all in one place."))
                     .font(.system(size: AppTheme.FontSize.smMd))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                     .fixedSize(horizontal: false, vertical: true)
             }
             heroImage
             HStack(spacing: AppTheme.Spacing.sm) {
-                Button("Skip") { onDismiss() }
+                Button(L10n.string("Skip")) { onDismiss() }
                     .buttonStyle(.capsule(.secondary, size: .regular))
                     .keyboardShortcut(.cancelAction)
                 Spacer()
@@ -41,10 +41,10 @@ struct WelcomeOverlay: View {
                     if startingTutorial {
                         HStack(spacing: AppTheme.Spacing.xs) {
                             ProgressView().controlSize(.small)
-                            Text("Loading…")
+                            Text(L10n.string("Loading…"))
                         }
                     } else {
-                        Text("Watch Tutorial")
+                        Text(L10n.string("Watch Tutorial"))
                     }
                 }
                 .buttonStyle(.capsule(.secondary, size: .regular))
@@ -68,11 +68,11 @@ struct WelcomeOverlay: View {
     @ViewBuilder
     private var signInButton: some View {
         if account.aiAllowed || account.isMisconfigured {
-            Button("Get started") { onDismiss() }
+            Button(L10n.string("Get started")) { onDismiss() }
                 .buttonStyle(.capsule(.prominent, size: .regular))
                 .keyboardShortcut(.defaultAction)
         } else {
-            Button(account.isSigningIn ? "Opening Google…" : "Sign In") {
+            Button(account.isSigningIn ? L10n.string("Opening Google…") : L10n.string("Sign In")) {
                 Task { await account.signInWithGoogle() }
             }
                 .buttonStyle(.capsule(.prominent, size: .regular))

@@ -39,19 +39,38 @@ struct InspectorClipSelection {
 struct InspectorView: View {
     @Environment(EditorViewModel.self) var editor
 
-    enum ClipTab: String, Hashable {
-        case text = "Content"
-        case textAnimate = "Animate"
-        case video = "Video"
-        case effects = "Adjust"
-        case audio = "Audio"
-        case multicam = "Multicam"
-        case ai = "AI Edit"
+    enum ClipTab: Hashable {
+        case text
+        case textAnimate
+        case video
+        case effects
+        case audio
+        case multicam
+        case ai
+
+        var titleKey: String {
+            switch self {
+            case .text: L10n.key("Content")
+            case .textAnimate: L10n.key("Animate")
+            case .video: L10n.key("Video")
+            case .effects: L10n.key("Adjust")
+            case .audio: L10n.key("Audio")
+            case .multicam: L10n.key("Multicam")
+            case .ai: L10n.key("AI Edit")
+            }
+        }
     }
 
-    enum AssetTab: String, Hashable {
-        case details = "Details"
-        case ai = "AI Edit"
+    enum AssetTab: Hashable {
+        case details
+        case ai
+
+        var titleKey: String {
+            switch self {
+            case .details: L10n.key("Details")
+            case .ai: L10n.key("AI Edit")
+            }
+        }
     }
 
     @State private var preferredTab: ClipTab = .video
@@ -107,7 +126,7 @@ struct InspectorView: View {
     private var marqueeSelectionSummary: some View {
         VStack {
             Spacer()
-            Text("\(editor.selectedClipIds.count) selected")
+            Text(L10n.string("\(editor.selectedClipIds.count) selected"))
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
             Spacer()
@@ -131,25 +150,25 @@ struct InspectorView: View {
     private var projectMetadataContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
-                metadataSection(title: "Project") {
+                metadataSection(title: L10n.string("Project")) {
                     if let url = editor.projectURL {
                         plainMetadataRow(
-                            label: "Name",
+                            label: L10n.string("Name"),
                             value: url.deletingPathExtension().lastPathComponent
                         )
                         plainMetadataRow(
-                            label: "Path",
+                            label: L10n.string("Path"),
                             value: url.path,
                             truncate: .middle
                         )
                     }
-                    plainMetadataRow(label: "Duration", value: formatDuration(Double(editor.timeline.totalFrames) / Double(editor.timeline.fps)))
+                    plainMetadataRow(label: L10n.string("Duration"), value: formatDuration(Double(editor.timeline.totalFrames) / Double(editor.timeline.fps)))
                 }
 
-                metadataSection(title: "Settings") {
-                    menuMetadataRow(label: "Resolution", value: "\(editor.timeline.width) × \(editor.timeline.height)") { qualityMenuItems }
-                    menuMetadataRow(label: "Frame Rate", value: "\(editor.timeline.fps) fps") { fpsMenuItems }
-                    menuMetadataRow(label: "Aspect Ratio", value: CanvasAspectRatio.displayLabel(width: editor.timeline.width, height: editor.timeline.height)) { aspectMenuItems }
+                metadataSection(title: L10n.string("Settings")) {
+                    menuMetadataRow(label: L10n.string("Resolution"), value: "\(editor.timeline.width) × \(editor.timeline.height)") { qualityMenuItems }
+                    menuMetadataRow(label: L10n.string("Frame Rate"), value: "\(editor.timeline.fps) fps") { fpsMenuItems }
+                    menuMetadataRow(label: L10n.string("Aspect Ratio"), value: CanvasAspectRatio.displayLabel(width: editor.timeline.width, height: editor.timeline.height)) { aspectMenuItems }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -172,7 +191,7 @@ struct InspectorView: View {
         truncate: Text.TruncationMode = .tail
     ) -> some View {
         HStack(spacing: AppTheme.Spacing.sm) {
-            Text(label)
+            Text(L10n.string(key: label))
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .fixedSize()
@@ -196,7 +215,7 @@ struct InspectorView: View {
         @ViewBuilder menu: @escaping () -> MenuContent
     ) -> some View {
         HStack(spacing: AppTheme.Spacing.sm) {
-            Text(label)
+            Text(L10n.string(key: label))
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .fixedSize()
@@ -220,7 +239,7 @@ struct InspectorView: View {
                 editor.applyTimelineSettings(fps: editor.timeline.fps, width: preset.width, height: preset.height)
             } label: {
                 HStack {
-                    Text(preset.label)
+                    Text(verbatim: preset.label)
                     Spacer()
                     if preset.matches(width: editor.timeline.width, height: editor.timeline.height) {
                         Image(systemName: "checkmark")
@@ -229,7 +248,7 @@ struct InspectorView: View {
             }
         }
         Divider()
-        Button("Custom…") {
+        Button(L10n.string("Custom…")) {
             customAspectRatioContext = CustomAspectRatioContext(
                 timelineID: editor.activeTimelineId,
                 width: editor.timeline.width,
@@ -245,7 +264,7 @@ struct InspectorView: View {
                 editor.applyTimelineSettings(fps: fps, width: editor.timeline.width, height: editor.timeline.height)
             } label: {
                 HStack {
-                    Text("\(fps) fps")
+                    Text(verbatim: "\(fps) fps")
                     Spacer()
                     if editor.timeline.fps == fps {
                         Image(systemName: "checkmark")
@@ -263,7 +282,7 @@ struct InspectorView: View {
                 editor.applyTimelineSettings(fps: editor.timeline.fps, width: w, height: h)
             } label: {
                 HStack {
-                    Text(preset.label)
+                    Text(verbatim: preset.label)
                     Spacer()
                     if preset.matches(width: editor.timeline.width, height: editor.timeline.height) {
                         Image(systemName: "checkmark")
@@ -387,19 +406,19 @@ struct InspectorView: View {
 
     private func tabBar(_ tabs: [ClipTab], selectedTab: ClipTab?) -> some View {
         TitleTabBar(
-            titles: tabs.map(\.rawValue),
-            selected: selectedTab?.rawValue
+            titles: tabs.map(\.titleKey),
+            selected: selectedTab?.titleKey
         ) { title in
-            if let tab = tabs.first(where: { $0.rawValue == title }) { preferredTab = tab }
+            if let tab = tabs.first(where: { $0.titleKey == title }) { preferredTab = tab }
         }
     }
 
     private func assetTabBar(_ tabs: [AssetTab]) -> some View {
         TitleTabBar(
-            titles: tabs.map(\.rawValue),
-            selected: preferredAssetTab.rawValue
+            titles: tabs.map(\.titleKey),
+            selected: preferredAssetTab.titleKey
         ) { title in
-            if let tab = tabs.first(where: { $0.rawValue == title }) { preferredAssetTab = tab }
+            if let tab = tabs.first(where: { $0.titleKey == title }) { preferredAssetTab = tab }
         }
     }
 
@@ -418,7 +437,7 @@ struct InspectorView: View {
             HStack(spacing: AppTheme.Spacing.xs) {
                 Image(systemName: on ? "diamond.fill" : "diamond")
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
-                Text("Keyframes")
+                Text(L10n.string("Keyframes"))
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
             }
             .foregroundStyle(on ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
@@ -429,7 +448,9 @@ struct InspectorView: View {
         .buttonStyle(.plain)
         .disabled(!enabled)
         .opacity(enabled ? AppTheme.Opacity.opaque : AppTheme.Opacity.medium)
-        .help(enabled ? (on ? "Hide keyframe timeline" : "Show keyframe timeline") : "Select a single clip to enable")
+        .help(enabled
+            ? (on ? L10n.string("Hide keyframe timeline") : L10n.string("Show keyframe timeline"))
+            : L10n.string("Select a single clip to enable"))
     }
 
     func keyframesSplitContent<Controls: View>(
@@ -455,9 +476,9 @@ struct InspectorView: View {
     @ViewBuilder
     func speedSection(clips: [Clip]) -> some View {
         if !clips.isEmpty {
-            EditorPanelGroup("Playback", contentSpacing: AppTheme.Spacing.smMd) {
+            EditorPanelGroup(L10n.string("Playback"), contentSpacing: AppTheme.Spacing.smMd) {
                 propertyRow(
-                    label: "Speed",
+                    label: L10n.string("Speed"),
                     onReset: { editor.commitClipSpeed(ids: clips.map(\.id), newSpeed: 1) }
                 ) {
                     ScrubbableNumberField(
@@ -498,7 +519,7 @@ struct InspectorView: View {
     private func transformSection(clips: [Clip]) -> some View {
         let single = clips.count == 1 ? clips.first : nil
         EditorPanelGroup(
-            "Transform",
+            L10n.string("Transform"),
             isExpanded: $transformExpanded,
             onReset: {
                 commitPropertiesToClips(clips, actionName: "Reset Transform") { clip in
@@ -534,7 +555,7 @@ struct InspectorView: View {
         let single = clips.count == 1 ? clips.first : nil
         return VStack(alignment: .leading, spacing: spacing) {
             animatableRow(
-                label: "Position",
+                label: L10n.string("Position"),
                 clipId: single?.id,
                 property: .position,
                 onReset: {
@@ -548,7 +569,7 @@ struct InspectorView: View {
                 InspectorPositionFields(clips: clips)
             }
             animatableRow(
-                label: "Scale",
+                label: L10n.string("Scale"),
                 clipId: single?.id,
                 property: .scale,
                 onReset: {
@@ -563,7 +584,7 @@ struct InspectorView: View {
                 scaleScrubField(clips: clips)
             }
             animatableRow(
-                label: "Rotation",
+                label: L10n.string("Rotation"),
                 clipId: single?.id,
                 property: .rotation,
                 onReset: {
@@ -576,7 +597,7 @@ struct InspectorView: View {
                 InspectorRotationField(clips: clips)
             }
             animatableRow(
-                label: "Opacity",
+                label: L10n.string("Opacity"),
                 clipId: single?.id,
                 property: .opacity,
                 onReset: {
@@ -596,7 +617,7 @@ struct InspectorView: View {
 
     private func imageAdjustmentSection(clips: [Clip]) -> some View {
         EditorPanelGroup(
-            "Image Adjustment",
+            L10n.string("Image Adjustment"),
             isExpanded: $imageAdjustmentExpanded,
             onReset: {
                 commitPropertiesToClips(clips, actionName: "Reset Image Adjustment") { clip in
@@ -641,7 +662,7 @@ struct InspectorView: View {
         let prev = editor.previousKeyframeFrame(clipId: clipId, property: property, before: frame)
         let next = editor.nextKeyframeFrame(clipId: clipId, property: property, after: frame)
         return HStack(spacing: AppTheme.Spacing.zero) {
-            keyframeNavButton(systemName: "chevron.left", help: "Go to previous keyframe", enabled: prev != nil) {
+            keyframeNavButton(systemName: "chevron.left", help: L10n.string("Go to previous keyframe"), enabled: prev != nil) {
                 if let f = prev { editor.seekToFrame(f) }
             }
             Button {
@@ -660,10 +681,10 @@ struct InspectorView: View {
             .buttonStyle(.plain)
             .disabled(!inRange)
             .opacity(inRange ? 1 : 0.4)
-            .help(!inRange ? "Move playhead inside the clip"
-                  : onKeyframe ? "Remove keyframe at playhead"
-                  : "Add keyframe at playhead")
-            keyframeNavButton(systemName: "chevron.right", help: "Go to next keyframe", enabled: next != nil) {
+            .help(!inRange ? L10n.string("Move playhead inside the clip")
+                  : onKeyframe ? L10n.string("Remove keyframe at playhead")
+                  : L10n.string("Add keyframe at playhead"))
+            keyframeNavButton(systemName: "chevron.right", help: L10n.string("Go to next keyframe"), enabled: next != nil) {
                 if let f = next { editor.seekToFrame(f) }
             }
         }
@@ -689,7 +710,7 @@ struct InspectorView: View {
         .buttonStyle(.plain)
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.3)
-        .help(help)
+        .help(L10n.string(key: help))
     }
 
     @ViewBuilder
@@ -732,7 +753,7 @@ struct InspectorView: View {
 
     private func edgeSoftnessRow(clips: [Clip]) -> some View {
         propertyRow(
-            label: "Edge Softness",
+            label: L10n.string("Edge Softness"),
             onReset: {
                 commitPropertiesToClips(clips, actionName: "Reset Edge Softness") {
                     $0.edgeSoftness = 0
@@ -765,7 +786,7 @@ struct InspectorView: View {
 
     private func edgeRoundingRow(clips: [Clip]) -> some View {
         propertyRow(
-            label: "Edge Rounding",
+            label: L10n.string("Edge Rounding"),
             onReset: {
                 commitPropertiesToClips(clips, actionName: "Reset Edge Rounding") {
                     $0.edgeRounding = 0
@@ -799,7 +820,7 @@ struct InspectorView: View {
     // MARK: - Section helpers
 
     func sectionTitleLabel(title: String) -> some View {
-        Text(title)
+        Text(L10n.string(key: title))
             .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium))
             .foregroundStyle(AppTheme.Text.primaryColor)
             .fixedSize()
@@ -829,7 +850,7 @@ struct InspectorView: View {
         let current = clips.first?.blendMode ?? .normal
         let mixed = clips.count > 1 && !clips.allSatisfy { ($0.blendMode ?? .normal) == current }
         return propertyRow(
-            label: "Blend",
+            label: L10n.string("Blend"),
             onReset: {
                 commitPropertiesToClips(clips, actionName: "Reset Blend Mode") {
                     $0.blendMode = nil
@@ -839,14 +860,14 @@ struct InspectorView: View {
         ) {
             Menu {
                 ForEach(BlendMode.allCases, id: \.self) { m in
-                    Button(m.displayName) {
+                    Button(L10n.string(key: m.displayName)) {
                         commitPropertiesToClips(clips, actionName: "Blend Mode") {
                             $0.blendMode = (m == .normal ? nil : m)
                         }
                     }
                 }
             } label: {
-                EditorMenuValue(text: mixed ? "—" : current.displayName)
+                EditorMenuValue(text: mixed ? "—" : L10n.string(key: current.displayName))
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
         }
@@ -858,7 +879,7 @@ struct InspectorView: View {
         let activeH = clips.first?.transform.flipHorizontal ?? false
         let activeV = clips.first?.transform.flipVertical ?? false
         propertyRow(
-            label: "Flip",
+            label: L10n.string("Flip"),
             onReset: {
                 commitPropertiesToClips(clips, actionName: "Reset Flip") { clip in
                     clip.transform.flipHorizontal = false
@@ -871,7 +892,7 @@ struct InspectorView: View {
                 iconToggleButton(
                     systemName: "arrow.left.and.right",
                     isOn: activeH,
-                    help: activeH ? "Remove horizontal flip" : "Flip horizontally"
+                    help: activeH ? L10n.string("Remove horizontal flip") : L10n.string("Flip horizontally")
                 ) {
                     let newValue = !activeH
                     commitPropertiesToClips(clips, actionName: "Flip Horizontal") {
@@ -881,7 +902,7 @@ struct InspectorView: View {
                 iconToggleButton(
                     systemName: "arrow.up.and.down",
                     isOn: activeV,
-                    help: activeV ? "Remove vertical flip" : "Flip vertically"
+                    help: activeV ? L10n.string("Remove vertical flip") : L10n.string("Flip vertically")
                 ) {
                     let newValue = !activeV
                     commitPropertiesToClips(clips, actionName: "Flip Vertical") {
@@ -911,7 +932,7 @@ struct InspectorView: View {
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
-        .help(help)
+        .help(L10n.string(key: help))
     }
 
     // MARK: - Crop
@@ -921,7 +942,7 @@ struct InspectorView: View {
         let editing = editor.cropEditingActive && single != nil
         let disabled = single == nil
         propertyRow(
-            label: "Crop",
+            label: L10n.string("Crop"),
             onReset: {
                 guard let single else { return }
                 editor.cropAspectLock = .free
@@ -935,9 +956,9 @@ struct InspectorView: View {
                 iconToggleButton(
                     systemName: "crop",
                     isOn: editing,
-                    help: disabled ? "Crop applies to one clip at a time"
-                          : editing ? "Stop editing crop on canvas"
-                          : "Edit crop on canvas"
+                    help: disabled ? L10n.key("Crop applies to one clip at a time")
+                          : editing ? L10n.key("Stop editing crop on canvas")
+                          : L10n.key("Edit crop on canvas")
                 ) {
                     editor.cropEditingActive.toggle()
                 }
@@ -963,15 +984,15 @@ struct InspectorView: View {
                     if let clip = single { applyCropPreset(preset, on: clip) }
                 } label: {
                     if preset == active {
-                        Label(preset.label, systemImage: "checkmark")
+                        Label(preset.localizedLabel, systemImage: "checkmark")
                     } else {
-                        Text(preset.label)
+                        Text(preset.localizedLabel)
                     }
                 }
             }
         } label: {
             HStack(spacing: AppTheme.Spacing.xs) {
-                Text(active.label)
+                Text(active.localizedLabel)
                     .font(.system(size: AppTheme.FontSize.sm, weight: .medium).monospacedDigit())
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                 Image(systemName: "chevron.down")
@@ -986,7 +1007,7 @@ struct InspectorView: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .disabled(single == nil)
-        .help("Choose a crop aspect")
+        .help(L10n.string("Choose a crop aspect"))
     }
 
     private func applyCropPreset(_ preset: CropAspectLock, on clip: Clip) {
@@ -1033,24 +1054,24 @@ struct InspectorView: View {
 
                 if let gen = asset.generationInput {
                     if GenerationReferencesStrip.hasResolvableReferences(gen, in: editor.mediaAssets) {
-                        metadataSection(title: "References") {
+                        metadataSection(title: L10n.string("References")) {
                             GenerationReferencesStrip(generationInput: gen)
                         }
                     }
 
-                    metadataSection(title: "Generated") {
-                        plainMetadataRow(label: "Model", value: ModelRegistry.displayName(for: gen.model))
+                    metadataSection(title: L10n.string("Generated")) {
+                        plainMetadataRow(label: L10n.string("Model"), value: ModelRegistry.displayName(for: gen.model))
                         if !gen.aspectRatio.isEmpty {
                             plainMetadataRow(
-                                label: "Aspect Ratio",
+                                label: L10n.string("Aspect Ratio"),
                                 value: ImageModelConfig.aspectRatioDisplayLabel(gen.aspectRatio)
                             )
                         }
                         if let resolution = gen.resolution {
-                            plainMetadataRow(label: "Resolution", value: resolution)
+                            plainMetadataRow(label: L10n.string("Resolution"), value: resolution)
                         }
                         if gen.duration > 0 {
-                            plainMetadataRow(label: "Duration", value: "\(gen.duration)s")
+                            plainMetadataRow(label: L10n.string("Duration"), value: "\(gen.duration)s")
                         }
                     }
 
@@ -1067,10 +1088,10 @@ struct InspectorView: View {
 
     @ViewBuilder
     private func fileSection(_ asset: MediaAsset) -> some View {
-        metadataSection(title: "File") {
-            plainMetadataRow(label: "Type", value: asset.type.trackLabel)
+        metadataSection(title: L10n.string("File")) {
+            plainMetadataRow(label: L10n.string("Type"), value: asset.type.localizedTrackLabel)
             if asset.type != .audio, let width = asset.sourceWidth, let height = asset.sourceHeight {
-                plainMetadataRow(label: "Dimensions", value: "\(width) × \(height)")
+                plainMetadataRow(label: L10n.string("Dimensions"), value: "\(width) × \(height)")
             }
             if let fps = asset.sourceFPS, fps > 0 {
                 plainMetadataRow(
@@ -1079,13 +1100,13 @@ struct InspectorView: View {
                 )
             }
             if asset.duration > 0 && asset.type != .image {
-                plainMetadataRow(label: "Duration", value: formatDuration(asset.duration))
+                plainMetadataRow(label: L10n.string("Duration"), value: formatDuration(asset.duration))
             }
             if let fileSize = fileSize(for: asset.url) {
-                plainMetadataRow(label: "Size", value: fileSize)
+                plainMetadataRow(label: L10n.string("Size"), value: fileSize)
             }
             plainMetadataRow(
-                label: "Path",
+                label: L10n.string("Path"),
                 value: asset.url.path,
                 truncate: .middle
             )
@@ -1107,7 +1128,7 @@ struct InspectorView: View {
     }
 
     private var aiBadge: some View {
-        Text("AI")
+        Text(verbatim: "AI")
             .font(.system(size: AppTheme.FontSize.xxs, weight: .bold))
             .tracking(AppTheme.Tracking.wide)
             .foregroundStyle(AppTheme.aiGradient)
@@ -1122,7 +1143,7 @@ struct InspectorView: View {
     private func promptSection(prompt: String) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
             HStack(spacing: AppTheme.Spacing.sm) {
-                Text("Prompt")
+                Text(L10n.string("Prompt"))
                     .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                 Spacer()
@@ -1203,7 +1224,7 @@ struct PromptCopyButton: View {
                 .contentTransition(.symbolEffect(.replace))
         }
         .buttonStyle(.plain)
-        .help(copied ? "Copied" : "Copy prompt")
+        .help(copied ? L10n.string("Copied") : L10n.string("Copy prompt"))
     }
 
     private func copy() {

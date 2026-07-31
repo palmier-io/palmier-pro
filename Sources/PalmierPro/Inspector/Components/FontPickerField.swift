@@ -46,14 +46,14 @@ struct FontPickerField: View {
         menu.autoenablesItems = false
 
         if !BundledFonts.families.isEmpty {
-            let header = NSMenuItem(title: "Featured", action: nil, keyEquivalent: "")
+            let header = NSMenuItem(title: L10n.string("Featured"), action: nil, keyEquivalent: "")
             header.isEnabled = false
             menu.addItem(header)
             for family in BundledFonts.families {
                 menu.addItem(makeItem(name: family, previewFamily: family, handler: handler))
             }
             menu.addItem(.separator())
-            let all = NSMenuItem(title: "All fonts", action: nil, keyEquivalent: "")
+            let all = NSMenuItem(title: L10n.string("All fonts"), action: nil, keyEquivalent: "")
             all.isEnabled = false
             menu.addItem(all)
         }
@@ -90,7 +90,7 @@ struct FontPickerField: View {
     }
 
     private var displayName: String {
-        guard let current else { return "Mixed" }
+        guard let current else { return L10n.string("Mixed") }
         return NSFont(name: current, size: 12)?.familyName ?? current
     }
 }

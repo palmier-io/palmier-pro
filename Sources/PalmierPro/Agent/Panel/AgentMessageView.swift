@@ -23,7 +23,7 @@ struct AgentMessageView: View {
         if !texts.isEmpty {
             HStack {
                 Spacer(minLength: 0)
-                Text(texts.joined(separator: "\n"))
+                Text(verbatim: texts.joined(separator: "\n"))
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .multilineTextAlignment(.center)
@@ -47,7 +47,7 @@ struct AgentMessageView: View {
         if !texts.isEmpty {
             HStack {
                 Spacer(minLength: 48)
-                Text(texts.joined(separator: "\n"))
+                Text(verbatim: texts.joined(separator: "\n"))
                     .font(.body)
                     .foregroundStyle(AppTheme.Text.primaryColor)
                     .lineSpacing(3)
@@ -105,13 +105,13 @@ private struct CopyMessageButton: View {
         } label: {
             HStack(spacing: AppTheme.Spacing.xs) {
                 Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                Text(copied ? "Copied" : "Copy")
+                Text(copied ? L10n.string("Copied") : L10n.string("Copy"))
             }
             .font(.system(size: AppTheme.FontSize.xs))
             .foregroundStyle(AppTheme.Text.tertiaryColor)
         }
         .buttonStyle(.plain)
-        .help("Copy message")
+        .help(L10n.string("Copy message"))
     }
 }
 
@@ -186,7 +186,7 @@ private struct ToolRunRow: View {
     @ViewBuilder
     private var argsSection: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            Text("args").font(.system(size: AppTheme.FontSize.xxs)).foregroundStyle(AppTheme.Text.mutedColor)
+            Text(L10n.string("args")).font(.system(size: AppTheme.FontSize.xxs)).foregroundStyle(AppTheme.Text.mutedColor)
             Text(prettyPrinted(inputJSON))
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -195,7 +195,7 @@ private struct ToolRunRow: View {
     @ViewBuilder
     private func resultSection(_ r: ToolRunResult) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            Text(r.isError ? "error" : "result")
+            Text(r.isError ? L10n.string("error") : L10n.string("result"))
                 .font(.system(size: AppTheme.FontSize.xxs))
                 .foregroundStyle(r.isError ? .red.opacity(AppTheme.Opacity.prominent) : AppTheme.Text.mutedColor)
             ForEach(Array(r.content.enumerated()), id: \.offset) { _, block in
@@ -238,7 +238,7 @@ private struct ToolResultImageView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous))
             } else {
-                Text("(image payload)").foregroundStyle(AppTheme.Text.mutedColor)
+                Text(L10n.string("(image payload)")).foregroundStyle(AppTheme.Text.mutedColor)
             }
         }
         .task(id: base64) {

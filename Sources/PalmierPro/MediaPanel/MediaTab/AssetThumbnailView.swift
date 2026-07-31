@@ -37,7 +37,7 @@ struct AssetThumbnailView: View {
                 if isRenaming {
                     InlineRenameField(
                         originalName: asset.name,
-                        placeholder: "Name",
+                        placeholder: L10n.string("Name"),
                         font: .system(size: AppTheme.FontSize.xs),
                         onCommit: { name in
                             editor.renameMediaAsset(id: asset.id, name: name)
@@ -84,17 +84,17 @@ struct AssetThumbnailView: View {
         }
         if ids.count == 1, ids.first == asset.id {
             if isMissing {
-                Button("Relink…") { relinkFile() }
+                Button(L10n.string("Relink…")) { relinkFile() }
                 Divider()
             }
-            Button("Rename") { beginRename() }
+            Button(L10n.string("Rename")) { beginRename() }
             AIEditMenu(asset: asset)
             Divider()
         }
-        Button("Reveal in Finder") { revealInFinder(ids: ids) }
-        Button("Copy Path") { copyPaths(ids: ids) }
+        Button(L10n.string("Reveal in Finder")) { revealInFinder(ids: ids) }
+        Button(L10n.string("Copy Path")) { copyPaths(ids: ids) }
         Divider()
-        Button("Delete", role: .destructive) {
+        Button(L10n.string("Delete"), role: .destructive) {
             editor.deleteMediaPanelItems(targeting: asset.id)
         }
     }
@@ -113,7 +113,7 @@ struct AssetThumbnailView: View {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        panel.message = "Choose the source file for \"\(asset.name)\""
+        panel.message = L10n.string("Choose the source file for \"\(asset.name)\"")
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             editor.relinkAsset(id: asset.id, to: url)
@@ -213,12 +213,12 @@ struct AssetThumbnailView: View {
             ))
             .padding(AppTheme.Spacing.xs)
             .transition(.opacity)
-            .help("Add to chat")
+            .help(L10n.string("Add to chat"))
         }
     }
 
     private var sourceBadge: some View {
-        Text("AI")
+        Text(verbatim: "AI")
             .font(.system(size: AppTheme.FontSize.xxs, weight: .semibold))
             .foregroundStyle(AppTheme.MediaOverlay.aiGradient)
             .padding(.horizontal, AppTheme.Spacing.sm)
@@ -238,7 +238,7 @@ struct AssetThumbnailView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: AppTheme.FontSize.mdLg))
                 .foregroundStyle(.red.opacity(AppTheme.Opacity.prominent))
-            Text("Failed")
+            Text(L10n.string("Failed"))
                 .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
                 .foregroundStyle(AppTheme.MediaOverlay.secondaryColor)
             Text(error)
@@ -257,11 +257,11 @@ struct AssetThumbnailView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: AppTheme.FontSize.mdLg))
                 .foregroundStyle(AppTheme.MediaOverlay.errorColor)
-            Text("Media Offline")
+            Text(L10n.string("Media Offline"))
                 .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
                 .foregroundStyle(AppTheme.MediaOverlay.secondaryColor)
         }
-        .help("Palmier couldn't load this source file. It may be missing, on an ejected drive, or unreadable.")
+        .help(L10n.string("Palmier couldn't load this source file. It may be missing, on an ejected drive, or unreadable."))
     }
 
     private func formatDuration(_ seconds: Double) -> String {

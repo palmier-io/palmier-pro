@@ -88,7 +88,7 @@ extension MediaTab {
             .shadow(color: AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.medium), radius: 4, y: 2)
 
             if count > 1 {
-                Text("\(count)")
+                Text(verbatim: "\(count)")
                     .font(.system(size: AppTheme.FontSize.sm, weight: .bold))
                     .foregroundStyle(AppTheme.Background.baseColor)
                     .padding(.horizontal, AppTheme.Spacing.sm)

@@ -32,10 +32,10 @@ struct FolderTileView: View {
                 countBadge
             }
         } menuItems: {
-            Button("Open") { onOpen() }
-            Button("Rename") { isRenaming = true }
+            Button(L10n.string("Open")) { onOpen() }
+            Button(L10n.string("Rename")) { isRenaming = true }
             Divider()
-            Button("Delete", role: .destructive) { onDelete() }
+            Button(L10n.string("Delete"), role: .destructive) { onDelete() }
         }
     }
 
@@ -43,7 +43,7 @@ struct FolderTileView: View {
         VStack {
             HStack {
                 Spacer()
-                Text("\(childCount)")
+                Text(verbatim: "\(childCount)")
                     .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
                     .monospacedDigit()
                     .tileBadge()

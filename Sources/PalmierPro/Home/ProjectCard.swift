@@ -37,7 +37,7 @@ struct ProjectCard: View {
                         VStack(spacing: AppTheme.Spacing.xs) {
                             Image(systemName: "questionmark.folder")
                                 .font(.system(size: AppTheme.FontSize.title1))
-                            Text("File missing")
+                            Text(L10n.string("File missing"))
                                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                         }
                         .foregroundStyle(AppTheme.MediaOverlay.tertiaryColor)
@@ -120,14 +120,14 @@ struct ProjectCard: View {
         .onHover { isHovered = $0 }
         .contextMenu {
             if entry.isAccessible {
-                Button("Open") { onOpen(entry.url) }
-                Button("Reveal in Finder") {
+                Button(L10n.string("Open")) { onOpen(entry.url) }
+                Button(L10n.string("Reveal in Finder")) {
                     NSWorkspace.shared.selectFile(entry.url.path, inFileViewerRootedAtPath: entry.url.deletingLastPathComponent().path)
                 }
                 Divider()
             }
-            Button("Remove from Recents") { onRemove(entry.url) }
-            Button("Delete Project", role: .destructive, action: onDelete)
+            Button(L10n.string("Remove from Recents")) { onRemove(entry.url) }
+            Button(L10n.string("Delete Project"), role: .destructive, action: onDelete)
         }
         .task(id: entry.lastOpenedDate) { await loadThumbnail(for: entry.url) }
     }

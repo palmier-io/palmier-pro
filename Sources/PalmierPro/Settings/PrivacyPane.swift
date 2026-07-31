@@ -11,8 +11,8 @@ struct PrivacyPane: View {
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
             SettingsToggleRow(
-                title: "Share usage data",
-                subtitle: "Send usage data from your interactions with Palmier Pro to help improve the app.",
+                title: L10n.string("Share usage data"),
+                subtitle: L10n.string("Send usage data from your interactions with Palmier Pro to help improve the app."),
                 isOn: $analyticsEnabled
             )
             .onChange(of: analyticsEnabled) { _, newValue in
@@ -23,8 +23,8 @@ struct PrivacyPane: View {
                 .overlay(AppTheme.Border.subtleColor)
 
             SettingsToggleRow(
-                title: "Send crash reports",
-                subtitle: "Send crash and error reports to help diagnose problems. Media and project content are never included.",
+                title: L10n.string("Send crash reports"),
+                subtitle: L10n.string("Send crash and error reports to help diagnose problems. Media and project content are never included."),
                 isOn: $telemetryEnabled
             )
             .onChange(of: telemetryEnabled) { _, newValue in
@@ -35,7 +35,7 @@ struct PrivacyPane: View {
                 HStack(spacing: AppTheme.Spacing.xs) {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
-                    Text("Restart Palmier Pro to apply this change.")
+                    Text(L10n.string("Restart Palmier Pro to apply this change."))
                 }
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)

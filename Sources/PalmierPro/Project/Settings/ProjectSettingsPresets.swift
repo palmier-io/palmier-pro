@@ -1,10 +1,20 @@
 import Foundation
 
 struct AspectRatioError: LocalizedError {
-    let errorDescription: String?
+    enum Code {
+        case invalidFormat
+        case resolutionTooSmall
+        case resolutionTooLarge
+    }
 
-    init(_ message: String) {
-        errorDescription = message
+    let code: Code
+
+    var errorDescription: String? {
+        switch code {
+        case .invalidFormat: "Use an aspect ratio with two positive numbers, such as 3:2."
+        case .resolutionTooSmall: "Resolution must be at least 2 × 2 pixels."
+        case .resolutionTooLarge: "Resolution must not exceed 8192 pixels on either edge."
+        }
     }
 }
 
@@ -19,7 +29,7 @@ struct CanvasAspectRatio: Equatable {
               let vertical = Double(parts[1].trimmingCharacters(in: .whitespacesAndNewlines)),
               horizontal.isFinite, vertical.isFinite, horizontal > 0, vertical > 0,
               (horizontal / vertical).isFinite else {
-            throw AspectRatioError("Use an aspect ratio with two positive numbers, such as 3:2.")
+            throw AspectRatioError(code: .invalidFormat)
         }
         self.horizontal = horizontal
         self.vertical = vertical
@@ -27,13 +37,13 @@ struct CanvasAspectRatio: Equatable {
 
     func resolution(shortEdge: Int) throws -> (width: Int, height: Int) {
         guard shortEdge >= 2 else {
-            throw AspectRatioError("Resolution must be at least 2 × 2 pixels.")
+            throw AspectRatioError(code: .resolutionTooSmall)
         }
         let ratio = horizontal / vertical
         let short = shortEdge.isMultiple(of: 2) ? shortEdge : shortEdge + 1
         let longValue = Double(short) * max(ratio, 1 / ratio)
         guard longValue <= 8_192 else {
-            throw AspectRatioError("Resolution must not exceed 8192 pixels on either edge.")
+            throw AspectRatioError(code: .resolutionTooLarge)
         }
         let long = Int((longValue / 2).rounded()) * 2
         return ratio >= 1 ? (long, short) : (short, long)

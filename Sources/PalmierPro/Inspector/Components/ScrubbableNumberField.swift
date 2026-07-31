@@ -49,7 +49,7 @@ struct ScrubbableNumberField: View {
 
             ZStack {
                 if isEditing {
-                    TextField("", text: $editText)
+                    TextField(String(), text: $editText)
                         .textFieldStyle(.plain)
                         .multilineTextAlignment(.trailing)
                         .font(.system(size: AppTheme.FontSize.sm, weight: .medium).monospacedDigit())

@@ -22,9 +22,9 @@ enum LayoutPreset: String, CaseIterable, Identifiable, Sendable {
 
     var label: String {
         switch self {
-        case .default: "Default"
-        case .media: "Media"
-        case .vertical: "Vertical"
+        case .default: L10n.key("Default")
+        case .media: L10n.key("Media")
+        case .vertical: L10n.key("Vertical")
         }
     }
 

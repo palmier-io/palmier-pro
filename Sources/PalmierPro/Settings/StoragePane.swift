@@ -9,10 +9,10 @@ struct StoragePane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xxl) {
-            SettingsSection(title: "Cache") {
+            SettingsSection(title: L10n.string("Cache")) {
                 cacheRow
             }
-            SettingsSection(title: "Search") {
+            SettingsSection(title: L10n.string("Search")) {
                 searchIndexSection
             }
         }
@@ -22,10 +22,10 @@ struct StoragePane: View {
     private var cacheRow: some View {
         HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-                Text("Temporary files")
+                Text(L10n.string("Temporary files"))
                     .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.regular))
                     .foregroundStyle(AppTheme.Text.primaryColor)
-                Text("Playback previews, waveforms, filmstrip thumbnails, and transcripts. Safe to clear; files rebuild as needed.")
+                Text(L10n.string("Playback previews, waveforms, filmstrip thumbnails, and transcripts. Safe to clear; files rebuild as needed."))
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .fixedSize(horizontal: false, vertical: true)
@@ -45,7 +45,7 @@ struct StoragePane: View {
 
             Spacer(minLength: AppTheme.Spacing.lg)
 
-            Button("Clear cache") {
+            Button(L10n.string("Clear cache")) {
                 clear()
             }
             .buttonStyle(actionButtonStyle)
@@ -57,34 +57,34 @@ struct StoragePane: View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
             HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-                    Text("Media indexing")
+                    Text(L10n.string("Media indexing"))
                         .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.regular))
                         .foregroundStyle(AppTheme.Text.primaryColor)
-                    Text("Indexes imported media for on-device search.")
+                    Text(L10n.string("Indexes imported media for on-device search."))
                         .font(.system(size: AppTheme.FontSize.sm))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: AppTheme.Spacing.lg)
-                Toggle("", isOn: $searchEnabled)
+                Toggle(String(), isOn: $searchEnabled)
                     .toggleStyle(.switch)
                     .controlSize(.mini)
                     .labelsHidden()
-                    .accessibilityLabel("Media search")
+                    .accessibilityLabel(L10n.string("Media search"))
                     .onChange(of: searchEnabled) { _, newValue in
                         VisualModelLoader.shared.setEnabled(newValue)
                     }
             }
 
             HStack(spacing: AppTheme.Spacing.sm) {
-                Text("Index")
+                Text(L10n.string("Index"))
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                 Text(ByteCountFormatter.string(fromByteCount: indexBytes, countStyle: .file))
                     .font(.system(size: AppTheme.FontSize.xs).monospacedDigit())
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                 Spacer(minLength: AppTheme.Spacing.md)
-                Button("Clear index") { clearIndex() }
+                Button(L10n.string("Clear index")) { clearIndex() }
                     .buttonStyle(actionButtonStyle)
                     .disabled(indexBytes == 0)
             }
@@ -92,14 +92,14 @@ struct StoragePane: View {
 
             if modelBytes > 0 {
                 HStack(spacing: AppTheme.Spacing.sm) {
-                    Text("Model")
+                    Text(L10n.string("Model"))
                         .font(.system(size: AppTheme.FontSize.xs))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    Text("\(SearchIndexConfig.manifest.model) · \(ByteCountFormatter.string(fromByteCount: modelBytes, countStyle: .file))")
+                    Text(verbatim: "\(SearchIndexConfig.manifest.model) · \(ByteCountFormatter.string(fromByteCount: modelBytes, countStyle: .file))")
                         .font(.system(size: AppTheme.FontSize.xs).monospacedDigit())
                         .foregroundStyle(AppTheme.Text.secondaryColor)
                     Spacer(minLength: AppTheme.Spacing.md)
-                    Button("Remove model") { removeModel() }
+                    Button(L10n.string("Remove model")) { removeModel() }
                         .buttonStyle(actionButtonStyle)
                 }
             }
@@ -121,7 +121,7 @@ struct StoragePane: View {
     }
 
     private var formattedSize: String {
-        if isClearing { return "Clearing…" }
+        if isClearing { return L10n.string("Clearing…") }
         return ByteCountFormatter.string(fromByteCount: cacheBytes, countStyle: .file)
     }
 

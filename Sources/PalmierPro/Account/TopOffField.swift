@@ -15,17 +15,19 @@ struct TopOffField<Trailing: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
             HStack(spacing: AppTheme.Spacing.sm) {
-                Text("$")
+                Text(verbatim: "$")
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
-                TextField("", value: $dollars, format: .number)
+                TextField(String(), value: $dollars, format: .number)
                     .textFieldStyle(.plain)
                     .padding(.horizontal, AppTheme.Spacing.smMd)
                     .padding(.vertical, AppTheme.Spacing.xs)
                     .frame(width: AppTheme.Settings.creditInputWidth)
                     .themedSurface(fieldFill, cornerRadius: AppTheme.Radius.sm)
                     .disabled(account.isBuyingCredits)
-                Text(credits == 1 ? "= 1 credit" : "= \(credits.formatted()) credits")
+                Text(credits == 1
+                    ? L10n.string("= 1 credit")
+                    : L10n.string("= \(credits) credits"))
                     .font(.system(size: AppTheme.FontSize.sm))
                     .monospacedDigit()
                     .foregroundStyle(
@@ -71,7 +73,7 @@ struct TopOffField<Trailing: View>: View {
     }
 
     private var buttonLabel: String {
-        isValid ? "Buy $\(dollars)" : "Buy"
+        isValid ? L10n.string("Buy $\(dollars)") : L10n.string("Buy")
     }
 }
 

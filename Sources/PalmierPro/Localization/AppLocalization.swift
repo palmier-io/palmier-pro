@@ -145,4 +145,5 @@ enum L10n {
     static func string(key: String) -> String {
         AppLocalization.shared.string(key: key)
     }
+
 }

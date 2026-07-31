@@ -25,7 +25,7 @@ struct InspectorRow<Trailing: View>: View {
     @ViewBuilder
     var body: some View {
         if let labelHelp {
-            row.help(labelHelp)
+            row.help(L10n.string(key: labelHelp))
         } else {
             row
         }
@@ -33,7 +33,7 @@ struct InspectorRow<Trailing: View>: View {
 
     private var row: some View {
         HStack(alignment: .center, spacing: AppTheme.Spacing.sm) {
-            Text(label)
+            Text(L10n.string(key: label))
                 .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .lineLimit(1)
@@ -63,7 +63,7 @@ struct EditorResetButton: View {
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
-        .help("Reset \(title.lowercased())")
-        .accessibilityLabel("Reset \(title)")
+        .help(L10n.string("Reset: \(title)"))
+        .accessibilityLabel(L10n.string("Reset: \(title)"))
     }
 }

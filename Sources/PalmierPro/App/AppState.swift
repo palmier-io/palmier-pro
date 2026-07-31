@@ -223,7 +223,7 @@ final class AppState {
         panel.allowedContentTypes = [Self.projectContentType]
         panel.nameFieldStringValue = Project.defaultProjectName
         panel.directoryURL = Project.storageDirectory
-        panel.title = "New Project"
+        panel.title = L10n.string("New Project")
         panel.begin { [self] response in
             guard response == .OK, let url = panel.url else { return }
             let doc = instantiateProject(at: url)
@@ -353,7 +353,7 @@ final class AppState {
         panel.canChooseDirectories = false
         panel.treatsFilePackagesAsDirectories = false
         panel.allowsMultipleSelection = false
-        panel.title = "Open Project"
+        panel.title = L10n.string("Open Project")
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             AppState.shared.openProject(at: url)

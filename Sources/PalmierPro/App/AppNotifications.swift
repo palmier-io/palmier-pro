@@ -47,8 +47,8 @@ enum AppNotifications {
         guard canUseUserNotifications, isEnabled else { return }
 
         let content = UNMutableNotificationContent()
-        content.title = "Generation complete"
-        content.body = body(assetName: assetName, assetType: assetType, count: count)
+        content.title = L10n.string("Generation complete")
+        content.body = generationBody(assetName: assetName, assetType: assetType, count: count)
         content.sound = .default
         var userInfo = ["assetId": assetId]
         if let projectURL {
@@ -73,14 +73,18 @@ enum AppNotifications {
         guard canUseUserNotifications, isEnabled else { return }
 
         var detail = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        if detail.isEmpty { detail = "Export" }
+        if detail.isEmpty { detail = L10n.string("Export") }
         if let size { detail += " (\(Int(size.width))×\(Int(size.height)))" }
 
         let content = UNMutableNotificationContent()
-        content.title = "Export complete"
-        content.body = warningCount > 0
-            ? "\(detail) exported with \(warningCount) warning\(warningCount == 1 ? "" : "s")."
-            : "\(detail) is ready."
+        content.title = L10n.string("Export complete")
+        if warningCount == 1 {
+            content.body = L10n.string("\(detail) exported with 1 warning.")
+        } else if warningCount > 1 {
+            content.body = L10n.string("\(detail) exported with \(warningCount) warnings.")
+        } else {
+            content.body = L10n.string("\(detail) is ready.")
+        }
         content.sound = .default
         content.userInfo = ["exportPath": outputURL.path]
 
@@ -102,9 +106,10 @@ enum AppNotifications {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
         let content = UNMutableNotificationContent()
-        content.title = "Export failed"
+        content.title = L10n.string("Export failed")
+        let displayName = trimmedName.isEmpty ? L10n.string("The export") : trimmedName
         content.body = trimmedReason.isEmpty
-            ? "\(trimmedName.isEmpty ? "The export" : trimmedName) could not be exported."
+            ? L10n.string("\(displayName) could not be exported.")
             : trimmedReason
         content.sound = .default
 
@@ -125,12 +130,25 @@ enum AppNotifications {
             && (Bundle.main.bundleIdentifier?.contains(".") ?? false)
     }
 
-    private static func body(assetName: String, assetType: ClipType, count: Int) -> String {
+    static func generationBody(assetName: String, assetType: ClipType, count: Int) -> String {
         if count > 1 {
-            return "\(count) \(assetType.rawValue)s are ready in Palmier Pro."
+            switch assetType {
+            case .video, .sequence: return L10n.string("\(count) videos are ready in Palmier Pro.")
+            case .audio: return L10n.string("\(count) audio clips are ready in Palmier Pro.")
+            case .image: return L10n.string("\(count) images are ready in Palmier Pro.")
+            case .text: return L10n.string("\(count) text clips are ready in Palmier Pro.")
+            case .lottie: return L10n.string("\(count) Lottie animations are ready in Palmier Pro.")
+            }
         }
         let name = assetName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? "Your \(assetType.rawValue) is ready." : "\(name) is ready."
+        guard name.isEmpty else { return L10n.string("\(name) is ready.") }
+        switch assetType {
+        case .video, .sequence: return L10n.string("Your video is ready.")
+        case .audio: return L10n.string("Your audio clip is ready.")
+        case .image: return L10n.string("Your image is ready.")
+        case .text: return L10n.string("Your text clip is ready.")
+        case .lottie: return L10n.string("Your Lottie animation is ready.")
+        }
     }
 }
 

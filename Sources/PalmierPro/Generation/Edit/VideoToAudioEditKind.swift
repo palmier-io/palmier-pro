@@ -6,8 +6,15 @@ enum VideoToAudioEditKind {
 
     var title: String {
         switch self {
-        case .music: "Generate Music"
-        case .sfx: "Generate SFX"
+        case .music: L10n.key("Generate Music")
+        case .sfx: L10n.key("Generate SFX")
+        }
+    }
+
+    var menuTitle: String {
+        switch self {
+        case .music: L10n.key("Generate Music…")
+        case .sfx: L10n.key("Generate SFX…")
         }
     }
 
@@ -34,8 +41,8 @@ enum VideoToAudioEditKind {
 
     var description: String {
         switch self {
-        case .music: "Generate music that fits the video"
-        case .sfx: "Create matching sound for the video"
+        case .music: L10n.key("Generate music that fits the video")
+        case .sfx: L10n.key("Create matching sound for the video")
         }
     }
 

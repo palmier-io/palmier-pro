@@ -6,14 +6,14 @@ struct AppearancePane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xxl) {
-            SettingsGroup(title: "Theme") {
+            SettingsGroup(title: L10n.string("Theme")) {
                 HStack(alignment: .top, spacing: AppTheme.Spacing.mdLg) {
                     ForEach(AppAppearance.allCases) { option in
                         SettingsPreviewCard(
                             label: option.label,
                             shortcutLabel: nil,
                             isSelected: appearance.selection == option,
-                            accessibilityLabel: "\(option.label) appearance",
+                            accessibilityLabel: appearanceAccessibilityLabel(option),
                             action: { appearance.selection = option }
                         ) {
                             AppearancePreview(option: option)
@@ -23,14 +23,14 @@ struct AppearancePane: View {
                 .frame(maxWidth: .infinity)
             }
 
-            SettingsGroup(title: "Workspace layout") {
+            SettingsGroup(title: L10n.string("Workspace layout")) {
                 HStack(alignment: .top, spacing: AppTheme.Spacing.mdLg) {
                     ForEach(LayoutPreset.allCases) { preset in
                         SettingsPreviewCard(
                             label: preset.label,
                             shortcutLabel: preset.shortcutLabel,
                             isSelected: workspaceLayout.selection == preset,
-                            accessibilityLabel: "\(preset.label) workspace layout",
+                            accessibilityLabel: workspaceAccessibilityLabel(preset),
                             action: { workspaceLayout.selection = preset }
                         ) {
                             WorkspaceLayoutPreview(preset: preset)
@@ -41,9 +41,25 @@ struct AppearancePane: View {
                 .frame(maxWidth: .infinity)
             }
 
-            SettingsSection(title: "Timeline colors") {
+            SettingsSection(title: L10n.string("Timeline colors")) {
                 TimelineColorsPane()
             }
+        }
+    }
+
+    private func appearanceAccessibilityLabel(_ appearance: AppAppearance) -> String {
+        switch appearance {
+        case .system: L10n.string("System appearance")
+        case .light: L10n.string("Light appearance")
+        case .dark: L10n.string("Dark appearance")
+        }
+    }
+
+    private func workspaceAccessibilityLabel(_ layout: LayoutPreset) -> String {
+        switch layout {
+        case .default: L10n.string("Default workspace layout")
+        case .media: L10n.string("Media workspace layout")
+        case .vertical: L10n.string("Vertical workspace layout")
         }
     }
 }
@@ -73,7 +89,7 @@ private struct SettingsPreviewCard<Preview: View>: View {
                     }
 
                 HStack(spacing: AppTheme.Spacing.xs) {
-                    Text(label)
+                    Text(L10n.string(key: label))
                         .foregroundStyle(isSelected ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
 
                     if let shortcutLabel {
@@ -88,7 +104,7 @@ private struct SettingsPreviewCard<Preview: View>: View {
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
         .accessibilityLabel(accessibilityLabel)
-        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityValue(isSelected ? L10n.string("Selected") : L10n.string("Not selected"))
     }
 
     private var borderColor: Color {

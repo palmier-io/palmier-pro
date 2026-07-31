@@ -68,9 +68,9 @@ private struct WelcomeTitle: View {
 
     private var title: String {
         if let first = account.account?.user.firstName {
-            return "Welcome to Palmier Pro, \(first)"
+            return L10n.string("Welcome to Palmier Pro, \(first)")
         }
-        return "Welcome to Palmier Pro"
+        return L10n.string("Welcome to Palmier Pro")
     }
 }
 
@@ -87,19 +87,21 @@ private struct HomeSidebar: View {
             VStack(alignment: .leading, spacing: 2) {
                 if !account.isSignedIn && !account.isMisconfigured {
                     SidebarRowButton(
-                        label: account.isSigningIn ? "Opening Google…" : "Sign in with Google",
+                        label: account.isSigningIn
+                            ? L10n.string("Opening Google…")
+                            : L10n.string("Sign in with Google"),
                         systemImage: "person.crop.circle",
                         action: { Task { await account.signInWithGoogle() } }
                     )
                     .disabled(account.isSigningIn)
                 }
                 SidebarRowButton(
-                    label: "New Project",
+                    label: L10n.string("New Project"),
                     systemImage: "plus",
                     action: { AppState.shared.createProjectInteractively() }
                 )
                 SidebarRowButton(
-                    label: "Open Project",
+                    label: L10n.string("Open Project"),
                     systemImage: "folder",
                     action: { AppState.shared.openProjectFromPanel() }
                 )
@@ -115,7 +117,7 @@ private struct HomeSidebar: View {
                 .animation(.easeInOut(duration: AppTheme.Anim.transition), value: updater.updateAvailable)
 
             SidebarRowButton(
-                label: "Settings",
+                label: L10n.string("Settings"),
                 systemImage: "gearshape",
                 action: { SettingsWindowController.shared.show() }
             )
@@ -138,7 +140,7 @@ final class HomeWindowController: NSWindowController {
         let window = NSWindow(contentViewController: hostingController)
         window.setContentSize(AppTheme.Window.homeDefault)
         window.minSize = AppTheme.Window.homeMin
-        window.title = "Palmier Pro"
+        window.title = AppIdentity.name
         window.backgroundColor = AppTheme.Background.base.withAlphaComponent(0.4)
         window.isOpaque = false
         window.titleVisibility = .hidden

@@ -200,7 +200,7 @@ extension MediaTab {
                         let rootTimelines = filteredTimelines(in: nil)
                         if !rootAssets.isEmpty || !rootTimelines.isEmpty {
                             groupedSection(
-                                title: "Library",
+                                title: L10n.string("Library"),
                                 folderId: nil,
                                 timelines: rootTimelines,
                                 assets: rootAssets,
@@ -274,7 +274,7 @@ extension MediaTab {
                 }
                 .buttonStyle(.plain)
                 .focusable(false)
-                .help(isCollapsed ? "Expand" : "Collapse")
+                .help(isCollapsed ? L10n.string("Expand") : L10n.string("Collapse"))
 
                 if let folderId {
                     Button {
@@ -292,20 +292,20 @@ extension MediaTab {
                     }
                     .buttonStyle(.plain)
                     .focusable(false)
-                    .help("Open \(title)")
+                    .help(L10n.string("Open \(title)"))
                     .contextMenu {
-                        Button("Open") {
+                        Button(L10n.string("Open")) {
                             openFolder(id: folderId)
                         }
                         Divider()
-                        Button("Delete", role: .destructive) {
+                        Button(L10n.string("Delete"), role: .destructive) {
                             editor.deleteMediaPanelItems(targeting: MediaPanelItemKey.folder(folderId))
                         }
                     }
                 } else {
                     groupedSectionTitle(title)
                 }
-                Text("\(timelines.count + assets.count)")
+                Text(verbatim: "\(timelines.count + assets.count)")
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Text.mutedColor)
                     .monospacedDigit()
@@ -318,7 +318,7 @@ extension MediaTab {
                     .frame(height: 0.5)
 
                 if assets.isEmpty && timelines.isEmpty {
-                    Text("Empty")
+                    Text(L10n.string("Empty"))
                         .font(.system(size: AppTheme.FontSize.xs))
                         .foregroundStyle(AppTheme.Text.mutedColor)
                         .padding(.vertical, AppTheme.Spacing.sm)
@@ -368,7 +368,7 @@ extension MediaTab {
             HStack(spacing: AppTheme.Spacing.xs) {
                 ForEach(Array(segments.enumerated()), id: \.offset) { idx, segment in
                     if idx > 0 {
-                        Text("/")
+                        Text(verbatim: "/")
                             .font(.system(size: AppTheme.FontSize.xs))
                             .foregroundStyle(AppTheme.Text.mutedColor)
                     }
@@ -498,14 +498,14 @@ extension MediaTab {
         let targetIds: Set<String> = editor.selectedMediaAssetIds.contains(asset.id)
             ? editor.selectedMediaAssetIds
             : [asset.id]
-        Menu("Move to Folder") {
-            Button("New Folder") {
+        Menu(L10n.string("Move to Folder")) {
+            Button(L10n.string("New Folder")) {
                 let id = editor.createFolder(name: "New Folder", in: currentFolderId)
                 editor.moveAssetsToFolder(assetIds: targetIds, folderId: id)
                 renamingFolderId = id
             }
             if currentFolderId != nil || targetIds.contains(where: { id in editor.mediaAssets.first(where: { $0.id == id })?.folderId != nil }) {
-                Button("Library") {
+                Button(L10n.string("Library")) {
                     editor.moveAssetsToFolder(assetIds: targetIds, folderId: nil)
                 }
             }
