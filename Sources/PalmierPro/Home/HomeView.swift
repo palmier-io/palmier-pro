@@ -66,9 +66,9 @@ private struct WelcomeTitle: View {
             .foregroundStyle(AppTheme.Text.primaryColor)
     }
 
-    private var title: String {
+    private var title: LocalizedStringKey {
         if let first = account.account?.user.firstName {
-            return "Welcome to Palmier Pro, \(first)"
+            return LocalizedStringKey("Welcome to Palmier Pro, \(first)")
         }
         return "Welcome to Palmier Pro"
     }

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SidebarRowButton: View {
-    let label: String
+    let label: LocalizedStringKey
     let systemImage: String
     var isSelected: Bool = false
     let action: () -> Void
