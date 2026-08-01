@@ -1,0 +1,154 @@
+<Window
+    x:Class="PalmierPro.App.Home.HomeWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:PalmierPro.App.Home"
+    Title="Palmier Pro">
+
+    <Grid Background="{ThemeResource BackgroundBaseBrush}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="220" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Sidebar -->
+        <Grid Grid.Column="0" Background="{ThemeResource BackgroundSurfaceBrush}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0" Padding="8,44,8,10" Spacing="2">
+                <Button x:Name="NewProjectButton" Style="{StaticResource SidebarRowButtonStyle}" Click="OnNewProject">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE710;" FontSize="13" Foreground="{ThemeResource TextSecondaryBrush}" />
+                        <TextBlock Text="New Project" FontSize="{StaticResource FontSizeMd}" Foreground="{ThemeResource TextPrimaryBrush}" />
+                    </StackPanel>
+                </Button>
+                <Button Style="{StaticResource SidebarRowButtonStyle}" Click="OnOpenProject">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE8B7;" FontSize="13" Foreground="{ThemeResource TextSecondaryBrush}" />
+                        <TextBlock Text="Open Project" FontSize="{StaticResource FontSizeMd}" Foreground="{ThemeResource TextPrimaryBrush}" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+
+            <Button Grid.Row="2" Style="{StaticResource SidebarRowButtonStyle}" Margin="8,0,8,10" Click="OnSettings">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="&#xE713;" FontSize="13" Foreground="{ThemeResource TextSecondaryBrush}" />
+                    <TextBlock Text="Settings" FontSize="{StaticResource FontSizeMd}" Foreground="{ThemeResource TextPrimaryBrush}" />
+                </StackPanel>
+            </Button>
+        </Grid>
+
+        <!-- Content -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <TextBlock
+                Grid.Row="0"
+                Text="Welcome to Palmier Pro"
+                FontSize="{StaticResource FontSizeTitle2}"
+                FontWeight="Light"
+                Foreground="{ThemeResource TextPrimaryBrush}"
+                Margin="24,44,24,28" />
+
+            <TextBlock
+                Grid.Row="1"
+                Text="My Projects"
+                FontSize="{StaticResource FontSizeLg}"
+                FontWeight="Medium"
+                Foreground="{ThemeResource TextSecondaryBrush}"
+                Margin="24,0,24,10" />
+
+            <ScrollViewer Grid.Row="2" Padding="20,0,20,20">
+                <Grid>
+                    <GridView
+                        x:Name="ProjectsGrid"
+                        ItemsSource="{x:Bind ViewModel.Projects}"
+                        SelectionMode="None"
+                        IsItemClickEnabled="True"
+                        ItemClick="OnProjectClicked">
+                        <GridView.ItemTemplate>
+                            <DataTemplate x:DataType="local:ProjectCardViewModel">
+                                <Grid
+                                    Width="200"
+                                    Height="160"
+                                    Margin="4"
+                                    CornerRadius="{StaticResource RadiusMdLg}"
+                                    BorderThickness="1"
+                                    BorderBrush="{ThemeResource BorderSubtleBrush}"
+                                    Background="{ThemeResource BackgroundRaisedBrush}"
+                                    Opacity="{x:Bind CardOpacity}">
+                                    <Grid.ContextFlyout>
+                                        <MenuFlyout>
+                                            <MenuFlyoutItem Text="Open" Click="OnCardOpen" Tag="{x:Bind}" />
+                                            <MenuFlyoutItem Text="Reveal in File Explorer" Click="OnCardReveal" Tag="{x:Bind}" />
+                                            <MenuFlyoutSeparator />
+                                            <MenuFlyoutItem Text="Remove from Recents" Click="OnCardRemove" Tag="{x:Bind}" />
+                                            <MenuFlyoutItem Text="Delete Project" Click="OnCardDelete" Tag="{x:Bind}" />
+                                        </MenuFlyout>
+                                    </Grid.ContextFlyout>
+
+                                    <FontIcon
+                                        Glyph="&#xE8B2;"
+                                        FontSize="{StaticResource FontSizeTitle2}"
+                                        Foreground="{ThemeResource TextMutedBrush}"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center" />
+
+                                    <Image Source="{x:Bind ThumbnailPath}" Stretch="UniformToFill" />
+
+                                    <!-- Missing package overlay -->
+                                    <Grid Background="#99000000" Opacity="{x:Bind InaccessibleOverlayOpacity}">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="4">
+                                            <FontIcon Glyph="&#xE8B7;" FontSize="{StaticResource FontSizeTitle1}" Foreground="{StaticResource MediaOverlayTertiaryBrush}" HorizontalAlignment="Center" />
+                                            <TextBlock Text="File missing" FontSize="{StaticResource FontSizeXs}" FontWeight="Medium" Foreground="{StaticResource MediaOverlayTertiaryBrush}" />
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <!-- Bottom gradient + labels -->
+                                    <Grid VerticalAlignment="Bottom" Height="60">
+                                        <Grid.Background>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                <GradientStop Color="#00000000" Offset="0" />
+                                                <GradientStop Color="#B3000000" Offset="1" />
+                                            </LinearGradientBrush>
+                                        </Grid.Background>
+                                        <StackPanel VerticalAlignment="Bottom" Margin="10,0,10,8" Spacing="2">
+                                            <TextBlock
+                                                Text="{x:Bind Name}"
+                                                FontSize="{StaticResource FontSizeSmMd}"
+                                                Foreground="{StaticResource MediaOverlayPrimaryBrush}"
+                                                TextTrimming="CharacterEllipsis" />
+                                            <TextBlock
+                                                Text="{x:Bind CreatedRelative}"
+                                                FontSize="{StaticResource FontSizeXs}"
+                                                Foreground="{StaticResource MediaOverlaySecondaryBrush}"
+                                                Opacity="0.5" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Grid>
+                            </DataTemplate>
+                        </GridView.ItemTemplate>
+                    </GridView>
+
+                    <StackPanel
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="8"
+                        Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay}">
+                        <FontIcon Glyph="&#xE8B2;" FontSize="{StaticResource FontSizeDisplay}" Foreground="{ThemeResource TextMutedBrush}" HorizontalAlignment="Center" />
+                        <TextBlock Text="No projects yet" FontSize="{StaticResource FontSizeMdLg}" Foreground="{ThemeResource TextTertiaryBrush}" HorizontalAlignment="Center" />
+                        <TextBlock Text="Create a new project to get started." FontSize="{StaticResource FontSizeSmMd}" Foreground="{ThemeResource TextMutedBrush}" HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</Window>

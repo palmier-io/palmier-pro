@@ -1,0 +1,51 @@
+<Window
+    x:Class="PalmierPro.App.Editor.ProjectWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:PalmierPro.App.Editor">
+
+    <Grid Background="{ThemeResource BackgroundSurfaceBrush}" Padding="24,44,24,24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TextBlock
+            x:Name="ProjectNameText"
+            Grid.Row="0"
+            FontSize="{StaticResource FontSizeTitle1}"
+            FontWeight="Light"
+            Foreground="{ThemeResource TextPrimaryBrush}" />
+
+        <TextBlock
+            Grid.Row="1"
+            Text="The timeline editor arrives in Phase 3. Project contents load and save through the shared .palmier package pipeline."
+            FontSize="{StaticResource FontSizeSmMd}"
+            Foreground="{ThemeResource TextTertiaryBrush}"
+            Margin="0,6,0,16"
+            TextWrapping="Wrap" />
+
+        <ListView
+            x:Name="TimelinesList"
+            Grid.Row="2"
+            SelectionMode="None"
+            ItemsSource="{x:Bind Timelines}">
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="local:TimelineSummary">
+                    <Grid Padding="12,10" Margin="0,2" CornerRadius="{StaticResource RadiusSm}" Background="{ThemeResource BackgroundRaisedBrush}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Spacing="2">
+                            <TextBlock Text="{x:Bind Name}" FontSize="{StaticResource FontSizeMd}" Foreground="{ThemeResource TextPrimaryBrush}" />
+                            <TextBlock Text="{x:Bind Detail}" FontSize="{StaticResource FontSizeSm}" Foreground="{ThemeResource TextMutedBrush}" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" Text="{x:Bind DurationText}" FontSize="{StaticResource FontSizeSm}" Foreground="{ThemeResource AccentTimecodeBrush}" VerticalAlignment="Center" FontFamily="Consolas" />
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+    </Grid>
+</Window>
