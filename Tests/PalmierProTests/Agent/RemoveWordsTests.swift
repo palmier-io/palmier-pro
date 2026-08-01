@@ -63,6 +63,96 @@ struct RemoveWordsParamTests {
             _ = try ToolExecutor.parseWordMatches(["..."])
         }
     }
+
+    @Test func rejectsRememberedScopeFromAnotherTimeline() async {
+        let h = ToolHarness()
+        h.executor.lastTranscriptSession = TranscriptSession(
+            context: .init(provider: .local, preferredLocale: nil),
+            scope: .automatic,
+            editor: h.editor
+        )
+        let second = Fixtures.timeline()
+        h.editor.timelines.append(second)
+        h.editor.activateTimeline(second.id)
+
+        let result = await h.runRaw("remove_words", args: ["words": [0]])
+
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("different timeline"))
+        #expect(ToolHarness.textOf(result).contains("Call get_transcript again"))
+    }
+
+    @Test func rejectsRememberedScopeWhoseTrackDisappeared() async {
+        let clip = Fixtures.clip(id: "voice", mediaType: .audio, start: 0, duration: 30)
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.audioTrack(id: "deleted-track", clips: [clip]),
+        ]))
+        let scope = TranscriptionScope.track(id: "deleted-track")
+        h.executor.lastTranscriptSession = TranscriptSession(
+            context: .init(provider: .local, preferredLocale: nil),
+            scope: scope,
+            editor: h.editor
+        )
+        h.editor.timeline.tracks = []
+
+        let result = await h.runRaw("remove_words", args: ["words": [0]])
+
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("timeline sources"))
+        #expect(ToolHarness.textOf(result).contains("Call get_transcript again"))
+    }
+
+    @Test func textMatchesRecomputeAfterTimelineSourcesChange() async {
+        let clip = Fixtures.clip(id: "voice", mediaType: .audio, start: 0, duration: 30)
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.audioTrack(clips: [clip])]))
+        let scope = TranscriptionScope.automatic
+        h.executor.lastTranscriptSession = TranscriptSession(
+            context: .init(provider: .local, preferredLocale: nil),
+            scope: scope,
+            editor: h.editor
+        )
+        h.editor.timeline.tracks[0].clips[0].startFrame = 10
+
+        let result = await h.runRaw("remove_words", args: ["matches": ["um"]])
+
+        #expect(result.isError)
+        #expect(!ToolHarness.textOf(result).contains("timeline sources"))
+        #expect(!ToolHarness.textOf(result).contains("different timeline"))
+    }
+
+    @Test func textMatchesFallBackToAutomaticOnAnotherTimeline() async {
+        let h = ToolHarness()
+        h.executor.lastTranscriptSession = TranscriptSession(
+            context: .init(provider: .local, preferredLocale: nil),
+            scope: .automatic,
+            editor: h.editor
+        )
+        let second = Fixtures.timeline()
+        h.editor.timelines.append(second)
+        h.editor.activateTimeline(second.id)
+
+        let result = await h.runRaw("remove_words", args: ["matches": ["um"]])
+
+        #expect(result.isError)
+        #expect(!ToolHarness.textOf(result).contains("different timeline"))
+    }
+
+    @Test func wordMappingSnapshotIgnoresUnrelatedClipProperties() {
+        let clip = Fixtures.clip(id: "voice", mediaType: .audio, start: 0, duration: 30)
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.audioTrack(clips: [clip])]))
+        let session = TranscriptSession(
+            context: .init(provider: .local, preferredLocale: nil),
+            scope: .automatic,
+            editor: h.editor
+        )
+
+        h.editor.timeline.tracks[0].clips[0].volume = 0.5
+        h.editor.timeline.tracks[0].clips[0].transform.centerX = 0.25
+        #expect(session.hasSameWordMapping(in: h.editor))
+
+        h.editor.timeline.tracks[0].clips[0].trimStartFrame = 1
+        #expect(!session.hasSameWordMapping(in: h.editor))
+    }
 }
 
 @Suite("remove_silence — param validation")

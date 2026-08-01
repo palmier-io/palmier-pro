@@ -1074,12 +1074,6 @@ extension ToolExecutor {
 
     // MARK: manage_tracks
 
-    private static func exactTrackIndex(_ raw: Any?) -> Int? {
-        guard let raw, !isJSONBoolean(raw),
-              let value = (raw as? NSNumber)?.doubleValue, value.rounded() == value else { return nil }
-        return Int(exactly: value)
-    }
-
     func manageTracks(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         try validateUnknownKeys(args, allowed: ["reorder", "set", "remove"], path: "manage_tracks")
         let tracks = editor.timeline.tracks
@@ -1098,7 +1092,7 @@ extension ToolExecutor {
                 }
                 return id
             }
-            guard entry["trackId"] == nil, let index = Self.exactTrackIndex(entry["index"]) else {
+            guard entry["trackId"] == nil, let index = exactJSONInt(entry["index"]) else {
                 throw ToolError("\(path): pass one current trackId or index")
             }
             return try trackId(index, path)
@@ -1109,7 +1103,7 @@ extension ToolExecutor {
             guard let entry = raw as? [String: Any] else { throw ToolError("reorder[\(i)] must be an object") }
             let path = "reorder[\(i)]"
             try validateUnknownKeys(entry, allowed: ["trackId", "index", "to"], path: path)
-            guard let to = Self.exactTrackIndex(entry["to"]) else {
+            guard let to = exactJSONInt(entry["to"]) else {
                 throw ToolError("\(path): 'to' is required and must be an integer")
             }
             let id = try trackId(entry, path)
@@ -1142,7 +1136,7 @@ extension ToolExecutor {
                 removeIds.append(try trackId(entry, path))
                 continue
             }
-            guard let index = Self.exactTrackIndex(raw) else {
+            guard let index = exactJSONInt(raw) else {
                 throw ToolError("\(path) must be an integer index or track selector object")
             }
             removeIds.append(try trackId(index, path))

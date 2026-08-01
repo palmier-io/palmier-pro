@@ -81,26 +81,55 @@ extension EditorViewModel {
             let selectedIds = Set(ids)
             pool = clips.filter { selectedIds.contains($0.id) }
         }
-        return captionTargets(in: pool)
+        return captionTargets(
+            in: pool,
+            linkGroupsWithAudio: linkGroupsWithAudio(in: pool),
+            allowAnyMulticamMic: !ids.isEmpty
+        )
+    }
+
+    /// Targets for a clip scope explicitly named by an agent tool. Like any explicit selection,
+    /// this may choose any multicam mic; it additionally rejects a linked video when its
+    /// audio-side clip exists elsewhere on the timeline.
+    func transcriptionTargets(clipIds: [String]) -> [Clip] {
+        let clips = timeline.tracks.flatMap(\.clips)
+        let selectedIds = Set(clipIds)
+        let pool = clips.filter { selectedIds.contains($0.id) }
+        return captionTargets(
+            in: pool,
+            linkGroupsWithAudio: linkGroupsWithAudio(in: clips),
+            allowAnyMulticamMic: true
+        )
     }
 
     func captionTargets(trackIds: Set<String>) -> [Clip] {
         guard !trackIds.isEmpty else { return [] }
-        let audioGroups = Set(timeline.tracks.flatMap(\.clips).filter { $0.mediaType == .audio }.compactMap(\.linkGroupId))
+        let clips = timeline.tracks.flatMap(\.clips)
         let pool = timeline.tracks
             .filter { trackIds.contains($0.id) }
             .flatMap(\.clips)
-            .filter { !($0.mediaType == .video && $0.linkGroupId.map(audioGroups.contains) == true) }
-        return captionTargets(in: pool)
+        return captionTargets(
+            in: pool,
+            linkGroupsWithAudio: linkGroupsWithAudio(in: clips),
+            allowAnyMulticamMic: true
+        )
     }
 
-    private func captionTargets(in pool: [Clip]) -> [Clip] {
-        let linkGroupsWithAudio = Set(pool.filter { $0.mediaType == .audio }.compactMap(\.linkGroupId))
+    private func linkGroupsWithAudio(in clips: [Clip]) -> Set<String> {
+        Set(clips.filter { $0.mediaType == .audio }.compactMap(\.linkGroupId))
+    }
+
+    private func captionTargets(
+        in pool: [Clip],
+        linkGroupsWithAudio: Set<String>,
+        allowAnyMulticamMic: Bool
+    ) -> [Clip] {
         return pool
             .filter { clip in
                 guard captionCanTranscribe(clip) else { return false }
                 if let group = multicamGroup(of: clip) {
-                    return clip.mediaType == .audio && clip.mediaRef == group.master?.mediaRef
+                    return clip.mediaType == .audio
+                        && (allowAnyMulticamMic || clip.mediaRef == group.master?.mediaRef)
                 }
                 guard clip.mediaType == .video, let groupId = clip.linkGroupId else { return true }
                 return !linkGroupsWithAudio.contains(groupId)

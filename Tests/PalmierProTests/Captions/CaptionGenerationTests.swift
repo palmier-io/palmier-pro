@@ -181,6 +181,42 @@ private func mediaAsset(_ id: String, hasAudio: Bool = true) -> MediaAsset {
         #expect(e.captionTargets(trackIds: ["audio-track"]).map(\.id) == ["audio"])
     }
 
+    @Test func explicitSelectionsCanChooseNonMasterMulticamMic() {
+        var masterClip = Fixtures.clip(id: "master", mediaRef: "lapel", mediaType: .audio, start: 0, duration: 100)
+        var roomClip = Fixtures.clip(id: "room", mediaRef: "room", mediaType: .audio, start: 0, duration: 100)
+        masterClip.multicamGroupId = "group"
+        roomClip.multicamGroupId = "group"
+        let master = MulticamSource.Member(
+            id: "master-member",
+            mediaRef: "lapel",
+            kind: .mic,
+            angleLabel: "lapel",
+            sync: .init(confidence: 1)
+        )
+        let room = MulticamSource.Member(
+            mediaRef: "room",
+            kind: .mic,
+            angleLabel: "room",
+            sync: .init(confidence: 1)
+        )
+        let e = editor([
+            Fixtures.audioTrack(id: "master-track", clips: [masterClip]),
+            Fixtures.audioTrack(id: "room-track", clips: [roomClip]),
+        ])
+        e.multicamGroups = [MulticamSource(
+            id: "group",
+            name: "Interview",
+            members: [master, room],
+            masterMemberId: master.id
+        )]
+
+        #expect(e.captionTargets(ids: []).map(\.id) == ["master"])
+        #expect(e.captionTargets(ids: ["room"]).map(\.id) == ["room"])
+        #expect(e.captionTargets(ids: ["master", "room"]).map(\.id) == ["master", "room"])
+        #expect(e.transcriptionTargets(clipIds: ["room"]).map(\.id) == ["room"])
+        #expect(e.captionTargets(trackIds: ["room-track"]).map(\.id) == ["room"])
+    }
+
     @Test func mediaMetadataFiltersCaptionSources() {
         let silent = Fixtures.clip(id: "silent", mediaRef: "silent-media", mediaType: .video, start: 0, duration: 100)
         let linkedAudio = Fixtures.clip(id: "audio", mediaRef: "video-media", mediaType: .audio, start: 120, duration: 100)

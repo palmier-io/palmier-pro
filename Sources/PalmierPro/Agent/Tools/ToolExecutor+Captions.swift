@@ -3,7 +3,7 @@ import Foundation
 
 extension ToolExecutor {
     private static let addCaptionsAllowedKeys: Set<String> = Set([
-        "style", "transform", "censorProfanity", "language", "animation", "highlightColor", "maxWords",
+        "style", "transform", "censorProfanity", "language", "animation", "highlightColor", "maxWords", "trackIndex",
     ])
 
     func addCaptions(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
@@ -28,8 +28,10 @@ extension ToolExecutor {
             maxWords = n
         }
 
+        let scope = try resolveTranscriptionScope(editor, args, path: "add_captions")
+        let cloudRequest = scope.captionRequest(in: editor, provider: .cloud)
         let context = try await transcriptionContext(args, path: "add_captions") {
-            await editor.captionCloudCreditCost(for: .init(autoDetect: true, provider: .cloud))
+            await editor.captionCloudCreditCost(for: cloudRequest)
         }
         let provider = context.provider
         if provider == .cloud {
@@ -38,18 +40,13 @@ extension ToolExecutor {
             }
         }
 
-        let request = EditorViewModel.CaptionRequest(
-            sourceClipIds: [],
-            autoDetect: true,
-            style: style,
-            center: center,
-            textCase: .auto,
-            censorProfanity: args.bool("censorProfanity") ?? false,
-            locale: context.preferredLocale,
-            maxWords: maxWords,
-            provider: provider,
-            animation: animation
-        )
+        var request = scope.captionRequest(in: editor, provider: provider)
+        request.style = style
+        request.center = center
+        request.censorProfanity = args.bool("censorProfanity") ?? false
+        request.locale = context.preferredLocale
+        request.maxWords = maxWords
+        request.animation = animation
 
         try await Self.validateCloudTranscriptionAccess(for: request, in: editor)
 
