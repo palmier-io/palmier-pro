@@ -8,23 +8,32 @@ enum DeadAirMaskResolver {
         quietMaskForMedia: (String) -> [Bool]?
     ) -> [Bool]? {
         guard let member = group.member(mediaRef: clip.mediaRef),
-              clip.mediaType == .audio, !group.mics.isEmpty else { return nil }
+              clip.mediaType == .audio else { return nil }
 
+        let microphones = group.mics
+        guard !microphones.isEmpty else { return nil }
         let cellSeconds = VoiceActivity.chunkDuration
-        var masks: [[Bool]] = []
-        for mic in group.mics {
-            guard let mask = quietMaskForMedia(mic.mediaRef), !mask.isEmpty else { return nil }
-            let shift = Int((mic.sync.offsetSeconds / cellSeconds).rounded())
-            var shifted = [Bool](repeating: true, count: max(0, mask.count + shift))
-            for (i, dead) in mask.enumerated() where i + shift >= 0 && i + shift < shifted.count {
-                shifted[i + shift] = dead
-            }
-            masks.append(shifted)
+        var alignedMasks: [(values: [Bool], offset: Int)] = []
+        alignedMasks.reserveCapacity(microphones.count)
+        for microphone in microphones {
+            guard let values = quietMaskForMedia(microphone.mediaRef),
+                  !values.isEmpty else { return nil }
+            let offset = Int((microphone.sync.offsetSeconds / cellSeconds).rounded())
+            alignedMasks.append((values, offset))
         }
 
-        let groupMask = (0..<(masks.map(\.count).max() ?? 0)).map { i in
-            masks.allSatisfy { i >= $0.count || $0[i] }
+        let count = alignedMasks.reduce(0) { max($0, $1.values.count + $1.offset) }
+        var groupMask = [Bool](repeating: true, count: count)
+        for i in 0..<count {
+            for mask in alignedMasks {
+                let sourceIndex = i - mask.offset
+                if mask.values.indices.contains(sourceIndex), !mask.values[sourceIndex] {
+                    groupMask[i] = false
+                    break
+                }
+            }
         }
+
         let shift = Int((member.sync.offsetSeconds / cellSeconds).rounded())
         let memberMask: [Bool]
         if shift > 0 {
@@ -35,6 +44,62 @@ enum DeadAirMaskResolver {
             memberMask = groupMask
         }
         return SilenceRemovalPlanner.removableMask(from: memberMask, settings: settings)
+    }
+}
+
+@MainActor
+final class DeadAirMaskCache {
+    struct Key: Hashable {
+        struct Member: Hashable {
+            let id: String
+            let mediaRef: String
+            let offsetSeconds: Double
+
+            init(_ member: MulticamSource.Member) {
+                id = member.id
+                mediaRef = member.mediaRef
+                offsetSeconds = member.sync.offsetSeconds
+            }
+        }
+
+        let groupID: String
+        let member: Member
+        let microphones: [Member]
+        let minimumPauseSeconds: Double
+        let speechPaddingSeconds: Double
+
+        init(
+            group: MulticamSource,
+            member: MulticamSource.Member,
+            settings: SilenceRemovalSettings
+        ) {
+            groupID = group.id
+            self.member = Member(member)
+            microphones = group.mics.map(Member.init)
+            minimumPauseSeconds = settings.minimumPauseSeconds
+            speechPaddingSeconds = settings.speechPaddingSeconds
+        }
+    }
+
+    private static let capacity = 256
+    private var values: [Key: [Bool]] = [:]
+    private var insertionOrder: [Key] = []
+
+    func value(for key: Key, build: () -> [Bool]?) -> [Bool]? {
+        if let cached = values[key] { return cached }
+        guard let value = build() else { return nil }
+        if values.count >= Self.capacity, let evicted = insertionOrder.first {
+            values.removeValue(forKey: evicted)
+            insertionOrder.removeFirst()
+        }
+        values[key] = value
+        insertionOrder.append(key)
+        return value
+    }
+
+    func reset() {
+        values.removeAll(keepingCapacity: true)
+        insertionOrder.removeAll(keepingCapacity: true)
     }
 }
 
@@ -184,12 +249,20 @@ extension EditorViewModel {
     ) -> [Range<Double>] {
         let mask: [Bool]?
         if let group = multicamGroup(of: clip) {
-            mask = DeadAirMaskResolver.mask(
-                for: clip,
-                in: group,
-                settings: settings,
-                quietMaskForMedia: { mediaVisualCache.quietNonSpeechMask(for: $0) }
+            guard let member = group.member(mediaRef: clip.mediaRef) else { return [] }
+            let key = DeadAirMaskCache.Key(
+                group: group,
+                member: member,
+                settings: settings
             )
+            mask = deadAirMaskCache.value(for: key) {
+                DeadAirMaskResolver.mask(
+                    for: clip,
+                    in: group,
+                    settings: settings,
+                    quietMaskForMedia: { mediaVisualCache.quietNonSpeechMask(for: $0) }
+                )
+            }
         } else {
             mask = mediaVisualCache.deadAirMask(for: clip.mediaRef, settings: settings)
         }
