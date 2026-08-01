@@ -129,7 +129,6 @@ final class ExportQueue {
     func enqueuePalmierProject(
         projectFile: ProjectFile,
         manifest: MediaManifest,
-        generationLog: GenerationLog,
         sourceProjectURL: URL?,
         outputURL: URL,
         source: ExportJobSource,
@@ -140,7 +139,6 @@ final class ExportQueue {
             await service.exportPalmierProject(
                 projectFile: projectFile,
                 manifest: manifest,
-                generationLog: generationLog,
                 sourceProjectURL: sourceProjectURL,
                 outputURL: outputURL,
                 analyticsContext: ExportAnalyticsContext(source: source.rawValue, projectId: analyticsProjectID)

@@ -27,7 +27,6 @@ enum PalmierProjectExporter {
     static func export(
         projectFile: ProjectFile,
         manifest: MediaManifest,
-        generationLog: GenerationLog,
         sourceProjectURL: URL?,
         to destURL: URL,
         progress: (@Sendable (Double) -> Void)? = nil
@@ -82,7 +81,6 @@ enum PalmierProjectExporter {
         try Task.checkCancellation()
         try encoder.encode(projectFile).write(to: staging.appendingPathComponent(Project.timelineFilename))
         try encoder.encode(newManifest).write(to: staging.appendingPathComponent(Project.manifestFilename))
-        try encoder.encode(generationLog).write(to: staging.appendingPathComponent(Project.generationLogFilename))
 
         // Carry across non-media bundle contents (thumbnail, chat history) when present.
         if let sourceProjectURL {

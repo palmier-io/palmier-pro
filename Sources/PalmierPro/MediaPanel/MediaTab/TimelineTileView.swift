@@ -26,7 +26,7 @@ struct TimelineTileView: View {
             onCancelRename: onCancelRename
         ) {
             RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                .fill(Color(white: 1.0, opacity: AppTheme.Opacity.subtle))
+                .fill(AppTheme.Interaction.fill(AppTheme.Opacity.subtle))
             if let posterImage {
                 GeometryReader { geo in
                     Image(nsImage: posterImage)
@@ -48,11 +48,11 @@ struct TimelineTileView: View {
                 timelineBadge
             }
         } menuItems: {
-            Button("Open") { onOpen() }
-            Button("Rename") { isRenaming = true }
-            Button("Duplicate") { onDuplicate() }
+            Button(L10n.string("Open")) { onOpen() }
+            Button(L10n.string("Rename")) { isRenaming = true }
+            Button(L10n.string("Duplicate")) { onDuplicate() }
             Divider()
-            Button("Delete", role: .destructive) { onDelete() }
+            Button(L10n.string("Delete"), role: .destructive) { onDelete() }
                 .disabled(!canDelete)
         }
     }
@@ -64,7 +64,9 @@ struct TimelineTileView: View {
                 Image(systemName: "film.stack")
                     .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
                     .tileBadge()
-                    .foregroundStyle(isActive ? AppTheme.Accent.primary : .white)
+                    .foregroundStyle(isActive
+                        ? AppTheme.MediaOverlay.primaryColor
+                        : AppTheme.MediaOverlay.secondaryColor)
                 Spacer()
             }
             Spacer()

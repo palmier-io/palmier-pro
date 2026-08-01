@@ -1,17 +1,20 @@
 #!/bin/bash
 # scripts/dev.sh — build the debug bundle, launch it, and stream its OSLog.
+# Usage: scripts/dev.sh [--speech] [--telemetry] [--all] [--no-stream]
 
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 stream=true
+bundle_args=(debug --fast)
 for arg in "$@"; do
     case "$arg" in
         --no-stream) stream=false ;;
+        *) bundle_args+=("$arg") ;;
     esac
 done
 
-"$ROOT/scripts/bundle.sh" debug --fast
+"$ROOT/scripts/bundle.sh" "${bundle_args[@]}"
 
 if ! $stream; then
     open "$ROOT/.build/PalmierPro.app"

@@ -544,6 +544,53 @@ struct ClipPropertyCommitTests {
         undoManager.undo()
         #expect(e.timeline.tracks[0].clips.allSatisfy { $0.textAnimation == nil })
         #expect(undoManager.canUndo == false)
+        undoManager.redo()
+        #expect(e.timeline.tracks[0].clips.allSatisfy { $0.textAnimation?.preset == .wordPop })
+        #expect(undoManager.canRedo == false)
+    }
+
+    @Test func bulkClipPropertyPreviewCommitAndUndoResolveAcrossTracks() {
+        let a = Fixtures.clip(id: "a", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
+        let b = Fixtures.clip(id: "b", mediaRef: "text", mediaType: .text, start: 30, duration: 30)
+        let c = Fixtures.clip(id: "c", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
+        let e = editor([
+            Fixtures.videoTrack(clips: [a, b]),
+            Fixtures.videoTrack(clips: [c]),
+        ])
+        let undoManager = UndoManager()
+        e.undo.attach(undoManager)
+
+        let selectedIds = ["c", "missing", "a"]
+        e.applyClipProperties(clipIds: selectedIds) { $0.opacity = 0.25 }
+        e.commitClipProperties(clipIds: selectedIds) { $0.opacity = 0.25 }
+
+        #expect(e.clipFor(id: "a")?.opacity == 0.25)
+        #expect(e.clipFor(id: "b")?.opacity == 1)
+        #expect(e.clipFor(id: "c")?.opacity == 0.25)
+        undoManager.undo()
+        #expect(e.clipFor(id: "a")?.opacity == 1)
+        #expect(e.clipFor(id: "b")?.opacity == 1)
+        #expect(e.clipFor(id: "c")?.opacity == 1)
+        #expect(undoManager.canUndo == false)
+    }
+
+    @Test func bulkClipPropertyRevertRestoresMixedTextStylesAcrossTracks() {
+        var a = Fixtures.clip(id: "a", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
+        var b = Fixtures.clip(id: "b", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
+        a.textStyle = TextStyle(fontName: "Helvetica", fontSize: 48)
+        b.textStyle = TextStyle(fontName: "Avenir", fontSize: 64)
+        let e = editor([
+            Fixtures.videoTrack(clips: [a]),
+            Fixtures.videoTrack(clips: [b]),
+        ])
+
+        e.applyTextStyles(clipIds: ["a", "b"], fitToContent: true) {
+            $0.fontName = "Courier"
+        }
+        e.revertClipProperties(clipIds: ["b", "missing", "a"])
+
+        #expect(e.clipFor(id: "a") == a)
+        #expect(e.clipFor(id: "b") == b)
     }
 
     @Test func cancelDebouncedCommitPreventsPendingHighlightWrite() async throws {

@@ -9,7 +9,7 @@ struct UpdateOverlay: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack {
-                Color.black.opacity(AppTheme.Opacity.strong)
+                AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.strong)
                     .ignoresSafeArea()
                 card
                     .frame(width: AppTheme.ComponentSize.updateOverlayWidth)
@@ -22,7 +22,7 @@ struct UpdateOverlay: View {
 
     private var card: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
-            Text("What's New in v\(entry.version)")
+            Text(L10n.string("What's New in v\(entry.version)"))
                 .font(.system(size: AppTheme.FontSize.title2, weight: .light))
                 .tracking(AppTheme.Tracking.tight)
                 .foregroundStyle(AppTheme.Text.primaryColor)
@@ -35,7 +35,7 @@ struct UpdateOverlay: View {
                 if let changelogURL {
                     Link(destination: changelogURL) {
                         HStack(spacing: AppTheme.Spacing.xxs) {
-                            Text("Full changelog")
+                            Text(L10n.string("Full changelog"))
                             Image(systemName: "arrow.up.right")
                         }
                         .font(.system(size: AppTheme.FontSize.smMd))
@@ -44,7 +44,7 @@ struct UpdateOverlay: View {
                     .buttonStyle(.plain)
                 }
                 Spacer()
-                Button("Continue") { onDismiss() }
+                Button(L10n.string("Continue")) { onDismiss() }
                     .buttonStyle(.capsule(.prominent, size: .regular))
                     .keyboardShortcut(.defaultAction)
             }
@@ -75,16 +75,16 @@ struct UpdateOverlay: View {
     private func section(_ section: ChangelogSection) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
             if let heading = section.heading, !heading.isEmpty {
-                Text(heading)
+                Text(verbatim: heading)
                     .font(.system(size: AppTheme.FontSize.xl, weight: .light))
                     .tracking(AppTheme.Tracking.tight)
                     .foregroundStyle(AppTheme.Text.primaryColor)
             }
             ForEach(section.items, id: \.self) { item in
                 HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
-                    Text("•")
+                    Text(verbatim: "•")
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    Text(item)
+                    Text(verbatim: item)
                         .font(.system(size: AppTheme.FontSize.smMd))
                         .foregroundStyle(AppTheme.Text.secondaryColor)
                         .fixedSize(horizontal: false, vertical: true)

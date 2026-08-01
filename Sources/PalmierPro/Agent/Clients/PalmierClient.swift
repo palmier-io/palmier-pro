@@ -8,12 +8,19 @@ struct PalmierClient: AgentClient {
     func stream(
         system: String,
         tools: [AnthropicToolSchema],
-        messages: [AnthropicMessage]
+        messages: [AnthropicMessage],
+        context: AgentRequestContext
     ) -> AsyncThrowingStream<AnthropicStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    try await run(system: system, tools: tools, messages: messages, continuation: continuation)
+                    try await run(
+                        system: system,
+                        tools: tools,
+                        messages: messages,
+                        context: context,
+                        continuation: continuation
+                    )
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -27,6 +34,7 @@ struct PalmierClient: AgentClient {
         system: String,
         tools: [AnthropicToolSchema],
         messages: [AnthropicMessage],
+        context: AgentRequestContext,
         continuation: AsyncThrowingStream<AnthropicStreamEvent, Error>.Continuation
     ) async throws {
         guard let baseURL = BackendConfig.convexHttpURL else {
@@ -46,6 +54,7 @@ struct PalmierClient: AgentClient {
         request.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "content-type")
         request.setValue("text/event-stream", forHTTPHeaderField: "accept")
+        context.apply(to: &request, telemetryEnabled: Analytics.isEnabled)
         request.httpBody = try JSONSerialization.data(
             withJSONObject: AnthropicRequestBody.build(
                 model: model, maxTokens: maxTokens, system: system, tools: tools, messages: messages

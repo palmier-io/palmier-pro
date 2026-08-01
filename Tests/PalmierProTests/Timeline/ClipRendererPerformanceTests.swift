@@ -51,4 +51,34 @@ import Testing
 
         #expect(duration < .seconds(2))
     }
+
+    @Test func compactClipsDoNotResolveSilenceRanges() throws {
+        let context = try #require(CGContext(
+            data: nil,
+            width: 1,
+            height: 64,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        let clip = Fixtures.clip(mediaRef: "audio", mediaType: .audio, start: 0, duration: 30)
+        var didResolve = false
+        func ranges() -> [Range<Double>] {
+            didResolve = true
+            return []
+        }
+
+        ClipRenderer.draw(
+            clip,
+            type: .audio,
+            in: CGRect(x: 0, y: 0, width: 0.5, height: 64),
+            isSelected: false,
+            context: context,
+            deadAirRanges: ranges(),
+            fps: 30
+        )
+
+        #expect(!didResolve)
+    }
 }

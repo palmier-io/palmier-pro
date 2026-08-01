@@ -6,7 +6,7 @@ extension InspectorView {
     func audioTabContent(audioClips: [Clip], hasNonTextVisualClips: Bool) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
             levelsSection(audios: audioClips)
-            EditorPanelGroup("Enhance", contentSpacing: AppTheme.Spacing.smMd) {
+            EditorPanelGroup(L10n.string("Enhance"), contentSpacing: AppTheme.Spacing.smMd) {
                 denoiseRow(audios: audioClips)
             }
             if !hasNonTextVisualClips {
@@ -18,7 +18,7 @@ extension InspectorView {
     private func levelsSection(audios: [Clip]) -> some View {
         let single = audios.count == 1 ? audios.first : nil
         return EditorPanelGroup(
-            "Levels",
+            L10n.string("Levels"),
             isExpanded: $audioLevelsExpanded,
             headerAccessory: {
                 if audioLevelsExpanded {
@@ -30,15 +30,15 @@ extension InspectorView {
                 keyframesSplitContent(clip: clip) {
                     VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
                         volumeRow(audios: audios)
-                        fadeRow(label: "Fade In", clips: audios, edge: .left)
-                        fadeRow(label: "Fade Out", clips: audios, edge: .right)
+                        fadeRow(label: L10n.string("Fade In"), clips: audios, edge: .left)
+                        fadeRow(label: L10n.string("Fade Out"), clips: audios, edge: .right)
                     }
                 }
             } else {
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
                     volumeRow(audios: audios)
-                    fadeRow(label: "Fade In", clips: audios, edge: .left)
-                    fadeRow(label: "Fade Out", clips: audios, edge: .right)
+                    fadeRow(label: L10n.string("Fade In"), clips: audios, edge: .left)
+                    fadeRow(label: L10n.string("Fade Out"), clips: audios, edge: .right)
                 }
             }
         }
@@ -48,7 +48,7 @@ extension InspectorView {
     private func volumeRow(audios: [Clip]) -> some View {
         let single = audios.count == 1 ? audios.first : nil
         animatableRow(
-            label: "Volume",
+            label: L10n.string("Volume"),
             clipId: single?.id,
             property: .volume,
             onReset: {
@@ -89,7 +89,7 @@ extension InspectorView {
             }
             VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
                 propertyRow(
-                    label: "Denoise",
+                    label: L10n.string("Denoise"),
                     onReset: {
                         editor.setDenoise(
                             clipIds: Set(audios.map(\.id)),
@@ -115,9 +115,9 @@ extension InspectorView {
                                     actionName: "Change Denoise Strength"
                                 )
                             }
-                            .help("Blends denoised and original audio — lower this if voices sound thin or over-compressed.")
+                            .help(L10n.string("Blends denoised and original audio — lower this if voices sound thin or over-compressed."))
                         }
-                        Toggle("", isOn: Binding(
+                        Toggle(String(), isOn: Binding(
                             get: { allOn },
                             set: { enabled in
                                 editor.setDenoise(
@@ -130,20 +130,20 @@ extension InspectorView {
                         .toggleStyle(.switch)
                         .controlSize(.mini)
                         .labelsHidden()
-                        .accessibilityLabel("Denoise")
+                        .accessibilityLabel(L10n.string("Denoise"))
                     }
                 }
-                .help("Removes background noise from this audio using an on-device model.")
+                .help(L10n.string("Removes background noise from this audio using an on-device model."))
                 if baking {
                     HStack(spacing: AppTheme.Spacing.xs) {
                         ProgressView()
                             .controlSize(.small)
-                        Text("Removing background noise…")
+                        Text(L10n.string("Removing background noise…"))
                             .font(.system(size: AppTheme.FontSize.xs))
                             .foregroundStyle(AppTheme.Text.mutedColor)
                     }
                 } else if failed {
-                    Text("Denoise failed. Playback uses the original audio — adjust Strength to retry.")
+                    Text(L10n.string("Denoise failed. Playback uses the original audio — adjust Strength to retry."))
                         .font(.system(size: AppTheme.FontSize.xs))
                         .foregroundStyle(AppTheme.Status.errorColor)
                 }

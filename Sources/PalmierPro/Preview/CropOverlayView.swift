@@ -5,7 +5,7 @@ struct CropOverlayView: View {
 
     private let handleSize: CGFloat = AppTheme.Spacing.smMd
     private let borderColor = AppTheme.Accent.timecodeColor
-    private let dimColor = Color.black.opacity(AppTheme.Opacity.strong)
+    private let dimColor = AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.strong)
     private let guideColor = AppTheme.Accent.timecodeColor.opacity(AppTheme.Opacity.medium)
 
     var body: some View {

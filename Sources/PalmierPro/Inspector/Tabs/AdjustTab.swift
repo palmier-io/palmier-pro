@@ -36,81 +36,81 @@ extension InspectorView {
     /// Basic › Tone.
     private var toneControls: [EffectControl] {
         [
-            EffectControl(effectId: "color.exposure", paramKey: "ev"),
-            EffectControl(effectId: "color.contrast", paramKey: "amount"),
-            EffectControl(effectId: "color.highlightsShadows", paramKey: "highlights"),
-            EffectControl(effectId: "color.highlightsShadows", paramKey: "shadows"),
-            EffectControl(effectId: "color.blacksWhites", paramKey: "blacks"),
-            EffectControl(effectId: "color.blacksWhites", paramKey: "whites"),
+            EffectControl(effectId: "color.exposure", paramKey: "ev", label: L10n.string("Exposure")),
+            EffectControl(effectId: "color.contrast", paramKey: "amount", label: L10n.string("Contrast")),
+            EffectControl(effectId: "color.highlightsShadows", paramKey: "highlights", label: L10n.string("Highlights")),
+            EffectControl(effectId: "color.highlightsShadows", paramKey: "shadows", label: L10n.string("Shadows")),
+            EffectControl(effectId: "color.blacksWhites", paramKey: "blacks", label: L10n.string("Blacks")),
+            EffectControl(effectId: "color.blacksWhites", paramKey: "whites", label: L10n.string("Whites")),
         ]
     }
 
     /// Basic › White Balance.
     private var whiteBalanceControls: [EffectControl] {
         [
-            EffectControl(effectId: "color.temperature", paramKey: "temperature", gradient: AppTheme.Slider.tempGradient),
-            EffectControl(effectId: "color.temperature", paramKey: "tint", gradient: AppTheme.Slider.tintGradient),
+            EffectControl(effectId: "color.temperature", paramKey: "temperature", label: L10n.string("Temperature"), gradient: AppTheme.Slider.tempGradient),
+            EffectControl(effectId: "color.temperature", paramKey: "tint", label: L10n.string("Tint"), gradient: AppTheme.Slider.tintGradient),
         ]
     }
 
     /// Basic › Presence.
     private var presenceControls: [EffectControl] {
         [
-            EffectControl(effectId: "color.vibrance", paramKey: "amount"),
-            EffectControl(effectId: "color.saturation", paramKey: "amount"),
+            EffectControl(effectId: "color.vibrance", paramKey: "amount", label: L10n.string("Vibrance")),
+            EffectControl(effectId: "color.saturation", paramKey: "amount", label: L10n.string("Saturation")),
         ]
     }
 
     private var blurControls: [EffectControl] {
-        [EffectControl(effectId: "blur.gaussian", paramKey: "radius", label: "Blur")]
+        [EffectControl(effectId: "blur.gaussian", paramKey: "radius", label: L10n.string("Blur"))]
     }
 
     private var vignetteControls: [EffectControl] {
         [
-            EffectControl(effectId: "stylize.vignette", paramKey: "amount", label: "Amount"),
-            EffectControl(effectId: "stylize.vignette", paramKey: "midpoint", label: "Midpoint"),
-            EffectControl(effectId: "stylize.vignette", paramKey: "roundness", label: "Roundness"),
-            EffectControl(effectId: "stylize.vignette", paramKey: "feather", label: "Feather"),
+            EffectControl(effectId: "stylize.vignette", paramKey: "amount", label: L10n.string("Amount")),
+            EffectControl(effectId: "stylize.vignette", paramKey: "midpoint", label: L10n.string("Midpoint")),
+            EffectControl(effectId: "stylize.vignette", paramKey: "roundness", label: L10n.string("Roundness")),
+            EffectControl(effectId: "stylize.vignette", paramKey: "feather", label: L10n.string("Feather")),
         ]
     }
 
     /// Motion blur groups its distance + direction rows under one section.
     private var motionBlurControls: [EffectControl] {
         [
-            EffectControl(effectId: "blur.motion", paramKey: "radius", label: "Amount"),
-            EffectControl(effectId: "blur.motion", paramKey: "angle", label: "Angle"),
+            EffectControl(effectId: "blur.motion", paramKey: "radius", label: L10n.string("Amount")),
+            EffectControl(effectId: "blur.motion", paramKey: "angle", label: L10n.string("Angle")),
         ]
     }
 
     private var glowControls: [EffectControl] {
         [
-            EffectControl(effectId: "stylize.glow", paramKey: "intensity", label: "Intensity"),
-            EffectControl(effectId: "stylize.glow", paramKey: "radius", label: "Radius"),
-            EffectControl(effectId: "stylize.glow", paramKey: "threshold", label: "Threshold"),
-            EffectControl(effectId: "stylize.glow", paramKey: "warmth", label: "Warmth"),
+            EffectControl(effectId: "stylize.glow", paramKey: "intensity", label: L10n.string("Intensity")),
+            EffectControl(effectId: "stylize.glow", paramKey: "radius", label: L10n.string("Radius")),
+            EffectControl(effectId: "stylize.glow", paramKey: "threshold", label: L10n.string("Threshold")),
+            EffectControl(effectId: "stylize.glow", paramKey: "warmth", label: L10n.string("Warmth")),
         ]
     }
 
     private var chromaKeyControls: [EffectControl] {
         [
-            EffectControl(effectId: "key.chroma", paramKey: "tolerance", label: "Range"),
-            EffectControl(effectId: "key.chroma", paramKey: "spill", label: "Spill"),
+            EffectControl(effectId: "key.chroma", paramKey: "tolerance", label: L10n.string("Range")),
+            EffectControl(effectId: "key.chroma", paramKey: "spill", label: L10n.string("Spill")),
         ]
     }
 
     private var grainControls: [EffectControl] {
         [
-            EffectControl(effectId: "stylize.grain", paramKey: "amount", label: "Amount"),
-            EffectControl(effectId: "stylize.grain", paramKey: "size", label: "Size"),
+            EffectControl(effectId: "stylize.grain", paramKey: "amount", label: L10n.string("Amount")),
+            EffectControl(effectId: "stylize.grain", paramKey: "size", label: L10n.string("Size")),
         ]
     }
 
     private var detailControls: [EffectControl] {
         [
-            EffectControl(effectId: "blur.sharpen", paramKey: "amount", label: "Sharpen"),
-            EffectControl(effectId: "blur.noiseReduction", paramKey: "amount", label: "Noise Reduction"),
-            EffectControl(effectId: "detail.clarity", paramKey: "clarity", label: "Clarity"),
-            EffectControl(effectId: "detail.clarity", paramKey: "dehaze", label: "Dehaze"),
+            EffectControl(effectId: "blur.sharpen", paramKey: "amount", label: L10n.string("Sharpen")),
+            EffectControl(effectId: "blur.noiseReduction", paramKey: "amount", label: L10n.string("Noise Reduction")),
+            EffectControl(effectId: "detail.clarity", paramKey: "clarity", label: L10n.string("Clarity")),
+            EffectControl(effectId: "detail.clarity", paramKey: "dehaze", label: L10n.string("Dehaze")),
         ]
     }
 
@@ -126,33 +126,33 @@ extension InspectorView {
     @ViewBuilder
     func effectsTabContent(clips: [Clip]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            adjustSection(title: "Basic Correction", effectIds: basicEffectIds, clips: clips) {
-                adjustSubgroup(title: "Tone", controls: toneControls, clips: clips)
-                adjustSubgroup(title: "White Balance", controls: whiteBalanceControls, clips: clips)
-                adjustSubgroup(title: "Presence", controls: presenceControls, clips: clips)
+            adjustSection(title: L10n.string("Basic Correction"), effectIds: basicEffectIds, clips: clips) {
+                adjustSubgroup(title: L10n.string("Tone"), controls: toneControls, clips: clips)
+                adjustSubgroup(title: L10n.string("White Balance"), controls: whiteBalanceControls, clips: clips)
+                adjustSubgroup(title: L10n.string("Presence"), controls: presenceControls, clips: clips)
             }
-            adjustSection(title: "Curves", effectIds: ["color.curves"], clips: clips) {
+            adjustSection(title: L10n.string("Curves"), effectIds: ["color.curves"], clips: clips) {
                 curvesContent(clips: clips)
             }
-            adjustSection(title: "Color Wheels", effectIds: ["color.wheels"], clips: clips) {
+            adjustSection(title: L10n.string("Color Wheels"), effectIds: ["color.wheels"], clips: clips) {
                 wheelsContent(clips: clips)
             }
-            adjustSection(title: "Hue Curves", effectIds: ["color.hueCurves"], clips: clips) {
+            adjustSection(title: L10n.string("Hue Curves"), effectIds: ["color.hueCurves"], clips: clips) {
                 hueCurvesContent(clips: clips)
             }
-            adjustSection(title: "LUTs", effectIds: ["color.lut"], clips: clips) {
+            adjustSection(title: L10n.string("LUTs"), effectIds: ["color.lut"], clips: clips) {
                 lutContent(clips: clips)
             }
-            adjustSection(title: "Effects", effectIds: effectsEffectIds, clips: clips) {
-                adjustSubgroup(title: "Detail", controls: detailControls, clips: clips)
-                adjustSubgroup(title: "Blur", controls: blurControls, clips: clips)
-                adjustSubgroup(title: "Motion Blur", controls: motionBlurControls, clips: clips)
-                adjustSubgroup(title: "Vignette", controls: vignetteControls, clips: clips)
-                adjustSubgroup(title: "Film Grain", controls: grainControls, clips: clips)
-                adjustSubgroup(title: "Glow", controls: glowControls, clips: clips)
-                adjustSubgroup(title: "Chroma Key", controls: chromaKeyControls, clips: clips)
+            adjustSection(title: L10n.string("Effects"), effectIds: effectsEffectIds, clips: clips) {
+                adjustSubgroup(title: L10n.string("Detail"), controls: detailControls, clips: clips)
+                adjustSubgroup(title: L10n.string("Blur"), controls: blurControls, clips: clips)
+                adjustSubgroup(title: L10n.string("Motion Blur"), controls: motionBlurControls, clips: clips)
+                adjustSubgroup(title: L10n.string("Vignette"), controls: vignetteControls, clips: clips)
+                adjustSubgroup(title: L10n.string("Film Grain"), controls: grainControls, clips: clips)
+                adjustSubgroup(title: L10n.string("Glow"), controls: glowControls, clips: clips)
+                adjustSubgroup(title: L10n.string("Chroma Key"), controls: chromaKeyControls, clips: clips)
                 adjustToggleRow(
-                    title: "Invert Colors",
+                    title: L10n.string("Invert Colors"),
                     isOn: Binding(
                         get: { invertApplied(to: clips) },
                         set: { setInvertApplied($0, clips: clips) }
@@ -197,15 +197,17 @@ extension InspectorView {
                         action: { resetEffects(effectIds, clips: clips, actionName: "Reset \(title)") }
                     )
                 }
-                Toggle("", isOn: Binding(
+                Toggle(String(), isOn: Binding(
                     get: { state.isEnabled },
                     set: { setSectionEnabled(effectIds, clips: clips, enabled: $0) }
                 ))
                 .toggleStyle(.checkbox)
                 .labelsHidden()
                 .disabled(!state.hasEffects)
-                .help(state.hasEffects ? "Enable \(title.lowercased())" : "No adjustments yet")
-                .accessibilityLabel("Enable \(title)")
+                .help(state.hasEffects
+                    ? L10n.string("Enable: \(title)")
+                    : L10n.string("No adjustments yet"))
+                .accessibilityLabel(L10n.string("Enable: \(title)"))
             }
         ) {
             Group {
@@ -248,8 +250,12 @@ extension InspectorView {
                     }
                     .buttonStyle(.plain)
                     .disabled(editor.activePreviewTab != .timeline)
-                    .help(sampling ? "Cancel key color sampling" : "Sample key color")
-                    .accessibilityLabel(sampling ? "Cancel Key Color Sampling" : "Sample Key Color")
+                    .help(sampling
+                        ? L10n.string("Cancel key color sampling")
+                        : L10n.string("Sample key color"))
+                    .accessibilityLabel(sampling
+                        ? L10n.string("Cancel Key Color Sampling")
+                        : L10n.string("Sample Key Color"))
                 }
             }
             .padding(.leading, adjustSubgroupInset)
@@ -269,14 +275,14 @@ extension InspectorView {
     }
 
     private func adjustSubgroupTitleLabel(title: String) -> some View {
-        Text(title)
+        Text(L10n.string(key: title))
             .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
             .foregroundStyle(AppTheme.Text.secondaryColor)
             .fixedSize()
     }
 
     private func adjustRowLabel(_ title: String, inset: CGFloat) -> some View {
-        Text(title)
+        Text(L10n.string(key: title))
             .font(.system(size: AppTheme.FontSize.sm))
             .foregroundStyle(AppTheme.Text.secondaryColor)
             .lineLimit(1)
@@ -290,10 +296,10 @@ extension InspectorView {
                 .frame(width: AppTheme.IconSize.xxs, height: AppTheme.IconSize.xxs)
             adjustSubgroupTitleLabel(title: title)
             Spacer(minLength: 0)
-            Toggle("", isOn: isOn)
+            Toggle(String(), isOn: isOn)
                 .toggleStyle(.checkbox)
                 .labelsHidden()
-                .accessibilityLabel(title)
+                .accessibilityLabel(L10n.string(key: title))
         }
         .padding(.leading, adjustSubgroupInset)
     }
@@ -420,9 +426,9 @@ extension InspectorView {
     @ViewBuilder
     private func wheelsContent(clips: [Clip]) -> some View {
         HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
-            wheelControl("Lift", prefix: "lift", clips: clips)
-            wheelControl("Gamma", prefix: "gamma", clips: clips)
-            wheelControl("Gain", prefix: "gain", clips: clips)
+            wheelControl(L10n.string("Lift"), prefix: "lift", clips: clips)
+            wheelControl(L10n.string("Gamma"), prefix: "gamma", clips: clips)
+            wheelControl(L10n.string("Gain"), prefix: "gain", clips: clips)
         }
         .frame(maxWidth: .infinity)
     }
@@ -478,13 +484,13 @@ extension InspectorView {
 
     private func lutFileRow(path: String?, clips: [Clip]) -> some View {
         HStack(spacing: AppTheme.Spacing.sm) {
-            adjustRowLabel("File", inset: adjustSectionChildLabelInset)
+            adjustRowLabel(L10n.string("File"), inset: adjustSectionChildLabelInset)
             Button { chooseLUT(clips: clips) } label: {
                 HStack(spacing: AppTheme.Spacing.xs) {
                     Image(systemName: "square.stack.3d.up")
                         .font(.system(size: AppTheme.FontSize.xs))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    Text(path.map { ($0 as NSString).lastPathComponent } ?? "Choose…")
+                    Text(verbatim: path.map { ($0 as NSString).lastPathComponent } ?? L10n.string("Choose…"))
                         .font(.system(size: AppTheme.FontSize.sm))
                         .foregroundStyle(path == nil ? AppTheme.Text.tertiaryColor : AppTheme.Text.primaryColor)
                         .lineLimit(1)
@@ -496,11 +502,11 @@ extension InspectorView {
                 .frame(maxWidth: .infinity)
                 .background(
                     RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                        .fill(Color.white.opacity(AppTheme.Opacity.hint))
+                        .fill(AppTheme.Interaction.fill(AppTheme.Opacity.hint))
                 )
             }
             .buttonStyle(.plain)
-            .help(path ?? "Choose a .cube LUT file")
+            .help(path ?? L10n.string("Choose a .cube LUT file"))
         }
         .frame(height: KeyframesMetrics.rowHeight)
     }
@@ -510,7 +516,7 @@ extension InspectorView {
         let range = spec?.range ?? 0...1
         let value = lutIntensity(in: clips)
         return HStack(spacing: AppTheme.Spacing.sm) {
-            adjustRowLabel("Intensity", inset: adjustSectionChildLabelInset)
+            adjustRowLabel(L10n.string("Intensity"), inset: adjustSectionChildLabelInset)
             AdjustSlider(
                 value: value, range: range, defaultValue: spec?.defaultValue ?? 1,
                 onChanged: { setLUTIntensity($0, clips: clips, commit: false) },
@@ -539,7 +545,7 @@ extension InspectorView {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        panel.message = "Choose a .cube LUT file"
+        panel.message = L10n.string("Choose a .cube LUT file")
         if let cube = UTType(filenameExtension: "cube") { panel.allowedContentTypes = [cube] }
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }

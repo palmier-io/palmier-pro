@@ -303,6 +303,10 @@ final class AgentService {
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        guard let conversationID = currentSessionId else {
+            streamError = .upstream("Chat session unavailable.")
+            return
+        }
         let referencedMentions = AgentMentionContext.referencedMentions(mentions, in: trimmed)
         let contextHint = referencedMentions.isEmpty
             ? nil
@@ -324,7 +328,7 @@ final class AgentService {
             mentions: referencedMentions, contextHint: contextHint
         ))
         streamError = nil
-        kickOffStream()
+        kickOffStream(conversationID: conversationID, traceID: UUID())
     }
 
     func postSystemNotice(_ text: String) {
@@ -339,7 +343,7 @@ final class AgentService {
         isStreaming = false
     }
 
-    private func kickOffStream() {
+    private func kickOffStream(conversationID: UUID, traceID: UUID) {
         currentTask?.cancel()
         isStreaming = true
         currentTask = Task { [weak self] in
@@ -348,11 +352,11 @@ final class AgentService {
                 self?.syncMessagesIntoCurrentSession()
                 self?.onSessionsChanged?()
             }
-            await self?.runLoop()
+            await self?.runLoop(conversationID: conversationID, traceID: traceID)
         }
     }
 
-    private func runLoop() async {
+    private func runLoop(conversationID: UUID, traceID: UUID) async {
         guard let client = selectClient() else {
             streamError = .upstream("No backend available.")
             return
@@ -365,6 +369,10 @@ final class AgentService {
         loop: while !Task.isCancelled {
             resolveOrphanToolUses()
             let apiMsgs = await apiMessages()
+            guard let inputMessageID = messages.last(where: { $0.role == .user })?.id else {
+                streamError = .upstream("The agent request has no user message.")
+                break loop
+            }
             let assistant = AgentMessage(role: .assistant, blocks: [])
             messages.append(assistant)
             let assistantID = assistant.id
@@ -373,7 +381,15 @@ final class AgentService {
                 let stream = client.stream(
                     system: AgentInstructions.serverInstructions + AgentInstructions.skillsSection(SkillStore.shared.skillIndex),
                     tools: tools,
-                    messages: apiMsgs
+                    messages: apiMsgs,
+                    context: AgentRequestContext(
+                        conversationID: conversationID,
+                        traceID: traceID,
+                        spanID: UUID(),
+                        inputMessageID: inputMessageID,
+                        outputMessageID: assistantID,
+                        projectID: editor?.projectId
+                    )
                 )
 
                 var stopReason: AnthropicStopReason = .endTurn
@@ -391,7 +407,7 @@ final class AgentService {
                 }
 
                 if stopReason == .toolUse {
-                    await runPendingToolUses(assistantID: assistantID)
+                    await runPendingToolUses(assistantID: assistantID, conversationID: conversationID)
                     continue loop
                 }
                 break loop
@@ -434,7 +450,7 @@ final class AgentService {
         messages[index].blocks.append(.toolUse(id: toolUseID, name: name, inputJSON: inputJSON))
     }
 
-    private func runPendingToolUses(assistantID: UUID) async {
+    private func runPendingToolUses(assistantID: UUID, conversationID: UUID) async {
         guard let assistantIndex = assistantMessageIndex(id: assistantID) else { return }
         guard let executor = toolExecutor else {
             messages.append(AgentMessage(role: .user, blocks: [.text("Tool executor unavailable.")]))
@@ -453,7 +469,11 @@ final class AgentService {
                 resultBlocks.append(.toolResult(toolUseId: use.id, content: [.text("Cancelled")], isError: true))
                 continue
             }
-            let result = await executor.execute(name: use.name, args: Self.parseJSONObject(use.input))
+            let result = await executor.execute(
+                name: use.name,
+                args: Self.parseJSONObject(use.input),
+                sessionID: conversationID.uuidString
+            )
             resultBlocks.append(.toolResult(toolUseId: use.id, content: result.content, isError: result.isError))
         }
         if !resultBlocks.isEmpty {

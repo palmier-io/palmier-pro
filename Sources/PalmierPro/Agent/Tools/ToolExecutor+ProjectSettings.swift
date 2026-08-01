@@ -13,8 +13,27 @@ extension ToolExecutor {
 
     struct ValidatedProjectSettings {
         fileprivate let input: SetProjectSettingsInput
-        let aspectPreset: AspectPreset?
-        let qualityPreset: QualityPreset?
+        let aspectRatio: CanvasAspectRatio?
+        let quality: QualityPreset?
+
+        func resolve(for timeline: Timeline) throws -> (fps: Int, width: Int, height: Int) {
+            var size = (input.width ?? timeline.width, input.height ?? timeline.height)
+            if let aspectRatio {
+                do {
+                    size = try aspectRatio.resolution(shortEdge: quality?.shortEdge ?? min(timeline.width, timeline.height))
+                } catch {
+                    throw ToolError(error.localizedDescription)
+                }
+            } else if let quality, size.0 > 0, size.1 > 0 {
+                size = quality.resolution(currentWidth: size.0, currentHeight: size.1)
+            }
+            let changesResolution = input.width != nil || aspectRatio != nil || quality != nil
+            guard size.0 > 0, size.1 > 0,
+                  !changesResolution || (size.0 <= 8_192 && size.1 <= 8_192) else {
+                throw ToolError("Resolution must be positive and no larger than 8192 pixels on either edge")
+            }
+            return (input.fps ?? timeline.fps, size.0, size.1)
+        }
     }
 
     @discardableResult
@@ -25,77 +44,46 @@ extension ToolExecutor {
                 || input.aspectRatio != nil || input.quality != nil else {
             throw ToolError("Provide at least one of: fps, width, height, aspectRatio, quality")
         }
-        if input.aspectRatio != nil && (input.width != nil || input.height != nil) {
-            throw ToolError("'aspectRatio' and explicit 'width'/'height' are mutually exclusive")
+        guard (input.width == nil) == (input.height == nil) else {
+            throw ToolError("Provide both width and height")
         }
-        if let fps = input.fps, fps < 1 || fps > 120 {
+        if input.width != nil, input.aspectRatio != nil || input.quality != nil {
+            throw ToolError("Explicit dimensions can't be combined with aspectRatio or quality")
+        }
+        if let fps = input.fps, !(1...120).contains(fps) {
             throw ToolError("fps must be between 1 and 120 (got \(fps))")
         }
-
-        let aspectPreset: AspectPreset? = try input.aspectRatio.map { ar in
-            switch ar {
-            case "16:9":   return .sixteenNine
-            case "9:16":   return .nineSixteen
-            case "1:1":    return .oneOne
-            case "4:3":    return .fourThree
-            case "2.4:1":  return .twoPointFourOne
-            case "9:14":   return .nineByFourteen
-            default:
-                throw ToolError("Unknown aspectRatio '\(ar)'. Use one of: 16:9, 9:16, 1:1, 4:3, 2.4:1, 9:14")
-            }
+        let aspectRatio: CanvasAspectRatio? = try input.aspectRatio.map {
+            do { return try CanvasAspectRatio($0) }
+            catch { throw ToolError(error.localizedDescription) }
         }
-
-        let qualityPreset: QualityPreset? = try input.quality.map { q in
-            switch q {
+        let quality: QualityPreset? = try input.quality.map {
+            switch $0 {
             case "720p":  return .hd720
             case "1080p": return .fullHD
             case "2K":    return .twoK
             case "4K":    return .fourK
             default:
-                throw ToolError("Unknown quality '\(q)'. Use one of: 720p, 1080p, 2K, 4K")
+                throw ToolError("Unknown quality '\($0)'. Use one of: 720p, 1080p, 2K, 4K")
             }
         }
-        return ValidatedProjectSettings(input: input, aspectPreset: aspectPreset, qualityPreset: qualityPreset)
+        return ValidatedProjectSettings(input: input, aspectRatio: aspectRatio, quality: quality)
     }
 
     func setProjectSettings(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
-        let settings = try validateProjectSettings(args)
-        return try editor.undo.perform("Set Project Settings (Agent)") {
-            try setProjectSettings(editor, settings)
+        let settings = try validateProjectSettings(args).resolve(for: editor.timeline)
+        return editor.undo.perform("Set Project Settings (Agent)") {
+            setProjectSettings(editor, settings)
         }
     }
 
-    func setProjectSettings(_ editor: EditorViewModel, _ settings: ValidatedProjectSettings) throws -> ToolResult {
-        let input = settings.input
-        let aspectPreset = settings.aspectPreset
-        let qualityPreset = settings.qualityPreset
-
-        let newFPS = input.fps ?? editor.timeline.fps
-        let newWidth: Int
-        let newHeight: Int
-
-        if let preset = aspectPreset {
-            var baseW = preset.width
-            var baseH = preset.height
-            if let quality = qualityPreset {
-                let scaled = quality.resolution(currentWidth: baseW, currentHeight: baseH)
-                baseW = scaled.width
-                baseH = scaled.height
-            }
-            newWidth = baseW
-            newHeight = baseH
-        } else if let quality = qualityPreset {
-            let scaled = quality.resolution(currentWidth: editor.timeline.width, currentHeight: editor.timeline.height)
-            newWidth = scaled.width
-            newHeight = scaled.height
-        } else {
-            newWidth = input.width ?? editor.timeline.width
-            newHeight = input.height ?? editor.timeline.height
-        }
-
-        guard newWidth > 0 && newHeight > 0 else {
-            throw ToolError("Resolution must have positive width and height")
-        }
+    func setProjectSettings(
+        _ editor: EditorViewModel,
+        _ resolved: (fps: Int, width: Int, height: Int)
+    ) -> ToolResult {
+        let newFPS = resolved.fps
+        let newWidth = resolved.width
+        let newHeight = resolved.height
 
         let prevFPS = editor.timeline.fps
         let prevWidth = editor.timeline.width
@@ -110,6 +98,7 @@ extension ToolExecutor {
         var payload: [String: Any] = [
             "fps": newFPS,
             "resolution": "\(newWidth)x\(newHeight)",
+            "aspectRatio": CanvasAspectRatio.displayLabel(width: newWidth, height: newHeight),
             "changed": changed,
         ]
         if changed.isEmpty {

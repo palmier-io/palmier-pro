@@ -4,7 +4,7 @@ struct TransformOverlayView: View {
     @Environment(EditorViewModel.self) var editor
 
     private let handleSize: CGFloat = AppTheme.Spacing.smMd
-    private let borderColor = Color.white.opacity(AppTheme.Opacity.strong)
+    private let borderColor = AppTheme.MediaOverlay.primaryColor.opacity(AppTheme.Opacity.strong)
 
     var body: some View {
         GeometryReader { geo in
@@ -20,7 +20,7 @@ struct TransformOverlayView: View {
 
                 let hit = rotatedHitTarget(clipRect.size, degrees: rotation)
                 Rectangle()
-                    .fill(Color.white.opacity(0.001))
+                    .fill(AppTheme.MediaOverlay.primaryColor.opacity(0.001))
                     .frame(width: hit.frame.width, height: hit.frame.height)
                     .contentShape(hit.shape)
                     .position(x: clipRect.midX, y: clipRect.midY)

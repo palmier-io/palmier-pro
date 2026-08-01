@@ -7,9 +7,9 @@ enum SkillCommunityState: Equatable {
 
     var label: String {
         switch self {
-        case .upToDate: "Community"
-        case .update: "Update available"
-        case .modified: "Modified"
+        case .upToDate: L10n.key("Community")
+        case .update: L10n.key("Update available")
+        case .modified: L10n.key("Modified")
         }
     }
 
@@ -59,7 +59,7 @@ struct SkillCollectionButton: View {
             .contentShape(Capsule(style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(title), \(count.formatted()) skills")
+        .accessibilityLabel(L10n.string("\(title), \(count) skills"))
     }
 }
 
@@ -69,6 +69,7 @@ struct SkillRow: View {
     let status: String
     let statusColor: Color
     let actionTitle: String
+    let primaryAction: Bool
     let working: Bool
     var summaryAction: (() -> Void)? = nil
     let action: () -> Void
@@ -88,12 +89,12 @@ struct SkillRow: View {
                 if working {
                     ProgressView()
                         .controlSize(.small)
-                        .accessibilityLabel("Working on \(name)")
+                        .accessibilityLabel(L10n.string("Working on \(name)"))
                 } else {
                     Button(actionTitle, action: action)
                         .buttonStyle(.capsule(
-                            actionTitle == "Install" ? .prominent : .secondary,
-                            fill: actionTitle == "Install" ? nil : AnyShapeStyle(AppTheme.Background.raisedColor)
+                            primaryAction ? .prominent : .secondary,
+                            fill: primaryAction ? nil : AnyShapeStyle(AppTheme.Background.raisedColor)
                         ))
                 }
             }
@@ -112,7 +113,7 @@ struct SkillRow: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Open \(name)")
+            .accessibilityLabel(L10n.string("Open \(name)"))
         } else {
             SkillRowSummary(name: name, description: description)
         }

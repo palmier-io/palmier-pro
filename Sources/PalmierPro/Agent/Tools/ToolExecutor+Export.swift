@@ -202,7 +202,6 @@ extension ToolExecutor {
         let submission = try exportQueue.enqueuePalmierProject(
             projectFile: editor.projectFileSnapshot(),
             manifest: editor.mediaManifest,
-            generationLog: editor.generationLog,
             sourceProjectURL: editor.projectURL,
             outputURL: outputURL,
             source: .agent,

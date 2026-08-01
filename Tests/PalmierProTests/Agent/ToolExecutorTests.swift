@@ -1857,6 +1857,19 @@ struct ToolExecutorClipTests {
         #expect(noop?["note"] as? String == "Settings already matched.")
     }
 
+    @Test func fpsOnlyProjectSettingsPreserveOversizedResolution() async throws {
+        var timeline = Fixtures.timeline()
+        timeline.width = 9000
+        timeline.height = 4500
+        let h = ToolHarness(timeline: timeline)
+
+        let json = try await h.runOK("set_project_settings", args: ["fps": 60]) as? [String: Any]
+
+        #expect(json?["changed"] as? [String] == ["fps"])
+        #expect(h.editor.timeline.width == 9000)
+        #expect(h.editor.timeline.height == 4500)
+    }
+
     @Test func visibleClipsListsTopDownAndCollapsesCaptionGroups() async throws {
         var caption = Fixtures.clip(id: "cap-0", mediaType: .text, start: 0, duration: 90)
         caption.captionGroupId = "g1"

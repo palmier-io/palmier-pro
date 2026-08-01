@@ -44,7 +44,6 @@ struct PalmierProjectExportTests {
         let report = try PalmierProjectExporter.export(
             projectFile: ProjectFile(timelines: [Fixtures.timeline()], activeTimelineId: nil, openTimelineIds: nil),
             manifest: manifest(externalPath: root.appendingPathComponent("external-clip.mov").path),
-            generationLog: GenerationLog(),
             sourceProjectURL: source,
             to: dest
         )
@@ -55,7 +54,7 @@ struct PalmierProjectExportTests {
         #expect(report.totalBytes > 0)
 
         // Bundle structure written.
-        for name in [Project.timelineFilename, Project.manifestFilename, Project.generationLogFilename, Project.thumbnailFilename] {
+        for name in [Project.timelineFilename, Project.manifestFilename, Project.thumbnailFilename] {
             #expect(fm.fileExists(atPath: dest.appendingPathComponent(name).path), "missing \(name)")
         }
 
@@ -83,7 +82,6 @@ struct PalmierProjectExportTests {
         try PalmierProjectExporter.export(
             projectFile: ProjectFile(timelines: [Fixtures.timeline()], activeTimelineId: nil, openTimelineIds: nil),
             manifest: manifest(externalPath: root.appendingPathComponent("external-clip.mov").path),
-            generationLog: GenerationLog(),
             sourceProjectURL: source,
             to: dest
         )
@@ -109,7 +107,7 @@ struct PalmierProjectExportTests {
         ]
 
         let report = try PalmierProjectExporter.export(
-            projectFile: ProjectFile(timelines: [Fixtures.timeline()], activeTimelineId: nil, openTimelineIds: nil), manifest: m, generationLog: GenerationLog(),
+            projectFile: ProjectFile(timelines: [Fixtures.timeline()], activeTimelineId: nil, openTimelineIds: nil), manifest: m,
             sourceProjectURL: source, to: dest
         )
 
@@ -132,7 +130,6 @@ struct PalmierProjectExportTests {
             try PalmierProjectExporter.export(
                 projectFile: projectFile,
                 manifest: exportManifest,
-                generationLog: GenerationLog(),
                 sourceProjectURL: source,
                 to: dest
             )
@@ -158,7 +155,6 @@ struct PalmierProjectExportTests {
         try PalmierProjectExporter.export(
             projectFile: ProjectFile(timelines: [Fixtures.timeline()], activeTimelineId: nil, openTimelineIds: nil),
             manifest: manifest(externalPath: root.appendingPathComponent("external-clip.mov").path),
-            generationLog: GenerationLog(),
             sourceProjectURL: source,
             to: dest
         )

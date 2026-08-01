@@ -16,13 +16,13 @@ struct StoragePane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xxl) {
-            SettingsSection(title: "Locations") {
+            SettingsSection(title: L10n.string("Locations")) {
                 locationsSection
             }
-            SettingsSection(title: "Cache") {
+            SettingsSection(title: L10n.string("Cache")) {
                 cacheRow
             }
-            SettingsSection(title: "Search") {
+            SettingsSection(title: L10n.string("Search")) {
                 searchIndexSection
             }
         }
@@ -33,14 +33,14 @@ struct StoragePane: View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
             StorageLocationRow(
                 title: Self.scratchTitle,
-                detail: "Render previews, waveforms, thumbnails, transcripts, staged media, and downloaded models. Put this on a fast drive.",
+                detail: L10n.string("Render previews, waveforms, thumbnails, transcripts, staged media, and downloaded models. Put this on a fast drive."),
                 root: $scratchRoot,
-                defaultPath: "\(abbreviatingHome(StorageLocations.defaultCachesDirectory)) and $TMPDIR",
+                defaultPath: L10n.string("\(abbreviatingHome(StorageLocations.defaultCachesDirectory)) and $TMPDIR"),
                 save: { StorageLocations.configuredScratchRoot = $0 }
             )
             StorageLocationRow(
                 title: Self.projectsTitle,
-                detail: "Where new projects are created. Existing projects stay where they are.",
+                detail: L10n.string("Where new projects are created. Existing projects stay where they are."),
                 root: $projectsRoot,
                 defaultPath: abbreviatingHome(StorageLocations.defaultProjectsDirectory),
                 save: { StorageLocations.configuredProjectsRoot = $0 }
@@ -54,17 +54,15 @@ struct StoragePane: View {
         }
     }
 
-    private static let scratchTitle = "Scratch and cache"
-    private static let projectsTitle = "Projects"
+    @MainActor private static var scratchTitle: String { L10n.string("Scratch and cache") }
+    @MainActor private static var projectsTitle: String { L10n.string("Projects") }
 
     private var locationMessages: [String] {
-        var messages: [String] = []
-        if !unavailableTitles.isEmpty {
-            let names = unavailableTitles.joined(separator: " and ")
-            messages.append("\(names) unavailable. Using the default location until the folder is back.")
+        var messages = unavailableTitles.map {
+            L10n.string("\($0) unavailable. Using the default location until the folder is back.")
         }
         if needsRelaunch {
-            messages.append("Relaunch Palmier Pro to use the new locations. Cached files and downloaded models at the previous location are removed.")
+            messages.append(L10n.string("Relaunch Palmier Pro to use the new locations. Cached files and downloaded models at the previous location are removed."))
         }
         return messages
     }
@@ -82,10 +80,10 @@ struct StoragePane: View {
     private var cacheRow: some View {
         HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-                Text("Temporary files")
+                Text(L10n.string("Temporary files"))
                     .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.regular))
                     .foregroundStyle(AppTheme.Text.primaryColor)
-                Text("Playback previews, waveforms, filmstrip thumbnails, and transcripts. Safe to clear; files rebuild as needed.")
+                Text(L10n.string("Playback previews, waveforms, filmstrip thumbnails, and transcripts. Safe to clear; files rebuild as needed."))
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .fixedSize(horizontal: false, vertical: true)
@@ -105,7 +103,7 @@ struct StoragePane: View {
 
             Spacer(minLength: AppTheme.Spacing.lg)
 
-            Button("Clear cache") {
+            Button(L10n.string("Clear cache")) {
                 clear()
             }
             .buttonStyle(actionButtonStyle)
@@ -117,34 +115,34 @@ struct StoragePane: View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
             HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-                    Text("Media indexing")
+                    Text(L10n.string("Media indexing"))
                         .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.regular))
                         .foregroundStyle(AppTheme.Text.primaryColor)
-                    Text("Indexes imported media for on-device search.")
+                    Text(L10n.string("Indexes imported media for on-device search."))
                         .font(.system(size: AppTheme.FontSize.sm))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: AppTheme.Spacing.lg)
-                Toggle("", isOn: $searchEnabled)
+                Toggle(String(), isOn: $searchEnabled)
                     .toggleStyle(.switch)
                     .controlSize(.mini)
                     .labelsHidden()
-                    .accessibilityLabel("Media search")
+                    .accessibilityLabel(L10n.string("Media search"))
                     .onChange(of: searchEnabled) { _, newValue in
                         VisualModelLoader.shared.setEnabled(newValue)
                     }
             }
 
             HStack(spacing: AppTheme.Spacing.sm) {
-                Text("Index")
+                Text(L10n.string("Index"))
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                 Text(ByteCountFormatter.string(fromByteCount: indexBytes, countStyle: .file))
                     .font(.system(size: AppTheme.FontSize.xs).monospacedDigit())
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                 Spacer(minLength: AppTheme.Spacing.md)
-                Button("Clear index") { clearIndex() }
+                Button(L10n.string("Clear index")) { clearIndex() }
                     .buttonStyle(actionButtonStyle)
                     .disabled(indexBytes == 0)
             }
@@ -152,14 +150,14 @@ struct StoragePane: View {
 
             if modelBytes > 0 {
                 HStack(spacing: AppTheme.Spacing.sm) {
-                    Text("Model")
+                    Text(L10n.string("Model"))
                         .font(.system(size: AppTheme.FontSize.xs))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    Text("\(SearchIndexConfig.manifest.model) · \(ByteCountFormatter.string(fromByteCount: modelBytes, countStyle: .file))")
+                    Text(verbatim: "\(SearchIndexConfig.manifest.model) · \(ByteCountFormatter.string(fromByteCount: modelBytes, countStyle: .file))")
                         .font(.system(size: AppTheme.FontSize.xs).monospacedDigit())
                         .foregroundStyle(AppTheme.Text.secondaryColor)
                     Spacer(minLength: AppTheme.Spacing.md)
-                    Button("Remove model") { removeModel() }
+                    Button(L10n.string("Remove model")) { removeModel() }
                         .buttonStyle(actionButtonStyle)
                 }
             }
@@ -179,7 +177,7 @@ struct StoragePane: View {
     private var displayPath: String { abbreviatingHome(DiskCache.rootDirectory) }
 
     private var formattedSize: String {
-        if isClearing { return "Clearing…" }
+        if isClearing { return L10n.string("Clearing…") }
         return ByteCountFormatter.string(fromByteCount: cacheBytes, countStyle: .file)
     }
 
@@ -269,10 +267,10 @@ private struct StorageLocationRow: View {
 
             HStack(spacing: AppTheme.Spacing.sm) {
                 if root != nil {
-                    Button("Use Default") { set(nil) }
+                    Button(L10n.string("Use Default")) { set(nil) }
                         .buttonStyle(buttonStyle)
                 }
-                Button("Choose…") { choose() }
+                Button(L10n.string("Choose…")) { choose() }
                     .buttonStyle(buttonStyle)
             }
         }
@@ -289,7 +287,7 @@ private struct StorageLocationRow: View {
         panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
         panel.directoryURL = root
-        panel.prompt = "Choose"
+        panel.prompt = L10n.string("Choose")
         panel.title = title
         let completion: (NSApplication.ModalResponse) -> Void = { response in
             guard response == .OK, let url = panel.url else { return }
@@ -307,7 +305,7 @@ private struct StorageLocationRow: View {
     private func adopt(_ url: URL) async {
         let usable = await Task.detached { StorageLocations.usableDirectory(at: url) != nil }.value
         guard usable else {
-            rejection = "Can't write to that folder. Choose another."
+            rejection = L10n.string("Can't write to that folder. Choose another.")
             return
         }
         set(url)

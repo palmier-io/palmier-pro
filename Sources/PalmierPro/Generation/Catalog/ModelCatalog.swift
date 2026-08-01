@@ -30,6 +30,7 @@ enum ModelRegistry {
 @MainActor
 final class ModelCatalog {
     static let shared = ModelCatalog()
+    private static let supportedCatalogVersion: Double = 3
 
     private(set) var video: [VideoModelConfig] = []
     private(set) var image: [ImageModelConfig] = []
@@ -56,7 +57,11 @@ final class ModelCatalog {
         guard let client = AccountService.shared.convex else { return }
 
         subscription = client
-            .subscribe(to: "models:list", yielding: [CatalogEntry].self)
+            .subscribe(
+                to: "models:list",
+                with: ["catalogVersion": Self.supportedCatalogVersion],
+                yielding: [CatalogEntry].self
+            )
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { [weak self] completion in
@@ -136,6 +141,7 @@ struct CatalogEntry: Decodable, Sendable {
     let id: String
     let kind: Kind
     let displayName: String
+    let providerIconKey: String?
     let providerName: String?
     let description: String?
     let allowedEndpoints: [String]
@@ -191,7 +197,7 @@ struct CatalogEntry: Decodable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, kind, displayName, providerName, description, allowedEndpoints, responseShape, uiCapabilities
+        case id, kind, displayName, providerIconKey, providerName, description, allowedEndpoints, responseShape, uiCapabilities
         case creditsPerSecond, audioDiscountRate, creditsPerImage, qualities
         case audioPricing, creditsPerSecondUpscale, upscalePricing, paidOnly
     }
@@ -201,6 +207,7 @@ struct CatalogEntry: Decodable, Sendable {
         self.id = try c.decode(String.self, forKey: .id)
         self.kind = try c.decode(Kind.self, forKey: .kind)
         self.displayName = try c.decode(String.self, forKey: .displayName)
+        self.providerIconKey = try c.decodeIfPresent(String.self, forKey: .providerIconKey)
         self.providerName = try c.decodeIfPresent(String.self, forKey: .providerName)
         self.description = try c.decodeIfPresent(String.self, forKey: .description)
         self.allowedEndpoints = try c.decode([String].self, forKey: .allowedEndpoints)
@@ -227,6 +234,7 @@ struct CatalogEntry: Decodable, Sendable {
 }
 
 struct VideoCaps: Decodable, Sendable {
+    let supportsPrompt: Bool?
     let durations: [Int]
     let resolutions: [String]?
     let aspectRatios: [String]
@@ -241,12 +249,19 @@ struct VideoCaps: Decodable, Sendable {
     let framesAndReferencesExclusive: Bool
     let referenceTagNoun: String
     let requiresSourceVideo: Bool
+    let maxSourceVideoSeconds: Double?
     let maxSourceVideoResolution: SourceVideoResolution?
+    let requiredSourceVideoEncoding: SourceVideoEncoding?
     let requiresReferenceImage: Bool
+    let requiresReferenceAudio: Bool?
 }
 
 enum SourceVideoResolution: String, Decodable, Sendable {
     case p720 = "720p", p1080 = "1080p", p4k = "4k"
+}
+
+enum SourceVideoEncoding: String, Decodable, Sendable {
+    case h264MP4 = "h264-mp4"
 }
 
 struct ImageCaps: Decodable, Sendable {

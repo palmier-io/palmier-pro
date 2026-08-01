@@ -179,6 +179,17 @@ Rule: **any drop target that spans an area containing other drop targets must us
 - When adding a bundled resource, update `Package.swift`, bundle scripts, and tests as required. Verify the final `.app` layout when packaging behavior changes.
 - Keep optional feature-trait code buildable both with and without the trait.
 
+## Localization
+
+- Localize fixed app-owned UI copy with `L10n.string`. Keep interpolation inside the localized value so translations can reorder it.
+- Register app-owned UI labels stored in models with `L10n.key`, then resolve them at the UI boundary with `L10n.string(key:)`.
+- Render user content, filenames, technical values, provider metadata, and other non-translatable values with `Text(verbatim:)` or an equivalent verbatim API.
+- Never localize Agent or MCP contracts, persistence values, stable identifiers, machine-readable errors, or analytics values.
+- Run `scripts/localization/sync.sh` after changing UI copy. CI requires complete coverage when a PR changes a non-English catalog.
+- The generated `en.lproj/Localizable.strings` file is the source inventory. Do not edit it manually.
+- A language PR must add only complete `<locale>.lproj` directories containing `Localizable.strings` and `InfoPlist.strings`. Translate values, never keys, and do not add production-code language lists.
+- Follow `docs/Localization.md` for source patterns, translation boundaries, and manual verification.
+
 ## Errors, logging, and observability
 
 - Every user-initiated or Agent-initiated operation must reach an observable success, failure, refusal, or cancellation state.

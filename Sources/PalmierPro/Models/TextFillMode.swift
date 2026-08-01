@@ -6,8 +6,8 @@ enum TextFillMode: String, Codable, Sendable, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .color: "Color"
-        case .footage: "Footage"
+        case .color: L10n.key("Color")
+        case .footage: L10n.key("Footage")
         }
     }
 }

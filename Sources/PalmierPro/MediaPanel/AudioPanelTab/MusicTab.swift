@@ -9,7 +9,7 @@ struct MusicTab: View {
     @State private var prompt: String = ""
     @State private var textDuration: Double = 90
     @State private var isGenerating = false
-    @State private var generatingLabel = "Generating..."
+    @State private var generatingLabel = L10n.key("Generating…")
     @State private var note: String?
 
     private var models: [AudioModelConfig] {
@@ -71,9 +71,9 @@ struct MusicTab: View {
     }
 
     private var validationNote: String? {
-        guard let model else { return "No music models available." }
+        guard let model else { return L10n.string("No music models available.") }
         if isTextMode {
-            if trimmedPrompt.isEmpty { return "Describe the music to generate." }
+            if trimmedPrompt.isEmpty { return L10n.string("Describe the music to generate.") }
             let params = AudioGenerationParams(
                 prompt: trimmedPrompt,
                 voice: nil,
@@ -85,13 +85,16 @@ struct MusicTab: View {
             if let issue = model.validate(params: params) { return issue }
         } else {
             guard source != nil else {
-                return "Add video to the timeline, then mark a range to score only part of it."
+                return L10n.string("Add video to the timeline, then mark a range to score only part of it.")
             }
             if let issue = model.validate(spanSeconds: spanSeconds) { return issue }
         }
         if let cost = estimatedCost, cost > AccountService.shared.remainingCredits,
            AccountService.shared.budgetCredits != nil {
-            return "\(cost) credits needed. Only \(AccountService.shared.remainingCredits.formatted()) remaining."
+            return CostEstimator.localizedInsufficientCredits(
+                cost,
+                remaining: AccountService.shared.remainingCredits
+            )
         }
         return nil
     }
@@ -101,14 +104,16 @@ struct MusicTab: View {
     }
 
     private var generateLabel: String {
-        if let cost = estimatedCost, cost > 0 { return "Generate · \(CostEstimator.format(cost))" }
-        return "Generate"
+        if let cost = estimatedCost, cost > 0 { return CostEstimator.localizedGenerateLabel(cost) }
+        return L10n.string("Generate")
     }
 
     private var sourceSummary: String {
-        guard let source else { return "No video" }
-        let scope = editor.validSelectedTimelineRange != nil ? "" : "Whole timeline · "
-        return "\(scope)\(clock(source.startFrame)) – \(clock(source.startFrame + source.frameCount)) · \(String(format: "%.1fs", spanSeconds))"
+        guard let source else { return L10n.string("No video") }
+        let range = "\(clock(source.startFrame)) – \(clock(source.startFrame + source.frameCount)) · \(String(format: "%.1fs", spanSeconds))"
+        return editor.validSelectedTimelineRange == nil
+            ? L10n.string("Whole timeline · \(range)")
+            : range
     }
 
     var body: some View {
@@ -132,7 +137,7 @@ struct MusicTab: View {
     }
 
     private var musicSection: some View {
-        EditorPanelGroup("Music") {
+        EditorPanelGroup(L10n.string("Music")) {
             sourceControls
             modelControl
             promptControl
@@ -142,10 +147,10 @@ struct MusicTab: View {
     @ViewBuilder
     private var sourceControls: some View {
         if model.map(supportsTextMode) == true {
-            InspectorRow(label: "Input", onReset: { mode = .videoToMusic }) {
+            InspectorRow(label: L10n.string("Input"), onReset: { mode = .videoToMusic }) {
                 Menu {
-                    Button("Video to Music") { mode = .videoToMusic }
-                    Button("Text to Music") { mode = .textToMusic }
+                    Button(L10n.string("Video to Music")) { mode = .videoToMusic }
+                    Button(L10n.string("Text to Music")) { mode = .textToMusic }
                 } label: { EditorMenuValue(text: modeLabel(effectiveMode), expanded: true) }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
                 .frame(maxWidth: .infinity)
@@ -153,8 +158,8 @@ struct MusicTab: View {
         }
         if isTextMode {
             InspectorRow(
-                label: "Duration",
-                labelHelp: "Length of the generated music. It's placed at the playhead, or at the marked range start.",
+                label: L10n.string("Duration"),
+                labelHelp: L10n.string("Length of the generated music. It's placed at the playhead, or at the marked range start."),
                 onReset: { textDuration = defaultTextDuration }
             ) {
                 ScrubbableNumberField(
@@ -168,27 +173,27 @@ struct MusicTab: View {
             }
         } else {
             InspectorRow(
-                label: "Video",
-                labelHelp: "Uses the whole timeline by default. Mark a range on the timeline to score only that span."
+                label: L10n.string("Video"),
+                labelHelp: L10n.string("Uses the whole timeline by default. Mark a range on the timeline to score only that span.")
             ) { valueText(sourceSummary) }
         }
     }
 
     private func modeLabel(_ m: MusicGenerationSubmission.Mode) -> String {
         switch m {
-        case .videoToMusic: "Video to Music"
-        case .textToMusic: "Text to Music"
+        case .videoToMusic: L10n.string("Video to Music")
+        case .textToMusic: L10n.string("Text to Music")
         }
     }
 
     private var modelControl: some View {
-        InspectorRow(label: "Model", onReset: { selectModel(nil) }) {
+        InspectorRow(label: L10n.string("Model"), onReset: { selectModel(nil) }) {
             Menu {
                 ForEach(models, id: \.id) { m in
                     Button(m.displayName) { selectModel(m) }
                 }
             } label: {
-                EditorMenuValue(text: model?.displayName ?? "None", expanded: true)
+                EditorMenuValue(text: model?.displayName ?? L10n.string("None"), expanded: true)
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
             .frame(maxWidth: .infinity)
@@ -208,8 +213,10 @@ struct MusicTab: View {
     }
 
     private var promptControl: some View {
-        InspectorRow(label: "Prompt") {
-            TextField(model?.promptLabel ?? "", text: $prompt, axis: .vertical)
+        InspectorRow(label: L10n.string("Prompt")) {
+            TextField(text: $prompt, axis: .vertical) {
+                Text(verbatim: model?.promptLabel ?? String())
+            }
                 .textFieldStyle(.plain)
                 .lineLimit(2...5)
                 .font(.system(size: AppTheme.FontSize.sm))
@@ -230,7 +237,7 @@ struct MusicTab: View {
                 .buttonStyle(.editorPrimary)
                 .focusable(false)
                 .disabled(!canGenerate || !account.aiAllowed)
-                .help(account.aiAllowed ? "" : "Sign in to generate")
+                .help(account.aiAllowed ? String() : L10n.string("Sign in to generate"))
 
                 agentMenu
             }
@@ -253,18 +260,18 @@ struct MusicTab: View {
 
     private var agentMenu: some View {
         EditorAgentMenu(
-            help: "Let Agent generate music for you. Choose a starter, or ask Agent in the chat."
+            help: L10n.string("Let Agent generate music for you. Choose a starter, or ask Agent in the chat.")
         ) {
             Button {
                 musicTask("Score my timeline with music that matches the visuals. Use a video-to-music model on the full timeline span so the music follows the edit, and place it on an audio track.")
-            } label: { Label("Generate music for the timeline", systemImage: "music.note") }
+            } label: { Label(L10n.string("Generate music for the timeline"), systemImage: "music.note") }
             Menu {
                 ForEach(["Cinematic", "Upbeat", "Ambient", "Tense", "Lo-fi"], id: \.self) { mood in
                     Button(mood) {
                         musicTask("Generate \(mood.lowercased()) music for my timeline and place it on an audio track aligned to the edit.")
                     }
                 }
-            } label: { Label("Mood", systemImage: "slider.horizontal.3") }
+            } label: { Label(L10n.string("Mood"), systemImage: "slider.horizontal.3") }
         }
     }
 

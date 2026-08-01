@@ -4,6 +4,7 @@ struct VideoModelProviderGroup: Identifiable {
     let name: String
     let models: [(index: Int, model: VideoModelConfig)]
     var id: String { name }
+    var providerIconKey: String? { models.first?.model.entry.providerIconKey }
 }
 
 // Model catalog selection and per-model capability state.
@@ -130,7 +131,12 @@ extension GenerationView {
         return audioSource.type == .video ? .video : .audio
     }
     var showsPrompt: Bool {
-        selectedType != .upscale && (selectedType != .audio || audioModel.inputs.contains(.text))
+        switch selectedType {
+        case .video: videoModel.supportsPrompt
+        case .audio: audioModel.inputs.contains(.text)
+        case .image: true
+        case .upscale: false
+        }
     }
 
     var initialAudioTargetLanguage: String {
@@ -199,10 +205,6 @@ extension GenerationView {
         selectedType == .image ? imageModel.qualities : nil
     }
 
-    private var audioPromptHint: String {
-        audioModel.minPromptLength > 1 ? " (min \(audioModel.minPromptLength) chars)" : ""
-    }
-
     var supportsAudioToggle: Bool {
         selectedType == .video && videoModel.audioDiscountRate != nil
     }
@@ -213,28 +215,49 @@ extension GenerationView {
 
     var promptPlaceholder: String {
         switch selectedType {
-        case .image: "Describe the image"
-        case .video: "Describe the video"
+        case .image: return L10n.string("Describe the image")
+        case .video: return L10n.string("Describe the video")
         case .audio:
+            let minimum = audioModel.minPromptLength
             switch audioModel.category {
-            case .general: "Describe the audio scene\(audioPromptHint)"
-            case .tts: "Text to speak\(audioPromptHint)"
-            case .music: "Describe the music style or mood\(audioPromptHint)"
-            case .sfx: "Describe the sound\(audioPromptHint)"
-            case .cleanup, .dubbing: "No prompt needed"
+            case .general:
+                return minimum > 1
+                    ? L10n.string("Describe the audio scene (minimum \(minimum) characters)")
+                    : L10n.string("Describe the audio scene")
+            case .tts:
+                return minimum > 1
+                    ? L10n.string("Text to speak (minimum \(minimum) characters)")
+                    : L10n.string("Text to speak")
+            case .music:
+                return minimum > 1
+                    ? L10n.string("Describe the music style or mood (minimum \(minimum) characters)")
+                    : L10n.string("Describe the music style or mood")
+            case .sfx:
+                return minimum > 1
+                    ? L10n.string("Describe the sound (minimum \(minimum) characters)")
+                    : L10n.string("Describe the sound")
+            case .cleanup, .dubbing: return L10n.string("No prompt needed")
             }
-        case .upscale: "No prompt needed"
+        case .upscale: return L10n.string("No prompt needed")
         }
+    }
+
+    var effectiveSourceVideoSeconds: Double {
+        guard videoModel.requiresSourceVideo else { return Double(selectedDuration) }
+        if let trim = editor.pendingEditTrimmedSource,
+           let sv = sourceVideo,
+           trim.sourceURL == sv.url, trim.hasTrim {
+            return trim.durationSeconds
+        }
+        return sourceVideo?.resolvedDuration ?? 0
     }
 
     var effectiveVideoSeconds: Int {
         guard videoModel.requiresSourceVideo else { return selectedDuration }
-        if let trim = editor.pendingEditTrimmedSource,
-           let sv = sourceVideo,
-           trim.sourceURL == sv.url, trim.hasTrim {
-            return max(1, Int(trim.durationSeconds.rounded()))
-        }
-        return max(0, Int((sourceVideo?.duration ?? 0).rounded()))
+        return videoModel.billingDurationSeconds(
+            sourceVideoDuration: effectiveSourceVideoSeconds,
+            sourceAudioDuration: refAudios.first?.resolvedDuration
+        ) ?? 0
     }
 
     var effectiveAudioSourceSpanSeconds: Double {

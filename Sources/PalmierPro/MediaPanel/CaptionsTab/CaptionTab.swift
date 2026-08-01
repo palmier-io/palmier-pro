@@ -30,7 +30,7 @@ struct CaptionTab: View {
     @State private var animationExpanded = false
     @State private var placementExpanded = true
 
-    private static let previewText = "Captions will look like this"
+    private static let previewText = L10n.key("Captions will look like this")
 
     private var aspect: CGFloat { CGFloat(editor.timeline.width) / CGFloat(max(1, editor.timeline.height)) }
 
@@ -45,8 +45,8 @@ struct CaptionTab: View {
         return selectedClipTargets   // Auto resolves its source during generation
     }
     private var automaticSourceSummary: String {
-        if !selectedClipTargets.isEmpty { return "Selected Clips · \(selectedClipTargets.count)" }
-        return editor.captionTargets(ids: []).isEmpty ? "No audio" : "Auto"
+        if !selectedClipTargets.isEmpty { return L10n.string("Selected Clips · \(selectedClipTargets.count)") }
+        return editor.captionTargets(ids: []).isEmpty ? L10n.string("No audio") : L10n.string("Auto")
     }
     private var effectiveCount: Int {
         isAutoSource ? editor.captionTargets(ids: []).count : sourceClipIds.count
@@ -59,7 +59,7 @@ struct CaptionTab: View {
     }
     private var cloudModeUnavailableMessage: String? {
         guard provider == .cloud else { return nil }
-        guard account.isSignedIn else { return "Sign in to use Cloud." }
+        guard account.isSignedIn else { return L10n.string("Sign in to use Cloud.") }
         return nil
     }
     private var canGenerateCaptions: Bool {
@@ -69,22 +69,36 @@ struct CaptionTab: View {
         "\(provider.rawValue)|\(sourceClipIds.joined(separator: ","))|\(isAutoSource)|\(locale?.identifier ?? "")"
     }
     private var costHelpText: String {
-        guard let cost = estimatedCloudCost else { return "Estimated cost. Actual billing may differ slightly." }
-        guard cost > 0 else { return "Cached — no credits used." }
-        guard let remaining = remainingCloudCredits else { return "\(CostEstimator.format(cost)) estimated. Actual billing may differ." }
-        if cost > remaining { return "\(CostEstimator.format(cost)) needed. Only \(remaining.formatted()) remaining." }
-        return "\(CostEstimator.format(cost)). \((remaining - cost).formatted()) remaining after this generation."
+        guard let cost = estimatedCloudCost else {
+            return L10n.string("Estimated cost. Actual billing may differ slightly.")
+        }
+        guard cost > 0 else { return L10n.string("Cached — no credits used.") }
+        guard let remaining = remainingCloudCredits else {
+            return CostEstimator.localizedEstimate(cost)
+        }
+        if cost > remaining {
+            return CostEstimator.localizedInsufficientCredits(cost, remaining: remaining)
+        }
+        return CostEstimator.localizedRemainingCredits(cost, remaining: remaining - cost)
     }
 
     private static let translateLanguages = [
-        "Spanish", "French", "German", "Italian", "Portuguese",
-        "Japanese", "Korean", "Chinese", "Hindi", "Arabic"
+        (code: "es", promptName: "Spanish"),
+        (code: "fr", promptName: "French"),
+        (code: "de", promptName: "German"),
+        (code: "it", promptName: "Italian"),
+        (code: "pt", promptName: "Portuguese"),
+        (code: "ja", promptName: "Japanese"),
+        (code: "ko", promptName: "Korean"),
+        (code: "zh-Hans", promptName: "Chinese"),
+        (code: "hi", promptName: "Hindi"),
+        (code: "ar", promptName: "Arabic"),
     ]
 
     private var sourceSummary: String {
         guard let selectedTrackId else { return automaticSourceSummary }
-        guard let index = editor.timeline.tracks.firstIndex(where: { $0.id == selectedTrackId }) else { return "No track" }
-        return "\(trackTitle(index)) · \(sourceClipIds.count)"
+        guard let index = editor.timeline.tracks.firstIndex(where: { $0.id == selectedTrackId }) else { return L10n.string("No track") }
+        return L10n.string("\(trackTitle(index)) · \(sourceClipIds.count)")
     }
 
     var body: some View {
@@ -105,7 +119,7 @@ struct CaptionTab: View {
             }
             if isGenerating {
                 AppTheme.Background.surfaceColor.opacity(AppTheme.Opacity.prominent)
-                GeneratingOverlay(label: "Transcribing…", size: .preview)
+                GeneratingOverlay(label: L10n.string("Transcribing…"), size: .preview)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -137,58 +151,58 @@ struct CaptionTab: View {
     }
 
     private var sourceSection: some View {
-        EditorPanelGroup("Source", isExpanded: $sourceExpanded) {
+        EditorPanelGroup(L10n.string("Source"), isExpanded: $sourceExpanded) {
             InspectorRow(
-                label: "Source",
-                labelHelp: "Uses selected clips when available, otherwise all captionable audio. Choose a track to limit captions.",
+                label: L10n.string("Source"),
+                labelHelp: L10n.string("Uses selected clips when available, otherwise all captionable audio. Choose a track to limit captions."),
                 onReset: {
                     selectedTrackId = nil
                     selectedClipTargets = []
                 }
             ) { sourceMenu }
             InspectorRow(
-                label: "Mode",
-                labelHelp: "Local runs with Apple's SpeechAnalyzer. Cloud uses credits and a more accurate model with more capabilities.",
+                label: L10n.string("Mode"),
+                labelHelp: L10n.string("Local runs with Apple's SpeechAnalyzer. Cloud uses credits and a more accurate model with more capabilities."),
                 onReset: { provider = .cloud }
             ) { providerPicker }
         }
     }
 
     private var settingsSection: some View {
-        EditorPanelGroup("Settings", isExpanded: $settingsExpanded) {
-            InspectorRow(label: "Language", onReset: { locale = nil }) {
+        EditorPanelGroup(L10n.string("Settings"), isExpanded: $settingsExpanded) {
+            InspectorRow(label: L10n.string("Language"), onReset: { locale = nil }) {
                 Menu {
-                    Button("Auto") { locale = nil }
+                    Button(L10n.string("Auto")) { locale = nil }
                     if !supportedLocales.isEmpty {
                         Divider()
                         ForEach(supportedLocales, id: \.identifier) { loc in
                             Button(languageName(loc)) { locale = loc }
                         }
                     }
-                } label: { EditorMenuValue(text: locale.map(languageName) ?? "Auto", expanded: true) }
+                } label: { EditorMenuValue(text: locale.map(languageName) ?? L10n.string("Auto"), expanded: true) }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
                 .frame(maxWidth: .infinity)
             }
             InspectorRow(
-                label: "Max words",
-                labelHelp: "Cap the words shown per caption. None fits each line to the box.",
+                label: L10n.string("Max words"),
+                labelHelp: L10n.string("Cap the words shown per caption. None fits each line to the box."),
                 onReset: { maxWords = nil }
             ) {
                 Menu {
-                    Button("None") { maxWords = nil }
+                    Button(L10n.string("None")) { maxWords = nil }
                     ForEach(1...8, id: \.self) { n in
-                        Button("\(n)") { maxWords = n }
+                        Button(action: { maxWords = n }) { Text(verbatim: "\(n)") }
                     }
-                } label: { EditorMenuValue(text: maxWords.map(String.init) ?? "None", expanded: true) }
+                } label: { EditorMenuValue(text: maxWords.map(String.init) ?? L10n.string("None"), expanded: true) }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
                 .frame(maxWidth: .infinity)
             }
-            InspectorRow(label: "Censor profanity", onReset: { censorProfanity = false }) {
-                Toggle("", isOn: $censorProfanity)
+            InspectorRow(label: L10n.string("Censor profanity"), onReset: { censorProfanity = false }) {
+                Toggle(String(), isOn: $censorProfanity)
                     .labelsHidden()
                     .toggleStyle(.switch)
                     .controlSize(.mini)
-                    .accessibilityLabel("Censor profanity")
+                    .accessibilityLabel(L10n.string("Censor profanity"))
                     .tint(AppTheme.Text.primaryColor.opacity(AppTheme.Opacity.strong))
                     .disabled(provider == .cloud)
                     .opacity(provider == .cloud ? AppTheme.Opacity.muted : AppTheme.Opacity.opaque)
@@ -207,17 +221,18 @@ struct CaptionTab: View {
             Divider()
 
             if captionTrackIndices.isEmpty {
-                Text("No Tracks")
+                Text(L10n.string("No Tracks"))
             } else {
                 ForEach(captionTrackIndices, id: \.self) { index in
                     if editor.timeline.tracks.indices.contains(index) {
                         let track = editor.timeline.tracks[index]
                         let count = editor.captionTargets(trackIds: [track.id]).count
+                        let clipCount = count == 1 ? L10n.string("1 clip") : L10n.string("\(count) clips")
                         Button {
                             selectedTrackId = track.id
                         } label: {
                             Label(
-                                "\(trackTitle(index)) · \(count) \(count == 1 ? "clip" : "clips")",
+                                L10n.string("\(trackTitle(index)) · \(clipCount)"),
                                 systemImage: selectedTrackId == track.id ? "checkmark" : ""
                             )
                         }
@@ -240,7 +255,7 @@ struct CaptionTab: View {
     }
 
     private var cloudCreditHelp: String {
-        "Cloud auto-detects languages, produces more accurate transcripts, can identify speakers, and uses 25 credits/hr when a transcript is not cached."
+        L10n.string("Cloud auto-detects languages, produces more accurate transcripts, can identify speakers, and uses 25 credits/hr when a transcript is not cached.")
     }
 
     private func providerOption(_ option: TranscriptionProvider, title: String) -> some View {
@@ -250,7 +265,7 @@ struct CaptionTab: View {
         } label: {
             HStack(spacing: AppTheme.Spacing.xs) {
                 RadioIndicator(selected: selected, size: AppTheme.IconSize.xxs, innerPadding: AppTheme.Spacing.xxs)
-                Text(title)
+                Text(L10n.string(key: title))
                     .font(.system(size: AppTheme.FontSize.sm, weight: selected ? AppTheme.FontWeight.semibold : AppTheme.FontWeight.medium))
                     .foregroundStyle(selected ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
                     .lineLimit(1)
@@ -259,7 +274,9 @@ struct CaptionTab: View {
         }
         .buttonStyle(.plain)
         .focusable(false)
-        .help(option == .cloud ? cloudCreditHelp : "Local runs with Apple's SpeechAnalyzer.")
+        .help(option == .cloud
+            ? cloudCreditHelp
+            : L10n.string("Local runs with Apple's SpeechAnalyzer."))
     }
 
     private func rememberSelectedClipTargets() {
@@ -273,7 +290,13 @@ struct CaptionTab: View {
     }
 
     private func languageName(_ loc: Locale) -> String {
-        Locale.current.localizedString(forIdentifier: loc.identifier) ?? loc.identifier(.bcp47)
+        AppLocalization.shared.activeLocale.localizedString(forIdentifier: loc.identifier)
+            ?? loc.identifier(.bcp47)
+    }
+
+    private func translationLanguageName(_ identifier: String) -> String {
+        AppLocalization.shared.activeLocale.localizedString(forLanguageCode: identifier)
+            ?? identifier
     }
 
     private var styleSection: some View {
@@ -299,12 +322,12 @@ struct CaptionTab: View {
     }
 
     private var animationSection: some View {
-        EditorPanelGroup("Animation", isExpanded: $animationExpanded) {
+        EditorPanelGroup(L10n.string("Animation"), isExpanded: $animationExpanded) {
             CaptionPresetGallery(selection: $animationPreset, highlight: animationHighlight)
             if animationPreset.usesHighlight {
                 InspectorRow(
-                    label: "Highlight",
-                    labelHelp: "Color for the active word.",
+                    label: L10n.string("Highlight"),
+                    labelHelp: L10n.string("Color for the active word."),
                     onReset: { animationHighlight = TextAnimation.defaultHighlight }
                 ) {
                     ColorField(displayColor: animationHighlight.swiftUIColor, onUserChange: { animationHighlight = TextStyle.RGBA($0) })
@@ -314,7 +337,7 @@ struct CaptionTab: View {
     }
 
     private var placementSection: some View {
-        EditorPanelGroup("Placement", isExpanded: $placementExpanded) {
+        EditorPanelGroup(L10n.string("Placement"), isExpanded: $placementExpanded) {
             previewBox
             HStack(spacing: AppTheme.Spacing.mdLg) {
                 Spacer(minLength: AppTheme.Spacing.xs)
@@ -326,24 +349,24 @@ struct CaptionTab: View {
 
     private var agentMenu: some View {
         EditorAgentMenu(
-            help: "Let Agent create captions for you. Choose a predefined task, or ask Agent in the chat."
+            help: L10n.string("Let Agent create captions for you. Choose a predefined task, or ask Agent in the chat.")
         ) {
             Button {
                 captionTask("remove filler words (um, uh, er, like, you know) from the captions, keeping each caption's timing unchanged.")
-            } label: { Label("Remove filler words", systemImage: "text.badge.minus") }
+            } label: { Label(L10n.string("Remove filler words"), systemImage: "text.badge.minus") }
             Button {
                 captionTask("fix any misspelled names, brand names, or technical jargon in the captions using the surrounding context, keeping timing unchanged.")
-            } label: { Label("Fix names & jargon", systemImage: "checkmark.bubble") }
+            } label: { Label(L10n.string("Fix names & jargon"), systemImage: "checkmark.bubble") }
             Button {
                 captionTask("add relevant emoji to the captions, keeping the text and timing otherwise unchanged.")
-            } label: { Label("Add emoji", systemImage: "face.smiling") }
+            } label: { Label(L10n.string("Add emoji"), systemImage: "face.smiling") }
             Menu {
-                ForEach(Self.translateLanguages, id: \.self) { language in
-                    Button(language) {
-                        captionTask("translate the captions to \(language), keeping each caption's timing unchanged.")
+                ForEach(Self.translateLanguages, id: \.code) { language in
+                    Button(translationLanguageName(language.code)) {
+                        captionTask("translate the captions to \(language.promptName), keeping each caption's timing unchanged.")
                     }
                 }
-            } label: { Label("Translate", systemImage: "globe") }
+            } label: { Label(L10n.string("Translate"), systemImage: "globe") }
         }
     }
 
@@ -364,7 +387,7 @@ struct CaptionTab: View {
             centerGuides
             GeometryReader { geo in
                 CaptionAnimatedPreview(
-                    text: Self.previewText, style: style, center: center,
+                    text: L10n.string(key: Self.previewText), style: style, center: center,
                     preset: animationPreset, highlight: animationHighlight,
                     canvas: CGSize(width: max(1, editor.timeline.width), height: max(1, editor.timeline.height)),
                     size: geo.size
@@ -422,10 +445,10 @@ struct CaptionTab: View {
             HStack(spacing: AppTheme.Spacing.sm) {
                 Button(action: generate) {
                     HStack(spacing: AppTheme.Spacing.xs) {
-                        Text(cloudModeUnavailableMessage ?? "Generate Captions")
+                        Text(cloudModeUnavailableMessage ?? L10n.string("Generate Captions"))
                         if cloudModeUnavailableMessage == nil, provider == .cloud, let cost = estimatedCloudCost {
                             Image(systemName: "dollarsign.circle.fill").font(.system(size: AppTheme.FontSize.xs))
-                            Text("\(cost)").monospacedDigit()
+                            Text(verbatim: "\(cost)").monospacedDigit()
                         }
                     }
                     .lineLimit(1)
@@ -434,7 +457,7 @@ struct CaptionTab: View {
                 .buttonStyle(.editorPrimary)
                 .focusable(false)
                 .disabled(!canGenerateCaptions)
-                .help(provider == .cloud ? costHelpText : "")
+                .help(provider == .cloud ? costHelpText : String())
 
                 agentMenu
             }
@@ -445,7 +468,7 @@ struct CaptionTab: View {
         note = nil
         let sourceIds = sourceClipIds
         if selectedTrackId != nil && sourceIds.isEmpty {
-            note = "No audio selected."
+            note = L10n.string("No audio selected.")
             return
         }
         let request = EditorViewModel.CaptionRequest(
@@ -474,23 +497,39 @@ struct CaptionTab: View {
                         return
                     }
                 }
-                if try await editor.generateCaptions(for: request).isEmpty { note = "No speech detected." }
+                if try await editor.generateCaptions(for: request).isEmpty { note = L10n.string("No speech detected.") }
             } catch {
-                note = error.localizedDescription
+                note = localizedCaptionError(error)
             }
         }
     }
 
     private func cloudUnavailableMessage(cost: Int?, provider mode: TranscriptionProvider? = nil) -> String? {
         guard (mode ?? provider) == .cloud else { return nil }
-        guard account.isSignedIn else { return "Sign in to use Cloud." }
+        guard account.isSignedIn else { return L10n.string("Sign in to use Cloud.") }
         guard let cost else { return nil }
         guard cost > 0 else { return nil }
         guard let remaining = remainingCloudCredits else { return nil }
-        guard remaining > 0 else { return "Add credits to use Cloud." }
+        guard remaining > 0 else { return L10n.string("Add credits to use Cloud.") }
         if cost > remaining {
-            return "\(CostEstimator.format(cost)) needed. Only \(remaining.formatted()) remaining."
+            return CostEstimator.localizedInsufficientCredits(cost, remaining: remaining)
         }
         return nil
+    }
+
+    private func localizedCaptionError(_ error: Error) -> String {
+        guard let error = error as? TranscriptionError else { return error.localizedDescription }
+        switch error {
+        case .unsupportedLocale(let identifier):
+            return L10n.string("On-device transcription is not available for \(identifier).")
+        case .modelInstallFailed(let reason):
+            return L10n.string("Could not install the on-device speech model: \(reason)")
+        case .decodeFailed:
+            return L10n.string("Could not parse transcription result.")
+        case .audioExtractionFailed(let reason):
+            return L10n.string("Audio extraction failed: \(reason)")
+        case .analysisFailed(let reason):
+            return L10n.string("Transcription failed: \(reason)")
+        }
     }
 }

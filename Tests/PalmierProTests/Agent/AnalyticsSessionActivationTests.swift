@@ -52,8 +52,27 @@ struct AnalyticsSessionActivationTests {
         let clientInfo = try #require(properties["client_info"] as? Analytics.Payload)
 
         #expect(properties["source"] as? String == "mcp")
+        #expect((properties["session_id"] as? String)?.isEmpty == false)
         #expect(properties["tool_name"] as? String == "get_timeline")
         #expect(clientInfo["name"] as? String == "Cursor")
         #expect(clientInfo["version"] as? String == "1.0.0")
+    }
+
+    @Test @MainActor func toolErrorMessageOmitsAbsolutePathsAndURLs() {
+        let result = ToolResult.error(
+            """
+            Import failed at /Users/editor/Library/Application Support/secret.mov
+            Download failed from https://example.com/private
+            Retry the operation.
+            """
+        )
+
+        let message = ToolExecutor.sanitizedToolErrorMessage(result)
+
+        #expect(message?.contains("Import failed") == true)
+        #expect(message?.contains("Application Support") == false)
+        #expect(message?.contains("secret.mov") == false)
+        #expect(message?.contains("example.com") == false)
+        #expect(message?.contains("Retry the operation.") == true)
     }
 }

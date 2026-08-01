@@ -14,7 +14,7 @@ struct TitleBarLeadingView: View {
                     .hoverHighlight()
             }
             .buttonStyle(.plain)
-            .help("Toggle Agent Panel")
+            .help(L10n.string("Toggle Agent Panel"))
         }
     }
 }
@@ -44,20 +44,20 @@ struct TitleBarTrailingView: View {
                         }
                     }
                     .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
-                    Text("Export")
+                    Text(L10n.string("Export"))
                 }
                 .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .padding(.horizontal, AppTheme.Spacing.sm)
                 .frame(height: AppTheme.IconSize.lg)
                 .hoverHighlight()
-                .help("Export (⌘E)")
+                .help(L10n.string("Export (⌘E)"))
             }
             .buttonStyle(.plain)
             .accessibilityLabel(
                 activeCount == 0 && waitingCount == 0
-                    ? "Export"
-                    : "Export, \(activeCount) active, \(waitingCount) waiting"
+                    ? L10n.string("Export")
+                    : L10n.string("Export, \(activeCount) active, \(waitingCount) waiting")
             )
 
             UserAvatarButton()

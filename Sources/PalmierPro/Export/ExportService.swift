@@ -340,7 +340,6 @@ final class ExportService {
     func exportPalmierProject(
         projectFile: ProjectFile,
         manifest: MediaManifest,
-        generationLog: GenerationLog,
         sourceProjectURL: URL?,
         outputURL: URL,
         analyticsContext: ExportAnalyticsContext = .init()
@@ -359,13 +358,12 @@ final class ExportService {
                 data: [
                     "timelines": projectFile.timelines.count,
                     "clips": projectFile.timelines.reduce(0) { $0 + $1.tracks.reduce(0) { $0 + $1.clips.count } },
-                    "media": manifest.entries.count,
-                    "generationLogEntries": generationLog.entries.count
+                    "media": manifest.entries.count
                 ]
             )
             let worker = Task.detached(priority: .userInitiated) {
                 try PalmierProjectExporter.export(
-                    projectFile: projectFile, manifest: manifest, generationLog: generationLog,
+                    projectFile: projectFile, manifest: manifest,
                     sourceProjectURL: sourceProjectURL, to: outputURL,
                     progress: { p in Task { @MainActor in self.setProgress(p) } }
                 )

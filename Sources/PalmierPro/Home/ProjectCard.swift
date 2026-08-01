@@ -32,15 +32,15 @@ struct ProjectCard: View {
                 }
                 .overlay {
                     if !entry.isAccessible {
-                        Color.black.opacity(0.6)
+                        AppTheme.MediaOverlay.backgroundColor.opacity(0.6)
 
                         VStack(spacing: AppTheme.Spacing.xs) {
                             Image(systemName: "questionmark.folder")
                                 .font(.system(size: AppTheme.FontSize.title1))
-                            Text("File missing")
+                            Text(L10n.string("File missing"))
                                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                         }
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        .foregroundStyle(AppTheme.MediaOverlay.tertiaryColor)
                     }
                 }
                 .clipped()
@@ -49,7 +49,7 @@ struct ProjectCard: View {
             LinearGradient(
                 stops: [
                     .init(color: .clear, location: 0),
-                    .init(color: .black.opacity(0.7), location: 1),
+                    .init(color: AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.high), location: 1),
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -60,12 +60,14 @@ struct ProjectCard: View {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
                 Text(entry.name)
                     .font(.system(size: AppTheme.FontSize.smMd, weight: .regular))
-                    .foregroundStyle(entry.isAccessible ? .white : AppTheme.Text.mutedColor)
+                    .foregroundStyle(entry.isAccessible
+                        ? AppTheme.MediaOverlay.primaryColor
+                        : AppTheme.MediaOverlay.mutedColor)
                     .lineLimit(1)
 
                 Text(Self.relativeString(for: entry.createdDate))
                     .font(.system(size: AppTheme.FontSize.xs))
-                    .foregroundStyle(.white.opacity(AppTheme.Opacity.medium))
+                    .foregroundStyle(AppTheme.MediaOverlay.primaryColor.opacity(AppTheme.Opacity.medium))
             }
             .padding(.horizontal, AppTheme.Spacing.md)
             .padding(.bottom, AppTheme.Spacing.smMd)
@@ -83,7 +85,9 @@ struct ProjectCard: View {
             if isSelecting {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: AppTheme.FontSize.xl, weight: .semibold))
-                    .foregroundStyle(isSelected ? AppTheme.Accent.primary : AppTheme.Text.tertiaryColor)
+                    .foregroundStyle(isSelected
+                        ? AppTheme.MediaOverlay.primaryColor
+                        : AppTheme.MediaOverlay.tertiaryColor)
                     .padding(AppTheme.Spacing.smMd)
                     .allowsHitTesting(false)
             } else if isHovered {
@@ -105,25 +109,25 @@ struct ProjectCard: View {
                 .strokeBorder(
                     isSelected
                         ? AppTheme.Accent.primary
-                        : Color.white.opacity(isHovered ? AppTheme.Opacity.muted : AppTheme.Opacity.hint),
+                        : AppTheme.Interaction.fill(isHovered ? AppTheme.Opacity.muted : AppTheme.Opacity.hint),
                     lineWidth: isSelected ? AppTheme.BorderWidth.thick : AppTheme.BorderWidth.hairline
                 )
         )
-        .shadow(color: .black.opacity(isHovered ? 0.4 : 0.2), radius: isHovered ? 12 : 4, y: isHovered ? 4 : 2)
+        .shadow(color: AppTheme.MediaOverlay.backgroundColor.opacity(isHovered ? 0.4 : 0.2), radius: isHovered ? 12 : 4, y: isHovered ? 4 : 2)
         .scaleEffect(isHovered ? 1.03 : 1.0)
         .padding(AppTheme.Spacing.xs)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHovered)
         .onHover { isHovered = $0 }
         .contextMenu {
             if entry.isAccessible {
-                Button("Open") { onOpen(entry.url) }
-                Button("Reveal in Finder") {
+                Button(L10n.string("Open")) { onOpen(entry.url) }
+                Button(L10n.string("Reveal in Finder")) {
                     NSWorkspace.shared.selectFile(entry.url.path, inFileViewerRootedAtPath: entry.url.deletingLastPathComponent().path)
                 }
                 Divider()
             }
-            Button("Remove from Recents") { onRemove(entry.url) }
-            Button("Delete Project", role: .destructive, action: onDelete)
+            Button(L10n.string("Remove from Recents")) { onRemove(entry.url) }
+            Button(L10n.string("Delete Project"), role: .destructive, action: onDelete)
         }
         .task(id: entry.lastOpenedDate) { await loadThumbnail(for: entry.url) }
     }

@@ -72,10 +72,10 @@ extension EditorViewModel {
     func identifySpeakers(transcribeMissing: Bool = false) {
         guard !speakerIdentifyInFlight else { return }
         if transcribeMissing, !AccountService.shared.isSignedIn {
-            speakerIdentifyError = "Sign in to use Cloud transcription."
+            speakerIdentifyError = L10n.string("Sign in to use Cloud transcription.")
             return
         }
-        speakerIdentifyPhase = transcribeMissing ? "Transcribing…" : "Identifying…"
+        speakerIdentifyPhase = transcribeMissing ? L10n.string("Transcribing…") : L10n.string("Identifying…")
         speakerIdentifyError = nil
         let projectId = self.projectId
         let assets = mediaAssets.filter { $0.type == .audio || ($0.type == .video && $0.hasAudio) }
@@ -122,7 +122,7 @@ extension EditorViewModel {
                 if !turns.isEmpty { files.append((asset.id, asset.url, turns)) }
             }
             Log.preview.notice("identify speakers: \(files.count) files with speaker turns")
-            self?.speakerIdentifyPhase = "Identifying…"
+            self?.speakerIdentifyPhase = L10n.string("Identifying…")
             let registry = await MainActor.run { self?.speakerRegistry ?? [] }
             let result = await SpeakerIdentity.assignments(
                 files: files, registry: registry.map { ($0.id, $0.centroid) }

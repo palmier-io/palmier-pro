@@ -20,7 +20,7 @@ struct SampleProjectsStrip: View {
                 withAnimation(.easeInOut(duration: AppTheme.Anim.transition)) { isExpanded.toggle() }
             } label: {
                 HStack(spacing: AppTheme.Spacing.xs) {
-                    Text("Sample Project")
+                    Text(L10n.string("Sample Project"))
                         .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.regular))
                         .foregroundStyle(AppTheme.Text.primaryColor)
                     Image(systemName: "chevron.right")
@@ -95,7 +95,7 @@ private struct SampleCard: View {
             LinearGradient(
                 stops: [
                     .init(color: .clear, location: 0),
-                    .init(color: .black.opacity(0.7), location: 1),
+                    .init(color: AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.high), location: 1),
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -105,7 +105,7 @@ private struct SampleCard: View {
 
             Text(sample.title)
                 .font(.system(size: AppTheme.FontSize.smMd, weight: .regular))
-                .foregroundStyle(.white)
+                .foregroundStyle(AppTheme.MediaOverlay.primaryColor)
                 .lineLimit(1)
                 .padding(.horizontal, AppTheme.Spacing.md)
                 .padding(.bottom, AppTheme.Spacing.smMd)
@@ -123,7 +123,7 @@ private struct SampleCard: View {
         .overlay(
             RoundedRectangle(cornerRadius: cardRadius, style: .continuous)
                 .strokeBorder(
-                    Color.white.opacity(isHovered ? AppTheme.Opacity.muted : AppTheme.Opacity.hint),
+                    AppTheme.Interaction.fill(isHovered ? AppTheme.Opacity.muted : AppTheme.Opacity.hint),
                     lineWidth: AppTheme.BorderWidth.hairline
                 )
         )
@@ -137,19 +137,19 @@ private struct SampleCard: View {
     @ViewBuilder
     private func downloadOverlay(_ download: SampleDownload) -> some View {
         ZStack {
-            Color.black.opacity(AppTheme.Opacity.faint)
+            AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.faint)
             if download.failed {
                 VStack(spacing: AppTheme.Spacing.xs) {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: AppTheme.FontSize.lg, weight: .semibold))
-                    Text("Retry")
+                    Text(L10n.string("Retry"))
                         .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                 }
-                .foregroundStyle(AppTheme.Text.primaryColor)
+                .foregroundStyle(AppTheme.MediaOverlay.primaryColor)
             } else {
                 ProgressView(value: download.progress)
                     .progressViewStyle(.linear)
-                    .tint(AppTheme.Accent.primary)
+                    .tint(AppTheme.MediaOverlay.primaryColor)
                     .padding(.horizontal, AppTheme.Spacing.lg)
             }
         }

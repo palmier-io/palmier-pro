@@ -11,10 +11,11 @@ struct UpdateSidebarCard: View {
             } label: {
                 HStack(spacing: AppTheme.Spacing.sm) {
                     VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
-                        Text("Click to install update")
+                        Text(L10n.string("Click to install update"))
                             .font(.system(size: AppTheme.FontSize.smMd, weight: .medium))
                             .foregroundStyle(AppTheme.Text.primaryColor)
-                        Text(updater.updateVersion.map { "Version \($0)" } ?? "New version available")
+                        Text(updater.updateVersion.map { L10n.string("Version \($0)") }
+                            ?? L10n.string("New version available"))
                             .font(.system(size: AppTheme.FontSize.xs))
                             .foregroundStyle(AppTheme.Text.tertiaryColor)
                     }
@@ -50,7 +51,7 @@ struct UpdateProjectBadge: View {
             Button {
                 updater.checkForUpdates(nil)
             } label: {
-                Label("Update", systemImage: "arrow.down.circle.fill")
+                Label(L10n.string("Update"), systemImage: "arrow.down.circle.fill")
                     .font(.system(size: AppTheme.FontSize.sm, weight: .semibold))
                     .foregroundStyle(AppTheme.Update.accent)
                     .lineLimit(1)
@@ -70,8 +71,8 @@ struct UpdateProjectBadge: View {
 
     private var helpText: String {
         if let version = updater.updateVersion {
-            return "Install update v\(version)"
+            return L10n.string("Install update v\(version)")
         }
-        return "Install update"
+        return L10n.string("Install update")
     }
 }

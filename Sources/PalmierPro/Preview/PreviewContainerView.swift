@@ -66,7 +66,10 @@ struct PreviewContainerView: View {
                 )
                 .overlay(
                     Rectangle()
-                        .stroke(Color.white.opacity(editor.canvasZoom < 1.0 ? AppTheme.Opacity.moderate : 0), lineWidth: AppTheme.BorderWidth.thin)
+                        .stroke(
+                            AppTheme.MediaOverlay.primaryColor.opacity(editor.canvasZoom < 1.0 ? AppTheme.Opacity.moderate : 0),
+                            lineWidth: AppTheme.BorderWidth.thin
+                        )
                 )
                 .position(x: geo.size.width / 2, y: geo.size.height / 2)
                 .offset(x: editor.canvasOffset.width, y: editor.canvasOffset.height)
@@ -123,14 +126,14 @@ struct PreviewContainerView: View {
             settingsMenuButton(
                 systemImage: "speedometer",
                 label: editor.playbackRate.label,
-                help: "Playback Speed"
+                help: L10n.string("Playback Speed")
             ) {
                 playbackRateMenuItems
             }
             settingsMenuButton(
                 systemImage: "magnifyingglass",
                 label: zoomBadgeLabel,
-                help: "Canvas Zoom"
+                help: L10n.string("Canvas Zoom")
             ) {
                 zoomMenuItems
             }
@@ -147,7 +150,7 @@ struct PreviewContainerView: View {
             settingsMenuButton(
                 systemImage: "magnifyingglass",
                 label: zoomBadgeLabel,
-                help: "Canvas Zoom"
+                help: L10n.string("Canvas Zoom")
             ) {
                 zoomMenuItems
             }
@@ -165,7 +168,7 @@ struct PreviewContainerView: View {
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .frame(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.mdLg)
                 .hoverHighlight()
-                .help("Capture Frame to Media")
+                .help(L10n.string("Capture Frame to Media"))
         }
         .buttonStyle(.plain)
         .tourAnchor(.screenshotButton)
@@ -180,7 +183,7 @@ struct PreviewContainerView: View {
                 editor.setPlaybackRate(rate)
             } label: {
                 HStack {
-                    Text(rate.label)
+                    Text(verbatim: rate.label)
                     Spacer()
                     if editor.playbackRate == rate {
                         Image(systemName: "checkmark")
@@ -198,7 +201,7 @@ struct PreviewContainerView: View {
                 editor.canvasZoom = preset.value
             } label: {
                 HStack {
-                    Text(preset.label)
+                    Text(preset == .fit ? L10n.string("Fit") : preset.label)
                     Spacer()
                     if isZoomPresetActive(preset) {
                         Image(systemName: "checkmark")
@@ -210,7 +213,7 @@ struct PreviewContainerView: View {
 
     private var zoomBadgeLabel: String {
         if isZoomPresetActive(.fit) {
-            return "Fit"
+            return L10n.string("Fit")
         }
         let percent = Int(editor.canvasZoom * 100)
         return "\(percent)%"
@@ -235,9 +238,9 @@ struct PreviewContainerView: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .hoverHighlight()
-        .help(help)
-        .accessibilityLabel(help)
-        .accessibilityValue(label)
+        .help(L10n.string(key: help))
+        .accessibilityLabel(L10n.string(key: help))
+        .accessibilityValue(L10n.string(key: label))
     }
 
     private func badgeLabel(systemImage: String, text: String) -> some View {
@@ -277,7 +280,7 @@ struct PreviewContainerView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.black)
+        .background(AppTheme.Background.previewCanvasColor)
         .allowsHitTesting(false)
         .task(id: assetKey) {
             failedImagePreviewKey = nil
@@ -378,7 +381,7 @@ struct PreviewContainerView: View {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        panel.message = "Choose the source file for this clip"
+        panel.message = L10n.string("Choose the source file for this clip")
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             editor.relinkAsset(id: assetId, to: url)
@@ -390,11 +393,13 @@ struct PreviewContainerView: View {
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        panel.message = "Choose the folder that holds your media"
+        panel.message = L10n.string("Choose the folder that holds your media")
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             let result = editor.relinkOfflineAssets(fromFolder: url)
-            editor.mediaPanelToast = "Relinked \(result.relinked) of \(result.total) offline clips."
+            editor.mediaPanelToast = MediaPanelToast(
+                message: L10n.string("Relinked \(result.relinked) of \(result.total) offline clips.")
+            )
         }
     }
 
@@ -405,7 +410,7 @@ struct PreviewContainerView: View {
                     .overlay { Image(nsImage: image).resizable().scaledToFill().blur(radius: 24) }
                     .clipped()
             }
-            Color.black.opacity(AppTheme.Opacity.strong)
+            AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.strong)
             GeneratingOverlay(label: label, size: .preview)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -438,26 +443,26 @@ struct PreviewContainerView: View {
 
     private func offlinePreview(assetId: String?, path: String?, isUnprocessable: Bool) -> some View {
         ZStack {
-            Color.black.opacity(AppTheme.Opacity.strong)
+            AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.strong)
             VStack(spacing: AppTheme.Spacing.md) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: AppTheme.FontSize.display))
                     .foregroundStyle(AppTheme.Status.errorColor)
-                Text(isUnprocessable ? "Couldn't Prepare Media" : "Media Offline")
+                Text(isUnprocessable ? L10n.string("Couldn't Prepare Media") : L10n.string("Media Offline"))
                     .font(.system(size: AppTheme.FontSize.lg, weight: .semibold))
-                    .foregroundStyle(AppTheme.Text.primaryColor)
+                    .foregroundStyle(AppTheme.MediaOverlay.primaryColor)
                 Text(isUnprocessable
-                    ? "Palmier loaded this clip's source file but couldn't prepare it for playback. The file may be corrupt or in an unsupported format."
-                    : "Palmier couldn't load this clip's source file. It may be missing, on an ejected drive, or unreadable.")
+                    ? L10n.string("Palmier loaded this clip's source file but couldn't prepare it for playback. The file may be corrupt or in an unsupported format.")
+                    : L10n.string("Palmier couldn't load this clip's source file. It may be missing, on an ejected drive, or unreadable."))
                     .font(.system(size: AppTheme.FontSize.sm))
-                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .foregroundStyle(AppTheme.MediaOverlay.secondaryColor)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, AppTheme.Spacing.lg)
                 if let path {
                     Text(path)
                         .font(.system(size: AppTheme.FontSize.sm))
-                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                        .foregroundStyle(AppTheme.MediaOverlay.secondaryColor)
                         .multilineTextAlignment(.center)
                         .textSelection(.enabled)
                         .lineLimit(3)
@@ -465,7 +470,7 @@ struct PreviewContainerView: View {
                         .padding(.horizontal, AppTheme.Spacing.lg)
                 }
                 if isUnprocessable {
-                    Button("Report a Problem") {
+                    Button(L10n.string("Report a Problem")) {
                         FeedbackWindowController.shared.show(prefill: Self.unprocessablePrefill(path: path))
                     }
                     .buttonStyle(.capsule(.prominent, size: .regular))
@@ -473,10 +478,10 @@ struct PreviewContainerView: View {
                 } else {
                     HStack(spacing: AppTheme.Spacing.sm) {
                         if let assetId {
-                            Button("Relink…") { relinkFile(assetId: assetId) }
+                            Button(L10n.string("Relink…")) { relinkFile(assetId: assetId) }
                                 .buttonStyle(.capsule(.prominent, size: .regular))
                         }
-                        Button("Relink Folder…") { relinkFolder() }
+                        Button(L10n.string("Relink Folder…")) { relinkFolder() }
                             .buttonStyle(.capsule(.secondary, size: .regular))
                     }
                     .padding(.top, AppTheme.Spacing.xs)
@@ -490,18 +495,18 @@ struct PreviewContainerView: View {
 
     private func failedPreview(error: String) -> some View {
         ZStack {
-            Color.black.opacity(AppTheme.Opacity.strong)
+            AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.strong)
             VStack(spacing: AppTheme.Spacing.md) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: AppTheme.FontSize.display))
                     .foregroundStyle(.red.opacity(AppTheme.Opacity.prominent))
-                Text("Generation Failed")
+                Text(L10n.string("Generation Failed"))
                     .font(.system(size: AppTheme.FontSize.lg, weight: .semibold))
-                    .foregroundStyle(AppTheme.Text.primaryColor)
+                    .foregroundStyle(AppTheme.MediaOverlay.primaryColor)
                 ScrollView {
                     Text(error)
                         .font(.system(size: AppTheme.FontSize.md))
-                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                        .foregroundStyle(AppTheme.MediaOverlay.secondaryColor)
                         .multilineTextAlignment(.center)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity)
@@ -515,16 +520,19 @@ struct PreviewContainerView: View {
                     } label: {
                         HStack(spacing: AppTheme.Spacing.xs) {
                             Image(systemName: "arrow.clockwise")
-                            Text("Retry Download")
+                            Text(L10n.string("Retry Download"))
                         }
                         .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
-                        .foregroundStyle(AppTheme.Text.primaryColor)
+                        .foregroundStyle(AppTheme.MediaOverlay.primaryColor)
                         .padding(.horizontal, AppTheme.Spacing.md)
                         .padding(.vertical, AppTheme.Spacing.sm)
                     }
                     .buttonStyle(.plain)
-                    .background(.white.opacity(AppTheme.Opacity.soft), in: .capsule)
-                    .overlay(Capsule().strokeBorder(.white.opacity(AppTheme.Opacity.muted), lineWidth: AppTheme.BorderWidth.hairline))
+                    .background(AppTheme.MediaOverlay.primaryColor.opacity(AppTheme.Opacity.soft), in: .capsule)
+                    .overlay(Capsule().strokeBorder(
+                        AppTheme.MediaOverlay.primaryColor.opacity(AppTheme.Opacity.muted),
+                        lineWidth: AppTheme.BorderWidth.hairline
+                    ))
                 }
             }
             .padding(AppTheme.Spacing.xl)
@@ -538,10 +546,10 @@ struct PreviewContainerView: View {
     private var tabBar: some View {
         HStack(spacing: AppTheme.Spacing.xs) {
             HStack(spacing: 0) {
-                navButton("chevron.left", enabled: editor.canGoBackPreviewTab, help: "Back") {
+                navButton("chevron.left", enabled: editor.canGoBackPreviewTab, help: L10n.string("Back")) {
                     editor.goBackPreviewTab()
                 }
-                navButton("chevron.right", enabled: editor.canGoForwardPreviewTab, help: "Forward") {
+                navButton("chevron.right", enabled: editor.canGoForwardPreviewTab, help: L10n.string("Forward")) {
                     editor.goForwardPreviewTab()
                 }
             }
@@ -603,12 +611,12 @@ struct PreviewContainerView: View {
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
-        .help(help)
+        .help(L10n.string(key: help))
     }
 
     private var overflowMenu: some View {
         Menu {
-            Button("Close All Tabs") {
+            Button(L10n.string("Close All Tabs")) {
                 withAnimation(.easeInOut(duration: AppTheme.Anim.transition)) {
                     editor.closeAllPreviewTabs()
                 }
@@ -624,7 +632,7 @@ struct PreviewContainerView: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
-        .help("More")
+        .help(L10n.string("More"))
     }
 
     // MARK: - Scrub bar
@@ -642,7 +650,7 @@ struct PreviewContainerView: View {
             let barHeight: CGFloat = active ? 4 : 3
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color.white.opacity(AppTheme.Opacity.soft))
+                    .fill(AppTheme.Interaction.fill(AppTheme.Opacity.soft))
                     .frame(height: barHeight)
                 PreviewScrubProgress(
                     isTimeline: isTimeline,
@@ -798,7 +806,7 @@ private struct PreviewTimecodeText: View {
         HStack(spacing: 0) {
             Text(formatTimecode(frame: frame, fps: fps))
                 .foregroundStyle(AppTheme.Accent.timecodeColor)
-            Text(" / ")
+            Text(verbatim: " / ")
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
             Text(durationTimecode)
                 .foregroundStyle(AppTheme.Text.secondaryColor)
@@ -830,9 +838,9 @@ private struct PreviewScrubProgress: View {
                 .fill(AppTheme.Accent.primary)
                 .frame(width: max(0, g.size.width * progress), height: g.barHeight)
             Circle()
-                .fill(Color.white)
+                .fill(AppTheme.Text.primaryColor)
                 .frame(width: g.thumbSize, height: g.thumbSize)
-                .shadow(color: .black.opacity(0.3), radius: 1, y: 1)
+                .shadow(AppTheme.Shadow.sm)
                 .position(x: g.size.width * progress, y: g.size.height / 2)
         }
     }

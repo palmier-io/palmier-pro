@@ -6,7 +6,8 @@ extension EditorViewModel {
     }
 
     func aiEditActions(clipId: String) -> [EditAction] {
-        guard let (clip, asset) = aiEditClipAsset(clipId), clip.mediaType.isVisual else { return [] }
+        guard let (clip, asset) = aiEditClipAsset(clipId),
+              clip.mediaType.isVisual || clip.mediaType == .audio else { return [] }
         return EditAction.available(
             for: asset,
             effectiveDurationOverride: aiEditTrimmedSource(clipId: clipId)?.durationSeconds
@@ -29,6 +30,29 @@ extension EditorViewModel {
     func beginAIEdit(clipId: String) {
         guard let (clip, asset) = aiEditClipAsset(clipId), clip.mediaType.isVisual,
               let stored = EditSubmitter.editSeed(for: asset) else { return }
+        seedGenerationPanel(
+            asset: asset,
+            stored: stored,
+            replacementClipId: clipId,
+            trimmedSource: aiEditTrimmedSource(clipId: clipId)
+        )
+    }
+
+    func beginAIReframe(clipId: String) {
+        guard let (clip, asset) = aiEditClipAsset(clipId), clip.mediaType == .video,
+              let stored = EditSubmitter.reframeSeed(for: asset) else { return }
+        seedGenerationPanel(
+            asset: asset,
+            stored: stored,
+            replacementClipId: clipId,
+            trimmedSource: aiEditTrimmedSource(clipId: clipId)
+        )
+    }
+
+    func beginAILipSync(clipId: String) {
+        guard let (clip, asset) = aiEditClipAsset(clipId), clip.mediaType == .video,
+              let model = VideoModelConfig.lipSync,
+              let stored = EditSubmitter.lipSyncSeed(for: asset, model: model) else { return }
         seedGenerationPanel(
             asset: asset,
             stored: stored,

@@ -45,7 +45,9 @@ struct CapsuleButtonStyle: ButtonStyle {
                 .padding(.horizontal, hPadding)
                 .padding(.vertical, vPadding)
                 .background(Capsule(style: .continuous).fill(background))
-                .overlay(Capsule(style: .continuous).fill(.white.opacity(isEnabled && hovered ? AppTheme.Opacity.faint : 0)))
+                .overlay(Capsule(style: .continuous).fill(
+                    AppTheme.Interaction.fill(isEnabled && hovered ? AppTheme.Opacity.faint : 0)
+                ))
                 .opacity(isEnabled
                     ? (configuration.isPressed ? AppTheme.Opacity.strong : AppTheme.Opacity.opaque)
                     : AppTheme.Opacity.strong)

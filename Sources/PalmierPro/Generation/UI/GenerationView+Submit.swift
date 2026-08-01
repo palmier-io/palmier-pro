@@ -18,7 +18,9 @@ extension GenerationView {
         if selectedType == .video && videoModel.requiresSourceVideo {
             guard sourceVideo != nil else { return false }
             if videoModel.requiresReferenceImage && imageReferences.isEmpty { return false }
-            if !videoModel.supportsReferences && isPromptEmpty { return false }
+            if videoModel.requiresReferenceAudio && refAudios.isEmpty { return false }
+            if videoModel.isLipSync && effectiveVideoSeconds == 0 { return false }
+            if videoModel.supportsPrompt && !videoModel.supportsReferences && isPromptEmpty { return false }
             return true
         }
         if selectedType == .video && videoModel.framesAndReferencesExclusive
@@ -95,22 +97,22 @@ extension GenerationView {
 
     private var costHelpText: String {
         guard let cost = estimatedCost else {
-            return "Estimated cost. Actual billing may differ slightly."
+            return L10n.string("Estimated cost. Actual billing may differ slightly.")
         }
         guard let left = remainingCredits else {
-            return "\(cost) credits estimated. Actual billing may differ."
+            return CostEstimator.localizedEstimate(cost)
         }
         if cost > left {
-            return "\(cost) credits needed. Only \(left.formatted()) remaining."
+            return CostEstimator.localizedInsufficientCredits(cost, remaining: left)
         }
-        return "\(cost) credits. \((left - cost).formatted()) credits remaining after this generation."
+        return CostEstimator.localizedRemainingCredits(cost, remaining: left - cost)
     }
 
     var costEstimateLabel: some View {
         HStack(spacing: AppTheme.Spacing.xs) {
             Image(systemName: "dollarsign.circle.fill")
                 .font(.system(size: AppTheme.FontSize.sm))
-            Text(estimatedCost.map { $0.formatted() } ?? "—")
+            Text(verbatim: estimatedCost.map { $0.formatted() } ?? "—")
                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                 .monospacedDigit()
                 .lineLimit(1)
@@ -132,12 +134,16 @@ extension GenerationView {
         .buttonBorderShape(.circle)
         .controlSize(.regular)
         .tint(AppTheme.Accent.primary)
-        .accessibilityLabel(aiAllowed ? (selectedType == .upscale ? "Upscale" : "Generate") : "Sign in")
+        .accessibilityLabel(aiAllowed
+            ? (selectedType == .upscale ? L10n.string("Upscale") : L10n.string("Generate"))
+            : L10n.string("Sign in"))
         .disabled(aiAllowed ? !canSubmit : account.isMisconfigured || account.isSigningIn)
         .opacity((aiAllowed ? canSubmit : !account.isMisconfigured && !account.isSigningIn) ? AppTheme.Opacity.opaque : AppTheme.Opacity.strong)
         .help(aiAllowed
-            ? (selectedType == .upscale ? "Upscale source media" : "")
-            : (account.isMisconfigured ? "AI is unavailable" : account.isSigningIn ? "Opening Google" : "Sign in to generate"))
+            ? (selectedType == .upscale ? L10n.string("Upscale source media") : String())
+            : (account.isMisconfigured
+                ? L10n.string("AI is unavailable")
+                : account.isSigningIn ? L10n.string("Opening Google") : L10n.string("Sign in to generate")))
     }
 
     // MARK: - Actions
@@ -146,7 +152,9 @@ extension GenerationView {
         if model.requiresSourceVideo {
             return VideoGenerationSubmission.InputAssets(
                 sourceVideo: sourceVideo,
-                imageRefs: model.supportsReferences ? Array(imageReferences.prefix(1)) : []
+                imageRefs: Array(imageReferences.prefix(model.maxReferenceImages)),
+                videoRefs: Array(refVideos.prefix(model.maxReferenceVideos)),
+                audioRefs: Array(refAudios.prefix(model.maxReferenceAudios))
             )
         }
 
@@ -174,7 +182,8 @@ extension GenerationView {
             let inputAssets = videoInputAssets(for: videoModel)
             let modelError: String?
             if videoModel.requiresSourceVideo {
-                modelError = videoModel.validate(duration: 0, aspectRatio: "", resolution: nil)
+                modelError = videoModel.validateSourceDuration(effectiveSourceVideoSeconds)
+                    ?? videoModel.validate(duration: 0, aspectRatio: "", resolution: nil)
             } else {
                 modelError = videoModel.validate(
                     duration: selectedDuration,
@@ -197,24 +206,24 @@ extension GenerationView {
         case .audio:
             let inputAssets = audioInputAssets(for: audioModel)
             if audioUsesSource {
-                guard audioSource != nil else { return "Add source media." }
+                guard audioSource != nil else { return L10n.string("Add source media.") }
                 return audioModel.validate(spanSeconds: effectiveAudioSourceSpanSeconds)
                     ?? audioModel.validate(params: audioParams(audioDuration: audioDuration))
             }
             return audioModel.validate(params: audioParams(audioDuration: audioDuration))
                 ?? inputAssets.validate(for: audioModel)
         case .upscale:
-            guard let source = upscaleSource else { return "Add source media." }
+            guard let source = upscaleSource else { return L10n.string("Add source media.") }
             guard upscaleModel.supportedTypes.contains(source.type) else {
-                return "\(upscaleModel.displayName) does not support this media type."
+                return L10n.string("\(upscaleModel.displayName) does not support this media type.")
             }
             guard source.sourceWidth != nil, source.sourceHeight != nil else {
-                return "Loading source dimensions…"
+                return L10n.string("Loading source dimensions…")
             }
             if source.type == .video {
-                guard source.sourceFPS != nil else { return "Loading source frame rate…" }
+                guard source.sourceFPS != nil else { return L10n.string("Loading source frame rate…") }
                 guard upscaleModel.supports(source: source) else {
-                    return "This model cannot cap the output at 60 FPS."
+                    return L10n.string("This model cannot cap the output at 60 FPS.")
                 }
             }
             return nil
@@ -523,7 +532,10 @@ extension GenerationView {
         case .video:
             if videoModel.requiresSourceVideo {
                 sourceVideo = primary.first
-                if videoModel.supportsReferences, primary.count > 1 {
+                imageReferences = (stored.referenceImageAssetIds ?? []).compactMap(lookup)
+                refVideos = (stored.referenceVideoAssetIds ?? []).compactMap(lookup)
+                refAudios = (stored.referenceAudioAssetIds ?? []).compactMap(lookup)
+                if imageReferences.isEmpty, videoModel.maxReferenceImages > 0, primary.count > 1 {
                     imageReferences = [primary[1]]
                 }
             } else {

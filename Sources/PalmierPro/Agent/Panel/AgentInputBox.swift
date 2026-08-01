@@ -74,7 +74,7 @@ struct AgentInputBox<LeadingTools: View>: View {
                 .strokeBorder(
                     isDropTargeted ? AppTheme.Accent.primary.opacity(AppTheme.Opacity.strong)
                         : focused ? AppTheme.Accent.primary.opacity(AppTheme.Opacity.medium)
-                        : Color.white.opacity(AppTheme.Opacity.hint),
+                        : AppTheme.Interaction.fill(AppTheme.Opacity.hint),
                     lineWidth: (focused || isDropTargeted) ? AppTheme.BorderWidth.thin : AppTheme.BorderWidth.hairline
                 )
                 .allowsHitTesting(false)
@@ -116,7 +116,7 @@ struct AgentInputBox<LeadingTools: View>: View {
                 }
 
             if draft.isEmpty {
-                Text("Ask, or type @ to reference media")
+                Text(L10n.string("Ask, or type @ to reference media"))
                     .font(.body)
                     .foregroundStyle(AppTheme.Text.mutedColor)
                     .padding(.horizontal, AppTheme.Spacing.lgXl)
@@ -151,7 +151,7 @@ struct AgentInputBox<LeadingTools: View>: View {
             .controlSize(.regular)
             .tint(AppTheme.Text.secondaryColor)
             .glassEffectID("sendStop", in: sendStopNamespace)
-            .help("Stop")
+            .help(L10n.string("Stop"))
             .transition(.scale.combined(with: .opacity))
         } else {
             Button(action: onSend) {

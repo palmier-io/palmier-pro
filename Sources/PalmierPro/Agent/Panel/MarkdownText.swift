@@ -36,7 +36,7 @@ struct MarkdownText: View {
                             .padding(AppTheme.Spacing.md)
                             .background(
                                 RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
-                                    .fill(Color.black.opacity(AppTheme.Opacity.moderate))
+                                    .fill(AppTheme.Background.baseColor.opacity(AppTheme.Opacity.medium))
                             )
                     }
 
@@ -66,7 +66,7 @@ struct MarkdownText: View {
                     .padding(AppTheme.Spacing.md)
                     .background(
                         RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
-                            .fill(Color.black.opacity(AppTheme.Opacity.muted))
+                            .fill(AppTheme.Background.baseColor.opacity(AppTheme.Opacity.medium))
                     )
                 }
             }

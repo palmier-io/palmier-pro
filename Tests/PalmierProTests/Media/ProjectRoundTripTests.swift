@@ -340,33 +340,4 @@ struct ProjectRoundTripTests {
         #expect(manifest.folders.isEmpty)
     }
 
-    // MARK: - GenerationLog
-
-    @Test func generationLogSurvivesRoundTrip() throws {
-        var log = GenerationLog()
-        log.entries = [
-            GenerationLogEntry(model: "veo3.1-fast", costCredits: 100, createdAt: Date(timeIntervalSince1970: 1_700_000_000)),
-            GenerationLogEntry(model: "nano-banana-pro", costCredits: nil, createdAt: nil),
-        ]
-        #expect(try roundTrip(log) == log)
-    }
-
-    @Test func generationLogEntryMigratesLegacyCostDollarsToCredits() throws {
-        // Legacy entries stored `cost` as dollars (Double). New entries use `costCredits` (Int).
-        // Conversion: credits = ceil(dollars * 100).
-        let json = """
-        { "id": "abc", "model": "test-model", "cost": 0.05 }
-        """
-        let entry = try JSONDecoder().decode(GenerationLogEntry.self, from: Data(json.utf8))
-        #expect(entry.costCredits == 5) // 0.05 × 100 = 5
-    }
-
-    @Test func generationLogEntryWithNeitherCostFieldDecodesToNil() throws {
-        let json = """
-        { "id": "abc", "model": "test-model" }
-        """
-        let entry = try JSONDecoder().decode(GenerationLogEntry.self, from: Data(json.utf8))
-        #expect(entry.costCredits == nil)
-        #expect(entry.createdAt == nil)
-    }
 }

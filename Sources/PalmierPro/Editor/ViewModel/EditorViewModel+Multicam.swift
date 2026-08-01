@@ -555,7 +555,7 @@ extension EditorViewModel {
     private func switchOrToast(groupId: String, request: AngleSwitchRequest) {
         do { _ = try switchMulticamAngles(groupId: groupId, requests: [request]) }
         catch let error as ToolError { mediaPanelToast = MediaPanelToast(stringLiteral: error.message) }
-        catch { mediaPanelToast = "Couldn't switch angle." }
+        catch { mediaPanelToast = MediaPanelToast(message: L10n.string("Couldn't switch angle.")) }
     }
 
     func switchMulticamRange(groupId: String, range: Range<Int>, angle: String) {
@@ -563,23 +563,4 @@ extension EditorViewModel {
             AngleSwitchRequest(range: range, angle: angle))
     }
 
-    // MARK: - Dead air (remove_silence)
-
-    func multicamDeadAirMask(for clip: Clip) -> [Bool]? {
-        guard clip.mediaType == .audio, let group = multicamGroup(of: clip) else { return nil }
-        let mics = group.mics
-        guard !mics.isEmpty else { return nil }
-        let cellSeconds = VoiceActivity.chunkDuration
-        var masks: [[Bool]] = []
-        for mic in mics {
-            guard let mask = mediaVisualCache.deadAirMask(for: mic.mediaRef), !mask.isEmpty else { return nil }
-            let shift = Int((mic.sync.offsetSeconds / cellSeconds).rounded())
-            var shifted = [Bool](repeating: true, count: max(0, mask.count + shift))
-            for (i, dead) in mask.enumerated() where i + shift >= 0 && i + shift < shifted.count {
-                shifted[i + shift] = dead
-            }
-            masks.append(shifted)
-        }
-        return (0..<(masks.map(\.count).max() ?? 0)).map { i in masks.allSatisfy { i >= $0.count || $0[i] } }
-    }
 }

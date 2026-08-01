@@ -30,7 +30,7 @@ struct CurveEditorView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-            Picker("", selection: $channel) {
+            Picker(String(), selection: $channel) {
                 ForEach(Channel.allCases) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
@@ -90,7 +90,7 @@ struct CurveEditorView: View {
             }
             .frame(height: AppTheme.Curve.editorHeight)
 
-            Text("Drag to add or shape a point · double-click to remove")
+            Text(L10n.string("Drag to add or shape a point · double-click to remove"))
                 .font(.system(size: AppTheme.FontSize.xxs))
                 .foregroundStyle(AppTheme.Text.mutedColor)
         }

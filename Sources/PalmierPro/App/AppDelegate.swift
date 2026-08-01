@@ -1,8 +1,16 @@
 import AppKit
 import ClerkKit
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    static let shared = AppDelegate()
+
     private var isTerminating = false
+    private var restartRequested = false
+
+    private override init() {
+        super.init()
+    }
 
     /// Resolves the storage roots before any window can touch them. Only a configured root does
     /// file I/O here, so the default setup never risks a blocking touch from the main thread.
@@ -26,6 +34,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppNotifications.configure()
 
         AppState.shared.startMCPService()
+
+        // Pre-warm NSOpenPanel to avoid main thread blocking during cold start.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard let self, !self.isTerminating else { return }
+            _ = NSOpenPanel()
+        }
     }
 
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
@@ -43,11 +58,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if isTerminating { return .terminateLater }
         isTerminating = true
         let projects = AppState.shared.openProjects
+        let shouldRestart = restartRequested
 
         Task { @MainActor in
             do {
                 for project in projects {
                     try await project.saveBeforeClosing()
+                }
+                if shouldRestart {
+                    try await Self.scheduleRelaunch(
+                        applicationURL: Bundle.main.bundleURL,
+                        processID: ProcessInfo.processInfo.processIdentifier
+                    )
                 }
                 if !MLXRuntime.beginTermination() {
                     await MLXRuntime.waitUntilIdle()
@@ -55,12 +77,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 sender.reply(toApplicationShouldTerminate: true)
             } catch {
                 projects.forEach { $0.editorViewModel.projectPackageCoordinator.cancelClosing() }
+                restartRequested = false
                 isTerminating = false
                 sender.presentError(error)
                 sender.reply(toApplicationShouldTerminate: false)
             }
         }
         return .terminateLater
+    }
+
+    func restart() {
+        guard !isTerminating else { return }
+        restartRequested = true
+        NSApp.terminate(nil)
+    }
+
+    @concurrent
+    private static func scheduleRelaunch(applicationURL: URL, processID: Int32) async throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = [
+            "-c",
+            "while kill -0 \"$1\" 2>/dev/null; do sleep 0.1; done; exec /usr/bin/open -n \"$2\"",
+            "palmier-restart",
+            String(processID),
+            applicationURL.path,
+        ]
+        try process.run()
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {

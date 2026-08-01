@@ -12,7 +12,8 @@ ModelCatalog.shared.configure()
 UserDefaults.standard.set(10, forKey: "NSInitialToolTipDelay")
 
 let app = NSApplication.shared
-let delegate = AppDelegate()
+AppAppearanceStore.shared.apply()
+let delegate = AppDelegate.shared
 app.delegate = delegate
 app.mainMenu = MainMenuBuilder.buildMenu()
 app.run()

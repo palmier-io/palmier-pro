@@ -57,8 +57,15 @@ final class MediaVisualCache {
         MainActor.assumeIsolated { waveformSamples[mediaRef] }
     }
 
-    nonisolated func deadAirMask(for mediaRef: String) -> [Bool]? {
-        speech.deadAirMask(for: mediaRef, samples: samples(for: mediaRef))
+    nonisolated func deadAirMask(
+        for mediaRef: String,
+        settings: SilenceRemovalSettings
+    ) -> [Bool]? {
+        speech.deadAirMask(for: mediaRef, samples: samples(for: mediaRef), settings: settings)
+    }
+
+    nonisolated func quietNonSpeechMask(for mediaRef: String) -> [Bool]? {
+        speech.quietNonSpeechMask(for: mediaRef, samples: samples(for: mediaRef))
     }
 
     nonisolated func thumbnails(for mediaRef: String) -> [(time: Double, image: CGImage)]? {

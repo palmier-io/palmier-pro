@@ -4,17 +4,20 @@ import SwiftUI
 struct InspectorRow<Trailing: View>: View {
     let label: String
     let labelHelp: String?
+    let labelAlignment: Alignment
     let onReset: (() -> Void)?
     @ViewBuilder let trailing: () -> Trailing
 
     init(
         label: String,
         labelHelp: String? = nil,
+        labelAlignment: Alignment = .trailing,
         onReset: (() -> Void)? = nil,
         @ViewBuilder trailing: @escaping () -> Trailing
     ) {
         self.label = label
         self.labelHelp = labelHelp
+        self.labelAlignment = labelAlignment
         self.onReset = onReset
         self.trailing = trailing
     }
@@ -22,7 +25,7 @@ struct InspectorRow<Trailing: View>: View {
     @ViewBuilder
     var body: some View {
         if let labelHelp {
-            row.help(labelHelp)
+            row.help(L10n.string(key: labelHelp))
         } else {
             row
         }
@@ -30,11 +33,11 @@ struct InspectorRow<Trailing: View>: View {
 
     private var row: some View {
         HStack(alignment: .center, spacing: AppTheme.Spacing.sm) {
-            Text(label)
+            Text(L10n.string(key: label))
                 .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .lineLimit(1)
-                .frame(width: AppTheme.EditorPanel.labelColumnWidth, alignment: .trailing)
+                .frame(width: AppTheme.EditorPanel.labelColumnWidth, alignment: labelAlignment)
 
             trailing()
                 .frame(maxWidth: .infinity, alignment: .trailing)
@@ -60,7 +63,7 @@ struct EditorResetButton: View {
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
-        .help("Reset \(title.lowercased())")
-        .accessibilityLabel("Reset \(title)")
+        .help(L10n.string("Reset: \(title)"))
+        .accessibilityLabel(L10n.string("Reset: \(title)"))
     }
 }

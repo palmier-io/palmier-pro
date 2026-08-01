@@ -2,11 +2,11 @@
 
 ## How to contribute
 
-The best way to contribute is to open a Github issue. Bug reports, feature requests, ideas are welcome.
+Inspired by https://github.com/yc-software/qm/blob/main/CONTRIBUTING.md,
+We take contributions as human-written text, not code. Submit a Github issues on feature requests, ideas, bug reports,
+and we will handle the implementation.
 
-With AI coding, human reviews are the bottleneck. We don't have the bandwidth to review large unsolicited PRs.
-
-## Getting Started
+## Self Host Getting Started
 
 ### Prerequisites
 - macOS 26+

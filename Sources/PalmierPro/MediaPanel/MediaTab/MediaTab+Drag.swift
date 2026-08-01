@@ -85,12 +85,12 @@ extension MediaTab {
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
                     .strokeBorder(AppTheme.Accent.primary, lineWidth: AppTheme.BorderWidth.medium)
             )
-            .shadow(color: .black.opacity(AppTheme.Opacity.medium), radius: 4, y: 2)
+            .shadow(color: AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.medium), radius: 4, y: 2)
 
             if count > 1 {
-                Text("\(count)")
+                Text(verbatim: "\(count)")
                     .font(.system(size: AppTheme.FontSize.sm, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(AppTheme.Background.baseColor)
                     .padding(.horizontal, AppTheme.Spacing.sm)
                     .padding(.vertical, AppTheme.Spacing.xxs)
                     .background(Capsule().fill(AppTheme.Accent.primary))

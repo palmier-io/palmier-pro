@@ -9,10 +9,16 @@ enum FixtureVideo {
         let seconds: Double
     }
 
-    static func write(scenes: [Scene], fps: Int32 = 5, size: Int = 320) async throws -> URL {
+    static func write(
+        scenes: [Scene],
+        fps: Int32 = 5,
+        size: Int = 320,
+        fileType: AVFileType = .mp4
+    ) async throws -> URL {
+        let pathExtension = fileType == .mov ? "mov" : "mp4"
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("fixture-\(UUID().uuidString).mp4")
-        let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
+            .appendingPathComponent("fixture-\(UUID().uuidString).\(pathExtension)")
+        let writer = try AVAssetWriter(outputURL: url, fileType: fileType)
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: size,

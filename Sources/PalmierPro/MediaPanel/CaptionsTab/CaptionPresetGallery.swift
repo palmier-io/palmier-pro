@@ -10,8 +10,8 @@ struct CaptionPresetGallery: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
-            section("Per line", [.none] + TextAnimation.Preset.perLine)
-            section("Per word", TextAnimation.Preset.perWord)
+            section(L10n.string("Per line"), [.none] + TextAnimation.Preset.perLine)
+            section(L10n.string("Per word"), TextAnimation.Preset.perWord)
         }
     }
 
@@ -60,7 +60,7 @@ private struct CaptionPresetCell: View {
                         selected ? AppTheme.Accent.timecodeColor : AppTheme.Border.subtleColor,
                         lineWidth: selected ? AppTheme.BorderWidth.medium : AppTheme.BorderWidth.hairline)
             )
-            Text(preset.displayName)
+            Text(L10n.string(key: preset.displayName))
                 .font(.system(size: AppTheme.FontSize.xxs, weight: selected ? .semibold : .regular))
                 .foregroundStyle(selected ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
                 .lineLimit(1)

@@ -71,6 +71,7 @@ final class GenerationService {
             placeholders.append(placeholder)
         }
         let primaryId = placeholders[0].id
+        captureSubmission(genInput: genInput, assetType: assetType, outputCount: count, editor: editor)
 
         Task { @MainActor in
             do {
@@ -122,6 +123,24 @@ final class GenerationService {
         }
 
         return primaryId
+    }
+
+    private func captureSubmission(
+        genInput: GenerationInput,
+        assetType: ClipType,
+        outputCount: Int,
+        editor: EditorViewModel
+    ) {
+        var payload = Analytics.originProperties()
+        payload["project_id"] = editor.projectId ?? "unknown"
+        payload["model"] = genInput.model
+        payload["generation_type"] = Self.generationType(assetType: assetType, genInput: genInput)
+        payload["output_count"] = outputCount
+        Analytics.capture(.generationSubmitted, properties: payload)
+    }
+
+    nonisolated static func generationType(assetType: ClipType, genInput: GenerationInput) -> String {
+        genInput.upscaleSettings == nil ? assetType.rawValue : "upscale"
     }
 
     private func prepareReferences(
@@ -258,9 +277,6 @@ final class GenerationService {
             asset.pendingDownloadURL = nil
             editor.importMediaAsset(asset, skipAppend: true)
             let finalized = await editor.finalizeImportedAsset(asset)
-            if finalized {
-                editor.appendGenerationLog(for: asset)
-            }
             return finalized
         } catch {
             let message = error.localizedDescription

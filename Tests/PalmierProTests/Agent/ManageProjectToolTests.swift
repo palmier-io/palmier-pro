@@ -19,8 +19,11 @@ struct ManageProjectToolTests {
         let properties = try #require(tool.inputSchema["properties"] as? [String: [String: Any]])
         let action = try #require(properties["action"])
         let actions = try #require(action["enum"] as? [String])
+        let aspectRatio = try #require(properties["aspectRatio"])
         #expect(actions == ["list", "open", "create", "close"])
         #expect(!actions.contains("delete"))
+        #expect(aspectRatio["type"] as? String == "string")
+        #expect(aspectRatio["enum"] == nil)
     }
 
     @Test func rejectsDeleteAndActionSpecificFields() async {
