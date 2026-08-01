@@ -66,7 +66,7 @@
 "Add Range to Chat" = "Thêm vùng vào chat";
 "Add Text" = "Thêm văn bản";
 "Add an email above to enable a reply" = "Thêm email ở trên để nhận phản hồi";
-"Add captions to my timeline" = "Thêm phụ đề vào timeline của tôi";
+"Add captions" = "Thêm phụ đề";
 "Add credits" = "Thêm tín dụng";
 "Add credits to use Cloud." = "Thêm tín dụng để dùng Đám mây.";
 "Add emoji" = "Thêm emoji";
@@ -227,9 +227,7 @@
 "Create Nested Timeline" = "Tạo timeline lồng nhau";
 "Create Video" = "Tạo video";
 "Create Video only works on images" = "Tạo video chỉ hoạt động với hình ảnh";
-"Create a letterbox opening" = "Tạo hiệu ứng mở màn letterbox";
 "Create a skill or browse the Community collection." = "Tạo kỹ năng hoặc duyệt bộ sưu tập Cộng đồng.";
-"Create a voiceover" = "Tạo lời thuyết minh";
 "Create matching sound for the video" = "Tạo âm thanh phù hợp với video";
 "Creating…" = "Đang tạo…";
 "Credits" = "Tín dụng";
@@ -241,6 +239,7 @@
 "Custom Aspect Ratio" = "Tỷ lệ khung hình tùy chỉnh";
 "Custom…" = "Tùy chỉnh…";
 "Cut" = "Cắt";
+"Cut to the beat" = "Cắt theo nhịp";
 "Dark" = "Tối";
 "Dark appearance" = "Giao diện tối";
 "Darken" = "Làm tối";
@@ -384,9 +383,7 @@
 "Generate SFX" = "Tạo hiệu ứng âm thanh";
 "Generate SFX only works on video" = "Tạo hiệu ứng âm thanh chỉ hoạt động với video";
 "Generate SFX…" = "Tạo hiệu ứng âm thanh…";
-"Generate an AI video" = "Tạo video AI";
 "Generate audio" = "Tạo âm thanh";
-"Generate music and sync to my timeline" = "Tạo nhạc và đồng bộ với timeline của tôi";
 "Generate music for the timeline" = "Tạo nhạc cho timeline";
 "Generate music that fits the video" = "Tạo nhạc phù hợp với video";
 "Generate video, image, or audio with different models and settings. Drag assets from the media panel above into the reference frame." = "Tạo video, hình ảnh hoặc âm thanh bằng nhiều mô hình và cài đặt. Kéo tài nguyên từ bảng phương tiện ở trên vào khung tham chiếu.";
@@ -454,6 +451,7 @@
 "Keep Current" = "Giữ hiện tại";
 "Keep Editing" = "Tiếp tục chỉnh sửa";
 "Keep Skill" = "Giữ kỹ năng";
+"Keep the best takes" = "Giữ các take đẹp nhất";
 "Keeps this much audio before and after detected speech." = "Giữ lượng âm thanh này trước và sau giọng nói được phát hiện.";
 "Keyboard Shortcuts" = "Phím tắt";
 "Keyframes" = "Khung hình chính";
@@ -503,6 +501,7 @@
 "MCP Server" = "MCP Server";
 "MCP Setup" = "Thiết lập MCP";
 "Main + Sidebar" = "Chính + thanh bên";
+"Make vertical shorts" = "Tạo short dọc";
 "Manage credits" = "Quản lý tín dụng";
 "Manage subscription" = "Quản lý gói đăng ký";
 "Manual setup" = "Thiết lập thủ công";
@@ -606,10 +605,10 @@
 "Open Skills Folder" = "Mở thư mục Kỹ năng";
 "Open Skills to browse community playbooks, create your own, or add them to other agents." = "Mở Kỹ năng để duyệt cẩm nang cộng đồng, tự tạo kỹ năng hoặc thêm kỹ năng vào agent khác.";
 "Open Timeline" = "Mở timeline";
+"Open the AI Edit tab to upscale, prompt-edit, create video from a frame, or generate music, SFX, cleanup, and dubbing from the clip." = "Mở tab Chỉnh sửa bằng AI để nâng độ phân giải, chỉnh sửa bằng prompt, tạo video từ một khung hình, hoặc tạo nhạc, SFX, làm sạch âm thanh và lồng tiếng từ clip.";
 "Opening Google" = "Đang mở Google";
 "Opening Google…" = "Đang mở Google…";
 "Open…" = "Mở…";
-"Organize my media into structured folders" = "Sắp xếp phương tiện của tôi vào các thư mục có cấu trúc";
 "Organize with Agent" = "Sắp xếp bằng Agent";
 "Original" = "Gốc";
 "Original FPS" = "FPS gốc";
@@ -736,6 +735,7 @@
 "Save this project to view activity" = "Lưu dự án này để xem hoạt động";
 "Saves a copy of this project with all media bundled inside, so it opens on any machine." = "Lưu bản sao dự án kèm theo toàn bộ phương tiện để có thể mở trên mọi máy.";
 "Scale" = "Tỷ lệ";
+"Score my timeline" = "Gắn nhạc vào timeline";
 "Screen" = "Màn hình";
 "Screenshot a frame" = "Chụp một khung hình";
 "Scroll Horizontally" = "Cuộn ngang";
@@ -840,6 +840,7 @@
 "Switch Angle" = "Đổi góc";
 "Switch Angle in Range" = "Đổi góc trong vùng";
 "Switch Mic" = "Đổi micrô";
+"Sync my multicam" = "Đồng bộ multicam";
 "Synchronize" = "Đồng bộ hóa";
 "Synchronized %lld clips" = "Đã đồng bộ %lld clip";
 "Synchronized 1 clip" = "Đã đồng bộ 1 clip";
@@ -864,7 +865,6 @@
 "Theme" = "Chủ đề";
 "This is the timeline ruler. Shift+drag on the ruler to select a range to render. You can pick any slot to AI edit or generate music that fits that range." = "Đây là thước timeline. Giữ Shift và kéo trên thước để chọn vùng cần kết xuất. Bạn có thể chọn bất kỳ khoảng nào để chỉnh sửa bằng AI hoặc tạo nhạc phù hợp với vùng đó.";
 "This is where all your footage and assets live." = "Đây là nơi chứa toàn bộ cảnh quay và tài nguyên của bạn.";
-"This is your inspector panel. Select a clip from the timeline to edit it." = "Đây là bảng Trình kiểm tra. Chọn một clip trên timeline để chỉnh sửa.";
 "This is your preview panel to play a selected media or the whole timeline." = "Đây là bảng xem trước để phát phương tiện đã chọn hoặc toàn bộ timeline.";
 "This model cannot cap the output at 60 FPS." = "Mô hình này không thể giới hạn đầu ra ở 60 FPS.";
 "This permanently removes %@." = "Thao tác này sẽ xóa vĩnh viễn %@.";
@@ -974,8 +974,10 @@
 "Your Lottie animation is ready." = "Hoạt ảnh Lottie của bạn đã sẵn sàng.";
 "Your audio clip is ready." = "Clip âm thanh của bạn đã sẵn sàng.";
 "Your image is ready." = "Hình ảnh của bạn đã sẵn sàng.";
+"Your inspector for the selected clip — transform, adjust, audio, and more." = "Trình kiểm tra của clip đã chọn — biến đổi, điều chỉnh, âm thanh và nhiều hơn nữa.";
 "Your text clip is ready." = "Clip văn bản của bạn đã sẵn sàng.";
-"Your timeline: the top half is video, the bottom half is audio. This is where you edit. Right-click a clip for some cool AI features such as upscale, edit, or generate music." = "Timeline của bạn có nửa trên là video và nửa dưới là âm thanh. Đây là nơi bạn chỉnh sửa. Bấm chuột phải vào clip để dùng các tính năng AI như nâng độ phân giải, chỉnh sửa hoặc tạo nhạc.";
+"Your timeline: the top half is video, the bottom half is audio. Click a clip to inspect it — we've selected one for you." = "Timeline của bạn có nửa trên là video và nửa dưới là âm thanh. Nhấp vào một clip để kiểm tra — chúng tôi đã chọn sẵn một clip cho bạn.";
+"Your timeline: the top half is video, the bottom half is audio. This is where you edit." = "Timeline của bạn có nửa trên là video và nửa dưới là âm thanh. Đây là nơi bạn chỉnh sửa.";
 "Your video is ready." = "Video của bạn đã sẵn sàng.";
 "Zoom In" = "Phóng to";
 "Zoom Out" = "Thu nhỏ";

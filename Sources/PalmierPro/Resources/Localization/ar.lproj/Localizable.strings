@@ -66,7 +66,7 @@
 "Add Range to Chat" = "إضافة النطاق إلى الدردشة";
 "Add Text" = "إضافة نص";
 "Add an email above to enable a reply" = "أضف بريدًا إلكترونيًا أعلاه لإتاحة الرد";
-"Add captions to my timeline" = "إضافة تسميات توضيحية إلى مخططي الزمني";
+"Add captions" = "إضافة ترجمات";
 "Add credits" = "إضافة رصيد";
 "Add credits to use Cloud." = "أضف رصيدًا لاستخدام الوضع السحابي.";
 "Add emoji" = "إضافة رمز تعبيري";
@@ -227,9 +227,7 @@
 "Create Nested Timeline" = "إنشاء مخطط زمني متداخل";
 "Create Video" = "إنشاء فيديو";
 "Create Video only works on images" = "يعمل إنشاء الفيديو مع الصور فقط";
-"Create a letterbox opening" = "إنشاء افتتاحية بإطار سينمائي";
 "Create a skill or browse the Community collection." = "أنشئ مهارة أو استعرض مجموعة المجتمع.";
-"Create a voiceover" = "إنشاء تعليق صوتي";
 "Create matching sound for the video" = "إنشاء صوت ملائم للفيديو";
 "Creating…" = "جارٍ الإنشاء…";
 "Credits" = "الرصيد";
@@ -241,6 +239,7 @@
 "Custom Aspect Ratio" = "نسبة عرض إلى ارتفاع مخصصة";
 "Custom…" = "مخصص…";
 "Cut" = "قص";
+"Cut to the beat" = "القص على الإيقاع";
 "Dark" = "داكن";
 "Dark appearance" = "مظهر داكن";
 "Darken" = "تغميق";
@@ -384,9 +383,7 @@
 "Generate SFX" = "إنشاء مؤثرات صوتية";
 "Generate SFX only works on video" = "يعمل إنشاء المؤثرات الصوتية مع الفيديو فقط";
 "Generate SFX…" = "إنشاء مؤثرات صوتية…";
-"Generate an AI video" = "إنشاء فيديو بالذكاء الاصطناعي";
 "Generate audio" = "إنشاء صوت";
-"Generate music and sync to my timeline" = "إنشاء موسيقى ومزامنتها مع مخططي الزمني";
 "Generate music for the timeline" = "إنشاء موسيقى للمخطط الزمني";
 "Generate music that fits the video" = "إنشاء موسيقى تلائم الفيديو";
 "Generate video, image, or audio with different models and settings. Drag assets from the media panel above into the reference frame." = "أنشئ فيديو أو صورة أو صوتًا باستخدام نماذج وإعدادات مختلفة. اسحب الأصول من لوحة الوسائط أعلاه إلى إطار المرجع.";
@@ -454,6 +451,7 @@
 "Keep Current" = "الاحتفاظ بالحالي";
 "Keep Editing" = "متابعة التحرير";
 "Keep Skill" = "الاحتفاظ بالمهارة";
+"Keep the best takes" = "الإبقاء على أفضل اللقطات";
 "Keeps this much audio before and after detected speech." = "يحتفظ بهذه المدة من الصوت قبل الكلام المكتشف وبعده.";
 "Keyboard Shortcuts" = "اختصارات لوحة المفاتيح";
 "Keyframes" = "الإطارات الرئيسية";
@@ -503,6 +501,7 @@
 "MCP Server" = "خادم MCP";
 "MCP Setup" = "إعداد MCP";
 "Main + Sidebar" = "الرئيسية + الشريط الجانبي";
+"Make vertical shorts" = "إنشاء مقاطع عمودية قصيرة";
 "Manage credits" = "إدارة الرصيد";
 "Manage subscription" = "إدارة الاشتراك";
 "Manual setup" = "إعداد يدوي";
@@ -606,10 +605,10 @@
 "Open Skills Folder" = "فتح مجلد المهارات";
 "Open Skills to browse community playbooks, create your own, or add them to other agents." = "افتح «المهارات» لاستعراض أدلة عمل المجتمع أو إنشاء مهاراتك أو إضافتها إلى وكلاء آخرين.";
 "Open Timeline" = "فتح المخطط الزمني";
+"Open the AI Edit tab to upscale, prompt-edit, create video from a frame, or generate music, SFX, cleanup, and dubbing from the clip." = "افتح علامة التبويب «تحرير بالذكاء الاصطناعي» لرفع الدقة، أو التحرير عبر مطالبة، أو إنشاء فيديو من إطار، أو توليد موسيقى ومؤثرات صوتية وتنظيف الصوت والدبلجة من المقطع.";
 "Opening Google" = "جارٍ فتح Google";
 "Opening Google…" = "جارٍ فتح Google…";
 "Open…" = "فتح…";
-"Organize my media into structured folders" = "تنظيم وسائطي في مجلدات مرتبة";
 "Organize with Agent" = "تنظيم باستخدام الوكيل";
 "Original" = "الأصلي";
 "Original FPS" = "معدل الإطارات الأصلي";
@@ -736,6 +735,7 @@
 "Save this project to view activity" = "احفظ هذا المشروع لعرض النشاط";
 "Saves a copy of this project with all media bundled inside, so it opens on any machine." = "يحفظ نسخة من هذا المشروع مع تضمين كل الوسائط، بحيث يمكن فتحه على أي جهاز.";
 "Scale" = "المقياس";
+"Score my timeline" = "تلحين المخطط الزمني";
 "Screen" = "شاشة";
 "Screenshot a frame" = "التقاط صورة لإطار";
 "Scroll Horizontally" = "تمرير أفقي";
@@ -840,6 +840,7 @@
 "Switch Angle" = "تبديل الزاوية";
 "Switch Angle in Range" = "تبديل الزاوية في النطاق";
 "Switch Mic" = "تبديل الميكروفون";
+"Sync my multicam" = "مزامنة الكاميرات المتعددة";
 "Synchronize" = "مزامنة";
 "Synchronized %lld clips" = "تمت مزامنة ⁨%lld⁩ من المقاطع";
 "Synchronized 1 clip" = "تمت مزامنة مقطع واحد";
@@ -864,7 +865,6 @@
 "Theme" = "السمة";
 "This is the timeline ruler. Shift+drag on the ruler to select a range to render. You can pick any slot to AI edit or generate music that fits that range." = "هذه مسطرة المخطط الزمني. اضغط على Shift واسحب على المسطرة لتحديد نطاق للتصيير. يمكنك اختيار أي خانة للتحرير بالذكاء الاصطناعي أو إنشاء موسيقى تلائم ذلك النطاق.";
 "This is where all your footage and assets live." = "هنا توجد كل لقطاتك وأصولك.";
-"This is your inspector panel. Select a clip from the timeline to edit it." = "هذه لوحة الخصائص. حدد مقطعًا من المخطط الزمني لتحريره.";
 "This is your preview panel to play a selected media or the whole timeline." = "هذه لوحة المعاينة لتشغيل الوسائط المحددة أو المخطط الزمني كاملاً.";
 "This model cannot cap the output at 60 FPS." = "لا يمكن لهذا النموذج تحديد سقف الإخراج عند ⁨60 FPS⁩.";
 "This permanently removes %@." = "يؤدي هذا إلى إزالة ⁨%@⁩ نهائيًا.";
@@ -974,8 +974,10 @@
 "Your Lottie animation is ready." = "رسم Lottie المتحرك جاهز.";
 "Your audio clip is ready." = "مقطع الصوت جاهز.";
 "Your image is ready." = "صورتك جاهزة.";
+"Your inspector for the selected clip — transform, adjust, audio, and more." = "لوحة الخصائص للمقطع المحدد — التحويل والضبط والصوت والمزيد.";
 "Your text clip is ready." = "مقطع النص جاهز.";
-"Your timeline: the top half is video, the bottom half is audio. This is where you edit. Right-click a clip for some cool AI features such as upscale, edit, or generate music." = "مخططك الزمني: النصف العلوي للفيديو والسفلي للصوت. هنا تجري التحرير. انقر بزر الماوس الأيمن على مقطع لاستخدام ميزات الذكاء الاصطناعي، مثل رفع الدقة أو التحرير أو إنشاء الموسيقى.";
+"Your timeline: the top half is video, the bottom half is audio. Click a clip to inspect it — we've selected one for you." = "مخططك الزمني: النصف العلوي للفيديو والسفلي للصوت. انقر أي مقطع لفحصه — وقد حددنا واحدًا لك.";
+"Your timeline: the top half is video, the bottom half is audio. This is where you edit." = "مخططك الزمني: النصف العلوي للفيديو والسفلي للصوت. هنا تجري التحرير.";
 "Your video is ready." = "الفيديو جاهز.";
 "Zoom In" = "تكبير";
 "Zoom Out" = "تصغير";

@@ -1,4 +1,4 @@
-/* Traditional Chinese localization. Keep keys aligned with en.lproj. */
+/* Generated from app-owned UI copy. Translate values only in other locales. */
 
 "$%lld/mo" = "$%lld/月";
 "$%lld–$%lld · Credits expire at renewal." = "$%lld–$%lld · 積分將在續訂時到期。";
@@ -66,7 +66,7 @@
 "Add Range to Chat" = "將範圍加入對話";
 "Add Text" = "加入文字";
 "Add an email above to enable a reply" = "在上方加入電子郵件以接收回覆";
-"Add captions to my timeline" = "為我的時間軸加入字幕";
+"Add captions" = "加入字幕";
 "Add credits" = "加入積分";
 "Add credits to use Cloud." = "加入積分以使用雲端。";
 "Add emoji" = "加入表情符號";
@@ -227,9 +227,7 @@
 "Create Nested Timeline" = "建立巢狀時間軸";
 "Create Video" = "建立影片";
 "Create Video only works on images" = "建立影片僅適用於影像";
-"Create a letterbox opening" = "建立寬銀幕開場效果";
 "Create a skill or browse the Community collection." = "建立技能或瀏覽社群合集。";
-"Create a voiceover" = "建立旁白";
 "Create matching sound for the video" = "為影片建立匹配的聲音";
 "Creating…" = "正在建立…";
 "Credits" = "積分";
@@ -241,6 +239,7 @@
 "Custom Aspect Ratio" = "自訂長寬比";
 "Custom…" = "自訂…";
 "Cut" = "剪下";
+"Cut to the beat" = "按節拍剪輯";
 "Dark" = "深色";
 "Dark appearance" = "深色外觀";
 "Darken" = "變暗";
@@ -384,9 +383,7 @@
 "Generate SFX" = "產生音效";
 "Generate SFX only works on video" = "產生音效僅適用於影片";
 "Generate SFX…" = "產生音效…";
-"Generate an AI video" = "產生 AI 影片";
 "Generate audio" = "產生音訊";
-"Generate music and sync to my timeline" = "產生音樂並同步到我的時間軸";
 "Generate music for the timeline" = "為時間軸產生音樂";
 "Generate music that fits the video" = "產生與影片匹配的音樂";
 "Generate video, image, or audio with different models and settings. Drag assets from the media panel above into the reference frame." = "使用不同模型和設定產生影片、圖像或音訊。將素材從上方媒體面板拖入參考框。";
@@ -454,6 +451,7 @@
 "Keep Current" = "保留目前設定";
 "Keep Editing" = "繼續編輯";
 "Keep Skill" = "保留技能";
+"Keep the best takes" = "保留最佳鏡頭";
 "Keeps this much audio before and after detected speech." = "在偵測到的語音前後保留此時長的音訊。";
 "Keyboard Shortcuts" = "鍵盤快速鍵";
 "Keyframes" = "關鍵影格";
@@ -503,6 +501,7 @@
 "MCP Server" = "MCP 服務器";
 "MCP Setup" = "MCP 設定";
 "Main + Sidebar" = "主面板 + 邊欄";
+"Make vertical shorts" = "製作直式短片";
 "Manage credits" = "管理積分";
 "Manage subscription" = "管理訂閱";
 "Manual setup" = "手動設定";
@@ -606,10 +605,10 @@
 "Open Skills Folder" = "打開技能資料夾";
 "Open Skills to browse community playbooks, create your own, or add them to other agents." = "打開“技能”以瀏覽社群操作手冊、建立自己的技能，或將其加入其他 Agent。";
 "Open Timeline" = "打開時間軸";
+"Open the AI Edit tab to upscale, prompt-edit, create video from a frame, or generate music, SFX, cleanup, and dubbing from the clip." = "打開「AI 編輯」標籤頁即可放大解析度、用提示詞編輯、從影格建立影片，或從片段產生音樂、音效、清理人聲和配音。";
 "Opening Google" = "正在打開 Google";
 "Opening Google…" = "正在打開 Google…";
 "Open…" = "打開…";
-"Organize my media into structured folders" = "將我的媒體整理到結構化資料夾中";
 "Organize with Agent" = "使用 Agent 整理";
 "Original" = "原始";
 "Original FPS" = "原始影格率";
@@ -701,9 +700,9 @@
 "Report a Problem" = "報告問題";
 "Requires a paid plan" = "需要付費方案";
 "Rerun" = "重新運行";
-"Reset: %@" = "還原：%@";
 "Reset All" = "全部還原";
 "Reset Clipping Indicators" = "還原削波指示器";
+"Reset: %@" = "還原：%@";
 "Resets %@" = "還原 %@";
 "Resolution" = "解析度";
 "Resolution must be at least 2 × 2 pixels." = "解析度必須至少為 2 × 2 像素。";
@@ -736,6 +735,7 @@
 "Save this project to view activity" = "儲存此專案以檢視活動";
 "Saves a copy of this project with all media bundled inside, so it opens on any machine." = "儲存此專案的副本並在其中包含所有媒體，以便在任何裝置上打開。";
 "Scale" = "縮放";
+"Score my timeline" = "為時間軸配樂";
 "Screen" = "濾色";
 "Screenshot a frame" = "截取一影格";
 "Scroll Horizontally" = "水平捲動";
@@ -840,6 +840,7 @@
 "Switch Angle" = "切換機位";
 "Switch Angle in Range" = "在範圍內切換機位";
 "Switch Mic" = "切換麥克風";
+"Sync my multicam" = "同步多機位";
 "Synchronize" = "同步";
 "Synchronized %lld clips" = "已同步 %lld 個片段";
 "Synchronized 1 clip" = "已同步 1 個片段";
@@ -864,7 +865,6 @@
 "Theme" = "主題";
 "This is the timeline ruler. Shift+drag on the ruler to select a range to render. You can pick any slot to AI edit or generate music that fits that range." = "這是時間軸標尺。按住 Shift 在標尺上拖移以選擇算繪範圍。你可以選擇任意區段進行 AI 編輯，或產生適合該範圍的音樂。";
 "This is where all your footage and assets live." = "你的所有素材和資源都位於此處。";
-"This is your inspector panel. Select a clip from the timeline to edit it." = "這是檢查器面板。從時間軸中選擇片段即可進行編輯。";
 "This is your preview panel to play a selected media or the whole timeline." = "這是預覽面板，用於播放所選媒體或整個時間軸。";
 "This model cannot cap the output at 60 FPS." = "此模型無法將輸出限制為 60 FPS。";
 "This permanently removes %@." = "這將永久移除 %@。";
@@ -974,8 +974,10 @@
 "Your Lottie animation is ready." = "你的 Lottie 動畫已準備就緒。";
 "Your audio clip is ready." = "你的音訊片段已準備就緒。";
 "Your image is ready." = "你的影像已準備就緒。";
+"Your inspector for the selected clip — transform, adjust, audio, and more." = "所選片段的檢查器 — 變換、調整、音訊等。";
 "Your text clip is ready." = "你的文字片段已準備就緒。";
-"Your timeline: the top half is video, the bottom half is audio. This is where you edit. Right-click a clip for some cool AI features such as upscale, edit, or generate music." = "這是你的時間軸：上半部分是影片，下半部分是音訊。你將在這裡進行編輯。右鍵按一下片段可使用放大、編輯或產生音樂等 AI 功能。";
+"Your timeline: the top half is video, the bottom half is audio. Click a clip to inspect it — we've selected one for you." = "這是你的時間軸：上半部分是影片，下半部分是音訊。按一下片段即可檢查 — 我們已為你選好一個。";
+"Your timeline: the top half is video, the bottom half is audio. This is where you edit." = "這是你的時間軸：上半部分是影片，下半部分是音訊。你將在這裡進行編輯。";
 "Your video is ready." = "你的影片已準備就緒。";
 "Zoom In" = "放大";
 "Zoom Out" = "縮小";

@@ -1,4 +1,4 @@
-/* Simplified Chinese localization. Keep keys aligned with en.lproj. */
+/* Generated from app-owned UI copy. Translate values only in other locales. */
 
 "$%lld/mo" = "$%lld/月";
 "$%lld–$%lld · Credits expire at renewal." = "$%lld–$%lld · 积分将在续订时到期。";
@@ -66,7 +66,7 @@
 "Add Range to Chat" = "将范围添加到对话";
 "Add Text" = "添加文本";
 "Add an email above to enable a reply" = "在上方添加电子邮件以接收回复";
-"Add captions to my timeline" = "为我的时间线添加字幕";
+"Add captions" = "添加字幕";
 "Add credits" = "添加积分";
 "Add credits to use Cloud." = "添加积分以使用云端。";
 "Add emoji" = "添加表情符号";
@@ -227,9 +227,7 @@
 "Create Nested Timeline" = "创建嵌套时间线";
 "Create Video" = "创建视频";
 "Create Video only works on images" = "创建视频仅适用于图像";
-"Create a letterbox opening" = "创建宽银幕开场效果";
 "Create a skill or browse the Community collection." = "创建技能或浏览社区合集。";
-"Create a voiceover" = "创建旁白";
 "Create matching sound for the video" = "为视频创建匹配的声音";
 "Creating…" = "正在创建…";
 "Credits" = "积分";
@@ -241,6 +239,7 @@
 "Custom Aspect Ratio" = "自定义宽高比";
 "Custom…" = "自定义…";
 "Cut" = "剪切";
+"Cut to the beat" = "按节拍剪辑";
 "Dark" = "深色";
 "Dark appearance" = "深色外观";
 "Darken" = "变暗";
@@ -384,9 +383,7 @@
 "Generate SFX" = "生成音效";
 "Generate SFX only works on video" = "生成音效仅适用于视频";
 "Generate SFX…" = "生成音效…";
-"Generate an AI video" = "生成 AI 视频";
 "Generate audio" = "生成音频";
-"Generate music and sync to my timeline" = "生成音乐并同步到我的时间线";
 "Generate music for the timeline" = "为时间线生成音乐";
 "Generate music that fits the video" = "生成与视频匹配的音乐";
 "Generate video, image, or audio with different models and settings. Drag assets from the media panel above into the reference frame." = "使用不同模型和设置生成视频、图像或音频。将素材从上方媒体面板拖入参考框。";
@@ -454,6 +451,7 @@
 "Keep Current" = "保留当前设置";
 "Keep Editing" = "继续编辑";
 "Keep Skill" = "保留技能";
+"Keep the best takes" = "保留最佳镜头";
 "Keeps this much audio before and after detected speech." = "在检测到的语音前后保留此时长的音频。";
 "Keyboard Shortcuts" = "键盘快捷键";
 "Keyframes" = "关键帧";
@@ -503,6 +501,7 @@
 "MCP Server" = "MCP 服务器";
 "MCP Setup" = "MCP 设置";
 "Main + Sidebar" = "主面板 + 边栏";
+"Make vertical shorts" = "制作竖屏短片";
 "Manage credits" = "管理积分";
 "Manage subscription" = "管理订阅";
 "Manual setup" = "手动设置";
@@ -606,10 +605,10 @@
 "Open Skills Folder" = "打开技能文件夹";
 "Open Skills to browse community playbooks, create your own, or add them to other agents." = "打开“技能”以浏览社区操作手册、创建自己的技能，或将其添加到其他 Agent。";
 "Open Timeline" = "打开时间线";
+"Open the AI Edit tab to upscale, prompt-edit, create video from a frame, or generate music, SFX, cleanup, and dubbing from the clip." = "打开“AI 编辑”标签页即可放大分辨率、用提示词编辑、从帧创建视频，或从片段生成音乐、音效、清理人声和配音。";
 "Opening Google" = "正在打开 Google";
 "Opening Google…" = "正在打开 Google…";
 "Open…" = "打开…";
-"Organize my media into structured folders" = "将我的媒体整理到结构化文件夹中";
 "Organize with Agent" = "使用 Agent 整理";
 "Original" = "原始";
 "Original FPS" = "原始帧率";
@@ -701,9 +700,9 @@
 "Report a Problem" = "报告问题";
 "Requires a paid plan" = "需要付费方案";
 "Rerun" = "重新运行";
-"Reset: %@" = "还原：%@";
 "Reset All" = "全部还原";
 "Reset Clipping Indicators" = "还原削波指示器";
+"Reset: %@" = "还原：%@";
 "Resets %@" = "还原 %@";
 "Resolution" = "分辨率";
 "Resolution must be at least 2 × 2 pixels." = "分辨率必须至少为 2 × 2 像素。";
@@ -736,6 +735,7 @@
 "Save this project to view activity" = "保存此项目以查看活动";
 "Saves a copy of this project with all media bundled inside, so it opens on any machine." = "保存此项目的副本并在其中包含所有媒体，以便在任何设备上打开。";
 "Scale" = "缩放";
+"Score my timeline" = "为时间线配乐";
 "Screen" = "滤色";
 "Screenshot a frame" = "截取一帧";
 "Scroll Horizontally" = "水平滚动";
@@ -840,6 +840,7 @@
 "Switch Angle" = "切换机位";
 "Switch Angle in Range" = "在范围内切换机位";
 "Switch Mic" = "切换麦克风";
+"Sync my multicam" = "同步多机位";
 "Synchronize" = "同步";
 "Synchronized %lld clips" = "已同步 %lld 个片段";
 "Synchronized 1 clip" = "已同步 1 个片段";
@@ -864,7 +865,6 @@
 "Theme" = "主题";
 "This is the timeline ruler. Shift+drag on the ruler to select a range to render. You can pick any slot to AI edit or generate music that fits that range." = "这是时间线标尺。按住 Shift 在标尺上拖移以选择渲染范围。你可以选择任意区段进行 AI 编辑，或生成适合该范围的音乐。";
 "This is where all your footage and assets live." = "你的所有素材和资源都位于此处。";
-"This is your inspector panel. Select a clip from the timeline to edit it." = "这是检查器面板。从时间线中选择片段即可进行编辑。";
 "This is your preview panel to play a selected media or the whole timeline." = "这是预览面板，用于播放所选媒体或整个时间线。";
 "This model cannot cap the output at 60 FPS." = "此模型无法将输出限制为 60 FPS。";
 "This permanently removes %@." = "这将永久移除 %@。";
@@ -974,8 +974,10 @@
 "Your Lottie animation is ready." = "你的 Lottie 动画已准备就绪。";
 "Your audio clip is ready." = "你的音频片段已准备就绪。";
 "Your image is ready." = "你的图像已准备就绪。";
+"Your inspector for the selected clip — transform, adjust, audio, and more." = "所选片段的检查器 — 变换、调整、音频等。";
 "Your text clip is ready." = "你的文本片段已准备就绪。";
-"Your timeline: the top half is video, the bottom half is audio. This is where you edit. Right-click a clip for some cool AI features such as upscale, edit, or generate music." = "这是你的时间线：上半部分是视频，下半部分是音频。你将在这里进行编辑。右键点按片段可使用放大、编辑或生成音乐等 AI 功能。";
+"Your timeline: the top half is video, the bottom half is audio. Click a clip to inspect it — we've selected one for you." = "这是你的时间线：上半部分是视频，下半部分是音频。点按片段即可检查 — 我们已为你选好一个。";
+"Your timeline: the top half is video, the bottom half is audio. This is where you edit." = "这是你的时间线：上半部分是视频，下半部分是音频。你将在这里进行编辑。";
 "Your video is ready." = "你的视频已准备就绪。";
 "Zoom In" = "放大";
 "Zoom Out" = "缩小";

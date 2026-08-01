@@ -66,7 +66,7 @@
 "Add Range to Chat" = "Добавить диапазон в чат";
 "Add Text" = "Добавить текст";
 "Add an email above to enable a reply" = "Укажите адрес электронной почты выше, чтобы получить ответ";
-"Add captions to my timeline" = "Добавить субтитры на таймлайн";
+"Add captions" = "Добавить субтитры";
 "Add credits" = "Добавить кредиты";
 "Add credits to use Cloud." = "Добавьте кредиты, чтобы использовать облако.";
 "Add emoji" = "Добавить эмодзи";
@@ -227,9 +227,7 @@
 "Create Nested Timeline" = "Создать вложенный таймлайн";
 "Create Video" = "Создать видео";
 "Create Video only works on images" = "Функция «Создать видео» работает только с изображениями";
-"Create a letterbox opening" = "Создать эффект открытия шторками";
 "Create a skill or browse the Community collection." = "Создайте навык или просмотрите коллекцию сообщества.";
-"Create a voiceover" = "Создать закадровый голос";
 "Create matching sound for the video" = "Создать подходящий звук для видео";
 "Creating…" = "Создание…";
 "Credits" = "Кредиты";
@@ -241,6 +239,7 @@
 "Custom Aspect Ratio" = "Пользовательское соотношение сторон";
 "Custom…" = "Другое…";
 "Cut" = "Вырезать";
+"Cut to the beat" = "Резать под бит";
 "Dark" = "Тёмное";
 "Dark appearance" = "Тёмное оформление";
 "Darken" = "Затемнение";
@@ -384,9 +383,7 @@
 "Generate SFX" = "Создать SFX";
 "Generate SFX only works on video" = "Функция «Создать SFX» работает только с видео";
 "Generate SFX…" = "Создать SFX…";
-"Generate an AI video" = "Создать AI-видео";
 "Generate audio" = "Создать аудио";
-"Generate music and sync to my timeline" = "Создать музыку и синхронизировать её с таймлайном";
 "Generate music for the timeline" = "Создать музыку для таймлайна";
 "Generate music that fits the video" = "Создать музыку, подходящую к видео";
 "Generate video, image, or audio with different models and settings. Drag assets from the media panel above into the reference frame." = "Создавайте видео, изображения или аудио с разными моделями и настройками. Перетащите материалы из панели медиафайлов выше в область референса.";
@@ -454,6 +451,7 @@
 "Keep Current" = "Оставить текущие";
 "Keep Editing" = "Продолжить монтаж";
 "Keep Skill" = "Оставить навык";
+"Keep the best takes" = "Оставить лучшие дубли";
 "Keeps this much audio before and after detected speech." = "Сохраняет указанный фрагмент аудио до и после обнаруженной речи.";
 "Keyboard Shortcuts" = "Сочетания клавиш";
 "Keyframes" = "Ключевые кадры";
@@ -503,6 +501,7 @@
 "MCP Server" = "Сервер MCP";
 "MCP Setup" = "Настройка MCP";
 "Main + Sidebar" = "Основная область + боковая панель";
+"Make vertical shorts" = "Сделать вертикальные шорты";
 "Manage credits" = "Управление кредитами";
 "Manage subscription" = "Управление подпиской";
 "Manual setup" = "Настроить вручную";
@@ -606,10 +605,10 @@
 "Open Skills Folder" = "Открыть папку навыков";
 "Open Skills to browse community playbooks, create your own, or add them to other agents." = "Откройте раздел «Навыки», чтобы просмотреть сценарии сообщества, создать собственные или добавить их другим агентам.";
 "Open Timeline" = "Открыть таймлайн";
+"Open the AI Edit tab to upscale, prompt-edit, create video from a frame, or generate music, SFX, cleanup, and dubbing from the clip." = "Откройте вкладку «AI-правка», чтобы увеличить разрешение, изменить клип по запросу, создать видео из кадра или сгенерировать музыку, звуковые эффекты, очистку голоса и дубляж.";
 "Opening Google" = "Открывается Google";
 "Opening Google…" = "Открывается Google…";
 "Open…" = "Открыть…";
-"Organize my media into structured folders" = "Упорядочить мои медиафайлы по папкам";
 "Organize with Agent" = "Упорядочить с помощью агента";
 "Original" = "Оригинал";
 "Original FPS" = "Исходный FPS";
@@ -736,6 +735,7 @@
 "Save this project to view activity" = "Сохраните проект, чтобы просмотреть историю действий";
 "Saves a copy of this project with all media bundled inside, so it opens on any machine." = "Сохраняет копию проекта со всеми медиафайлами внутри, чтобы её можно было открыть на любом компьютере.";
 "Scale" = "Масштаб";
+"Score my timeline" = "Положить музыку на таймлайн";
 "Screen" = "Экран";
 "Screenshot a frame" = "Сделать снимок кадра";
 "Scroll Horizontally" = "Прокрутка по горизонтали";
@@ -840,6 +840,7 @@
 "Switch Angle" = "Переключить ракурс";
 "Switch Angle in Range" = "Переключить ракурс в диапазоне";
 "Switch Mic" = "Переключить микрофон";
+"Sync my multicam" = "Синхронизировать мультикамеру";
 "Synchronize" = "Синхронизировать";
 "Synchronized %lld clips" = "Синхронизировано клипов: %lld";
 "Synchronized 1 clip" = "Синхронизирован 1 клип";
@@ -864,7 +865,6 @@
 "Theme" = "Тема";
 "This is the timeline ruler. Shift+drag on the ruler to select a range to render. You can pick any slot to AI edit or generate music that fits that range." = "Это линейка таймлайна. Перетаскивайте по ней с зажатой клавишей Shift, чтобы выбрать диапазон для рендеринга. Можно выбрать любой слот для AI-монтажа или создания музыки под этот диапазон.";
 "This is where all your footage and assets live." = "Здесь хранятся все ваши материалы и ресурсы.";
-"This is your inspector panel. Select a clip from the timeline to edit it." = "Это панель инспектора. Выберите клип на таймлайне, чтобы изменить его.";
 "This is your preview panel to play a selected media or the whole timeline." = "Это панель предпросмотра для воспроизведения выбранного медиафайла или всего таймлайна.";
 "This model cannot cap the output at 60 FPS." = "Эта модель не может ограничить результат частотой 60 FPS.";
 "This permanently removes %@." = "Это безвозвратно удалит %@.";
@@ -974,8 +974,10 @@
 "Your Lottie animation is ready." = "Ваша анимация Lottie готова.";
 "Your audio clip is ready." = "Ваш аудиоклип готов.";
 "Your image is ready." = "Ваше изображение готово.";
+"Your inspector for the selected clip — transform, adjust, audio, and more." = "Инспектор выбранного клипа — трансформация, коррекция, аудио и многое другое.";
 "Your text clip is ready." = "Ваш текстовый клип готов.";
-"Your timeline: the top half is video, the bottom half is audio. This is where you edit. Right-click a clip for some cool AI features such as upscale, edit, or generate music." = "Ваш таймлайн: в верхней половине находится видео, в нижней — аудио. Здесь выполняется монтаж. Нажмите клип правой кнопкой мыши, чтобы использовать функции AI: увеличить разрешение, изменить или создать музыку.";
+"Your timeline: the top half is video, the bottom half is audio. Click a clip to inspect it — we've selected one for you." = "Ваш таймлайн: в верхней половине находится видео, в нижней — аудио. Нажмите клип, чтобы открыть его в инспекторе — мы уже выбрали один за вас.";
+"Your timeline: the top half is video, the bottom half is audio. This is where you edit." = "Ваш таймлайн: в верхней половине находится видео, в нижней — аудио. Здесь выполняется монтаж.";
 "Your video is ready." = "Ваше видео готово.";
 "Zoom In" = "Увеличить";
 "Zoom Out" = "Уменьшить";

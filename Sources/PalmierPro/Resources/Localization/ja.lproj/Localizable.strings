@@ -66,7 +66,7 @@
 "Add Range to Chat" = "範囲をチャットに追加";
 "Add Text" = "テキストを追加";
 "Add an email above to enable a reply" = "返信を受け取るには上にメールアドレスを追加してください";
-"Add captions to my timeline" = "タイムラインにキャプションを追加";
+"Add captions" = "キャプションを追加";
 "Add credits" = "クレジットを追加";
 "Add credits to use Cloud." = "Cloudを使用するにはクレジットを追加してください。";
 "Add emoji" = "絵文字を追加";
@@ -227,9 +227,7 @@
 "Create Nested Timeline" = "ネストされたタイムラインを作成";
 "Create Video" = "ビデオを作成";
 "Create Video only works on images" = "「ビデオを作成」は画像でのみ使用できます";
-"Create a letterbox opening" = "レターボックスが開く演出を作成";
 "Create a skill or browse the Community collection." = "スキルを作成するか、コミュニティコレクションを参照してください。";
-"Create a voiceover" = "ボイスオーバーを作成";
 "Create matching sound for the video" = "ビデオに合うサウンドを作成";
 "Creating…" = "作成中…";
 "Credits" = "クレジット";
@@ -241,6 +239,7 @@
 "Custom Aspect Ratio" = "カスタムアスペクト比";
 "Custom…" = "カスタム…";
 "Cut" = "カット";
+"Cut to the beat" = "ビートに合わせてカット";
 "Dark" = "ダーク";
 "Dark appearance" = "ダークの外観";
 "Darken" = "比較（暗）";
@@ -384,9 +383,7 @@
 "Generate SFX" = "効果音を生成";
 "Generate SFX only works on video" = "「SFXを生成」はビデオでのみ使用できます";
 "Generate SFX…" = "効果音を生成…";
-"Generate an AI video" = "AIビデオを生成";
 "Generate audio" = "オーディオを生成";
-"Generate music and sync to my timeline" = "音楽を生成してタイムラインに同期";
 "Generate music for the timeline" = "タイムライン用の音楽を生成";
 "Generate music that fits the video" = "ビデオに合う音楽を生成";
 "Generate video, image, or audio with different models and settings. Drag assets from the media panel above into the reference frame." = "さまざまなモデルと設定でビデオ、画像、オーディオを生成します。上のメディアパネルから参照フレームへアセットをドラッグしてください。";
@@ -454,6 +451,7 @@
 "Keep Current" = "現在の設定を維持";
 "Keep Editing" = "編集を続ける";
 "Keep Skill" = "スキルを保持";
+"Keep the best takes" = "ベストテイクを残す";
 "Keeps this much audio before and after detected speech." = "検出した音声の前後に残すオーディオの長さです。";
 "Keyboard Shortcuts" = "キーボードショートカット";
 "Keyframes" = "キーフレーム";
@@ -503,6 +501,7 @@
 "MCP Server" = "MCPサーバ";
 "MCP Setup" = "MCPの設定";
 "Main + Sidebar" = "メイン + サイドバー";
+"Make vertical shorts" = "縦型ショートを作成";
 "Manage credits" = "クレジットを管理";
 "Manage subscription" = "サブスクリプションを管理";
 "Manual setup" = "手動設定";
@@ -606,10 +605,10 @@
 "Open Skills Folder" = "スキルフォルダを開く";
 "Open Skills to browse community playbooks, create your own, or add them to other agents." = "スキルを開いてコミュニティのプレイブックを参照したり、独自のスキルを作成したり、ほかのエージェントに追加したりできます。";
 "Open Timeline" = "タイムラインを開く";
+"Open the AI Edit tab to upscale, prompt-edit, create video from a frame, or generate music, SFX, cleanup, and dubbing from the clip." = "「AI編集」タブを開いて、アップスケール、プロンプト編集、フレームからのビデオ作成、またはクリップからの音楽・SFX・クリーンアップ・吹き替え生成を行えます。";
 "Opening Google" = "Googleを開いています";
 "Opening Google…" = "Googleを開いています…";
 "Open…" = "開く…";
-"Organize my media into structured folders" = "メディアを整理されたフォルダに分類";
 "Organize with Agent" = "エージェントで整理";
 "Original" = "オリジナル";
 "Original FPS" = "元のFPS";
@@ -736,6 +735,7 @@
 "Save this project to view activity" = "アクティビティを表示するには、このプロジェクトを保存してください";
 "Saves a copy of this project with all media bundled inside, so it opens on any machine." = "すべてのメディアを内部に含めたプロジェクトのコピーを保存し、どのマシンでも開けるようにします。";
 "Scale" = "スケール";
+"Score my timeline" = "タイムラインに音楽を付ける";
 "Screen" = "スクリーン";
 "Screenshot a frame" = "フレームのスクリーンショットを撮る";
 "Scroll Horizontally" = "横方向にスクロール";
@@ -840,6 +840,7 @@
 "Switch Angle" = "アングルを切り替え";
 "Switch Angle in Range" = "範囲内のアングルを切り替え";
 "Switch Mic" = "マイクを切り替え";
+"Sync my multicam" = "マルチカムを同期";
 "Synchronize" = "同期";
 "Synchronized %lld clips" = "%lld個のクリップを同期しました";
 "Synchronized 1 clip" = "1個のクリップを同期しました";
@@ -864,7 +865,6 @@
 "Theme" = "テーマ";
 "This is the timeline ruler. Shift+drag on the ruler to select a range to render. You can pick any slot to AI edit or generate music that fits that range." = "これはタイムラインルーラーです。ルーラー上でShiftキーを押しながらドラッグすると、レンダリングする範囲を選択できます。任意のスロットを選び、その範囲に合うAI編集や音楽生成を行えます。";
 "This is where all your footage and assets live." = "すべての映像素材とアセットはここに表示されます。";
-"This is your inspector panel. Select a clip from the timeline to edit it." = "これはインスペクタパネルです。タイムラインからクリップを選択して編集します。";
 "This is your preview panel to play a selected media or the whole timeline." = "これは選択したメディアまたはタイムライン全体を再生するプレビューパネルです。";
 "This model cannot cap the output at 60 FPS." = "このモデルでは出力を60 FPSに制限できません。";
 "This permanently removes %@." = "%@を完全に削除します。";
@@ -974,8 +974,10 @@
 "Your Lottie animation is ready." = "Lottieアニメーションの準備ができました。";
 "Your audio clip is ready." = "オーディオクリップの準備ができました。";
 "Your image is ready." = "画像の準備ができました。";
+"Your inspector for the selected clip — transform, adjust, audio, and more." = "選択したクリップのインスペクタです。変形、調整、オーディオなどを確認できます。";
 "Your text clip is ready." = "テキストクリップの準備ができました。";
-"Your timeline: the top half is video, the bottom half is audio. This is where you edit. Right-click a clip for some cool AI features such as upscale, edit, or generate music." = "タイムラインの上半分はビデオ、下半分はオーディオです。ここで編集を行います。クリップを右クリックすると、アップスケール、編集、音楽生成などのAI機能を使用できます。";
+"Your timeline: the top half is video, the bottom half is audio. Click a clip to inspect it — we've selected one for you." = "タイムラインの上半分はビデオ、下半分はオーディオです。クリップをクリックして検査します — 1つ選択済みです。";
+"Your timeline: the top half is video, the bottom half is audio. This is where you edit." = "タイムラインの上半分はビデオ、下半分はオーディオです。ここで編集を行います。";
 "Your video is ready." = "ビデオの準備ができました。";
 "Zoom In" = "拡大";
 "Zoom Out" = "縮小";

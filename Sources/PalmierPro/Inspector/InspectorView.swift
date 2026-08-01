@@ -103,6 +103,11 @@ struct InspectorView: View {
         .onChange(of: preferredTab) { _, newTab in
             if newTab != .video { editor.cropEditingActive = false }
         }
+        .onChange(of: editor.inspectorClipTabRequest) { _, request in
+            guard let request else { return }
+            preferredTab = request
+            editor.inspectorClipTabRequest = nil
+        }
         .sheet(item: $customAspectRatioContext) { context in
             CustomAspectRatioSheet(context: context)
         }
@@ -370,6 +375,7 @@ struct InspectorView: View {
             Group {
                 if selectedTab == .ai, let asset = clipAsset {
                     AIEditTab(asset: asset, clipId: selection.firstVisualClip?.id ?? selection.firstAudioClip?.id)
+                        .tourAnchor(.aiEditPanel)
                 } else if selectedTab == .effects {
                     ScrollView { effectsTabContent(clips: selection.nonTextVisualClips) }
                 } else {
@@ -407,7 +413,8 @@ struct InspectorView: View {
     private func tabBar(_ tabs: [ClipTab], selectedTab: ClipTab?) -> some View {
         TitleTabBar(
             titles: tabs.map(\.titleKey),
-            selected: selectedTab?.titleKey
+            selected: selectedTab?.titleKey,
+            tourAnchors: tabs.contains(.ai) ? [ClipTab.ai.titleKey: .aiEditTab] : [:]
         ) { title in
             if let tab = tabs.first(where: { $0.titleKey == title }) { preferredTab = tab }
         }

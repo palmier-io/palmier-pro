@@ -66,7 +66,7 @@
 "Add Range to Chat" = "Add Range to Chat";
 "Add Text" = "Add Text";
 "Add an email above to enable a reply" = "Add an email above to enable a reply";
-"Add captions to my timeline" = "Add captions to my timeline";
+"Add captions" = "Add captions";
 "Add credits" = "Add credits";
 "Add credits to use Cloud." = "Add credits to use Cloud.";
 "Add emoji" = "Add emoji";
@@ -227,9 +227,7 @@
 "Create Nested Timeline" = "Create Nested Timeline";
 "Create Video" = "Create Video";
 "Create Video only works on images" = "Create Video only works on images";
-"Create a letterbox opening" = "Create a letterbox opening";
 "Create a skill or browse the Community collection." = "Create a skill or browse the Community collection.";
-"Create a voiceover" = "Create a voiceover";
 "Create matching sound for the video" = "Create matching sound for the video";
 "Creating…" = "Creating…";
 "Credits" = "Credits";
@@ -241,6 +239,7 @@
 "Custom Aspect Ratio" = "Custom Aspect Ratio";
 "Custom…" = "Custom…";
 "Cut" = "Cut";
+"Cut to the beat" = "Cut to the beat";
 "Dark" = "Dark";
 "Dark appearance" = "Dark appearance";
 "Darken" = "Darken";
@@ -384,9 +383,7 @@
 "Generate SFX" = "Generate SFX";
 "Generate SFX only works on video" = "Generate SFX only works on video";
 "Generate SFX…" = "Generate SFX…";
-"Generate an AI video" = "Generate an AI video";
 "Generate audio" = "Generate audio";
-"Generate music and sync to my timeline" = "Generate music and sync to my timeline";
 "Generate music for the timeline" = "Generate music for the timeline";
 "Generate music that fits the video" = "Generate music that fits the video";
 "Generate video, image, or audio with different models and settings. Drag assets from the media panel above into the reference frame." = "Generate video, image, or audio with different models and settings. Drag assets from the media panel above into the reference frame.";
@@ -454,6 +451,7 @@
 "Keep Current" = "Keep Current";
 "Keep Editing" = "Keep Editing";
 "Keep Skill" = "Keep Skill";
+"Keep the best takes" = "Keep the best takes";
 "Keeps this much audio before and after detected speech." = "Keeps this much audio before and after detected speech.";
 "Keyboard Shortcuts" = "Keyboard Shortcuts";
 "Keyframes" = "Keyframes";
@@ -503,6 +501,7 @@
 "MCP Server" = "MCP Server";
 "MCP Setup" = "MCP Setup";
 "Main + Sidebar" = "Main + Sidebar";
+"Make vertical shorts" = "Make vertical shorts";
 "Manage credits" = "Manage credits";
 "Manage subscription" = "Manage subscription";
 "Manual setup" = "Manual setup";
@@ -606,10 +605,10 @@
 "Open Skills Folder" = "Open Skills Folder";
 "Open Skills to browse community playbooks, create your own, or add them to other agents." = "Open Skills to browse community playbooks, create your own, or add them to other agents.";
 "Open Timeline" = "Open Timeline";
+"Open the AI Edit tab to upscale, prompt-edit, create video from a frame, or generate music, SFX, cleanup, and dubbing from the clip." = "Open the AI Edit tab to upscale, prompt-edit, create video from a frame, or generate music, SFX, cleanup, and dubbing from the clip.";
 "Opening Google" = "Opening Google";
 "Opening Google…" = "Opening Google…";
 "Open…" = "Open…";
-"Organize my media into structured folders" = "Organize my media into structured folders";
 "Organize with Agent" = "Organize with Agent";
 "Original" = "Original";
 "Original FPS" = "Original FPS";
@@ -736,6 +735,7 @@
 "Save this project to view activity" = "Save this project to view activity";
 "Saves a copy of this project with all media bundled inside, so it opens on any machine." = "Saves a copy of this project with all media bundled inside, so it opens on any machine.";
 "Scale" = "Scale";
+"Score my timeline" = "Score my timeline";
 "Screen" = "Screen";
 "Screenshot a frame" = "Screenshot a frame";
 "Scroll Horizontally" = "Scroll Horizontally";
@@ -840,6 +840,7 @@
 "Switch Angle" = "Switch Angle";
 "Switch Angle in Range" = "Switch Angle in Range";
 "Switch Mic" = "Switch Mic";
+"Sync my multicam" = "Sync my multicam";
 "Synchronize" = "Synchronize";
 "Synchronized %lld clips" = "Synchronized %lld clips";
 "Synchronized 1 clip" = "Synchronized 1 clip";
@@ -864,7 +865,6 @@
 "Theme" = "Theme";
 "This is the timeline ruler. Shift+drag on the ruler to select a range to render. You can pick any slot to AI edit or generate music that fits that range." = "This is the timeline ruler. Shift+drag on the ruler to select a range to render. You can pick any slot to AI edit or generate music that fits that range.";
 "This is where all your footage and assets live." = "This is where all your footage and assets live.";
-"This is your inspector panel. Select a clip from the timeline to edit it." = "This is your inspector panel. Select a clip from the timeline to edit it.";
 "This is your preview panel to play a selected media or the whole timeline." = "This is your preview panel to play a selected media or the whole timeline.";
 "This model cannot cap the output at 60 FPS." = "This model cannot cap the output at 60 FPS.";
 "This permanently removes %@." = "This permanently removes %@.";
@@ -974,8 +974,10 @@
 "Your Lottie animation is ready." = "Your Lottie animation is ready.";
 "Your audio clip is ready." = "Your audio clip is ready.";
 "Your image is ready." = "Your image is ready.";
+"Your inspector for the selected clip — transform, adjust, audio, and more." = "Your inspector for the selected clip — transform, adjust, audio, and more.";
 "Your text clip is ready." = "Your text clip is ready.";
-"Your timeline: the top half is video, the bottom half is audio. This is where you edit. Right-click a clip for some cool AI features such as upscale, edit, or generate music." = "Your timeline: the top half is video, the bottom half is audio. This is where you edit. Right-click a clip for some cool AI features such as upscale, edit, or generate music.";
+"Your timeline: the top half is video, the bottom half is audio. Click a clip to inspect it — we've selected one for you." = "Your timeline: the top half is video, the bottom half is audio. Click a clip to inspect it — we've selected one for you.";
+"Your timeline: the top half is video, the bottom half is audio. This is where you edit." = "Your timeline: the top half is video, the bottom half is audio. This is where you edit.";
 "Your video is ready." = "Your video is ready.";
 "Zoom In" = "Zoom In";
 "Zoom Out" = "Zoom Out";

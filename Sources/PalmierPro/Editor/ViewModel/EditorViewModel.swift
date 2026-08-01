@@ -92,6 +92,7 @@ final class EditorViewModel {
     // MARK: - Tutorial tour
 
     let tour = TourController()
+    var inspectorClipTabRequest: InspectorView.ClipTab?
 
     // MARK: - Transient UI state
 

@@ -66,7 +66,7 @@
 "Add Range to Chat" = "চ্যাটে রেঞ্জ যোগ করুন";
 "Add Text" = "টেক্সট যোগ করুন";
 "Add an email above to enable a reply" = "উত্তর পেতে উপরে একটি ইমেইল যোগ করুন";
-"Add captions to my timeline" = "আমার টাইমলাইনে ক্যাপশন যোগ করুন";
+"Add captions" = "ক্যাপশন যোগ করুন";
 "Add credits" = "ক্রেডিট যোগ করুন";
 "Add credits to use Cloud." = "ক্লাউড ব্যবহার করতে ক্রেডিট যোগ করুন।";
 "Add emoji" = "ইমোজি যোগ করুন";
@@ -227,9 +227,7 @@
 "Create Nested Timeline" = "নেস্টেড টাইমলাইন তৈরি করুন";
 "Create Video" = "ভিডিও তৈরি করুন";
 "Create Video only works on images" = "ভিডিও তৈরি শুধু ইমেজের ক্ষেত্রে কাজ করে";
-"Create a letterbox opening" = "লেটারবক্স ওপেনিং তৈরি করুন";
 "Create a skill or browse the Community collection." = "একটি স্কিল তৈরি করুন অথবা কমিউনিটি কালেকশন দেখুন।";
-"Create a voiceover" = "ভয়েসওভার তৈরি করুন";
 "Create matching sound for the video" = "ভিডিওর সঙ্গে মানানসই সাউন্ড তৈরি করুন";
 "Creating…" = "তৈরি করা হচ্ছে…";
 "Credits" = "ক্রেডিট";
@@ -241,6 +239,7 @@
 "Custom Aspect Ratio" = "কাস্টম অ্যাসপেক্ট রেশিও";
 "Custom…" = "কাস্টম…";
 "Cut" = "কাট";
+"Cut to the beat" = "বিট অনুসারে কাটুন";
 "Dark" = "ডার্ক";
 "Dark appearance" = "ডার্ক অ্যাপিয়ারেন্স";
 "Darken" = "গাঢ় করুন";
@@ -384,9 +383,7 @@
 "Generate SFX" = "SFX জেনারেট করুন";
 "Generate SFX only works on video" = "SFX জেনারেট শুধু ভিডিওতে কাজ করে";
 "Generate SFX…" = "SFX জেনারেট করুন…";
-"Generate an AI video" = "একটি AI ভিডিও জেনারেট করুন";
 "Generate audio" = "অডিও জেনারেট করুন";
-"Generate music and sync to my timeline" = "মিউজিক জেনারেট করে আমার টাইমলাইনে সিঙ্ক করুন";
 "Generate music for the timeline" = "টাইমলাইনের জন্য মিউজিক জেনারেট করুন";
 "Generate music that fits the video" = "ভিডিওর সঙ্গে মানানসই মিউজিক জেনারেট করুন";
 "Generate video, image, or audio with different models and settings. Drag assets from the media panel above into the reference frame." = "বিভিন্ন মডেল ও সেটিংস দিয়ে ভিডিও, ইমেজ বা অডিও জেনারেট করুন। উপরের মিডিয়া প্যানেল থেকে অ্যাসেট রেফারেন্স ফ্রেমে ড্র্যাগ করুন।";
@@ -454,6 +451,7 @@
 "Keep Current" = "বর্তমানটি রাখুন";
 "Keep Editing" = "এডিট চালিয়ে যান";
 "Keep Skill" = "স্কিলটি রাখুন";
+"Keep the best takes" = "সেরা টেক রাখুন";
 "Keeps this much audio before and after detected speech." = "শনাক্ত করা স্পিচের আগে ও পরে এই পরিমাণ অডিও রাখে।";
 "Keyboard Shortcuts" = "কিবোর্ড শর্টকাট";
 "Keyframes" = "কিফ্রেম";
@@ -503,6 +501,7 @@
 "MCP Server" = "MCP সার্ভার";
 "MCP Setup" = "MCP সেটআপ";
 "Main + Sidebar" = "মেইন + সাইডবার";
+"Make vertical shorts" = "ভার্টিকাল শর্টস তৈরি করুন";
 "Manage credits" = "ক্রেডিট ম্যানেজ করুন";
 "Manage subscription" = "সাবস্ক্রিপশন ম্যানেজ করুন";
 "Manual setup" = "ম্যানুয়াল সেটআপ";
@@ -606,10 +605,10 @@
 "Open Skills Folder" = "স্কিল ফোল্ডার খুলুন";
 "Open Skills to browse community playbooks, create your own, or add them to other agents." = "কমিউনিটি প্লেবুক দেখতে, নিজের স্কিল তৈরি করতে বা অন্য এজেন্টে যোগ করতে স্কিল খুলুন।";
 "Open Timeline" = "টাইমলাইন খুলুন";
+"Open the AI Edit tab to upscale, prompt-edit, create video from a frame, or generate music, SFX, cleanup, and dubbing from the clip." = "AI Edit ট্যাব খুলে আপস্কেল করুন, প্রম্পট দিয়ে এডিট করুন, একটি ফ্রেম থেকে ভিডিও তৈরি করুন, অথবা ক্লিপ থেকে মিউজিক, SFX, ক্লিনআপ ও ডাবিং জেনারেট করুন।";
 "Opening Google" = "Google খোলা হচ্ছে";
 "Opening Google…" = "Google খোলা হচ্ছে…";
 "Open…" = "খুলুন…";
-"Organize my media into structured folders" = "আমার মিডিয়া সুবিন্যস্ত ফোল্ডারে সাজান";
 "Organize with Agent" = "এজেন্ট দিয়ে সাজান";
 "Original" = "অরিজিনাল";
 "Original FPS" = "অরিজিনাল FPS";
@@ -736,6 +735,7 @@
 "Save this project to view activity" = "অ্যাক্টিভিটি দেখতে এই প্রজেক্টটি সেভ করুন";
 "Saves a copy of this project with all media bundled inside, so it opens on any machine." = "সব মিডিয়া ভেতরে বান্ডেল করে প্রজেক্টটির একটি কপি সেভ করে, যাতে যেকোনো কম্পিউটারে খোলা যায়।";
 "Scale" = "স্কেল";
+"Score my timeline" = "টাইমলাইনে স্কোর দিন";
 "Screen" = "স্ক্রিন";
 "Screenshot a frame" = "একটি ফ্রেমের স্ক্রিনশট নিন";
 "Scroll Horizontally" = "আড়াআড়ি স্ক্রল করুন";
@@ -840,6 +840,7 @@
 "Switch Angle" = "অ্যাঙ্গেল বদলান";
 "Switch Angle in Range" = "রেঞ্জে অ্যাঙ্গেল বদলান";
 "Switch Mic" = "মাইক বদলান";
+"Sync my multicam" = "মাল্টিক্যাম সিঙ্ক করুন";
 "Synchronize" = "সিঙ্ক্রোনাইজ";
 "Synchronized %lld clips" = "%lldটি ক্লিপ সিঙ্ক্রোনাইজ হয়েছে";
 "Synchronized 1 clip" = "১টি ক্লিপ সিঙ্ক্রোনাইজ হয়েছে";
@@ -864,7 +865,6 @@
 "Theme" = "থিম";
 "This is the timeline ruler. Shift+drag on the ruler to select a range to render. You can pick any slot to AI edit or generate music that fits that range." = "এটি টাইমলাইন রুলার। রেন্ডারের রেঞ্জ সিলেক্ট করতে রুলারে Shift চেপে ড্র্যাগ করুন। যেকোনো স্লট বেছে নিয়ে AI দিয়ে এডিট করতে বা সেই রেঞ্জের উপযোগী মিউজিক জেনারেট করতে পারেন।";
 "This is where all your footage and assets live." = "আপনার সব ফুটেজ ও অ্যাসেট এখানে থাকে।";
-"This is your inspector panel. Select a clip from the timeline to edit it." = "এটি আপনার ইনস্পেক্টর প্যানেল। এডিট করতে টাইমলাইন থেকে একটি ক্লিপ সিলেক্ট করুন।";
 "This is your preview panel to play a selected media or the whole timeline." = "এটি সিলেক্ট করা মিডিয়া বা পুরো টাইমলাইন প্লে করার প্রিভিউ প্যানেল।";
 "This model cannot cap the output at 60 FPS." = "এই মডেল আউটপুট 60 FPS-এ সীমাবদ্ধ করতে পারে না।";
 "This permanently removes %@." = "এটি %@ স্থায়ীভাবে সরিয়ে দেয়।";
@@ -974,8 +974,10 @@
 "Your Lottie animation is ready." = "আপনার Lottie অ্যানিমেশন প্রস্তুত।";
 "Your audio clip is ready." = "আপনার অডিও ক্লিপ প্রস্তুত।";
 "Your image is ready." = "আপনার ইমেজ প্রস্তুত।";
+"Your inspector for the selected clip — transform, adjust, audio, and more." = "সিলেক্ট করা ক্লিপের ইনস্পেক্টর — ট্রান্সফর্ম, অ্যাডজাস্ট, অডিও এবং আরও অনেক কিছু।";
 "Your text clip is ready." = "আপনার টেক্সট ক্লিপ প্রস্তুত।";
-"Your timeline: the top half is video, the bottom half is audio. This is where you edit. Right-click a clip for some cool AI features such as upscale, edit, or generate music." = "আপনার টাইমলাইনের উপরের অর্ধেক ভিডিও, নিচের অর্ধেক অডিও। এখানেই এডিট করবেন। আপস্কেল, এডিট বা মিউজিক জেনারেট করার মতো AI ফিচারের জন্য ক্লিপে রাইট-ক্লিক করুন।";
+"Your timeline: the top half is video, the bottom half is audio. Click a clip to inspect it — we've selected one for you." = "আপনার টাইমলাইনের উপরের অর্ধেক ভিডিও, নিচের অর্ধেক অডিও। ইনস্পেক্ট করতে যেকোনো ক্লিপে ক্লিক করুন — আমরা আপনার জন্য একটি সিলেক্ট করে দিয়েছি।";
+"Your timeline: the top half is video, the bottom half is audio. This is where you edit." = "আপনার টাইমলাইনের উপরের অর্ধেক ভিডিও, নিচের অর্ধেক অডিও। এখানেই এডিট করবেন।";
 "Your video is ready." = "আপনার ভিডিও প্রস্তুত।";
 "Zoom In" = "জুম ইন";
 "Zoom Out" = "জুম আউট";

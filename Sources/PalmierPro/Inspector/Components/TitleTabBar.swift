@@ -3,6 +3,7 @@ import SwiftUI
 struct TitleTabBar: View {
     let titles: [String]
     let selected: String?
+    var tourAnchors: [String: TourAnchorID] = [:]
     let onSelect: (String) -> Void
     @State private var hoveredTitle: String?
 
@@ -22,10 +23,11 @@ struct TitleTabBar: View {
         }
     }
 
+    @ViewBuilder
     private func tab(_ title: String) -> some View {
         let active = selected == title
         let hovered = hoveredTitle == title
-        return Button {
+        let button = Button {
             onSelect(title)
         } label: {
             Text(L10n.string(key: title))
@@ -46,6 +48,11 @@ struct TitleTabBar: View {
             hoveredTitle = hovering ? title : (hoveredTitle == title ? nil : hoveredTitle)
         }
         .animation(.easeOut(duration: AppTheme.Anim.hover), value: hovered)
+        if let anchor = tourAnchors[title] {
+            button.tourAnchor(anchor)
+        } else {
+            button
+        }
     }
 
     private func tabBackground(active: Bool, hovered: Bool) -> Color {

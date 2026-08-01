@@ -66,7 +66,7 @@
 "Add Range to Chat" = "Adicionar intervalo ao chat";
 "Add Text" = "Adicionar texto";
 "Add an email above to enable a reply" = "Adicione um email acima para permitir uma resposta";
-"Add captions to my timeline" = "Adicionar legendas à minha linha do tempo";
+"Add captions" = "Adicionar legendas";
 "Add credits" = "Adicionar créditos";
 "Add credits to use Cloud." = "Adicione créditos para usar a Nuvem.";
 "Add emoji" = "Adicionar emoji";
@@ -227,9 +227,7 @@
 "Create Nested Timeline" = "Criar linha do tempo aninhada";
 "Create Video" = "Criar vídeo";
 "Create Video only works on images" = "Criar vídeo funciona apenas com imagens";
-"Create a letterbox opening" = "Criar uma abertura letterbox";
 "Create a skill or browse the Community collection." = "Crie uma habilidade ou explore a coleção da comunidade.";
-"Create a voiceover" = "Criar uma narração";
 "Create matching sound for the video" = "Criar som correspondente ao vídeo";
 "Creating…" = "Criando…";
 "Credits" = "Créditos";
@@ -241,6 +239,7 @@
 "Custom Aspect Ratio" = "Proporção personalizada";
 "Custom…" = "Personalizado…";
 "Cut" = "Cortar";
+"Cut to the beat" = "Cortar no ritmo";
 "Dark" = "Escuro";
 "Dark appearance" = "Aparência escura";
 "Darken" = "Escurecer";
@@ -384,9 +383,7 @@
 "Generate SFX" = "Gerar efeitos sonoros";
 "Generate SFX only works on video" = "Gerar SFX funciona apenas com vídeos";
 "Generate SFX…" = "Gerar efeitos sonoros…";
-"Generate an AI video" = "Gerar um vídeo com AI";
 "Generate audio" = "Gerar áudio";
-"Generate music and sync to my timeline" = "Gerar música e sincronizar com minha linha do tempo";
 "Generate music for the timeline" = "Gerar música para a linha do tempo";
 "Generate music that fits the video" = "Gerar música adequada ao vídeo";
 "Generate video, image, or audio with different models and settings. Drag assets from the media panel above into the reference frame." = "Gere vídeo, imagem ou áudio com modelos e ajustes diferentes. Arraste recursos do painel de mídia acima para o quadro de referência.";
@@ -454,6 +451,7 @@
 "Keep Current" = "Manter atual";
 "Keep Editing" = "Continuar editando";
 "Keep Skill" = "Manter habilidade";
+"Keep the best takes" = "Manter as melhores takes";
 "Keeps this much audio before and after detected speech." = "Mantém esta quantidade de áudio antes e depois da fala detectada.";
 "Keyboard Shortcuts" = "Atalhos de teclado";
 "Keyframes" = "Quadros-chave";
@@ -503,6 +501,7 @@
 "MCP Server" = "Servidor MCP";
 "MCP Setup" = "Configuração do MCP";
 "Main + Sidebar" = "Principal + barra lateral";
+"Make vertical shorts" = "Criar shorts verticais";
 "Manage credits" = "Gerenciar créditos";
 "Manage subscription" = "Gerenciar assinatura";
 "Manual setup" = "Configuração manual";
@@ -606,10 +605,10 @@
 "Open Skills Folder" = "Abrir pasta Habilidades";
 "Open Skills to browse community playbooks, create your own, or add them to other agents." = "Abra Habilidades para explorar guias da comunidade, criar os seus ou adicioná-los a outros agentes.";
 "Open Timeline" = "Abrir linha do tempo";
+"Open the AI Edit tab to upscale, prompt-edit, create video from a frame, or generate music, SFX, cleanup, and dubbing from the clip." = "Abra a aba Edição com AI para aumentar a resolução, editar com um prompt, criar vídeo a partir de um quadro, ou gerar música, efeitos sonoros, limpeza de voz e dublagem a partir do clipe.";
 "Opening Google" = "Abrindo o Google";
 "Opening Google…" = "Abrindo o Google…";
 "Open…" = "Abrir…";
-"Organize my media into structured folders" = "Organizar minha mídia em pastas estruturadas";
 "Organize with Agent" = "Organizar com o Agente";
 "Original" = "Original";
 "Original FPS" = "FPS original";
@@ -736,6 +735,7 @@
 "Save this project to view activity" = "Salve este projeto para ver a atividade";
 "Saves a copy of this project with all media bundled inside, so it opens on any machine." = "Salva uma cópia deste projeto com toda a mídia incluída para que ele possa ser aberto em qualquer máquina.";
 "Scale" = "Escala";
+"Score my timeline" = "Trilha sonora na linha do tempo";
 "Screen" = "Tela";
 "Screenshot a frame" = "Capturar um quadro";
 "Scroll Horizontally" = "Rolar horizontalmente";
@@ -840,6 +840,7 @@
 "Switch Angle" = "Trocar ângulo";
 "Switch Angle in Range" = "Trocar ângulo no intervalo";
 "Switch Mic" = "Trocar microfone";
+"Sync my multicam" = "Sincronizar minha multicâmera";
 "Synchronize" = "Sincronizar";
 "Synchronized %lld clips" = "%lld clipes sincronizados";
 "Synchronized 1 clip" = "1 clipe sincronizado";
@@ -864,7 +865,6 @@
 "Theme" = "Tema";
 "This is the timeline ruler. Shift+drag on the ruler to select a range to render. You can pick any slot to AI edit or generate music that fits that range." = "Esta é a régua da linha do tempo. Pressione Shift e arraste na régua para selecionar um intervalo a ser renderizado. Você pode escolher qualquer espaço para editar com AI ou gerar música adequada ao intervalo.";
 "This is where all your footage and assets live." = "Aqui ficam todas as suas filmagens e recursos.";
-"This is your inspector panel. Select a clip from the timeline to edit it." = "Este é o painel Inspetor. Selecione um clipe na linha do tempo para editá-lo.";
 "This is your preview panel to play a selected media or the whole timeline." = "Este é o painel de prévia para reproduzir uma mídia selecionada ou toda a linha do tempo.";
 "This model cannot cap the output at 60 FPS." = "Este modelo não pode limitar a saída a 60 FPS.";
 "This permanently removes %@." = "Isso remove %@ permanentemente.";
@@ -974,8 +974,10 @@
 "Your Lottie animation is ready." = "Sua animação Lottie está pronta.";
 "Your audio clip is ready." = "Seu clipe de áudio está pronto.";
 "Your image is ready." = "Sua imagem está pronta.";
+"Your inspector for the selected clip — transform, adjust, audio, and more." = "O inspetor do clipe selecionado — transformar, ajustar, áudio e muito mais.";
 "Your text clip is ready." = "Seu clipe de texto está pronto.";
-"Your timeline: the top half is video, the bottom half is audio. This is where you edit. Right-click a clip for some cool AI features such as upscale, edit, or generate music." = "Sua linha do tempo: a metade superior é vídeo e a inferior é áudio. É aqui que você edita. Clique com o botão direito em um clipe para usar recursos de AI como aumentar resolução, editar ou gerar música.";
+"Your timeline: the top half is video, the bottom half is audio. Click a clip to inspect it — we've selected one for you." = "Sua linha do tempo: a metade superior é vídeo e a inferior é áudio. Clique em um clipe para inspecioná-lo — já selecionamos um para você.";
+"Your timeline: the top half is video, the bottom half is audio. This is where you edit." = "Sua linha do tempo: a metade superior é vídeo e a inferior é áudio. É aqui que você edita.";
 "Your video is ready." = "Seu vídeo está pronto.";
 "Zoom In" = "Ampliar";
 "Zoom Out" = "Reduzir";

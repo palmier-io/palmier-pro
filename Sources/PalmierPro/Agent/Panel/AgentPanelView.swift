@@ -5,39 +5,46 @@ struct AgentPanelView: View {
 
     private static let starterPrompts: [AgentStarterPrompt] = [
         AgentStarterPrompt(
-            title: L10n.string("Generate an AI video"),
-            systemImage: "sparkles",
-            prompt: "Generate an AI video of "
+            id: "keep_best_takes",
+            title: L10n.string("Keep the best takes"),
+            systemImage: "scissors",
+            prompt: "Tighten this edit. Keep the strongest takes, cut filler words and long silences, and leave a clean continuous cut."
         ),
         AgentStarterPrompt(
+            id: "sync_multicam",
+            title: L10n.string("Sync my multicam"),
+            systemImage: "rectangle.on.rectangle.angled",
+            prompt: "Set up my multicam. Group the matching camera angles with their audio, verify sync, and leave it ready to switch."
+        ),
+        AgentStarterPrompt(
+            id: "generate_broll",
             title: L10n.string("Generate B-roll"),
             systemImage: "film",
-            prompt: "Generate B-roll for my timeline. Inspect the current edit, identify sections that would benefit from cutaways, generate suitable B-roll, and place it where it supports the story."
+            prompt: "Generate B-roll that fits this edit. Find moments that need cutaways, create matching shots, and place them where they support the story."
         ),
         AgentStarterPrompt(
-            title: L10n.string("Create a letterbox opening"),
-            systemImage: "camera.aperture",
-            prompt: "Create a cinematic opening for my timeline. Use the first visual clip, animate a subtle letterbox matte with top and bottom crop keyframes, starting from crop to uncrop,and keep the motion restrained and polished."
-        ),
-        AgentStarterPrompt(
-            title: L10n.string("Add captions to my timeline"),
-            systemImage: "captions.bubble",
-            prompt: "Add captions to my timeline. Transcribe spoken audio in timeline clips, build readable caption phrases on word boundaries, and place them as text clips aligned to the edit."
-        ),
-        AgentStarterPrompt(
-            title: L10n.string("Create a voiceover"),
-            systemImage: "waveform",
-            prompt: "Create a voiceover for my timeline. Draft concise narration for the current edit, generate the voiceover, and add it to an audio track aligned with the timeline."
-        ),
-        AgentStarterPrompt(
-            title: L10n.string("Generate music and sync to my timeline"),
+            id: "score_timeline",
+            title: L10n.string("Score my timeline"),
             systemImage: "music.note",
-            prompt: "Score my timeline with music. Inspect the edit's mood and pacing, generate music for the full timeline, and place it on an audio track aligned to the edit."
+            prompt: "Generate music for this timeline. Match the mood and length, then place it on an audio track synced to the edit."
         ),
         AgentStarterPrompt(
-            title: L10n.string("Organize my media into structured folders"),
-            systemImage: "folder",
-            prompt: "Organize my media into structured folders. Review all assets, create clearly named folders by role, scene, or type, move assets into them, and rename generic files when useful. Don't delete anything or change the timeline."
+            id: "cut_to_beat",
+            title: L10n.string("Cut to the beat"),
+            systemImage: "metronome",
+            prompt: "Assemble my clips to the beat of a song. Detect the beats and cut or place clips so the edit hits the rhythm."
+        ),
+        AgentStarterPrompt(
+            id: "add_captions",
+            title: L10n.string("Add captions"),
+            systemImage: "captions.bubble",
+            prompt: "Add captions to this timeline. Transcribe the dialogue, phrase it for readability, and place text clips locked to the speech."
+        ),
+        AgentStarterPrompt(
+            id: "make_vertical_shorts",
+            title: L10n.string("Make vertical shorts"),
+            systemImage: "rectangle.portrait",
+            prompt: "Find the strongest moments in this video and turn each into a short-form vertical clip. Create multiple 9:16 timelines, reframe for vertical, and keep every clip tight and self-contained."
         ),
     ]
 
@@ -305,6 +312,9 @@ struct AgentPanelView: View {
                 VStack(spacing: AppTheme.Spacing.xs) {
                     ForEach(Self.starterPrompts) { starterPrompt in
                         AgentStarterPromptButton(starterPrompt: starterPrompt) {
+                            Analytics.capture(.agentStarterPromptClicked, properties: [
+                                "starter_prompt": starterPrompt.id,
+                            ])
                             populatePrompt(starterPrompt.prompt)
                         }
                     }
@@ -417,7 +427,7 @@ struct AgentPanelView: View {
 }
 
 private struct AgentStarterPrompt: Identifiable {
-    let id = UUID()
+    let id: String
     let title: String
     let systemImage: String
     let prompt: String

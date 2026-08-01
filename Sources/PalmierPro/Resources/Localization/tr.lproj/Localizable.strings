@@ -66,7 +66,7 @@
 "Add Range to Chat" = "Aralığı Sohbete Ekle";
 "Add Text" = "Metin Ekle";
 "Add an email above to enable a reply" = "Yanıt alabilmek için yukarıya bir e-posta adresi ekleyin";
-"Add captions to my timeline" = "Zaman eksenime altyazı ekle";
+"Add captions" = "Altyazı ekle";
 "Add credits" = "Kredi ekle";
 "Add credits to use Cloud." = "Bulut'u kullanmak için kredi ekleyin.";
 "Add emoji" = "Emoji ekle";
@@ -227,9 +227,7 @@
 "Create Nested Timeline" = "İç İçe Zaman Ekseni Oluştur";
 "Create Video" = "Video Oluştur";
 "Create Video only works on images" = "Video Oluştur yalnızca görüntülerde çalışır";
-"Create a letterbox opening" = "Sinemaskop açılışı oluştur";
 "Create a skill or browse the Community collection." = "Bir beceri oluşturun veya Topluluk koleksiyonuna göz atın.";
-"Create a voiceover" = "Seslendirme oluştur";
 "Create matching sound for the video" = "Videoya uygun ses oluştur";
 "Creating…" = "Oluşturuluyor…";
 "Credits" = "Krediler";
@@ -241,6 +239,7 @@
 "Custom Aspect Ratio" = "Özel En-Boy Oranı";
 "Custom…" = "Özel…";
 "Cut" = "Kes";
+"Cut to the beat" = "Ritme göre kes";
 "Dark" = "Koyu";
 "Dark appearance" = "Koyu görünüm";
 "Darken" = "Koyulaştır";
@@ -384,9 +383,7 @@
 "Generate SFX" = "SFX Oluştur";
 "Generate SFX only works on video" = "SFX Oluştur yalnızca videoda çalışır";
 "Generate SFX…" = "SFX Oluştur…";
-"Generate an AI video" = "Yapay zekâ videosu oluştur";
 "Generate audio" = "Ses oluştur";
-"Generate music and sync to my timeline" = "Müzik oluştur ve zaman eksenimle eşzamanla";
 "Generate music for the timeline" = "Zaman ekseni için müzik oluştur";
 "Generate music that fits the video" = "Videoya uyan müzik oluştur";
 "Generate video, image, or audio with different models and settings. Drag assets from the media panel above into the reference frame." = "Farklı modeller ve ayarlarla video, görüntü veya ses oluşturun. Yukarıdaki medya panelinden varlıkları referans karesine sürükleyin.";
@@ -454,6 +451,7 @@
 "Keep Current" = "Geçerli Olanı Koru";
 "Keep Editing" = "Düzenlemeyi Sürdür";
 "Keep Skill" = "Beceriyi Koru";
+"Keep the best takes" = "En iyi çekimleri tut";
 "Keeps this much audio before and after detected speech." = "Algılanan konuşmanın öncesinde ve sonrasında bu kadar sesi korur.";
 "Keyboard Shortcuts" = "Klavye Kestirmeleri";
 "Keyframes" = "Anahtar Kareler";
@@ -503,6 +501,7 @@
 "MCP Server" = "MCP Sunucusu";
 "MCP Setup" = "MCP Ayarları";
 "Main + Sidebar" = "Ana + Kenar Çubuğu";
+"Make vertical shorts" = "Dikey short’lar oluştur";
 "Manage credits" = "Kredileri yönet";
 "Manage subscription" = "Aboneliği yönet";
 "Manual setup" = "Elle ayarla";
@@ -606,10 +605,10 @@
 "Open Skills Folder" = "Beceriler Klasörünü Aç";
 "Open Skills to browse community playbooks, create your own, or add them to other agents." = "Topluluk çalışma kitaplarına göz atmak, kendi becerilerinizi oluşturmak veya başka aracılara eklemek için Beceriler'i açın.";
 "Open Timeline" = "Zaman Eksenini Aç";
+"Open the AI Edit tab to upscale, prompt-edit, create video from a frame, or generate music, SFX, cleanup, and dubbing from the clip." = "Çözünürlük yükseltmek, istemle düzenlemek, bir kareden video oluşturmak ya da klipten müzik, ses efektleri, ses temizleme ve dublaj üretmek için Yapay Zekâ Düzenleme sekmesini açın.";
 "Opening Google" = "Google Açılıyor";
 "Opening Google…" = "Google Açılıyor…";
 "Open…" = "Aç…";
-"Organize my media into structured folders" = "Medyamı düzenli klasörler hâlinde organize et";
 "Organize with Agent" = "Aracıyla Organize Et";
 "Original" = "Özgün";
 "Original FPS" = "Özgün FPS";
@@ -736,6 +735,7 @@
 "Save this project to view activity" = "Etkinliği görüntülemek için bu projeyi kaydedin";
 "Saves a copy of this project with all media bundled inside, so it opens on any machine." = "Bu projenin tüm medyayı içinde barındıran bir kopyasını kaydeder; böylece her bilgisayarda açılabilir.";
 "Scale" = "Ölçek";
+"Score my timeline" = "Zaman eksenine müzik ekle";
 "Screen" = "Ekran";
 "Screenshot a frame" = "Bir karenin ekran görüntüsünü al";
 "Scroll Horizontally" = "Yatay Kaydır";
@@ -840,6 +840,7 @@
 "Switch Angle" = "Açıyı Değiştir";
 "Switch Angle in Range" = "Aralıkta Açıyı Değiştir";
 "Switch Mic" = "Mikrofonu Değiştir";
+"Sync my multicam" = "Çok kameralı kurulumu eşitle";
 "Synchronize" = "Eşzamanla";
 "Synchronized %lld clips" = "%lld klip eşzamanlandı";
 "Synchronized 1 clip" = "1 klip eşzamanlandı";
@@ -864,7 +865,6 @@
 "Theme" = "Tema";
 "This is the timeline ruler. Shift+drag on the ruler to select a range to render. You can pick any slot to AI edit or generate music that fits that range." = "Bu, zaman ekseni cetvelidir. İşlenecek bir aralığı seçmek için cetvelde Shift tuşuna basarak sürükleyin. Yapay zekâyla düzenlemek veya bu aralığa uyan müzik oluşturmak için istediğiniz bölümü seçebilirsiniz.";
 "This is where all your footage and assets live." = "Tüm çekimleriniz ve varlıklarınız burada bulunur.";
-"This is your inspector panel. Select a clip from the timeline to edit it." = "Bu, denetçi panelinizdir. Düzenlemek için zaman ekseninden bir klip seçin.";
 "This is your preview panel to play a selected media or the whole timeline." = "Bu, seçili medyayı veya tüm zaman eksenini oynatabileceğiniz önizleme panelinizdir.";
 "This model cannot cap the output at 60 FPS." = "Bu model çıktıyı 60 FPS ile sınırlayamaz.";
 "This permanently removes %@." = "Bu işlem %@ öğesini kalıcı olarak kaldırır.";
@@ -974,8 +974,10 @@
 "Your Lottie animation is ready." = "Lottie animasyonunuz hazır.";
 "Your audio clip is ready." = "Ses klibiniz hazır.";
 "Your image is ready." = "Görüntünüz hazır.";
+"Your inspector for the selected clip — transform, adjust, audio, and more." = "Seçili klip için denetçi — dönüştür, ayarla, ses ve daha fazlası.";
 "Your text clip is ready." = "Metin klibiniz hazır.";
-"Your timeline: the top half is video, the bottom half is audio. This is where you edit. Right-click a clip for some cool AI features such as upscale, edit, or generate music." = "Zaman ekseninizin üst yarısı video, alt yarısı sestir. Düzenlemeyi burada yaparsınız. Çözünürlük yükseltme, düzenleme veya müzik oluşturma gibi yapay zekâ özellikleri için bir klibi sağ tıklayın.";
+"Your timeline: the top half is video, the bottom half is audio. Click a clip to inspect it — we've selected one for you." = "Zaman ekseninizin üst yarısı video, alt yarısı sestir. İncelemek için bir klibe tıklayın — sizin için birini seçtik.";
+"Your timeline: the top half is video, the bottom half is audio. This is where you edit." = "Zaman ekseninizin üst yarısı video, alt yarısı sestir. Düzenlemeyi burada yaparsınız.";
 "Your video is ready." = "Videonuz hazır.";
 "Zoom In" = "Yakınlaştır";
 "Zoom Out" = "Uzaklaştır";

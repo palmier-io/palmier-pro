@@ -66,7 +66,7 @@
 "Add Range to Chat" = "채팅에 범위 추가";
 "Add Text" = "텍스트 추가";
 "Add an email above to enable a reply" = "답변을 받으려면 위에 이메일을 추가하세요";
-"Add captions to my timeline" = "타임라인에 캡션 추가";
+"Add captions" = "캡션 추가";
 "Add credits" = "크레딧 추가";
 "Add credits to use Cloud." = "Cloud를 사용하려면 크레딧을 추가하세요.";
 "Add emoji" = "이모티콘 추가";
@@ -227,9 +227,7 @@
 "Create Nested Timeline" = "중첩 타임라인 생성";
 "Create Video" = "비디오 생성";
 "Create Video only works on images" = "비디오 생성은 이미지에서만 사용할 수 있습니다";
-"Create a letterbox opening" = "레터박스 오프닝 생성";
 "Create a skill or browse the Community collection." = "스킬을 생성하거나 커뮤니티 모음을 둘러보세요.";
-"Create a voiceover" = "보이스오버 생성";
 "Create matching sound for the video" = "비디오에 맞는 사운드 생성";
 "Creating…" = "생성하는 중…";
 "Credits" = "크레딧";
@@ -241,6 +239,7 @@
 "Custom Aspect Ratio" = "사용자 설정 화면비";
 "Custom…" = "사용자 설정…";
 "Cut" = "오려두기";
+"Cut to the beat" = "비트에 맞춰 컷";
 "Dark" = "다크";
 "Dark appearance" = "다크 모드";
 "Darken" = "어둡게";
@@ -384,9 +383,7 @@
 "Generate SFX" = "SFX 생성";
 "Generate SFX only works on video" = "SFX 생성은 비디오에서만 사용할 수 있습니다";
 "Generate SFX…" = "SFX 생성…";
-"Generate an AI video" = "AI 비디오 생성";
 "Generate audio" = "오디오 생성";
-"Generate music and sync to my timeline" = "음악을 생성하여 타임라인과 동기화";
 "Generate music for the timeline" = "타임라인용 음악 생성";
 "Generate music that fits the video" = "비디오에 맞는 음악 생성";
 "Generate video, image, or audio with different models and settings. Drag assets from the media panel above into the reference frame." = "다양한 모델과 설정으로 비디오, 이미지 또는 오디오를 생성합니다. 위의 미디어 패널에서 참조 프레임으로 에셋을 드래그하세요.";
@@ -454,6 +451,7 @@
 "Keep Current" = "현재 설정 유지";
 "Keep Editing" = "계속 편집";
 "Keep Skill" = "스킬 유지";
+"Keep the best takes" = "베스트 테이크만 남기기";
 "Keeps this much audio before and after detected speech." = "감지된 음성 전후에 이만큼의 오디오를 유지합니다.";
 "Keyboard Shortcuts" = "키보드 단축키";
 "Keyframes" = "키프레임";
@@ -503,6 +501,7 @@
 "MCP Server" = "MCP 서버";
 "MCP Setup" = "MCP 설정";
 "Main + Sidebar" = "메인 + 사이드바";
+"Make vertical shorts" = "세로형 쇼츠 만들기";
 "Manage credits" = "크레딧 관리";
 "Manage subscription" = "구독 관리";
 "Manual setup" = "수동 설정";
@@ -606,10 +605,10 @@
 "Open Skills Folder" = "스킬 폴더 열기";
 "Open Skills to browse community playbooks, create your own, or add them to other agents." = "스킬을 열어 커뮤니티 플레이북을 둘러보고 직접 만들거나 다른 에이전트에 추가하세요.";
 "Open Timeline" = "타임라인 열기";
+"Open the AI Edit tab to upscale, prompt-edit, create video from a frame, or generate music, SFX, cleanup, and dubbing from the clip." = "AI 편집 탭을 열어 업스케일, 프롬프트 편집, 프레임에서 비디오 만들기, 또는 클립에서 음악·SFX·클린업·더빙을 생성하세요.";
 "Opening Google" = "Google 여는 중";
 "Opening Google…" = "Google 여는 중…";
 "Open…" = "열기…";
-"Organize my media into structured folders" = "미디어를 체계적인 폴더로 정리";
 "Organize with Agent" = "에이전트로 정리";
 "Original" = "원본";
 "Original FPS" = "원본 FPS";
@@ -736,6 +735,7 @@
 "Save this project to view activity" = "활동을 보려면 이 프로젝트를 저장하세요";
 "Saves a copy of this project with all media bundled inside, so it opens on any machine." = "모든 미디어를 내부에 번들로 포함한 프로젝트 사본을 저장하여 어느 컴퓨터에서나 열 수 있게 합니다.";
 "Scale" = "크기 조절";
+"Score my timeline" = "타임라인에 음악 입히기";
 "Screen" = "스크린";
 "Screenshot a frame" = "프레임 스크린샷 찍기";
 "Scroll Horizontally" = "가로로 스크롤";
@@ -840,6 +840,7 @@
 "Switch Angle" = "앵글 전환";
 "Switch Angle in Range" = "범위에서 앵글 전환";
 "Switch Mic" = "마이크 전환";
+"Sync my multicam" = "멀티캠 동기화";
 "Synchronize" = "동기화";
 "Synchronized %lld clips" = "클립 %lld개 동기화됨";
 "Synchronized 1 clip" = "클립 1개 동기화됨";
@@ -864,7 +865,6 @@
 "Theme" = "테마";
 "This is the timeline ruler. Shift+drag on the ruler to select a range to render. You can pick any slot to AI edit or generate music that fits that range." = "타임라인 눈금자입니다. 눈금자에서 Shift+드래그하여 렌더링할 범위를 선택하세요. 원하는 슬롯을 선택해 AI로 편집하거나 해당 범위에 맞는 음악을 생성할 수 있습니다.";
 "This is where all your footage and assets live." = "모든 푸티지와 에셋이 보관되는 곳입니다.";
-"This is your inspector panel. Select a clip from the timeline to edit it." = "인스펙터 패널입니다. 타임라인에서 편집할 클립을 선택하세요.";
 "This is your preview panel to play a selected media or the whole timeline." = "선택한 미디어 또는 전체 타임라인을 재생하는 미리보기 패널입니다.";
 "This model cannot cap the output at 60 FPS." = "이 모델은 출력을 60 FPS로 제한할 수 없습니다.";
 "This permanently removes %@." = "%@이(가) 영구적으로 제거됩니다.";
@@ -974,8 +974,10 @@
 "Your Lottie animation is ready." = "Lottie 애니메이션이 준비되었습니다.";
 "Your audio clip is ready." = "오디오 클립이 준비되었습니다.";
 "Your image is ready." = "이미지가 준비되었습니다.";
+"Your inspector for the selected clip — transform, adjust, audio, and more." = "선택한 클립의 인스펙터입니다. 변형, 조정, 오디오 등을 확인하세요.";
 "Your text clip is ready." = "텍스트 클립이 준비되었습니다.";
-"Your timeline: the top half is video, the bottom half is audio. This is where you edit. Right-click a clip for some cool AI features such as upscale, edit, or generate music." = "타임라인의 위쪽 절반은 비디오이고 아래쪽 절반은 오디오입니다. 여기에서 편집합니다. 클립을 오른쪽 클릭하여 업스케일, 편집 또는 음악 생성과 같은 AI 기능을 사용하세요.";
+"Your timeline: the top half is video, the bottom half is audio. Click a clip to inspect it — we've selected one for you." = "타임라인의 위쪽 절반은 비디오이고 아래쪽 절반은 오디오입니다. 클립을 클릭해 검사하세요 — 하나를 미리 선택해 두었습니다.";
+"Your timeline: the top half is video, the bottom half is audio. This is where you edit." = "타임라인의 위쪽 절반은 비디오이고 아래쪽 절반은 오디오입니다. 여기에서 편집합니다.";
 "Your video is ready." = "비디오가 준비되었습니다.";
 "Zoom In" = "확대";
 "Zoom Out" = "축소";

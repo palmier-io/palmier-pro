@@ -30,6 +30,7 @@ enum Analytics {
         case exportFailed = "export failed"
         case agentSessionStarted = "agent session started"
         case agentToolCalled = "agent tool called"
+        case agentStarterPromptClicked = "agent starter prompt clicked"
         case mcpSessionActivated = "mcp session activated"
     }
 
@@ -145,6 +146,7 @@ enum Analytics {
             Event.exportFailed.rawValue,
             Event.agentSessionStarted.rawValue,
             Event.agentToolCalled.rawValue,
+            Event.agentStarterPromptClicked.rawValue,
             Event.mcpSessionActivated.rawValue,
             "$identify",
         ])
@@ -209,6 +211,7 @@ enum Analytics {
             "project_id",
             "resolution",
             "source",
+            "starter_prompt",
             "status",
             "timeline_changed",
             "tool_name",
