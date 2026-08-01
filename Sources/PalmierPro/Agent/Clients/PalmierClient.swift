@@ -3,7 +3,7 @@ import ClerkKit
 
 struct PalmierClient: AgentClient {
     let model: AnthropicModel
-    var maxTokens: Int = 8192
+    var maxTokens: Int { model.maxOutputTokens }
 
     func stream(
         system: String,

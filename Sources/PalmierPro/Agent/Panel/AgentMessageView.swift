@@ -68,6 +68,12 @@ struct AgentMessageView: View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
             ForEach(Array(message.blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
+                case .thinking(let text, _):
+                    if !text.isEmpty {
+                        ThinkingSummaryView(text: text)
+                    }
+                case .redactedThinking:
+                    EmptyView()
                 case .text(let text):
                     MarkdownText(text: text)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -86,6 +92,24 @@ struct AgentMessageView: View {
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .animation(.easeOut(duration: AppTheme.Anim.hover), value: isHovering)
+    }
+}
+
+private struct ThinkingSummaryView: View {
+    let text: String
+
+    var body: some View {
+        Text(verbatim: text)
+            .font(.system(size: AppTheme.FontSize.xs))
+            .foregroundStyle(AppTheme.Text.tertiaryColor)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, AppTheme.Spacing.md)
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(AppTheme.Border.subtleColor)
+                    .frame(width: AppTheme.BorderWidth.medium)
+            }
+            .textSelection(.enabled)
     }
 }
 
