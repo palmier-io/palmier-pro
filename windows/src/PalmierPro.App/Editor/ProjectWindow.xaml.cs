@@ -47,6 +47,8 @@ public sealed partial class ProjectWindow : Window
         };
         TimelineView.ClipEditRequested += OnTimelineClipEdit;
         TimelineView.DeleteRequested += ids => ViewModel.EditOperations?.DeleteClips(ids);
+        TimelineView.SplitRequested += (clipId, frame) =>
+            ViewModel.EditOperations?.SplitClip(clipId, frame);
 
         Closed += OnClosed;
 

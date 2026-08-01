@@ -25,6 +25,14 @@ internal enum TimelineDragKind
     MoveClip,
     TrimLeft,
     TrimRight,
+    Marquee,
+}
+
+/// <summary>Active edit tool: pointer (V), razor (C).</summary>
+public enum TimelineTool
+{
+    Pointer,
+    Razor,
 }
 
 /// <summary>
@@ -54,6 +62,10 @@ public sealed class TimelineControl : UserControl
     public event Action<ClipEditRequest>? ClipEditRequested;
     public event Action? SelectionChanged;
     public event Action<IReadOnlyList<string>>? DeleteRequested;
+    /// <summary>Raised on razor click: (clipId, frame to split at).</summary>
+    public event Action<string, int>? SplitRequested;
+
+    public TimelineTool Tool { get; set; } = TimelineTool.Pointer;
 
     private TimelineDragKind _drag = TimelineDragKind.None;
     private Clip? _dragClip;
@@ -66,6 +78,9 @@ public sealed class TimelineControl : UserControl
     private int _dragPreviewDuration;
     private readonly SnapState _snapState = new();
     private int? _snapIndicatorFrame;
+    private Point _marqueeStart;
+    private Point _marqueeEnd;
+    private bool _marqueeAdditive;
 
     public TimelineControl()
     {
@@ -156,6 +171,22 @@ public sealed class TimelineControl : UserControl
         DrawRuler(session, geometry, viewWidth);
         DrawPlayhead(session, geometry);
         DrawSnapIndicator(session, geometry);
+        DrawMarquee(session);
+    }
+
+    private void DrawMarquee(CanvasDrawingSession session)
+    {
+        if (_drag != TimelineDragKind.Marquee) return;
+        var x = (float)(Math.Min(_marqueeStart.X, _marqueeEnd.X) - ScrollX);
+        var y = (float)Math.Min(_marqueeStart.Y, _marqueeEnd.Y);
+        var width = (float)Math.Abs(_marqueeEnd.X - _marqueeStart.X);
+        var height = (float)Math.Abs(_marqueeEnd.Y - _marqueeStart.Y);
+        session.FillRectangle(x, y, width, height, Color.FromArgb(30, 255, 255, 255));
+        var style = new Microsoft.Graphics.Canvas.Geometry.CanvasStrokeStyle
+        {
+            DashStyle = Microsoft.Graphics.Canvas.Geometry.CanvasDashStyle.Dash,
+        };
+        session.DrawRectangle(x, y, width, height, Color.FromArgb(160, 255, 255, 255), 1f, style);
     }
 
     private void DrawClip(CanvasDrawingSession session, TimelineGeometry geometry, int trackIndex, Clip clip)
@@ -403,19 +434,32 @@ public sealed class TimelineControl : UserControl
         }
 
         var hit = geometry.HitTestClip(documentX, point.Y);
+        var shift = e.KeyModifiers.HasFlag(VirtualKeyModifiers.Shift);
         if (hit is null)
         {
-            if (SelectedClipIds.Count > 0)
+            // Empty area: start a marquee (additive with Shift).
+            _drag = TimelineDragKind.Marquee;
+            _marqueeAdditive = shift;
+            _marqueeStart = new Point(documentX, point.Y);
+            _marqueeEnd = _marqueeStart;
+            if (!shift && SelectedClipIds.Count > 0)
             {
                 SelectedClipIds.Clear();
                 SelectionChanged?.Invoke();
-                _canvas.Invalidate();
             }
+            _canvas.Invalidate();
             return;
         }
 
         var (trackIndex, clip) = hit.Value;
-        var shift = e.KeyModifiers.HasFlag(VirtualKeyModifiers.Shift);
+        if (Tool == TimelineTool.Razor)
+        {
+            var splitFrame = geometry.FrameForX(documentX);
+            if (splitFrame > clip.StartFrame && splitFrame < clip.EndFrame)
+                SplitRequested?.Invoke(clip.Id, splitFrame);
+            return;
+        }
+
         SelectClip(clip, additive: shift);
 
         var rect = geometry.ClipRect(trackIndex, clip);
@@ -453,6 +497,10 @@ public sealed class TimelineControl : UserControl
             case TimelineDragKind.TrimRight:
                 UpdateTrimPreview(documentX, geometry);
                 break;
+            case TimelineDragKind.Marquee:
+                _marqueeEnd = new Point(documentX, point.Y);
+                _canvas.Invalidate();
+                break;
         }
     }
 
@@ -470,6 +518,10 @@ public sealed class TimelineControl : UserControl
         {
             case TimelineDragKind.ScrubPlayhead:
                 UpdateScrub(documentX, geometry, final: true);
+                break;
+            case TimelineDragKind.Marquee:
+                _marqueeEnd = new Point(documentX, point.Y);
+                CommitMarquee(geometry);
                 break;
             case TimelineDragKind.MoveClip or TimelineDragKind.TrimLeft or TimelineDragKind.TrimRight
                 when _dragClip is not null:
@@ -517,12 +569,44 @@ public sealed class TimelineControl : UserControl
 
     private void OnKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (e.Key is VirtualKey.Delete or VirtualKey.Back && SelectedClipIds.Count > 0)
+        switch (e.Key)
         {
-            DeleteRequested?.Invoke([.. SelectedClipIds]);
-            e.Handled = true;
+            case VirtualKey.Delete or VirtualKey.Back when SelectedClipIds.Count > 0:
+                DeleteRequested?.Invoke([.. SelectedClipIds]);
+                e.Handled = true;
+                break;
+            case VirtualKey.V:
+                Tool = TimelineTool.Pointer;
+                e.Handled = true;
+                break;
+            case VirtualKey.C when !IsControlDown():
+                Tool = TimelineTool.Razor;
+                e.Handled = true;
+                break;
+            case VirtualKey.Escape:
+                if (_drag != TimelineDragKind.None)
+                {
+                    _drag = TimelineDragKind.None;
+                    _dragClip = null;
+                    _snapIndicatorFrame = null;
+                    _canvas.ReleasePointerCaptures();
+                }
+                else if (SelectedClipIds.Count > 0)
+                {
+                    SelectedClipIds.Clear();
+                    SelectionChanged?.Invoke();
+                }
+                Tool = TimelineTool.Pointer;
+                _canvas.Invalidate();
+                e.Handled = true;
+                break;
         }
     }
+
+    private static bool IsControlDown()
+        => Microsoft.UI.Input.InputKeyboardSource
+            .GetKeyStateForCurrentThread(VirtualKey.Control)
+            .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
 
     private void UpdateScrub(double documentX, TimelineGeometry geometry, bool final)
     {
@@ -587,6 +671,44 @@ public sealed class TimelineControl : UserControl
             }
         }
         return targets;
+    }
+
+    private void CommitMarquee(TimelineGeometry geometry)
+    {
+        if (Timeline is null) return;
+        var left = Math.Min(_marqueeStart.X, _marqueeEnd.X);
+        var right = Math.Max(_marqueeStart.X, _marqueeEnd.X);
+        var topY = Math.Min(_marqueeStart.Y, _marqueeEnd.Y);
+        var bottomY = Math.Max(_marqueeStart.Y, _marqueeEnd.Y);
+
+        var hitIds = new List<string>();
+        for (var trackIndex = 0; trackIndex < Timeline.Tracks.Count; trackIndex++)
+        {
+            var trackTop = geometry.TrackTop(trackIndex);
+            var trackBottom = trackTop + geometry.TrackHeight(trackIndex);
+            if (trackBottom < topY || trackTop > bottomY) continue;
+            foreach (var clip in Timeline.Tracks[trackIndex].Clips)
+            {
+                var clipLeft = geometry.XForFrame(clip.StartFrame);
+                var clipRight = geometry.XForFrame(clip.EndFrame);
+                if (clipRight >= left && clipLeft <= right) hitIds.Add(clip.Id);
+            }
+        }
+
+        // Expand to link groups like the Mac marquee.
+        var groups = Timeline.Tracks.SelectMany(t => t.Clips)
+            .Where(c => hitIds.Contains(c.Id) && c.LinkGroupId is not null)
+            .Select(c => c.LinkGroupId!)
+            .ToHashSet();
+        foreach (var clip in Timeline.Tracks.SelectMany(t => t.Clips))
+        {
+            if (clip.LinkGroupId is { } group && groups.Contains(group)) hitIds.Add(clip.Id);
+        }
+
+        if (!_marqueeAdditive) SelectedClipIds.Clear();
+        foreach (var id in hitIds) SelectedClipIds.Add(id);
+        SelectionChanged?.Invoke();
+        _canvas.Invalidate();
     }
 
     private void SelectClip(Clip clip, bool additive)
