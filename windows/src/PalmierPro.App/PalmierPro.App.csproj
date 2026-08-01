@@ -23,5 +23,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\PalmierPro.Core\PalmierPro.Core.csproj" />
+    <ProjectReference Include="..\PalmierPro.Media\PalmierPro.Media.csproj" />
   </ItemGroup>
 </Project>

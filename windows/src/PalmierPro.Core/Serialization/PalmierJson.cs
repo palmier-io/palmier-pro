@@ -32,9 +32,14 @@ public static class PalmierJson
 
     public static string EncodeToString<T>(T value) => JsonSerializer.Serialize(value, Options);
 
-    public static T? Decode<T>(ReadOnlySpan<byte> data) => JsonSerializer.Deserialize<T>(data, Options);
+    public static T? Decode<T>(ReadOnlySpan<byte> data)
+        => JsonSerializer.Deserialize<T>(StripBom(data), Options);
 
     public static T? Decode<T>(string json) => JsonSerializer.Deserialize<T>(json, Options);
+
+    /// <summary>Utf8JsonReader rejects a UTF-8 BOM; tolerate files saved by BOM-writing editors.</summary>
+    private static ReadOnlySpan<byte> StripBom(ReadOnlySpan<byte> data)
+        => data.Length >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF ? data[3..] : data;
 }
 
 /// <summary>Generates identifiers matching Swift's UUID().uuidString (uppercase hyphenated).</summary>
