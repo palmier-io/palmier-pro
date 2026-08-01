@@ -3,11 +3,13 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Dispatching;
 using PalmierPro.Core;
 using PalmierPro.Core.Editing;
+using PalmierPro.Core.Export;
 using PalmierPro.Core.Models;
 using PalmierPro.Core.Playback;
 using PalmierPro.Core.Project;
 using PalmierPro.Core.Serialization;
 using PalmierPro.Core.Undo;
+using PalmierPro.Media.Export;
 using PalmierPro.Media.Playback;
 
 namespace PalmierPro.App.Editor;
@@ -38,6 +40,7 @@ public sealed partial class ProjectViewModel : ObservableObject
     public EditorUndo Undo { get; } = new();
     public TimelineEditOperations? EditOperations { get; private set; }
     public PalmierPro.Media.Caches.MediaVisualCache VisualCache { get; } = new();
+    public ExportQueue ExportQueue { get; }
 
     /// <summary>Raised after any timeline mutation, undo, or redo.</summary>
     public event Action? TimelineChanged;
@@ -54,6 +57,23 @@ public sealed partial class ProjectViewModel : ObservableObject
         PackagePath = packagePath;
         _dispatcher = dispatcher;
         _installer = new PackageMediaInstaller(Coordinator);
+        ExportQueue = new ExportQueue(RunExportAsync);
+        ExportQueue.Changed += () => _dispatcher.TryEnqueue(() =>
+        {
+            var job = ExportQueue.Jobs.FirstOrDefault();
+            if (job is null) return;
+            StatusText = job.Status switch
+            {
+                ExportJobStatus.Queued => $"Export queued: {job.Filename}",
+                ExportJobStatus.Preparing => "Preparing export…",
+                ExportJobStatus.Rendering => $"Exporting… {job.Progress:P0}",
+                ExportJobStatus.Completed => $"Exported {job.Filename}",
+                ExportJobStatus.Failed => $"Export failed: {job.Error}",
+                ExportJobStatus.Canceled => "Export canceled",
+                ExportJobStatus.Canceling => "Canceling export…",
+                _ => StatusText,
+            };
+        });
     }
 
     public async Task LoadAsync()
@@ -201,6 +221,54 @@ public sealed partial class ProjectViewModel : ObservableObject
             await SaveManifestAsync();
             RebuildEngine();
         }
+    }
+
+    /// <summary>Enqueues a video or interchange export. Destination must not already be reserved.</summary>
+    public ExportJob EnqueueExport(ExportRequest request)
+        => ExportQueue.Enqueue(request);
+
+    private async Task<ExportRunReport> RunExportAsync(
+        ExportJob job, CancellationToken ct, IProgress<double> progress)
+    {
+        if (ActiveTimeline is null || ProjectFile is null)
+            throw new InvalidOperationException("No timeline loaded.");
+
+        // Snapshot on the UI thread before leaving for encode work.
+        var timeline = ActiveTimeline;
+        var sequences = ProjectFile.Timelines
+            .Where(t => t.Id != timeline.Id)
+            .ToDictionary(t => t.Id, t => t);
+        var paths = MediaResolver.ExpectedPathMap(Manifest.Entries, PackagePath);
+        var projectName = ProjectName;
+
+        return await Task.Run(() =>
+        {
+            ct.ThrowIfCancellationRequested();
+            switch (job.Format)
+            {
+                case ExportFormat.Xml:
+                    XmlExporter.Write(timeline, job.OutputPath, projectName);
+                    progress.Report(1);
+                    return ReportFor(job.OutputPath);
+                case ExportFormat.Fcpxml:
+                    FcpxmlExporter.Write(timeline, job.OutputPath, projectName);
+                    progress.Report(1);
+                    return ReportFor(job.OutputPath);
+                case ExportFormat.H264 or ExportFormat.H265:
+                    using (var exporter = new VideoExporter())
+                    {
+                        return exporter.Export(timeline, paths, sequences, job, ct, progress);
+                    }
+                default:
+                    throw new NotSupportedException($"Export format not yet supported: {job.Format}");
+            }
+        }, ct).ConfigureAwait(false);
+    }
+
+    private static ExportRunReport ReportFor(string path)
+    {
+        var info = new FileInfo(path);
+        return new ExportRunReport { OutputBytes = info.Exists ? info.Length : 0 };
     }
 
     private Task SaveManifestAsync() => SaveAsync(includeProject: false);

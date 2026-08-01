@@ -317,4 +317,43 @@ public sealed partial class ProjectWindow : Window
         if (files.Count == 0) return;
         await ViewModel.ImportAsync([.. files.Select(f => f.Path)]);
     }
+
+    private async void OnExportClicked(object sender, RoutedEventArgs e)
+    {
+        var picker = new FileSavePicker();
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+        picker.SuggestedFileName = ViewModel.ProjectName;
+        picker.FileTypeChoices.Add("H.264 MPEG-4", [".mp4"]);
+        picker.FileTypeChoices.Add("H.265 MPEG-4", [".mp4"]);
+        picker.FileTypeChoices.Add("Final Cut Pro XML", [".fcpxml"]);
+        picker.FileTypeChoices.Add("Premiere XML", [".xml"]);
+        var file = await picker.PickSaveFileAsync();
+        if (file is null) return;
+
+        var format = file.FileType.ToLowerInvariant() switch
+        {
+            ".fcpxml" => PalmierPro.Core.Export.ExportFormat.Fcpxml,
+            ".xml" => PalmierPro.Core.Export.ExportFormat.Xml,
+            _ => PalmierPro.Core.Export.ExportFormat.H264,
+        };
+        // FileSavePicker doesn't expose which choice was selected for .mp4; default H.264.
+        // A dedicated export dialog can offer H.265 / resolution later.
+        try
+        {
+            ViewModel.EnqueueExport(new PalmierPro.Core.Export.ExportRequest
+            {
+                ProjectId = ViewModel.ProjectFile?.Timelines.FirstOrDefault()?.Id ?? ViewModel.ProjectName,
+                Filename = file.Name,
+                OutputPath = file.Path,
+                Format = format,
+                Resolution = PalmierPro.Core.Export.ExportResolution.MatchTimeline,
+                Overwrite = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            ViewModel.StatusText = $"Export failed: {ex.Message}";
+        }
+    }
 }
