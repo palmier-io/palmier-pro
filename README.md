@@ -101,13 +101,15 @@ Generative AI features require login and subscription.
 
 **What platforms does it support?**
 
-macOS 26 (Tahoe) on Apple Silicon only.
+- **macOS 26 (Tahoe)** on Apple Silicon — primary shipping app ([DMG](https://github.com/palmier-io/palmier-pro/releases/latest/download/PalmierPro.dmg)).
+- **Windows 10/11 (x64)** — open-source WinUI port under [`windows/`](windows/README.md). Build from source or pack a Velopack installer; see that README for run / install steps.
 
 See [FAQ.md](FAQ.md) for more.
 
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md)
+- **macOS:** [CONTRIBUTING.md](CONTRIBUTING.md)
+- **Windows:** [windows/README.md](windows/README.md) · [CONTRIBUTING.md](CONTRIBUTING.md#windows)
 
 ## Community &amp; Support
 

@@ -93,6 +93,8 @@ public sealed class ExportRequest
     public ExportJobSource Source { get; init; } = ExportJobSource.Manual;
     public string? TimelineId { get; init; }
     public bool Overwrite { get; init; }
+    /// <summary>delivery|high|mezzanine — mezzanine raises HEVC bitrate (Windows intermediate).</summary>
+    public string? Quality { get; init; }
 }
 
 public sealed class ExportJob
@@ -105,6 +107,7 @@ public sealed class ExportJob
     public ExportResolution Resolution { get; init; }
     public ExportJobSource Source { get; init; }
     public string? TimelineId { get; init; }
+    public string? Quality { get; set; }
 
     public ExportJobStatus Status { get; set; } = ExportJobStatus.Queued;
     public double Progress { get; set; }

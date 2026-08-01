@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using PalmierPro.Core;
 using PalmierPro.Core.Models;
 using PalmierPro.Core.Project;
@@ -101,7 +103,12 @@ public sealed class ProjectCardViewModel
     public string Name { get; }
     public string CreatedRelative { get; }
     public bool IsAccessible { get; }
-    public string? ThumbnailPath { get; }
+
+    /// <summary>
+    /// Null when the package has no thumbnail. Never bind a null string to Image.Source —
+    /// that throws ArgumentException and takes down the Home window.
+    /// </summary>
+    public ImageSource? ThumbnailImage { get; }
 
     public double InaccessibleOverlayOpacity => IsAccessible ? 0 : 1;
     public double CardOpacity => IsAccessible ? 1.0 : 0.6;
@@ -114,7 +121,11 @@ public sealed class ProjectCardViewModel
         IsAccessible = entry.IsAccessible;
         CreatedRelative = RelativeDate(entry.CreatedDate);
         var thumb = System.IO.Path.Combine(entry.Path, ProjectConstants.ThumbnailFilename);
-        ThumbnailPath = File.Exists(thumb) ? thumb : null;
+        if (File.Exists(thumb))
+        {
+            try { ThumbnailImage = new BitmapImage(new Uri(thumb)); }
+            catch { ThumbnailImage = null; }
+        }
     }
 
     private static string RelativeDate(DateTime date)

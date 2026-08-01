@@ -39,11 +39,13 @@ public sealed class ExportQueue
             Resolution = request.Resolution,
             Source = request.Source,
             TimelineId = request.TimelineId,
+            Quality = request.Quality,
         };
 
         lock (_lock)
         {
-            if (!request.Overwrite && File.Exists(job.OutputPath))
+            var exists = File.Exists(job.OutputPath) || Directory.Exists(job.OutputPath);
+            if (!request.Overwrite && exists)
                 throw new IOException($"Destination already exists: {job.OutputPath}");
             if (!_reservedDestinations.Add(job.OutputPath))
                 throw new IOException($"Another export already targets {job.OutputPath}");

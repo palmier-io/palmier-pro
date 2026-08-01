@@ -21,9 +21,12 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.1742" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
     <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.3.2" />
+    <PackageReference Include="Velopack" Version="0.0.1298" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\PalmierPro.Core\PalmierPro.Core.csproj" />
     <ProjectReference Include="..\PalmierPro.Media\PalmierPro.Media.csproj" />
+    <ProjectReference Include="..\PalmierPro.Agent\PalmierPro.Agent.csproj" />
+    <ProjectReference Include="..\PalmierPro.Cloud\PalmierPro.Cloud.csproj" />
   </ItemGroup>
 </Project>

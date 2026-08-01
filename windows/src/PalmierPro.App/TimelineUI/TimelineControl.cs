@@ -6,13 +6,16 @@ using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using PalmierPro.App.Editor;
 using PalmierPro.Core;
 using PalmierPro.Core.Editing;
 using PalmierPro.Core.Models;
 using PalmierPro.Core.Playback;
 using PalmierPro.Media.Audio;
 using PalmierPro.Media.Caches;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
+using Windows.Storage;
 using Windows.System;
 using Windows.UI;
 
@@ -24,6 +27,7 @@ internal enum TimelineDragKind
     None,
     ScrubPlayhead,
     MoveClip,
+    SlipClip,
     TrimLeft,
     TrimRight,
     Marquee,
@@ -77,6 +81,8 @@ public sealed class TimelineControl : UserControl
     public event Action<string, int>? SplitRequested;
     /// <summary>Raised when a Shift-trim (ripple) drag completes: (clipId, edge, edge delta in frames).</summary>
     public event Action<string, TrimEdge, int>? RippleTrimRequested;
+    /// <summary>Raised on Ctrl-drag body release: slip source by delta frames.</summary>
+    public event Action<string, int>? SlipRequested;
     /// <summary>Raised on Alt-drag release: cloned placements (clipId, trackIndex, frame).</summary>
     public event Action<IReadOnlyList<(string ClipId, int ToTrack, int ToFrame)>>? DuplicateRequested;
     /// <summary>Raised on Shift+Delete with clips selected.</summary>
@@ -89,6 +95,10 @@ public sealed class TimelineControl : UserControl
     public event Action<int, double>? TrackResizeRequested;
     /// <summary>Raised on right-click over a clip: (clipId, frame, position in control coordinates).</summary>
     public event Action<string, int, Point>? ClipContextMenuRequested;
+    /// <summary>Raised on right-click over a track header: (trackIndex, position in control coordinates).</summary>
+    public event Action<int, Point>? TrackContextMenuRequested;
+    /// <summary>Raised when media library items or files are dropped onto the timeline.</summary>
+    public event Action<TimelineMediaDrop>? MediaDropRequested;
 
     public TimelineTool Tool { get; set; } = TimelineTool.Pointer;
     public (int TrackIndex, FrameRange Range)? SelectedGap { get; private set; }
@@ -124,8 +134,18 @@ public sealed class TimelineControl : UserControl
         _canvas.PointerMoved += OnPointerMoved;
         _canvas.PointerReleased += OnPointerReleased;
         _canvas.PointerWheelChanged += OnPointerWheel;
+        // Canvas often holds focus after a click — listen on both.
         KeyDown += OnKeyDown;
+        _canvas.KeyDown += OnKeyDown;
+        _canvas.IsTabStop = true;
         SizeChanged += (_, _) => _canvas.Invalidate();
+
+        // Drop only on the canvas — registering the UserControl too double-fires PlaceClip
+        // and creates a second linked audio track for one video drop.
+        _canvas.AllowDrop = true;
+        _canvas.DragOver += OnDragOver;
+        _canvas.DragLeave += OnDragLeave;
+        _canvas.Drop += OnDrop;
     }
 
     public void SetTimeline(PalmierPro.Core.Models.Timeline? timeline)
@@ -527,6 +547,7 @@ public sealed class TimelineControl : UserControl
     private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
     {
         Focus(FocusState.Programmatic);
+        _canvas.Focus(FocusState.Programmatic);
         if (Geometry is not { } geometry || Timeline is null) return;
         var point = e.GetCurrentPoint(_canvas).Position;
         var documentX = point.X - HeaderWidth + ScrollX;
@@ -534,6 +555,13 @@ public sealed class TimelineControl : UserControl
 
         if (point.X < HeaderWidth && point.Y >= TimelineGeometry.RulerHeight)
         {
+            if (e.GetCurrentPoint(_canvas).Properties.IsRightButtonPressed
+                && geometry.TrackIndexForY(point.Y) is { } rightTrack)
+            {
+                _canvas.ReleasePointerCaptures();
+                TrackContextMenuRequested?.Invoke(rightTrack, point);
+                return;
+            }
             HandleHeaderPress(point, geometry);
             return;
         }
@@ -548,6 +576,7 @@ public sealed class TimelineControl : UserControl
         var hit = geometry.HitTestClip(documentX, point.Y);
         var shift = e.KeyModifiers.HasFlag(VirtualKeyModifiers.Shift);
         var alt = e.KeyModifiers.HasFlag(VirtualKeyModifiers.Menu);
+        var ctrl = e.KeyModifiers.HasFlag(VirtualKeyModifiers.Control);
         if (hit is null)
         {
             // Empty area: marquee on drag, gap selection on plain click (resolved at release).
@@ -616,8 +645,13 @@ public sealed class TimelineControl : UserControl
         }
         else
         {
-            _drag = TimelineDragKind.MoveClip;
-            _dragIsDuplicate = alt;
+            if (ctrl && !alt)
+                _drag = TimelineDragKind.SlipClip;
+            else
+            {
+                _drag = TimelineDragKind.MoveClip;
+                _dragIsDuplicate = alt;
+            }
         }
     }
 
@@ -681,6 +715,9 @@ public sealed class TimelineControl : UserControl
             case TimelineDragKind.MoveClip:
                 UpdateMovePreview(documentX, geometry);
                 break;
+            case TimelineDragKind.SlipClip:
+                // Body stays fixed; slip commits on release.
+                break;
             case TimelineDragKind.TrimLeft:
             case TimelineDragKind.TrimRight:
                 UpdateTrimPreview(documentX, geometry);
@@ -728,6 +765,10 @@ public sealed class TimelineControl : UserControl
                 if (Math.Abs(finalHeight - _resizeOriginalHeight) >= 0.5)
                     TrackResizeRequested?.Invoke(_resizeTrackIndex, finalHeight);
                 _resizeTrackIndex = -1;
+                break;
+            case TimelineDragKind.SlipClip when _dragClip is not null:
+                var slipDelta = (int)Math.Round((documentX - _dragStartX) / ZoomScale);
+                if (slipDelta != 0) SlipRequested?.Invoke(_dragClip.Id, slipDelta);
                 break;
             case TimelineDragKind.MoveClip when _dragClip is not null && _dragIsDuplicate:
                 if (_dragPreviewStart != _dragOriginalStart)
@@ -845,13 +886,25 @@ public sealed class TimelineControl : UserControl
                 e.Handled = true;
                 break;
             case VirtualKey.Delete or VirtualKey.Back when IsShiftDown() && SelectedClipIds.Count > 0:
-                RippleDeleteRequested?.Invoke([.. SelectedClipIds]);
+            {
+                var ids = SelectedClipIds.ToArray();
+                SelectedClipIds.Clear();
+                RippleDeleteRequested?.Invoke(ids);
+                SelectionChanged?.Invoke();
+                _canvas.Invalidate();
                 e.Handled = true;
                 break;
+            }
             case VirtualKey.Delete or VirtualKey.Back when SelectedClipIds.Count > 0:
-                DeleteRequested?.Invoke([.. SelectedClipIds]);
+            {
+                var ids = SelectedClipIds.ToArray();
+                SelectedClipIds.Clear();
+                DeleteRequested?.Invoke(ids);
+                SelectionChanged?.Invoke();
+                _canvas.Invalidate();
                 e.Handled = true;
                 break;
+            }
             case VirtualKey.V:
                 Tool = TimelineTool.Pointer;
                 e.Handled = true;
@@ -1026,7 +1079,96 @@ public sealed class TimelineControl : UserControl
         SelectionChanged?.Invoke();
         _canvas.Invalidate();
     }
+
+    private void OnDragOver(object sender, DragEventArgs e)
+    {
+        if (Timeline is null || Geometry is null)
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            return;
+        }
+
+        var canText = e.DataView.Contains(StandardDataFormats.Text);
+        var canFiles = e.DataView.Contains(StandardDataFormats.StorageItems);
+        if (!canText && !canFiles)
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            return;
+        }
+
+        e.AcceptedOperation = DataPackageOperation.Copy;
+        e.DragUIOverride.Caption = "Add to timeline";
+        e.DragUIOverride.IsCaptionVisible = true;
+        e.DragUIOverride.IsGlyphVisible = true;
+
+        var point = e.GetPosition(_canvas);
+        var documentX = point.X - HeaderWidth + ScrollX;
+        if (documentX >= 0)
+        {
+            _snapIndicatorFrame = Geometry.FrameForX(documentX);
+            _canvas.Invalidate();
+        }
+    }
+
+    private void OnDragLeave(object sender, DragEventArgs e)
+    {
+        if (_snapIndicatorFrame is null) return;
+        _snapIndicatorFrame = null;
+        _canvas.Invalidate();
+    }
+
+    private async void OnDrop(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        _snapIndicatorFrame = null;
+        _canvas.Invalidate();
+        if (Timeline is null || Geometry is not { } geometry) return;
+
+        var point = e.GetPosition(_canvas);
+        var documentX = Math.Max(0, point.X - HeaderWidth + ScrollX);
+        var frame = geometry.FrameForX(documentX);
+        var trackIndex = geometry.TrackIndexForY(point.Y);
+
+        var mediaRefs = new List<string>();
+        var filePaths = new List<string>();
+
+        try
+        {
+            if (e.DataView.Contains(StandardDataFormats.Text))
+            {
+                var text = await e.DataView.GetTextAsync();
+                if (MediaDragPayload.TryDecode(text, out var refs))
+                    mediaRefs.AddRange(refs);
+            }
+
+            if (e.DataView.Contains(StandardDataFormats.StorageItems))
+            {
+                var items = await e.DataView.GetStorageItemsAsync();
+                foreach (var item in items.OfType<StorageFile>())
+                {
+                    if (ClipTypeExtensions.FromFileExtension(
+                            Path.GetExtension(item.Path).TrimStart('.')) is not null)
+                        filePaths.Add(item.Path);
+                }
+            }
+        }
+        catch
+        {
+            return;
+        }
+
+        if (mediaRefs.Count == 0 && filePaths.Count == 0) return;
+        MediaDropRequested?.Invoke(new TimelineMediaDrop(mediaRefs, filePaths, frame, trackIndex));
+    }
 }
+
+/// <summary>Payload for dropping media library items or Explorer files onto the timeline.</summary>
+public readonly record struct TimelineMediaDrop(
+    IReadOnlyList<string> MediaRefs,
+    IReadOnlyList<string> FilePaths,
+    int Frame,
+    int? TrackIndex);
+
 
 /// <summary>A completed drag gesture, forwarded to the domain edit layer.</summary>
 public sealed record ClipEditRequest(

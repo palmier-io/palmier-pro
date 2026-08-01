@@ -409,7 +409,7 @@ public sealed partial class TimelineEditOperations(Timeline timeline, EditorUndo
     }
 
     /// <summary>Mutates the left clip in place and returns the new right clip (not inserted).</summary>
-    private static Clip SplitValues(Clip clip, int frame)
+    private static Clip SplitValues(Clip clip, int frame) // shared with RippleInsert split path
     {
         var splitOffset = frame - clip.StartFrame;
         var leftSource = (int)Math.Round(splitOffset * clip.Speed, MidpointRounding.AwayFromZero);
@@ -446,10 +446,13 @@ public sealed partial class TimelineEditOperations(Timeline timeline, EditorUndo
 
     // MARK: - Delete
 
-    /// <summary>Deletes the clips, leaving gaps. Returns removed count.</summary>
+    /// <summary>Deletes the clips (and linked A/V partners), leaving gaps. Returns removed count.</summary>
     public int DeleteClips(IReadOnlyCollection<string> clipIds)
     {
-        var doomed = AllClips().Where(c => clipIds.Contains(c.Id)).Select(c => c.Id).ToHashSet();
+        var doomed = ExpandToLinkGroup(clipIds);
+        if (doomed.Count == 0) return 0;
+        // Only count IDs that still exist on the timeline.
+        doomed.IntersectWith(AllClips().Select(c => c.Id));
         if (doomed.Count == 0) return 0;
 
         MutateWithTimelineSwap(doomed.Count == 1 ? "Delete Clip" : "Delete Clips", () =>

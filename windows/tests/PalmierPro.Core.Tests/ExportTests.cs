@@ -187,6 +187,20 @@ public class ExportTests
         }
     }
 
+    [Fact]
+    public void PlatformSupportRefusesProResAndAllowsHevcHdr()
+    {
+        Assert.False(ExportPlatformSupport.IsRunnable(ExportFormat.ProRes));
+        Assert.Contains("ProRes", ExportPlatformSupport.RefusalMessage(ExportFormat.ProRes)!);
+        Assert.True(ExportPlatformSupport.IsRunnable(ExportFormat.HevcHdr));
+        Assert.Null(ExportPlatformSupport.RefusalMessage(ExportFormat.HevcHdr));
+        Assert.True(ExportPlatformSupport.IsRunnable(ExportFormat.Palmier));
+        Assert.Null(ExportPlatformSupport.RefusalMessage(ExportFormat.Palmier));
+        Assert.Equal("mov", ExportFormat.HevcHdr.FileExtension());
+        Assert.Equal("palmier", ExportFormat.Palmier.FileExtension());
+        Assert.Contains("HEVC", ExportPlatformSupport.MezzanineGuidance);
+    }
+
     private static async Task WaitUntil(Func<bool> predicate, int timeoutMs = 5000)
     {
         var start = Environment.TickCount64;

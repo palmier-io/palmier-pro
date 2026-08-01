@@ -23,23 +23,32 @@
                 <Button x:Name="NewProjectButton" Style="{StaticResource SidebarRowButtonStyle}" Click="OnNewProject">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon Glyph="&#xE710;" FontSize="13" Foreground="{ThemeResource TextSecondaryBrush}" />
-                        <TextBlock Text="New Project" FontSize="{StaticResource FontSizeMd}" Foreground="{ThemeResource TextPrimaryBrush}" />
+                        <TextBlock x:Name="NewProjectLabel" Text="New Project" FontSize="{StaticResource FontSizeMd}" Foreground="{ThemeResource TextPrimaryBrush}" />
                     </StackPanel>
                 </Button>
                 <Button Style="{StaticResource SidebarRowButtonStyle}" Click="OnOpenProject">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon Glyph="&#xE8B7;" FontSize="13" Foreground="{ThemeResource TextSecondaryBrush}" />
-                        <TextBlock Text="Open Project" FontSize="{StaticResource FontSizeMd}" Foreground="{ThemeResource TextPrimaryBrush}" />
+                        <TextBlock x:Name="OpenProjectLabel" Text="Open Project" FontSize="{StaticResource FontSizeMd}" Foreground="{ThemeResource TextPrimaryBrush}" />
                     </StackPanel>
                 </Button>
             </StackPanel>
 
-            <Button Grid.Row="2" Style="{StaticResource SidebarRowButtonStyle}" Margin="8,0,8,10" Click="OnSettings">
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <FontIcon Glyph="&#xE713;" FontSize="13" Foreground="{ThemeResource TextSecondaryBrush}" />
-                    <TextBlock Text="Settings" FontSize="{StaticResource FontSizeMd}" Foreground="{ThemeResource TextPrimaryBrush}" />
-                </StackPanel>
-            </Button>
+            <StackPanel Grid.Row="2" Margin="8,0,8,10" Spacing="2">
+                <Button x:Name="AccountButton" Style="{StaticResource SidebarRowButtonStyle}" Click="OnAccount">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE77B;" FontSize="13" Foreground="{ThemeResource TextSecondaryBrush}" />
+                        <TextBlock x:Name="AccountLabel" Text="Account" FontSize="{StaticResource FontSizeMd}"
+                                   Foreground="{ThemeResource TextPrimaryBrush}" />
+                    </StackPanel>
+                </Button>
+                <Button Style="{StaticResource SidebarRowButtonStyle}" Click="OnSettings">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE713;" FontSize="13" Foreground="{ThemeResource TextSecondaryBrush}" />
+                        <TextBlock x:Name="SettingsLabel" Text="Settings" FontSize="{StaticResource FontSizeMd}" Foreground="{ThemeResource TextPrimaryBrush}" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
         </Grid>
 
         <!-- Content -->
@@ -47,10 +56,12 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
             <TextBlock
+                x:Name="WelcomeText"
                 Grid.Row="0"
                 Text="Welcome to Palmier Pro"
                 FontSize="{StaticResource FontSizeTitle2}"
@@ -58,15 +69,62 @@
                 Foreground="{ThemeResource TextPrimaryBrush}"
                 Margin="24,44,24,28" />
 
-            <TextBlock
+            <StackPanel
+                x:Name="SamplesPanel"
                 Grid.Row="1"
+                Margin="24,0,24,20"
+                Spacing="10"
+                Visibility="Collapsed">
+                <TextBlock
+                    x:Name="SampleProjectsHeader"
+                    Text="Sample Projects"
+                    FontSize="{StaticResource FontSizeLg}"
+                    FontWeight="Medium"
+                    Foreground="{ThemeResource TextSecondaryBrush}" />
+                <ListView
+                    x:Name="SamplesList"
+                    SelectionMode="None"
+                    IsItemClickEnabled="True"
+                    ItemClick="OnSampleClicked"
+                    Height="72">
+                    <ListView.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <ItemsStackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ListView.ItemsPanel>
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="local:SampleCardViewModel">
+                            <Border
+                                Width="160"
+                                Height="56"
+                                Margin="0,0,8,0"
+                                Padding="12,8"
+                                CornerRadius="{StaticResource RadiusMd}"
+                                BorderThickness="1"
+                                BorderBrush="{ThemeResource BorderSubtleBrush}"
+                                Background="{ThemeResource BackgroundRaisedBrush}">
+                                <TextBlock
+                                    Text="{x:Bind Title}"
+                                    FontSize="{StaticResource FontSizeSmMd}"
+                                    Foreground="{ThemeResource TextPrimaryBrush}"
+                                    TextWrapping="WrapWholeWords"
+                                    VerticalAlignment="Center" />
+                            </Border>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </StackPanel>
+
+            <TextBlock
+                x:Name="MyProjectsHeader"
+                Grid.Row="2"
                 Text="My Projects"
                 FontSize="{StaticResource FontSizeLg}"
                 FontWeight="Medium"
                 Foreground="{ThemeResource TextSecondaryBrush}"
                 Margin="24,0,24,10" />
 
-            <ScrollViewer Grid.Row="2" Padding="20,0,20,20">
+            <ScrollViewer Grid.Row="3" Padding="20,0,20,20">
                 <Grid>
                     <GridView
                         x:Name="ProjectsGrid"
@@ -102,7 +160,7 @@
                                         HorizontalAlignment="Center"
                                         VerticalAlignment="Center" />
 
-                                    <Image Source="{x:Bind ThumbnailPath}" Stretch="UniformToFill" />
+                                    <Image Source="{x:Bind ThumbnailImage}" Stretch="UniformToFill" />
 
                                     <!-- Missing package overlay -->
                                     <Grid Background="#99000000" Opacity="{x:Bind InaccessibleOverlayOpacity}">
@@ -144,8 +202,8 @@
                         Spacing="8"
                         Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay}">
                         <FontIcon Glyph="&#xE8B2;" FontSize="{StaticResource FontSizeDisplay}" Foreground="{ThemeResource TextMutedBrush}" HorizontalAlignment="Center" />
-                        <TextBlock Text="No projects yet" FontSize="{StaticResource FontSizeMdLg}" Foreground="{ThemeResource TextTertiaryBrush}" HorizontalAlignment="Center" />
-                        <TextBlock Text="Create a new project to get started." FontSize="{StaticResource FontSizeSmMd}" Foreground="{ThemeResource TextMutedBrush}" HorizontalAlignment="Center" />
+                        <TextBlock x:Name="EmptyProjectsText" Text="No projects yet" FontSize="{StaticResource FontSizeMdLg}" Foreground="{ThemeResource TextTertiaryBrush}" HorizontalAlignment="Center" />
+                        <TextBlock x:Name="EmptyProjectsHint" Text="Create a new project to get started." FontSize="{StaticResource FontSizeSmMd}" Foreground="{ThemeResource TextMutedBrush}" HorizontalAlignment="Center" />
                     </StackPanel>
                 </Grid>
             </ScrollViewer>

@@ -161,6 +161,13 @@ public sealed class VideoPlaybackEngine : IDisposable
                 CloseAllReaders();
                 _lastPresentedFrame = -1;
                 _audio.Rebuild(r.Item1, r.Item2, r.Item3);
+                // Live mixer holds the old clip set — restart so deletes/edits take effect immediately.
+                if (IsPlaying || playRequested)
+                {
+                    _audio.Stop();
+                    IsPlaying = false;
+                    _clock.Stop();
+                }
             }
 
             if (_timeline is null)
@@ -189,6 +196,7 @@ public sealed class VideoPlaybackEngine : IDisposable
             {
                 IsPlaying = false;
                 _clock.Stop();
+                _audio.Stop();
             }
 
             if (IsPlaying)
@@ -302,6 +310,7 @@ public sealed class VideoPlaybackEngine : IDisposable
         VideoFrameExtractor created;
         try
         {
+            using var decodeLease = VideoDecodeGate.EnterAsync().GetAwaiter().GetResult();
             created = new VideoFrameExtractor(path);
         }
         catch (Exception)

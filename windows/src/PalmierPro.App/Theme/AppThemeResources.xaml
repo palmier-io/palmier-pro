@@ -4,11 +4,28 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Default">
+            <Color x:Key="BackgroundBaseColor">#FF0A0A0A</Color>
+            <Color x:Key="BackgroundSurfaceColor">#FF141414</Color>
+            <Color x:Key="BackgroundRaisedColor">#FF1C1C1C</Color>
+            <Color x:Key="BackgroundProminentColor">#FF2A2A2A</Color>
+            <Color x:Key="TextPrimaryColor">#FFFFFFFF</Color>
+            <Color x:Key="TextSecondaryColor">#CCFFFFFF</Color>
+            <Color x:Key="TextTertiaryColor">#9EFFFFFF</Color>
+            <Color x:Key="TextMutedColor">#57FFFFFF</Color>
+            <Color x:Key="BorderPrimaryColor">#29FFFFFF</Color>
+            <Color x:Key="BorderSubtleColor">#1FFFFFFF</Color>
+            <Color x:Key="BorderDividerColor">#70FFFFFF</Color>
+            <Color x:Key="AccentPrimaryColor">#FFF5EFE4</Color>
+            <Color x:Key="AccentTimecodeColor">#FFF29933</Color>
+            <Color x:Key="StatusErrorColor">#FFE54F4F</Color>
+            <Color x:Key="StatusSuccessColor">#FF4FB85F</Color>
+        </ResourceDictionary>
         <ResourceDictionary x:Key="Dark">
             <Color x:Key="BackgroundBaseColor">#FF0A0A0A</Color>
-            <Color x:Key="BackgroundSurfaceColor">#FF161616</Color>
-            <Color x:Key="BackgroundRaisedColor">#FF1E1E1E</Color>
-            <Color x:Key="BackgroundProminentColor">#FF2C2C2C</Color>
+            <Color x:Key="BackgroundSurfaceColor">#FF141414</Color>
+            <Color x:Key="BackgroundRaisedColor">#FF1C1C1C</Color>
+            <Color x:Key="BackgroundProminentColor">#FF2A2A2A</Color>
             <Color x:Key="TextPrimaryColor">#FFFFFFFF</Color>
             <Color x:Key="TextSecondaryColor">#CCFFFFFF</Color>
             <Color x:Key="TextTertiaryColor">#9EFFFFFF</Color>
@@ -40,6 +57,7 @@
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 
+    <!-- Root brushes (ThemeResource colors) — live RequestedTheme switches update these. -->
     <SolidColorBrush x:Key="BackgroundBaseBrush" Color="{ThemeResource BackgroundBaseColor}" />
     <SolidColorBrush x:Key="BackgroundSurfaceBrush" Color="{ThemeResource BackgroundSurfaceColor}" />
     <SolidColorBrush x:Key="BackgroundRaisedBrush" Color="{ThemeResource BackgroundRaisedColor}" />
@@ -62,6 +80,14 @@
     <SolidColorBrush x:Key="MediaOverlaySecondaryBrush" Color="#CCFFFFFF" />
     <SolidColorBrush x:Key="MediaOverlayTertiaryBrush" Color="#9EFFFFFF" />
     <SolidColorBrush x:Key="MediaOverlayMutedBrush" Color="#57FFFFFF" />
+
+    <!-- Timeline clip colors (Mac TimelineClipColors defaults). -->
+    <SolidColorBrush x:Key="TrackVideoBrush" Color="#FF1D5878" />
+    <SolidColorBrush x:Key="TrackAudioBrush" Color="#FF2E7765" />
+    <SolidColorBrush x:Key="TrackTextBrush" Color="#FF715486" />
+    <SolidColorBrush x:Key="TrackAnimationBrush" Color="#FFA07822" />
+    <SolidColorBrush x:Key="TrackSequenceBrush" Color="#FFB9B29A" />
+    <SolidColorBrush x:Key="PlayheadBrush" Color="#FFFF453A" />
 
     <!-- Corner radii -->
     <CornerRadius x:Key="RadiusXs">3</CornerRadius>

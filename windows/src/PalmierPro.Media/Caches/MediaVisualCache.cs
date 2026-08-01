@@ -183,6 +183,7 @@ public sealed class MediaVisualCache
         VideoFrameExtractor extractor;
         try
         {
+            using var decodeLease = VideoDecodeGate.EnterAsync(ct).GetAwaiter().GetResult();
             extractor = new VideoFrameExtractor(url);
         }
         catch (Exception)

@@ -87,8 +87,9 @@ public static class TimelineFrameRouter
                     continue;
                 }
 
-                var carriesAudio = clip.MediaType is ClipType.Audio or ClipType.Video;
-                if (!carriesAudio) continue;
+                // Preview mix follows Mac CompositionBuilder: only audio-track clips.
+                // Video clips with linked audio would otherwise double-mix the same file (echo).
+                if (clip.MediaType != ClipType.Audio) continue;
                 var gain = clip.VolumeAt(frame);
                 if (gain <= 0) continue;
                 audible.Add(new AudibleClip(clip, gain, SourceSecondsFor(clip, frame, timeline.Fps)));

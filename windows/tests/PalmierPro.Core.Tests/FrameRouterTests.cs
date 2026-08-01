@@ -24,6 +24,18 @@ public class FrameRouterTests
             Speed = speed,
         };
 
+    private static Clip AudioClip(string mediaRef, int start, int duration, int trimStart = 0, double speed = 1)
+        => new()
+        {
+            MediaRef = mediaRef,
+            MediaType = ClipType.Audio,
+            SourceClipType = ClipType.Audio,
+            StartFrame = start,
+            DurationFrames = duration,
+            TrimStartFrame = trimStart,
+            Speed = speed,
+        };
+
     [Fact]
     public void TopmostVisibleTrackWins()
     {
@@ -74,10 +86,35 @@ public class FrameRouterTests
     [Fact]
     public void FadedOutFrameContributesNoAudio()
     {
-        var clip = VideoClip("a", 0, 100);
+        var clip = AudioClip("a", 0, 100);
         clip.Volume = 0;
-        var track = new Track { Type = ClipType.Video, Clips = [clip] };
+        var track = new Track { Type = ClipType.Audio, Clips = [clip] };
         Assert.Empty(TimelineFrameRouter.AudibleClipsAt(MakeTimeline(track), 10));
+    }
+
+    [Fact]
+    public void LinkedVideoAndAudio_OnlyAudioClipIsAudible()
+    {
+        // Regression: mixing Video + linked Audio of the same file caused echo.
+        var video = VideoClip("media", 0, 100);
+        video.LinkGroupId = "L";
+        var audio = AudioClip("media", 0, 100);
+        audio.LinkGroupId = "L";
+        var timeline = MakeTimeline(
+            new Track { Type = ClipType.Video, Clips = [video] },
+            new Track { Type = ClipType.Audio, Clips = [audio] });
+
+        var audible = TimelineFrameRouter.AudibleClipsAt(timeline, 10);
+        Assert.Single(audible);
+        Assert.Equal(ClipType.Audio, audible[0].Clip.MediaType);
+        Assert.Equal("media", audible[0].Clip.MediaRef);
+    }
+
+    [Fact]
+    public void VideoClipAlone_IsNotAudible()
+    {
+        var timeline = MakeTimeline(new Track { Type = ClipType.Video, Clips = [VideoClip("v", 0, 100)] });
+        Assert.Empty(TimelineFrameRouter.AudibleClipsAt(timeline, 10));
     }
 
     [Fact]
@@ -150,9 +187,9 @@ public class FrameRouterTests
     [Fact]
     public void NestedAudioScalesByCarrierGain()
     {
-        var childClip = VideoClip("inner", 0, 100);
+        var childClip = AudioClip("inner", 0, 100);
         childClip.Volume = 0.5;
-        var child = MakeTimeline(new Track { Type = ClipType.Video, Clips = [childClip] });
+        var child = MakeTimeline(new Track { Type = ClipType.Audio, Clips = [childClip] });
         var carrier = SequenceClip("child", 0, 100);
         carrier.Volume = 0.5;
         var parent = MakeTimeline(new Track { Type = ClipType.Video, Clips = [carrier] });

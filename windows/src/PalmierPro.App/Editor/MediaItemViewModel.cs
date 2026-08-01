@@ -26,12 +26,23 @@ public sealed partial class MediaItemViewModel : ObservableObject
         {
             if (Asset.Type is not (ClipType.Video or ClipType.Audio) || Asset.Duration <= 0) return "";
             var ts = TimeSpan.FromSeconds(Asset.Duration);
-            return ts.TotalHours >= 1 ? $"{(int)ts.TotalHours}:{ts.Minutes:00}:{ts.Seconds:00}" : $"{ts.Minutes}:{ts.Seconds:00}";
+            return ts.TotalHours >= 1
+                ? $"{(int)ts.TotalHours}:{ts.Minutes:00}:{ts.Seconds:00}"
+                : $"{ts.Minutes:00}:{ts.Seconds:00}";
         }
     }
 
     public Microsoft.UI.Xaml.Visibility DurationBadgeVisibility => DurationText.Length > 0
         ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    public Microsoft.UI.Xaml.Visibility AiBadgeVisibility =>
+        Asset.IsGenerated && !Asset.IsGenerating
+            ? Microsoft.UI.Xaml.Visibility.Visible
+            : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    public Microsoft.UI.Xaml.Visibility GeneratingVisibility => Asset.IsGenerating
+        ? Microsoft.UI.Xaml.Visibility.Visible
+        : Microsoft.UI.Xaml.Visibility.Collapsed;
 
     public Microsoft.UI.Xaml.Visibility OfflineVisibility => IsOffline && !Asset.IsGenerating
         ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;

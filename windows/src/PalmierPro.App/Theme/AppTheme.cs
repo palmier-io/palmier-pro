@@ -103,6 +103,17 @@ public static class AppTheme
         public const double HomeDefaultHeight = 800;
         public const double HomeMinWidth = 760;
         public const double HomeMinHeight = 480;
+        public const double EditorDefaultWidth = 1440;
+        public const double EditorDefaultHeight = 900;
+    }
+
+    public static class Layout
+    {
+        public const double PanelGap = 5;
+        public const double AgentDefaultWidth = 280;
+        public const double MediaDefaultWidth = 500;
+        public const double InspectorDefaultWidth = 340;
+        public const double TimelineMinHeight = 160;
     }
 
     public static class Anim

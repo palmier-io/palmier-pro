@@ -50,7 +50,13 @@ public static class VideoLayoutExtensions
     };
 
     public static VideoLayout? FromRawValue(string raw)
-        => Enum.GetValues<VideoLayout>().Cast<VideoLayout?>().FirstOrDefault(l => l!.Value.RawValue() == raw);
+    {
+        foreach (var layout in Enum.GetValues<VideoLayout>())
+        {
+            if (layout.RawValue() == raw) return layout;
+        }
+        return null;
+    }
 
     public static IReadOnlyList<LayoutSlot> Slots(this VideoLayout layout) => layout switch
     {

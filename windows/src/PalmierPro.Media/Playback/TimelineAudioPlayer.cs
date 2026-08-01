@@ -132,8 +132,15 @@ internal sealed class TimelineMixerProvider : ISampleProvider, IDisposable
             foreach (var entry in audible)
             {
                 if (!_mediaPaths.TryGetValue(entry.Clip.MediaRef, out var path)) continue;
-                var reader = ReaderFor(entry.Clip, path);
-                reader?.MixInto(buffer, offset, count, entry.SourceSeconds, (float)entry.Gain, _rate * entry.Clip.Speed);
+                var playPath = path;
+                if (entry.Clip.HasDenoiseEnabled
+                    && PalmierPro.Media.Audio.AudioEnhancer.CachedDenoisedPath(entry.Clip.MediaRef) is { } wet)
+                    playPath = wet;
+                var reader = ReaderFor(entry.Clip, playPath);
+                var gain = (float)entry.Gain;
+                if (entry.Clip.HasDenoiseEnabled && playPath == path)
+                    gain *= (float)(1.0 - entry.Clip.DenoiseAmount * 0.15); // dry fallback cue
+                reader?.MixInto(buffer, offset, count, entry.SourceSeconds, gain, _rate * entry.Clip.Speed);
             }
 
             _timelineSeconds += bufferSeconds;
