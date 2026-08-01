@@ -63,6 +63,14 @@ public sealed partial class ProjectWindow : Window
                 () => { if (ViewModel.UndoManager.CanRedo) ViewModel.UndoManager.Redo(); });
             AddAccelerator(root, Windows.System.VirtualKey.Space,
                 Windows.System.VirtualKeyModifiers.None, ViewModel.TogglePlayback);
+            AddAccelerator(root, Windows.System.VirtualKey.K,
+                Windows.System.VirtualKeyModifiers.Control, SplitSelectionAtPlayhead);
+            AddAccelerator(root, Windows.System.VirtualKey.C,
+                Windows.System.VirtualKeyModifiers.Control, CopySelection);
+            AddAccelerator(root, Windows.System.VirtualKey.X,
+                Windows.System.VirtualKeyModifiers.Control, CutSelection);
+            AddAccelerator(root, Windows.System.VirtualKey.V,
+                Windows.System.VirtualKeyModifiers.Control, PasteAtPlayhead);
         }
 
         _ = InitializeAsync();
@@ -103,6 +111,39 @@ public sealed partial class ProjectWindow : Window
         TimelineView.VisualCache = ViewModel.VisualCache;
         TimelineView.SetTimeline(ViewModel.ActiveTimeline);
         ViewModel.MediaVisualsUpdated += TimelineView.InvalidateMediaVisuals;
+    }
+
+    private string? _clipClipboard;
+
+    private void SplitSelectionAtPlayhead()
+    {
+        var ops = ViewModel.EditOperations;
+        if (ops is null || TimelineView.SelectedClipIds.Count == 0) return;
+        ops.SplitClipsAt(ViewModel.PlayheadFrame, [.. TimelineView.SelectedClipIds]);
+    }
+
+    private void CopySelection()
+    {
+        if (TimelineView.SelectedClipIds.Count == 0) return;
+        _clipClipboard = ViewModel.EditOperations?.CopyClips([.. TimelineView.SelectedClipIds]);
+    }
+
+    private void CutSelection()
+    {
+        var ops = ViewModel.EditOperations;
+        if (ops is null || TimelineView.SelectedClipIds.Count == 0) return;
+        _clipClipboard = ops.CopyClips([.. TimelineView.SelectedClipIds]);
+        if (_clipClipboard is not null)
+        {
+            ops.DeleteClips([.. TimelineView.SelectedClipIds]);
+            TimelineView.SelectedClipIds.Clear();
+        }
+    }
+
+    private void PasteAtPlayhead()
+    {
+        if (_clipClipboard is null) return;
+        ViewModel.EditOperations?.PasteClipsAtPlayhead(_clipClipboard, ViewModel.PlayheadFrame);
     }
 
     private void OnTimelineClipEdit(PalmierPro.App.TimelineUI.ClipEditRequest request)
