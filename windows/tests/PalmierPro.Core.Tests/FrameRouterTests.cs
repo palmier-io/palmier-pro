@@ -111,10 +111,14 @@ public class FrameRouterTests
     }
 
     [Fact]
-    public void VideoClipAlone_IsNotAudible()
+    public void VideoClipAlone_FallsBackToVideoAudio()
     {
+        // No linked audio partner — mix the video clip so orphan drops aren't silent.
         var timeline = MakeTimeline(new Track { Type = ClipType.Video, Clips = [VideoClip("v", 0, 100)] });
-        Assert.Empty(TimelineFrameRouter.AudibleClipsAt(timeline, 10));
+        var audible = TimelineFrameRouter.AudibleClipsAt(timeline, 10);
+        Assert.Single(audible);
+        Assert.Equal("v", audible[0].Clip.MediaRef);
+        Assert.Equal(ClipType.Video, audible[0].Clip.MediaType);
     }
 
     [Fact]

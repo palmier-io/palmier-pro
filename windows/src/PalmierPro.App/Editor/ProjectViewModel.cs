@@ -9,6 +9,7 @@ using PalmierPro.Core.Playback;
 using PalmierPro.Core.Project;
 using PalmierPro.Core.Serialization;
 using PalmierPro.Core.Undo;
+using PalmierPro.Media;
 using PalmierPro.Media.Export;
 using PalmierPro.Media.Playback;
 
@@ -108,6 +109,56 @@ public sealed partial class ProjectViewModel : ObservableObject
         VisualCache.VisualsUpdated += assetId =>
             _dispatcher.TryEnqueue(() => MediaVisualsUpdated?.Invoke(assetId));
         foreach (var item in MediaItems) RequestVisuals(item.Asset);
+        _ = HydrateMissingMetadataAsync();
+    }
+
+    /// <summary>Fills duration / HasAudio for library items that predate import probing.</summary>
+    private async Task HydrateMissingMetadataAsync()
+    {
+        List<(string Id, string Path, ClipType Type)> needs = [];
+        foreach (var item in MediaItems)
+        {
+            var asset = item.Asset;
+            if (asset.Duration > 0 && asset.HasAudio is not null) continue;
+            if (asset.Url is not { Length: > 0 } url) continue;
+            needs.Add((asset.Id, url, asset.Type));
+        }
+        if (needs.Count == 0) return;
+
+        var probed = await Task.Run(() =>
+        {
+            var map = new Dictionary<string, MediaMetadataProbe.Result>();
+            foreach (var (id, path, type) in needs)
+            {
+                try { map[id] = MediaMetadataProbe.Probe(path, type); }
+                catch { /* best-effort */ }
+            }
+            return map;
+        }).ConfigureAwait(false);
+
+        await RunOnUiAsync(() =>
+        {
+            var dirty = false;
+            foreach (var item in MediaItems)
+            {
+                if (!probed.TryGetValue(item.Asset.Id, out var meta)) continue;
+                var asset = item.Asset;
+                if (asset.Duration <= 0 && meta.DurationSeconds > 0) asset.Duration = meta.DurationSeconds;
+                asset.HasAudio ??= meta.HasAudio;
+                asset.SourceWidth ??= meta.Width;
+                asset.SourceHeight ??= meta.Height;
+                asset.SourceFPS ??= meta.SourceFps;
+                var entry = Manifest.Entries.FirstOrDefault(e => e.Id == asset.Id);
+                if (entry is null) continue;
+                if (entry.Duration <= 0 && asset.Duration > 0) { entry.Duration = asset.Duration; dirty = true; }
+                if (entry.HasAudio is null && asset.HasAudio is not null) { entry.HasAudio = asset.HasAudio; dirty = true; }
+                entry.SourceWidth ??= asset.SourceWidth;
+                entry.SourceHeight ??= asset.SourceHeight;
+                entry.SourceFPS ??= asset.SourceFPS;
+                item.RefreshMetadata();
+            }
+            if (dirty) _ = SaveManifestAsync();
+        });
     }
 
     private void RequestVisuals(MediaAsset asset)
@@ -260,9 +311,22 @@ public sealed partial class ProjectViewModel : ObservableObject
     public async Task<IReadOnlyList<string>> ImportAsync(IReadOnlyList<string> paths, string? destinationFolderId)
     {
         var plan = await Task.Run(() => MediaImportScanner.Scan(paths, destinationFolderId));
+        // Probe duration / audio off the UI thread before registering assets.
+        var probed = await Task.Run(() =>
+        {
+            var results = new List<(MediaImportItem Item, MediaMetadataProbe.Result Meta)>(plan.Items.Count);
+            foreach (var item in plan.Items)
+            {
+                MediaMetadataProbe.Result meta;
+                try { meta = MediaMetadataProbe.Probe(item.Path, item.Type); }
+                catch { meta = new MediaMetadataProbe.Result(0, null, null, null, null); }
+                results.Add((item, meta));
+            }
+            return results;
+        });
         // MediaItems is UI-bound — always apply on the dispatcher (Agent/MCP may call off-UI).
         IReadOnlyList<string> ids = [];
-        await RunOnUiAsync(() => ids = ApplyImportPlan(plan, destinationFolderId));
+        await RunOnUiAsync(() => ids = ApplyImportPlan(plan.NewFolders, probed, destinationFolderId));
         if (ids.Count > 0)
         {
             await SaveManifestAsync();
@@ -271,11 +335,14 @@ public sealed partial class ProjectViewModel : ObservableObject
         return ids;
     }
 
-    private IReadOnlyList<string> ApplyImportPlan(MediaImportPlan plan, string? destinationFolderId)
+    private IReadOnlyList<string> ApplyImportPlan(
+        IReadOnlyList<MediaFolder> newFolders,
+        IReadOnlyList<(MediaImportItem Item, MediaMetadataProbe.Result Meta)> items,
+        string? destinationFolderId)
     {
         var ids = new List<string>();
-        foreach (var folder in plan.NewFolders) Manifest.Folders.Add(folder);
-        foreach (var item in plan.Items)
+        foreach (var folder in newFolders) Manifest.Folders.Add(folder);
+        foreach (var (item, meta) in items)
         {
             var asset = new MediaAsset
             {
@@ -284,14 +351,21 @@ public sealed partial class ProjectViewModel : ObservableObject
                 Type = item.Type,
                 Url = item.Path,
                 FolderId = item.FolderId ?? destinationFolderId,
+                Duration = meta.DurationSeconds > 0
+                    ? meta.DurationSeconds
+                    : item.Type == ClipType.Image ? EditorDefaults.ImageDurationSeconds : 0,
+                SourceWidth = meta.Width,
+                SourceHeight = meta.Height,
+                SourceFPS = meta.SourceFps,
+                HasAudio = meta.HasAudio ?? item.Type is ClipType.Video or ClipType.Audio,
             };
             Manifest.Entries.Add(asset.ToManifestEntry(PackagePath));
             MediaItems.Add(new MediaItemViewModel(asset, _dispatcher));
             RequestVisuals(asset);
             ids.Add(asset.Id);
         }
-        if (plan.Items.Count > 0)
-            StatusText = $"Imported {plan.Items.Count} item{(plan.Items.Count == 1 ? "" : "s")}";
+        if (items.Count > 0)
+            StatusText = $"Imported {items.Count} item{(items.Count == 1 ? "" : "s")}";
         return ids;
     }
 
@@ -315,6 +389,35 @@ public sealed partial class ProjectViewModel : ObservableObject
         if (refs.Count == 0) return;
         if (generation != _placeDropGeneration) return;
 
+        var distinctRefs = refs.Distinct(StringComparer.Ordinal).ToList();
+
+        // Snapshot assets that still lack duration, probe off-UI, then apply on the dispatcher.
+        List<(string Id, string Path, ClipType Type)> needsProbe = [];
+        await RunOnUiAsync(() =>
+        {
+            foreach (var mediaRef in distinctRefs)
+            {
+                var asset = MediaItems.FirstOrDefault(m => m.Asset.Id == mediaRef)?.Asset;
+                if (asset is null || asset.Duration > 0 || asset.Url is not { Length: > 0 } url) continue;
+                needsProbe.Add((asset.Id, url, asset.Type));
+            }
+        });
+        Dictionary<string, MediaMetadataProbe.Result> probed = [];
+        if (needsProbe.Count > 0)
+        {
+            probed = await Task.Run(() =>
+            {
+                var map = new Dictionary<string, MediaMetadataProbe.Result>();
+                foreach (var (id, path, type) in needsProbe)
+                {
+                    try { map[id] = MediaMetadataProbe.Probe(path, type); }
+                    catch { /* leave unset */ }
+                }
+                return map;
+            });
+        }
+        if (generation != _placeDropGeneration) return;
+
         await RunOnUiAsync(() =>
         {
             if (generation != _placeDropGeneration) return;
@@ -329,24 +432,35 @@ public sealed partial class ProjectViewModel : ObservableObject
             var fps = Math.Max(1, timeline.Fps);
             var cursor = Math.Max(0, startFrame);
             var placed = 0;
-            foreach (var mediaRef in refs.Distinct(StringComparer.Ordinal))
+            var manifestDirty = false;
+            foreach (var mediaRef in distinctRefs)
             {
                 var asset = MediaItems.FirstOrDefault(m => m.Asset.Id == mediaRef)?.Asset;
                 if (asset is null || asset.IsGenerating || asset.IsMediaOffline) continue;
 
+                if (probed.TryGetValue(asset.Id, out var meta))
+                {
+                    if (meta.DurationSeconds > 0) asset.Duration = meta.DurationSeconds;
+                    asset.HasAudio ??= meta.HasAudio;
+                    asset.SourceWidth ??= meta.Width;
+                    asset.SourceHeight ??= meta.Height;
+                    asset.SourceFPS ??= meta.SourceFps;
+                }
+
                 var trackIndex = ResolveDropTrackIndex(ops, timeline, asset.Type, preferredTrackIndex);
                 if (trackIndex < 0) continue;
 
-                var durationFrames = asset.Duration > 0
-                    ? TimelineEditOperations.SecondsToFrames(asset.Duration, fps)
-                    : TimelineEditOperations.SecondsToFrames(5, fps);
-                // Linked audio is intentional (one A/V pair). HasAudio defaults true for video
-                // like Mac; mixer only plays Audio clips so this does not echo.
+                var durationSeconds = asset.Duration > 0
+                    ? asset.Duration
+                    : asset.Type == ClipType.Image
+                        ? EditorDefaults.ImageDurationSeconds
+                        : 5;
+                var durationFrames = TimelineEditOperations.SecondsToFrames(durationSeconds, fps);
                 var hasAudio = asset.HasAudio ?? asset.Type is ClipType.Video or ClipType.Audio;
                 var ids = ops.PlaceClip(new PlaceClipRequest(
                     asset.Id,
                     asset.Type,
-                    asset.Duration > 0 ? asset.Duration : durationFrames / (double)fps,
+                    durationSeconds,
                     hasAudio,
                     trackIndex,
                     cursor,
@@ -355,12 +469,23 @@ public sealed partial class ProjectViewModel : ObservableObject
                 if (ids.Count == 0) continue;
                 placed += 1;
                 cursor += durationFrames;
+
+                var entry = Manifest.Entries.FirstOrDefault(e => e.Id == asset.Id);
+                if (entry is not null && (entry.Duration <= 0 || entry.HasAudio is null))
+                {
+                    entry.Duration = asset.Duration;
+                    entry.HasAudio = asset.HasAudio;
+                    entry.SourceWidth = asset.SourceWidth;
+                    entry.SourceHeight = asset.SourceHeight;
+                    entry.SourceFPS = asset.SourceFPS;
+                    manifestDirty = true;
+                }
             }
 
             StatusText = placed > 0
                 ? $"Added {placed} clip{(placed == 1 ? "" : "s")} to the timeline"
                 : "Couldn’t place media on that track";
-            // PlaceClip already notifies TimelineChanged / save via EditOperations.
+            if (manifestDirty) _ = SaveManifestAsync();
         });
     }
 

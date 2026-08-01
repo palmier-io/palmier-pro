@@ -306,7 +306,7 @@ public sealed partial class ProjectWindow : Window
             MediaRef: master.MediaRef,
             MediaType: ClipType.Video,
             DurationSeconds: asset?.Duration ?? 5,
-            HasAudio: asset?.HasAudio ?? false,
+            HasAudio: asset?.HasAudio ?? true,
             TrackIndex: 0,
             StartFrame: ViewModel.PlayheadFrame,
             DurationFrames: durationFrames,

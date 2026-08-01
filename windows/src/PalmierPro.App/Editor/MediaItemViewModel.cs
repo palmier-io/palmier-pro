@@ -57,6 +57,15 @@ public sealed partial class MediaItemViewModel : ObservableObject
         _dispatcher = dispatcher;
     }
 
+    /// <summary>Call after mutating Asset.Duration / offline state so bindings refresh.</summary>
+    public void RefreshMetadata()
+    {
+        OnPropertyChanged(nameof(DurationText));
+        OnPropertyChanged(nameof(DurationBadgeVisibility));
+        OnPropertyChanged(nameof(IsOffline));
+        OnPropertyChanged(nameof(OfflineVisibility));
+    }
+
     public async Task LoadThumbnailAsync()
     {
         if (_thumbnailRequested || Asset.Url is null || IsOffline) return;

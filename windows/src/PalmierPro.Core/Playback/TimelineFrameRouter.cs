@@ -68,6 +68,20 @@ public static class TimelineFrameRouter
         Func<string, Timeline?>? resolveSequence = null, int depth = 0)
     {
         var audible = new List<AudibleClip>();
+        CollectAudible(timeline, frame, resolveSequence, depth, audioOnly: true, audible);
+        // Orphan video (no linked audio partner) still needs a mix — Mac places A/V pairs,
+        // but older Windows drops / imports may leave video-only. Only fall back when the
+        // audio-track pass found nothing, so linked pairs never double-mix.
+        if (audible.Count == 0)
+            CollectAudible(timeline, frame, resolveSequence, depth, audioOnly: false, audible);
+        return audible;
+    }
+
+    private static void CollectAudible(
+        Timeline timeline, int frame,
+        Func<string, Timeline?>? resolveSequence, int depth, bool audioOnly,
+        List<AudibleClip> audible)
+    {
         foreach (var track in timeline.Tracks)
         {
             if (track.Muted) continue;
@@ -82,20 +96,29 @@ public static class TimelineFrameRouter
                     var childFrame = ChildFrameFor(clip, frame, timeline.Fps, child.Fps);
                     var carrierGain = clip.VolumeAt(frame);
                     if (carrierGain <= 0) continue;
-                    foreach (var nested in AudibleClipsAt(child, childFrame, resolveSequence, depth + 1))
-                        audible.Add(nested with { Gain = nested.Gain * carrierGain });
+                    var nested = new List<AudibleClip>();
+                    CollectAudible(child, childFrame, resolveSequence, depth + 1, audioOnly, nested);
+                    if (audioOnly && nested.Count == 0)
+                        CollectAudible(child, childFrame, resolveSequence, depth + 1, audioOnly: false, nested);
+                    foreach (var entry in nested)
+                        audible.Add(entry with { Gain = entry.Gain * carrierGain });
                     continue;
                 }
 
-                // Preview mix follows Mac CompositionBuilder: only audio-track clips.
-                // Video clips with linked audio would otherwise double-mix the same file (echo).
-                if (clip.MediaType != ClipType.Audio) continue;
+                if (audioOnly)
+                {
+                    if (clip.MediaType != ClipType.Audio) continue;
+                }
+                else if (clip.MediaType is not (ClipType.Video or ClipType.Audio))
+                {
+                    continue;
+                }
+
                 var gain = clip.VolumeAt(frame);
                 if (gain <= 0) continue;
                 audible.Add(new AudibleClip(clip, gain, SourceSecondsFor(clip, frame, timeline.Fps)));
             }
         }
-        return audible;
     }
 
     /// <summary>Total content duration in frames across all tracks.</summary>

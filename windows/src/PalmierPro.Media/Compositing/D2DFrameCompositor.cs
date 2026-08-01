@@ -139,9 +139,11 @@ public sealed class D2DFrameCompositor : IDisposable
             layer.Clip.TransformAt(layer.Frame),
             sourceWidth, sourceHeight, canvasWidth, canvasHeight);
 
+        // Destination is in source-pixel space; Placement maps it onto the canvas.
         var previous = _context.Transform;
         _context.Transform = transform;
-        _context.DrawBitmap(bitmap, sourceRect, opacity, InterpolationMode.Linear, sourceRect, null);
+        _context.DrawBitmap(
+            bitmap, sourceRect, opacity, BitmapInterpolationMode.Linear, sourceRect);
         _context.Transform = previous;
     }
 
@@ -220,15 +222,37 @@ public sealed class D2DFrameCompositor : IDisposable
 
     private unsafe ID2D1Bitmap1? CreateBitmap(VideoFrame frame)
     {
+        // Prefer Premultiplied (text / keyed media). If the buffer looks fully transparent
+        // (typical MF RGB32 with unused A=0), treat alpha as opaque like SwapChainPresenter.
+        var alphaMode = LooksFullyTransparent(frame)
+            ? Vortice.DCommon.AlphaMode.Ignore
+            : Vortice.DCommon.AlphaMode.Premultiplied;
         fixed (byte* pixels = frame.Bgra)
         {
             return _context.CreateBitmap(
                 new SizeI(frame.Width, frame.Height),
                 (nint)pixels, (uint)frame.Stride,
                 new BitmapProperties1(
-                    new Vortice.DCommon.PixelFormat(Format.B8G8R8A8_UNorm, Vortice.DCommon.AlphaMode.Premultiplied),
+                    new Vortice.DCommon.PixelFormat(Format.B8G8R8A8_UNorm, alphaMode),
                     96, 96, BitmapOptions.None));
         }
+    }
+
+    private static bool LooksFullyTransparent(VideoFrame frame)
+    {
+        var bgra = frame.Bgra;
+        var stride = frame.Stride;
+        // Sample a few pixels; all-zero alpha means Ignore is required for visibility.
+        for (var y = 0; y < frame.Height; y += Math.Max(1, frame.Height / 4))
+        {
+            var row = y * stride;
+            for (var x = 0; x < frame.Width; x += Math.Max(1, frame.Width / 4))
+            {
+                var i = row + x * 4 + 3;
+                if (i < bgra.Length && bgra[i] != 0) return false;
+            }
+        }
+        return frame.Width > 0 && frame.Height > 0;
     }
 
     private void EnsureTargets(int width, int height)

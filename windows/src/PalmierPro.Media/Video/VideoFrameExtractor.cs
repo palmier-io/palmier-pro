@@ -129,11 +129,27 @@ public sealed class VideoFrameExtractor : IDisposable
             var stride = NativeWidth * 4;
             var bytes = new byte[Math.Min(currentLength, stride * NativeHeight)];
             Marshal.Copy(pointer, bytes, 0, bytes.Length);
+            // MF RGB32 leaves alpha unused (often 0). Premultiplied D2D bitmaps treat
+            // A=0 as fully transparent, so force opaque before compositing.
+            ForceOpaqueAlpha(bytes, stride, NativeHeight);
             return new VideoFrame(bytes, NativeWidth, NativeHeight, stride);
         }
         finally
         {
             buffer.Unlock();
+        }
+    }
+
+    private static void ForceOpaqueAlpha(byte[] bgra, int stride, int height)
+    {
+        var rowBytes = Math.Min(stride, bgra.Length);
+        for (var y = 0; y < height; y++)
+        {
+            var row = y * stride;
+            if (row + 3 >= bgra.Length) break;
+            var end = Math.Min(row + rowBytes, bgra.Length);
+            for (var i = row + 3; i < end; i += 4)
+                bgra[i] = 255;
         }
     }
 
