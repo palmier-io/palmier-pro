@@ -224,6 +224,106 @@ private final class Scratch {
         #expect(FileManager.default.fileExists(atPath: absent.path) == false)
     }
 
+    // MARK: - Reclaim orchestration
+
+    /// Quitting mid-reap must not strand a tree: the queue has to reach disk before anything is
+    /// deleted, so a later launch still knows what to finish.
+    @Test func reclaimPersistsTheQueueBeforeDeletingAnything() throws {
+        let suite = try #require(UserDefaults(suiteName: "storage-tests-\(UUID().uuidString)"))
+        var queueWhenDeletionRan: [String]?
+
+        StorageLocations.reclaim(
+            currentlyOwned: ["/new/Caches/PalmierPro"],
+            previouslyOwned: ["/old/Caches/PalmierPro"],
+            defaultLocations: [],
+            in: suite,
+            deleting: { paths in
+                queueWhenDeletionRan = suite.stringArray(forKey: StorageLocations.abandonedDefaultsKey)
+                return []
+            }
+        )
+
+        #expect(queueWhenDeletionRan == ["/old/Caches/PalmierPro"])
+    }
+
+    @Test func reclaimRecordsThisLaunchsOwnershipAndClearsADrainedQueue() throws {
+        let suite = try #require(UserDefaults(suiteName: "storage-tests-\(UUID().uuidString)"))
+
+        StorageLocations.reclaim(
+            currentlyOwned: ["/new/Caches/PalmierPro"],
+            previouslyOwned: ["/old/Caches/PalmierPro"],
+            defaultLocations: [],
+            in: suite,
+            deleting: { _ in [] }
+        )
+
+        #expect(suite.stringArray(forKey: StorageLocations.ownedDefaultsKey) == ["/new/Caches/PalmierPro"])
+        #expect(suite.stringArray(forKey: StorageLocations.abandonedDefaultsKey) == [])
+    }
+
+    /// A launch that predates this bookkeeping has nothing recorded, so the trees left at the
+    /// default locations must still be reclaimed rather than orphaned.
+    @Test func reclaimSeedsFromTheDefaultLocationsWhenNothingWasRecorded() throws {
+        let suite = try #require(UserDefaults(suiteName: "storage-tests-\(UUID().uuidString)"))
+        var requested: [String] = []
+
+        StorageLocations.reclaim(
+            currentlyOwned: ["/new/Caches/PalmierPro"],
+            previouslyOwned: nil,
+            defaultLocations: ["/default/Caches/PalmierPro"],
+            in: suite,
+            deleting: { requested = $0; return [] }
+        )
+
+        #expect(requested == ["/default/Caches/PalmierPro"])
+    }
+
+    @Test func reclaimPrefersTheRecordedOwnershipOverTheDefaultLocations() throws {
+        let suite = try #require(UserDefaults(suiteName: "storage-tests-\(UUID().uuidString)"))
+        var requested: [String] = []
+
+        StorageLocations.reclaim(
+            currentlyOwned: ["/new/Caches/PalmierPro"],
+            previouslyOwned: ["/old/Caches/PalmierPro"],
+            defaultLocations: ["/default/Caches/PalmierPro"],
+            in: suite,
+            deleting: { requested = $0; return [] }
+        )
+
+        #expect(requested == ["/old/Caches/PalmierPro"])
+    }
+
+    /// An unplugged volume fails to delete, so it has to stay queued for a later launch.
+    @Test func reclaimKeepsWhatCouldNotBeDeletedQueued() throws {
+        let suite = try #require(UserDefaults(suiteName: "storage-tests-\(UUID().uuidString)"))
+
+        StorageLocations.reclaim(
+            currentlyOwned: ["/new/Caches/PalmierPro"],
+            previouslyOwned: ["/unplugged/Caches/PalmierPro"],
+            defaultLocations: [],
+            in: suite,
+            deleting: { $0 }
+        )
+
+        #expect(suite.stringArray(forKey: StorageLocations.abandonedDefaultsKey) == ["/unplugged/Caches/PalmierPro"])
+    }
+
+    /// Relaunching without changing anything must not queue or delete the tree in use.
+    @Test func reclaimDeletesNothingWhenTheRootIsUnchanged() throws {
+        let suite = try #require(UserDefaults(suiteName: "storage-tests-\(UUID().uuidString)"))
+        var requested: [String]?
+
+        StorageLocations.reclaim(
+            currentlyOwned: ["/root/Caches/PalmierPro"],
+            previouslyOwned: ["/root/Caches/PalmierPro"],
+            defaultLocations: [],
+            in: suite,
+            deleting: { requested = $0; return [] }
+        )
+
+        #expect(requested == [])
+    }
+
     // MARK: - Defaults
 
     @Test func configuredRootRoundTripsThroughDefaults() throws {

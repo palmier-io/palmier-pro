@@ -130,17 +130,35 @@ enum StorageLocations {
     /// fast drive actually frees the old one. Failures stay queued for a later launch, which is
     /// how an unplugged volume is eventually reclaimed.
     private static func reapAbandonedDirectories() {
-        let current = ownedDirectories.map(\.standardizedFileURL.path)
-        let recorded = UserDefaults.standard.stringArray(forKey: ownedDefaultsKey)
+        reclaim(
+            currentlyOwned: ownedDirectories.map(\.standardizedFileURL.path),
+            previouslyOwned: UserDefaults.standard.stringArray(forKey: ownedDefaultsKey),
+            defaultLocations: defaultLocationDirectories,
+            in: .standard
+        )
+    }
+
+    /// Records this launch's ownership and reclaims what a previous root left behind. Takes its
+    /// inputs and its deletion step explicitly so the ordering below is exercisable in tests.
+    ///
+    /// A launch with nothing recorded predates this bookkeeping, so it seeds from the default
+    /// locations rather than assuming the previous root was the current one.
+    static func reclaim(
+        currentlyOwned current: [String],
+        previouslyOwned recorded: [String]?,
+        defaultLocations: [String],
+        in defaults: UserDefaults,
+        deleting: ([String]) -> [String] = reap
+    ) {
         let queued = abandonedDirectories(
-            previouslyOwned: recorded ?? defaultLocationDirectories,
+            previouslyOwned: recorded ?? defaultLocations,
             currentlyOwned: current,
-            queued: stringArray(abandonedDefaultsKey)
+            queued: defaults.stringArray(forKey: abandonedDefaultsKey) ?? []
         )
         // Persist the queue before deleting, so quitting mid-reap doesn't lose track of the tree.
-        UserDefaults.standard.set(queued, forKey: abandonedDefaultsKey)
-        UserDefaults.standard.set(current, forKey: ownedDefaultsKey)
-        UserDefaults.standard.set(reap(queued), forKey: abandonedDefaultsKey)
+        defaults.set(queued, forKey: abandonedDefaultsKey)
+        defaults.set(current, forKey: ownedDefaultsKey)
+        defaults.set(deleting(queued), forKey: abandonedDefaultsKey)
     }
 
     /// Deletes each path, returning those that survived so they can stay queued. Takes its work
@@ -244,10 +262,6 @@ enum StorageLocations {
         } else {
             defaults.removeObject(forKey: key)
         }
-    }
-
-    private static func stringArray(_ key: String) -> [String] {
-        UserDefaults.standard.stringArray(forKey: key) ?? []
     }
 
     /// No filesystem access at all when the key is unset, so the default configuration can

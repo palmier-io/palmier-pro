@@ -12,7 +12,7 @@ struct StoragePane: View {
     @State private var searchEnabled = SearchIndexConfig.enabled
     @State private var scratchRoot = StorageLocations.configuredScratchRoot
     @State private var projectsRoot = StorageLocations.configuredProjectsRoot
-    @State private var unavailableTitles: [String] = []
+    @State private var unavailable: [StorageLocationKind] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xxl) {
@@ -32,14 +32,14 @@ struct StoragePane: View {
     private var locationsSection: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
             StorageLocationRow(
-                title: Self.scratchTitle,
+                title: StorageLocationKind.scratch.localizedTitle,
                 detail: L10n.string("Render previews, waveforms, thumbnails, transcripts, staged media, and downloaded models. Put this on a fast drive."),
                 root: $scratchRoot,
                 defaultPath: L10n.string("\(abbreviatingHome(StorageLocations.defaultCachesDirectory)) and $TMPDIR"),
                 save: { StorageLocations.configuredScratchRoot = $0 }
             )
             StorageLocationRow(
-                title: Self.projectsTitle,
+                title: StorageLocationKind.projects.localizedTitle,
                 detail: L10n.string("Where new projects are created. Existing projects stay where they are."),
                 root: $projectsRoot,
                 defaultPath: abbreviatingHome(StorageLocations.defaultProjectsDirectory),
@@ -54,27 +54,18 @@ struct StoragePane: View {
         }
     }
 
-    @MainActor private static var scratchTitle: String { L10n.string("Scratch and cache") }
-    @MainActor private static var projectsTitle: String { L10n.string("Projects") }
+    private var status: StorageLocationStatus {
+        .init(scratchRoot: scratchRoot, projectsRoot: projectsRoot, unavailable: unavailable)
+    }
 
     private var locationMessages: [String] {
-        var messages = unavailableTitles.map {
-            L10n.string("\($0) unavailable. Using the default location until the folder is back.")
+        var messages = status.unavailable.map {
+            L10n.string("\($0.localizedTitle) unavailable. Using the default location until the folder is back.")
         }
-        if needsRelaunch {
+        if status.needsRelaunch {
             messages.append(L10n.string("Relaunch Palmier Pro to use the new locations. Cached files and downloaded models at the previous location are removed."))
         }
         return messages
-    }
-
-    /// True when the configured locations differ from the ones this process resolved at launch.
-    /// An unreachable root is reported as unavailable instead, since relaunching won't adopt it.
-    private var needsRelaunch: Bool {
-        guard unavailableTitles.isEmpty else { return false }
-        let caches = StorageLocations.expectedCachesDirectory(forScratchRoot: scratchRoot)
-        let projects = projectsRoot ?? StorageLocations.defaultProjectsDirectory
-        return caches.standardizedFileURL != StorageLocations.cachesDirectory.standardizedFileURL
-            || projects.standardizedFileURL != StorageLocations.projectsDirectory.standardizedFileURL
     }
 
     private var cacheRow: some View {
@@ -211,21 +202,23 @@ struct StoragePane: View {
     }
 
     private func refresh() async {
-        let roots = [(Self.scratchTitle, scratchRoot), (Self.projectsTitle, projectsRoot)]
+        let scratch = scratchRoot
+        let projects = projectsRoot
         let stats = await Task.detached {
             (
                 cache: Self.caches.reduce(0) { $0 + $1.size() },
                 index: DiskCache.bytes(at: EmbeddingStore.directory),
                 model: DiskCache.bytes(at: ModelDownloader.modelsDir),
-                unavailable: roots.compactMap { title, root in
-                    root.map { StorageLocations.isAvailable(at: $0) ? nil : title } ?? nil
-                }
+                unavailable: StorageLocationStatus.unavailableKinds(
+                    scratchRoot: scratch,
+                    projectsRoot: projects
+                )
             )
         }.value
         cacheBytes = stats.cache
         indexBytes = stats.index
         modelBytes = stats.model
-        unavailableTitles = stats.unavailable
+        unavailable = stats.unavailable
     }
 }
 
