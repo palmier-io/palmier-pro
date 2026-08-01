@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using PalmierPro.Core.Compositing;
 using PalmierPro.Core.Models;
 using PalmierPro.Core.Playback;
 using PalmierPro.Media.Video;
@@ -225,6 +226,8 @@ public sealed class VideoPlaybackEngine : IDisposable
             }
         }
         CloseAllReaders();
+        _compositor?.Dispose();
+        _compositor = null;
     }
 
     private void StartPlaying(int fromFrame, int duration, double rate)
@@ -239,38 +242,52 @@ public sealed class VideoPlaybackEngine : IDisposable
             _audio.Start(_timeline, start, rate);
     }
 
+    private Compositing.D2DFrameCompositor? _compositor;
+
     private void RenderFrame(int frame)
     {
         if (_timeline is null) return;
         if (frame == _lastPresentedFrame) return;
         _lastPresentedFrame = frame;
 
-        var source = TimelineFrameRouter.VideoSourceAt(
-            _timeline, frame, id => _sequences.GetValueOrDefault(id));
-        if (source is null || !_mediaPaths.TryGetValue(source.Clip.MediaRef, out var path))
-        {
-            _presenter.Clear();
-            return;
-        }
-
         try
         {
-            if (source.Clip.MediaType == ClipType.Image)
+            var layers = FrameLayerPlanner.LayersAt(
+                _timeline, frame, id => _sequences.GetValueOrDefault(id));
+            if (layers.Count == 0)
             {
-                var still = StillFor(source.Clip.MediaRef, path);
-                if (still is not null) _presenter.Present(still);
-                else _presenter.Clear();
+                _presenter.Clear();
                 return;
             }
 
-            var reader = ReaderFor(source.Clip.MediaRef, path);
-            if (reader is null) { _presenter.Clear(); return; }
-            var decoded = reader.RawFrameAt(source.SourceSeconds);
-            if (decoded is not null) _presenter.Present(decoded);
+            _compositor ??= new Compositing.D2DFrameCompositor();
+            var composed = _compositor.Compose(
+                Math.Max(2, _timeline.Width), Math.Max(2, _timeline.Height),
+                layers, DecodeLayerFrame);
+            if (composed is not null) _presenter.Present(composed);
+            else _presenter.Clear();
         }
         catch (Exception)
         {
+            // Device loss or a decode failure: rebuild the compositor on the next frame.
+            _compositor?.Dispose();
+            _compositor = null;
             _presenter.Clear();
+        }
+    }
+
+    private VideoFrame? DecodeLayerFrame(Clip clip, double sourceSeconds)
+    {
+        if (!_mediaPaths.TryGetValue(clip.MediaRef, out var path)) return null;
+        try
+        {
+            if (clip.MediaType == ClipType.Image) return StillFor(clip.MediaRef, path);
+            var reader = ReaderFor(clip.MediaRef, path);
+            return reader?.RawFrameAt(sourceSeconds);
+        }
+        catch (Exception)
+        {
+            return null;
         }
     }
 
