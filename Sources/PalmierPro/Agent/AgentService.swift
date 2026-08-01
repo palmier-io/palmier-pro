@@ -407,7 +407,7 @@ final class AgentService {
                 }
 
                 if stopReason == .toolUse {
-                    await runPendingToolUses(assistantID: assistantID)
+                    await runPendingToolUses(assistantID: assistantID, conversationID: conversationID)
                     continue loop
                 }
                 break loop
@@ -450,7 +450,7 @@ final class AgentService {
         messages[index].blocks.append(.toolUse(id: toolUseID, name: name, inputJSON: inputJSON))
     }
 
-    private func runPendingToolUses(assistantID: UUID) async {
+    private func runPendingToolUses(assistantID: UUID, conversationID: UUID) async {
         guard let assistantIndex = assistantMessageIndex(id: assistantID) else { return }
         guard let executor = toolExecutor else {
             messages.append(AgentMessage(role: .user, blocks: [.text("Tool executor unavailable.")]))
@@ -469,7 +469,11 @@ final class AgentService {
                 resultBlocks.append(.toolResult(toolUseId: use.id, content: [.text("Cancelled")], isError: true))
                 continue
             }
-            let result = await executor.execute(name: use.name, args: Self.parseJSONObject(use.input))
+            let result = await executor.execute(
+                name: use.name,
+                args: Self.parseJSONObject(use.input),
+                sessionID: conversationID.uuidString
+            )
             resultBlocks.append(.toolResult(toolUseId: use.id, content: result.content, isError: result.isError))
         }
         if !resultBlocks.isEmpty {

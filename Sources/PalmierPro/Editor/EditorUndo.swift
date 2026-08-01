@@ -5,6 +5,7 @@ final class EditorUndo {
     private weak var manager: UndoManager?
     private var transactionActive = false
     private var transactionGroupOpened = false
+    var onActionCommitted: (() -> Void)?
 
     func attach(_ manager: UndoManager?) {
         self.manager = manager
@@ -29,6 +30,7 @@ final class EditorUndo {
             if groupOpened {
                 manager.setActionName(actionName)
                 manager.endUndoGrouping()
+                onActionCommitted?()
             }
             if restoresEventGrouping { manager.groupsByEvent = true }
             assert(manager.groupingLevel == initialGroupingLevel)

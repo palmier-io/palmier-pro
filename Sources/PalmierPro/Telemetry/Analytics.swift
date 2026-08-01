@@ -6,6 +6,21 @@ import PostHog
 enum Analytics {
     typealias Payload = [String: Any]
 
+    struct Origin: Sendable {
+        let source: String
+        let sessionID: String
+    }
+
+    /// Attributes synchronous work started by the agent or an MCP client.
+    @TaskLocal static var origin: Origin?
+
+    static let manualSource = "manual"
+
+    static func originProperties() -> Payload {
+        guard let origin else { return ["source": manualSource] }
+        return ["source": origin.source, "session_id": origin.sessionID]
+    }
+
     struct SessionActivation {
         private(set) var isActivated: Bool
 
@@ -20,7 +35,7 @@ enum Analytics {
         }
     }
 
-    enum Event: String {
+    enum Event: String, CaseIterable {
         case appOpened = "app opened"
         case projectCreated = "project created"
         case projectOpened = "project opened"
@@ -31,12 +46,15 @@ enum Analytics {
         case agentSessionStarted = "agent session started"
         case agentToolCalled = "agent tool called"
         case agentStarterPromptClicked = "agent starter prompt clicked"
+        case editorEditCommitted = "editor edit committed"
+        case generationSubmitted = "generation submitted"
         case mcpSessionActivated = "mcp session activated"
     }
 
     #if PRODUCTION_TELEMETRY
     private static let projectToken = Bundle.main.object(forInfoDictionaryKey: "PostHogProjectToken") as? String ?? ""
     private static let host = Bundle.main.object(forInfoDictionaryKey: "PostHogHost") as? String ?? PostHogConfig.defaultHost
+    private static let captureQueue = DispatchQueue(label: "io.palmier.pro.analytics.capture")
     #endif
     private static let enabledKey = "io.palmier.pro.analytics.enabled"
 
@@ -111,7 +129,12 @@ enum Analytics {
     static func capture(_ event: Event, properties: Payload = [:]) -> Bool {
         #if PRODUCTION_TELEMETRY
         guard didStart, isEnabled else { return false }
-        PostHogSDK.shared.capture(event.rawValue, properties: cleanedPayload(properties))
+        let properties = cleanedPayload(properties)
+        guard let data = try? JSONSerialization.data(withJSONObject: properties) else { return false }
+        captureQueue.async {
+            guard let properties = try? JSONSerialization.jsonObject(with: data) as? Payload else { return }
+            PostHogSDK.shared.capture(event.rawValue, properties: properties)
+        }
         return true
         #else
         return false
@@ -135,22 +158,7 @@ enum Analytics {
         }
     }
 
-    private static var allowedEvents: Set<String> {
-        Set([
-            Event.appOpened.rawValue,
-            Event.projectCreated.rawValue,
-            Event.projectOpened.rawValue,
-            Event.projectActive.rawValue,
-            Event.exportStarted.rawValue,
-            Event.exportFinished.rawValue,
-            Event.exportFailed.rawValue,
-            Event.agentSessionStarted.rawValue,
-            Event.agentToolCalled.rawValue,
-            Event.agentStarterPromptClicked.rawValue,
-            Event.mcpSessionActivated.rawValue,
-            "$identify",
-        ])
-    }
+    private static let allowedEvents = Set(Event.allCases.map(\.rawValue)).union(["$identify"])
 
     private static func cleanedPayload(_ payload: Payload) -> Payload {
         var out: Payload = [:]
@@ -203,13 +211,17 @@ enum Analytics {
         Set([
             "active_day",
             "client_info",
+            "error_message",
             "export_duration_seconds",
             "failure_reason",
             "format",
+            "generation_type",
             "mode",
             "model",
+            "output_count",
             "project_id",
             "resolution",
+            "session_id",
             "source",
             "starter_prompt",
             "status",
