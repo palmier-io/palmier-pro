@@ -2,10 +2,12 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Dispatching;
 using PalmierPro.Core;
+using PalmierPro.Core.Editing;
 using PalmierPro.Core.Models;
 using PalmierPro.Core.Playback;
 using PalmierPro.Core.Project;
 using PalmierPro.Core.Serialization;
+using PalmierPro.Core.Undo;
 using PalmierPro.Media.Playback;
 
 namespace PalmierPro.App.Editor;
@@ -28,8 +30,16 @@ public sealed partial class ProjectViewModel : ObservableObject
     [ObservableProperty] private int _durationFrames;
     [ObservableProperty] private string _timecodeText = "00:00:00:00";
 
+    public ProjectFile? ProjectFile { get; private set; }
     public Timeline? ActiveTimeline { get; private set; }
     public MediaManifest Manifest { get; private set; } = new();
+
+    public UndoManager UndoManager { get; } = new();
+    public EditorUndo Undo { get; } = new();
+    public TimelineEditOperations? EditOperations { get; private set; }
+
+    /// <summary>Raised after any timeline mutation, undo, or redo.</summary>
+    public event Action? TimelineChanged;
 
     private readonly DispatcherQueue _dispatcher;
     private VideoPlaybackEngine? _engine;
@@ -45,7 +55,9 @@ public sealed partial class ProjectViewModel : ObservableObject
     public async Task LoadAsync()
     {
         var contents = await Task.Run(() => ProjectPackage.Read(PackagePath));
-        ActiveTimeline = contents.ProjectFile.Timelines.FirstOrDefault();
+        ProjectFile = contents.ProjectFile;
+        ActiveTimeline = contents.ProjectFile.Timelines.FirstOrDefault(
+            t => t.Id == contents.ProjectFile.ActiveTimelineId) ?? contents.ProjectFile.Timelines.FirstOrDefault();
         Manifest = contents.Manifest ?? new MediaManifest();
         if (contents.ManifestUnreadable)
             StatusText = "Media manifest unreadable — media shown offline.";
@@ -58,6 +70,22 @@ public sealed partial class ProjectViewModel : ObservableObject
 
         DurationFrames = ActiveTimeline is null ? 0 : TimelineFrameRouter.DurationFrames(ActiveTimeline);
         UpdateTimecode(0);
+
+        Undo.Attach(UndoManager);
+        if (ActiveTimeline is not null)
+        {
+            EditOperations = new TimelineEditOperations(ActiveTimeline, Undo);
+            EditOperations.TimelineChanged += OnTimelineMutated;
+        }
+    }
+
+    private void OnTimelineMutated()
+    {
+        DurationFrames = ActiveTimeline is null ? 0 : TimelineFrameRouter.DurationFrames(ActiveTimeline);
+        RebuildEngine();
+        SeekExact(PlayheadFrame);
+        TimelineChanged?.Invoke();
+        _ = SaveAsync();
     }
 
     public void AttachEngine(VideoPlaybackEngine engine)
@@ -136,15 +164,29 @@ public sealed partial class ProjectViewModel : ObservableObject
         }
     }
 
-    private async Task SaveManifestAsync()
+    private Task SaveManifestAsync() => SaveAsync(includeProject: false);
+
+    /// <summary>
+    /// Writes project.json and media.json atomically under the coordinator's save gate.
+    /// Snapshots are taken on the UI thread; writes run off it.
+    /// </summary>
+    public async Task SaveAsync(bool includeProject = true)
     {
         Coordinator.SaveStarted();
         var success = false;
         try
         {
-            var bytes = PalmierJson.Encode(Manifest);
-            var path = Path.Combine(PackagePath, ProjectConstants.ManifestFilename);
-            await Task.Run(() => FileIO.WriteAtomic(path, bytes));
+            var manifestBytes = PalmierJson.Encode(Manifest);
+            var projectBytes = includeProject && ProjectFile is not null
+                ? PalmierJson.Encode(ProjectFile)
+                : null;
+            var packagePath = PackagePath;
+            await Task.Run(() =>
+            {
+                if (projectBytes is not null)
+                    FileIO.WriteAtomic(Path.Combine(packagePath, ProjectConstants.TimelineFilename), projectBytes);
+                FileIO.WriteAtomic(Path.Combine(packagePath, ProjectConstants.ManifestFilename), manifestBytes);
+            });
             success = true;
         }
         catch (Exception ex)

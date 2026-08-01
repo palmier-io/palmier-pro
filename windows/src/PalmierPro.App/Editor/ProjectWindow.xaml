@@ -3,13 +3,14 @@
     x:Class="PalmierPro.App.Editor.ProjectWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:PalmierPro.App.Editor">
+    xmlns:local="using:PalmierPro.App.Editor"
+    xmlns:timeline="using:PalmierPro.App.TimelineUI">
 
     <Grid Background="{ThemeResource BackgroundBaseBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="40" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="180" />
+            <RowDefinition Height="260" />
         </Grid.RowDefinitions>
 
         <!-- Title bar strip -->
@@ -126,11 +127,10 @@
             </Grid>
         </Grid>
 
-        <!-- Timeline placeholder (Phase 3) -->
+        <!-- Timeline -->
         <Grid Grid.Row="2" Background="{ThemeResource BackgroundSurfaceBrush}"
               BorderBrush="{ThemeResource BorderSubtleBrush}" BorderThickness="0,1,0,0">
-            <TextBlock Text="Timeline" HorizontalAlignment="Center" VerticalAlignment="Center"
-                       FontSize="12" Foreground="{ThemeResource TextMutedBrush}" />
+            <timeline:TimelineControl x:Name="TimelineView" />
         </Grid>
     </Grid>
 </Window>

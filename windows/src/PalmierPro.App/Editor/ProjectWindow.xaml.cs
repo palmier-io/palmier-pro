@@ -32,12 +32,53 @@ public sealed partial class ProjectWindow : Window
         {
             if (e.PropertyName == nameof(ProjectViewModel.IsPlaying))
                 PlayPauseIcon.Glyph = ViewModel.IsPlaying ? "\uE769" : "\uE768";
-            if (e.PropertyName == nameof(ProjectViewModel.PlayheadFrame) && !_scrubbing)
-                ScrubSlider.Value = ViewModel.PlayheadFrame;
+            if (e.PropertyName == nameof(ProjectViewModel.PlayheadFrame))
+            {
+                if (!_scrubbing) ScrubSlider.Value = ViewModel.PlayheadFrame;
+                TimelineView.SetPlayhead(ViewModel.PlayheadFrame);
+            }
         };
 
+        ViewModel.TimelineChanged += () => TimelineView.Refresh();
+        TimelineView.ScrubRequested += (frame, final) =>
+        {
+            if (final) ViewModel.SeekExact(frame);
+            else ViewModel.Scrub(frame);
+        };
+        TimelineView.ClipEditRequested += OnTimelineClipEdit;
+        TimelineView.DeleteRequested += ids => ViewModel.EditOperations?.DeleteClips(ids);
+
         Closed += OnClosed;
+
+        if (Content is UIElement root)
+        {
+            AddAccelerator(root, Windows.System.VirtualKey.Z,
+                Windows.System.VirtualKeyModifiers.Control,
+                () => { if (ViewModel.UndoManager.CanUndo) ViewModel.UndoManager.Undo(); });
+            AddAccelerator(root, Windows.System.VirtualKey.Y,
+                Windows.System.VirtualKeyModifiers.Control,
+                () => { if (ViewModel.UndoManager.CanRedo) ViewModel.UndoManager.Redo(); });
+            AddAccelerator(root, Windows.System.VirtualKey.Z,
+                Windows.System.VirtualKeyModifiers.Control | Windows.System.VirtualKeyModifiers.Shift,
+                () => { if (ViewModel.UndoManager.CanRedo) ViewModel.UndoManager.Redo(); });
+            AddAccelerator(root, Windows.System.VirtualKey.Space,
+                Windows.System.VirtualKeyModifiers.None, ViewModel.TogglePlayback);
+        }
+
         _ = InitializeAsync();
+    }
+
+    private static void AddAccelerator(
+        UIElement element, Windows.System.VirtualKey key,
+        Windows.System.VirtualKeyModifiers modifiers, Action action)
+    {
+        var accelerator = new KeyboardAccelerator { Key = key, Modifiers = modifiers };
+        accelerator.Invoked += (_, e) =>
+        {
+            action();
+            e.Handled = true;
+        };
+        element.KeyboardAccelerators.Add(accelerator);
     }
 
     private async Task InitializeAsync()
@@ -59,6 +100,24 @@ public sealed partial class ProjectWindow : Window
         _engine = new VideoPlaybackEngine(_presenter);
         ViewModel.AttachEngine(_engine);
         ViewModel.SeekExact(0);
+        TimelineView.SetTimeline(ViewModel.ActiveTimeline);
+    }
+
+    private void OnTimelineClipEdit(PalmierPro.App.TimelineUI.ClipEditRequest request)
+    {
+        var ops = ViewModel.EditOperations;
+        if (ops is null || ops.FindClip(request.ClipId) is not { } found) return;
+        var clip = found.Clip;
+        if (request.NewDurationFrames == clip.DurationFrames
+            && request.NewTrimStartFrame == clip.TrimStartFrame)
+        {
+            ops.MoveClip(request.ClipId, request.NewStartFrame);
+        }
+        else
+        {
+            ops.TrimClip(request.ClipId, request.NewStartFrame,
+                request.NewDurationFrames, request.NewTrimStartFrame);
+        }
     }
 
     private void OnClosed(object sender, WindowEventArgs args)
