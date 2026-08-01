@@ -37,9 +37,13 @@ public sealed partial class ProjectViewModel : ObservableObject
     public UndoManager UndoManager { get; } = new();
     public EditorUndo Undo { get; } = new();
     public TimelineEditOperations? EditOperations { get; private set; }
+    public PalmierPro.Media.Caches.MediaVisualCache VisualCache { get; } = new();
 
     /// <summary>Raised after any timeline mutation, undo, or redo.</summary>
     public event Action? TimelineChanged;
+
+    /// <summary>Raised on the dispatcher when filmstrip/still/waveform visuals change for an asset.</summary>
+    public event Action<string>? MediaVisualsUpdated;
 
     private readonly DispatcherQueue _dispatcher;
     private VideoPlaybackEngine? _engine;
@@ -77,6 +81,25 @@ public sealed partial class ProjectViewModel : ObservableObject
             EditOperations = new TimelineEditOperations(ActiveTimeline, Undo);
             EditOperations.TimelineChanged += OnTimelineMutated;
         }
+
+        VisualCache.VisualsUpdated += assetId =>
+            _dispatcher.TryEnqueue(() => MediaVisualsUpdated?.Invoke(assetId));
+        foreach (var item in MediaItems) RequestVisuals(item.Asset);
+    }
+
+    private void RequestVisuals(MediaAsset asset)
+    {
+        // Missing/unreadable media is handled inside the generators; no main-thread file checks.
+        if (asset.Url is not { Length: > 0 } url) return;
+        _ = asset.Type switch
+        {
+            ClipType.Video => VisualCache.GenerateVideoThumbnailsAsync(asset.Id, url),
+            ClipType.Image => VisualCache.GenerateImageThumbnailAsync(asset.Id, url),
+            ClipType.Audio => VisualCache.GenerateWaveformAsync(asset.Id, url),
+            _ => Task.CompletedTask,
+        };
+        if (asset.Type == ClipType.Video)
+            _ = VisualCache.GenerateWaveformAsync(asset.Id, url);
     }
 
     private void OnTimelineMutated()
@@ -155,6 +178,7 @@ public sealed partial class ProjectViewModel : ObservableObject
             };
             Manifest.Entries.Add(asset.ToManifestEntry(PackagePath));
             MediaItems.Add(new MediaItemViewModel(asset, _dispatcher));
+            RequestVisuals(asset);
         }
         if (plan.Items.Count > 0)
         {

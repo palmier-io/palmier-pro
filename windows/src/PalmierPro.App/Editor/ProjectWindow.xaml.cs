@@ -100,7 +100,9 @@ public sealed partial class ProjectWindow : Window
         _engine = new VideoPlaybackEngine(_presenter);
         ViewModel.AttachEngine(_engine);
         ViewModel.SeekExact(0);
+        TimelineView.VisualCache = ViewModel.VisualCache;
         TimelineView.SetTimeline(ViewModel.ActiveTimeline);
+        ViewModel.MediaVisualsUpdated += TimelineView.InvalidateMediaVisuals;
     }
 
     private void OnTimelineClipEdit(PalmierPro.App.TimelineUI.ClipEditRequest request)

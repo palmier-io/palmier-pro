@@ -9,6 +9,8 @@ using Microsoft.UI.Xaml.Input;
 using PalmierPro.Core;
 using PalmierPro.Core.Models;
 using PalmierPro.Core.Playback;
+using PalmierPro.Media.Audio;
+using PalmierPro.Media.Caches;
 using Windows.Foundation;
 using Windows.System;
 using Windows.UI;
@@ -38,6 +40,9 @@ public sealed class TimelineControl : UserControl
     private readonly CanvasControl _canvas;
 
     public PalmierPro.Core.Models.Timeline? Timeline { get; private set; }
+
+    /// <summary>Optional visual cache; clips fall back to solid fills when absent.</summary>
+    public MediaVisualCache? VisualCache { get; set; }
     public double ZoomScale { get; private set; } = EditorDefaults.PixelsPerFrame;
     public double ScrollX { get; private set; }
     public int PlayheadFrame { get; private set; }
@@ -91,6 +96,15 @@ public sealed class TimelineControl : UserControl
     }
 
     public void Refresh() => _canvas.Invalidate();
+
+    /// <summary>Drops converted Win2D bitmaps for an asset (call when its visuals change).</summary>
+    public void InvalidateMediaVisuals(string mediaRef)
+    {
+        if (_filmstripBitmaps.Remove(mediaRef, out var tiles))
+            foreach (var tile in tiles) tile?.Dispose();
+        if (_stillBitmaps.Remove(mediaRef, out var still)) still?.Dispose();
+        _canvas.Invalidate();
+    }
 
     private TimelineGeometry? Geometry
         => Timeline is null ? null : new TimelineGeometry(Timeline, ZoomScale);
@@ -160,6 +174,25 @@ public sealed class TimelineControl : UserControl
         var color = ClipColor(clip.MediaType);
         session.FillRoundedRectangle(x, top, Math.Max(1, width), height, 4, 4, color);
 
+        if (width >= 8)
+        {
+            using var clipLayer = session.CreateLayer(1f,
+                Microsoft.Graphics.Canvas.Geometry.CanvasGeometry.CreateRoundedRectangle(
+                    session, x, top, width, height, 4, 4));
+            switch (clip.MediaType)
+            {
+                case ClipType.Video:
+                    DrawFilmstrip(session, clip, x, top, width, height);
+                    break;
+                case ClipType.Image:
+                    DrawImageStill(session, clip, x, top, width, height);
+                    break;
+                case ClipType.Audio:
+                    DrawWaveform(session, clip, x, top, width, height);
+                    break;
+            }
+        }
+
         var selected = SelectedClipIds.Contains(clip.Id);
         if (width >= 8)
         {
@@ -178,6 +211,125 @@ public sealed class TimelineControl : UserControl
                 FontSize = 11,
                 WordWrapping = CanvasWordWrapping.NoWrap,
             });
+        }
+    }
+
+    // MARK: - Media visuals
+
+    private readonly Dictionary<string, CanvasBitmap?[]> _filmstripBitmaps = [];
+    private readonly Dictionary<string, CanvasBitmap?> _stillBitmaps = [];
+    private const int MaxFilmstripTilesPerClip = 200;
+
+    private void DrawFilmstrip(
+        CanvasDrawingSession session, Clip clip,
+        float x, float top, float width, float height)
+    {
+        if (VisualCache?.FilmstripFor(clip.MediaRef) is not { } strip || strip.Tiles.Count == 0) return;
+
+        if (!_filmstripBitmaps.TryGetValue(clip.MediaRef, out var converted)
+            || converted.Length != strip.Tiles.Count)
+        {
+            converted = new CanvasBitmap?[strip.Tiles.Count];
+            _filmstripBitmaps[clip.MediaRef] = converted;
+        }
+
+        var fps = Math.Max(1, Timeline!.Fps);
+        var tileWidth = (float)(height * strip.TileWidth / Math.Max(1, strip.TileHeight));
+        if (tileWidth < 1) return;
+        var tileInterval = strip.Times.Count > 1 ? strip.Times[1] - strip.Times[0] : 1.0;
+        var drawn = 0;
+
+        for (var tileX = x; tileX < x + width && drawn < MaxFilmstripTilesPerClip; tileX += tileWidth, drawn++)
+        {
+            if (tileX + tileWidth < 0) continue;
+            if (tileX > _canvas.ActualWidth) break;
+            var timelineOffsetFrames = (tileX - x) / ZoomScale;
+            var sourceSeconds = (clip.TrimStartFrame + timelineOffsetFrames * clip.Speed) / fps;
+            var index = Math.Clamp((int)Math.Round(sourceSeconds / Math.Max(0.001, tileInterval)),
+                0, strip.Tiles.Count - 1);
+            var bitmap = ConvertedTile(strip, converted, index);
+            if (bitmap is null) continue;
+            session.DrawImage(bitmap, new Rect(tileX, top, tileWidth, height));
+        }
+    }
+
+    private void DrawImageStill(
+        CanvasDrawingSession session, Clip clip,
+        float x, float top, float width, float height)
+    {
+        if (VisualCache?.ImageStillFor(clip.MediaRef) is not { } still) return;
+        if (!_stillBitmaps.TryGetValue(clip.MediaRef, out var bitmap))
+        {
+            bitmap = ToCanvasBitmap(still);
+            _stillBitmaps[clip.MediaRef] = bitmap;
+        }
+        if (bitmap is null) return;
+
+        // Single thumbnail tiled across the clip, like the Mac image clip rendering.
+        var tileWidth = (float)(height * still.Width / Math.Max(1, still.Height));
+        for (var tileX = x; tileX < x + width; tileX += tileWidth)
+        {
+            if (tileX + tileWidth < 0) continue;
+            if (tileX > _canvas.ActualWidth) break;
+            session.DrawImage(bitmap, new Rect(tileX, top, tileWidth, height));
+        }
+    }
+
+    private void DrawWaveform(
+        CanvasDrawingSession session, Clip clip,
+        float x, float top, float width, float height)
+    {
+        if (VisualCache?.WaveformFor(clip.MediaRef) is not { } samples || samples.Length == 0) return;
+        var fps = Math.Max(1, Timeline!.Fps);
+        var barColor = Color.FromArgb(170, 255, 255, 255);
+
+        var firstColumn = (int)Math.Max(0, -x);
+        var lastColumn = (int)Math.Min(width, _canvas.ActualWidth - x);
+        for (var column = firstColumn; column < lastColumn; column++)
+        {
+            var timelineOffsetFrames = column / ZoomScale;
+            var sourceSeconds = (clip.TrimStartFrame + timelineOffsetFrames * clip.Speed) / fps;
+            var index = (int)(sourceSeconds * WaveformExtractor.SamplesPerSecond);
+            if (index < 0 || index >= samples.Length) continue;
+            // Samples are normalized dB distance from full scale: 0 = loud, 1 = silence.
+            var loudness = 1f - Math.Clamp(samples[index], 0f, 1f);
+            var barHeight = Math.Max(1f, loudness * (height - 4));
+            var barTop = top + (height - barHeight) / 2f;
+            session.DrawLine(x + column, barTop, x + column, barTop + barHeight, barColor, 1f);
+        }
+    }
+
+    private CanvasBitmap? ConvertedTile(Filmstrip strip, CanvasBitmap?[] converted, int index)
+    {
+        if (converted[index] is { } existing) return existing;
+        converted[index] = ToCanvasBitmap(strip.Tiles[index]);
+        return converted[index];
+    }
+
+    private CanvasBitmap? ToCanvasBitmap(System.Drawing.Bitmap bitmap)
+    {
+        try
+        {
+            var rect = new System.Drawing.Rectangle(0, 0, bitmap.Width, bitmap.Height);
+            var data = bitmap.LockBits(rect,
+                System.Drawing.Imaging.ImageLockMode.ReadOnly,
+                System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            try
+            {
+                var bytes = new byte[data.Stride * data.Height];
+                System.Runtime.InteropServices.Marshal.Copy(data.Scan0, bytes, 0, bytes.Length);
+                return CanvasBitmap.CreateFromBytes(
+                    _canvas, bytes, bitmap.Width, bitmap.Height,
+                    Windows.Graphics.DirectX.DirectXPixelFormat.B8G8R8A8UIntNormalized);
+            }
+            finally
+            {
+                bitmap.UnlockBits(data);
+            }
+        }
+        catch (Exception)
+        {
+            return null;
         }
     }
 
