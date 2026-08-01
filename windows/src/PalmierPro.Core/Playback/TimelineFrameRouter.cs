@@ -15,7 +15,12 @@ public sealed record AudibleClip(Clip Clip, double Gain, double SourceSeconds);
 /// </summary>
 public static class TimelineFrameRouter
 {
-    public static VideoFrameSource? VideoSourceAt(Timeline timeline, int frame)
+    /// <summary>Bounds nested-sequence recursion against reference cycles in corrupt projects.</summary>
+    private const int MaxNestingDepth = 8;
+
+    public static VideoFrameSource? VideoSourceAt(
+        Timeline timeline, int frame,
+        Func<string, Timeline?>? resolveSequence = null, int depth = 0)
     {
         for (var trackIndex = timeline.Tracks.Count - 1; trackIndex >= 0; trackIndex--)
         {
@@ -24,11 +29,29 @@ public static class TimelineFrameRouter
             foreach (var clip in track.Clips)
             {
                 if (!clip.Contains(frame)) continue;
+
+                if (clip.SourceClipType == ClipType.Sequence)
+                {
+                    if (resolveSequence is null || depth >= MaxNestingDepth) continue;
+                    if (resolveSequence(clip.MediaRef) is not { } child) continue;
+                    var childFrame = ChildFrameFor(clip, frame, timeline.Fps, child.Fps);
+                    if (VideoSourceAt(child, childFrame, resolveSequence, depth + 1) is { } nested)
+                        return nested;
+                    continue;
+                }
+
                 if (clip.MediaType is not (ClipType.Video or ClipType.Image or ClipType.Lottie)) continue;
                 return new VideoFrameSource(clip, SourceSecondsFor(clip, frame, timeline.Fps));
             }
         }
         return null;
+    }
+
+    /// <summary>Maps a parent-timeline frame inside a sequence clip to the child timeline's frame domain.</summary>
+    public static int ChildFrameFor(Clip sequenceClip, int parentFrame, int parentFps, int childFps)
+    {
+        var sourceSeconds = SourceSecondsFor(sequenceClip, parentFrame, Math.Max(1, parentFps));
+        return (int)Math.Round(sourceSeconds * Math.Max(1, childFps), MidpointRounding.AwayFromZero);
     }
 
     /// <summary>Maps a timeline frame inside the clip to seconds into the source media.</summary>
@@ -40,7 +63,9 @@ public static class TimelineFrameRouter
         return sourceFrame / fps;
     }
 
-    public static List<AudibleClip> AudibleClipsAt(Timeline timeline, int frame)
+    public static List<AudibleClip> AudibleClipsAt(
+        Timeline timeline, int frame,
+        Func<string, Timeline?>? resolveSequence = null, int depth = 0)
     {
         var audible = new List<AudibleClip>();
         foreach (var track in timeline.Tracks)
@@ -49,8 +74,20 @@ public static class TimelineFrameRouter
             foreach (var clip in track.Clips)
             {
                 if (!clip.Contains(frame)) continue;
-                var carriesAudio = clip.MediaType == ClipType.Audio
-                    || (clip.MediaType == ClipType.Video && clip.SourceClipType != ClipType.Sequence);
+
+                if (clip.SourceClipType == ClipType.Sequence)
+                {
+                    if (resolveSequence is null || depth >= MaxNestingDepth) continue;
+                    if (resolveSequence(clip.MediaRef) is not { } child) continue;
+                    var childFrame = ChildFrameFor(clip, frame, timeline.Fps, child.Fps);
+                    var carrierGain = clip.VolumeAt(frame);
+                    if (carrierGain <= 0) continue;
+                    foreach (var nested in AudibleClipsAt(child, childFrame, resolveSequence, depth + 1))
+                        audible.Add(nested with { Gain = nested.Gain * carrierGain });
+                    continue;
+                }
+
+                var carriesAudio = clip.MediaType is ClipType.Audio or ClipType.Video;
                 if (!carriesAudio) continue;
                 var gain = clip.VolumeAt(frame);
                 if (gain <= 0) continue;

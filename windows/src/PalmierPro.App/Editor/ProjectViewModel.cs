@@ -127,7 +127,10 @@ public sealed partial class ProjectViewModel : ObservableObject
     {
         if (_engine is null || ActiveTimeline is null) return;
         var paths = MediaResolver.ExpectedPathMap(Manifest.Entries, PackagePath);
-        _engine.Rebuild(ActiveTimeline, paths);
+        var sequences = ProjectFile?.Timelines
+            .Where(t => t.Id != ActiveTimeline.Id)
+            .ToDictionary(t => t.Id, t => t);
+        _engine.Rebuild(ActiveTimeline, paths, sequences);
     }
 
     public void TogglePlayback()

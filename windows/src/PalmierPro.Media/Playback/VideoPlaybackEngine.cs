@@ -33,12 +33,13 @@ public sealed class VideoPlaybackEngine : IDisposable
     // Engine-thread state.
     private Timeline? _timeline;
     private Dictionary<string, string> _mediaPaths = [];
+    private Dictionary<string, Timeline> _sequences = [];
     private readonly Dictionary<string, VideoFrameExtractor> _readers = [];
     private readonly LinkedList<string> _readerUse = [];
     private int _lastPresentedFrame = -1;
 
     // Shared command state (guarded by _lock).
-    private (Timeline Timeline, Dictionary<string, string> Paths)? _pendingRebuild;
+    private (Timeline Timeline, Dictionary<string, string> Paths, Dictionary<string, Timeline> Sequences)? _pendingRebuild;
     private int? _pendingSeekFrame;
     private SeekMode _pendingSeekMode;
     private DateTime _lastInteractiveFlush = DateTime.MinValue;
@@ -77,9 +78,17 @@ public sealed class VideoPlaybackEngine : IDisposable
     }
 
     /// <summary>Replaces the playable timeline snapshot; keeps the playhead position.</summary>
-    public void Rebuild(Timeline timeline, IReadOnlyDictionary<string, string> mediaPaths)
+    public void Rebuild(
+        Timeline timeline, IReadOnlyDictionary<string, string> mediaPaths,
+        IReadOnlyDictionary<string, Timeline>? sequences = null)
     {
-        lock (_lock) _pendingRebuild = (timeline, new Dictionary<string, string>(mediaPaths));
+        lock (_lock)
+        {
+            _pendingRebuild = (
+                timeline,
+                new Dictionary<string, string>(mediaPaths),
+                sequences is null ? [] : new Dictionary<string, Timeline>(sequences));
+        }
         _wake.Set();
     }
 
@@ -129,7 +138,7 @@ public sealed class VideoPlaybackEngine : IDisposable
     {
         while (!_disposed)
         {
-            (Timeline, Dictionary<string, string>)? rebuild;
+            (Timeline, Dictionary<string, string>, Dictionary<string, Timeline>)? rebuild;
             int? seek;
             bool playRequested;
             double rate;
@@ -147,9 +156,10 @@ public sealed class VideoPlaybackEngine : IDisposable
             {
                 _timeline = r.Item1;
                 _mediaPaths = r.Item2;
+                _sequences = r.Item3;
                 CloseAllReaders();
                 _lastPresentedFrame = -1;
-                _audio.Rebuild(r.Item1, r.Item2);
+                _audio.Rebuild(r.Item1, r.Item2, r.Item3);
             }
 
             if (_timeline is null)
@@ -235,7 +245,8 @@ public sealed class VideoPlaybackEngine : IDisposable
         if (frame == _lastPresentedFrame) return;
         _lastPresentedFrame = frame;
 
-        var source = TimelineFrameRouter.VideoSourceAt(_timeline, frame);
+        var source = TimelineFrameRouter.VideoSourceAt(
+            _timeline, frame, id => _sequences.GetValueOrDefault(id));
         if (source is null || !_mediaPaths.TryGetValue(source.Clip.MediaRef, out var path))
         {
             _presenter.Clear();

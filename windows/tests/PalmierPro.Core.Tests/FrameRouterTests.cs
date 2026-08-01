@@ -87,4 +87,79 @@ public class FrameRouterTests
         var b = new Track { Type = ClipType.Audio, Clips = [VideoClip("b", 100, 20)] };
         Assert.Equal(120, TimelineFrameRouter.DurationFrames(MakeTimeline(a, b)));
     }
+
+    // MARK: - Nested sequences
+
+    private static Clip SequenceClip(string childId, int start, int duration, int trimStart = 0)
+        => new()
+        {
+            MediaRef = childId,
+            MediaType = ClipType.Video,
+            SourceClipType = ClipType.Sequence,
+            StartFrame = start,
+            DurationFrames = duration,
+            TrimStartFrame = trimStart,
+        };
+
+    [Fact]
+    public void SequenceClipResolvesIntoChildTimeline()
+    {
+        var child = MakeTimeline(new Track
+        {
+            Type = ClipType.Video,
+            Clips = [VideoClip("inner", 0, 100, trimStart: 30)],
+        });
+        child.Id = "child";
+        var parent = MakeTimeline(new Track
+        {
+            Type = ClipType.Video,
+            Clips = [SequenceClip("child", 10, 50, trimStart: 15)],
+        });
+
+        // Parent frame 40 → 30 frames into the carrier + 15 trim = child frame 45.
+        var source = TimelineFrameRouter.VideoSourceAt(
+            parent, 40, id => id == "child" ? child : null);
+        Assert.NotNull(source);
+        Assert.Equal("inner", source.Clip.MediaRef);
+        Assert.Equal((30 + 45) / 30.0, source.SourceSeconds, 9);
+    }
+
+    [Fact]
+    public void SequenceWithoutResolverOrTargetIsSkipped()
+    {
+        var under = new Track { Type = ClipType.Video, Clips = [VideoClip("under", 0, 100)] };
+        var over = new Track { Type = ClipType.Video, Clips = [SequenceClip("missing", 0, 100)] };
+        var timeline = MakeTimeline(under, over);
+
+        Assert.Equal("under", TimelineFrameRouter.VideoSourceAt(timeline, 10)!.Clip.MediaRef);
+        Assert.Equal("under", TimelineFrameRouter.VideoSourceAt(timeline, 10, _ => null)!.Clip.MediaRef);
+    }
+
+    [Fact]
+    public void SelfReferencingSequenceTerminates()
+    {
+        var timeline = MakeTimeline(new Track
+        {
+            Type = ClipType.Video,
+            Clips = [SequenceClip("self", 0, 100)],
+        });
+        timeline.Id = "self";
+        Assert.Null(TimelineFrameRouter.VideoSourceAt(timeline, 10, _ => timeline));
+    }
+
+    [Fact]
+    public void NestedAudioScalesByCarrierGain()
+    {
+        var childClip = VideoClip("inner", 0, 100);
+        childClip.Volume = 0.5;
+        var child = MakeTimeline(new Track { Type = ClipType.Video, Clips = [childClip] });
+        var carrier = SequenceClip("child", 0, 100);
+        carrier.Volume = 0.5;
+        var parent = MakeTimeline(new Track { Type = ClipType.Video, Clips = [carrier] });
+
+        var audible = TimelineFrameRouter.AudibleClipsAt(parent, 10, _ => child);
+        Assert.Single(audible);
+        Assert.Equal("inner", audible[0].Clip.MediaRef);
+        Assert.Equal(0.25, audible[0].Gain, 9);
+    }
 }

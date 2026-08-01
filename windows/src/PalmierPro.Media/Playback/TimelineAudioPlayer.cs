@@ -19,13 +19,17 @@ public sealed class TimelineAudioPlayer : IDisposable
     private WasapiOutWrapper? _output;
     private Timeline? _timeline;
     private Dictionary<string, string> _mediaPaths = [];
+    private Dictionary<string, Timeline> _sequences = [];
 
-    public void Rebuild(Timeline timeline, IReadOnlyDictionary<string, string> mediaPaths)
+    public void Rebuild(
+        Timeline timeline, IReadOnlyDictionary<string, string> mediaPaths,
+        IReadOnlyDictionary<string, Timeline>? sequences = null)
     {
         lock (_lock)
         {
             _timeline = timeline;
             _mediaPaths = new Dictionary<string, string>(mediaPaths);
+            _sequences = sequences is null ? [] : new Dictionary<string, Timeline>(sequences);
         }
     }
 
@@ -35,7 +39,7 @@ public sealed class TimelineAudioPlayer : IDisposable
         {
             StopLocked();
             _timeline = timeline;
-            var mixer = new TimelineMixerProvider(timeline, _mediaPaths, fromFrame, rate);
+            var mixer = new TimelineMixerProvider(timeline, _mediaPaths, _sequences, fromFrame, rate);
             try
             {
                 _output = new WasapiOutWrapper(mixer);
@@ -90,6 +94,7 @@ internal sealed class TimelineMixerProvider : ISampleProvider, IDisposable
 {
     private readonly Timeline _timeline;
     private readonly Dictionary<string, string> _mediaPaths;
+    private readonly Dictionary<string, Timeline> _sequences;
     private readonly double _rate;
     private readonly int _fps;
     private double _timelineSeconds;
@@ -101,10 +106,12 @@ internal sealed class TimelineMixerProvider : ISampleProvider, IDisposable
         TimelineAudioPlayer.SampleRate, TimelineAudioPlayer.Channels);
 
     public TimelineMixerProvider(
-        Timeline timeline, Dictionary<string, string> mediaPaths, int fromFrame, double rate)
+        Timeline timeline, Dictionary<string, string> mediaPaths,
+        Dictionary<string, Timeline> sequences, int fromFrame, double rate)
     {
         _timeline = timeline;
         _mediaPaths = mediaPaths;
+        _sequences = sequences;
         _rate = rate;
         _fps = Math.Max(1, timeline.Fps);
         _timelineSeconds = fromFrame / (double)_fps;
@@ -120,7 +127,8 @@ internal sealed class TimelineMixerProvider : ISampleProvider, IDisposable
             var bufferSeconds = framesRequested / (double)TimelineAudioPlayer.SampleRate * _rate;
             var timelineFrame = (int)(_timelineSeconds * _fps);
 
-            var audible = TimelineFrameRouter.AudibleClipsAt(_timeline, timelineFrame);
+            var audible = TimelineFrameRouter.AudibleClipsAt(
+                _timeline, timelineFrame, id => _sequences.GetValueOrDefault(id));
             foreach (var entry in audible)
             {
                 if (!_mediaPaths.TryGetValue(entry.Clip.MediaRef, out var path)) continue;
