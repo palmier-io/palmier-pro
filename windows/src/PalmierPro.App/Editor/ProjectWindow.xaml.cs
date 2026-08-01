@@ -39,7 +39,12 @@ public sealed partial class ProjectWindow : Window
             }
         };
 
-        ViewModel.TimelineChanged += () => TimelineView.Refresh();
+        ViewModel.TimelineChanged += () =>
+        {
+            TimelineView.Refresh();
+            Inspector.Rebuild();
+        };
+        TimelineView.SelectionChanged += () => Inspector.Rebuild();
         TimelineView.ScrubRequested += (frame, final) =>
         {
             if (final) ViewModel.SeekExact(frame);
@@ -140,6 +145,8 @@ public sealed partial class ProjectWindow : Window
         TimelineView.VisualCache = ViewModel.VisualCache;
         TimelineView.SetTimeline(ViewModel.ActiveTimeline);
         ViewModel.MediaVisualsUpdated += TimelineView.InvalidateMediaVisuals;
+        Inspector.Attach(ViewModel.EditOperations,
+            () => TimelineView.SelectedClipIds, ViewModel.ProjectName);
     }
 
     private string? _clipClipboard;

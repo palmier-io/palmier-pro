@@ -616,6 +616,54 @@ public sealed partial class TimelineEditOperations(Timeline timeline, EditorUndo
         return true;
     }
 
+    // MARK: - Clip properties
+
+    /// <summary>Static clip opacity in [0, 1] (visual clips only).</summary>
+    public bool SetClipOpacity(string clipId, double opacity)
+    {
+        if (!double.IsFinite(opacity) || opacity < 0 || opacity > 1) return false;
+        if (FindClip(clipId) is not { } found || !found.Clip.MediaType.IsVisual()) return false;
+        var clip = found.Clip;
+        if (Math.Abs(clip.Opacity - opacity) < 1e-9) return false;
+        MutateWithTimelineSwap("Change Opacity", () => clip.Opacity = opacity);
+        return true;
+    }
+
+    /// <summary>Clip volume in dB within [−60, +15]; −60 mutes. Propagates to linked partners.</summary>
+    public bool SetClipVolumeDb(string clipId, double db, bool propagateToLinked = true)
+    {
+        if (!double.IsFinite(db) || db < VolumeScale.FloorDb || db > VolumeScale.CeilingDb) return false;
+        if (FindClip(clipId) is not { } found) return false;
+        var linear = VolumeScale.LinearFromDb(db);
+
+        var targets = new List<Clip> { found.Clip };
+        if (propagateToLinked)
+        {
+            targets.AddRange(LinkedPartnerIds(clipId)
+                .Select(id => FindClip(id)?.Clip)
+                .Where(c => c is not null && c.MediaType == ClipType.Audio)
+                .Select(c => c!));
+        }
+        if (targets.All(c => Math.Abs(c.Volume - linear) < 1e-9)) return false;
+
+        MutateWithTimelineSwap("Change Volume", () =>
+        {
+            foreach (var clip in targets) clip.Volume = linear;
+        });
+        return true;
+    }
+
+    /// <summary>Fade length for one edge, clamped to fit the clip's duration.</summary>
+    public bool SetClipFade(string clipId, FadeEdge edge, int frames)
+    {
+        if (frames < 0) return false;
+        if (FindClip(clipId) is not { } found) return false;
+        var clip = found.Clip;
+        if (clip.FadeFrames(edge) == Math.Min(frames, clip.DurationFrames)) return false;
+        MutateWithTimelineSwap("Change Fade", () => clip.SetFade(edge, frames));
+        return true;
+    }
+
     // MARK: - Shared helpers
 
     private static Clip Clone(Clip clip)

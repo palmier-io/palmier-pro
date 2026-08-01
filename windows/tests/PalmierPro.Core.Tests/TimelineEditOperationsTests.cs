@@ -188,6 +188,60 @@ public class TimelineEditOperationsTests
         Assert.False(_manager.CanUndo);
     }
 
+    // MARK: - Clip properties
+
+    [Fact]
+    public void SetOpacityValidatesAndUndoes()
+    {
+        var ops = MakeOps(OneTrack(VideoClip("a", 0, 60)));
+        Assert.False(ops.SetClipOpacity("a", -0.1));
+        Assert.False(ops.SetClipOpacity("a", 1.1));
+        Assert.False(ops.SetClipOpacity("a", double.NaN));
+        Assert.False(ops.SetClipOpacity("a", 1.0)); // unchanged: no-op, no undo entry
+        Assert.False(_manager.CanUndo);
+
+        Assert.True(ops.SetClipOpacity("a", 0.5));
+        Assert.Equal(0.5, ClipById(ops.Timeline, "a").Opacity);
+        _manager.Undo();
+        Assert.Equal(1.0, ClipById(ops.Timeline, "a").Opacity);
+    }
+
+    [Fact]
+    public void SetVolumeDbPropagatesToLinkedAudio()
+    {
+        var video = VideoClip("v", 0, 60);
+        video.LinkGroupId = "grp";
+        var audio = AudioClip("a", 0, 60);
+        audio.LinkGroupId = "grp";
+        var timeline = new Timeline
+        {
+            Tracks =
+            [
+                new Track { Type = ClipType.Video, Clips = [video] },
+                new Track { Type = ClipType.Audio, Clips = [audio] },
+            ],
+        };
+        var ops = MakeOps(timeline);
+
+        Assert.True(ops.SetClipVolumeDb("v", -6));
+        var expected = VolumeScale.LinearFromDb(-6);
+        Assert.Equal(expected, ClipById(ops.Timeline, "v").Volume, 12);
+        Assert.Equal(expected, ClipById(ops.Timeline, "a").Volume, 12);
+
+        Assert.False(ops.SetClipVolumeDb("v", -100)); // below floor
+        Assert.False(ops.SetClipVolumeDb("v", -6));   // unchanged
+    }
+
+    [Fact]
+    public void SetFadeClampsToDuration()
+    {
+        var ops = MakeOps(OneTrack(AudioClip("a", 0, 30)));
+        Assert.True(ops.SetClipFade("a", FadeEdge.Left, 100));
+        Assert.Equal(30, ClipById(ops.Timeline, "a").FadeInFrames);
+        Assert.False(ops.SetClipFade("a", FadeEdge.Left, 40)); // clamps to same value: no-op
+        Assert.False(ops.SetClipFade("a", FadeEdge.Right, -1));
+    }
+
     // MARK: - Ripple trim
 
     [Fact]
