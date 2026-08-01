@@ -431,8 +431,10 @@ public sealed partial class ProjectViewModel : ObservableObject
 
             var fps = Math.Max(1, timeline.Fps);
             var cursor = Math.Max(0, startFrame);
+            var firstPlacedFrame = cursor;
             var placed = 0;
             var manifestDirty = false;
+            var durationUnknown = 0;
             foreach (var mediaRef in distinctRefs)
             {
                 var asset = MediaItems.FirstOrDefault(m => m.Asset.Id == mediaRef)?.Asset;
@@ -450,11 +452,19 @@ public sealed partial class ProjectViewModel : ObservableObject
                 var trackIndex = ResolveDropTrackIndex(ops, timeline, asset.Type, preferredTrackIndex);
                 if (trackIndex < 0) continue;
 
-                var durationSeconds = asset.Duration > 0
-                    ? asset.Duration
-                    : asset.Type == ClipType.Image
-                        ? EditorDefaults.ImageDurationSeconds
-                        : 5;
+                double durationSeconds;
+                if (asset.Duration > 0)
+                    durationSeconds = asset.Duration;
+                else if (asset.Type == ClipType.Image)
+                    durationSeconds = EditorDefaults.ImageDurationSeconds;
+                else
+                {
+                    // Last resort so the clip is visible; status warns below.
+                    durationSeconds = 5;
+                    durationUnknown += 1;
+                }
+                if (asset.Duration <= 0) asset.Duration = durationSeconds;
+
                 var durationFrames = TimelineEditOperations.SecondsToFrames(durationSeconds, fps);
                 var hasAudio = asset.HasAudio ?? asset.Type is ClipType.Video or ClipType.Audio;
                 var ids = ops.PlaceClip(new PlaceClipRequest(
@@ -467,11 +477,12 @@ public sealed partial class ProjectViewModel : ObservableObject
                     durationFrames,
                     AddLinkedAudio: hasAudio && asset.Type is ClipType.Video or ClipType.Sequence));
                 if (ids.Count == 0) continue;
+                if (placed == 0) firstPlacedFrame = cursor;
                 placed += 1;
                 cursor += durationFrames;
 
                 var entry = Manifest.Entries.FirstOrDefault(e => e.Id == asset.Id);
-                if (entry is not null && (entry.Duration <= 0 || entry.HasAudio is null))
+                if (entry is not null)
                 {
                     entry.Duration = asset.Duration;
                     entry.HasAudio = asset.HasAudio;
@@ -482,9 +493,20 @@ public sealed partial class ProjectViewModel : ObservableObject
                 }
             }
 
-            StatusText = placed > 0
-                ? $"Added {placed} clip{(placed == 1 ? "" : "s")} to the timeline"
-                : "Couldn’t place media on that track";
+            if (placed > 0)
+            {
+                // Preview the dropped clip — mutation otherwise seeks the old playhead.
+                PlayheadFrame = firstPlacedFrame;
+                UpdateTimecode(firstPlacedFrame);
+                SeekExact(firstPlacedFrame);
+                StatusText = durationUnknown > 0
+                    ? $"Added {placed} clip{(placed == 1 ? "" : "s")} (duration unknown — used 5s)"
+                    : $"Added {placed} clip{(placed == 1 ? "" : "s")} to the timeline";
+            }
+            else
+            {
+                StatusText = "Couldn’t place media on that track";
+            }
             if (manifestDirty) _ = SaveManifestAsync();
         });
     }
@@ -508,6 +530,70 @@ public sealed partial class ProjectViewModel : ObservableObject
     }
 
     public void SaveManifestFireAndForget() => _ = SaveManifestAsync();
+
+    /// <summary>
+    /// Removes library assets and every clip on every timeline that references them.
+    /// Mirrors Mac deleteMediaAssets.
+    /// </summary>
+    public int DeleteMediaAssets(IReadOnlyCollection<string> mediaRefs)
+    {
+        var doomed = mediaRefs
+            .Where(id => Manifest.Entries.Any(e => e.Id == id))
+            .ToHashSet(StringComparer.Ordinal);
+        if (doomed.Count == 0) return 0;
+
+        // Active timeline through EditOperations (undoable + linked partners).
+        if (EditOperations is not null && ActiveTimeline is not null)
+        {
+            var clipIds = ActiveTimeline.Tracks
+                .SelectMany(t => t.Clips)
+                .Where(c => doomed.Contains(c.MediaRef))
+                .Select(c => c.Id)
+                .ToList();
+            if (clipIds.Count > 0)
+                EditOperations.DeleteClips(clipIds);
+        }
+
+        // Other timelines: strip references without a separate undo step per timeline.
+        if (ProjectFile is not null)
+        {
+            foreach (var timeline in ProjectFile.Timelines)
+            {
+                if (ReferenceEquals(timeline, ActiveTimeline)) continue;
+                foreach (var track in timeline.Tracks)
+                    track.Clips.RemoveAll(c => doomed.Contains(c.MediaRef));
+            }
+        }
+
+        Manifest.Entries.RemoveAll(e => doomed.Contains(e.Id));
+        for (var i = MediaItems.Count - 1; i >= 0; i--)
+        {
+            if (doomed.Contains(MediaItems[i].Asset.Id))
+                MediaItems.RemoveAt(i);
+        }
+
+        StatusText = doomed.Count == 1
+            ? "Deleted 1 media item"
+            : $"Deleted {doomed.Count} media items";
+        _ = SaveAsync();
+        RebuildEngine();
+        SeekExact(PlayheadFrame);
+        TimelineChanged?.Invoke();
+        return doomed.Count;
+    }
+
+    /// <summary>Drops UI tiles for assets no longer in the manifest; adds missing ones.</summary>
+    public void ReconcileMediaItemsFromManifest()
+    {
+        var ids = Manifest.Entries.Select(e => e.Id).ToHashSet(StringComparer.Ordinal);
+        for (var i = MediaItems.Count - 1; i >= 0; i--)
+        {
+            if (!ids.Contains(MediaItems[i].Asset.Id))
+                MediaItems.RemoveAt(i);
+        }
+        foreach (var entry in Manifest.Entries)
+            ReloadMediaItemCore(entry.Id);
+    }
 
     public void ReloadMediaItem(string mediaRef)
     {

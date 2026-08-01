@@ -68,7 +68,14 @@ public sealed class AgentEditorHost : IAgentEditorHost
 
     public void NotifyTimelineChanged() => _vm.RaiseTimelineChanged();
 
-    public void NotifyManifestChanged() => _vm.SaveManifestFireAndForget();
+    public void NotifyManifestChanged()
+    {
+        _vm.ReconcileMediaItemsFromManifest();
+        _vm.SaveManifestFireAndForget();
+    }
+
+    public int DeleteMediaAssets(IReadOnlyList<string> mediaRefs)
+        => _vm.DeleteMediaAssets(mediaRefs);
 
     public MediaManifestEntry? ResolveMedia(string mediaRef)
         => _vm.Manifest.Entries.FirstOrDefault(e =>

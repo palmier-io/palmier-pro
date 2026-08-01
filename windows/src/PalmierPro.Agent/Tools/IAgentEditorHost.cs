@@ -44,6 +44,11 @@ public interface IAgentEditorHost
     string DuplicateTimeline(string fromTimelineId, string? name);
     void NotifyTimelineChanged();
     void NotifyManifestChanged();
+    /// <summary>
+    /// Removes library assets and every timeline clip that references them.
+    /// Returns how many assets were removed.
+    /// </summary>
+    int DeleteMediaAssets(IReadOnlyList<string> mediaRefs);
     MediaManifestEntry? ResolveMedia(string mediaRef);
     IReadOnlyList<MulticamSource> MulticamGroups { get; }
     Dictionary<string, double> MulticamSourceDurations(MulticamSource group);

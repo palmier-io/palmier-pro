@@ -76,6 +76,14 @@ internal sealed class FakeAgentHost : IAgentEditorHost
     public void NotifyTimelineChanged() { }
     public void NotifyManifestChanged() { }
 
+    public int DeleteMediaAssets(IReadOnlyList<string> mediaRefs)
+    {
+        var doomed = mediaRefs.ToHashSet(StringComparer.Ordinal);
+        var before = Manifest.Entries.Count;
+        Manifest.Entries.RemoveAll(e => doomed.Contains(e.Id));
+        return before - Manifest.Entries.Count;
+    }
+
     public MediaManifestEntry? ResolveMedia(string mediaRef)
         => Manifest.Entries.FirstOrDefault(e => e.Id == mediaRef
             || e.Id.StartsWith(mediaRef, StringComparison.OrdinalIgnoreCase));

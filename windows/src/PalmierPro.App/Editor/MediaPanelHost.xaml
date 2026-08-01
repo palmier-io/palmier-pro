@@ -13,13 +13,21 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Row 1: Import · New Folder · Generate -->
+        <!-- Row 1: Import · New Folder · Delete · Generate -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" Padding="10,10,10,4">
             <Button x:Name="ImportButton" FontSize="{StaticResource FontSizeSmMd}"
                     Padding="10,4" Click="OnImportClicked" />
             <Button x:Name="NewFolderButton" Content="New Folder"
                     FontSize="{StaticResource FontSizeSmMd}" Padding="10,4"
                     Click="OnNewFolderClicked" />
+            <Button x:Name="DeleteButton" FontSize="{StaticResource FontSizeSmMd}"
+                    Padding="10,4" Click="OnDeleteClicked" IsEnabled="False"
+                    ToolTipService.ToolTip="Delete selected media">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <FontIcon Glyph="&#xE74D;" FontSize="11" />
+                    <TextBlock x:Name="DeleteButtonLabel" Text="Delete" FontSize="12" />
+                </StackPanel>
+            </Button>
             <Button x:Name="GenerateToolbarButton" FontSize="{StaticResource FontSizeSmMd}"
                     Padding="10,4" Click="OnGenerateToolbarClicked">
                 <StackPanel Orientation="Horizontal" Spacing="4">
@@ -47,7 +55,9 @@
                           SelectionMode="Extended" IsItemClickEnabled="True"
                           CanDragItems="True"
                           DragItemsStarting="OnMediaDragItemsStarting"
-                          SelectionChanged="OnMediaSelectionChanged">
+                          SelectionChanged="OnMediaSelectionChanged"
+                          RightTapped="OnMediaGridRightTapped"
+                          KeyDown="OnMediaGridKeyDown">
                     <GridView.ItemTemplate>
                         <DataTemplate x:DataType="local:MediaItemViewModel">
                             <StackPanel Width="126" Spacing="4" Loaded="OnMediaTileLoaded">
@@ -102,7 +112,10 @@
                 <GridView x:Name="AudioGrid" Padding="8"
                           SelectionMode="Extended" IsItemClickEnabled="True"
                           CanDragItems="True"
-                          DragItemsStarting="OnMediaDragItemsStarting">
+                          DragItemsStarting="OnMediaDragItemsStarting"
+                          SelectionChanged="OnMediaSelectionChanged"
+                          RightTapped="OnMediaGridRightTapped"
+                          KeyDown="OnMediaGridKeyDown">
                     <GridView.ItemTemplate>
                         <DataTemplate x:DataType="local:MediaItemViewModel">
                             <StackPanel Width="126" Spacing="4" Loaded="OnMediaTileLoaded">

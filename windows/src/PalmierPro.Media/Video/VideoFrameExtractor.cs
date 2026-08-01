@@ -26,28 +26,51 @@ public sealed class VideoFrameExtractor : IDisposable
         using var attributes = MediaFactory.MFCreateAttributes(1);
         // Enables the processor that handles YUV → RGB conversion and rotation metadata.
         attributes.Set(SourceReaderAttributeKeys.EnableAdvancedVideoProcessing, true);
-        _reader = MediaFactory.MFCreateSourceReaderFromURL(path, attributes);
+        _reader = MediaFactory.MFCreateSourceReaderFromURL(ToMfUrl(path), attributes);
 
         _reader.SetStreamSelection(SourceReaderIndex.AllStreams, false);
         _reader.SetStreamSelection(SourceReaderIndex.FirstVideoStream, true);
 
-        using (var rgbType = MediaFactory.MFCreateMediaType())
+        // Prefer RGB32; if the decoder rejects it, keep the native type and convert later.
+        try
         {
+            using var rgbType = MediaFactory.MFCreateMediaType();
             rgbType.Set(MediaTypeAttributeKeys.MajorType, MediaTypeGuids.Video);
             rgbType.Set(MediaTypeAttributeKeys.Subtype, VideoFormatGuids.Rgb32);
             _reader.SetCurrentMediaType(SourceReaderIndex.FirstVideoStream, rgbType);
+        }
+        catch
+        {
+            // Some containers only expose NV12/YUY2 until the first ReadSample; size still readable.
         }
 
         using (var current = _reader.GetCurrentMediaType(SourceReaderIndex.FirstVideoStream))
         {
             var packedSize = current.GetUInt64(MediaTypeAttributeKeys.FrameSize);
-            NativeWidth = (int)(packedSize >> 32);
-            NativeHeight = (int)(packedSize & 0xFFFFFFFF);
+            NativeWidth = Math.Max(1, (int)(packedSize >> 32));
+            NativeHeight = Math.Max(1, (int)(packedSize & 0xFFFFFFFF));
         }
 
-        var duration = _reader.GetPresentationAttribute(
-            SourceReaderIndex.MediaSource, PresentationDescriptionAttributeKeys.Duration);
-        DurationSeconds = Convert.ToInt64(duration.Value) / 10_000_000.0;
+        // Duration is optional — missing/unreadable attributes must not kill the reader.
+        try
+        {
+            var duration = _reader.GetPresentationAttribute(
+                SourceReaderIndex.MediaSource, PresentationDescriptionAttributeKeys.Duration);
+            var seconds = Convert.ToInt64(duration.Value) / 10_000_000.0;
+            DurationSeconds = double.IsFinite(seconds) && seconds > 0 ? seconds : 0;
+        }
+        catch
+        {
+            DurationSeconds = 0;
+        }
+    }
+
+    /// <summary>MF source readers expect a URL; bare Win32 paths fail for some files.</summary>
+    internal static string ToMfUrl(string path)
+    {
+        if (path.StartsWith("file:", StringComparison.OrdinalIgnoreCase)) return path;
+        try { return new Uri(Path.GetFullPath(path)).AbsoluteUri; }
+        catch { return path; }
     }
 
     /// <summary>

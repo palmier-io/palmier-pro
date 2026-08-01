@@ -15,6 +15,8 @@
     <EnableMsixTooling>true</EnableMsixTooling>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>PalmierPro</AssemblyName>
+    <!-- Explorer / exe icon; taskbar also needs AppWindow.SetIcon at runtime. -->
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.*" />
@@ -28,5 +30,8 @@
     <ProjectReference Include="..\PalmierPro.Media\PalmierPro.Media.csproj" />
     <ProjectReference Include="..\PalmierPro.Agent\PalmierPro.Agent.csproj" />
     <ProjectReference Include="..\PalmierPro.Cloud\PalmierPro.Cloud.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

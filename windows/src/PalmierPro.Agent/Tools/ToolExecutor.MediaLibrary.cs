@@ -213,6 +213,7 @@ public sealed partial class ToolExecutor
 
         if (ToolArgs.Array(args, "deletes") is { } deletes)
         {
+            var assetDeletes = new List<string>();
             foreach (var raw in deletes.EnumerateArray())
             {
                 var item = raw.ValueKind == JsonValueKind.String ? raw.GetString() : ToolArgs.String(raw, "item");
@@ -220,8 +221,7 @@ public sealed partial class ToolExecutor
                 var entry = host.ResolveMedia(item);
                 if (entry is not null)
                 {
-                    manifest.Entries.RemoveAll(e => e.Id == entry.Id);
-                    deletedAssets++;
+                    assetDeletes.Add(entry.Id);
                     continue;
                 }
                 var folderId = MediaFolderOps.ResolveFolderId(manifest, item);
@@ -231,6 +231,8 @@ public sealed partial class ToolExecutor
                     e.FolderId = null;
                 deletedFolders++;
             }
+            if (assetDeletes.Count > 0)
+                deletedAssets = host.DeleteMediaAssets(assetDeletes);
         }
 
         if (created.Count == 0 && moved == 0 && renamed == 0 && deletedAssets == 0 && deletedFolders == 0)

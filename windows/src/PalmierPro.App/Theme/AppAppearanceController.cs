@@ -109,6 +109,7 @@ public static class AppAppearanceController
             if (window.Content is FrameworkElement root && root.RequestedTheme != theme)
                 root.RequestedTheme = theme;
             ApplyTitleBar(window, theme);
+            WindowIcon.Apply(window);
         }
         catch
         {

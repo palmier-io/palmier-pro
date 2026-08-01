@@ -21,8 +21,15 @@ public sealed partial class MediaPanelHost : UserControl
     public event EventHandler? MediaSelectionChanged;
     public event EventHandler<int>? SeekRequested;
 
-    public IReadOnlyList<string> SelectedMediaRefs =>
-        MediaGrid.SelectedItems.OfType<MediaItemViewModel>().Select(m => m.Asset.Id).ToList();
+    public IReadOnlyList<string> SelectedMediaRefs
+    {
+        get
+        {
+            var fromMedia = MediaGrid.SelectedItems.OfType<MediaItemViewModel>().Select(m => m.Asset.Id);
+            var fromAudio = AudioGrid.SelectedItems.OfType<MediaItemViewModel>().Select(m => m.Asset.Id);
+            return fromMedia.Concat(fromAudio).Distinct(StringComparer.Ordinal).ToList();
+        }
+    }
 
     public MediaPanelHost()
     {
@@ -48,10 +55,95 @@ public sealed partial class MediaPanelHost : UserControl
         _ = LoadModelsAsync();
     }
 
+    /// <summary>
+    /// Deletes the current media-library selection when the panel owns focus.
+    /// Returns true when Delete was handled (so the timeline shouldn't also delete).
+    /// </summary>
+    public bool TryDeleteSelection()
+    {
+        if (!IsMediaPanelFocused()) return false;
+        var ids = SelectedMediaRefs;
+        if (ids.Count == 0) return false;
+        DeleteMedia(ids);
+        return true;
+    }
+
+    private bool IsMediaPanelFocused()
+    {
+        try
+        {
+            var focused = FocusManager.GetFocusedElement(XamlRoot);
+            return focused is DependencyObject node && IsDescendantOf(node, this);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsDescendantOf(DependencyObject node, DependencyObject ancestor)
+    {
+        for (var current = node; current is not null;
+             current = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(current))
+        {
+            if (ReferenceEquals(current, ancestor)) return true;
+        }
+        return false;
+    }
+
+    private void OnMediaGridKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key is not (Windows.System.VirtualKey.Delete or Windows.System.VirtualKey.Back))
+            return;
+        var ids = SelectedMediaRefs;
+        if (ids.Count == 0) return;
+        DeleteMedia(ids);
+        e.Handled = true;
+    }
+
+    private void OnMediaGridRightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if (sender is not ListViewBase grid) return;
+        var ids = SelectedMediaRefs.ToList();
+        // Right-click on an unselected tile: target that tile.
+        if (e.OriginalSource is FrameworkElement { DataContext: MediaItemViewModel item }
+            && !ids.Contains(item.Asset.Id))
+        {
+            grid.SelectedItems.Clear();
+            grid.SelectedItems.Add(item);
+            ids = [item.Asset.Id];
+        }
+        if (ids.Count == 0) return;
+
+        var menu = new MenuFlyout();
+        var delete = new MenuFlyoutItem
+        {
+            Text = ids.Count == 1 ? "Delete" : $"Delete {ids.Count} Items",
+        };
+        delete.Click += (_, _) => DeleteMedia(ids);
+        menu.Items.Add(delete);
+        if (e.OriginalSource is UIElement anchor)
+            menu.ShowAt(anchor, e.GetPosition(anchor));
+        else
+            menu.ShowAt(grid, e.GetPosition(grid));
+        e.Handled = true;
+    }
+
+    private void DeleteMedia(IReadOnlyList<string> ids)
+    {
+        if (_vm is null || ids.Count == 0) return;
+        var removed = _vm.DeleteMediaAssets(ids);
+        StatusTextBlock.Text = _vm.StatusText;
+        if (removed == 0)
+            StatusTextBlock.Text = "Couldn’t delete media";
+        RefreshDeleteButton();
+    }
+
     private void ApplyLocalizedChrome()
     {
         ImportButton.Content = "+ " + L10n.String("editor.import");
         NewFolderButton.Content = "New Folder";
+        DeleteButtonLabel.Text = "Delete";
         GenerateToolbarLabel.Text = "Generate";
         MediaTab.Header = L10n.String("editor.media");
         AudioTab.Header = "Audio";
@@ -152,7 +244,28 @@ public sealed partial class MediaPanelHost : UserControl
     }
 
     private void OnMediaSelectionChanged(object sender, SelectionChangedEventArgs e)
-        => MediaSelectionChanged?.Invoke(this, EventArgs.Empty);
+    {
+        RefreshDeleteButton();
+        MediaSelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnDeleteClicked(object sender, RoutedEventArgs e)
+    {
+        var ids = SelectedMediaRefs;
+        if (ids.Count == 0)
+        {
+            StatusTextBlock.Text = "Select media to delete";
+            return;
+        }
+        DeleteMedia(ids);
+    }
+
+    private void RefreshDeleteButton()
+    {
+        var count = SelectedMediaRefs.Count;
+        DeleteButton.IsEnabled = count > 0;
+        DeleteButtonLabel.Text = count > 1 ? $"Delete ({count})" : "Delete";
+    }
 
     private void OnSearchKeyDown(object sender, KeyRoutedEventArgs e)
     {

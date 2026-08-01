@@ -75,15 +75,37 @@ public static class MediaMetadataProbe
 
     private static Result ProbeVideo(string path)
     {
-        using var extractor = new VideoFrameExtractor(path);
-        var duration = extractor.DurationSeconds;
-        if (!double.IsFinite(duration) || duration < 0) duration = 0;
-        return new Result(
-            duration,
-            extractor.NativeWidth > 0 ? extractor.NativeWidth : null,
-            extractor.NativeHeight > 0 ? extractor.NativeHeight : null,
-            ProbeHasAudio(path),
-            SourceFps: null);
+        // NAudio's MF reader is more tolerant for duration than our RGB32 source reader.
+        var duration = ProbeDurationSeconds(path);
+        int? width = null, height = null;
+        try
+        {
+            using var extractor = new VideoFrameExtractor(path);
+            if (duration <= 0 && extractor.DurationSeconds > 0)
+                duration = extractor.DurationSeconds;
+            if (extractor.NativeWidth > 0) width = extractor.NativeWidth;
+            if (extractor.NativeHeight > 0) height = extractor.NativeHeight;
+        }
+        catch
+        {
+            // Size optional when only duration is needed for placement.
+        }
+
+        return new Result(duration, width, height, ProbeHasAudio(path), SourceFps: null);
+    }
+
+    private static double ProbeDurationSeconds(string path)
+    {
+        try
+        {
+            using var reader = new MediaFoundationReader(path);
+            var seconds = reader.TotalTime.TotalSeconds;
+            return double.IsFinite(seconds) && seconds > 0 ? seconds : 0;
+        }
+        catch
+        {
+            return 0;
+        }
     }
 
     private static bool ProbeHasAudio(string path)
@@ -92,7 +114,8 @@ public static class MediaMetadataProbe
         {
             using var attributes = MediaFactory.MFCreateAttributes(1);
             attributes.Set(SourceReaderAttributeKeys.EnableAdvancedVideoProcessing, true);
-            using var reader = MediaFactory.MFCreateSourceReaderFromURL(path, attributes);
+            using var reader = MediaFactory.MFCreateSourceReaderFromURL(
+                VideoFrameExtractor.ToMfUrl(path), attributes);
             reader.SetStreamSelection(SourceReaderIndex.AllStreams, false);
             try
             {

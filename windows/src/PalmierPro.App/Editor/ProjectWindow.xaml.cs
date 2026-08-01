@@ -129,6 +129,9 @@ public sealed partial class ProjectWindow : Window
 
         if (Content is UIElement root)
         {
+            // Canvas focus often skips KeyboardAccelerators; catch Delete at the window root.
+            root.PreviewKeyDown += OnRootPreviewKeyDown;
+
             AddAccelerator(root, Windows.System.VirtualKey.Z,
                 Windows.System.VirtualKeyModifiers.Control,
                 () => { if (ViewModel.UndoManager.CanUndo) ViewModel.UndoManager.Undo(); });
@@ -219,6 +222,27 @@ public sealed partial class ProjectWindow : Window
             e.Handled = true;
         };
         element.KeyboardAccelerators.Add(accelerator);
+    }
+
+    private void OnRootPreviewKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (IsTypingInTextField()) return;
+        var shift = Microsoft.UI.Input.InputKeyboardSource
+            .GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift)
+            .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+        if (e.Key is not (Windows.System.VirtualKey.Delete or Windows.System.VirtualKey.Back))
+            return;
+
+        // Media library selection takes priority when the panel holds focus.
+        if (MediaHost.TryDeleteSelection())
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (shift) RippleDeleteSelectedClips();
+        else DeleteSelectedClips();
+        e.Handled = true;
     }
 
     private async Task InitializeAsync()
@@ -355,22 +379,44 @@ public sealed partial class ProjectWindow : Window
 
     private void DeleteSelectedClips(IReadOnlyList<string>? ids = null)
     {
-        var clipIds = ids ?? TimelineView.SelectedClipIds.ToArray();
-        if (clipIds.Count == 0) return;
-        ViewModel.EditOperations?.DeleteClips(clipIds);
-        TimelineView.SelectedClipIds.Clear();
+        var ops = ViewModel.EditOperations;
+        if (ops is null) return;
+        var clipIds = ids is { Count: > 0 } ? ids : TimelineView.SelectedClipIds.ToArray();
+        if (clipIds.Count == 0)
+        {
+            ViewModel.StatusText = "Select a clip to delete";
+            return;
+        }
+        var removed = ops.DeleteClips(clipIds);
+        TimelineView.ClearSelection();
         TimelineView.Refresh();
         Inspector.Rebuild();
+        if (removed == 0) ViewModel.StatusText = "Couldn’t delete selection";
     }
 
     private void RippleDeleteSelectedClips(IReadOnlyList<string>? ids = null)
     {
-        var clipIds = ids ?? TimelineView.SelectedClipIds.ToArray();
-        if (clipIds.Count == 0) return;
-        ViewModel.EditOperations?.RippleDeleteClips(clipIds);
-        TimelineView.SelectedClipIds.Clear();
+        var ops = ViewModel.EditOperations;
+        if (ops is null) return;
+        var clipIds = ids is { Count: > 0 } ? ids : TimelineView.SelectedClipIds.ToArray();
+        if (clipIds.Count == 0)
+        {
+            ViewModel.StatusText = "Select a clip to delete";
+            return;
+        }
+        var ok = ops.RippleDeleteClips(clipIds);
+        TimelineView.ClearSelection();
         TimelineView.Refresh();
         Inspector.Rebuild();
+        if (!ok) ViewModel.StatusText = "Couldn’t ripple-delete selection";
+    }
+
+    private void EnsureClipSelected(string clipId)
+    {
+        if (TimelineView.SelectedClipIds.Contains(clipId)) return;
+        TimelineView.SelectedClipIds.Clear();
+        TimelineView.SelectedClipIds.Add(clipId);
+        TimelineView.Refresh();
     }
 
     private bool IsTypingInTextField()
@@ -391,7 +437,15 @@ public sealed partial class ProjectWindow : Window
         var ops = ViewModel.EditOperations;
         if (ops is null || ops.FindClip(clipId) is not { } found) return;
         var clip = found.Clip;
-        var selection = () => TimelineView.SelectedClipIds.ToArray();
+        // Flyout open can clear keyboard focus; never rely on selection alone —
+        // always include the right-clicked clip.
+        string[] SelectionOrTarget()
+        {
+            var selected = TimelineView.SelectedClipIds.ToArray();
+            if (selected.Length == 0) return [clipId];
+            if (!selected.Contains(clipId)) return [.. selected, clipId];
+            return selected;
+        }
 
         var menu = new MenuFlyout();
 
@@ -402,21 +456,38 @@ public sealed partial class ProjectWindow : Window
             menu.Items.Add(item);
         }
 
-        Add("Split", () => ops.SplitClipsAt(frame, selection()),
+        Add("Split", () => ops.SplitClipsAt(frame, SelectionOrTarget()),
             frame > clip.StartFrame && frame < clip.EndFrame);
-        Add("Copy", CopySelection);
-        Add("Cut", CutSelection);
-        Add("Delete", () => ops.DeleteClips(selection()));
-        Add("Ripple Delete", () => ops.RippleDeleteClips(selection()));
+        Add("Copy", () =>
+        {
+            EnsureClipSelected(clipId);
+            CopySelection();
+        });
+        Add("Cut", () =>
+        {
+            EnsureClipSelected(clipId);
+            CutSelection();
+        });
+        Add("Delete", () => DeleteSelectedClips(SelectionOrTarget()));
+        Add("Ripple Delete", () => RippleDeleteSelectedClips(SelectionOrTarget()));
         menu.Items.Add(new MenuFlyoutSeparator());
 
         var linked = clip.LinkGroupId is not null;
         Add(linked ? "Unlink Clips" : "Link Clips",
-            () => { if (linked) ops.UnlinkClips(selection()); else ops.LinkClips(selection()); },
+            () =>
+            {
+                var ids = SelectionOrTarget();
+                if (linked) ops.UnlinkClips(ids);
+                else ops.LinkClips(ids);
+            },
             linked || TimelineView.SelectedClipIds.Count > 1);
 
         menu.Items.Add(new MenuFlyoutSeparator());
-        Add("Nest Clips", () => NestSelection(), TimelineView.SelectedClipIds.Count >= 1);
+        Add("Nest Clips", () =>
+        {
+            EnsureClipSelected(clipId);
+            NestSelection();
+        }, true);
         Add("Unnest", () => UnnestSelection(),
             clip.SourceClipType == PalmierPro.Core.Models.ClipType.Sequence
             || clip.MediaType == PalmierPro.Core.Models.ClipType.Sequence);

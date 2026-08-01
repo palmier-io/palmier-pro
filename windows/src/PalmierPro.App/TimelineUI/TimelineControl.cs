@@ -163,6 +163,14 @@ public sealed class TimelineControl : UserControl
 
     public void Refresh() => _canvas.Invalidate();
 
+    public void ClearSelection()
+    {
+        SelectedClipIds.Clear();
+        SelectedGap = null;
+        SelectionChanged?.Invoke();
+        _canvas.Invalidate();
+    }
+
     /// <summary>Drops converted Win2D bitmaps for an asset (call when its visuals change).</summary>
     public void InvalidateMediaVisuals(string mediaRef)
     {

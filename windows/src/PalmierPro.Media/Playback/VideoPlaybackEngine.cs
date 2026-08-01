@@ -259,44 +259,36 @@ public sealed class VideoPlaybackEngine : IDisposable
 
         try
         {
-            var layers = FrameLayerPlanner.LayersAt(
+            // Preview uses the topmost visual source directly (pre-compositor path).
+            // Multi-layer D2D compose remains for export; it has been blanking preview
+            // when alpha / DrawBitmap fails on some GPUs.
+            var source = TimelineFrameRouter.VideoSourceAt(
                 _timeline, frame, id => _sequences.GetValueOrDefault(id));
-            if (layers.Count == 0)
+            if (source is null || !_mediaPaths.TryGetValue(source.Clip.MediaRef, out var path))
             {
                 _presenter.Clear();
                 _lastPresentedFrame = frame;
                 return;
             }
 
-            VideoFrame? presented = null;
-            try
+            VideoFrame? decoded = null;
+            if (source.Clip.MediaType == ClipType.Image)
+                decoded = StillFor(source.Clip.MediaRef, path);
+            else
             {
-                _compositor ??= new Compositing.D2DFrameCompositor();
-                presented = _compositor.Compose(
-                    Math.Max(2, _timeline.Width), Math.Max(2, _timeline.Height),
-                    layers, DecodeLayerFrame);
-            }
-            catch (Exception)
-            {
-                // Device loss: drop the compositor and fall back to single-layer present.
-                _compositor?.Dispose();
-                _compositor = null;
+                var reader = ReaderFor(source.Clip.MediaRef, path);
+                decoded = reader?.RawFrameAt(source.SourceSeconds);
             }
 
-            // Compositor can return an empty black frame when D2D alpha/draw fails;
-            // fall back to the proven single-source decode path.
-            if (presented is null || IsEmptyFrame(presented))
-                presented = DecodeTopLayer(layers);
-
-            if (presented is not null)
+            if (decoded is not null)
             {
-                _presenter.Present(presented);
+                _presenter.Present(decoded);
                 _lastPresentedFrame = frame;
             }
             else
             {
                 _presenter.Clear();
-                _lastPresentedFrame = frame;
+                // Leave _lastPresentedFrame unset so the next seek/play retries decode.
             }
         }
         catch (Exception)
@@ -304,40 +296,7 @@ public sealed class VideoPlaybackEngine : IDisposable
             _compositor?.Dispose();
             _compositor = null;
             _presenter.Clear();
-            // Do not stamp _lastPresentedFrame — allow the next seek to retry.
         }
-    }
-
-    private VideoFrame? DecodeTopLayer(IReadOnlyList<FrameLayer> layers)
-    {
-        for (var i = layers.Count - 1; i >= 0; i--)
-        {
-            var layer = layers[i];
-            if (layer.Kind == FrameLayerKind.Media)
-            {
-                var frame = DecodeLayerFrame(layer.Clip, layer.SourceSeconds);
-                if (frame is not null) return frame;
-            }
-        }
-        return null;
-    }
-
-    private static bool IsEmptyFrame(VideoFrame frame)
-    {
-        // Sample a grid; treat near-black as empty so a failed compose can fall back.
-        var bgra = frame.Bgra;
-        var stride = frame.Stride;
-        var samples = 0;
-        var lit = 0;
-        for (var y = 0; y < frame.Height; y += Math.Max(1, frame.Height / 6))
-        for (var x = 0; x < frame.Width; x += Math.Max(1, frame.Width / 6))
-        {
-            var i = y * stride + x * 4;
-            if (i + 2 >= bgra.Length) continue;
-            samples++;
-            if (bgra[i] > 8 || bgra[i + 1] > 8 || bgra[i + 2] > 8) lit++;
-        }
-        return samples > 0 && lit == 0;
     }
 
     private VideoFrame? DecodeLayerFrame(Clip clip, double sourceSeconds)
