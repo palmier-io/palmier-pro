@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct HomeView: View {
-    @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
+    @Bindable private var onboarding = OnboardingStore.shared
     @Bindable private var changelog = ChangelogStore.shared
 
     var body: some View {
@@ -24,14 +24,15 @@ struct HomeView: View {
         .task { await VisualModelLoader.shared.prepare() }
         .onAppear { changelog.checkForWhatsNew() }
         .overlay {
-            if !hasSeenWelcome {
-                WelcomeOverlay { withAnimation { hasSeenWelcome = true } }
+            if !onboarding.isComplete {
+                OnboardingOverlay(onboarding: onboarding)
             } else if let entry = changelog.pending {
                 UpdateOverlay(entry: entry, changelogURL: changelog.changelogURL) {
                     withAnimation { changelog.dismiss() }
                 }
             }
         }
+        .animation(.easeInOut(duration: AppTheme.Anim.transition), value: onboarding.isComplete)
     }
 
     private var content: some View {

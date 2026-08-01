@@ -59,6 +59,8 @@
 "AI Generated" = "AI生成";
 "AI agent" = "AIエージェント";
 "AI is unavailable" = "AIを利用できません";
+"AI transcription" = "AI文字起こし";
+"AI videos" = "AI動画";
 "About Palmier Pro" = "Palmier Proについて";
 "Account" = "アカウント";
 "Account settings" = "アカウント設定";
@@ -86,8 +88,10 @@
 "Added to %@" = "%@に追加しました";
 "Adjust" = "調整";
 "Adjust Range" = "範囲を調整";
+"Ads and branded content" = "広告・ブランドコンテンツ";
 "Agent Mode" = "エージェントモード";
 "Agent Panel" = "エージェントパネル";
+"Agentic editing" = "エージェント編集";
 "Alignment" = "配置";
 "All" = "すべて";
 "All fonts" = "すべてのフォント";
@@ -207,6 +211,7 @@
 "Connect an agent" = "エージェントを接続";
 "Connect an external agent to inspect and edit the open Palmier Pro project." = "外部エージェントを接続して、開いているPalmier Proプロジェクトの確認や編集を行います。";
 "Content" = "コンテンツ";
+"Content creator" = "コンテンツクリエイター";
 "Continue" = "続ける";
 "Contrast" = "コントラスト";
 "Copied" = "コピー済み";
@@ -274,6 +279,7 @@
 "Describe the video" = "ビデオを説明";
 "Description" = "説明";
 "Deselect & Reset Tool" = "選択解除してツールをリセット";
+"Designer" = "デザイナー";
 "Destination" = "書き出し先";
 "Detail" = "ディテール";
 "Details" = "詳細";
@@ -318,6 +324,7 @@
 "Editing" = "編集中";
 "Edit…" = "編集…";
 "Edit… (Paid)" = "編集…（有料）";
+"Education and tutorials" = "教育・チュートリアル";
 "Effects" = "エフェクト";
 "Email (optional)" = "メールアドレス（任意）";
 "Empty" = "空";
@@ -351,6 +358,7 @@
 "Fill" = "塗りつぶし";
 "Fill prompt" = "塗りつぶしプロンプト";
 "Film Grain" = "フィルムグレイン";
+"Filmmaker" = "映像作家";
 "First Frame" = "最初のフレーム";
 "First-time sign-ups only" = "初回登録のみ";
 "First/Last" = "最初/最後";
@@ -366,6 +374,7 @@
 "Footage" = "映像素材";
 "For" = "対象";
 "Forward" = "進む";
+"Founder" = "創業者";
 "Frame Rate" = "フレームレート";
 "Free" = "無料";
 "Full Frame" = "フルフレーム";
@@ -397,7 +406,6 @@
 "Generation panel" = "生成パネル";
 "Get Anthropic API key" = "Anthropic APIキーを取得";
 "Get a notification when a generation finishes." = "生成の完了時に通知を受け取ります。";
-"Get started" = "始める";
 "Getting the search model ready." = "検索モデルを準備しています。";
 "Glow" = "グロー";
 "Go to next keyframe" = "次のキーフレームへ移動";
@@ -413,6 +421,7 @@
 "Highlight" = "ハイライト";
 "Highlight Block" = "ハイライトブロック";
 "Highlights" = "ハイライト";
+"Hobbyist" = "趣味";
 "Hold" = "保持";
 "Hue" = "色相";
 "Hue Curves" = "色相カーブ";
@@ -444,6 +453,7 @@
 "Installed" = "インストール済み";
 "Instructions" = "手順";
 "Instrumental" = "インストゥルメンタル";
+"Integration with your own agent" = "自分のエージェントとの連携";
 "Integrations" = "連携";
 "Intensity" = "強度";
 "Invert Colors" = "カラーを反転";
@@ -510,6 +520,7 @@
 "Mark Range Start" = "範囲の開始位置をマーク";
 "Mark Silence" = "無音をマーク";
 "Mark Speakers" = "話者をマーク";
+"Marketer" = "マーケター";
 "Master Audio Meter" = "マスターオーディオメーター";
 "Master — defines the group's clock and transcript." = "マスター — グループのクロックと文字起こしを定義します。";
 "Match Timeline" = "タイムラインに合わせる";
@@ -612,6 +623,7 @@
 "Organize with Agent" = "エージェントで整理";
 "Original" = "オリジナル";
 "Original FPS" = "元のFPS";
+"Other" = "その他";
 "Outline" = "アウトライン";
 "Outline Color" = "アウトラインカラー";
 "Outline Width" = "アウトライン幅";
@@ -637,6 +649,7 @@
 "Playback" = "再生";
 "Playback Speed" = "再生速度";
 "Playback previews, waveforms, filmstrip thumbnails, and transcripts. Safe to clear; files rebuild as needed." = "再生プレビュー、波形、フィルムストリップのサムネイル、文字起こしです。安全に消去でき、必要に応じて再作成されます。";
+"Podcast" = "ポッドキャスト";
 "Pointer (V)" = "ポインタ（V）";
 "Pop In" = "ポップイン";
 "Position" = "位置";
@@ -646,6 +659,7 @@
 "Preview" = "プレビュー";
 "Privacy & Diagnostics" = "プライバシーと診断";
 "Pro plan" = "Proプラン";
+"Product demos" = "製品デモ";
 "Project" = "プロジェクト";
 "Project Activity" = "プロジェクトのアクティビティ";
 "Projects Couldn’t Be Deleted" = "プロジェクトを削除できませんでした";
@@ -724,6 +738,7 @@
 "Sample Key Color" = "キーカラーをサンプリング";
 "Sample Project" = "サンプルプロジェクト";
 "Sample key color" = "キーカラーをサンプリング";
+"Sample project couldn’t be opened. Try again." = "サンプルプロジェクトを開けませんでした。もう一度お試しください。";
 "Sat" = "彩度";
 "Saturation" = "彩度";
 "Save" = "保存";
@@ -774,6 +789,7 @@
 "Shadows" = "シャドウ";
 "Share usage data" = "使用状況データを共有";
 "Sharpen" = "シャープ";
+"Short-form and social" = "ショート動画・SNS";
 "Shortcuts" = "ショートカット";
 "Show in Finder" = "Finderに表示";
 "Show keyframe timeline" = "キーフレームタイムラインを表示";
@@ -782,12 +798,14 @@
 "Sign In" = "サインイン";
 "Sign in" = "サインイン";
 "Sign in to generate" = "生成するにはサインイン";
+"Sign in to receive 250 free credits for AI chat and generation." = "サインインすると、AIチャットと生成に使える250クレジットを無料で獲得できます。";
 "Sign in to subscribe and use AI generation." = "サブスクリプションに登録してAI生成を使用するには、サインインしてください。";
 "Sign in to use AI" = "AIを使用するにはサインイン";
 "Sign in to use Cloud transcription." = "Cloud文字起こしを使用するにはサインインしてください。";
 "Sign in to use Cloud." = "Cloudを使用するにはサインインしてください。";
 "Sign in with Google" = "Googleでサインイン";
 "Sign out" = "サインアウト";
+"Sign-in couldn’t be completed. Try again." = "サインインを完了できませんでした。もう一度お試しください。";
 "Signed in" = "サインイン済み";
 "Signed out" = "サインアウト済み";
 "Silence Detection" = "無音検出";
@@ -831,6 +849,7 @@
 "Storage" = "ストレージ";
 "Streaming through your Anthropic API key (BYOK)" = "Anthropic APIキー（BYOK）でストリーミング中";
 "Strikethrough" = "取り消し線";
+"Student" = "学生";
 "Style" = "スタイル";
 "Style instructions (optional). e.g., warm and slow, British accent." = "スタイルの指示（任意）。例：暖かくゆっくり、イギリス英語のアクセント。";
 "Subscribe" = "登録";
@@ -850,6 +869,7 @@
 "System appearance" = "システムの外観";
 "Take a screenshot of the preview and use it as a reference for generation. Particularly useful for creating AI transitions." = "プレビューのスクリーンショットを撮り、生成の参照として使用します。AIトランジションの作成に特に便利です。";
 "Target Language" = "対象言語";
+"Tell us about your work" = "あなたの仕事について教えてください";
 "Temperature" = "温度";
 "Temporary files" = "一時ファイル";
 "Text" = "テキスト";
@@ -939,6 +959,8 @@
 "Vibrance" = "自然な彩度";
 "Video" = "ビデオ";
 "Video Ref" = "ビデオ参照";
+"Video automation" = "動画の自動化";
+"Video editor" = "動画編集者";
 "Video has no audio track" = "ビデオにオーディオトラックがありません";
 "Video to Music" = "ビデオから音楽";
 "View" = "表示";
@@ -952,13 +974,18 @@
 "Voice Cleanup requires audio or video" = "音声クリーンアップにはオーディオまたはビデオが必要です";
 "Volume" = "音量";
 "Warmth" = "暖かみ";
-"Watch Tutorial" = "チュートリアルを見る";
+"Watch the tutorial or start creating." = "チュートリアルを見るか、制作を始めましょう。";
 "We may email you for follow-up questions" = "追加の確認のためメールをお送りする場合があります";
 "We read every message and may reach out at %@." = "すべてのメッセージを確認し、%@宛てにご連絡する場合があります。";
 "We read every message. Add an email next time if you'd like a reply." = "すべてのメッセージを確認しています。次回、返信を希望する場合はメールアドレスを追加してください。";
 "We read every message. We won't email you, as requested." = "すべてのメッセージを確認しています。ご希望どおりメールはお送りしません。";
+"Welcome" = "ようこそ";
 "Welcome to Palmier Pro" = "Palmier Proへようこそ";
 "Welcome to Palmier Pro, %@" = "Palmier Proへようこそ、%@";
+"Welcome, %@" = "%@さん、ようこそ";
+"What best describes your role?" = "あなたの役割に最も近いものは？";
+"What do you make?" = "どんな動画を作りますか？";
+"What interests you most about Palmier Pro?" = "Palmier Proで最も関心があるのは？";
 "What's New in v%@" = "バージョン%@の新機能";
 "White Balance" = "ホワイトバランス";
 "Whites" = "ホワイト";
@@ -971,6 +998,7 @@
 "Working on %@" = "%@を処理中";
 "Workspace layout" = "ワークスペースレイアウト";
 "You're all set" = "準備ができました";
+"YouTube" = "YouTube";
 "Your Lottie animation is ready." = "Lottieアニメーションの準備ができました。";
 "Your audio clip is ready." = "オーディオクリップの準備ができました。";
 "Your image is ready." = "画像の準備ができました。";

@@ -59,6 +59,8 @@
 "AI Generated" = "AI 產生";
 "AI agent" = "AI Agent";
 "AI is unavailable" = "AI 不可用";
+"AI transcription" = "AI 轉錄";
+"AI videos" = "AI 影片";
 "About Palmier Pro" = "關於 Palmier Pro";
 "Account" = "帳號";
 "Account settings" = "帳號設定";
@@ -86,8 +88,10 @@
 "Added to %@" = "已加入 %@";
 "Adjust" = "調整";
 "Adjust Range" = "調整範圍";
+"Ads and branded content" = "廣告與品牌內容";
 "Agent Mode" = "Agent 模式";
 "Agent Panel" = "Agent 面板";
+"Agentic editing" = "Agent 剪輯";
 "Alignment" = "對齊";
 "All" = "全部";
 "All fonts" = "所有字體";
@@ -207,6 +211,7 @@
 "Connect an agent" = "連接 Agent";
 "Connect an external agent to inspect and edit the open Palmier Pro project." = "連接外部 Agent，以檢查和編輯已打開的 Palmier Pro 專案。";
 "Content" = "內容";
+"Content creator" = "內容創作者";
 "Continue" = "繼續";
 "Contrast" = "對比";
 "Copied" = "已複製";
@@ -274,6 +279,7 @@
 "Describe the video" = "描述影片";
 "Description" = "描述";
 "Deselect & Reset Tool" = "取消選擇並重置工具";
+"Designer" = "設計師";
 "Destination" = "目標位置";
 "Detail" = "細節";
 "Details" = "詳細資訊";
@@ -318,6 +324,7 @@
 "Editing" = "正在編輯";
 "Edit…" = "編輯…";
 "Edit… (Paid)" = "編輯…（付費）";
+"Education and tutorials" = "教育與教學";
 "Effects" = "效果";
 "Email (optional)" = "電子郵件（可選）";
 "Empty" = "空";
@@ -351,6 +358,7 @@
 "Fill" = "填充";
 "Fill prompt" = "填寫提示詞";
 "Film Grain" = "膠片顆粒";
+"Filmmaker" = "影視創作者";
 "First Frame" = "首影格";
 "First-time sign-ups only" = "僅限首次註冊";
 "First/Last" = "首影格/尾影格";
@@ -366,6 +374,7 @@
 "Footage" = "素材";
 "For" = "適用於";
 "Forward" = "前進";
+"Founder" = "創辦人";
 "Frame Rate" = "影格率";
 "Free" = "免費";
 "Full Frame" = "全畫幅";
@@ -397,7 +406,6 @@
 "Generation panel" = "產生面板";
 "Get Anthropic API key" = "取得 Anthropic API key";
 "Get a notification when a generation finishes." = "在產生完成時接收通知。";
-"Get started" = "開始使用";
 "Getting the search model ready." = "正在準備搜尋模型。";
 "Glow" = "輝光";
 "Go to next keyframe" = "前往下一個關鍵影格";
@@ -413,6 +421,7 @@
 "Highlight" = "高光";
 "Highlight Block" = "高亮色塊";
 "Highlights" = "亮部";
+"Hobbyist" = "業餘愛好者";
 "Hold" = "保持";
 "Hue" = "色相";
 "Hue Curves" = "色相曲線";
@@ -444,6 +453,7 @@
 "Installed" = "已安裝";
 "Instructions" = "說明";
 "Instrumental" = "純音樂";
+"Integration with your own agent" = "與自有 Agent 整合";
 "Integrations" = "集成";
 "Intensity" = "強度";
 "Invert Colors" = "反轉顏色";
@@ -510,6 +520,7 @@
 "Mark Range Start" = "標記範圍起點";
 "Mark Silence" = "標記靜音";
 "Mark Speakers" = "標記說話者";
+"Marketer" = "行銷人員";
 "Master Audio Meter" = "主音訊電平表";
 "Master — defines the group's clock and transcript." = "主機位：定義組的時鐘和轉錄。";
 "Match Timeline" = "匹配時間軸";
@@ -612,6 +623,7 @@
 "Organize with Agent" = "使用 Agent 整理";
 "Original" = "原始";
 "Original FPS" = "原始影格率";
+"Other" = "其他";
 "Outline" = "描邊";
 "Outline Color" = "描邊顏色";
 "Outline Width" = "描邊寬度";
@@ -637,6 +649,7 @@
 "Playback" = "播放";
 "Playback Speed" = "播放速度";
 "Playback previews, waveforms, filmstrip thumbnails, and transcripts. Safe to clear; files rebuild as needed." = "播放預覽、波形、膠片縮圖和轉錄。可以安全清除，檔案會在需要時重新產生。";
+"Podcast" = "Podcast";
 "Pointer (V)" = "指針 (V)";
 "Pop In" = "彈入";
 "Position" = "位置";
@@ -646,6 +659,7 @@
 "Preview" = "預覽";
 "Privacy & Diagnostics" = "隱私與診斷";
 "Pro plan" = "Pro 方案";
+"Product demos" = "產品示範";
 "Project" = "專案";
 "Project Activity" = "專案活動";
 "Projects Couldn’t Be Deleted" = "無法刪除專案";
@@ -724,6 +738,7 @@
 "Sample Key Color" = "取樣鍵控顏色";
 "Sample Project" = "範例專案";
 "Sample key color" = "取樣鍵控顏色";
+"Sample project couldn’t be opened. Try again." = "無法打開範例專案。請重試。";
 "Sat" = "飽和度";
 "Saturation" = "飽和度";
 "Save" = "儲存";
@@ -774,6 +789,7 @@
 "Shadows" = "陰影";
 "Share usage data" = "共享使用資料";
 "Sharpen" = "銳化";
+"Short-form and social" = "短影片與社群";
 "Shortcuts" = "快速鍵";
 "Show in Finder" = "在“Finder”中顯示";
 "Show keyframe timeline" = "顯示關鍵影格時間軸";
@@ -782,12 +798,14 @@
 "Sign In" = "登入";
 "Sign in" = "登入";
 "Sign in to generate" = "登入以產生";
+"Sign in to receive 250 free credits for AI chat and generation." = "登入即可獲得 250 個免費積分，用於 AI 聊天與產生。";
 "Sign in to subscribe and use AI generation." = "登入以訂閱並使用 AI 產生。";
 "Sign in to use AI" = "登入以使用 AI";
 "Sign in to use Cloud transcription." = "登入以使用雲端轉錄。";
 "Sign in to use Cloud." = "登入以使用雲端。";
 "Sign in with Google" = "使用 Google 登入";
 "Sign out" = "登出";
+"Sign-in couldn’t be completed. Try again." = "無法完成登入。請重試。";
 "Signed in" = "已登入";
 "Signed out" = "已登出";
 "Silence Detection" = "靜音偵測";
@@ -831,6 +849,7 @@
 "Storage" = "儲存空間";
 "Streaming through your Anthropic API key (BYOK)" = "正在透過你的 Anthropic API key 流式傳輸 (BYOK)";
 "Strikethrough" = "刪除線";
+"Student" = "學生";
 "Style" = "樣式";
 "Style instructions (optional). e.g., warm and slow, British accent." = "樣式說明（可選），例如溫暖舒緩、英式口音。";
 "Subscribe" = "訂閱";
@@ -850,6 +869,7 @@
 "System appearance" = "系統外觀";
 "Take a screenshot of the preview and use it as a reference for generation. Particularly useful for creating AI transitions." = "截取預覽畫面並將其用作產生參考。這對建立 AI 轉場尤其有用。";
 "Target Language" = "目標語言";
+"Tell us about your work" = "介紹一下你的工作";
 "Temperature" = "色溫";
 "Temporary files" = "臨時檔案";
 "Text" = "文字";
@@ -939,6 +959,8 @@
 "Vibrance" = "自然飽和度";
 "Video" = "影片";
 "Video Ref" = "影片參考";
+"Video automation" = "影片自動化";
+"Video editor" = "影片剪輯師";
 "Video has no audio track" = "影片沒有音訊軌道";
 "Video to Music" = "影片產生音樂";
 "View" = "顯示";
@@ -952,13 +974,18 @@
 "Voice Cleanup requires audio or video" = "人聲清理需要音訊或影片";
 "Volume" = "音量";
 "Warmth" = "色溫";
-"Watch Tutorial" = "觀看教學";
+"Watch the tutorial or start creating." = "觀看教學或直接開始創作。";
 "We may email you for follow-up questions" = "我們可能會透過電子郵件向你詢問後續問題";
 "We read every message and may reach out at %@." = "我們會閱讀每條訊息，並可能透過 %@ 與你聯繫。";
 "We read every message. Add an email next time if you'd like a reply." = "我們會閱讀每條訊息。如果希望收到回覆，請下次加入電子郵件。";
 "We read every message. We won't email you, as requested." = "我們會閱讀每條訊息，並會按你的要求不傳送電子郵件。";
+"Welcome" = "歡迎";
 "Welcome to Palmier Pro" = "歡迎使用 Palmier Pro";
 "Welcome to Palmier Pro, %@" = "歡迎使用 Palmier Pro，%@";
+"Welcome, %@" = "歡迎，%@";
+"What best describes your role?" = "哪一項最符合你的角色？";
+"What do you make?" = "你製作什麼內容？";
+"What interests you most about Palmier Pro?" = "你對 Palmier Pro 最感興趣的是什麼？";
 "What's New in v%@" = "v%@ 新功能";
 "White Balance" = "白平衡";
 "Whites" = "白色";
@@ -971,6 +998,7 @@
 "Working on %@" = "正在處理 %@";
 "Workspace layout" = "工作區配置";
 "You're all set" = "一切就緒";
+"YouTube" = "YouTube";
 "Your Lottie animation is ready." = "你的 Lottie 動畫已準備就緒。";
 "Your audio clip is ready." = "你的音訊片段已準備就緒。";
 "Your image is ready." = "你的影像已準備就緒。";

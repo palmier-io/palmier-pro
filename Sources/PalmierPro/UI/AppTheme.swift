@@ -403,6 +403,12 @@ enum AppTheme {
         static let updateOverlayWidth: CGFloat = 640
     }
 
+    enum Onboarding {
+        static let cardWidth: CGFloat = 520
+        static let cardHeight: CGFloat = 420
+        static let welcomeHeroHeight: CGFloat = 240
+    }
+
     enum Settings {
         static let sidebarWidth: CGFloat = 220
         static let contentMaxWidth: CGFloat = 640

@@ -49,6 +49,7 @@ enum Analytics {
         case editorEditCommitted = "editor edit committed"
         case generationSubmitted = "generation submitted"
         case mcpSessionActivated = "mcp session activated"
+        case onboardingCompleted = "onboarding completed"
     }
 
     #if PRODUCTION_TELEMETRY
@@ -216,18 +217,22 @@ enum Analytics {
             "failure_reason",
             "format",
             "generation_type",
+            "interests",
             "mode",
             "model",
             "output_count",
             "project_id",
             "resolution",
+            "roles",
             "session_id",
             "source",
             "starter_prompt",
             "status",
+            "survey_version",
             "timeline_changed",
             "tool_name",
             "tool_duration_seconds",
+            "video_types",
         ])
     }
 

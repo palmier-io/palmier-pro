@@ -59,6 +59,8 @@
 "AI Generated" = "Yapay Zekâ ile Oluşturuldu";
 "AI agent" = "Yapay zekâ aracısı";
 "AI is unavailable" = "Yapay zekâ kullanılamıyor";
+"AI transcription" = "Yapay zekâ ile yazıya çevirme";
+"AI videos" = "Yapay zekâ videoları";
 "About Palmier Pro" = "Palmier Pro Hakkında";
 "Account" = "Hesap";
 "Account settings" = "Hesap ayarları";
@@ -86,8 +88,10 @@
 "Added to %@" = "%@ Öğesine Eklendi";
 "Adjust" = "Ayarla";
 "Adjust Range" = "Aralığı Ayarla";
+"Ads and branded content" = "Reklam ve marka içerikleri";
 "Agent Mode" = "Aracı Modu";
 "Agent Panel" = "Aracı Paneli";
+"Agentic editing" = "Aracıyla düzenleme";
 "Alignment" = "Hizalama";
 "All" = "Tümü";
 "All fonts" = "Tüm fontlar";
@@ -207,6 +211,7 @@
 "Connect an agent" = "Bir aracı bağla";
 "Connect an external agent to inspect and edit the open Palmier Pro project." = "Açık Palmier Pro projesini inceleyip düzenlemek için harici bir aracı bağlayın.";
 "Content" = "İçerik";
+"Content creator" = "İçerik üreticisi";
 "Continue" = "Sürdür";
 "Contrast" = "Kontrast";
 "Copied" = "Kopyalandı";
@@ -274,6 +279,7 @@
 "Describe the video" = "Videoyu açıklayın";
 "Description" = "Açıklama";
 "Deselect & Reset Tool" = "Seçimi Kaldır ve Aracı Sıfırla";
+"Designer" = "Tasarımcı";
 "Destination" = "Hedef";
 "Detail" = "Ayrıntı";
 "Details" = "Ayrıntılar";
@@ -318,6 +324,7 @@
 "Editing" = "Düzenleniyor";
 "Edit…" = "Düzenle…";
 "Edit… (Paid)" = "Düzenle… (Ücretli)";
+"Education and tutorials" = "Eğitim ve öğreticiler";
 "Effects" = "Efektler";
 "Email (optional)" = "E-posta (isteğe bağlı)";
 "Empty" = "Boş";
@@ -351,6 +358,7 @@
 "Fill" = "Dolgu";
 "Fill prompt" = "İstemi doldurun";
 "Film Grain" = "Film Greni";
+"Filmmaker" = "Film yapımcısı";
 "First Frame" = "İlk Kare";
 "First-time sign-ups only" = "Yalnızca ilk kez kaydolanlar";
 "First/Last" = "İlk/Son";
@@ -366,6 +374,7 @@
 "Footage" = "Çekim";
 "For" = "İçin";
 "Forward" = "İleri";
+"Founder" = "Kurucu";
 "Frame Rate" = "Kare Hızı";
 "Free" = "Ücretsiz";
 "Full Frame" = "Tam Kare";
@@ -397,7 +406,6 @@
 "Generation panel" = "Oluşturma paneli";
 "Get Anthropic API key" = "Anthropic API anahtarı al";
 "Get a notification when a generation finishes." = "Oluşturma tamamlandığında bildirim alın.";
-"Get started" = "Başlayın";
 "Getting the search model ready." = "Arama modeli hazırlanıyor.";
 "Glow" = "Parlama";
 "Go to next keyframe" = "Sonraki anahtar kareye git";
@@ -413,6 +421,7 @@
 "Highlight" = "Vurgu";
 "Highlight Block" = "Vurgu Bloğu";
 "Highlights" = "Açık Tonlar";
+"Hobbyist" = "Amatör";
 "Hold" = "Tut";
 "Hue" = "Renk Tonu";
 "Hue Curves" = "Renk Tonu Eğrileri";
@@ -444,6 +453,7 @@
 "Installed" = "Yüklendi";
 "Instructions" = "Yönergeler";
 "Instrumental" = "Enstrümantal";
+"Integration with your own agent" = "Kendi aracınızla entegrasyon";
 "Integrations" = "Entegrasyonlar";
 "Intensity" = "Yoğunluk";
 "Invert Colors" = "Renkleri Ters Çevir";
@@ -510,6 +520,7 @@
 "Mark Range Start" = "Aralık Başlangıcını İşaretle";
 "Mark Silence" = "Sessizliği İşaretle";
 "Mark Speakers" = "Konuşmacıları İşaretle";
+"Marketer" = "Pazarlamacı";
 "Master Audio Meter" = "Ana Ses Ölçer";
 "Master — defines the group's clock and transcript." = "Ana — grubun saatini ve dökümünü tanımlar.";
 "Match Timeline" = "Zaman Ekseniyle Eşleştir";
@@ -612,6 +623,7 @@
 "Organize with Agent" = "Aracıyla Organize Et";
 "Original" = "Özgün";
 "Original FPS" = "Özgün FPS";
+"Other" = "Diğer";
 "Outline" = "Kontur";
 "Outline Color" = "Kontur Rengi";
 "Outline Width" = "Kontur Genişliği";
@@ -637,6 +649,7 @@
 "Playback" = "Oynatma";
 "Playback Speed" = "Oynatma Hızı";
 "Playback previews, waveforms, filmstrip thumbnails, and transcripts. Safe to clear; files rebuild as needed." = "Oynatma önizlemeleri, dalga biçimleri, film şeridi küçük resimleri ve dökümler. Güvenle temizlenebilir; dosyalar gerektiğinde yeniden oluşturulur.";
+"Podcast" = "Podcast";
 "Pointer (V)" = "İşaretçi (V)";
 "Pop In" = "Belirme";
 "Position" = "Konum";
@@ -646,6 +659,7 @@
 "Preview" = "Önizleme";
 "Privacy & Diagnostics" = "Gizlilik ve Tanılama";
 "Pro plan" = "Pro planı";
+"Product demos" = "Ürün tanıtımları";
 "Project" = "Proje";
 "Project Activity" = "Proje Etkinliği";
 "Projects Couldn’t Be Deleted" = "Projeler Silinemedi";
@@ -724,6 +738,7 @@
 "Sample Key Color" = "Anahtar Rengi Örnekle";
 "Sample Project" = "Örnek Proje";
 "Sample key color" = "Anahtar rengi örnekle";
+"Sample project couldn’t be opened. Try again." = "Örnek proje açılamadı. Yeniden deneyin.";
 "Sat" = "Doygunluk";
 "Saturation" = "Doygunluk";
 "Save" = "Kaydet";
@@ -774,6 +789,7 @@
 "Shadows" = "Gölgeler";
 "Share usage data" = "Kullanım verilerini paylaş";
 "Sharpen" = "Keskinleştir";
+"Short-form and social" = "Kısa video ve sosyal medya";
 "Shortcuts" = "Kestirmeler";
 "Show in Finder" = "Finder'da Göster";
 "Show keyframe timeline" = "Anahtar kare zaman eksenini göster";
@@ -782,12 +798,14 @@
 "Sign In" = "Oturum Aç";
 "Sign in" = "Oturum aç";
 "Sign in to generate" = "Oluşturmak için oturum açın";
+"Sign in to receive 250 free credits for AI chat and generation." = "Yapay zekâ sohbeti ve oluşturma için 250 ücretsiz kredi almak üzere oturum açın.";
 "Sign in to subscribe and use AI generation." = "Abone olmak ve yapay zekâ oluşturmayı kullanmak için oturum açın.";
 "Sign in to use AI" = "Yapay zekâyı kullanmak için oturum açın";
 "Sign in to use Cloud transcription." = "Bulut yazıya çevirmeyi kullanmak için oturum açın.";
 "Sign in to use Cloud." = "Bulut'u kullanmak için oturum açın.";
 "Sign in with Google" = "Google ile Oturum Aç";
 "Sign out" = "Oturumu kapat";
+"Sign-in couldn’t be completed. Try again." = "Oturum açma tamamlanamadı. Yeniden deneyin.";
 "Signed in" = "Oturum açık";
 "Signed out" = "Oturum kapalı";
 "Silence Detection" = "Sessizlik Algılama";
@@ -831,6 +849,7 @@
 "Storage" = "Saklama Alanı";
 "Streaming through your Anthropic API key (BYOK)" = "Anthropic API anahtarınızla yayınlanıyor (BYOK)";
 "Strikethrough" = "Üstü Çizili";
+"Student" = "Öğrenci";
 "Style" = "Stil";
 "Style instructions (optional). e.g., warm and slow, British accent." = "Stil yönergeleri (isteğe bağlı). Örn. sıcak ve yavaş, İngiliz aksanı.";
 "Subscribe" = "Abone Ol";
@@ -850,6 +869,7 @@
 "System appearance" = "Sistem görünümü";
 "Take a screenshot of the preview and use it as a reference for generation. Particularly useful for creating AI transitions." = "Önizlemenin ekran görüntüsünü alıp oluşturma için referans olarak kullanın. Özellikle yapay zekâ geçişleri oluşturmak için kullanışlıdır.";
 "Target Language" = "Hedef Dil";
+"Tell us about your work" = "Bize işinizden bahsedin";
 "Temperature" = "Sıcaklık";
 "Temporary files" = "Geçici dosyalar";
 "Text" = "Metin";
@@ -939,6 +959,8 @@
 "Vibrance" = "Canlılık";
 "Video" = "Video";
 "Video Ref" = "Video Referansı";
+"Video automation" = "Video otomasyonu";
+"Video editor" = "Video editörü";
 "Video has no audio track" = "Videoda ses izi yok";
 "Video to Music" = "Videodan Müziğe";
 "View" = "Görüntü";
@@ -952,13 +974,18 @@
 "Voice Cleanup requires audio or video" = "Ses Temizleme için ses veya video gerekli";
 "Volume" = "Ses Düzeyi";
 "Warmth" = "Sıcaklık";
-"Watch Tutorial" = "Eğitimi İzle";
+"Watch the tutorial or start creating." = "Eğitimi izleyin ya da oluşturmaya başlayın.";
 "We may email you for follow-up questions" = "Ek sorular için size e-posta gönderebiliriz";
 "We read every message and may reach out at %@." = "Her mesajı okuyoruz ve %@ adresinden sizinle iletişime geçebiliriz.";
 "We read every message. Add an email next time if you'd like a reply." = "Her mesajı okuyoruz. Yanıt almak isterseniz bir dahaki sefere e-posta adresi ekleyin.";
 "We read every message. We won't email you, as requested." = "Her mesajı okuyoruz. İstediğiniz gibi size e-posta göndermeyeceğiz.";
+"Welcome" = "Hoş geldiniz";
 "Welcome to Palmier Pro" = "Palmier Pro'ya Hoş Geldiniz";
 "Welcome to Palmier Pro, %@" = "Palmier Pro'ya hoş geldiniz, %@";
+"Welcome, %@" = "Hoş geldiniz, %@";
+"What best describes your role?" = "Rolünüzü en iyi ne tanımlıyor?";
+"What do you make?" = "Ne üretiyorsunuz?";
+"What interests you most about Palmier Pro?" = "Palmier Pro’da sizi en çok ne ilgilendiriyor?";
 "What's New in v%@" = "v%@ Sürümündeki Yenilikler";
 "White Balance" = "Beyaz Dengesi";
 "Whites" = "Beyazlar";
@@ -971,6 +998,7 @@
 "Working on %@" = "%@ üzerinde çalışılıyor";
 "Workspace layout" = "Çalışma alanı düzeni";
 "You're all set" = "Her şey hazır";
+"YouTube" = "YouTube";
 "Your Lottie animation is ready." = "Lottie animasyonunuz hazır.";
 "Your audio clip is ready." = "Ses klibiniz hazır.";
 "Your image is ready." = "Görüntünüz hazır.";

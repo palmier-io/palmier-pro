@@ -59,6 +59,8 @@
 "AI Generated" = "AI দিয়ে জেনারেট করা";
 "AI agent" = "AI এজেন্ট";
 "AI is unavailable" = "AI পাওয়া যাচ্ছে না";
+"AI transcription" = "AI ট্রান্সক্রিপশন";
+"AI videos" = "AI ভিডিও";
 "About Palmier Pro" = "Palmier Pro সম্পর্কে";
 "Account" = "অ্যাকাউন্ট";
 "Account settings" = "অ্যাকাউন্ট সেটিংস";
@@ -86,8 +88,10 @@
 "Added to %@" = "%@-এ যোগ করা হয়েছে";
 "Adjust" = "অ্যাডজাস্ট";
 "Adjust Range" = "রেঞ্জ অ্যাডজাস্ট করুন";
+"Ads and branded content" = "বিজ্ঞাপন ও ব্র্যান্ডেড কনটেন্ট";
 "Agent Mode" = "এজেন্ট মোড";
 "Agent Panel" = "এজেন্ট প্যানেল";
+"Agentic editing" = "এজেন্ট দিয়ে এডিটিং";
 "Alignment" = "অ্যালাইনমেন্ট";
 "All" = "সব";
 "All fonts" = "সব ফন্ট";
@@ -207,6 +211,7 @@
 "Connect an agent" = "একটি এজেন্ট কানেক্ট করুন";
 "Connect an external agent to inspect and edit the open Palmier Pro project." = "খোলা Palmier Pro প্রজেক্ট পর্যালোচনা ও এডিট করতে একটি এক্সটার্নাল এজেন্ট কানেক্ট করুন।";
 "Content" = "কনটেন্ট";
+"Content creator" = "কনটেন্ট ক্রিয়েটর";
 "Continue" = "চালিয়ে যান";
 "Contrast" = "কনট্রাস্ট";
 "Copied" = "কপি হয়েছে";
@@ -274,6 +279,7 @@
 "Describe the video" = "ভিডিওটি বর্ণনা করুন";
 "Description" = "বিবরণ";
 "Deselect & Reset Tool" = "সিলেকশন সরিয়ে টুল রিসেট করুন";
+"Designer" = "ডিজাইনার";
 "Destination" = "গন্তব্য";
 "Detail" = "ডিটেইল";
 "Details" = "বিস্তারিত";
@@ -318,6 +324,7 @@
 "Editing" = "এডিট করা হচ্ছে";
 "Edit…" = "এডিট…";
 "Edit… (Paid)" = "এডিট… (পেইড)";
+"Education and tutorials" = "শিক্ষা ও টিউটোরিয়াল";
 "Effects" = "ইফেক্ট";
 "Email (optional)" = "ইমেইল (ঐচ্ছিক)";
 "Empty" = "খালি";
@@ -351,6 +358,7 @@
 "Fill" = "ফিল";
 "Fill prompt" = "প্রম্পট লিখুন";
 "Film Grain" = "ফিল্ম গ্রেইন";
+"Filmmaker" = "চলচ্চিত্র নির্মাতা";
 "First Frame" = "প্রথম ফ্রেম";
 "First-time sign-ups only" = "শুধু প্রথমবার সাইন আপের জন্য";
 "First/Last" = "প্রথম/শেষ";
@@ -366,6 +374,7 @@
 "Footage" = "ফুটেজ";
 "For" = "এর জন্য";
 "Forward" = "সামনে";
+"Founder" = "প্রতিষ্ঠাতা";
 "Frame Rate" = "ফ্রেম রেট";
 "Free" = "ফ্রি";
 "Full Frame" = "ফুল ফ্রেম";
@@ -397,7 +406,6 @@
 "Generation panel" = "জেনারেশন প্যানেল";
 "Get Anthropic API key" = "Anthropic API কী নিন";
 "Get a notification when a generation finishes." = "জেনারেশন শেষ হলে নোটিফিকেশন নিন।";
-"Get started" = "শুরু করুন";
 "Getting the search model ready." = "সার্চ মডেল প্রস্তুত করা হচ্ছে।";
 "Glow" = "গ্লো";
 "Go to next keyframe" = "পরের কিফ্রেমে যান";
@@ -413,6 +421,7 @@
 "Highlight" = "হাইলাইট";
 "Highlight Block" = "হাইলাইট ব্লক";
 "Highlights" = "হাইলাইটস";
+"Hobbyist" = "শৌখিন";
 "Hold" = "হোল্ড";
 "Hue" = "হিউ";
 "Hue Curves" = "হিউ কার্ভ";
@@ -444,6 +453,7 @@
 "Installed" = "ইনস্টল করা";
 "Instructions" = "নির্দেশনা";
 "Instrumental" = "ইনস্ট্রুমেন্টাল";
+"Integration with your own agent" = "নিজের এজেন্টের সঙ্গে ইন্টিগ্রেশন";
 "Integrations" = "ইন্টিগ্রেশন";
 "Intensity" = "ইনটেনসিটি";
 "Invert Colors" = "রং ইনভার্ট করুন";
@@ -510,6 +520,7 @@
 "Mark Range Start" = "রেঞ্জের শুরু মার্ক করুন";
 "Mark Silence" = "নীরবতা মার্ক করুন";
 "Mark Speakers" = "স্পিকার মার্ক করুন";
+"Marketer" = "মার্কেটার";
 "Master Audio Meter" = "মাস্টার অডিও মিটার";
 "Master — defines the group's clock and transcript." = "মাস্টার — গ্রুপের ক্লক ও ট্রান্সক্রিপ্ট নির্ধারণ করে।";
 "Match Timeline" = "টাইমলাইনের সঙ্গে ম্যাচ করুন";
@@ -612,6 +623,7 @@
 "Organize with Agent" = "এজেন্ট দিয়ে সাজান";
 "Original" = "অরিজিনাল";
 "Original FPS" = "অরিজিনাল FPS";
+"Other" = "অন্যান্য";
 "Outline" = "আউটলাইন";
 "Outline Color" = "আউটলাইন কালার";
 "Outline Width" = "আউটলাইন উইডথ";
@@ -637,6 +649,7 @@
 "Playback" = "প্লেব্যাক";
 "Playback Speed" = "প্লেব্যাক স্পিড";
 "Playback previews, waveforms, filmstrip thumbnails, and transcripts. Safe to clear; files rebuild as needed." = "প্লেব্যাক প্রিভিউ, ওয়েভফর্ম, ফিল্মস্ট্রিপ থাম্বনেইল ও ট্রান্সক্রিপ্ট। নিরাপদে মুছতে পারেন; প্রয়োজন হলে ফাইল আবার তৈরি হবে।";
+"Podcast" = "পডকাস্ট";
 "Pointer (V)" = "পয়েন্টার (V)";
 "Pop In" = "পপ ইন";
 "Position" = "পজিশন";
@@ -646,6 +659,7 @@
 "Preview" = "প্রিভিউ";
 "Privacy & Diagnostics" = "প্রাইভেসি ও ডায়াগনস্টিকস";
 "Pro plan" = "Pro প্ল্যান";
+"Product demos" = "প্রোডাক্ট ডেমো";
 "Project" = "প্রজেক্ট";
 "Project Activity" = "প্রজেক্ট অ্যাক্টিভিটি";
 "Projects Couldn’t Be Deleted" = "প্রজেক্ট ডিলিট করা যায়নি";
@@ -724,6 +738,7 @@
 "Sample Key Color" = "কী কালার স্যাম্পল করুন";
 "Sample Project" = "স্যাম্পল প্রজেক্ট";
 "Sample key color" = "কী কালার স্যাম্পল করুন";
+"Sample project couldn’t be opened. Try again." = "স্যাম্পল প্রজেক্ট খোলা যায়নি। আবার চেষ্টা করুন।";
 "Sat" = "স্যাট";
 "Saturation" = "স্যাচুরেশন";
 "Save" = "সেভ";
@@ -774,6 +789,7 @@
 "Shadows" = "শ্যাডোস";
 "Share usage data" = "ব্যবহারের ডেটা শেয়ার করুন";
 "Sharpen" = "শার্পেন";
+"Short-form and social" = "শর্ট-ফর্ম ও সোশ্যাল";
 "Shortcuts" = "শর্টকাট";
 "Show in Finder" = "Finder-এ দেখান";
 "Show keyframe timeline" = "কিফ্রেম টাইমলাইন দেখান";
@@ -782,12 +798,14 @@
 "Sign In" = "সাইন ইন";
 "Sign in" = "সাইন ইন করুন";
 "Sign in to generate" = "জেনারেট করতে সাইন ইন করুন";
+"Sign in to receive 250 free credits for AI chat and generation." = "AI চ্যাট ও জেনারেশনের জন্য ২৫০ ফ্রি ক্রেডিট পেতে সাইন ইন করুন।";
 "Sign in to subscribe and use AI generation." = "সাবস্ক্রাইব ও AI জেনারেশন ব্যবহার করতে সাইন ইন করুন।";
 "Sign in to use AI" = "AI ব্যবহার করতে সাইন ইন করুন";
 "Sign in to use Cloud transcription." = "ক্লাউড ট্রান্সক্রিপশন ব্যবহার করতে সাইন ইন করুন।";
 "Sign in to use Cloud." = "ক্লাউড ব্যবহার করতে সাইন ইন করুন।";
 "Sign in with Google" = "Google দিয়ে সাইন ইন করুন";
 "Sign out" = "সাইন আউট";
+"Sign-in couldn’t be completed. Try again." = "সাইন ইন সম্পূর্ণ করা যায়নি। আবার চেষ্টা করুন।";
 "Signed in" = "সাইন ইন করা";
 "Signed out" = "সাইন আউট করা";
 "Silence Detection" = "নীরবতা শনাক্তকরণ";
@@ -831,6 +849,7 @@
 "Storage" = "স্টোরেজ";
 "Streaming through your Anthropic API key (BYOK)" = "আপনার Anthropic API কী দিয়ে স্ট্রিম হচ্ছে (BYOK)";
 "Strikethrough" = "স্ট্রাইকথ্রু";
+"Student" = "শিক্ষার্থী";
 "Style" = "স্টাইল";
 "Style instructions (optional). e.g., warm and slow, British accent." = "স্টাইল নির্দেশনা (ঐচ্ছিক)। যেমন: উষ্ণ ও ধীর, ব্রিটিশ অ্যাকসেন্ট।";
 "Subscribe" = "সাবস্ক্রাইব";
@@ -850,6 +869,7 @@
 "System appearance" = "সিস্টেম অ্যাপিয়ারেন্স";
 "Take a screenshot of the preview and use it as a reference for generation. Particularly useful for creating AI transitions." = "প্রিভিউয়ের স্ক্রিনশট নিয়ে জেনারেশনের রেফারেন্স হিসেবে ব্যবহার করুন। AI ট্রানজিশন তৈরিতে বিশেষভাবে কাজে লাগে।";
 "Target Language" = "টার্গেট ভাষা";
+"Tell us about your work" = "আপনার কাজ সম্পর্কে বলুন";
 "Temperature" = "টেম্পারেচার";
 "Temporary files" = "অস্থায়ী ফাইল";
 "Text" = "টেক্সট";
@@ -939,6 +959,8 @@
 "Vibrance" = "ভাইব্রেন্স";
 "Video" = "ভিডিও";
 "Video Ref" = "ভিডিও রেফারেন্স";
+"Video automation" = "ভিডিও অটোমেশন";
+"Video editor" = "ভিডিও এডিটর";
 "Video has no audio track" = "ভিডিওতে কোনো অডিও ট্র্যাক নেই";
 "Video to Music" = "ভিডিও থেকে মিউজিক";
 "View" = "ভিউ";
@@ -952,13 +974,18 @@
 "Voice Cleanup requires audio or video" = "ভয়েস ক্লিনআপের জন্য অডিও বা ভিডিও প্রয়োজন";
 "Volume" = "ভলিউম";
 "Warmth" = "ওয়ার্মথ";
-"Watch Tutorial" = "টিউটোরিয়াল দেখুন";
+"Watch the tutorial or start creating." = "টিউটোরিয়াল দেখুন বা তৈরি করা শুরু করুন।";
 "We may email you for follow-up questions" = "পরবর্তী প্রশ্নের জন্য আমরা ইমেইল করতে পারি";
 "We read every message and may reach out at %@." = "আমরা প্রতিটি মেসেজ পড়ি এবং %@ ঠিকানায় যোগাযোগ করতে পারি।";
 "We read every message. Add an email next time if you'd like a reply." = "আমরা প্রতিটি মেসেজ পড়ি। উত্তর চাইলে পরেরবার ইমেইল যোগ করুন।";
 "We read every message. We won't email you, as requested." = "আমরা প্রতিটি মেসেজ পড়ি। আপনার অনুরোধ অনুযায়ী ইমেইল করব না।";
+"Welcome" = "স্বাগতম";
 "Welcome to Palmier Pro" = "Palmier Pro-তে স্বাগতম";
 "Welcome to Palmier Pro, %@" = "Palmier Pro-তে স্বাগতম, %@";
+"Welcome, %@" = "স্বাগতম, %@";
+"What best describes your role?" = "আপনার ভূমিকা কোনটি?";
+"What do you make?" = "আপনি কী তৈরি করেন?";
+"What interests you most about Palmier Pro?" = "Palmier Pro-র কোন দিকটি আপনাকে সবচেয়ে বেশি আকর্ষণ করে?";
 "What's New in v%@" = "v%@-তে নতুন কী";
 "White Balance" = "হোয়াইট ব্যালান্স";
 "Whites" = "হোয়াইটস";
@@ -971,6 +998,7 @@
 "Working on %@" = "%@ নিয়ে কাজ হচ্ছে";
 "Workspace layout" = "ওয়ার্কস্পেস লেআউট";
 "You're all set" = "সব প্রস্তুত";
+"YouTube" = "YouTube";
 "Your Lottie animation is ready." = "আপনার Lottie অ্যানিমেশন প্রস্তুত।";
 "Your audio clip is ready." = "আপনার অডিও ক্লিপ প্রস্তুত।";
 "Your image is ready." = "আপনার ইমেজ প্রস্তুত।";

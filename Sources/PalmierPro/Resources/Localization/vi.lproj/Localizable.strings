@@ -59,6 +59,8 @@
 "AI Generated" = "Do AI tạo";
 "AI agent" = "Agent AI";
 "AI is unavailable" = "AI không khả dụng";
+"AI transcription" = "Chép lời bằng AI";
+"AI videos" = "Video AI";
 "About Palmier Pro" = "Giới thiệu Palmier Pro";
 "Account" = "Tài khoản";
 "Account settings" = "Cài đặt tài khoản";
@@ -86,8 +88,10 @@
 "Added to %@" = "Đã thêm vào %@";
 "Adjust" = "Điều chỉnh";
 "Adjust Range" = "Điều chỉnh vùng";
+"Ads and branded content" = "Quảng cáo và nội dung thương hiệu";
 "Agent Mode" = "Chế độ Agent";
 "Agent Panel" = "Bảng Agent";
+"Agentic editing" = "Dựng phim bằng agent";
 "Alignment" = "Căn chỉnh";
 "All" = "Tất cả";
 "All fonts" = "Tất cả phông chữ";
@@ -207,6 +211,7 @@
 "Connect an agent" = "Kết nối agent";
 "Connect an external agent to inspect and edit the open Palmier Pro project." = "Kết nối agent bên ngoài để kiểm tra và chỉnh sửa dự án Palmier Pro đang mở.";
 "Content" = "Nội dung";
+"Content creator" = "Nhà sáng tạo nội dung";
 "Continue" = "Tiếp tục";
 "Contrast" = "Độ tương phản";
 "Copied" = "Đã sao chép";
@@ -274,6 +279,7 @@
 "Describe the video" = "Mô tả video";
 "Description" = "Mô tả";
 "Deselect & Reset Tool" = "Bỏ chọn và đặt lại công cụ";
+"Designer" = "Nhà thiết kế";
 "Destination" = "Đích";
 "Detail" = "Chi tiết";
 "Details" = "Chi tiết";
@@ -318,6 +324,7 @@
 "Editing" = "Đang chỉnh sửa";
 "Edit…" = "Chỉnh sửa…";
 "Edit… (Paid)" = "Chỉnh sửa… (Trả phí)";
+"Education and tutorials" = "Giáo dục và hướng dẫn";
 "Effects" = "Hiệu ứng";
 "Email (optional)" = "Email (không bắt buộc)";
 "Empty" = "Trống";
@@ -351,6 +358,7 @@
 "Fill" = "Tô đầy";
 "Fill prompt" = "Câu lệnh tô đầy";
 "Film Grain" = "Hạt phim";
+"Filmmaker" = "Nhà làm phim";
 "First Frame" = "Khung hình đầu";
 "First-time sign-ups only" = "Chỉ dành cho lần đăng ký đầu tiên";
 "First/Last" = "Đầu/Cuối";
@@ -366,6 +374,7 @@
 "Footage" = "Cảnh quay";
 "For" = "Cho";
 "Forward" = "Tiến";
+"Founder" = "Nhà sáng lập";
 "Frame Rate" = "Tốc độ khung hình";
 "Free" = "Miễn phí";
 "Full Frame" = "Toàn khung hình";
@@ -397,7 +406,6 @@
 "Generation panel" = "Bảng tạo nội dung";
 "Get Anthropic API key" = "Lấy khóa API Anthropic";
 "Get a notification when a generation finishes." = "Nhận thông báo khi hoàn tất tạo nội dung.";
-"Get started" = "Bắt đầu";
 "Getting the search model ready." = "Đang chuẩn bị mô hình tìm kiếm.";
 "Glow" = "Phát sáng";
 "Go to next keyframe" = "Đi đến khung hình chính tiếp theo";
@@ -413,6 +421,7 @@
 "Highlight" = "Tô sáng";
 "Highlight Block" = "Khối tô sáng";
 "Highlights" = "Vùng sáng";
+"Hobbyist" = "Nghiệp dư";
 "Hold" = "Giữ";
 "Hue" = "Sắc độ";
 "Hue Curves" = "Đường cong sắc độ";
@@ -444,6 +453,7 @@
 "Installed" = "Đã cài đặt";
 "Instructions" = "Hướng dẫn";
 "Instrumental" = "Không lời";
+"Integration with your own agent" = "Tích hợp với agent của bạn";
 "Integrations" = "Tích hợp";
 "Intensity" = "Cường độ";
 "Invert Colors" = "Đảo màu";
@@ -510,6 +520,7 @@
 "Mark Range Start" = "Đánh dấu đầu vùng";
 "Mark Silence" = "Đánh dấu khoảng lặng";
 "Mark Speakers" = "Đánh dấu người nói";
+"Marketer" = "Nhà tiếp thị";
 "Master Audio Meter" = "Đồng hồ âm thanh chính";
 "Master — defines the group's clock and transcript." = "Nguồn chính: xác định đồng hồ và bản chép lời của nhóm.";
 "Match Timeline" = "Khớp với timeline";
@@ -612,6 +623,7 @@
 "Organize with Agent" = "Sắp xếp bằng Agent";
 "Original" = "Gốc";
 "Original FPS" = "FPS gốc";
+"Other" = "Khác";
 "Outline" = "Đường viền";
 "Outline Color" = "Màu đường viền";
 "Outline Width" = "Độ rộng đường viền";
@@ -637,6 +649,7 @@
 "Playback" = "Phát lại";
 "Playback Speed" = "Tốc độ phát lại";
 "Playback previews, waveforms, filmstrip thumbnails, and transcripts. Safe to clear; files rebuild as needed." = "Bản xem trước phát lại, dạng sóng, hình thu nhỏ dải phim và bản chép lời. Có thể xóa an toàn; các tệp sẽ được tạo lại khi cần.";
+"Podcast" = "Podcast";
 "Pointer (V)" = "Con trỏ (V)";
 "Pop In" = "Hiện bật";
 "Position" = "Vị trí";
@@ -646,6 +659,7 @@
 "Preview" = "Xem trước";
 "Privacy & Diagnostics" = "Quyền riêng tư và chẩn đoán";
 "Pro plan" = "Gói Pro";
+"Product demos" = "Demo sản phẩm";
 "Project" = "Dự án";
 "Project Activity" = "Hoạt động dự án";
 "Projects Couldn’t Be Deleted" = "Không thể xóa dự án";
@@ -724,6 +738,7 @@
 "Sample Key Color" = "Lấy mẫu màu khóa";
 "Sample Project" = "Dự án mẫu";
 "Sample key color" = "Lấy mẫu màu khóa";
+"Sample project couldn’t be opened. Try again." = "Không thể mở dự án mẫu. Thử lại.";
 "Sat" = "Bão hòa";
 "Saturation" = "Độ bão hòa";
 "Save" = "Lưu";
@@ -774,6 +789,7 @@
 "Shadows" = "Vùng tối";
 "Share usage data" = "Chia sẻ dữ liệu sử dụng";
 "Sharpen" = "Làm sắc nét";
+"Short-form and social" = "Video ngắn và mạng xã hội";
 "Shortcuts" = "Phím tắt";
 "Show in Finder" = "Hiển thị trong Finder";
 "Show keyframe timeline" = "Hiển thị timeline khung hình chính";
@@ -782,12 +798,14 @@
 "Sign In" = "Đăng nhập";
 "Sign in" = "Đăng nhập";
 "Sign in to generate" = "Đăng nhập để tạo nội dung";
+"Sign in to receive 250 free credits for AI chat and generation." = "Đăng nhập để nhận 250 tín dụng miễn phí cho chat và tạo nội dung bằng AI.";
 "Sign in to subscribe and use AI generation." = "Đăng nhập để đăng ký và dùng tính năng tạo nội dung AI.";
 "Sign in to use AI" = "Đăng nhập để dùng AI";
 "Sign in to use Cloud transcription." = "Đăng nhập để dùng tính năng chép lời trên đám mây.";
 "Sign in to use Cloud." = "Đăng nhập để dùng Đám mây.";
 "Sign in with Google" = "Đăng nhập bằng Google";
 "Sign out" = "Đăng xuất";
+"Sign-in couldn’t be completed. Try again." = "Không thể hoàn tất đăng nhập. Thử lại.";
 "Signed in" = "Đã đăng nhập";
 "Signed out" = "Đã đăng xuất";
 "Silence Detection" = "Phát hiện khoảng lặng";
@@ -831,6 +849,7 @@
 "Storage" = "Dung lượng lưu trữ";
 "Streaming through your Anthropic API key (BYOK)" = "Đang truyền qua khóa API Anthropic của bạn (BYOK)";
 "Strikethrough" = "Gạch ngang";
+"Student" = "Sinh viên";
 "Style" = "Kiểu";
 "Style instructions (optional). e.g., warm and slow, British accent." = "Hướng dẫn phong cách (không bắt buộc). Ví dụ: ấm áp và chậm rãi, giọng Anh.";
 "Subscribe" = "Đăng ký";
@@ -850,6 +869,7 @@
 "System appearance" = "Giao diện hệ thống";
 "Take a screenshot of the preview and use it as a reference for generation. Particularly useful for creating AI transitions." = "Chụp ảnh màn hình phần xem trước và dùng làm tham chiếu để tạo nội dung. Đặc biệt hữu ích khi tạo chuyển cảnh AI.";
 "Target Language" = "Ngôn ngữ đích";
+"Tell us about your work" = "Cho chúng tôi biết về công việc của bạn";
 "Temperature" = "Nhiệt độ";
 "Temporary files" = "Tệp tạm thời";
 "Text" = "Văn bản";
@@ -939,6 +959,8 @@
 "Vibrance" = "Độ rực";
 "Video" = "Video";
 "Video Ref" = "Tham chiếu video";
+"Video automation" = "Tự động hóa video";
+"Video editor" = "Người dựng video";
 "Video has no audio track" = "Video không có track âm thanh";
 "Video to Music" = "Video thành nhạc";
 "View" = "Xem";
@@ -952,13 +974,18 @@
 "Voice Cleanup requires audio or video" = "Làm sạch giọng nói cần âm thanh hoặc video";
 "Volume" = "Âm lượng";
 "Warmth" = "Độ ấm";
-"Watch Tutorial" = "Xem hướng dẫn";
+"Watch the tutorial or start creating." = "Xem hướng dẫn hoặc bắt đầu sáng tạo.";
 "We may email you for follow-up questions" = "Chúng tôi có thể gửi email để hỏi thêm";
 "We read every message and may reach out at %@." = "Chúng tôi đọc mọi tin nhắn và có thể liên hệ qua %@.";
 "We read every message. Add an email next time if you'd like a reply." = "Chúng tôi đọc mọi tin nhắn. Lần sau, hãy thêm email nếu bạn muốn nhận phản hồi.";
 "We read every message. We won't email you, as requested." = "Chúng tôi đọc mọi tin nhắn. Theo yêu cầu, chúng tôi sẽ không gửi email cho bạn.";
+"Welcome" = "Chào mừng bạn";
 "Welcome to Palmier Pro" = "Chào mừng bạn đến với Palmier Pro";
 "Welcome to Palmier Pro, %@" = "Chào mừng %@ đến với Palmier Pro";
+"Welcome, %@" = "Chào mừng %@";
+"What best describes your role?" = "Điều gì mô tả đúng nhất vai trò của bạn?";
+"What do you make?" = "Bạn tạo nội dung gì?";
+"What interests you most about Palmier Pro?" = "Bạn quan tâm nhất điều gì ở Palmier Pro?";
 "What's New in v%@" = "Có gì mới trong v%@";
 "White Balance" = "Cân bằng trắng";
 "Whites" = "Vùng trắng";
@@ -971,6 +998,7 @@
 "Working on %@" = "Đang xử lý %@";
 "Workspace layout" = "Bố cục không gian làm việc";
 "You're all set" = "Mọi thứ đã sẵn sàng";
+"YouTube" = "YouTube";
 "Your Lottie animation is ready." = "Hoạt ảnh Lottie của bạn đã sẵn sàng.";
 "Your audio clip is ready." = "Clip âm thanh của bạn đã sẵn sàng.";
 "Your image is ready." = "Hình ảnh của bạn đã sẵn sàng.";

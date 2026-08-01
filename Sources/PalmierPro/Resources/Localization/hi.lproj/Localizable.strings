@@ -59,6 +59,8 @@
 "AI Generated" = "AI द्वारा जेनरेट किया गया";
 "AI agent" = "AI एजेंट";
 "AI is unavailable" = "AI उपलब्ध नहीं है";
+"AI transcription" = "AI ट्रांसक्रिप्शन";
+"AI videos" = "AI वीडियो";
 "About Palmier Pro" = "Palmier Pro के बारे में";
 "Account" = "खाता";
 "Account settings" = "खाता सेटिंग्स";
@@ -86,8 +88,10 @@
 "Added to %@" = "%@ में जोड़ा गया";
 "Adjust" = "एडजस्ट";
 "Adjust Range" = "रेंज एडजस्ट करें";
+"Ads and branded content" = "विज्ञापन और ब्रांडेड कंटेंट";
 "Agent Mode" = "एजेंट मोड";
 "Agent Panel" = "एजेंट पैनल";
+"Agentic editing" = "एजेंट से एडिटिंग";
 "Alignment" = "अलाइनमेंट";
 "All" = "सभी";
 "All fonts" = "सभी फ़ॉन्ट";
@@ -207,6 +211,7 @@
 "Connect an agent" = "एजेंट कनेक्ट करें";
 "Connect an external agent to inspect and edit the open Palmier Pro project." = "खुले Palmier Pro प्रोजेक्ट को देखने और एडिट करने के लिए बाहरी एजेंट कनेक्ट करें।";
 "Content" = "कंटेंट";
+"Content creator" = "कंटेंट क्रिएटर";
 "Continue" = "जारी रखें";
 "Contrast" = "कॉन्ट्रास्ट";
 "Copied" = "कॉपी किया गया";
@@ -274,6 +279,7 @@
 "Describe the video" = "वीडियो का वर्णन करें";
 "Description" = "विवरण";
 "Deselect & Reset Tool" = "चयन हटाएँ और टूल रीसेट करें";
+"Designer" = "डिज़ाइनर";
 "Destination" = "डेस्टिनेशन";
 "Detail" = "डिटेल";
 "Details" = "डिटेल्स";
@@ -318,6 +324,7 @@
 "Editing" = "एडिटिंग";
 "Edit…" = "एडिट करें…";
 "Edit… (Paid)" = "एडिट करें… (सशुल्क)";
+"Education and tutorials" = "शिक्षा और ट्यूटोरियल";
 "Effects" = "इफ़ेक्ट्स";
 "Email (optional)" = "ईमेल (वैकल्पिक)";
 "Empty" = "खाली";
@@ -351,6 +358,7 @@
 "Fill" = "फ़िल";
 "Fill prompt" = "फ़िल प्रॉम्प्ट";
 "Film Grain" = "फ़िल्म ग्रेन";
+"Filmmaker" = "फ़िल्ममेकर";
 "First Frame" = "पहला फ़्रेम";
 "First-time sign-ups only" = "केवल पहली बार साइन अप करने वालों के लिए";
 "First/Last" = "पहला/अंतिम";
@@ -366,6 +374,7 @@
 "Footage" = "फ़ुटेज";
 "For" = "के लिए";
 "Forward" = "आगे";
+"Founder" = "फ़ाउंडर";
 "Frame Rate" = "फ़्रेम रेट";
 "Free" = "मुफ़्त";
 "Full Frame" = "फ़ुल फ़्रेम";
@@ -397,7 +406,6 @@
 "Generation panel" = "जेनरेशन पैनल";
 "Get Anthropic API key" = "Anthropic API कुंजी पाएँ";
 "Get a notification when a generation finishes." = "जेनरेशन पूर्ण होने पर सूचना पाएँ।";
-"Get started" = "शुरू करें";
 "Getting the search model ready." = "सर्च मॉडल तैयार हो रहा है।";
 "Glow" = "ग्लो";
 "Go to next keyframe" = "अगले कीफ़्रेम पर जाएँ";
@@ -413,6 +421,7 @@
 "Highlight" = "हाइलाइट";
 "Highlight Block" = "हाइलाइट ब्लॉक";
 "Highlights" = "हाइलाइट्स";
+"Hobbyist" = "शौकिया";
 "Hold" = "होल्ड";
 "Hue" = "ह्यू";
 "Hue Curves" = "ह्यू कर्व्स";
@@ -444,6 +453,7 @@
 "Installed" = "इंस्टॉल किया गया";
 "Instructions" = "निर्देश";
 "Instrumental" = "इंस्ट्रुमेंटल";
+"Integration with your own agent" = "अपने एजेंट के साथ इंटीग्रेशन";
 "Integrations" = "इंटीग्रेशन";
 "Intensity" = "इंटेंसिटी";
 "Invert Colors" = "रंग उलटें";
@@ -510,6 +520,7 @@
 "Mark Range Start" = "रेंज का आरंभ मार्क करें";
 "Mark Silence" = "साइलेंस मार्क करें";
 "Mark Speakers" = "स्पीकर मार्क करें";
+"Marketer" = "मार्केटर";
 "Master Audio Meter" = "मास्टर ऑडियो मीटर";
 "Master — defines the group's clock and transcript." = "मास्टर — ग्रुप की क्लॉक और ट्रांसक्रिप्ट तय करता है।";
 "Match Timeline" = "टाइमलाइन से मैच करें";
@@ -612,6 +623,7 @@
 "Organize with Agent" = "एजेंट से व्यवस्थित करें";
 "Original" = "मूल";
 "Original FPS" = "मूल FPS";
+"Other" = "अन्य";
 "Outline" = "आउटलाइन";
 "Outline Color" = "आउटलाइन कलर";
 "Outline Width" = "आउटलाइन चौड़ाई";
@@ -637,6 +649,7 @@
 "Playback" = "प्लेबैक";
 "Playback Speed" = "प्लेबैक स्पीड";
 "Playback previews, waveforms, filmstrip thumbnails, and transcripts. Safe to clear; files rebuild as needed." = "प्लेबैक प्रीव्यू, वेवफ़ॉर्म, फ़िल्मस्ट्रिप थंबनेल और ट्रांसक्रिप्ट। इन्हें साफ़ करना सुरक्षित है; फ़ाइलें ज़रूरत पर दोबारा बनती हैं।";
+"Podcast" = "पॉडकास्ट";
 "Pointer (V)" = "पॉइंटर (V)";
 "Pop In" = "पॉप इन";
 "Position" = "पोज़िशन";
@@ -646,6 +659,7 @@
 "Preview" = "प्रीव्यू";
 "Privacy & Diagnostics" = "प्राइवेसी और डायग्नोस्टिक्स";
 "Pro plan" = "Pro प्लान";
+"Product demos" = "प्रोडक्ट डेमो";
 "Project" = "प्रोजेक्ट";
 "Project Activity" = "प्रोजेक्ट गतिविधि";
 "Projects Couldn’t Be Deleted" = "प्रोजेक्ट हटाए नहीं जा सके";
@@ -724,6 +738,7 @@
 "Sample Key Color" = "की कलर सैंपल करें";
 "Sample Project" = "सैंपल प्रोजेक्ट";
 "Sample key color" = "की कलर सैंपल करें";
+"Sample project couldn’t be opened. Try again." = "सैंपल प्रोजेक्ट नहीं खुल सका। फिर कोशिश करें।";
 "Sat" = "सैट";
 "Saturation" = "सैचुरेशन";
 "Save" = "सेव करें";
@@ -774,6 +789,7 @@
 "Shadows" = "शैडोज़";
 "Share usage data" = "उपयोग डेटा शेयर करें";
 "Sharpen" = "शार्पन";
+"Short-form and social" = "शॉर्ट-फ़ॉर्म और सोशल";
 "Shortcuts" = "शॉर्टकट्स";
 "Show in Finder" = "Finder में दिखाएँ";
 "Show keyframe timeline" = "कीफ़्रेम टाइमलाइन दिखाएँ";
@@ -782,12 +798,14 @@
 "Sign In" = "साइन इन";
 "Sign in" = "साइन इन";
 "Sign in to generate" = "जेनरेट करने के लिए साइन इन करें";
+"Sign in to receive 250 free credits for AI chat and generation." = "AI चैट और जेनरेशन के लिए 250 मुफ़्त क्रेडिट पाने के लिए साइन इन करें।";
 "Sign in to subscribe and use AI generation." = "सब्सक्राइब करने और AI जेनरेशन इस्तेमाल करने के लिए साइन इन करें।";
 "Sign in to use AI" = "AI इस्तेमाल करने के लिए साइन इन करें";
 "Sign in to use Cloud transcription." = "क्लाउड ट्रांसक्रिप्शन इस्तेमाल करने के लिए साइन इन करें।";
 "Sign in to use Cloud." = "क्लाउड इस्तेमाल करने के लिए साइन इन करें।";
 "Sign in with Google" = "Google से साइन इन करें";
 "Sign out" = "साइन आउट";
+"Sign-in couldn’t be completed. Try again." = "साइन इन पूरा नहीं हो सका। फिर कोशिश करें।";
 "Signed in" = "साइन इन किया गया";
 "Signed out" = "साइन आउट किया गया";
 "Silence Detection" = "साइलेंस डिटेक्शन";
@@ -831,6 +849,7 @@
 "Storage" = "स्टोरेज";
 "Streaming through your Anthropic API key (BYOK)" = "आपकी Anthropic API कुंजी (BYOK) से स्ट्रीम हो रहा है";
 "Strikethrough" = "स्ट्राइकथ्रू";
+"Student" = "छात्र";
 "Style" = "स्टाइल";
 "Style instructions (optional). e.g., warm and slow, British accent." = "स्टाइल निर्देश (वैकल्पिक)। उदाहरण: गर्म और धीमा, ब्रिटिश उच्चारण।";
 "Subscribe" = "सब्सक्राइब करें";
@@ -850,6 +869,7 @@
 "System appearance" = "सिस्टम अपीयरेंस";
 "Take a screenshot of the preview and use it as a reference for generation. Particularly useful for creating AI transitions." = "प्रीव्यू का स्क्रीनशॉट लेकर जेनरेशन के रेफ़रेंस के रूप में उपयोग करें। AI ट्रांज़िशन बनाने के लिए विशेष रूप से उपयोगी।";
 "Target Language" = "टार्गेट भाषा";
+"Tell us about your work" = "अपने काम के बारे में बताएँ";
 "Temperature" = "टेम्परेचर";
 "Temporary files" = "अस्थायी फ़ाइलें";
 "Text" = "टेक्स्ट";
@@ -939,6 +959,8 @@
 "Vibrance" = "वाइब्रेंस";
 "Video" = "वीडियो";
 "Video Ref" = "वीडियो रेफ़रेंस";
+"Video automation" = "वीडियो ऑटोमेशन";
+"Video editor" = "वीडियो एडिटर";
 "Video has no audio track" = "वीडियो में ऑडियो ट्रैक नहीं है";
 "Video to Music" = "वीडियो से संगीत";
 "View" = "व्यू";
@@ -952,13 +974,18 @@
 "Voice Cleanup requires audio or video" = "वॉइस क्लीनअप के लिए ऑडियो या वीडियो चाहिए";
 "Volume" = "वॉल्यूम";
 "Warmth" = "वॉर्म्थ";
-"Watch Tutorial" = "ट्यूटोरियल देखें";
+"Watch the tutorial or start creating." = "ट्यूटोरियल देखें या बनाना शुरू करें।";
 "We may email you for follow-up questions" = "आगे के सवालों के लिए हम आपको ईमेल कर सकते हैं";
 "We read every message and may reach out at %@." = "हम हर मैसेज पढ़ते हैं और %@ पर संपर्क कर सकते हैं।";
 "We read every message. Add an email next time if you'd like a reply." = "हम हर मैसेज पढ़ते हैं। जवाब चाहें तो अगली बार ईमेल जोड़ें।";
 "We read every message. We won't email you, as requested." = "हम हर मैसेज पढ़ते हैं। आपके अनुरोध के अनुसार हम ईमेल नहीं करेंगे।";
+"Welcome" = "स्वागत है";
 "Welcome to Palmier Pro" = "Palmier Pro में आपका स्वागत है";
 "Welcome to Palmier Pro, %@" = "Palmier Pro में आपका स्वागत है, %@";
+"Welcome, %@" = "स्वागत है, %@";
+"What best describes your role?" = "आपकी भूमिका क्या है?";
+"What do you make?" = "आप क्या बनाते हैं?";
+"What interests you most about Palmier Pro?" = "Palmier Pro में आपकी सबसे ज़्यादा दिलचस्पी किसमें है?";
 "What's New in v%@" = "v%@ में नया क्या है";
 "White Balance" = "व्हाइट बैलेंस";
 "Whites" = "व्हाइट्स";
@@ -971,6 +998,7 @@
 "Working on %@" = "%@ पर काम हो रहा है";
 "Workspace layout" = "वर्कस्पेस लेआउट";
 "You're all set" = "सब तैयार है";
+"YouTube" = "YouTube";
 "Your Lottie animation is ready." = "आपका Lottie एनिमेशन तैयार है।";
 "Your audio clip is ready." = "आपकी ऑडियो क्लिप तैयार है।";
 "Your image is ready." = "आपकी इमेज तैयार है।";

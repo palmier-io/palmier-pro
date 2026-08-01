@@ -59,6 +59,8 @@
 "AI Generated" = "AI Generated";
 "AI agent" = "AI agent";
 "AI is unavailable" = "AI is unavailable";
+"AI transcription" = "AI transcription";
+"AI videos" = "AI videos";
 "About Palmier Pro" = "About Palmier Pro";
 "Account" = "Account";
 "Account settings" = "Account settings";
@@ -86,8 +88,10 @@
 "Added to %@" = "Added to %@";
 "Adjust" = "Adjust";
 "Adjust Range" = "Adjust Range";
+"Ads and branded content" = "Ads and branded content";
 "Agent Mode" = "Agent Mode";
 "Agent Panel" = "Agent Panel";
+"Agentic editing" = "Agentic editing";
 "Alignment" = "Alignment";
 "All" = "All";
 "All fonts" = "All fonts";
@@ -207,6 +211,7 @@
 "Connect an agent" = "Connect an agent";
 "Connect an external agent to inspect and edit the open Palmier Pro project." = "Connect an external agent to inspect and edit the open Palmier Pro project.";
 "Content" = "Content";
+"Content creator" = "Content creator";
 "Continue" = "Continue";
 "Contrast" = "Contrast";
 "Copied" = "Copied";
@@ -274,6 +279,7 @@
 "Describe the video" = "Describe the video";
 "Description" = "Description";
 "Deselect & Reset Tool" = "Deselect & Reset Tool";
+"Designer" = "Designer";
 "Destination" = "Destination";
 "Detail" = "Detail";
 "Details" = "Details";
@@ -318,6 +324,7 @@
 "Editing" = "Editing";
 "Edit…" = "Edit…";
 "Edit… (Paid)" = "Edit… (Paid)";
+"Education and tutorials" = "Education and tutorials";
 "Effects" = "Effects";
 "Email (optional)" = "Email (optional)";
 "Empty" = "Empty";
@@ -351,6 +358,7 @@
 "Fill" = "Fill";
 "Fill prompt" = "Fill prompt";
 "Film Grain" = "Film Grain";
+"Filmmaker" = "Filmmaker";
 "First Frame" = "First Frame";
 "First-time sign-ups only" = "First-time sign-ups only";
 "First/Last" = "First/Last";
@@ -366,6 +374,7 @@
 "Footage" = "Footage";
 "For" = "For";
 "Forward" = "Forward";
+"Founder" = "Founder";
 "Frame Rate" = "Frame Rate";
 "Free" = "Free";
 "Full Frame" = "Full Frame";
@@ -397,7 +406,6 @@
 "Generation panel" = "Generation panel";
 "Get Anthropic API key" = "Get Anthropic API key";
 "Get a notification when a generation finishes." = "Get a notification when a generation finishes.";
-"Get started" = "Get started";
 "Getting the search model ready." = "Getting the search model ready.";
 "Glow" = "Glow";
 "Go to next keyframe" = "Go to next keyframe";
@@ -413,6 +421,7 @@
 "Highlight" = "Highlight";
 "Highlight Block" = "Highlight Block";
 "Highlights" = "Highlights";
+"Hobbyist" = "Hobbyist";
 "Hold" = "Hold";
 "Hue" = "Hue";
 "Hue Curves" = "Hue Curves";
@@ -444,6 +453,7 @@
 "Installed" = "Installed";
 "Instructions" = "Instructions";
 "Instrumental" = "Instrumental";
+"Integration with your own agent" = "Integration with your own agent";
 "Integrations" = "Integrations";
 "Intensity" = "Intensity";
 "Invert Colors" = "Invert Colors";
@@ -510,6 +520,7 @@
 "Mark Range Start" = "Mark Range Start";
 "Mark Silence" = "Mark Silence";
 "Mark Speakers" = "Mark Speakers";
+"Marketer" = "Marketer";
 "Master Audio Meter" = "Master Audio Meter";
 "Master — defines the group's clock and transcript." = "Master — defines the group's clock and transcript.";
 "Match Timeline" = "Match Timeline";
@@ -612,6 +623,7 @@
 "Organize with Agent" = "Organize with Agent";
 "Original" = "Original";
 "Original FPS" = "Original FPS";
+"Other" = "Other";
 "Outline" = "Outline";
 "Outline Color" = "Outline Color";
 "Outline Width" = "Outline Width";
@@ -637,6 +649,7 @@
 "Playback" = "Playback";
 "Playback Speed" = "Playback Speed";
 "Playback previews, waveforms, filmstrip thumbnails, and transcripts. Safe to clear; files rebuild as needed." = "Playback previews, waveforms, filmstrip thumbnails, and transcripts. Safe to clear; files rebuild as needed.";
+"Podcast" = "Podcast";
 "Pointer (V)" = "Pointer (V)";
 "Pop In" = "Pop In";
 "Position" = "Position";
@@ -646,6 +659,7 @@
 "Preview" = "Preview";
 "Privacy & Diagnostics" = "Privacy & Diagnostics";
 "Pro plan" = "Pro plan";
+"Product demos" = "Product demos";
 "Project" = "Project";
 "Project Activity" = "Project Activity";
 "Projects Couldn’t Be Deleted" = "Projects Couldn’t Be Deleted";
@@ -724,6 +738,7 @@
 "Sample Key Color" = "Sample Key Color";
 "Sample Project" = "Sample Project";
 "Sample key color" = "Sample key color";
+"Sample project couldn’t be opened. Try again." = "Sample project couldn’t be opened. Try again.";
 "Sat" = "Sat";
 "Saturation" = "Saturation";
 "Save" = "Save";
@@ -774,6 +789,7 @@
 "Shadows" = "Shadows";
 "Share usage data" = "Share usage data";
 "Sharpen" = "Sharpen";
+"Short-form and social" = "Short-form and social";
 "Shortcuts" = "Shortcuts";
 "Show in Finder" = "Show in Finder";
 "Show keyframe timeline" = "Show keyframe timeline";
@@ -782,12 +798,14 @@
 "Sign In" = "Sign In";
 "Sign in" = "Sign in";
 "Sign in to generate" = "Sign in to generate";
+"Sign in to receive 250 free credits for AI chat and generation." = "Sign in to receive 250 free credits for AI chat and generation.";
 "Sign in to subscribe and use AI generation." = "Sign in to subscribe and use AI generation.";
 "Sign in to use AI" = "Sign in to use AI";
 "Sign in to use Cloud transcription." = "Sign in to use Cloud transcription.";
 "Sign in to use Cloud." = "Sign in to use Cloud.";
 "Sign in with Google" = "Sign in with Google";
 "Sign out" = "Sign out";
+"Sign-in couldn’t be completed. Try again." = "Sign-in couldn’t be completed. Try again.";
 "Signed in" = "Signed in";
 "Signed out" = "Signed out";
 "Silence Detection" = "Silence Detection";
@@ -831,6 +849,7 @@
 "Storage" = "Storage";
 "Streaming through your Anthropic API key (BYOK)" = "Streaming through your Anthropic API key (BYOK)";
 "Strikethrough" = "Strikethrough";
+"Student" = "Student";
 "Style" = "Style";
 "Style instructions (optional). e.g., warm and slow, British accent." = "Style instructions (optional). e.g., warm and slow, British accent.";
 "Subscribe" = "Subscribe";
@@ -850,6 +869,7 @@
 "System appearance" = "System appearance";
 "Take a screenshot of the preview and use it as a reference for generation. Particularly useful for creating AI transitions." = "Take a screenshot of the preview and use it as a reference for generation. Particularly useful for creating AI transitions.";
 "Target Language" = "Target Language";
+"Tell us about your work" = "Tell us about your work";
 "Temperature" = "Temperature";
 "Temporary files" = "Temporary files";
 "Text" = "Text";
@@ -939,6 +959,8 @@
 "Vibrance" = "Vibrance";
 "Video" = "Video";
 "Video Ref" = "Video Ref";
+"Video automation" = "Video automation";
+"Video editor" = "Video editor";
 "Video has no audio track" = "Video has no audio track";
 "Video to Music" = "Video to Music";
 "View" = "View";
@@ -952,13 +974,18 @@
 "Voice Cleanup requires audio or video" = "Voice Cleanup requires audio or video";
 "Volume" = "Volume";
 "Warmth" = "Warmth";
-"Watch Tutorial" = "Watch Tutorial";
+"Watch the tutorial or start creating." = "Watch the tutorial or start creating.";
 "We may email you for follow-up questions" = "We may email you for follow-up questions";
 "We read every message and may reach out at %@." = "We read every message and may reach out at %@.";
 "We read every message. Add an email next time if you'd like a reply." = "We read every message. Add an email next time if you'd like a reply.";
 "We read every message. We won't email you, as requested." = "We read every message. We won't email you, as requested.";
+"Welcome" = "Welcome";
 "Welcome to Palmier Pro" = "Welcome to Palmier Pro";
 "Welcome to Palmier Pro, %@" = "Welcome to Palmier Pro, %@";
+"Welcome, %@" = "Welcome, %@";
+"What best describes your role?" = "What best describes your role?";
+"What do you make?" = "What do you make?";
+"What interests you most about Palmier Pro?" = "What interests you most about Palmier Pro?";
 "What's New in v%@" = "What's New in v%@";
 "White Balance" = "White Balance";
 "Whites" = "Whites";
@@ -971,6 +998,7 @@
 "Working on %@" = "Working on %@";
 "Workspace layout" = "Workspace layout";
 "You're all set" = "You're all set";
+"YouTube" = "YouTube";
 "Your Lottie animation is ready." = "Your Lottie animation is ready.";
 "Your audio clip is ready." = "Your audio clip is ready.";
 "Your image is ready." = "Your image is ready.";

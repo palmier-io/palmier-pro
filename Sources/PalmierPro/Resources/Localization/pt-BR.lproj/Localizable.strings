@@ -59,6 +59,8 @@
 "AI Generated" = "Gerado por AI";
 "AI agent" = "Agente de AI";
 "AI is unavailable" = "AI indisponível";
+"AI transcription" = "Transcrição com AI";
+"AI videos" = "Vídeos com AI";
 "About Palmier Pro" = "Sobre o Palmier Pro";
 "Account" = "Conta";
 "Account settings" = "Ajustes da conta";
@@ -86,8 +88,10 @@
 "Added to %@" = "Adicionado a %@";
 "Adjust" = "Ajustar";
 "Adjust Range" = "Ajustar intervalo";
+"Ads and branded content" = "Anúncios e conteúdo de marca";
 "Agent Mode" = "Modo Agente";
 "Agent Panel" = "Painel do Agente";
+"Agentic editing" = "Edição com agente";
 "Alignment" = "Alinhamento";
 "All" = "Tudo";
 "All fonts" = "Todas as fontes";
@@ -207,6 +211,7 @@
 "Connect an agent" = "Conectar um agente";
 "Connect an external agent to inspect and edit the open Palmier Pro project." = "Conecte um agente externo para inspecionar e editar o projeto aberto no Palmier Pro.";
 "Content" = "Conteúdo";
+"Content creator" = "Criador de conteúdo";
 "Continue" = "Continuar";
 "Contrast" = "Contraste";
 "Copied" = "Copiado";
@@ -274,6 +279,7 @@
 "Describe the video" = "Descrever o vídeo";
 "Description" = "Descrição";
 "Deselect & Reset Tool" = "Desmarcar e redefinir ferramenta";
+"Designer" = "Designer";
 "Destination" = "Destino";
 "Detail" = "Detalhe";
 "Details" = "Detalhes";
@@ -318,6 +324,7 @@
 "Editing" = "Editando";
 "Edit…" = "Editar…";
 "Edit… (Paid)" = "Editar… (pago)";
+"Education and tutorials" = "Educação e tutoriais";
 "Effects" = "Efeitos";
 "Email (optional)" = "Email (opcional)";
 "Empty" = "Vazio";
@@ -351,6 +358,7 @@
 "Fill" = "Preenchimento";
 "Fill prompt" = "Prompt de preenchimento";
 "Film Grain" = "Grão de filme";
+"Filmmaker" = "Cineasta";
 "First Frame" = "Primeiro quadro";
 "First-time sign-ups only" = "Apenas para novas contas";
 "First/Last" = "Primeiro/último";
@@ -366,6 +374,7 @@
 "Footage" = "Filmagem";
 "For" = "Para";
 "Forward" = "Avançar";
+"Founder" = "Fundador";
 "Frame Rate" = "Taxa de quadros";
 "Free" = "Grátis";
 "Full Frame" = "Quadro inteiro";
@@ -397,7 +406,6 @@
 "Generation panel" = "Painel de geração";
 "Get Anthropic API key" = "Obter chave de API da Anthropic";
 "Get a notification when a generation finishes." = "Receba uma notificação quando uma geração terminar.";
-"Get started" = "Começar";
 "Getting the search model ready." = "Preparando o modelo de busca.";
 "Glow" = "Brilho";
 "Go to next keyframe" = "Ir para o próximo quadro-chave";
@@ -413,6 +421,7 @@
 "Highlight" = "Destaque";
 "Highlight Block" = "Bloco de destaque";
 "Highlights" = "Realces";
+"Hobbyist" = "Entusiasta";
 "Hold" = "Manter";
 "Hue" = "Matiz";
 "Hue Curves" = "Curvas de matiz";
@@ -444,6 +453,7 @@
 "Installed" = "Instalado";
 "Instructions" = "Instruções";
 "Instrumental" = "Instrumental";
+"Integration with your own agent" = "Integração com seu próprio agente";
 "Integrations" = "Integrações";
 "Intensity" = "Intensidade";
 "Invert Colors" = "Inverter cores";
@@ -510,6 +520,7 @@
 "Mark Range Start" = "Marcar início do intervalo";
 "Mark Silence" = "Marcar silêncio";
 "Mark Speakers" = "Marcar falantes";
+"Marketer" = "Profissional de marketing";
 "Master Audio Meter" = "Medidor de áudio master";
 "Master — defines the group's clock and transcript." = "Master — define o relógio e a transcrição do grupo.";
 "Match Timeline" = "Corresponder à linha do tempo";
@@ -612,6 +623,7 @@
 "Organize with Agent" = "Organizar com o Agente";
 "Original" = "Original";
 "Original FPS" = "FPS original";
+"Other" = "Outro";
 "Outline" = "Contorno";
 "Outline Color" = "Cor do contorno";
 "Outline Width" = "Largura do contorno";
@@ -637,6 +649,7 @@
 "Playback" = "Reprodução";
 "Playback Speed" = "Velocidade de reprodução";
 "Playback previews, waveforms, filmstrip thumbnails, and transcripts. Safe to clear; files rebuild as needed." = "Prévias de reprodução, formas de onda, miniaturas da tira de filme e transcrições. É seguro limpar; os arquivos são recriados conforme necessário.";
+"Podcast" = "Podcast";
 "Pointer (V)" = "Ponteiro (V)";
 "Pop In" = "Surgir";
 "Position" = "Posição";
@@ -646,6 +659,7 @@
 "Preview" = "Prévia";
 "Privacy & Diagnostics" = "Privacidade e diagnósticos";
 "Pro plan" = "Plano Pro";
+"Product demos" = "Demos de produto";
 "Project" = "Projeto";
 "Project Activity" = "Atividade do projeto";
 "Projects Couldn’t Be Deleted" = "Não foi possível excluir os projetos";
@@ -724,6 +738,7 @@
 "Sample Key Color" = "Obter amostra da cor-chave";
 "Sample Project" = "Projeto de exemplo";
 "Sample key color" = "Obter amostra da cor-chave";
+"Sample project couldn’t be opened. Try again." = "Não foi possível abrir o projeto de exemplo. Tente novamente.";
 "Sat" = "Sat";
 "Saturation" = "Saturação";
 "Save" = "Salvar";
@@ -774,6 +789,7 @@
 "Shadows" = "Sombras";
 "Share usage data" = "Compartilhar dados de uso";
 "Sharpen" = "Nitidez";
+"Short-form and social" = "Formato curto e redes sociais";
 "Shortcuts" = "Atalhos";
 "Show in Finder" = "Mostrar no Finder";
 "Show keyframe timeline" = "Mostrar linha do tempo de quadros-chave";
@@ -782,12 +798,14 @@
 "Sign In" = "Entrar";
 "Sign in" = "Entrar";
 "Sign in to generate" = "Entrar para gerar";
+"Sign in to receive 250 free credits for AI chat and generation." = "Entre para receber 250 créditos grátis para chat e geração com AI.";
 "Sign in to subscribe and use AI generation." = "Entre para assinar e usar a geração com AI.";
 "Sign in to use AI" = "Entrar para usar AI";
 "Sign in to use Cloud transcription." = "Entre para usar a transcrição na Nuvem.";
 "Sign in to use Cloud." = "Entre para usar a Nuvem.";
 "Sign in with Google" = "Entrar com o Google";
 "Sign out" = "Sair";
+"Sign-in couldn’t be completed. Try again." = "Não foi possível concluir a entrada. Tente novamente.";
 "Signed in" = "Sessão iniciada";
 "Signed out" = "Sessão encerrada";
 "Silence Detection" = "Detecção de silêncio";
@@ -831,6 +849,7 @@
 "Storage" = "Armazenamento";
 "Streaming through your Anthropic API key (BYOK)" = "Transmitindo pela sua chave de API da Anthropic (BYOK)";
 "Strikethrough" = "Tachado";
+"Student" = "Estudante";
 "Style" = "Estilo";
 "Style instructions (optional). e.g., warm and slow, British accent." = "Instruções de estilo (opcional). Por exemplo: acolhedor e lento, sotaque britânico.";
 "Subscribe" = "Assinar";
@@ -850,6 +869,7 @@
 "System appearance" = "Aparência do sistema";
 "Take a screenshot of the preview and use it as a reference for generation. Particularly useful for creating AI transitions." = "Capture a prévia e use-a como referência para geração. Especialmente útil para criar transições com AI.";
 "Target Language" = "Idioma de destino";
+"Tell us about your work" = "Conte sobre seu trabalho";
 "Temperature" = "Temperatura";
 "Temporary files" = "Arquivos temporários";
 "Text" = "Texto";
@@ -939,6 +959,8 @@
 "Vibrance" = "Vivacidade";
 "Video" = "Vídeo";
 "Video Ref" = "Referência de vídeo";
+"Video automation" = "Automação de vídeo";
+"Video editor" = "Editor de vídeo";
 "Video has no audio track" = "O vídeo não tem faixa de áudio";
 "Video to Music" = "Vídeo para música";
 "View" = "Visualizar";
@@ -952,13 +974,18 @@
 "Voice Cleanup requires audio or video" = "A limpeza de voz requer áudio ou vídeo";
 "Volume" = "Volume";
 "Warmth" = "Calor";
-"Watch Tutorial" = "Assistir ao tutorial";
+"Watch the tutorial or start creating." = "Assista ao tutorial ou comece a criar.";
 "We may email you for follow-up questions" = "Podemos enviar um email com outras perguntas";
 "We read every message and may reach out at %@." = "Lemos todas as mensagens e podemos entrar em contato pelo endereço %@.";
 "We read every message. Add an email next time if you'd like a reply." = "Lemos todas as mensagens. Da próxima vez, adicione um email se quiser uma resposta.";
 "We read every message. We won't email you, as requested." = "Lemos todas as mensagens. Conforme solicitado, não enviaremos emails.";
+"Welcome" = "Boas-vindas";
 "Welcome to Palmier Pro" = "Boas-vindas ao Palmier Pro";
 "Welcome to Palmier Pro, %@" = "Boas-vindas ao Palmier Pro, %@";
+"Welcome, %@" = "Boas-vindas, %@";
+"What best describes your role?" = "O que melhor descreve sua função?";
+"What do you make?" = "O que você cria?";
+"What interests you most about Palmier Pro?" = "O que mais te interessa no Palmier Pro?";
 "What's New in v%@" = "Novidades da versão %@";
 "White Balance" = "Balanço de branco";
 "Whites" = "Brancos";
@@ -971,6 +998,7 @@
 "Working on %@" = "Processando %@";
 "Workspace layout" = "Layout do espaço de trabalho";
 "You're all set" = "Tudo pronto";
+"YouTube" = "YouTube";
 "Your Lottie animation is ready." = "Sua animação Lottie está pronta.";
 "Your audio clip is ready." = "Seu clipe de áudio está pronto.";
 "Your image is ready." = "Sua imagem está pronta.";

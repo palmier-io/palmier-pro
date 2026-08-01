@@ -59,6 +59,8 @@
 "AI Generated" = "Создано AI";
 "AI agent" = "AI-агент";
 "AI is unavailable" = "AI недоступен";
+"AI transcription" = "AI-расшифровка";
+"AI videos" = "AI-видео";
 "About Palmier Pro" = "О Palmier Pro";
 "Account" = "Учётная запись";
 "Account settings" = "Настройки учётной записи";
@@ -86,8 +88,10 @@
 "Added to %@" = "Добавлено в %@";
 "Adjust" = "Коррекция";
 "Adjust Range" = "Изменить диапазон";
+"Ads and branded content" = "Реклама и брендированный контент";
 "Agent Mode" = "Режим агента";
 "Agent Panel" = "Панель агента";
+"Agentic editing" = "Монтаж с агентом";
 "Alignment" = "Выравнивание";
 "All" = "Все";
 "All fonts" = "Все шрифты";
@@ -207,6 +211,7 @@
 "Connect an agent" = "Подключить агент";
 "Connect an external agent to inspect and edit the open Palmier Pro project." = "Подключите внешний агент для просмотра и редактирования открытого проекта Palmier Pro.";
 "Content" = "Содержимое";
+"Content creator" = "Автор контента";
 "Continue" = "Продолжить";
 "Contrast" = "Контраст";
 "Copied" = "Скопировано";
@@ -274,6 +279,7 @@
 "Describe the video" = "Опишите видео";
 "Description" = "Описание";
 "Deselect & Reset Tool" = "Снять выделение и сбросить инструмент";
+"Designer" = "Дизайнер";
 "Destination" = "Назначение";
 "Detail" = "Детализация";
 "Details" = "Сведения";
@@ -318,6 +324,7 @@
 "Editing" = "Редактирование";
 "Edit…" = "Изменить…";
 "Edit… (Paid)" = "Изменить… (платно)";
+"Education and tutorials" = "Обучение и уроки";
 "Effects" = "Эффекты";
 "Email (optional)" = "Электронная почта (необязательно)";
 "Empty" = "Пусто";
@@ -351,6 +358,7 @@
 "Fill" = "Заливка";
 "Fill prompt" = "Заполнить запрос";
 "Film Grain" = "Зернистость плёнки";
+"Filmmaker" = "Кинематографист";
 "First Frame" = "Первый кадр";
 "First-time sign-ups only" = "Только для новых пользователей";
 "First/Last" = "Первый/последний";
@@ -366,6 +374,7 @@
 "Footage" = "Видеоматериал";
 "For" = "Для";
 "Forward" = "Вперёд";
+"Founder" = "Основатель";
 "Frame Rate" = "Частота кадров";
 "Free" = "Бесплатно";
 "Full Frame" = "Полный кадр";
@@ -397,7 +406,6 @@
 "Generation panel" = "Панель генерации";
 "Get Anthropic API key" = "Получить API-ключ Anthropic";
 "Get a notification when a generation finishes." = "Уведомлять о завершении генерации.";
-"Get started" = "Начать";
 "Getting the search model ready." = "Подготавливаем модель поиска.";
 "Glow" = "Свечение";
 "Go to next keyframe" = "К следующему ключевому кадру";
@@ -413,6 +421,7 @@
 "Highlight" = "Выделение";
 "Highlight Block" = "Блок выделения";
 "Highlights" = "Светлые тона";
+"Hobbyist" = "Любитель";
 "Hold" = "Удержание";
 "Hue" = "Оттенок";
 "Hue Curves" = "Кривые оттенка";
@@ -444,6 +453,7 @@
 "Installed" = "Установлено";
 "Instructions" = "Инструкции";
 "Instrumental" = "Инструментальная";
+"Integration with your own agent" = "Интеграция со своим агентом";
 "Integrations" = "Интеграции";
 "Intensity" = "Интенсивность";
 "Invert Colors" = "Инвертировать цвета";
@@ -510,6 +520,7 @@
 "Mark Range Start" = "Отметить начало диапазона";
 "Mark Silence" = "Отметить тишину";
 "Mark Speakers" = "Отметить говорящих";
+"Marketer" = "Маркетолог";
 "Master Audio Meter" = "Индикатор мастер-аудио";
 "Master — defines the group's clock and transcript." = "Мастер — задаёт синхронизацию и расшифровку группы.";
 "Match Timeline" = "Подогнать под таймлайн";
@@ -612,6 +623,7 @@
 "Organize with Agent" = "Упорядочить с помощью агента";
 "Original" = "Оригинал";
 "Original FPS" = "Исходный FPS";
+"Other" = "Другое";
 "Outline" = "Обводка";
 "Outline Color" = "Цвет обводки";
 "Outline Width" = "Ширина обводки";
@@ -637,6 +649,7 @@
 "Playback" = "Воспроизведение";
 "Playback Speed" = "Скорость воспроизведения";
 "Playback previews, waveforms, filmstrip thumbnails, and transcripts. Safe to clear; files rebuild as needed." = "Предпросмотр воспроизведения, волновые формы, миниатюры киноленты и расшифровки. Их можно безопасно удалить: при необходимости файлы будут созданы заново.";
+"Podcast" = "Подкаст";
 "Pointer (V)" = "Указатель (V)";
 "Pop In" = "Появление";
 "Position" = "Позиция";
@@ -646,6 +659,7 @@
 "Preview" = "Предпросмотр";
 "Privacy & Diagnostics" = "Конфиденциальность и диагностика";
 "Pro plan" = "План Pro";
+"Product demos" = "Демо продукта";
 "Project" = "Проект";
 "Project Activity" = "Активность проекта";
 "Projects Couldn’t Be Deleted" = "Не удалось удалить проекты";
@@ -724,6 +738,7 @@
 "Sample Key Color" = "Выбрать ключевой цвет";
 "Sample Project" = "Пример проекта";
 "Sample key color" = "Выбрать ключевой цвет";
+"Sample project couldn’t be opened. Try again." = "Не удалось открыть пример проекта. Повторите попытку.";
 "Sat" = "Нас.";
 "Saturation" = "Насыщенность";
 "Save" = "Сохранить";
@@ -774,6 +789,7 @@
 "Shadows" = "Тени";
 "Share usage data" = "Делиться данными об использовании";
 "Sharpen" = "Резкость";
+"Short-form and social" = "Короткие видео и соцсети";
 "Shortcuts" = "Сочетания клавиш";
 "Show in Finder" = "Показать в Finder";
 "Show keyframe timeline" = "Показать таймлайн ключевых кадров";
@@ -782,12 +798,14 @@
 "Sign In" = "Войти";
 "Sign in" = "Войти";
 "Sign in to generate" = "Войдите, чтобы создавать";
+"Sign in to receive 250 free credits for AI chat and generation." = "Войдите и получите 250 бесплатных кредитов на AI-чат и генерацию.";
 "Sign in to subscribe and use AI generation." = "Войдите, чтобы оформить подписку и использовать AI-генерацию.";
 "Sign in to use AI" = "Войдите, чтобы использовать AI";
 "Sign in to use Cloud transcription." = "Войдите, чтобы использовать облачную расшифровку.";
 "Sign in to use Cloud." = "Войдите, чтобы использовать облако.";
 "Sign in with Google" = "Войти с Google";
 "Sign out" = "Выйти";
+"Sign-in couldn’t be completed. Try again." = "Не удалось выполнить вход. Повторите попытку.";
 "Signed in" = "Вход выполнен";
 "Signed out" = "Выход выполнен";
 "Silence Detection" = "Определение тишины";
@@ -831,6 +849,7 @@
 "Storage" = "Хранилище";
 "Streaming through your Anthropic API key (BYOK)" = "Потоковая передача через ваш API-ключ Anthropic (BYOK)";
 "Strikethrough" = "Зачёркивание";
+"Student" = "Студент";
 "Style" = "Стиль";
 "Style instructions (optional). e.g., warm and slow, British accent." = "Инструкции по стилю (необязательно). Например: тёплый и медленный голос, британский акцент.";
 "Subscribe" = "Подписаться";
@@ -850,6 +869,7 @@
 "System appearance" = "Системное оформление";
 "Take a screenshot of the preview and use it as a reference for generation. Particularly useful for creating AI transitions." = "Сделайте снимок предпросмотра и используйте его как референс для генерации. Особенно полезно при создании AI-переходов.";
 "Target Language" = "Целевой язык";
+"Tell us about your work" = "Расскажите о своей работе";
 "Temperature" = "Температура";
 "Temporary files" = "Временные файлы";
 "Text" = "Текст";
@@ -939,6 +959,8 @@
 "Vibrance" = "Красочность";
 "Video" = "Видео";
 "Video Ref" = "Видеореференс";
+"Video automation" = "Автоматизация видео";
+"Video editor" = "Видеомонтажёр";
 "Video has no audio track" = "В видео нет аудиодорожки";
 "Video to Music" = "Видео в музыку";
 "View" = "Вид";
@@ -952,13 +974,18 @@
 "Voice Cleanup requires audio or video" = "Для очистки голоса требуется аудио или видео";
 "Volume" = "Громкость";
 "Warmth" = "Теплота";
-"Watch Tutorial" = "Смотреть руководство";
+"Watch the tutorial or start creating." = "Посмотрите руководство или приступайте к работе.";
 "We may email you for follow-up questions" = "Мы можем написать вам для уточнения";
 "We read every message and may reach out at %@." = "Мы читаем каждое сообщение и можем связаться с вами по адресу %@.";
 "We read every message. Add an email next time if you'd like a reply." = "Мы читаем каждое сообщение. В следующий раз укажите адрес электронной почты, если хотите получить ответ.";
 "We read every message. We won't email you, as requested." = "Мы читаем каждое сообщение. По вашей просьбе мы не будем писать вам.";
+"Welcome" = "Добро пожаловать";
 "Welcome to Palmier Pro" = "Добро пожаловать в Palmier Pro";
 "Welcome to Palmier Pro, %@" = "Добро пожаловать в Palmier Pro, %@";
+"Welcome, %@" = "Добро пожаловать, %@";
+"What best describes your role?" = "Что лучше всего описывает вашу роль?";
+"What do you make?" = "Что вы создаёте?";
+"What interests you most about Palmier Pro?" = "Что вас больше всего интересует в Palmier Pro?";
 "What's New in v%@" = "Что нового в v%@";
 "White Balance" = "Баланс белого";
 "Whites" = "Белые";
@@ -971,6 +998,7 @@
 "Working on %@" = "Выполняется: %@";
 "Workspace layout" = "Расположение рабочей области";
 "You're all set" = "Всё готово";
+"YouTube" = "YouTube";
 "Your Lottie animation is ready." = "Ваша анимация Lottie готова.";
 "Your audio clip is ready." = "Ваш аудиоклип готов.";
 "Your image is ready." = "Ваше изображение готово.";
