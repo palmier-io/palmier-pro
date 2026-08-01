@@ -4,6 +4,12 @@ using PalmierPro.Core.Undo;
 
 namespace PalmierPro.Core.Editing;
 
+public enum TrimEdge
+{
+    Left,
+    Right,
+}
+
 /// <summary>
 /// Domain mutation operations shared by the timeline UI and Agent tools, ported from
 /// the Mac EditorViewModel mutation extensions. Every operation validates before
@@ -234,6 +240,97 @@ public sealed partial class TimelineEditOperations(Timeline timeline, EditorUndo
 
     private static bool IsSlipEligible(Clip clip)
         => clip.MediaType is not (ClipType.Image or ClipType.Text) && clip.MulticamGroupId is null;
+
+    // MARK: - Ripple trim
+
+    /// <summary>
+    /// Ripple-trims one edge by a signed frame delta (positive = edge moves right).
+    /// The clip's start stays fixed; downstream clips on the clip's track and on
+    /// sync-locked tracks shift by the end-edge movement so no gap opens or closes
+    /// incorrectly. Refuses when a shift would overlap or push a clip before 0.
+    /// </summary>
+    public bool RippleTrimClip(string clipId, TrimEdge edge, int deltaFrames)
+    {
+        if (deltaFrames == 0) return false;
+        if (FindClip(clipId) is not { } found) return false;
+        var clip = found.Clip;
+
+        // Left edge moving right shrinks; right edge moving right grows.
+        var durationDelta = edge == TrimEdge.Left ? -deltaFrames : deltaFrames;
+        var newDuration = clip.DurationFrames + durationDelta;
+        if (newDuration < 1) return false;
+
+        var sourceDelta = (int)Math.Round(deltaFrames * clip.Speed, MidpointRounding.AwayFromZero);
+        var unboundedSource = clip.MediaType is ClipType.Image or ClipType.Text;
+        int newTrimStart = clip.TrimStartFrame, newTrimEnd = clip.TrimEndFrame;
+        if (edge == TrimEdge.Left)
+        {
+            newTrimStart += sourceDelta;
+            if (!unboundedSource && newTrimStart < 0) return false;
+            newTrimStart = Math.Max(0, newTrimStart);
+        }
+        else
+        {
+            newTrimEnd -= sourceDelta;
+            if (!unboundedSource && newTrimEnd < 0) return false;
+            newTrimEnd = Math.Max(0, newTrimEnd);
+        }
+
+        // Downstream shift equals the end-edge movement.
+        var shiftDelta = durationDelta;
+        var oldEnd = clip.EndFrame;
+        if (!RippleTrimShiftIsSafe(found.TrackIndex, clip.Id, oldEnd, newDuration, shiftDelta))
+            return false;
+
+        MutateWithTimelineSwap("Ripple Trim", () =>
+        {
+            clip.TrimStartFrame = newTrimStart;
+            clip.TrimEndFrame = newTrimEnd;
+            clip.SetDuration(newDuration);
+            ApplyDownstreamShift(found.TrackIndex, clip.Id, oldEnd, shiftDelta);
+            SortAllTracks();
+        });
+        return true;
+    }
+
+    private void ApplyDownstreamShift(int editedTrackIndex, string editedClipId, int fromFrame, int delta)
+    {
+        for (var trackIndex = 0; trackIndex < Timeline.Tracks.Count; trackIndex++)
+        {
+            var track = Timeline.Tracks[trackIndex];
+            if (trackIndex != editedTrackIndex && !track.SyncLocked) continue;
+            foreach (var other in track.Clips)
+            {
+                if (other.Id == editedClipId) continue;
+                if (other.StartFrame >= fromFrame) other.StartFrame += delta;
+            }
+        }
+    }
+
+    private bool RippleTrimShiftIsSafe(
+        int editedTrackIndex, string editedClipId, int fromFrame, int newDuration, int delta)
+    {
+        var scratch = Clone(Timeline);
+        var edited = scratch.Tracks[editedTrackIndex].Clips.First(c => c.Id == editedClipId);
+        edited.DurationFrames = newDuration;
+        for (var trackIndex = 0; trackIndex < scratch.Tracks.Count; trackIndex++)
+        {
+            var track = scratch.Tracks[trackIndex];
+            if (trackIndex != editedTrackIndex && !track.SyncLocked) continue;
+            foreach (var other in track.Clips)
+            {
+                if (other.Id == editedClipId) continue;
+                if (other.StartFrame >= fromFrame)
+                {
+                    other.StartFrame += delta;
+                    if (other.StartFrame < 0) return false;
+                }
+            }
+            track.Clips.Sort((a, b) => a.StartFrame.CompareTo(b.StartFrame));
+            if (HasOverlap(track)) return false;
+        }
+        return true;
+    }
 
     // MARK: - Split
 

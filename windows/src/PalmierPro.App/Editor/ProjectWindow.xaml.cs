@@ -49,6 +49,33 @@ public sealed partial class ProjectWindow : Window
         TimelineView.DeleteRequested += ids => ViewModel.EditOperations?.DeleteClips(ids);
         TimelineView.SplitRequested += (clipId, frame) =>
             ViewModel.EditOperations?.SplitClip(clipId, frame);
+        TimelineView.RippleTrimRequested += (clipId, edge, delta) =>
+            ViewModel.EditOperations?.RippleTrimClip(clipId, edge, delta);
+        TimelineView.DuplicateRequested += placements =>
+            ViewModel.EditOperations?.DuplicateClipsToPositions([.. placements]);
+        TimelineView.RippleDeleteRequested += ids =>
+            ViewModel.EditOperations?.RippleDeleteClips(ids);
+        TimelineView.GapRippleDeleteRequested += (trackIndex, gap) =>
+            ViewModel.EditOperations?.RippleDeleteGap(trackIndex, gap);
+        TimelineView.TrackToggleRequested += (trackIndex, toggle) =>
+        {
+            var ops = ViewModel.EditOperations;
+            if (ops is null) return;
+            switch (toggle)
+            {
+                case PalmierPro.App.TimelineUI.TrackToggle.Mute:
+                    ops.ToggleTrackMute(trackIndex);
+                    break;
+                case PalmierPro.App.TimelineUI.TrackToggle.Hidden:
+                    ops.ToggleTrackHidden(trackIndex);
+                    break;
+                case PalmierPro.App.TimelineUI.TrackToggle.SyncLock:
+                    ops.ToggleTrackSyncLock(trackIndex);
+                    break;
+            }
+        };
+        TimelineView.TrackResizeRequested += (trackIndex, height) =>
+            ViewModel.EditOperations?.SetTrackHeight(trackIndex, height);
 
         Closed += OnClosed;
 

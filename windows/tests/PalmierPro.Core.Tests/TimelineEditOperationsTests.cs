@@ -188,6 +188,100 @@ public class TimelineEditOperationsTests
         Assert.False(_manager.CanUndo);
     }
 
+    // MARK: - Ripple trim
+
+    [Fact]
+    public void RippleTrimRightShrinkShiftsDownstreamLeft()
+    {
+        var clip = VideoClip("a", 0, 60);
+        clip.TrimEndFrame = 0;
+        var timeline = new Timeline
+        {
+            Tracks =
+            [
+                new Track { Type = ClipType.Video, Clips = [clip, VideoClip("b", 60, 30)] },
+                new Track { Type = ClipType.Audio, SyncLocked = true, Clips = [AudioClip("x", 70, 20)] },
+            ],
+        };
+        var ops = MakeOps(timeline);
+
+        Assert.True(ops.RippleTrimClip("a", TrimEdge.Right, -20));
+        Assert.Equal(40, ClipById(timeline, "a").DurationFrames);
+        Assert.Equal(20, ClipById(timeline, "a").TrimEndFrame);
+        Assert.Equal(40, ClipById(timeline, "b").StartFrame);
+        Assert.Equal(50, ClipById(timeline, "x").StartFrame); // sync-locked follows
+
+        _manager.Undo();
+        Assert.Equal(60, ClipById(timeline, "a").DurationFrames);
+        Assert.Equal(60, ClipById(timeline, "b").StartFrame);
+        Assert.Equal(70, ClipById(timeline, "x").StartFrame);
+    }
+
+    [Fact]
+    public void RippleTrimLeftKeepsStartAndShiftsDownstream()
+    {
+        var clip = VideoClip("a", 10, 60);
+        var timeline = OneTrack(clip, VideoClip("b", 70, 30));
+        var ops = MakeOps(timeline);
+
+        Assert.True(ops.RippleTrimClip("a", TrimEdge.Left, 15));
+        var trimmed = ClipById(timeline, "a");
+        Assert.Equal(10, trimmed.StartFrame);       // start stays fixed
+        Assert.Equal(45, trimmed.DurationFrames);
+        Assert.Equal(15, trimmed.TrimStartFrame);
+        Assert.Equal(55, ClipById(timeline, "b").StartFrame);
+    }
+
+    [Fact]
+    public void RippleTrimExpandRequiresSourceHeadroom()
+    {
+        var clip = VideoClip("a", 0, 60);
+        clip.TrimEndFrame = 0;
+        var ops = MakeOps(OneTrack(clip));
+        Assert.False(ops.RippleTrimClip("a", TrimEdge.Right, 10)); // no tail headroom
+        Assert.False(_manager.CanUndo);
+
+        clip.TrimEndFrame = 10;
+        Assert.True(ops.RippleTrimClip("a", TrimEdge.Right, 10));
+        Assert.Equal(70, ClipById(ops.Timeline, "a").DurationFrames);
+        Assert.Equal(0, ClipById(ops.Timeline, "a").TrimEndFrame);
+    }
+
+    [Fact]
+    public void RippleTrimRefusedWhenShiftWouldOverlapSyncLockedTrack()
+    {
+        var timeline = new Timeline
+        {
+            Tracks =
+            [
+                new Track
+                {
+                    Type = ClipType.Video,
+                    Clips = [VideoClip("a", 0, 60), VideoClip("b", 60, 30)],
+                },
+                new Track
+                {
+                    Type = ClipType.Audio,
+                    SyncLocked = true,
+                    // Shifting y left by 30 (to 40) would overlap x [30, 60).
+                    Clips = [AudioClip("x", 30, 30), AudioClip("y", 70, 20)],
+                },
+            ],
+        };
+        var ops = MakeOps(timeline);
+        Assert.False(ops.RippleTrimClip("a", TrimEdge.Right, -30));
+        Assert.False(_manager.CanUndo);
+    }
+
+    [Fact]
+    public void RippleTrimRejectsBelowMinDuration()
+    {
+        var ops = MakeOps(OneTrack(VideoClip("a", 0, 30)));
+        Assert.False(ops.RippleTrimClip("a", TrimEdge.Right, -30));
+        Assert.False(ops.RippleTrimClip("a", TrimEdge.Left, 30));
+        Assert.False(ops.RippleTrimClip("a", TrimEdge.Left, 0));
+    }
+
     // MARK: - Slip
 
     [Fact]
