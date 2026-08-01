@@ -127,6 +127,7 @@ public sealed partial class TimelineEditOperations(Timeline timeline, EditorUndo
         }
         if (valid.Count == 0) return false;
         if (valid.All(m => m.FromTrack == m.ToTrack && m.Clip.StartFrame == m.ToFrame)) return false;
+        if (MulticamMoveViolation(valid)) return false;
 
         var moverIds = valid.Select(m => m.Clip.Id).ToHashSet();
         MutateWithTimelineSwap(valid.Count == 1 ? "Move Clip" : "Move Clips", () =>
@@ -143,6 +144,29 @@ public sealed partial class TimelineEditOperations(Timeline timeline, EditorUndo
             PruneEmptyTracks();
         });
         return true;
+    }
+
+    /// <summary>
+    /// Multicam clips keep the group in sync: no camera-clip lane changes, and a
+    /// horizontal move must carry every clip of the group.
+    /// </summary>
+    private bool MulticamMoveViolation(
+        IReadOnlyList<(Clip Clip, int FromTrack, int ToTrack, int ToFrame)> moves)
+    {
+        var moverIds = moves.Select(m => m.Clip.Id).ToHashSet();
+        var horizontal = moves.Any(m => m.Clip.StartFrame != m.ToFrame);
+        var laneChange = moves.Any(m =>
+            m.Clip.MulticamGroupId is not null
+            && m.Clip.MediaType != ClipType.Audio
+            && m.FromTrack != m.ToTrack);
+        if (!horizontal && !laneChange) return false;
+        if (laneChange) return true;
+        foreach (var groupId in moves.Select(m => m.Clip.MulticamGroupId).OfType<string>().Distinct())
+        {
+            if (MulticamClips(groupId).Any(member => !moverIds.Contains(member.Clip.Id)))
+                return true;
+        }
+        return false;
     }
 
     /// <summary>Single-clip move; linked partners follow with the same delta on their tracks.</summary>

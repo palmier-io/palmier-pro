@@ -188,6 +188,149 @@ public class TimelineEditOperationsTests
         Assert.False(_manager.CanUndo);
     }
 
+    // MARK: - Multicam
+
+    private static MulticamSource MakeGroup()
+    {
+        var camA = new MulticamSource.Member
+        {
+            MediaRef = "camA",
+            Kind = MulticamSource.MemberKind.Angle,
+            AngleLabel = "wide",
+            Sync = new MulticamSource.SyncMap { OffsetSeconds = 0, Confidence = 1 },
+        };
+        var camB = new MulticamSource.Member
+        {
+            MediaRef = "camB",
+            Kind = MulticamSource.MemberKind.Angle,
+            AngleLabel = "close",
+            // camB started recording 2 s after camA.
+            Sync = new MulticamSource.SyncMap { OffsetSeconds = 2, Confidence = 1 },
+        };
+        return new MulticamSource
+        {
+            Id = "mc",
+            Name = "Interview",
+            Members = [camA, camB],
+            MasterMemberId = camA.Id,
+        };
+    }
+
+    private static Clip MulticamClip(string id, string mediaRef, int start, int duration, int trimStart = 0)
+    {
+        var clip = VideoClip(id, start, duration);
+        clip.MediaRef = mediaRef;
+        clip.MulticamGroupId = "mc";
+        clip.TrimStartFrame = trimStart;
+        return clip;
+    }
+
+    private static readonly Dictionary<string, double> Durations = new()
+    {
+        ["camA"] = 20.0,
+        ["camB"] = 20.0,
+    };
+
+    [Fact]
+    public void SwitchSegmentReanchorsSourceWindowBySyncOffset()
+    {
+        // fps 30: camB offset 2 s = 60 frames earlier into camB's source.
+        var timeline = OneTrack(MulticamClip("seg", "camA", 0, 90, trimStart: 100));
+        var ops = MakeOps(timeline);
+
+        Assert.True(ops.SwitchMulticamSegment("seg", "close", MakeGroup(), Durations));
+        var switched = ClipById(ops.Timeline, "seg");
+        Assert.Equal("camB", switched.MediaRef);
+        Assert.Equal(40, switched.TrimStartFrame); // 100 + (0 − 2) × 30
+        Assert.Equal(20 * 30 - 40 - 90, switched.TrimEndFrame);
+
+        _manager.Undo();
+        Assert.Equal("camA", ClipById(ops.Timeline, "seg").MediaRef);
+        Assert.Equal(100, ClipById(ops.Timeline, "seg").TrimStartFrame);
+    }
+
+    [Fact]
+    public void SwitchSegmentRefusesSameAngleAndUnknownLabel()
+    {
+        var ops = MakeOps(OneTrack(MulticamClip("seg", "camA", 0, 90)));
+        Assert.False(ops.SwitchMulticamSegment("seg", "wide", MakeGroup(), Durations));
+        Assert.False(ops.SwitchMulticamSegment("seg", "nope", MakeGroup(), Durations));
+        Assert.False(_manager.CanUndo);
+    }
+
+    [Fact]
+    public void SwitchRangeSplitsAndRewritesCoveredSpan()
+    {
+        var timeline = OneTrack(MulticamClip("seg", "camA", 0, 300, trimStart: 100));
+        var ops = MakeOps(timeline);
+
+        Assert.True(ops.SwitchMulticamRange(MakeGroup(), 100, 200, "close", Durations));
+        var clips = ops.Timeline.Tracks[0].Clips.OrderBy(c => c.StartFrame).ToList();
+        Assert.Equal(3, clips.Count);
+        Assert.Equal(("camA", 0, 100), (clips[0].MediaRef, clips[0].StartFrame, clips[0].DurationFrames));
+        Assert.Equal(("camB", 100, 100), (clips[1].MediaRef, clips[1].StartFrame, clips[1].DurationFrames));
+        Assert.Equal(("camA", 200, 100), (clips[2].MediaRef, clips[2].StartFrame, clips[2].DurationFrames));
+        // Middle segment: source continues from the left cut, re-anchored to camB.
+        Assert.Equal(100 + 100 - 60, clips[1].TrimStartFrame);
+    }
+
+    [Fact]
+    public void SwitchRangeToCurrentAngleIsNoOp()
+    {
+        var ops = MakeOps(OneTrack(MulticamClip("seg", "camA", 0, 300)));
+        Assert.False(ops.SwitchMulticamRange(MakeGroup(), 100, 200, "wide", Durations));
+        Assert.False(_manager.CanUndo);
+        Assert.Single(ops.Timeline.Tracks[0].Clips);
+    }
+
+    [Fact]
+    public void SwitchRangeJoinsThroughEditsBackTogether()
+    {
+        var timeline = OneTrack(MulticamClip("seg", "camA", 0, 300, trimStart: 100));
+        var ops = MakeOps(timeline);
+        Assert.True(ops.SwitchMulticamRange(MakeGroup(), 100, 200, "close", Durations));
+        // Switching the middle back to camA restores one seamless clip.
+        Assert.True(ops.SwitchMulticamRange(MakeGroup(), 100, 200, "wide", Durations));
+        var clips = ops.Timeline.Tracks[0].Clips;
+        Assert.Single(clips);
+        Assert.Equal(("camA", 0, 300, 100),
+            (clips[0].MediaRef, clips[0].StartFrame, clips[0].DurationFrames, clips[0].TrimStartFrame));
+    }
+
+    [Fact]
+    public void MulticamMoveRequiresWholeGroup()
+    {
+        var timeline = OneTrack(
+            MulticamClip("a", "camA", 0, 100),
+            MulticamClip("b", "camB", 100, 100));
+        var ops = MakeOps(timeline);
+
+        // Moving one member without the other is refused.
+        Assert.False(ops.MoveClips([("a", 0, 500)]));
+        Assert.Equal(0, ClipById(ops.Timeline, "a").StartFrame);
+
+        // Moving the whole group together is allowed.
+        Assert.True(ops.MoveClips([("a", 0, 500), ("b", 0, 600)]));
+        Assert.Equal(500, ClipById(ops.Timeline, "a").StartFrame);
+        Assert.Equal(600, ClipById(ops.Timeline, "b").StartFrame);
+    }
+
+    [Fact]
+    public void UngroupDetachesAllMembers()
+    {
+        var timeline = OneTrack(
+            MulticamClip("a", "camA", 0, 100),
+            MulticamClip("b", "camB", 100, 100));
+        var ops = MakeOps(timeline);
+
+        Assert.True(ops.UngroupMulticam("mc"));
+        Assert.All(ops.Timeline.Tracks[0].Clips, c => Assert.Null(c.MulticamGroupId));
+        Assert.False(ops.UngroupMulticam("mc")); // already detached: no-op
+
+        _manager.Undo();
+        Assert.All(ops.Timeline.Tracks[0].Clips, c => Assert.Equal("mc", c.MulticamGroupId));
+    }
+
     // MARK: - Clip properties
 
     [Fact]

@@ -77,6 +77,11 @@ public sealed class Clip : IJsonOnDeserialized
     [JsonIgnore] public int SourceDurationFrames => SourceFramesConsumed + TrimStartFrame + TrimEndFrame;
 
     [JsonIgnore]
+    public bool HasKeyframes =>
+        OpacityTrack is not null || PositionTrack is not null || ScaleTrack is not null
+        || RotationTrack is not null || CropTrack is not null || VolumeTrack is not null;
+
+    [JsonIgnore]
     public bool HasTransformAnimation =>
         (PositionTrack?.IsActive ?? false)
         || (ScaleTrack?.IsActive ?? false)
