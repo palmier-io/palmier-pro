@@ -87,6 +87,8 @@ public sealed class TimelineControl : UserControl
     public event Action<int, TrackToggle>? TrackToggleRequested;
     /// <summary>Raised when a header height-resize drag completes.</summary>
     public event Action<int, double>? TrackResizeRequested;
+    /// <summary>Raised on right-click over a clip: (clipId, frame, position in control coordinates).</summary>
+    public event Action<string, int, Point>? ClipContextMenuRequested;
 
     public TimelineTool Tool { get; set; } = TimelineTool.Pointer;
     public (int TrackIndex, FrameRange Range)? SelectedGap { get; private set; }
@@ -569,6 +571,15 @@ public sealed class TimelineControl : UserControl
 
         SelectedGap = null;
         var (trackIndex, clip) = hit.Value;
+
+        if (e.GetCurrentPoint(_canvas).Properties.IsRightButtonPressed)
+        {
+            if (!SelectedClipIds.Contains(clip.Id)) SelectClip(clip, additive: false);
+            _canvas.ReleasePointerCaptures();
+            ClipContextMenuRequested?.Invoke(clip.Id, geometry.FrameForX(documentX), point);
+            return;
+        }
+
         if (Tool == TimelineTool.Razor)
         {
             var splitFrame = geometry.FrameForX(documentX);

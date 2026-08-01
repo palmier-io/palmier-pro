@@ -81,6 +81,7 @@ public sealed partial class ProjectWindow : Window
         };
         TimelineView.TrackResizeRequested += (trackIndex, height) =>
             ViewModel.EditOperations?.SetTrackHeight(trackIndex, height);
+        TimelineView.ClipContextMenuRequested += ShowClipContextMenu;
 
         Closed += OnClosed;
 
@@ -180,6 +181,75 @@ public sealed partial class ProjectWindow : Window
     {
         if (_clipClipboard is null) return;
         ViewModel.EditOperations?.PasteClipsAtPlayhead(_clipClipboard, ViewModel.PlayheadFrame);
+    }
+
+    private void ShowClipContextMenu(string clipId, int frame, Windows.Foundation.Point position)
+    {
+        var ops = ViewModel.EditOperations;
+        if (ops is null || ops.FindClip(clipId) is not { } found) return;
+        var clip = found.Clip;
+        var selection = () => TimelineView.SelectedClipIds.ToArray();
+
+        var menu = new MenuFlyout();
+
+        void Add(string label, Action action, bool enabled = true)
+        {
+            var item = new MenuFlyoutItem { Text = label, IsEnabled = enabled };
+            item.Click += (_, _) => action();
+            menu.Items.Add(item);
+        }
+
+        Add("Split", () => ops.SplitClipsAt(frame, selection()),
+            frame > clip.StartFrame && frame < clip.EndFrame);
+        Add("Copy", CopySelection);
+        Add("Cut", CutSelection);
+        Add("Delete", () => ops.DeleteClips(selection()));
+        Add("Ripple Delete", () => ops.RippleDeleteClips(selection()));
+        menu.Items.Add(new MenuFlyoutSeparator());
+
+        var linked = clip.LinkGroupId is not null;
+        Add(linked ? "Unlink Clips" : "Link Clips",
+            () => { if (linked) ops.UnlinkClips(selection()); else ops.LinkClips(selection()); },
+            linked || TimelineView.SelectedClipIds.Count > 1);
+
+        if (clip.SupportsRetiming && clip.MulticamGroupId is null)
+        {
+            var speedMenu = new MenuFlyoutSubItem { Text = "Speed" };
+            foreach (var speed in new[] { 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 4.0 })
+            {
+                var item = new MenuFlyoutItem { Text = $"{speed}x" };
+                item.Click += (_, _) => ops.SetClipSpeed(clipId, speed);
+                speedMenu.Items.Add(item);
+            }
+            menu.Items.Add(speedMenu);
+        }
+
+        if (clip.MulticamGroupId is { } groupId
+            && ViewModel.ProjectFile?.MulticamGroups?.FirstOrDefault(g => g.Id == groupId) is { } group)
+        {
+            menu.Items.Add(new MenuFlyoutSeparator());
+            var wantsAudio = clip.MediaType == PalmierPro.Core.Models.ClipType.Audio;
+            var members = wantsAudio ? group.Mics : group.Angles;
+            if (members.Count > 1)
+            {
+                var angleMenu = new MenuFlyoutSubItem { Text = wantsAudio ? "Switch Mic" : "Switch Angle" };
+                foreach (var member in members)
+                {
+                    var item = new MenuFlyoutItem
+                    {
+                        Text = member.AngleLabel,
+                        IsEnabled = member.MediaRef != clip.MediaRef,
+                    };
+                    item.Click += (_, _) => ops.SwitchMulticamSegment(
+                        clipId, member.AngleLabel, group, ViewModel.MulticamSourceDurations(group));
+                    angleMenu.Items.Add(item);
+                }
+                menu.Items.Add(angleMenu);
+            }
+            Add("Ungroup Multicam", () => ops.UngroupMulticam(groupId));
+        }
+
+        menu.ShowAt(TimelineView, position);
     }
 
     private void OnTimelineClipEdit(PalmierPro.App.TimelineUI.ClipEditRequest request)

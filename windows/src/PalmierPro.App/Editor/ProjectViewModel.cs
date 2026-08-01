@@ -123,6 +123,18 @@ public sealed partial class ProjectViewModel : ObservableObject
         RebuildEngine();
     }
 
+    /// <summary>Source durations (seconds) for a multicam group's members, keyed by mediaRef.</summary>
+    public Dictionary<string, double> MulticamSourceDurations(MulticamSource group)
+    {
+        var durations = new Dictionary<string, double>();
+        foreach (var member in group.Members)
+        {
+            var asset = MediaItems.FirstOrDefault(m => m.Asset.Id == member.MediaRef)?.Asset;
+            if (asset?.Duration is { } duration and > 0) durations[member.MediaRef] = duration;
+        }
+        return durations;
+    }
+
     public void RebuildEngine()
     {
         if (_engine is null || ActiveTimeline is null) return;
