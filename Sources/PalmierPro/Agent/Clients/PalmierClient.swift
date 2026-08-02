@@ -2,51 +2,42 @@ import Foundation
 import ClerkKit
 
 struct PalmierClient: AgentClient {
-    let model: AnthropicModel
-    var maxTokens: Int { model.maxOutputTokens }
+    let settings: AgentRunSettings
 
     func stream(
         system: String,
-        tools: [AnthropicToolSchema],
-        messages: [AnthropicMessage],
+        tools: [AgentToolSchema],
+        messages: [AgentRequestMessage],
         context: AgentRequestContext
-    ) -> AsyncThrowingStream<AnthropicStreamEvent, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    try await run(
-                        system: system,
-                        tools: tools,
-                        messages: messages,
-                        context: context,
-                        continuation: continuation
-                    )
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { _ in task.cancel() }
+    ) -> AsyncThrowingStream<AgentStreamEvent, Error> {
+        makeAgentStream { continuation in
+            try await run(
+                system: system,
+                tools: tools,
+                messages: messages,
+                context: context,
+                continuation: continuation
+            )
         }
     }
 
     private func run(
         system: String,
-        tools: [AnthropicToolSchema],
-        messages: [AnthropicMessage],
+        tools: [AgentToolSchema],
+        messages: [AgentRequestMessage],
         context: AgentRequestContext,
-        continuation: AsyncThrowingStream<AnthropicStreamEvent, Error>.Continuation
+        continuation: AsyncThrowingStream<AgentStreamEvent, Error>.Continuation
     ) async throws {
         guard let baseURL = BackendConfig.convexHttpURL else {
-            throw PalmierClientError.upstream("Backend not configured")
+            throw AgentServiceError.upstream("Backend not configured")
         }
         let endpoint = baseURL.appendingPathComponent("v1/agent/stream")
 
         guard let session = await Clerk.shared.session, session.status == .active else {
-            throw PalmierClientError.unauthenticated
+            throw AgentServiceError.unauthenticated
         }
         guard let jwt = try await session.getToken(), !jwt.isEmpty else {
-            throw PalmierClientError.unauthenticated
+            throw AgentServiceError.unauthenticated
         }
 
         var request = URLRequest(url: endpoint)
@@ -56,37 +47,25 @@ struct PalmierClient: AgentClient {
         request.setValue("text/event-stream", forHTTPHeaderField: "accept")
         context.apply(to: &request, telemetryEnabled: Analytics.isEnabled)
         request.httpBody = try JSONSerialization.data(
-            withJSONObject: AnthropicRequestBody.build(
-                model: model, maxTokens: maxTokens, system: system, tools: tools, messages: messages
-            ),
+            withJSONObject: settings.requestBody(system: system, tools: tools, messages: messages),
             options: [.sortedKeys]
         )
 
-        let (bytes, response) = try await URLSession.shared.bytes(for: request)
-        if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
-            var body = ""
-            for try await line in bytes.lines { body += line + "\n" }
-            throw PalmierClientError.from(status: http.statusCode, body: body)
+        let bytes = try await AgentHTTP.bytes(for: request) { status, body in
+            AgentServiceError.from(status: status, body: body)
         }
-
-        try await AnthropicSSE.parse(bytes: bytes, continuation: continuation)
+        try await settings.model.provider.parseSSE(bytes: bytes, continuation: continuation)
     }
 }
 
-enum PalmierClientError: LocalizedError {
+enum AgentServiceError: Error {
     case unauthenticated
     case insufficientCredits(String)
+    case unavailable(AgentModel)
+    case refusal(AgentModel)
     case upstream(String)
 
-    var errorDescription: String? {
-        switch self {
-        case .unauthenticated: "Sign in to use the AI agent."
-        case .insufficientCredits(let m): m
-        case .upstream(let m): m
-        }
-    }
-
-    static func from(status: Int, body: String) -> PalmierClientError {
+    static func from(status: Int, body: String) -> AgentServiceError {
         let parsed = parseErrorEnvelope(body)
         let message = parsed?.message ?? body.prefix(500).description
         switch parsed?.code {

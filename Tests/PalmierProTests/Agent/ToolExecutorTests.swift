@@ -87,6 +87,27 @@ struct ToolExecutorSmokeTests {
         #expect(ToolHarness.textOf(result).contains("Unknown tool"))
     }
 
+    @Test func autofilledBlankArgsAreTreatedAsOmitted() async {
+        // OpenAI models fill omitted optional params with "" or null.
+        let scrubbed = ToolExecutor.droppingAutofilledBlanks(from: [
+            "reference": "",
+            "mediaRef": NSNull(),
+            "clipId": "C026AE24",
+            "atFrame": 45_788,
+        ])
+        #expect(scrubbed.keys.sorted() == ["atFrame", "clipId"])
+
+        // End to end: blank reference/mediaRef must not be looked up as ids.
+        let h = ToolHarness()
+        let result = await h.runRaw(
+            "inspect_color",
+            args: ["clipId": "", "mediaRef": "", "reference": ""]
+        )
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("Provide either clipId"))
+        #expect(!ToolHarness.textOf(result).contains("not found"))
+    }
+
     @Test func getTimelineReturnsParseableJSON() async throws {
         let h = ToolHarness()
         let json = try await h.runOK("get_timeline") as? [String: Any]

@@ -110,7 +110,7 @@ struct GetTranscriptParamTests {
         #expect(ToolHarness.textOf(result).contains("either clipId or trackIndex"))
     }
 
-    @Test func linkedVideoClipScopeRequiresAudioPartner() async {
+    @Test func videoScopesResolveToLinkedAudioPartners() throws {
         let groupId = "linked"
         var video = Fixtures.clip(id: "video", mediaRef: "media", mediaType: .video, start: 0, duration: 30)
         var audio = Fixtures.clip(id: "audio", mediaRef: "media", mediaType: .audio, start: 0, duration: 30)
@@ -121,10 +121,41 @@ struct GetTranscriptParamTests {
             Fixtures.audioTrack(clips: [audio]),
         ]))
 
-        let result = await h.runRaw("get_transcript", args: ["clipId": "video"])
+        // The linked partner shares media and timing, so both the clip and
+        // the video track resolve to it instead of erroring.
+        let clipScope = try h.executor.resolveTranscriptionScope(
+            h.editor, ["clipId": "video"], path: "get_transcript"
+        )
+        #expect(clipScope == .clips(ids: ["audio"]))
 
-        #expect(result.isError)
-        #expect(ToolHarness.textOf(result).contains("linked audio clip"))
+        let trackScope = try h.executor.resolveTranscriptionScope(
+            h.editor, ["trackIndex": 0], path: "get_transcript"
+        )
+        #expect(trackScope == .clips(ids: ["audio"]))
+    }
+
+    @Test func untranscribableScopeWithoutLinkedAudioStillErrors() async {
+        let still = Fixtures.clip(id: "still", mediaRef: "media", mediaType: .image, start: 0, duration: 30)
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [still]),
+        ]))
+
+        let byClip = await h.runRaw("get_transcript", args: ["clipId": "still"])
+        #expect(byClip.isError)
+        #expect(ToolHarness.textOf(byClip).contains("no transcribable audio"))
+
+        let byTrack = await h.runRaw("get_transcript", args: ["trackIndex": 0])
+        #expect(byTrack.isError)
+        #expect(ToolHarness.textOf(byTrack).contains("no transcribable audio"))
+    }
+
+    @Test func toleratesZeroFilledFrameWindow() async {
+        let h = ToolHarness(timeline: Fixtures.timeline())
+        let result = await h.runRaw(
+            "get_transcript",
+            args: ["startFrame": 0, "endFrame": 0, "granularity": "segments"]
+        )
+        #expect(result.isError == false)
     }
 
     @Test func transcriptSessionReplacesPriorTrackScope() async {

@@ -247,10 +247,9 @@ extension ToolExecutor {
                 throw ToolError("Clip \(clipId) not found.")
             }
             let scope = TranscriptionScope.clips(ids: [clipId])
-            guard !scope.targets(in: editor).isEmpty else {
-                throw ToolError("Clip \(clipId) has no transcribable audio. If it's a video with linked audio, scope to the linked audio clip instead.")
-            }
-            return scope
+            if !scope.targets(in: editor).isEmpty { return scope }
+            if let linked = linkedAudioScope(for: [clipId], editor: editor) { return linked }
+            throw ToolError("Clip \(clipId) has no transcribable audio.")
         }
         guard clipId == nil else {
             throw ToolError("\(path): pass either clipId or trackIndex, not both.")
@@ -264,12 +263,23 @@ extension ToolExecutor {
                 : "valid range: 0..\(editor.timeline.tracks.count - 1)"
             throw ToolError("\(path): trackIndex \(trackIndex) is out of range (\(validRange)).")
         }
-        let trackId = editor.timeline.tracks[trackIndex].id
-        let scope = TranscriptionScope.track(id: trackId)
-        guard !scope.targets(in: editor).isEmpty else {
-            throw ToolError("\(path): track \(trackIndex) has no transcribable audio. If its videos have linked audio, use the linked audio track instead.")
+        let track = editor.timeline.tracks[trackIndex]
+        let scope = TranscriptionScope.track(id: track.id)
+        if !scope.targets(in: editor).isEmpty { return scope }
+        if let linked = linkedAudioScope(for: track.clips.map(\.id), editor: editor) {
+            return linked
         }
-        return scope
+        throw ToolError("\(path): track \(trackIndex) has no transcribable audio.")
+    }
+
+    private func linkedAudioScope(
+        for clipIds: [String],
+        editor: EditorViewModel
+    ) -> TranscriptionScope? {
+        let partnerIds = clipIds.flatMap { editor.linkedPartnerIds(of: $0) }
+        guard !partnerIds.isEmpty else { return nil }
+        let scope = TranscriptionScope.clips(ids: partnerIds)
+        return scope.targets(in: editor).isEmpty ? nil : scope
     }
 
     func transcriptionContext(
@@ -321,11 +331,7 @@ extension ToolExecutor {
     func getTranscript(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.getTranscriptAllowedKeys, path: "get_transcript")
         let clipFilter = args.string("clipId")
-        let windowStart = args.int("startFrame")
-        let windowEnd = args.int("endFrame")
-        if let start = windowStart, let end = windowEnd, start >= end {
-            throw ToolError("startFrame (\(start)) must be less than endFrame (\(end))")
-        }
+        let window = try Self.frameWindow(args)
 
         let granularity = args.string("granularity") ?? "words"
         guard granularity == "words" || granularity == "segments" else {
@@ -344,8 +350,8 @@ extension ToolExecutor {
         let out = transcript.responsePayload(
             fps: editor.timeline.fps,
             clipId: clipFilter,
-            startFrame: windowStart,
-            endFrame: windowEnd,
+            startFrame: window?.lowerBound,
+            endFrame: window?.upperBound,
             maxWords: Self.transcriptWordLimit,
             segments: granularity == "segments"
         )

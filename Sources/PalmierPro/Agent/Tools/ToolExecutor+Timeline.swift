@@ -57,9 +57,11 @@ extension ToolExecutor {
     }
 
     static func frameWindow(_ args: [String: Any]) throws -> Range<Int>? {
-        guard args.int("startFrame") != nil || args.int("endFrame") != nil else { return nil }
-        let s = args.int("startFrame") ?? 0
-        let e = args.int("endFrame") ?? Int.max
+        let start = args.int("startFrame")
+        let end = args.int("endFrame").flatMap { $0 == 0 ? nil : $0 }
+        if end == nil, start == nil || start == 0 { return nil }
+        let s = start ?? 0
+        let e = end ?? Int.max
         guard s < e else {
             throw ToolError("Invalid window [\(s), \(e)): startFrame must be less than endFrame")
         }

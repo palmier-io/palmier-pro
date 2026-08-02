@@ -7,11 +7,19 @@ import Testing
 struct AgentThinkingTests {
     @Test func redactedThinkingRoundTripsUnchanged() throws {
         let block = AgentContentBlock.redactedThinking(data: "opaque")
-        let json = try #require(AgentService.contentBlockJSON(block))
         let decoded = try JSONDecoder().decode(
             AgentContentBlock.self,
             from: JSONEncoder().encode(block)
         )
+        let body = AnthropicRequestBody.build(
+            model: .sonnet5,
+            system: "",
+            tools: [],
+            messages: [AgentRequestMessage(role: .assistant, content: [.content(decoded)])]
+        )
+        let messages = try #require(body["messages"] as? [[String: Any]])
+        let content = try #require(messages.first?["content"] as? [[String: Any]])
+        let json = try #require(content.first)
 
         #expect(json["type"] as? String == "redacted_thinking")
         #expect(json["data"] as? String == "opaque")

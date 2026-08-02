@@ -22,6 +22,29 @@ struct TimelineToolsTests {
         #expect(multi?["viewState"] == nil)
     }
 
+    @Test func frameWindowToleratesZeroFilledOptionalParams() throws {
+        // OpenAI models fill omitted optional params with zeros.
+        #expect(try ToolExecutor.frameWindow(["startFrame": 0, "endFrame": 0]) == nil)
+        #expect(try ToolExecutor.frameWindow(["endFrame": 0]) == nil)
+        #expect(try ToolExecutor.frameWindow(["startFrame": 0]) == nil)
+        #expect(try ToolExecutor.frameWindow([:]) == nil)
+        #expect(try ToolExecutor.frameWindow(["startFrame": 30, "endFrame": 0]) == 30..<Int.max)
+        #expect(try ToolExecutor.frameWindow(["startFrame": 0, "endFrame": 90]) == 0..<90)
+        #expect(try ToolExecutor.frameWindow(["startFrame": 30, "endFrame": 90]) == 30..<90)
+        #expect(throws: ToolError.self) {
+            try ToolExecutor.frameWindow(["startFrame": 90, "endFrame": 30])
+        }
+    }
+
+    @Test func getTimelineTreatsZeroZeroWindowAsWholeTimeline() async throws {
+        let h = ToolHarness()
+        let result = try await h.runOK(
+            "get_timeline",
+            args: ["startFrame": 0, "endFrame": 0]
+        ) as? [String: Any]
+        #expect(result?["window"] == nil)
+    }
+
     @Test func createTimelineSwitchesAndInheritsSettings() async throws {
         let h = ToolHarness()
         h.editor.timeline.fps = 60

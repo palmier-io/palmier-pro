@@ -70,11 +70,16 @@ final class ToolExecutor {
         }
     }
 
+    static func droppingAutofilledBlanks(from args: [String: Any]) -> [String: Any] {
+        args.filter { !($0.value is NSNull) && ($0.value as? String) != "" }
+    }
+
     private func executeWithOrigin(
         name: String,
         args: [String: Any],
         origin: Analytics.Origin
     ) async -> ToolResult {
+        let args = Self.droppingAutofilledBlanks(from: args)
         let started = ContinuousClock.now
         guard let tool = ToolName(rawValue: name) else {
             let result = ToolResult.error("Unknown tool: \(name)")

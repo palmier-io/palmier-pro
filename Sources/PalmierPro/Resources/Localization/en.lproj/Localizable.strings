@@ -67,6 +67,8 @@
 "Activity unavailable" = "Activity unavailable";
 "Add Range to Chat" = "Add Range to Chat";
 "Add Text" = "Add Text";
+"Add an Anthropic API key or credits to use this model." = "Add an Anthropic API key or credits to use this model.";
+"Add an OpenAI API key or credits to use this model." = "Add an OpenAI API key or credits to use this model.";
 "Add an email above to enable a reply" = "Add an email above to enable a reply";
 "Add captions" = "Add captions";
 "Add credits" = "Add credits";
@@ -405,6 +407,7 @@
 "Generation in progress" = "Generation in progress";
 "Generation panel" = "Generation panel";
 "Get Anthropic API key" = "Get Anthropic API key";
+"Get OpenAI API key" = "Get OpenAI API key";
 "Get a notification when a generation finishes." = "Get a notification when a generation finishes.";
 "Getting the search model ready." = "Getting the search model ready.";
 "Glow" = "Glow";
@@ -418,6 +421,8 @@
 "Height" = "Height";
 "Help" = "Help";
 "Hide keyframe timeline" = "Hide keyframe timeline";
+"Hide reasoning" = "Hide reasoning";
+"High" = "High";
 "Highlight" = "Highlight";
 "Highlight Block" = "Highlight Block";
 "Highlights" = "Highlights";
@@ -504,6 +509,7 @@
 "Local runs with Apple's SpeechAnalyzer." = "Local runs with Apple's SpeechAnalyzer.";
 "Local runs with Apple's SpeechAnalyzer. Cloud uses credits and a more accurate model with more capabilities." = "Local runs with Apple's SpeechAnalyzer. Cloud uses credits and a more accurate model with more capabilities.";
 "Log in for 250 free credits" = "Log in for 250 free credits";
+"Low" = "Low";
 "Luma" = "Luma";
 "Luminosity" = "Luminosity";
 "Lyrics (optional). [Verse] and [Chorus] tags supported." = "Lyrics (optional). [Verse] and [Chorus] tags supported.";
@@ -526,6 +532,7 @@
 "Match Timeline" = "Match Timeline";
 "Match mouth movement to replacement audio" = "Match mouth movement to replacement audio";
 "Matches voices across clips, transcribing untranscribed timeline clips first (uses credits). Transcripts and voice fingerprints are cached, so re-runs are fast." = "Matches voices across clips, transcribing untranscribed timeline clips first (uses credits). Transcripts and voice fingerprints are cached, so re-runs are fast.";
+"Max" = "Max";
 "Max plan" = "Max plan";
 "Max words" = "Max words";
 "Maximize Focused Panel" = "Maximize Focused Panel";
@@ -539,6 +546,7 @@
 "Medium" = "Medium";
 "Mic" = "Mic";
 "Midpoint" = "Midpoint";
+"Minimal" = "Minimal";
 "Minimum Pause" = "Minimum Pause";
 "Mixed" = "Mixed";
 "Mode" = "Mode";
@@ -617,6 +625,7 @@
 "Open Skills to browse community playbooks, create your own, or add them to other agents." = "Open Skills to browse community playbooks, create your own, or add them to other agents.";
 "Open Timeline" = "Open Timeline";
 "Open the AI Edit tab to upscale, prompt-edit, create video from a frame, or generate music, SFX, cleanup, and dubbing from the clip." = "Open the AI Edit tab to upscale, prompt-edit, create video from a frame, or generate music, SFX, cleanup, and dubbing from the clip.";
+"OpenAI API Key" = "OpenAI API Key";
 "Opening Google" = "Opening Google";
 "Opening Google…" = "Opening Google…";
 "Open…" = "Open…";
@@ -671,6 +680,7 @@
 "Range" = "Range";
 "Razor (C)" = "Razor (C)";
 "Razor Tool" = "Razor Tool";
+"Reasoning effort" = "Reasoning effort";
 "Redetect Beats" = "Redetect Beats";
 "Redo" = "Redo";
 "Redo (⇧⌘Z)" = "Redo (⇧⌘Z)";
@@ -794,6 +804,7 @@
 "Show in Finder" = "Show in Finder";
 "Show keyframe timeline" = "Show keyframe timeline";
 "Show notifications" = "Show notifications";
+"Show reasoning" = "Show reasoning";
 "Side by Side" = "Side by Side";
 "Sign In" = "Sign In";
 "Sign in" = "Sign in";
@@ -801,6 +812,7 @@
 "Sign in to receive 250 free credits for AI chat and generation." = "Sign in to receive 250 free credits for AI chat and generation.";
 "Sign in to subscribe and use AI generation." = "Sign in to subscribe and use AI generation.";
 "Sign in to use AI" = "Sign in to use AI";
+"Sign in to use AI chat." = "Sign in to use AI chat.";
 "Sign in to use Cloud transcription." = "Sign in to use Cloud transcription.";
 "Sign in to use Cloud." = "Sign in to use Cloud.";
 "Sign in with Google" = "Sign in with Google";
@@ -848,11 +860,13 @@
 "Stopped" = "Stopped";
 "Storage" = "Storage";
 "Streaming through your Anthropic API key (BYOK)" = "Streaming through your Anthropic API key (BYOK)";
+"Streaming through your OpenAI API key (BYOK)" = "Streaming through your OpenAI API key (BYOK)";
 "Strikethrough" = "Strikethrough";
 "Student" = "Student";
 "Style" = "Style";
 "Style instructions (optional). e.g., warm and slow, British accent." = "Style instructions (optional). e.g., warm and slow, British accent.";
 "Subscribe" = "Subscribe";
+"Subscribe or add your own API key to use this model." = "Subscribe or add your own API key to use this model.";
 "Subscription" = "Subscription";
 "Swap Media" = "Swap Media";
 "Swap the clip's media when generation completes. Speed, volume, trim, and transform are preserved." = "Swap the clip's media when generation completes. Speed, volume, trim, and transform are preserved.";
@@ -880,6 +894,7 @@
 "The clip you're adding has different settings than the current project." = "The clip you're adding has different settings than the current project.";
 "The export" = "The export";
 "The project will be moved to the Trash." = "The project will be moved to the Trash.";
+"The selected model refused this request. Revise the prompt and try again." = "The selected model refused this request. Revise the prompt and try again.";
 "The selected projects will be moved to the Trash." = "The selected projects will be moved to the Trash.";
 "The timeline settings changed. Close this sheet and try again." = "The timeline settings changed. Close this sheet and try again.";
 "Theme" = "Theme";
@@ -997,6 +1012,7 @@
 "Word Slide" = "Word Slide";
 "Working on %@" = "Working on %@";
 "Workspace layout" = "Workspace layout";
+"X High" = "X High";
 "You're all set" = "You're all set";
 "YouTube" = "YouTube";
 "Your Lottie animation is ready." = "Your Lottie animation is ready.";
@@ -1019,7 +1035,9 @@
 "error" = "error";
 "group moved right to fit" = "group moved right to fit";
 "lowercase" = "lowercase";
-"or use your own Anthropic key" = "or use your own Anthropic key";
+"or add your own Anthropic key" = "or add your own Anthropic key";
+"or add your own OpenAI key" = "or add your own OpenAI key";
 "result" = "result";
-"using API key" = "using API key";
+"using Anthropic API key" = "using Anthropic API key";
+"using OpenAI API key" = "using OpenAI API key";
 "you@example.com — so we can reply" = "you@example.com — so we can reply";

@@ -143,36 +143,97 @@ struct AgentPanelView: View {
         }
     }
 
-    @ViewBuilder
     private var modelPicker: some View {
-        if service.hasApiKey {
-            Menu {
-                ForEach(service.availableModels, id: \.self) { m in
-                    Button(m.displayName) { service.model = m }
+        Menu {
+            ForEach(service.availableModels, id: \.self) { model in
+                Button {
+                    service.model = model
+                } label: {
+                    Text(verbatim: model.displayName)
                 }
-            } label: {
-                HStack(spacing: AppTheme.Spacing.xs) {
-                    Text(service.effectiveModel.displayName)
-                        .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
-                        .foregroundStyle(AppTheme.Text.secondaryColor)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: AppTheme.FontSize.micro, weight: .semibold))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .disabled(!service.canSelectModel(model))
+            }
+        } label: {
+            footerPickerLabel(service.model.displayName) {
+                switch service.model.provider {
+                case .anthropic:
+                    ExternalAgentLogo(agent: .claude, size: AppTheme.IconSize.xs)
+                case .openAI:
+                    ProviderLogo(iconKey: "openai", size: AppTheme.IconSize.xs)
                 }
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .accessibilityLabel(L10n.string("Model"))
+        .accessibilityValue(Text(verbatim: service.model.displayName))
+        .help(L10n.string("Model"))
+    }
+
+    private var reasoningEffortPicker: some View {
+        Menu {
+            ForEach(service.model.supportedReasoningEfforts, id: \.self) { effort in
+                Button {
+                    service.reasoningEffort = effort
+                } label: {
+                    menuOptionLabel(
+                        L10n.string(key: effort.labelKey),
+                        selected: effort == service.reasoningEffort
+                    )
+                }
+            }
+        } label: {
+            footerPickerLabel(L10n.string(key: service.reasoningEffort.labelKey)) {
+                Image(systemName: "brain.head.profile")
+                    .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .frame(width: AppTheme.IconSize.xxs, height: AppTheme.IconSize.xxs)
+                    .accessibilityHidden(true)
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .accessibilityLabel(L10n.string("Reasoning effort"))
+        .accessibilityValue(L10n.string(key: service.reasoningEffort.labelKey))
+        .help(L10n.string("Reasoning effort"))
+    }
+
+    private func footerPickerLabel<Artwork: View>(
+        _ title: String,
+        @ViewBuilder artwork: () -> Artwork
+    ) -> some View {
+        HStack(spacing: AppTheme.Spacing.xs) {
+            Text(verbatim: title)
+                .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+            artwork()
+                .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
+                .clipped()
+        }
+    }
+
+    @ViewBuilder
+    private func menuOptionLabel(_ title: String, selected: Bool) -> some View {
+        if selected {
+            Label {
+                Text(verbatim: title)
+            } icon: {
+                Image(systemName: "checkmark")
+            }
+        } else {
+            Text(verbatim: title)
         }
     }
 
     @ViewBuilder
     private var byokIndicator: some View {
-        if service.hasApiKey {
-            Text(L10n.string("using API key"))
+        if let provider = service.activeBYOKProvider {
+            Text(provider.chatPresentation.byokLabel)
                 .font(.system(size: AppTheme.FontSize.xs).italic())
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .help(L10n.string("Streaming through your Anthropic API key (BYOK)"))
+                .help(provider.chatPresentation.byokHelp)
         }
     }
 
@@ -224,7 +285,7 @@ struct AgentPanelView: View {
                 .frame(maxWidth: Layout.chatColumnMax)
                 .frame(maxWidth: .infinity)
             }
-            .scrollIndicators(.never)
+            .scrollIndicators(.automatic)
             .scrollEdgeEffectStyle(.soft, for: .bottom)
             .onScrollGeometryChange(for: Bool.self) { geo in
                 let distance = geo.contentSize.height - geo.contentOffset.y - geo.containerSize.height
@@ -264,7 +325,7 @@ struct AgentPanelView: View {
     private var errorBanner: some View {
         if let err = service.streamError {
             HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
-                Text(err.localizedDescription)
+                Text(verbatim: errorMessage(err))
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(.red)
                     .multilineTextAlignment(.leading)
@@ -285,7 +346,7 @@ struct AgentPanelView: View {
         let action: () -> Void
     }
 
-    private func errorCTA(for error: PalmierClientError?) -> ErrorCTA? {
+    private func errorCTA(for error: AgentServiceError?) -> ErrorCTA? {
         guard let error else { return nil }
         switch error {
         case .unauthenticated:
@@ -296,8 +357,33 @@ struct AgentPanelView: View {
             return ErrorCTA(title: L10n.string("View plans")) {
                 SettingsWindowController.shared.show(tab: .account)
             }
-        case .upstream:
+        case .unavailable(let model) where model.requiresPaidHostedPlan && !AccountService.shared.isPaid:
+            return ErrorCTA(title: L10n.string("View plans")) {
+                SettingsWindowController.shared.show(tab: .account)
+            }
+        case .unavailable:
+            return ErrorCTA(title: L10n.string("Open Settings")) {
+                SettingsWindowController.shared.show(tab: .agent)
+            }
+        case .refusal, .upstream:
             return nil
+        }
+    }
+
+    private func errorMessage(_ error: AgentServiceError) -> String {
+        switch error {
+        case .unauthenticated:
+            L10n.string("Sign in to use AI chat.")
+        case .insufficientCredits(let message), .upstream(let message):
+            message
+        case .unavailable(let model):
+            if model.requiresPaidHostedPlan && !AccountService.shared.isPaid {
+                L10n.string("Subscribe or add your own API key to use this model.")
+            } else {
+                model.provider.chatPresentation.unavailableMessage
+            }
+        case .refusal:
+            L10n.string("The selected model refused this request. Revise the prompt and try again.")
         }
     }
 
@@ -332,7 +418,12 @@ struct AgentPanelView: View {
             Button {
                 missingKeyPrimaryAction(account: account)
             } label: {
-                Label(missingKeyPrimaryLabel(account: account), systemImage: missingKeyPrimaryIcon(account: account))
+                HStack(spacing: AppTheme.Spacing.sm) {
+                    if let icon = missingKeyPrimaryIcon(account: account) {
+                        Image(systemName: icon)
+                    }
+                    Text(missingKeyPrimaryLabel(account: account))
+                }
                     .font(.system(size: AppTheme.FontSize.mdLg, weight: .semibold))
             }
             .buttonStyle(.capsule(.prominent, size: .regular))
@@ -344,7 +435,7 @@ struct AgentPanelView: View {
             }
 
             Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
-                Text(L10n.string("or use your own Anthropic key"))
+                Text(missingKeyLinkLabel)
                     .underline()
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                     .padding(.horizontal, AppTheme.Spacing.sm)
@@ -356,15 +447,19 @@ struct AgentPanelView: View {
         }
     }
 
+    private var missingKeyLinkLabel: String {
+        service.model.provider.chatPresentation.missingKeyLinkTitle
+    }
+
     private func missingKeyPrimaryLabel(account: AccountService) -> String {
         if !account.isSignedIn { return L10n.string("Log in for 250 free credits") }
         if !account.isPaid { return L10n.string("Subscribe") }
         return L10n.string("Open Settings")
     }
 
-    private func missingKeyPrimaryIcon(account: AccountService) -> String {
+    private func missingKeyPrimaryIcon(account: AccountService) -> String? {
         if !account.isSignedIn { return "gift.fill" }
-        if !account.isPaid { return "sparkles" }
+        if !account.isPaid { return nil }
         return "gearshape"
     }
 
@@ -403,6 +498,7 @@ struct AgentPanelView: View {
                 onCancel: { service.cancel() }
             ) {
                 modelPicker
+                reasoningEffortPicker
                 byokIndicator
             }
         }
@@ -512,5 +608,30 @@ private struct ChatTabView: View {
     private var displayTitle: String {
         let t = session.title
         return t.count > 20 ? String(t.prefix(20)) + "…" : t
+    }
+}
+
+@MainActor
+private extension AgentProvider {
+    var chatPresentation: (
+        byokLabel: String, byokHelp: String,
+        unavailableMessage: String, missingKeyLinkTitle: String
+    ) {
+        switch self {
+        case .anthropic:
+            (
+                L10n.string("using Anthropic API key"),
+                L10n.string("Streaming through your Anthropic API key (BYOK)"),
+                L10n.string("Add an Anthropic API key or credits to use this model."),
+                L10n.string("or add your own Anthropic key")
+            )
+        case .openAI:
+            (
+                L10n.string("using OpenAI API key"),
+                L10n.string("Streaming through your OpenAI API key (BYOK)"),
+                L10n.string("Add an OpenAI API key or credits to use this model."),
+                L10n.string("or add your own OpenAI key")
+            )
+        }
     }
 }
