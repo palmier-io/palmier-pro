@@ -26,6 +26,7 @@ enum OpenAIRequestBody {
                     "name": $0.name,
                     "description": $0.description,
                     "parameters": $0.inputSchema,
+                    "strict": false,
                 ]
             }
         }

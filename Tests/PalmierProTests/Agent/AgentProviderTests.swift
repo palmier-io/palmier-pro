@@ -90,6 +90,7 @@ struct AgentProviderTests {
         #expect(body["max_output_tokens"] as? Int == 64_000)
         #expect(body["instructions"] as? String == "Instructions")
         #expect(tools.first?["type"] as? String == "function")
+        #expect(tools.first?["strict"] as? Bool == false)
         #expect(items.contains { $0["type"] as? String == "function_call" })
         #expect(items.contains { $0["type"] as? String == "function_call_output" })
         #expect(json.contains("data:image/png;base64,aGVsbG8="))
