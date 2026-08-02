@@ -98,6 +98,18 @@ enum Telemetry {
         #endif
     }
 
+    static func beginOperation(_ name: String, data: Payload = [:]) {
+        var data = data
+        data["name"] = name
+        setExtra(value: data, key: "active_operation")
+        breadcrumb("operation begin", category: "operation", data: data)
+    }
+
+    static func endOperation(_ name: String) {
+        breadcrumb("operation end", category: "operation", data: ["name": name])
+        setExtra(value: nil, key: "active_operation")
+    }
+
     static func logWarning(_ message: String, category: String, data: Payload? = nil) {
         breadcrumb(message, category: category, level: .warning, data: data)
     }
