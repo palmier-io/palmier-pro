@@ -584,7 +584,9 @@ extension EditorViewModel {
     }
 
     private func mutateActiveTimeline(_ mutation: (inout Timeline) -> Void) {
-        mutation(&timeline)
+        var updatedTimeline = timeline
+        mutation(&updatedTimeline)
+        timeline = updatedTimeline
     }
 
     private func clipLocations(for clipIds: [String]) -> [String: ClipLocation] {

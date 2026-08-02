@@ -527,6 +527,30 @@ struct ClipPropertyCommitTests {
         #expect(e.clipFor(id: clip.id)?.effects == nil)
     }
 
+    @Test func committingScaleResetCanReadActiveTimeline() {
+        var clip = Fixtures.clip(id: "clip", start: 0, duration: 30)
+        clip.transform.width = 0.5
+        clip.transform.height = 0.5
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        let asset = MediaAsset(
+            id: clip.mediaRef,
+            url: URL(fileURLWithPath: "/tmp/media.mov"),
+            type: .video,
+            name: "media",
+            duration: 1
+        )
+        asset.sourceWidth = 1_920
+        asset.sourceHeight = 1_080
+        e.mediaAssets = [asset]
+
+        e.commitClipProperties(clipIds: [clip.id], actionName: "Reset Scale") {
+            $0.transform = e.fitTransform(for: $0)
+        }
+
+        #expect(e.clipFor(id: clip.id)?.transform.width == 1)
+        #expect(e.clipFor(id: clip.id)?.transform.height == 1)
+    }
+
     @Test func commitClipPropertiesGroupsMultipleClipUndo() {
         var a = Fixtures.clip(id: "a", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
         var b = Fixtures.clip(id: "b", mediaRef: "text", mediaType: .text, start: 30, duration: 30)
