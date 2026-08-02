@@ -14,7 +14,7 @@ struct TitleTabBar: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(height: AppTheme.EditorPanel.tabBarHeight)
+        .frame(height: Layout.panelHeaderHeight)
         .background(AppTheme.Background.raisedColor)
         .overlay(alignment: .bottom) {
             Rectangle()

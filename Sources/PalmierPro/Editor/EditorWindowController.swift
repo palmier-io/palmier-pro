@@ -320,7 +320,7 @@ extension EditorWindowController: EditorActions {
     private func toggleMaximizePanelAction() {
         if editorViewModel.maximizedPanel != nil {
             editorViewModel.maximizedPanel = nil
-        } else if let panel = editorViewModel.focusedPanel {
+        } else if let panel = editorViewModel.focusedPanel, panel != .agent {
             editorViewModel.maximizedPanel = panel
         }
     }
@@ -338,7 +338,7 @@ extension EditorWindowController: EditorActions {
             return true
         case #selector(toggleMaximizePanel(_:)):
             menuItem.state = editorViewModel.maximizedPanel != nil ? .on : .off
-            return editorViewModel.maximizedPanel != nil || editorViewModel.focusedPanel != nil
+            return editorViewModel.maximizedPanel != nil || editorViewModel.focusedPanel.map { $0 != .agent } == true
         case #selector(setLayoutDefault(_:)):
             menuItem.state = WorkspaceLayoutStore.shared.selection == .default ? .on : .off
             return true

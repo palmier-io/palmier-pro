@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct AgentPanelView: View {
@@ -64,7 +65,6 @@ struct AgentPanelView: View {
             }
             footer
         }
-        .background(AppTheme.Background.surfaceColor)
     }
 
     private var floatingTabBar: some View {
@@ -96,13 +96,10 @@ struct AgentPanelView: View {
             .padding(.horizontal, AppTheme.Spacing.sm)
             .frame(maxWidth: .infinity)
             .frame(height: Layout.panelHeaderHeight)
-            .glassEffect(.regular, in: Rectangle())
-            .overlay(alignment: .bottom) {
-                Rectangle()
-                    .fill(AppTheme.Border.subtleColor)
-                    .frame(height: AppTheme.BorderWidth.hairline)
-            }
+            .glassEffect(.regular, in: .rect(cornerRadius: AppTheme.Radius.lg))
         }
+        .padding(.horizontal, AppTheme.Spacing.mdLg)
+        .padding(.top, AppTheme.Spacing.sm)
     }
 
     private var newTabButton: some View {
@@ -165,7 +162,7 @@ struct AgentPanelView: View {
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .fixedSize()
+        .layoutPriority(1)
         .accessibilityLabel(L10n.string("Model"))
         .accessibilityValue(Text(verbatim: service.model.displayName))
         .help(L10n.string("Model"))
@@ -194,7 +191,6 @@ struct AgentPanelView: View {
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .fixedSize()
         .accessibilityLabel(L10n.string("Reasoning effort"))
         .accessibilityValue(L10n.string(key: service.reasoningEffort.labelKey))
         .help(L10n.string("Reasoning effort"))
@@ -208,6 +204,8 @@ struct AgentPanelView: View {
             Text(verbatim: title)
                 .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
+                .lineLimit(1)
+                .truncationMode(.tail)
             artwork()
                 .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
                 .clipped()
@@ -230,9 +228,12 @@ struct AgentPanelView: View {
     @ViewBuilder
     private var byokIndicator: some View {
         if let provider = service.activeBYOKProvider {
-            Text(provider.chatPresentation.byokLabel)
-                .font(.system(size: AppTheme.FontSize.xs).italic())
+            Image(systemName: "key")
+                .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Text(verbatim: provider.chatPresentation.byokLabel))
                 .help(provider.chatPresentation.byokHelp)
         }
     }
@@ -280,10 +281,11 @@ struct AgentPanelView: View {
                         .padding(.top, AppTheme.Spacing.sm)
                 }
                 .padding(.horizontal, AppTheme.Spacing.lgXl)
-                .padding(.top, Layout.panelHeaderHeight + AppTheme.Spacing.sm)
+                .padding(.top, Layout.panelHeaderHeight + AppTheme.Spacing.mdLg)
                 .padding(.bottom, AppTheme.Spacing.smMd)
                 .frame(maxWidth: Layout.chatColumnMax)
                 .frame(maxWidth: .infinity)
+                .background(AgentOverlayScrollerStyle())
             }
             .scrollIndicators(.automatic)
             .scrollEdgeEffectStyle(.soft, for: .bottom)
@@ -522,6 +524,35 @@ struct AgentPanelView: View {
     }
 }
 
+private struct AgentOverlayScrollerStyle: NSViewRepresentable {
+    func makeNSView(context: Context) -> AgentOverlayScrollerProbe {
+        AgentOverlayScrollerProbe()
+    }
+
+    func updateNSView(_ nsView: AgentOverlayScrollerProbe, context: Context) {
+        nsView.apply()
+    }
+}
+
+private final class AgentOverlayScrollerProbe: NSView {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        apply()
+    }
+
+    func apply() {
+        var ancestor = superview
+        while let current = ancestor {
+            if let scrollView = current as? NSScrollView {
+                scrollView.scrollerStyle = .overlay
+                scrollView.autohidesScrollers = true
+                return
+            }
+            ancestor = current.superview
+        }
+    }
+}
+
 private struct AgentStarterPrompt: Identifiable {
     let id: String
     let title: String
@@ -549,15 +580,8 @@ private struct AgentStarterPromptButton: View {
             .padding(.horizontal, AppTheme.Spacing.md)
             .padding(.vertical, AppTheme.Spacing.xs)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
-            .background(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                    .fill(AppTheme.Background.raisedColor)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                    .strokeBorder(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.hairline)
-            )
+            .hoverHighlight(cornerRadius: AppTheme.Radius.lg)
+            .glassEffect(.regular, in: .rect(cornerRadius: AppTheme.Radius.lg))
         }
         .buttonStyle(.plain)
         .focusable(false)

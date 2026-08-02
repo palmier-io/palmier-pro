@@ -88,7 +88,7 @@ struct Track: Codable, Sendable, Equatable, Identifiable {
     var syncLocked: Bool = true
     var clips: [Clip] = []
 
-    var displayHeight: CGFloat = 50
+    var displayHeight: CGFloat = TrackSize.defaultHeight
 
     var endFrame: Int {
         var maxFrame = 0
@@ -126,7 +126,7 @@ extension Track {
             syncLocked: (try? c.decode(Bool.self, forKey: .syncLocked)) ?? true,
             clips: (try? c.decode([Clip].self, forKey: .clips)) ?? [],
             displayHeight: (try? c.decode(CGFloat.self, forKey: .displayHeight))
-                .map { min(max($0, TrackSize.minHeight), TrackSize.maxHeight) } ?? 50
+                .map { min(max($0, TrackSize.minHeight), TrackSize.maxHeight) } ?? TrackSize.defaultHeight
         )
     }
 }

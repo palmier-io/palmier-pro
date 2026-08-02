@@ -39,9 +39,6 @@ struct MediaPanelView: View {
             .clipped()
             .zIndex(0)
         }
-        .overlay(alignment: .trailing) {
-            Rectangle().fill(AppTheme.Border.primaryColor).frame(width: AppTheme.BorderWidth.hairline)
-        }
         .onChange(of: editor.mediaPanelShowMediaTabTick) { _, _ in
             withAnimation(.easeInOut(duration: AppTheme.Anim.transition)) { panelTab = .media }
         }

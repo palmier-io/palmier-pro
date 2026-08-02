@@ -6,15 +6,38 @@ struct TitleBarLeadingView: View {
     var body: some View {
         HStack(spacing: AppTheme.Spacing.smMd) {
             Button(action: { editor.agentPanelVisible.toggle() }) {
-                Image(systemName: editor.agentPanelVisible ? "bubble.left.fill" : "bubble.left")
-                    .font(.system(size: AppTheme.FontSize.md))
-                    .foregroundStyle(AppTheme.aiGradient)
-                    .opacity(editor.agentPanelVisible ? 1 : AppTheme.Opacity.strong)
-                    .frame(width: AppTheme.IconSize.lg, height: AppTheme.IconSize.lg)
-                    .hoverHighlight()
+                HStack(spacing: AppTheme.Spacing.xs) {
+                    Image(systemName: editor.agentPanelVisible ? "bubble.left.fill" : "bubble.left")
+                        .foregroundStyle(AppTheme.aiGradient)
+                        .opacity(editor.agentPanelVisible ? 1 : AppTheme.Opacity.strong)
+                        .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
+                    Text(L10n.string("Chat"))
+                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                }
+                .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+                .padding(.horizontal, AppTheme.Spacing.sm)
+                .frame(height: AppTheme.IconSize.lg)
+                .hoverHighlight()
             }
             .buttonStyle(.plain)
             .help(L10n.string("Toggle Agent Panel"))
+
+            HStack(spacing: AppTheme.Spacing.xxs) {
+                PanelVisibilityButton(
+                    systemName: "sidebar.left",
+                    label: L10n.string("Media Panel"),
+                    isVisible: editor.mediaPanelVisible
+                ) {
+                    editor.mediaPanelVisible.toggle()
+                }
+                PanelVisibilityButton(
+                    systemName: "sidebar.right",
+                    label: L10n.string("Inspector Panel"),
+                    isVisible: editor.inspectorPanelVisible
+                ) {
+                    editor.inspectorPanelVisible.toggle()
+                }
+            }
         }
     }
 }
@@ -74,5 +97,26 @@ struct TitleBarTrailingView: View {
             .easeInOut(duration: AppTheme.Anim.pulse)
         }
         .accessibilityHidden(true)
+    }
+}
+
+private struct PanelVisibilityButton: View {
+    let systemName: String
+    let label: String
+    let isVisible: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.medium))
+                .foregroundStyle(isVisible ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
+                .frame(width: AppTheme.IconSize.lg, height: AppTheme.IconSize.lg)
+                .hoverHighlight()
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: label))
+        .accessibilityAddTraits(isVisible ? .isSelected : [])
+        .help(label)
     }
 }

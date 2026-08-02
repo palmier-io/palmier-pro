@@ -22,7 +22,8 @@ enum Layout {
 
     // Timeline
     static let timelineMinHeight: CGFloat = 100
-    static let trackHeight: CGFloat = 50
+    static let timelineDefaultHeightFraction: CGFloat = 0.25
+    static let trackHeight: CGFloat = TrackSize.defaultHeight
     static let rulerHeight: CGFloat = 24
     static let trackHeaderWidth: CGFloat = 100
     static let dropZoneHeight: CGFloat = 60
@@ -50,6 +51,7 @@ enum Snap {
 }
 
 enum TrackSize {
+    static let defaultHeight: CGFloat = 44
     static let minHeight: CGFloat = 32
     static let maxHeight: CGFloat = 200
     static let resizeHandleZone: CGFloat = 6
