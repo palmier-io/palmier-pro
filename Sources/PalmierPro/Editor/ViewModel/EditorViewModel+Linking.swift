@@ -142,18 +142,14 @@ extension EditorViewModel {
 
     /// Stamp a new `linkGroupId` on every clip in `ids`, merging pre-existing sub-groups into the new group.
     func linkClips(ids: Set<String>) {
-        guard ids.count >= 2 else { return }
+        guard let ids = linkTargets(for: ids) else { return }
         let newGroup = UUID().uuidString
         mutateClips(ids: ids, actionName: "Link") { $0.linkGroupId = newGroup }
     }
 
     /// Clear `linkGroupId` on every clip that shares a group with any id in `ids`.
     func unlinkClips(ids: Set<String>) {
-        let expanded = expandToLinkGroup(ids).filter { id in
-            guard let loc = findClip(id: id) else { return false }
-            return timeline.tracks[loc.trackIndex].clips[loc.clipIndex].linkGroupId != nil
-        }
-        mutateClips(ids: Set(expanded), actionName: "Unlink") { $0.linkGroupId = nil }
+        mutateClips(ids: unlinkTargets(for: ids), actionName: "Unlink") { $0.linkGroupId = nil }
         selectedClipIds.removeAll()
     }
 
@@ -468,30 +464,29 @@ extension EditorViewModel {
         return insertTrack(at: timeline.tracks.count, type: .audio)
     }
 
-    // MARK: - Context-menu enablement
+    // MARK: - Link eligibility
+
+    func unlinkTargets(for ids: Set<String>) -> Set<String> {
+        expandToLinkGroup(ids).filter { clipFor(id: $0)?.linkGroupId != nil }
+    }
+
+    func linkTargets(for ids: Set<String>) -> Set<String>? {
+        let ids = expandToLinkGroup(ids)
+        guard ids.count >= 2 else { return nil }
+        let clips = ids.compactMap(clipFor)
+        guard clips.count == ids.count, Set(clips.map(\.mediaType)).count >= 2 else { return nil }
+        let linkedGroups = clips.compactMap(\.linkGroupId)
+        let groups = Set(linkedGroups)
+        let ungrouped = clips.count - linkedGroups.count
+        guard groups.count != 1 || ungrouped != 0 else { return nil }
+        return ids
+    }
 
     var canUnlinkSelected: Bool {
-        for track in timeline.tracks {
-            for clip in track.clips where selectedClipIds.contains(clip.id) && clip.linkGroupId != nil {
-                return true
-            }
-        }
-        return false
+        !unlinkTargets(for: selectedClipIds).isEmpty
     }
 
     var canLinkSelected: Bool {
-        guard selectedClipIds.count >= 2 else { return false }
-        var types = Set<ClipType>()
-        var groups = Set<String>()
-        var ungrouped = 0
-        for track in timeline.tracks {
-            for clip in track.clips where selectedClipIds.contains(clip.id) {
-                types.insert(clip.mediaType)
-                if let gid = clip.linkGroupId { groups.insert(gid) } else { ungrouped += 1 }
-            }
-        }
-        guard types.count >= 2 else { return false }
-        // Already all in one group → nothing to do
-        return !(groups.count == 1 && ungrouped == 0)
+        linkTargets(for: selectedClipIds) != nil
     }
 }

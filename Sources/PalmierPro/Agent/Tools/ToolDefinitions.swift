@@ -24,6 +24,7 @@ enum ToolName: String, CaseIterable, Sendable {
 
     // Clips
     case manageTracks = "manage_tracks"
+    case manageClipLinks = "manage_clip_links"
     case addClips = "add_clips"
     case insertClips = "insert_clips"
     case moveClips = "move_clips"
@@ -377,6 +378,23 @@ enum ToolDefinitions {
                     ],
                 ],
                 required: ["clipIds"]
+            )
+        ),
+        AgentTool(
+            name: .manageClipLinks,
+            description: "Links or unlinks clips as one undoable action without moving, trimming, or aligning them. link merges the complete existing groups touched by clipIds and requires at least two clips of different media types. unlink accepts one or more members and dissolves each member's complete link group. Use unlink before independently trimming the audio or video side of a J-cut or L-cut; relink afterward when the clips should move together again.",
+            inputSchema: objectSchema(
+                properties: [
+                    "action": [
+                        "type": "string",
+                        "enum": ["link", "unlink"],
+                    ],
+                    "clipIds": [
+                        "type": "array",
+                        "items": ["type": "string"],
+                    ],
+                ],
+                required: ["action", "clipIds"]
             )
         ),
         AgentTool(
