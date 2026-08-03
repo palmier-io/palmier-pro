@@ -125,11 +125,13 @@ enum TextFrameRenderer {
         let key = signature(content, style, transform, renderSize)
         if let cached = cache.object(forKey: key) { return cached }
         guard let ctx = beginContext(style: style, backgroundBox: boxes.background, renderSize: renderSize) else { return nil }
-        let frame = TextLayout.frame(
-            for: NSAttributedString(string: content, attributes: style.attributes(size: fontSize)),
-            in: boxes.text
+        let frame = drawText(
+            ctx,
+            content: content,
+            style: style,
+            fontSize: fontSize,
+            box: boxes.text
         )
-        CTFrameDraw(frame, ctx)
         drawOverlines(ctx, frame: frame, style: style, fontSize: fontSize)
         guard let image = finish(ctx) else { return nil }
         cache.setObject(image, forKey: key)
@@ -167,8 +169,11 @@ enum TextFrameRenderer {
                                       fontSize: CGFloat, anim: TextAnimation, frame: Int, renderSize: CGSize) -> CIImage? {
         guard let ctx = beginContext(style: style, backgroundBox: boxes.background, renderSize: renderSize) else { return nil }
 
-        let attr = NSAttributedString(string: content, attributes: style.attributes(size: fontSize))
-        let ctFrame = TextLayout.frame(for: attr, in: boxes.text)
+        let fillAttrs = style.attributes(size: fontSize)
+        let ctFrame = TextLayout.frame(
+            for: NSAttributedString(string: content, attributes: fillAttrs),
+            in: boxes.text
+        )
         let lines = CTFrameGetLines(ctFrame) as? [CTLine] ?? []
         var origins = [CGPoint](repeating: .zero, count: lines.count)
         CTFrameGetLineOrigins(ctFrame, CFRange(location: 0, length: 0), &origins)
@@ -177,9 +182,12 @@ enum TextFrameRenderer {
         let tokens = words(in: content)
         let timings = tokenTimings(tokens, clip.wordTimings, duration: clip.durationFrames)
         let rel = frame - clip.startFrame
-        let baseAttrs = style.attributes(size: fontSize)
-        let font = baseAttrs[.font] as? NSFont
+        let undercoatAttrs = style.drawsGlyphOutline
+            ? style.outlineUndercoatAttributes(size: fontSize)
+            : nil
+        let font = fillAttrs[.font] as? NSFont
 
+        var placements: [WordPlacement] = []
         for (li, line) in lines.enumerated() {
             let lineRange = CTLineGetStringRange(line)
             for (ti, tok) in tokens.enumerated() {
@@ -190,33 +198,84 @@ enum TextFrameRenderer {
 
                 let startOff = CTLineGetOffsetForStringIndex(line, tok.range.location, nil)
                 let endOff = CTLineGetOffsetForStringIndex(line, tok.range.location + tok.range.length, nil)
-                let penX = frameBounds.minX + origins[li].x + startOff
-                let penY = frameBounds.minY + origins[li].y
-                let wWidth = endOff - startOff
-
-                var attrs = baseAttrs
-                attrs[.foregroundColor] = st.color.nsColor
-                let wordLine = CTLineCreateWithAttributedString(
-                    NSAttributedString(string: tok.text, attributes: attrs) as CFAttributedString)
-
-                ctx.saveGState()
-                ctx.setAlpha(CGFloat(st.opacity))
-                let cx = penX + wWidth / 2, cy = penY + fontSize * 0.35
-                ctx.translateBy(x: 0, y: -st.dy * fontSize)
-                ctx.translateBy(x: cx, y: cy)
-                ctx.scaleBy(x: st.scale, y: st.scale)
-                ctx.translateBy(x: -cx, y: -cy)
-                if let bg = st.bgColor, bg.a > 0.001 {
-                    drawWordBackground(ctx, color: bg, penX: penX, penY: penY,
-                                       width: wWidth, fontSize: fontSize, font: font)
-                }
-                ctx.textPosition = CGPoint(x: penX, y: penY)
-                CTLineDraw(wordLine, ctx)
-                if style.isOverlined, let font { drawOverline(ctx, x: penX, y: penY, width: wWidth, font: font, color: st.color) }
-                ctx.restoreGState()
+                var wordFillAttrs = fillAttrs
+                wordFillAttrs[.foregroundColor] = st.color.nsColor
+                placements.append(WordPlacement(
+                    state: st,
+                    penX: frameBounds.minX + origins[li].x + startOff,
+                    penY: frameBounds.minY + origins[li].y,
+                    width: endOff - startOff,
+                    fillLine: CTLineCreateWithAttributedString(
+                        NSAttributedString(string: tok.text, attributes: wordFillAttrs) as CFAttributedString),
+                    undercoatLine: undercoatAttrs.map {
+                        CTLineCreateWithAttributedString(
+                            NSAttributedString(string: tok.text, attributes: $0) as CFAttributedString)
+                    }
+                ))
             }
         }
+
+        drawWordPlacements(ctx, placements, style: style, fontSize: fontSize, font: font)
         return finish(ctx)
+    }
+
+    private struct WordPlacement {
+        let state: TextAnimator.WordState
+        let penX: CGFloat
+        let penY: CGFloat
+        let width: CGFloat
+        let fillLine: CTLine
+        let undercoatLine: CTLine?
+    }
+
+    /// Backgrounds, then undercoats, then fills, so no word's outline paints over a neighbor's fill.
+    private static func drawWordPlacements(_ ctx: CGContext, _ placements: [WordPlacement],
+                                           style: TextStyle, fontSize: CGFloat, font: NSFont?) {
+        guard !placements.isEmpty else { return }
+
+        func withWordState(_ p: WordPlacement, _ draw: () -> Void) {
+            ctx.saveGState()
+            ctx.setAlpha(CGFloat(p.state.opacity))
+            let cx = p.penX + p.width / 2, cy = p.penY + fontSize * 0.35
+            ctx.translateBy(x: 0, y: -p.state.dy * fontSize)
+            ctx.translateBy(x: cx, y: cy)
+            ctx.scaleBy(x: p.state.scale, y: p.state.scale)
+            ctx.translateBy(x: -cx, y: -cy)
+            draw()
+            ctx.restoreGState()
+        }
+
+        func drawFillAndOverline(_ p: WordPlacement) {
+            ctx.textPosition = CGPoint(x: p.penX, y: p.penY)
+            CTLineDraw(p.fillLine, ctx)
+            if style.isOverlined, let font {
+                drawOverline(ctx, x: p.penX, y: p.penY, width: p.width, font: font, color: p.state.color)
+            }
+        }
+
+        // One layer applies the context shadow once to the assembled block.
+        ctx.beginTransparencyLayer(auxiliaryInfo: nil)
+        for p in placements where p.state.bgColor.map({ $0.a > 0.001 }) == true {
+            withWordState(p) {
+                drawWordBackground(ctx, color: p.state.bgColor!, penX: p.penX, penY: p.penY,
+                                   width: p.width, fontSize: fontSize, font: font)
+            }
+        }
+        if placements.contains(where: { $0.undercoatLine != nil }) {
+            drawUndercoat(ctx) {
+                for p in placements {
+                    guard let undercoat = p.undercoatLine else { continue }
+                    withWordState(p) {
+                        ctx.textPosition = CGPoint(x: p.penX, y: p.penY)
+                        CTLineDraw(undercoat, ctx)
+                    }
+                }
+            }
+        }
+        for p in placements {
+            withWordState(p) { drawFillAndOverline(p) }
+        }
+        ctx.endTransparencyLayer()
     }
 
     /// Rounded highlight block behind a word.
@@ -280,15 +339,15 @@ enum TextFrameRenderer {
         if rel <= doneAt + holdFrames, (rel / 15) % 2 == 0 { visible += "|" }
         guard !visible.isEmpty else { return finish(ctx) }
         // Left-anchor so the text reveals rightward in place rather than re-centering as it grows.
-        var attrs = style.attributes(size: fontSize)
-        attrs[.paragraphStyle] = style.paragraphStyle(size: fontSize, alignment: .left)
-        let fullText = NSAttributedString(string: content, attributes: attrs)
-        let textFrame = TextLayout.frame(
-            for: NSAttributedString(string: visible, attributes: attrs),
-            in: boxes.text,
-            verticallySizedFor: fullText
+        let textFrame = drawText(
+            ctx,
+            content: visible,
+            style: style,
+            fontSize: fontSize,
+            box: boxes.text,
+            alignment: .left,
+            verticallySizedFor: content
         )
-        CTFrameDraw(textFrame, ctx)
         drawOverlines(ctx, frame: textFrame, style: style, fontSize: fontSize)
         return finish(ctx)
     }
@@ -468,6 +527,54 @@ enum TextFrameRenderer {
     }
 
     // MARK: - Shared drawing
+
+    /// Outlined text draws undercoat then fill in one layer so the context shadow applies once.
+    @discardableResult
+    private static func drawText(
+        _ ctx: CGContext,
+        content: String,
+        style: TextStyle,
+        fontSize: CGFloat,
+        box: CGRect,
+        alignment: NSTextAlignment? = nil,
+        verticallySizedFor sizingContent: String? = nil
+    ) -> CTFrame {
+        func attributed(_ attrs: [NSAttributedString.Key: Any], _ string: String) -> NSAttributedString {
+            var attrs = attrs
+            if let alignment {
+                attrs[.paragraphStyle] = style.paragraphStyle(size: fontSize, alignment: alignment)
+            }
+            return NSAttributedString(string: string, attributes: attrs)
+        }
+
+        let fillAttrs = style.attributes(size: fontSize)
+        let sizing = sizingContent.map { attributed(fillAttrs, $0) }
+        let fillFrame = TextLayout.frame(for: attributed(fillAttrs, content), in: box, verticallySizedFor: sizing)
+
+        guard style.drawsGlyphOutline else {
+            CTFrameDraw(fillFrame, ctx)
+            return fillFrame
+        }
+
+        let undercoatFrame = TextLayout.frame(
+            for: attributed(style.outlineUndercoatAttributes(size: fontSize), content),
+            in: box,
+            verticallySizedFor: sizing
+        )
+        ctx.beginTransparencyLayer(auxiliaryInfo: nil)
+        drawUndercoat(ctx) { CTFrameDraw(undercoatFrame, ctx) }
+        CTFrameDraw(fillFrame, ctx)
+        ctx.endTransparencyLayer()
+        return fillFrame
+    }
+
+    /// Core Text strokes honor context join state; round joins prevent miter spikes on pointed glyphs.
+    private static func drawUndercoat(_ ctx: CGContext, _ draw: () -> Void) {
+        ctx.saveGState()
+        ctx.setLineJoin(.round)
+        draw()
+        ctx.restoreGState()
+    }
 
     private static func drawBox(_ ctx: CGContext, style: TextStyle, box: CGRect, renderSize: CGSize) {
         guard style.background.enabled else { return }

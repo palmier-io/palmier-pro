@@ -309,30 +309,42 @@ extension TextStyle {
         fontCase.apply(to: text)
     }
 
+    /// Two-pass outlines need an opaque fill; translucent fills would show the undercoat through them.
+    var drawsGlyphOutline: Bool {
+        border.enabled && border.width > 0 && color.a >= 1
+    }
+
     /// `includeColor: false` for bounding measurement (color doesn't affect size).
     func attributes(size: CGFloat, includeColor: Bool = true) -> [NSAttributedString.Key: Any] {
-        var attrs: [NSAttributedString.Key: Any] = [
-            .font: resolvedFont(size: size),
-            .paragraphStyle: paragraphStyle(size: size),
-            .kern: tracking * Double(size) / max(1, fontSize * fontScale),
-        ]
+        var attrs = baseAttributes(size: size)
         if isUnderlined { attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue }
         if isStruckThrough { attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
         if includeColor { attrs[.foregroundColor] = nsColor }
-        if border.enabled {
-            attrs[.strokeWidth] = NSNumber(value: glyphBorderStrokePercentage)
+        if border.enabled, border.width > 0, !drawsGlyphOutline {
+            attrs[.strokeWidth] = NSNumber(value: -100 * max(0, border.width) / max(1, fontSize * fontScale))
             if includeColor { attrs[.strokeColor] = border.color.nsColor }
         }
         return attrs
     }
 
-    func glyphBorderPadding(fontSize: CGFloat) -> CGFloat {
-        ceil(fontSize * CGFloat(abs(glyphBorderStrokePercentage)) / 100)
+    /// Stroke-only undercoat at 2× width; the fill drawn on top covers the inner half, leaving `border.width` outward.
+    func outlineUndercoatAttributes(size: CGFloat) -> [NSAttributedString.Key: Any] {
+        var attrs = baseAttributes(size: size)
+        attrs[.strokeWidth] = NSNumber(value: 200 * max(0, border.width) / max(1, fontSize * fontScale))
+        attrs[.strokeColor] = border.color.nsColor
+        return attrs
     }
 
-    private var glyphBorderStrokePercentage: Double {
-        let unscaledFontSize = max(1, fontSize * fontScale)
-        return -100 * max(0, border.width) / unscaledFontSize
+    func glyphBorderPadding(fontSize: CGFloat) -> CGFloat {
+        ceil(fontSize * CGFloat(max(0, border.width)) / CGFloat(max(1, self.fontSize * fontScale)))
+    }
+
+    private func baseAttributes(size: CGFloat) -> [NSAttributedString.Key: Any] {
+        [
+            .font: resolvedFont(size: size),
+            .paragraphStyle: paragraphStyle(size: size),
+            .kern: tracking * Double(size) / max(1, fontSize * fontScale),
+        ]
     }
 
     private static func font(_ font: NSFont, size: CGFloat, bold: Bool, italic: Bool) -> NSFont {

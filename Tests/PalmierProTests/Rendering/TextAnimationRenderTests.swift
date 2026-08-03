@@ -99,6 +99,23 @@ struct TextAnimationRenderTests {
         #expect(actualPixels == expectedPixels)
     }
 
+    @Test func laterWordOutlinesDoNotPaintOverEarlierFills() {
+        var animated = clip(TextAnimation(preset: .wordReveal, perWordFrames: 4, highlight: .init(r: 1, g: 1, b: 1, a: 1)))
+        animated.textStyle?.border = .init(enabled: true, color: .init(r: 1, g: 0, b: 0, a: 1), width: 40)
+        animated.textStyle?.tracking = -6
+        var expected = animated
+        expected.textAnimation = nil
+
+        // Steady frame: all words revealed, no motion — per-word must match static stacking.
+        let animatedWhite = brightCount(pixels(animated, frame: 85))
+        let staticWhite = brightCount(pixels(expected, frame: 85))
+        #expect(staticWhite > 500, "expected a visible white fill baseline")
+        #expect(
+            animatedWhite >= staticWhite * 97 / 100,
+            "later words' outlines must not cover earlier fills (\(animatedWhite) vs \(staticWhite) white pixels)"
+        )
+    }
+
     @Test func tokenTimingsSplitAlignedTranscriptSpan() {
         let tokens = [
             (range: NSRange(location: 0, length: 3), text: "New"),
