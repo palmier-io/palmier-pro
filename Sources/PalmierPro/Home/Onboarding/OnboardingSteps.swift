@@ -118,52 +118,6 @@ private struct OnboardingFlowLayout: SwiftUI.Layout {
     }
 }
 
-struct OnboardingAccountStep: View {
-    @Bindable var account: AccountService
-    let sampleState: OnboardingSampleState
-    let signInFailed: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.xxl) {
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
-                OnboardingTitle(title)
-                OnboardingDetail(detail)
-            }
-            if let failure {
-                Text(failure)
-                    .font(.system(size: AppTheme.FontSize.smMd))
-                    .foregroundStyle(AppTheme.Status.errorColor)
-            }
-        }
-    }
-
-    private var title: String {
-        guard account.isSignedIn else {
-            return L10n.string("Sign In")
-        }
-        guard let firstName = account.account?.user.firstName else {
-            return L10n.string("Welcome")
-        }
-        return L10n.string("Welcome, \(firstName)")
-    }
-
-    private var detail: String {
-        account.isSignedIn
-            ? L10n.string("Watch the tutorial or start creating.")
-            : L10n.string("Sign in to receive 250 free credits for AI chat and generation.")
-    }
-
-    private var failure: String? {
-        if sampleState == .failed {
-            return L10n.string("Sample project couldn’t be opened. Try again.")
-        }
-        if signInFailed, !account.isSignedIn {
-            return L10n.string("Sign-in couldn’t be completed. Try again.")
-        }
-        return nil
-    }
-}
-
 private struct OnboardingTitle: View {
     let text: String
 

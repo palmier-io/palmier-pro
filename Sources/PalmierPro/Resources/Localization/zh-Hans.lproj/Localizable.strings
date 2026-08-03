@@ -657,7 +657,6 @@
 "Preparing…" = "正在准备…";
 "Presence" = "临场感";
 "Preview" = "预览";
-"Privacy & Diagnostics" = "隐私与诊断";
 "Pro plan" = "Pro 方案";
 "Product demos" = "产品演示";
 "Project" = "项目";
@@ -722,7 +721,6 @@
 "Resolution must be at least 2 × 2 pixels." = "分辨率必须至少为 2 × 2 像素。";
 "Resolution must not exceed 8192 pixels on either edge." = "任一边的分辨率不得超过 8192 像素。";
 "Restart Palmier Pro" = "重新启动 Palmier Pro";
-"Restart Palmier Pro to apply this change." = "重新启动 Palmier Pro 以应用此更改。";
 "Retry" = "重试";
 "Retry Download" = "重试下载";
 "Reveal in Finder" = "在访达中显示";
@@ -772,11 +770,8 @@
 "Selection Tool" = "选择工具";
 "Send" = "发送";
 "Send Feedback…" = "发送反馈…";
-"Send crash and error reports to help diagnose problems. Media and project content are never included." = "发送崩溃和错误报告以帮助诊断问题。报告绝不会包含媒体和项目内容。";
-"Send crash reports" = "发送崩溃报告";
 "Send feedback" = "发送反馈";
 "Send only the visible clip range to the model, not the full source." = "仅将片段的可见范围发送给模型，而不是完整源媒体。";
-"Send usage data from your interactions with Palmier Pro to help improve the app." = "发送你与 Palmier Pro 交互时的使用数据，帮助改进 App。";
 "Sending…" = "正在发送…";
 "Sequence" = "序列";
 "Server URL" = "服务器 URL";
@@ -787,7 +782,6 @@
 "Setup instructions" = "设置说明";
 "Shadow" = "阴影";
 "Shadows" = "阴影";
-"Share usage data" = "共享使用数据";
 "Sharpen" = "锐化";
 "Short-form and social" = "短视频与社交媒体";
 "Shortcuts" = "快捷键";

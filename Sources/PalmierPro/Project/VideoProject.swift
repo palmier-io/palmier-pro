@@ -87,16 +87,7 @@ class VideoProject: NSDocument {
         loadedManifest = contents.manifest
         manifestLoadFailed = contents.manifestUnreadable
         let timelines = loadedProjectFile?.timelines ?? []
-        Log.project.notice(
-            "read ok timelines=\(timelines.count)",
-            telemetry: "Project read",
-            data: [
-                "timelines": timelines.count,
-                "tracks": timelines.reduce(0) { $0 + $1.tracks.count },
-                "clips": timelines.reduce(0) { $0 + $1.tracks.reduce(0) { $0 + $1.clips.count } },
-                "media": loadedManifest?.entries.count ?? 0
-            ]
-        )
+        Log.project.notice("read ok timelines=\(timelines.count) media=\(loadedManifest?.entries.count ?? 0)")
     }
 
     nonisolated static func readProjectPackage(at url: URL) throws -> ProjectPackageContents {
@@ -491,12 +482,6 @@ class VideoProject: NSDocument {
         AppState.shared.showEditor(for: self)
 
         editorViewModel.searchIndex.projectOpened()
-        editorViewModel.updateTelemetryContext()
-        Telemetry.breadcrumb(
-            "Project opened",
-            category: "project",
-            data: editorViewModel.telemetrySnapshot()
-        )
     }
 
     // MARK: - Thumbnail
@@ -679,11 +664,7 @@ class VideoProject: NSDocument {
         editorViewModel.updateManifestMetadata(for: manifestUpdates)
         editorViewModel.missingMediaRefs = missingRefs
         editorViewModel.generationService.resumePendingGenerations(editor: editorViewModel)
-        Log.project.notice(
-            "restore ok restored=\(restored) missing=\(missing)",
-            telemetry: "Media restored",
-            data: ["restored": restored, "missing": missing, "manifestEntries": manifestEntries]
-        )
+        Log.project.notice("restore ok restored=\(restored) missing=\(missing) manifest=\(manifestEntries)")
     }
 }
 

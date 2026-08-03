@@ -1,6 +1,8 @@
 import Foundation
 @preconcurrency import Combine
+#if HOSTED_BACKEND && arch(arm64)
 @preconcurrency import ConvexMobile
+#endif
 
 /// Used by replace-clip callbacks so only the
 /// first successful asset of an N-image generation swaps the clip
@@ -71,7 +73,6 @@ final class GenerationService {
             placeholders.append(placeholder)
         }
         let primaryId = placeholders[0].id
-        captureSubmission(genInput: genInput, assetType: assetType, outputCount: count, editor: editor)
 
         Task { @MainActor in
             do {
@@ -123,24 +124,6 @@ final class GenerationService {
         }
 
         return primaryId
-    }
-
-    private func captureSubmission(
-        genInput: GenerationInput,
-        assetType: ClipType,
-        outputCount: Int,
-        editor: EditorViewModel
-    ) {
-        var payload = Analytics.originProperties()
-        payload["project_id"] = editor.projectId ?? "unknown"
-        payload["model"] = genInput.model
-        payload["generation_type"] = Self.generationType(assetType: assetType, genInput: genInput)
-        payload["output_count"] = outputCount
-        Analytics.capture(.generationSubmitted, properties: payload)
-    }
-
-    nonisolated static func generationType(assetType: ClipType, genInput: GenerationInput) -> String {
-        genInput.upscaleSettings == nil ? assetType.rawValue : "upscale"
     }
 
     private func prepareReferences(
@@ -329,12 +312,14 @@ final class GenerationService {
 
     private func backendError(_ error: Error) -> (code: String?, message: String) {
         struct Payload: Decodable { let code: String?; let message: String? }
+        #if HOSTED_BACKEND && arch(arm64)
         if case let ClientError.ConvexError(data) = error,
            let json = data.data(using: .utf8),
            let payload = try? JSONDecoder().decode(Payload.self, from: json),
            let message = payload.message {
             return (payload.code, message)
         }
+        #endif
         return (nil, error.localizedDescription)
     }
 

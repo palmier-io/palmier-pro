@@ -68,7 +68,7 @@ struct LottieVideoGeneratorTests {
         }
     }
 
-    @Test @MainActor func bakesAlphaVideo() async throws {
+    @Test func bakesAlphaVideo() async throws {
         let url = try Self.writeSample()
         defer { try? FileManager.default.removeItem(at: url) }
         let ref = "lottie-test-\(UUID().uuidString)"
@@ -93,10 +93,9 @@ struct LottieVideoGeneratorTests {
         let gen = AVAssetImageGenerator(asset: asset)
         gen.requestedTimeToleranceBefore = .zero
         gen.requestedTimeToleranceAfter = .zero
-        nonisolated(unsafe) let unsafeGen = gen
 
         func sample(_ seconds: Double) async throws -> (top: NSColor, bottom: NSColor) {
-            let frame = try await unsafeGen.image(at: CMTime(seconds: seconds, preferredTimescale: 600)).image
+            let frame = try await gen.image(at: CMTime(seconds: seconds, preferredTimescale: 600)).image
             let rep = NSBitmapImageRep(cgImage: frame)
             return (
                 try #require(rep.colorAt(x: frame.width / 4, y: frame.height / 4)),

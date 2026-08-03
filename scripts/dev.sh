@@ -1,6 +1,6 @@
 #!/bin/bash
 # scripts/dev.sh — build the debug bundle, launch it, and stream its OSLog.
-# Usage: scripts/dev.sh [--speech] [--telemetry] [--all] [--no-stream]
+# Usage: scripts/dev.sh [--speech] [--hosted] [--intel] [--all] [--no-stream]
 
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

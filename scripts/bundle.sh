@@ -5,37 +5,46 @@ set -euo pipefail
 #   scripts/bundle.sh [release|debug]           # ad-hoc signed dev build
 #   scripts/bundle.sh debug --fast              # fastest: skip dSYM + deep sign, just env+build
 #   scripts/bundle.sh debug --speech             # include bundled speech and MLX
-#   scripts/bundle.sh debug --telemetry          # include production telemetry
+#   scripts/bundle.sh debug --hosted             # include account and hosted AI services
+#   scripts/bundle.sh release --intel            # build the Intel local/BYOK edition
+#   scripts/bundle.sh release --intel --dmg      # Intel app + PalmierPro-Intel.dmg (no notarization)
 #   scripts/bundle.sh debug --all                # include all optional traits
 #   scripts/bundle.sh release --sign            # build + Developer ID codesign
 #   scripts/bundle.sh release --dist            # build + sign + notarize + staple + DMG
 
 CONFIG="release"
 MODE="dev"
-ENABLE_ALL_TRAITS=false
 INCLUDE_BUNDLED_SPEECH=false
-INCLUDE_PRODUCTION_TELEMETRY=false
+INCLUDE_HOSTED_BACKEND=false
+TARGET_ARCH="$(uname -m)"
 for arg in "$@"; do
   case "$arg" in
     release|debug) CONFIG="$arg" ;;
     --fast)        MODE="fast" ;;
     --sign)        MODE="sign" ;;
     --dist)        MODE="dist" ;;
+    --dmg)         MODE="dmg" ;;
     --speech)      INCLUDE_BUNDLED_SPEECH=true ;;
-    --telemetry)   INCLUDE_PRODUCTION_TELEMETRY=true ;;
+    --hosted)      INCLUDE_HOSTED_BACKEND=true ;;
+    --intel)       TARGET_ARCH="x86_64" ;;
     --all)
-      ENABLE_ALL_TRAITS=true
       INCLUDE_BUNDLED_SPEECH=true
-      INCLUDE_PRODUCTION_TELEMETRY=true
+      INCLUDE_HOSTED_BACKEND=true
       ;;
     *) echo "unknown arg: $arg" >&2; exit 1 ;;
   esac
 done
 
 if [ "$CONFIG" = "release" ]; then
-  ENABLE_ALL_TRAITS=true
-  INCLUDE_BUNDLED_SPEECH=true
-  INCLUDE_PRODUCTION_TELEMETRY=true
+  if [ "$TARGET_ARCH" = "arm64" ]; then
+    INCLUDE_BUNDLED_SPEECH=true
+    INCLUDE_HOSTED_BACKEND=true
+  fi
+fi
+
+if [ "$TARGET_ARCH" = "x86_64" ] && { $INCLUDE_BUNDLED_SPEECH || $INCLUDE_HOSTED_BACKEND; }; then
+  echo "Intel builds do not support --speech or --hosted" >&2
+  exit 1
 fi
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -54,39 +63,56 @@ fi
 
 SIGNING_IDENTITY="${SIGNING_IDENTITY:-Developer ID Application: Palmier, Inc. (MMFLRC7562)}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-palmier-notary}"
-SENTRY_DSN="${SENTRY_DSN:-}"
-POSTHOG_PROJECT_TOKEN="${POSTHOG_PROJECT_TOKEN:-}"
-POSTHOG_HOST="${POSTHOG_HOST:-https://us.i.posthog.com}"
 PROVISION_PROFILE="${PROVISION_PROFILE:-$ROOT/scripts/Palmier_Pro_Developer_ID.provisionprofile}"
 ENTITLEMENTS="$ROOT/scripts/PalmierPro.entitlements"
 KEYCHAIN_ACCESS_GROUP="${KEYCHAIN_ACCESS_GROUP:-MMFLRC7562.io.palmier.pro}"
 RESOURCES="$ROOT/Sources/PalmierPro/Resources"
 APP="$ROOT/.build/PalmierPro.app"
 ZIP="$ROOT/.build/PalmierPro.zip"
-DMG="$ROOT/.build/PalmierPro.dmg"
-
-BUILD_ARGS=(-c "$CONFIG")
-if $ENABLE_ALL_TRAITS; then
-  TRAITS="all"
-  BUILD_ARGS+=(--enable-all-traits)
+if [ "$TARGET_ARCH" = "x86_64" ]; then
+  DMG="$ROOT/.build/PalmierPro-Intel.dmg"
+  DMG_VOLNAME="PalmierPro Intel"
 else
-  TRAITS=""
-  if $INCLUDE_BUNDLED_SPEECH; then
-    TRAITS="BundledSpeech"
-  fi
-  if $INCLUDE_PRODUCTION_TELEMETRY; then
-    if [ -n "$TRAITS" ]; then
-      TRAITS="$TRAITS,ProductionTelemetry"
-    else
-      TRAITS="ProductionTelemetry"
-    fi
-  fi
-  if [ -n "$TRAITS" ]; then
-    BUILD_ARGS+=(--traits "$TRAITS")
-  fi
+  DMG="$ROOT/.build/PalmierPro.dmg"
+  DMG_VOLNAME="PalmierPro"
 fi
 
-echo "==> Building ($CONFIG, traits: ${TRAITS:-none})"
+create_dmg() {
+  echo "==> Building DMG ($DMG)"
+  rm -f "$DMG"
+  local staging
+  staging="$(mktemp -d)"
+  cp -R "$APP" "$staging/PalmierPro.app"
+  ln -s /Applications "$staging/Applications"
+  cp "$RESOURCES/AppIcon.icns" "$staging/.VolumeIcon.icns"
+  hdiutil create \
+    -volname "$DMG_VOLNAME" \
+    -srcfolder "$staging" \
+    -ov -format UDZO \
+    "$DMG"
+  rm -rf "$staging"
+}
+
+BUILD_ARGS=(-c "$CONFIG")
+TRAITS=""
+if $INCLUDE_BUNDLED_SPEECH; then
+  TRAITS="BundledSpeech"
+fi
+if $INCLUDE_HOSTED_BACKEND; then
+  if [ -n "$TRAITS" ]; then
+    TRAITS="$TRAITS,HostedBackend"
+  else
+    TRAITS="HostedBackend"
+  fi
+fi
+if [ -n "$TRAITS" ]; then
+  BUILD_ARGS+=(--traits "$TRAITS")
+fi
+if [ "$TARGET_ARCH" = "x86_64" ]; then
+  BUILD_ARGS+=(--triple x86_64-apple-macosx26.0)
+fi
+
+echo "==> Building ($CONFIG, architecture: $TARGET_ARCH, traits: ${TRAITS:-none})"
 swift build "${BUILD_ARGS[@]}"
 BIN="$(swift build "${BUILD_ARGS[@]}" --show-bin-path)/PalmierPro"
 SPARKLE_FW="$ROOT/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
@@ -96,24 +122,6 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 cp "$BIN" "$APP/Contents/MacOS/PalmierPro"
 cp "$RESOURCES/Info.plist" "$APP/Contents/Info.plist"
-
-if [ -n "$SENTRY_DSN" ]; then
-  echo "==> Injecting SentryDSN into Info.plist"
-  /usr/libexec/PlistBuddy -c "Delete :SentryDSN" "$APP/Contents/Info.plist" 2>/dev/null || true
-  /usr/libexec/PlistBuddy -c "Add :SentryDSN string $SENTRY_DSN" "$APP/Contents/Info.plist"
-else
-  echo "==> SENTRY_DSN not set — telemetry will be a no-op in this build"
-fi
-
-if [ -n "$POSTHOG_PROJECT_TOKEN" ]; then
-  echo "==> Injecting PostHog analytics config into Info.plist"
-  /usr/libexec/PlistBuddy -c "Delete :PostHogProjectToken" "$APP/Contents/Info.plist" 2>/dev/null || true
-  /usr/libexec/PlistBuddy -c "Add :PostHogProjectToken string $POSTHOG_PROJECT_TOKEN" "$APP/Contents/Info.plist"
-  /usr/libexec/PlistBuddy -c "Delete :PostHogHost" "$APP/Contents/Info.plist" 2>/dev/null || true
-  /usr/libexec/PlistBuddy -c "Add :PostHogHost string $POSTHOG_HOST" "$APP/Contents/Info.plist"
-else
-  echo "==> POSTHOG_PROJECT_TOKEN not set — product analytics will be a no-op in this build"
-fi
 
 inject_plist() {
   local key="$1" value="$2"
@@ -125,10 +133,14 @@ inject_plist() {
   /usr/libexec/PlistBuddy -c "Add :$key string $value" "$APP/Contents/Info.plist"
 }
 
-echo "==> Injecting backend config into Info.plist"
-inject_plist PalmierClerkPublishableKey "${CLERK_PUBLISHABLE_KEY:-}"
-inject_plist PalmierConvexDeploymentURL "${CONVEX_DEPLOYMENT_URL:-}"
-inject_plist PalmierConvexHttpURL "${CONVEX_HTTP_URL:-}"
+if $INCLUDE_HOSTED_BACKEND; then
+  echo "==> Injecting backend config into Info.plist"
+  inject_plist PalmierClerkPublishableKey "${CLERK_PUBLISHABLE_KEY:-}"
+  inject_plist PalmierConvexDeploymentURL "${CONVEX_DEPLOYMENT_URL:-}"
+  inject_plist PalmierConvexHttpURL "${CONVEX_HTTP_URL:-}"
+fi
+/usr/libexec/PlistBuddy -c "Delete :PalmierBundledSpeech" "$APP/Contents/Info.plist" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :PalmierBundledSpeech bool $INCLUDE_BUNDLED_SPEECH" "$APP/Contents/Info.plist"
 cp "$RESOURCES/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 cp -R "$SPARKLE_FW" "$APP/Contents/Frameworks/Sparkle.framework"
 
@@ -210,10 +222,15 @@ install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/Mac
 touch "$APP"
 
 if [ "$MODE" = "fast" ]; then
-  echo "==> Codesigning main app with $SIGNING_IDENTITY (no timestamp, no helpers)"
-  codesign --force --sign "$SIGNING_IDENTITY" "$APP"
-  codesign --verify --deep --strict --verbose=2 "$APP"
-  echo "==> Done: $APP (fast mode — stable identity, no dSYM)"
+  if security find-identity -v -p codesigning 2>/dev/null | grep -F "$SIGNING_IDENTITY" >/dev/null; then
+    echo "==> Codesigning main app with $SIGNING_IDENTITY (no timestamp, no helpers)"
+    codesign --force --sign "$SIGNING_IDENTITY" "$APP"
+  else
+    echo "==> $SIGNING_IDENTITY not found — ad-hoc signing (Keychain ACLs reset each rebuild)"
+    codesign --force --deep --sign - "$APP"
+  fi
+  codesign --verify --strict --verbose=2 "$APP"
+  echo "==> Done: $APP (fast mode — no dSYM)"
   exit 0
 fi
 
@@ -222,25 +239,20 @@ echo "==> Generating dSYM"
 rm -rf "$DSYM"
 dsymutil "$APP/Contents/MacOS/PalmierPro" -o "$DSYM"
 
-upload_dsyms() {
-  if [ -z "${SENTRY_AUTH_TOKEN:-}" ] || [ -z "${SENTRY_ORG:-}" ] || [ -z "${SENTRY_PROJECT:-}" ]; then
-    echo "==> Sentry creds not set — skipping dSYM upload"
-    return
-  fi
-  if ! command -v sentry-cli >/dev/null 2>&1; then
-    echo "!! sentry-cli not found in PATH — skipping dSYM upload"
-    return
-  fi
-  echo "==> Uploading dSYM to Sentry"
-  sentry-cli debug-files upload --include-sources "$DSYM" || echo "!! sentry-cli upload failed (continuing)"
-}
-
 if [ "$MODE" = "dev" ]; then
   echo "==> Ad-hoc signing dev app"
   codesign --force --deep --sign - "$APP"
   codesign --verify --strict --verbose=2 "$APP"
-  upload_dsyms
   echo "==> Done: $APP (ad-hoc signed)"
+  exit 0
+fi
+
+if [ "$MODE" = "dmg" ]; then
+  echo "==> Ad-hoc signing app for DMG packaging"
+  codesign --force --deep --sign - "$APP"
+  codesign --verify --strict --verbose=2 "$APP"
+  create_dmg
+  echo "==> Done: $DMG"
   exit 0
 fi
 
@@ -262,19 +274,24 @@ codesign --force --options runtime --timestamp \
   --sign "$SIGNING_IDENTITY" \
   "$APP/Contents/Frameworks/Sparkle.framework"
 
-echo "==> Embedding provisioning profile + keychain access group"
-if [ ! -f "$PROVISION_PROFILE" ]; then
-  echo "!! provisioning profile not found at $PROVISION_PROFILE" >&2
-  exit 1
-fi
-cp "$PROVISION_PROFILE" "$APP/Contents/embedded.provisionprofile"
-inject_plist PalmierClerkKeychainAccessGroup "$KEYCHAIN_ACCESS_GROUP"
-
 echo "==> Codesigning main app"
-codesign --force --options runtime --timestamp \
-  --entitlements "$ENTITLEMENTS" \
-  --sign "$SIGNING_IDENTITY" \
-  "$APP"
+if $INCLUDE_HOSTED_BACKEND; then
+  echo "==> Embedding hosted-service provisioning profile"
+  if [ ! -f "$PROVISION_PROFILE" ]; then
+    echo "!! provisioning profile not found at $PROVISION_PROFILE" >&2
+    exit 1
+  fi
+  cp "$PROVISION_PROFILE" "$APP/Contents/embedded.provisionprofile"
+  inject_plist PalmierClerkKeychainAccessGroup "$KEYCHAIN_ACCESS_GROUP"
+  codesign --force --options runtime --timestamp \
+    --entitlements "$ENTITLEMENTS" \
+    --sign "$SIGNING_IDENTITY" \
+    "$APP"
+else
+  codesign --force --options runtime --timestamp \
+    --sign "$SIGNING_IDENTITY" \
+    "$APP"
+fi
 codesign --verify --strict --verbose=2 "$APP"
 
 if [ "$MODE" = "sign" ]; then
@@ -295,18 +312,7 @@ echo "==> Stapling ticket to .app"
 xcrun stapler staple "$APP"
 rm -f "$ZIP"
 
-echo "==> Building DMG"
-rm -f "$DMG"
-STAGING="$(mktemp -d)"
-cp -R "$APP" "$STAGING/PalmierPro.app"
-ln -s /Applications "$STAGING/Applications"
-cp "$RESOURCES/AppIcon.icns" "$STAGING/.VolumeIcon.icns"
-hdiutil create \
-  -volname "PalmierPro" \
-  -srcfolder "$STAGING" \
-  -ov -format UDZO \
-  "$DMG"
-rm -rf "$STAGING"
+create_dmg
 
 echo "==> Codesigning DMG"
 codesign --force --timestamp --sign "$SIGNING_IDENTITY" "$DMG"
@@ -318,8 +324,6 @@ xcrun notarytool submit "$DMG" \
 
 echo "==> Stapling DMG"
 xcrun stapler staple "$DMG"
-
-upload_dsyms
 
 echo "==> Signing DMG with Sparkle EdDSA key"
 SPARKLE_SIG="$("$ROOT/.build/artifacts/sparkle/Sparkle/bin/sign_update" "$DMG")"

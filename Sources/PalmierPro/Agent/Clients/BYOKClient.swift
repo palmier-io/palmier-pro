@@ -2,7 +2,14 @@ import Foundation
 
 struct BYOKClient: AgentClient {
     let apiKey: String
+    let baseURLString: String?
     let settings: AgentRunSettings
+
+    init(apiKey: String, baseURLString: String? = nil, settings: AgentRunSettings) {
+        self.apiKey = apiKey
+        self.baseURLString = baseURLString
+        self.settings = settings
+    }
 
     func stream(
         system: String,
@@ -52,11 +59,6 @@ struct BYOKClient: AgentClient {
     }
 
     private var endpoint: URL {
-        switch settings.model.provider {
-        case .anthropic:
-            URL(string: "https://api.anthropic.com/v1/messages")!
-        case .openAI:
-            URL(string: "https://api.openai.com/v1/responses")!
-        }
+        settings.model.provider.chatEndpoint(baseURLString: baseURLString)
     }
 }

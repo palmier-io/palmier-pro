@@ -681,8 +681,7 @@ struct ExportView: View {
                     missingMediaRefs: editor.missingMediaRefs,
                     outputURL: url,
                     source: .manual,
-                    projectID: editor.exportQueueProjectID,
-                    analyticsProjectID: editor.projectId
+                    projectID: editor.exportQueueProjectID
                 )
             } catch {
                 submissionError = error.localizedDescription
@@ -706,8 +705,7 @@ struct ExportView: View {
                     sourceProjectURL: editor.projectURL,
                     outputURL: url,
                     source: .manual,
-                    projectID: editor.exportQueueProjectID,
-                    analyticsProjectID: editor.projectId
+                    projectID: editor.exportQueueProjectID
                 )
             } catch {
                 submissionError = error.localizedDescription

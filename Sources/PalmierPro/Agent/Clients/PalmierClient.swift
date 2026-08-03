@@ -1,5 +1,7 @@
 import Foundation
+#if HOSTED_BACKEND && arch(arm64)
 import ClerkKit
+#endif
 
 struct PalmierClient: AgentClient {
     let settings: AgentRunSettings
@@ -28,6 +30,7 @@ struct PalmierClient: AgentClient {
         context: AgentRequestContext,
         continuation: AsyncThrowingStream<AgentStreamEvent, Error>.Continuation
     ) async throws {
+        #if HOSTED_BACKEND && arch(arm64)
         guard let baseURL = BackendConfig.convexHttpURL else {
             throw AgentServiceError.upstream("Backend not configured")
         }
@@ -45,7 +48,7 @@ struct PalmierClient: AgentClient {
         request.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "content-type")
         request.setValue("text/event-stream", forHTTPHeaderField: "accept")
-        context.apply(to: &request, telemetryEnabled: Analytics.isEnabled)
+        context.apply(to: &request)
         request.httpBody = try JSONSerialization.data(
             withJSONObject: settings.requestBody(system: system, tools: tools, messages: messages),
             options: [.sortedKeys]
@@ -55,14 +58,17 @@ struct PalmierClient: AgentClient {
             AgentServiceError.from(status: status, body: body)
         }
         try await settings.model.provider.parseSSE(bytes: bytes, continuation: continuation)
+        #else
+        throw AgentServiceError.upstream("Hosted agent service is unavailable in this build")
+        #endif
     }
 }
 
 enum AgentServiceError: Error {
     case unauthenticated
     case insufficientCredits(String)
-    case unavailable(AgentModel)
-    case refusal(AgentModel)
+    case unavailable(AgentChatModel)
+    case refusal(AgentChatModel)
     case upstream(String)
 
     static func from(status: Int, body: String) -> AgentServiceError {

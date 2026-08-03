@@ -7,17 +7,32 @@ final class AgentService {
 
     private var credentials = AgentCredentialSnapshot()
     private var apiKeyObserver: NSObjectProtocol?
+    private var customModelsObserver: NSObjectProtocol?
     private let userDefaults: UserDefaults
-    private var reasoningEfforts: [AgentModel: AgentReasoningEffort]
+    private var reasoningEfforts: [String: AgentReasoningEffort]
+    private let customModels: CustomAgentModelStore
 
-    init(userDefaults: UserDefaults = .standard) {
+    init(
+        userDefaults: UserDefaults = .standard,
+        customModels: CustomAgentModelStore = .shared
+    ) {
         self.userDefaults = userDefaults
+        self.customModels = customModels
+        let customs = customModels.models
         self.model = userDefaults.string(forKey: "agentModel")
-            .flatMap(AgentModel.persisted)
+            .flatMap { AgentChatModel.resolve(persistenceToken: $0, customs: customs) }
             ?? .defaultModel
-        self.reasoningEfforts = Dictionary(uniqueKeysWithValues: AgentModel.allCases.map {
-            ($0, AgentReasoningPreferences.effort(for: $0, defaults: userDefaults))
-        })
+        var efforts: [String: AgentReasoningEffort] = [:]
+        for builtIn in AgentChatModel.builtIns {
+            efforts[builtIn.persistenceToken] = AgentReasoningPreferences.effort(
+                for: builtIn, defaults: userDefaults)
+        }
+        for custom in customs {
+            let chatModel = AgentChatModel.custom(custom)
+            efforts[chatModel.persistenceToken] = AgentReasoningPreferences.effort(
+                for: chatModel, defaults: userDefaults)
+        }
+        self.reasoningEfforts = efforts
         reloadAPIKeys()
         apiKeyObserver = NotificationCenter.default.addObserver(
             forName: .agentAPIKeyChanged,
@@ -26,6 +41,15 @@ final class AgentService {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.reloadAPIKeys()
+            }
+        }
+        customModelsObserver = NotificationCenter.default.addObserver(
+            forName: .customAgentModelsChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.handleCustomModelsChanged()
             }
         }
     }
@@ -37,8 +61,26 @@ final class AgentService {
         }
     }
 
+    private func handleCustomModelsChanged() {
+        let customs = customModels.models
+        if case .custom(let selected) = model.source,
+           !customs.contains(where: { $0.id == selected.id }) {
+            model = .defaultModel
+        }
+        for custom in customs {
+            let chatModel = AgentChatModel.custom(custom)
+            if reasoningEfforts[chatModel.persistenceToken] == nil {
+                reasoningEfforts[chatModel.persistenceToken] = AgentReasoningPreferences.effort(
+                    for: chatModel, defaults: userDefaults)
+            }
+        }
+    }
+
     isolated deinit {
         if let token = apiKeyObserver {
+            NotificationCenter.default.removeObserver(token)
+        }
+        if let token = customModelsObserver {
             NotificationCenter.default.removeObserver(token)
         }
     }
@@ -56,9 +98,11 @@ final class AgentService {
         route != .unavailable
     }
 
-    var availableModels: [AgentModel] { AgentModel.allCases }
+    var availableModels: [AgentChatModel] {
+        AgentChatModel.builtIns + customModels.models.map(AgentChatModel.custom)
+    }
 
-    func canSelectModel(_ candidate: AgentModel) -> Bool {
+    func canSelectModel(_ candidate: AgentChatModel) -> Bool {
         !candidate.requiresPaidHostedPlan
             || AccountService.shared.isPaid
             || !credentials[candidate.provider].isEmpty
@@ -69,10 +113,10 @@ final class AgentService {
     }
 
     var reasoningEffort: AgentReasoningEffort {
-        get { reasoningEfforts[model, default: .medium] }
+        get { reasoningEfforts[model.persistenceToken, default: .medium] }
         set {
             guard model.supportedReasoningEfforts.contains(newValue) else { return }
-            reasoningEfforts[model] = newValue
+            reasoningEfforts[model.persistenceToken] = newValue
             AgentReasoningPreferences.set(newValue, for: model, defaults: userDefaults)
         }
     }
@@ -93,8 +137,11 @@ final class AgentService {
             hasPaidPlan: AccountService.shared.isPaid
         ) {
         case .direct:
+            let provider = settings.model.provider
             return BYOKClient(
-                apiKey: credentials[settings.model.provider],
+                apiKey: credentials[provider],
+                baseURLString: AgentBaseURLPreferences.storedString(
+                    for: provider, defaults: userDefaults),
                 settings: settings
             )
         case .hosted:
@@ -104,9 +151,9 @@ final class AgentService {
         }
     }
 
-    var model: AgentModel {
+    var model: AgentChatModel {
         didSet {
-            userDefaults.set(model.rawValue, forKey: "agentModel")
+            userDefaults.set(model.persistenceToken, forKey: "agentModel")
             if case .unavailable = route {
                 streamError = .unavailable(model)
             } else if case .some(.unavailable) = streamError {
@@ -353,17 +400,6 @@ final class AgentService {
             ? nil
             : AgentMentionContext.hint(referencedMentions, editor: editor)
         let runSettings = snapshotRunSettings()
-        var sessionActivation = Analytics.SessionActivation(
-            isActivated: messages.contains { $0.role == .user }
-        )
-        let analyticsPayload: [String: Any] = [
-            "project_id": editor?.projectId ?? "unknown",
-            "model": runSettings.model.rawValue,
-        ]
-        if sessionActivation.activate() {
-            Analytics.capture(.agentSessionStarted, properties: analyticsPayload)
-        }
-
         resolveOrphanToolUses()
         messages.append(AgentMessage(
             role: .user, blocks: [.text(trimmed)],
@@ -487,8 +523,11 @@ final class AgentService {
                     streamError = .refusal(chosenModel)
                     break loop
                 }
-                if stopReason == .toolUse {
-                    await runPendingToolUses(assistantID: assistantID, conversationID: conversationID)
+                // Run any tool calls from this turn even when the provider omits a
+                // tool_use stop reason (common with OpenAI-compatible proxies).
+                let hadToolCalls = assistantHasToolUses(assistantID)
+                if hadToolCalls || stopReason == .toolUse {
+                    await runPendingToolUses(assistantID: assistantID)
                     if Task.isCancelled { break loop }
                     continue loop
                 }
@@ -560,7 +599,7 @@ final class AgentService {
     }
 
     /// Removes and returns the current streaming reasoning summary for `model`.
-    private func takeStreamingReasoningSummary(at index: Int, model: AgentModel) -> String {
+    private func takeStreamingReasoningSummary(at index: Int, model: AgentChatModel) -> String {
         guard case .openAIReasoning(let summary, _, _, let existingModel)?
             = messages[index].blocks.last,
             existingModel == model
@@ -569,7 +608,7 @@ final class AgentService {
         return summary
     }
 
-    private func appendReasoningDelta(_ chunk: String, model: AgentModel, toAssistant id: UUID) {
+    private func appendReasoningDelta(_ chunk: String, model: AgentChatModel, toAssistant id: UUID) {
         guard let index = assistantMessageIndex(id: id) else { return }
         let existing = takeStreamingReasoningSummary(at: index, model: model)
         messages[index].blocks.append(.openAIReasoning(
@@ -584,7 +623,7 @@ final class AgentService {
         itemID: String?,
         summary: String,
         encryptedContent: String,
-        model: AgentModel,
+        model: AgentChatModel,
         toAssistant id: UUID
     ) {
         guard let index = assistantMessageIndex(id: id) else { return }
@@ -611,7 +650,15 @@ final class AgentService {
         messages[index].blocks.append(.toolUse(id: toolUseID, name: name, inputJSON: inputJSON))
     }
 
-    private func runPendingToolUses(assistantID: UUID, conversationID: UUID) async {
+    private func assistantHasToolUses(_ assistantID: UUID) -> Bool {
+        guard let index = assistantMessageIndex(id: assistantID) else { return false }
+        return messages[index].blocks.contains {
+            if case .toolUse = $0 { return true }
+            return false
+        }
+    }
+
+    private func runPendingToolUses(assistantID: UUID) async {
         guard let assistantIndex = assistantMessageIndex(id: assistantID) else { return }
         guard let executor = toolExecutor else {
             messages.append(AgentMessage(role: .user, blocks: [.text("Tool executor unavailable.")]))
@@ -630,11 +677,7 @@ final class AgentService {
                 resultBlocks.append(.toolResult(toolUseId: use.id, content: [.text("Cancelled")], isError: true))
                 continue
             }
-            let result = await executor.execute(
-                name: use.name,
-                args: Self.parseJSONObject(use.input),
-                sessionID: conversationID.uuidString
-            )
+            let result = await executor.execute(name: use.name, args: Self.parseJSONObject(use.input))
             resultBlocks.append(.toolResult(toolUseId: use.id, content: result.content, isError: result.isError))
         }
         if !resultBlocks.isEmpty {
@@ -801,7 +844,7 @@ enum AgentContentBlock: Codable, Sendable {
         summary: String,
         encryptedContent: String,
         itemID: String?,
-        model: AgentModel
+        model: AgentChatModel
     )
     case text(String)
     case toolUse(id: String, name: String, inputJSON: String)
@@ -830,7 +873,7 @@ enum AgentContentBlock: Codable, Sendable {
                 summary: try c.decode(String.self, forKey: .summary),
                 encryptedContent: try c.decode(String.self, forKey: .encryptedContent),
                 itemID: try c.decodeIfPresent(String.self, forKey: .itemID),
-                model: try c.decode(AgentModel.self, forKey: .model)
+                model: try c.decode(AgentChatModel.self, forKey: .model)
             )
         case .text:
             self = .text(try c.decode(String.self, forKey: .text))

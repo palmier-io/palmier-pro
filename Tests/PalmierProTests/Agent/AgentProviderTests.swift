@@ -38,6 +38,40 @@ struct AgentProviderTests {
         #expect(route(.sol, hasCredits: true, isPaid: true) == .hosted)
     }
 
+    @Test func defaultBaseURLsMatchProviderChatEndpoints() {
+        #expect(AgentProvider.anthropic.defaultBaseURLString == "https://api.anthropic.com")
+        #expect(AgentProvider.openAI.defaultBaseURLString == "https://api.openai.com/v1")
+        #expect(
+            AgentProvider.anthropic.chatEndpoint(baseURLString: nil).absoluteString
+                == "https://api.anthropic.com/v1/messages"
+        )
+        #expect(
+            AgentProvider.openAI.chatEndpoint(baseURLString: nil).absoluteString
+                == "https://api.openai.com/v1/responses"
+        )
+    }
+
+    @Test(arguments: [
+        ("https://proxy.example", "https://proxy.example/v1/messages"),
+        ("https://proxy.example/", "https://proxy.example/v1/messages"),
+        ("", "https://api.anthropic.com/v1/messages"),
+        ("   ", "https://api.anthropic.com/v1/messages"),
+        ("not a url", "https://api.anthropic.com/v1/messages"),
+    ])
+    func anthropicBaseURLResolution(base: String, expected: String) {
+        #expect(AgentProvider.anthropic.chatEndpoint(baseURLString: base).absoluteString == expected)
+    }
+
+    @Test(arguments: [
+        ("https://openrouter.ai/api/v1", "https://openrouter.ai/api/v1/responses"),
+        ("https://openrouter.ai/api/v1/", "https://openrouter.ai/api/v1/responses"),
+        ("", "https://api.openai.com/v1/responses"),
+        ("bad", "https://api.openai.com/v1/responses"),
+    ])
+    func openAIBaseURLResolution(base: String, expected: String) {
+        #expect(AgentProvider.openAI.chatEndpoint(baseURLString: base).absoluteString == expected)
+    }
+
     @Test func anthropicReasoningUsesMediumDefaultAndExplicitEffort() throws {
         for model in AgentModel.allCases.filter({ $0.provider == .anthropic }) {
             let body = AnthropicRequestBody.build(
@@ -136,14 +170,31 @@ struct AgentProviderTests {
             itemID: "rs_1", summary: "Checking", encryptedContent: "opaque")
         #expect(try parser.consume(line: #"data: {"type":"response.output_item.done","item":{"type":"reasoning","id":"rs_1","summary":[{"type":"summary_text","text":"Checking"}],"encrypted_content":"opaque"}}"#) == [reasoning])
         #expect(try parser.consume(line: #"data: {"type":"response.completed","response":{"status":"completed","output":[{"type":"function_call"}]}}"#) == [.messageStop(stopReason: .toolUse)])
-        try parser.finish()
+        #expect(try parser.finish().isEmpty)
+    }
+
+    @Test func openAIParserTreatsStreamedFunctionCallAsToolUseEvenWhenCompletedOutputOmitsIt() throws {
+        var parser = OpenAIStreamParser()
+        let toolUse = AgentStreamEvent.toolUseComplete(
+            id: "call_1", name: "get_timeline", inputJSON: "{\"startFrame\":0,\"endFrame\":0}")
+        #expect(try parser.consume(line: #"data: {"type":"response.output_item.done","item":{"type":"function_call","call_id":"call_1","name":"get_timeline","arguments":"{\"startFrame\":0,\"endFrame\":0}"}}"#) == [toolUse])
+        #expect(try parser.consume(line: #"data: {"type":"response.completed","response":{"status":"completed","output":[]}}"#) == [.messageStop(stopReason: .toolUse)])
+        #expect(try parser.finish().isEmpty)
+    }
+
+    @Test func openAIParserSynthesizesToolUseStopWhenStreamEndsAfterFunctionCall() throws {
+        var parser = OpenAIStreamParser()
+        let toolUse = AgentStreamEvent.toolUseComplete(
+            id: "call_1", name: "get_timeline", inputJSON: "{}")
+        #expect(try parser.consume(line: #"data: {"type":"response.output_item.done","item":{"type":"function_call","call_id":"call_1","name":"get_timeline","arguments":"{}"}}"#) == [toolUse])
+        #expect(try parser.finish() == [.messageStop(stopReason: .toolUse)])
     }
 
     @Test func openAIParserClassifiesRefusalFromTerminalResponse() throws {
         var parser = OpenAIStreamParser()
         #expect(try parser.consume(line: #"data: {"type":"response.refusal.delta","delta":"No"}"#) == [.textDelta("No")])
         #expect(try parser.consume(line: #"data: {"type":"response.completed","response":{"status":"completed","output":[{"type":"message","content":[{"type":"refusal","refusal":"No"}]}]}}"#) == [.messageStop(stopReason: .refusal)])
-        try parser.finish()
+        #expect(try parser.finish().isEmpty)
     }
 
     @Test func openAIParserSurfacesFailureCancellationAndMissingTerminalEvent() {
@@ -156,7 +207,8 @@ struct AgentProviderTests {
             _ = try parser.consume(line: #"data: {"type":"response.cancelled","response":{}}"#)
         }
         #expect(throws: AgentClientTransportError.self) {
-            try OpenAIStreamParser().finish()
+            var parser = OpenAIStreamParser()
+            _ = try parser.finish()
         }
     }
 
@@ -184,7 +236,7 @@ struct AgentProviderTests {
         _ summary: String, encrypted: String, id: String, model: AgentModel
     ) -> AgentRequestBlock {
         .content(.openAIReasoning(
-            summary: summary, encryptedContent: encrypted, itemID: id, model: model))
+            summary: summary, encryptedContent: encrypted, itemID: id, model: .builtIn(model)))
     }
 }
 
@@ -206,29 +258,122 @@ struct AgentProviderPersistenceTests {
                 (.sol, .high), (.sonnet5, .max), (.terra, .minimal),
             ]
             for (model, effort) in selections {
-                service.model = model
+                service.model = .builtIn(model)
                 service.reasoningEffort = effort
             }
             for (model, effort) in selections {
-                service.model = model
+                service.model = .builtIn(model)
                 #expect(service.reasoningEffort == effort)
             }
             let restored = AgentService(userDefaults: defaults)
-            #expect(restored.model == .terra)
+            #expect(restored.model == .builtIn(.terra))
             #expect(restored.reasoningEffort == .minimal)
-            restored.model = .sol
+            restored.model = .builtIn(.sol)
             #expect(restored.reasoningEffort == .high)
         }
+    }
+
+    @Test func baseURLSelectionsPersistPerProviderAndResetToDefault() throws {
+        try withDefaults { defaults in
+            #expect(AgentBaseURLPreferences.storedString(for: .anthropic, defaults: defaults).isEmpty)
+            #expect(
+                AgentBaseURLPreferences.chatEndpoint(for: .openAI, defaults: defaults).absoluteString
+                    == "https://api.openai.com/v1/responses"
+            )
+
+            AgentBaseURLPreferences.set(
+                "https://proxy.example/", for: .anthropic, defaults: defaults)
+            AgentBaseURLPreferences.set(
+                "https://openrouter.ai/api/v1", for: .openAI, defaults: defaults)
+            #expect(
+                AgentBaseURLPreferences.storedString(for: .anthropic, defaults: defaults)
+                    == "https://proxy.example/"
+            )
+            #expect(
+                AgentBaseURLPreferences.chatEndpoint(for: .anthropic, defaults: defaults)
+                    .absoluteString == "https://proxy.example/v1/messages"
+            )
+            #expect(
+                AgentBaseURLPreferences.chatEndpoint(for: .openAI, defaults: defaults)
+                    .absoluteString == "https://openrouter.ai/api/v1/responses"
+            )
+
+            AgentBaseURLPreferences.set(
+                "https://api.anthropic.com", for: .anthropic, defaults: defaults)
+            AgentBaseURLPreferences.set(nil, for: .openAI, defaults: defaults)
+            #expect(AgentBaseURLPreferences.storedString(for: .anthropic, defaults: defaults).isEmpty)
+            #expect(AgentBaseURLPreferences.storedString(for: .openAI, defaults: defaults).isEmpty)
+        }
+    }
+
+    @Test func customModelsPersistAndAppearInAvailableModels() throws {
+        try withDefaults { defaults in
+            let store = CustomAgentModelStore(defaults: defaults)
+            let openAI = try store.add(
+                provider: .openAI, modelID: "gpt-4.1", displayName: "GPT 4.1")
+            let anthropic = try store.add(
+                provider: .anthropic, modelID: "claude-sonnet-4-5", displayName: "")
+            #expect(anthropic.displayName == "claude-sonnet-4-5")
+            #expect(throws: CustomAgentModelError.duplicateModelID) {
+                try store.add(provider: .openAI, modelID: "GPT-4.1", displayName: "Dup")
+            }
+            #expect(throws: CustomAgentModelError.duplicatesBuiltIn) {
+                try store.add(provider: .openAI, modelID: "gpt-5.6-terra", displayName: "Terra")
+            }
+
+            let service = AgentService(userDefaults: defaults, customModels: store)
+            #expect(service.availableModels.contains(.custom(openAI)))
+            #expect(service.availableModels.contains(.custom(anthropic)))
+            service.model = .custom(openAI)
+            #expect(service.model.apiModelID == "gpt-4.1")
+            #expect(
+                AgentRouting.route(
+                    model: service.model,
+                    credentials: AgentCredentialSnapshot([.openAI: "key"]),
+                    hasHostedCredits: true,
+                    hasPaidPlan: true
+                ) == .direct
+            )
+            #expect(
+                AgentRouting.route(
+                    model: service.model,
+                    credentials: AgentCredentialSnapshot(),
+                    hasHostedCredits: true,
+                    hasPaidPlan: true
+                ) == .unavailable
+            )
+
+            let restoredStore = CustomAgentModelStore(defaults: defaults)
+            let restored = AgentService(userDefaults: defaults, customModels: restoredStore)
+            #expect(restored.model == .custom(openAI))
+            #expect(Set(restoredStore.models.map(\.modelID)) == ["claude-sonnet-4-5", "gpt-4.1"])
+
+            restoredStore.remove(id: openAI.id)
+            #expect(restored.model == .defaultModel)
+        }
+    }
+
+    @Test func customModelRequestBodiesUseConfiguredAPIModelIDs() throws {
+        let openAI = CustomAgentModel(
+            provider: .openAI, modelID: "gpt-4.1-mini", displayName: "Mini")
+        let anthropic = CustomAgentModel(
+            provider: .anthropic, modelID: "claude-sonnet-4-5", displayName: "Sonnet")
+        let openAIBody = OpenAIRequestBody.build(
+            model: .custom(openAI), system: "Instructions", tools: [], messages: [])
+        let anthropicBody = AnthropicRequestBody.build(
+            model: .custom(anthropic), system: "Instructions", tools: [], messages: [])
+        #expect(openAIBody["model"] as? String == "gpt-4.1-mini")
+        #expect(anthropicBody["model"] as? String == "claude-sonnet-4-5")
     }
 
     @Test func runSettingsRemainStableAfterPickerChanges() throws {
         try withDefaults { defaults in
             let service = AgentService(userDefaults: defaults)
-            service.model = .sol
+            service.model = .builtIn(.sol)
             service.reasoningEffort = .high
             let snapshot = service.snapshotRunSettings()
             service.reasoningEffort = .low
-            service.model = .fable5
+            service.model = .builtIn(.fable5)
             #expect(snapshot == AgentRunSettings(model: .sol, reasoningEffort: .high))
             #expect(service.snapshotRunSettings()
                 == AgentRunSettings(model: .fable5, reasoningEffort: .medium))
@@ -238,7 +383,7 @@ struct AgentProviderPersistenceTests {
     @Test func encryptedReasoningRoundTripsWithoutExposingOpaqueContent() throws {
         let block = AgentContentBlock.openAIReasoning(
             summary: "Inspected the timeline", encryptedContent: "opaque-encrypted-data",
-            itemID: "rs_123", model: .sol
+            itemID: "rs_123", model: .builtIn(.sol)
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys

@@ -8,7 +8,7 @@
   <img src="./assets/macos-badge.png" alt="Download Palmier Pro for macOS" width="180" />
 </a>
 
-<sub><i>Requires macOS 26 (Tahoe) on Apple Silicon</i></sub>
+<sub><i>Requires macOS 26 (Tahoe) on Apple silicon or Intel</i></sub>
 
 <a href="https://x.com/Palmier_io"><img src="https://img.shields.io/badge/Follow-%40Palmier__io-000000?style=flat&logo=x&logoColor=white" alt="Follow on X" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Join Discord" /></a>
@@ -101,13 +101,15 @@ Generative AI features require login and subscription.
 
 **What platforms does it support?**
 
-macOS 26 (Tahoe) on Apple Silicon only.
+The local editor and BYOK agent support macOS 26 (Tahoe) on Apple silicon and Intel Macs. Bundled speech analysis, Palmier login, and Palmier-hosted AI services require Apple silicon.
 
 See [FAQ.md](FAQ.md) for more.
 
 ## Development
 
 See [CONTRIBUTING.md](CONTRIBUTING.md)
+
+Build the local editor for the current Mac with `swift build`. Create an Intel app bundle with `scripts/bundle.sh release --intel`. Add `--speech`, `--hosted`, or `--all` only for Apple silicon builds.
 
 ## Community &amp; Support
 

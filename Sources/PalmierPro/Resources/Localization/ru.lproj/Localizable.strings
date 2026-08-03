@@ -657,7 +657,6 @@
 "Preparing…" = "Подготовка…";
 "Presence" = "Присутствие";
 "Preview" = "Предпросмотр";
-"Privacy & Diagnostics" = "Конфиденциальность и диагностика";
 "Pro plan" = "План Pro";
 "Product demos" = "Демо продукта";
 "Project" = "Проект";
@@ -722,7 +721,6 @@
 "Resolution must be at least 2 × 2 pixels." = "Разрешение должно быть не менее 2 × 2 пикселей.";
 "Resolution must not exceed 8192 pixels on either edge." = "Разрешение не должно превышать 8192 пикселя по любой стороне.";
 "Restart Palmier Pro" = "Перезапустить Palmier Pro";
-"Restart Palmier Pro to apply this change." = "Перезапустите Palmier Pro, чтобы применить это изменение.";
 "Retry" = "Повторить";
 "Retry Download" = "Повторить загрузку";
 "Reveal in Finder" = "Показать в Finder";
@@ -772,11 +770,8 @@
 "Selection Tool" = "Инструмент выделения";
 "Send" = "Отправить";
 "Send Feedback…" = "Отправить отзыв…";
-"Send crash and error reports to help diagnose problems. Media and project content are never included." = "Отправляйте отчёты о сбоях и ошибках, чтобы помочь диагностировать проблемы. Медиафайлы и содержимое проектов никогда не включаются.";
-"Send crash reports" = "Отправлять отчёты о сбоях";
 "Send feedback" = "Отправить отзыв";
 "Send only the visible clip range to the model, not the full source." = "Отправлять модели только видимый диапазон клипа, а не весь исходный файл.";
-"Send usage data from your interactions with Palmier Pro to help improve the app." = "Отправляйте данные об использовании Palmier Pro, чтобы помочь улучшить приложение.";
 "Sending…" = "Отправка…";
 "Sequence" = "Последовательность";
 "Server URL" = "URL сервера";
@@ -787,7 +782,6 @@
 "Setup instructions" = "Инструкции по настройке";
 "Shadow" = "Тень";
 "Shadows" = "Тени";
-"Share usage data" = "Делиться данными об использовании";
 "Sharpen" = "Резкость";
 "Short-form and social" = "Короткие видео и соцсети";
 "Shortcuts" = "Сочетания клавиш";

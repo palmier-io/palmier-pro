@@ -1,36 +1,52 @@
 import Foundation
 import Combine
+#if HOSTED_BACKEND && arch(arm64)
 @preconcurrency import ConvexMobile
+typealias BackendClientError = ClientError
+#else
+enum BackendClientError: Error {
+    case unavailable
+}
+#endif
 
 /// The RPC layer for the backend
 @MainActor
 enum GenerationBackend {
     static func subscribe(
         jobId: String
-    ) -> AnyPublisher<BackendGenerationJob?, ClientError>? {
+    ) -> AnyPublisher<BackendGenerationJob?, BackendClientError>? {
+        #if HOSTED_BACKEND && arch(arm64)
         guard let convex = AccountService.shared.convex else { return nil }
         return convex.subscribe(
             to: "generations:byId",
             with: ["id": jobId],
             yielding: BackendGenerationJob?.self,
         )
+        #else
+        return nil
+        #endif
     }
 
     static func subscribeToProjectActivity(
         projectId: String
-    ) -> AnyPublisher<[BackendProjectActivityEntry], ClientError>? {
+    ) -> AnyPublisher<[BackendProjectActivityEntry], BackendClientError>? {
+        #if HOSTED_BACKEND && arch(arm64)
         guard let convex = AccountService.shared.convex else { return nil }
         return convex.subscribe(
             to: "generations:projectActivity",
             with: ["projectId": projectId],
             yielding: [BackendProjectActivityEntry].self,
         )
+        #else
+        return nil
+        #endif
     }
 
     static func uploadReference(
         fileURL: URL,
         contentType: String,
     ) async throws -> String {
+        #if HOSTED_BACKEND && arch(arm64)
         guard let convex = AccountService.shared.convex else {
             throw BackendError.notConfigured
         }
@@ -40,6 +56,9 @@ enum GenerationBackend {
             with: ["storageId": storageId],
         )
         return result.url
+        #else
+        throw BackendError.notConfigured
+        #endif
     }
 
     static func submit(
@@ -47,6 +66,7 @@ enum GenerationBackend {
         params: BackendGenerationParams,
         projectId: String? = nil,
     ) async throws -> String {
+        #if HOSTED_BACKEND && arch(arm64)
         guard let convex = AccountService.shared.convex else {
             throw BackendError.notConfigured
         }
@@ -60,12 +80,15 @@ enum GenerationBackend {
             with: args,
         )
         return result.jobId
+        #else
+        throw BackendError.notConfigured
+        #endif
     }
 }
 
 // MARK: - Backend generation types
 
-enum BackendGenerationParams: Encodable, ConvexEncodable, Sendable {
+enum BackendGenerationParams: Encodable, Sendable {
     case video(VideoGenerationParams)
     case image(ImageGenerationParams)
     case audio(AudioGenerationParams)
@@ -81,6 +104,10 @@ enum BackendGenerationParams: Encodable, ConvexEncodable, Sendable {
         }
     }
 }
+
+#if HOSTED_BACKEND && arch(arm64)
+extension BackendGenerationParams: ConvexEncodable {}
+#endif
 
 enum BackendGenerationStatus: String, Decodable, Sendable {
     case queued, running, succeeded, failed

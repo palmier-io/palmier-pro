@@ -105,7 +105,6 @@ final class ExportQueue {
         outputURL: URL,
         source: ExportJobSource,
         projectID: String,
-        analyticsProjectID: String?,
         warnings: [String] = []
     ) throws -> ExportQueueSubmission {
         let resolver = resolver.snapshot()
@@ -119,8 +118,7 @@ final class ExportQueue {
                 fcpxmlVersion: fcpxmlVersion,
                 fcpxmlTarget: fcpxmlTarget,
                 missingMediaRefs: missingMediaRefs,
-                outputURL: outputURL,
-                analyticsContext: ExportAnalyticsContext(source: source.rawValue, projectId: analyticsProjectID)
+                outputURL: outputURL
             )
         }
     }
@@ -132,16 +130,14 @@ final class ExportQueue {
         sourceProjectURL: URL?,
         outputURL: URL,
         source: ExportJobSource,
-        projectID: String,
-        analyticsProjectID: String?
+        projectID: String
     ) throws -> ExportQueueSubmission {
         try enqueue(outputURL: outputURL, projectID: projectID, source: source) { service in
             await service.exportPalmierProject(
                 projectFile: projectFile,
                 manifest: manifest,
                 sourceProjectURL: sourceProjectURL,
-                outputURL: outputURL,
-                analyticsContext: ExportAnalyticsContext(source: source.rawValue, projectId: analyticsProjectID)
+                outputURL: outputURL
             )
         }
     }

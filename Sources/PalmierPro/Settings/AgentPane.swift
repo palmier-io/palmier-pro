@@ -109,21 +109,61 @@ struct AgentPane: View {
 
 private struct APIKeySettingRow: View {
     let provider: AgentProvider
+    private let defaults: UserDefaults
 
     @State private var hasKey = false
     @State private var maskedKey = ""
-    @State private var draft = ""
-    @FocusState private var isFocused: Bool
+    @State private var keyDraft = ""
+    @State private var baseURLDraft = ""
+    @State private var storedBaseURL = ""
+    @State private var keySaveFailed = false
+    @FocusState private var focusedField: Field?
+
+    private enum Field: Hashable {
+        case apiKey
+        case baseURL
+    }
+
+    init(provider: AgentProvider, defaults: UserDefaults = .standard) {
+        self.provider = provider
+        self.defaults = defaults
+    }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+            keySection
+            if keySaveFailed {
+                Text(L10n.string("Could not save API key to the Keychain. Delete any existing Palmier API key items in Keychain Access, then try again."))
+                    .font(.system(size: AppTheme.FontSize.sm))
+                    .foregroundStyle(AppTheme.Status.errorColor)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            baseURLSection
+        }
+        .onAppear(perform: refresh)
+    }
+
+    private var keySection: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
             header
             HStack(spacing: AppTheme.Spacing.sm) {
-                field
-                trailingControl
+                secureField
+                keyTrailingControl
             }
         }
-        .onAppear(perform: refresh)
+    }
+
+    private var baseURLSection: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+            Text(L10n.string("Base URL"))
+                .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+
+            HStack(spacing: AppTheme.Spacing.sm) {
+                baseURLField
+                baseURLTrailingControl
+            }
+        }
     }
 
     private var header: some View {
@@ -150,13 +190,13 @@ private struct APIKeySettingRow: View {
         }
     }
 
-    private var field: some View {
-        SecureField(placeholder, text: $draft)
+    private var secureField: some View {
+        SecureField(keyPlaceholder, text: $keyDraft)
             .textFieldStyle(.plain)
-            .focused($isFocused)
+            .focused($focusedField, equals: .apiKey)
             .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
             .foregroundStyle(AppTheme.Text.primaryColor)
-            .onSubmit(save)
+            .onSubmit(saveKey)
             .padding(.horizontal, AppTheme.Spacing.md)
             .padding(.vertical, AppTheme.Spacing.smMd)
             .background(
@@ -166,22 +206,47 @@ private struct APIKeySettingRow: View {
             .overlay(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
                     .strokeBorder(
-                        isFocused ? AppTheme.Border.primaryColor : AppTheme.Border.subtleColor,
+                        focusedField == .apiKey
+                            ? AppTheme.Border.primaryColor : AppTheme.Border.subtleColor,
                         lineWidth: AppTheme.BorderWidth.thin
                     )
             )
-            .animation(.easeOut(duration: AppTheme.Anim.hover), value: isFocused)
+            .animation(.easeOut(duration: AppTheme.Anim.hover), value: focusedField == .apiKey)
+    }
+
+    private var baseURLField: some View {
+        TextField(provider.defaultBaseURLString, text: $baseURLDraft)
+            .textFieldStyle(.plain)
+            .focused($focusedField, equals: .baseURL)
+            .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
+            .foregroundStyle(AppTheme.Text.primaryColor)
+            .onSubmit(saveBaseURL)
+            .padding(.horizontal, AppTheme.Spacing.md)
+            .padding(.vertical, AppTheme.Spacing.smMd)
+            .background(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                    .fill(AppTheme.Background.baseColor.opacity(AppTheme.Opacity.medium))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                    .strokeBorder(
+                        focusedField == .baseURL
+                            ? AppTheme.Border.primaryColor : AppTheme.Border.subtleColor,
+                        lineWidth: AppTheme.BorderWidth.thin
+                    )
+            )
+            .animation(.easeOut(duration: AppTheme.Anim.hover), value: focusedField == .baseURL)
     }
 
     @ViewBuilder
-    private var trailingControl: some View {
-        let trimmed = draft.trimmingCharacters(in: .whitespaces)
+    private var keyTrailingControl: some View {
+        let trimmed = keyDraft.trimmingCharacters(in: .whitespaces)
         if !trimmed.isEmpty {
-            Button(L10n.string("Save"), action: save)
+            Button(L10n.string("Save"), action: saveKey)
                 .buttonStyle(.capsule(.prominent, size: .regular))
                 .controlSize(.large)
         } else if hasKey {
-            Button(action: remove) {
+            Button(action: removeKey) {
                 Image(systemName: "trash")
                     .font(.system(size: AppTheme.FontSize.md))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
@@ -193,8 +258,36 @@ private struct APIKeySettingRow: View {
         }
     }
 
-    private var placeholder: String {
+    @ViewBuilder
+    private var baseURLTrailingControl: some View {
+        if baseURLIsDirty {
+            Button(L10n.string("Save"), action: saveBaseURL)
+                .buttonStyle(.capsule(.prominent, size: .regular))
+                .controlSize(.large)
+        } else if !storedBaseURL.isEmpty {
+            Button(action: resetBaseURL) {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.system(size: AppTheme.FontSize.md))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.md)
+            }
+            .buttonStyle(.capsule(.secondary, size: .regular))
+            .controlSize(.large)
+            .help(L10n.string("Reset to default base URL"))
+        }
+    }
+
+    private var keyPlaceholder: String {
         hasKey ? maskedKey : provider.apiKeyPresentation.placeholder
+    }
+
+    private var baseURLIsDirty: Bool {
+        normalizedBaseURLDraft != storedBaseURL
+    }
+
+    private var normalizedBaseURLDraft: String {
+        let trimmed = baseURLDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed == provider.defaultBaseURLString ? "" : trimmed
     }
 
     private func openConsole() {
@@ -204,30 +297,58 @@ private struct APIKeySettingRow: View {
     }
 
     private func refresh() {
+        storedBaseURL = AgentBaseURLPreferences.storedString(for: provider, defaults: defaults)
+        baseURLDraft = storedBaseURL.isEmpty ? provider.defaultBaseURLString : storedBaseURL
         Task {
             applyKey(await provider.loadAPIKey())
         }
     }
 
-    private func save() {
-        let key = draft.trimmingCharacters(in: .whitespaces)
+    private func saveKey() {
+        let key = keyDraft.trimmingCharacters(in: .whitespaces)
         guard !key.isEmpty else { return }
-        draft = ""
-        isFocused = false
+        keyDraft = ""
+        focusedField = nil
+        keySaveFailed = false
         let provider = provider
         Task {
-            await provider.setAPIKey(key)
-            applyKey(key)
+            let saved = await provider.setAPIKey(key)
+            if saved {
+                applyKey(key)
+            } else {
+                keyDraft = key
+                keySaveFailed = true
+            }
         }
     }
 
-    private func remove() {
-        draft = ""
+    private func removeKey() {
+        keyDraft = ""
+        keySaveFailed = false
         let provider = provider
         Task {
-            await provider.setAPIKey(nil)
-            applyKey("")
+            let removed = await provider.setAPIKey(nil)
+            if removed {
+                applyKey("")
+            } else {
+                keySaveFailed = true
+            }
         }
+    }
+
+    private func saveBaseURL() {
+        let value = normalizedBaseURLDraft
+        AgentBaseURLPreferences.set(value.isEmpty ? nil : value, for: provider, defaults: defaults)
+        storedBaseURL = AgentBaseURLPreferences.storedString(for: provider, defaults: defaults)
+        baseURLDraft = storedBaseURL.isEmpty ? provider.defaultBaseURLString : storedBaseURL
+        focusedField = nil
+    }
+
+    private func resetBaseURL() {
+        AgentBaseURLPreferences.set(nil, for: provider, defaults: defaults)
+        storedBaseURL = ""
+        baseURLDraft = provider.defaultBaseURLString
+        focusedField = nil
     }
 
     private func applyKey(_ key: String) {

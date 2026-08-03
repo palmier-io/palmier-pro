@@ -1,6 +1,6 @@
 # PalmierPro
 
-AI-native macOS video editor. Swift 6.2, SwiftUI + AppKit, AVFoundation. macOS 26 only, arm64 only. Non-sandboxed Developer ID app.
+AI-native macOS video editor. Swift 6.2, SwiftUI + AppKit, AVFoundation. macOS 26 on arm64 and x86_64. Bundled speech and hosted services are arm64-only optional traits. Non-sandboxed Developer ID app.
 
 ## Build
 

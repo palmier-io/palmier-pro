@@ -167,7 +167,6 @@ extension ToolExecutor {
             outputURL: outputURL,
             source: .agent,
             projectID: editor.exportQueueProjectID,
-            analyticsProjectID: editor.projectId,
             warnings: warnings
         )
 
@@ -205,8 +204,7 @@ extension ToolExecutor {
             sourceProjectURL: editor.projectURL,
             outputURL: outputURL,
             source: .agent,
-            projectID: editor.exportQueueProjectID,
-            analyticsProjectID: editor.projectId
+            projectID: editor.exportQueueProjectID
         )
 
         let payload: [String: Any] = [

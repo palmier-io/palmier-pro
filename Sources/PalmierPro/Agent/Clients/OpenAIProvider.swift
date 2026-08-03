@@ -2,7 +2,7 @@ import Foundation
 
 enum OpenAIRequestBody {
     static func build(
-        model: AgentModel,
+        model: AgentChatModel,
         reasoningEffort: AgentReasoningEffort = .medium,
         system: String,
         tools: [AgentToolSchema],
@@ -11,7 +11,7 @@ enum OpenAIRequestBody {
         precondition(model.provider == .openAI)
         precondition(model.supportedReasoningEfforts.contains(reasoningEffort))
         var body: [String: Any] = [
-            "model": model.rawValue,
+            "model": model.apiModelID,
             "store": false,
             "stream": true,
             "max_output_tokens": model.maxOutputTokens,
@@ -32,7 +32,23 @@ enum OpenAIRequestBody {
         return body
     }
 
-    private static func inputItems(messages: [AgentRequestMessage], model: AgentModel) -> [[String: Any]] {
+    static func build(
+        model: AgentModel,
+        reasoningEffort: AgentReasoningEffort = .medium,
+        system: String,
+        tools: [AgentToolSchema],
+        messages: [AgentRequestMessage]
+    ) -> [String: Any] {
+        build(
+            model: .builtIn(model),
+            reasoningEffort: reasoningEffort,
+            system: system,
+            tools: tools,
+            messages: messages
+        )
+    }
+
+    private static func inputItems(messages: [AgentRequestMessage], model: AgentChatModel) -> [[String: Any]] {
         var items: [[String: Any]] = []
         for message in messages {
             var content: [[String: Any]] = []
@@ -140,12 +156,15 @@ enum OpenAISSE {
                 continuation.yield(event)
             }
         }
-        try parser.finish()
+        for event in try parser.finish() {
+            continuation.yield(event)
+        }
     }
 }
 
 struct OpenAIStreamParser {
     private(set) var didTerminate = false
+    private(set) var sawFunctionCall = false
 
     mutating func consume(line: String) throws -> [AgentStreamEvent] {
         guard line.hasPrefix("data:") else { return [] }
@@ -195,13 +214,18 @@ struct OpenAIStreamParser {
         }
     }
 
-    func finish() throws {
-        guard didTerminate else {
-            throw AgentClientTransportError.streamError(
-                provider: .openAI,
-                message: "The stream ended before a terminal event."
-            )
+    mutating func finish() throws -> [AgentStreamEvent] {
+        if didTerminate { return [] }
+        // Some OpenAI-compatible proxies close the body after function_call
+        // items without emitting response.completed.
+        if sawFunctionCall {
+            didTerminate = true
+            return [.messageStop(stopReason: .toolUse)]
         }
+        throw AgentClientTransportError.streamError(
+            provider: .openAI,
+            message: "The stream ended before a terminal event."
+        )
     }
 
     private func terminalEvents(
@@ -225,12 +249,13 @@ struct OpenAIStreamParser {
         return [.messageStop(stopReason: terminalStopReason(response))]
     }
 
-    private func outputEvents(for item: [String: Any]) -> [AgentStreamEvent] {
+    private mutating func outputEvents(for item: [String: Any]) -> [AgentStreamEvent] {
         switch item["type"] as? String {
         case "function_call":
             guard let callID = item["call_id"] as? String, !callID.isEmpty,
                   let name = item["name"] as? String, !name.isEmpty
             else { return [] }
+            sawFunctionCall = true
             let arguments = item["arguments"] as? String ?? "{}"
             return [.toolUseComplete(
                 id: callID,
@@ -256,7 +281,7 @@ struct OpenAIStreamParser {
 
     private func terminalStopReason(_ response: [String: Any]) -> AgentStopReason {
         let output = response["output"] as? [[String: Any]] ?? []
-        if output.contains(where: { $0["type"] as? String == "function_call" }) {
+        if sawFunctionCall || output.contains(where: { $0["type"] as? String == "function_call" }) {
             return .toolUse
         }
         if output.contains(where: { item in

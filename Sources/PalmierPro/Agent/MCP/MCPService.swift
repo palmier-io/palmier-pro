@@ -46,9 +46,7 @@ final class MCPService {
             )
             await Self.registerTools(on: server, executor: toolExecutor)
             await Self.registerResources(on: server)
-            return MCPServerInstance(server: server) { clientInfo in
-                await toolExecutor.setMCPClientInfo(MCPClientInfo(clientInfo))
-            }
+            return MCPServerInstance(server: server) { _ in }
         }
         self.httpServer = httpServer
         Task { @MainActor [weak self] in
@@ -93,7 +91,7 @@ final class MCPService {
     // Convert args on the main actor so the non-Sendable dict never crosses the hop.
     private static func dispatchCall(_ params: CallTool.Parameters, executor: ToolExecutor) async -> CallTool.Result {
         let args = ToolArgsBridge.argsFromMCP(params.arguments ?? [:])
-        let result = await executor.execute(name: params.name, args: args, source: "mcp")
+        let result = await executor.execute(name: params.name, args: args)
         return result.toMCPResult()
     }
 

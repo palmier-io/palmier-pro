@@ -105,7 +105,6 @@ final class AppState {
         if activeProject !== project {
             activeProject = project
             project.editorViewModel.refreshProjectId()
-            recordProjectActive(project)
         }
         HomeWindowController.shared.window?.orderOut(nil)
     }
@@ -213,8 +212,6 @@ final class AppState {
         }
         ProjectRegistry.shared.register(url)
         doc.editorViewModel.refreshProjectId()
-        recordProjectCreated(doc)
-        recordProjectOpened(doc)
         return doc
     }
 
@@ -231,8 +228,6 @@ final class AppState {
                 guard error == nil else { return }
                 ProjectRegistry.shared.register(url)
                 doc.editorViewModel.refreshProjectId()
-                self.recordProjectCreated(doc)
-                self.recordProjectOpened(doc)
             }
         }
     }
@@ -279,7 +274,6 @@ final class AppState {
         NSDocumentController.shared.addDocument(doc)
         if register { ProjectRegistry.shared.register(resolved) }
         doc.editorViewModel.refreshProjectId()
-        recordProjectOpened(doc)
         apply(options, to: doc.editorViewModel)
         return doc
     }
@@ -313,24 +307,6 @@ final class AppState {
             return existing
         }
         return nil
-    }
-
-    private func recordProjectCreated(_ project: VideoProject) {
-        Analytics.capture(.projectCreated, properties: project.editorViewModel.analyticsSnapshot())
-    }
-
-    private func recordProjectOpened(_ project: VideoProject) {
-        let properties = project.editorViewModel.analyticsSnapshot()
-        Analytics.capture(.projectOpened, properties: properties)
-        if let projectId = project.editorViewModel.projectId {
-            Analytics.captureProjectActive(projectId: projectId, properties: properties)
-        }
-    }
-
-    private func recordProjectActive(_ project: VideoProject) {
-        guard let projectId = project.editorViewModel.projectId else { return }
-        let properties = project.editorViewModel.analyticsSnapshot()
-        Analytics.captureProjectActive(projectId: projectId, properties: properties)
     }
 
     private func apply(_ options: ProjectOpenOptions, to editor: EditorViewModel) {

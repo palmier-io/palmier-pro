@@ -1,5 +1,5 @@
 import AVFoundation
-#if BUNDLED_SPEECH
+#if BUNDLED_SPEECH && arch(arm64)
 import SpeechVAD
 #endif
 
@@ -34,13 +34,13 @@ enum SpeakerIdentity {
     private static let turnEdgeTrim = 0.25
     private static let minEmbeddingSamples = 8000  // 0.5 s @ 16 kHz, the model's reliability floor
 
-    #if BUNDLED_SPEECH
+    #if BUNDLED_SPEECH && arch(arm64)
     private static let modelBox = ModelBox()
 
     private actor ModelBox {
         private var model: WeSpeakerModel?
         func embed(_ samples: [Float]) async throws -> [Float] {
-            try await MLXRuntime.beginInference()
+            try await MLXRuntime.beginInference(for: .speakerIdentification)
             defer { MLXRuntime.endInference() }
             if model == nil {
                 model = try await WeSpeakerModel.fromPretrained()
@@ -60,6 +60,9 @@ enum SpeakerIdentity {
         files: [(mediaRef: String, url: URL, turns: [Turn])],
         registry: [(id: Int, centroid: [Float])]
     ) async -> Assignments {
+        guard AppCapabilities.current.availability(of: .speakerIdentification).isAvailable else {
+            return Assignments()
+        }
         var out = Assignments()
         var vectors: [(mediaRef: String, local: String, vector: [Float])] = []
         for file in files where !file.turns.isEmpty {
@@ -98,7 +101,7 @@ enum SpeakerIdentity {
            let cached = try? JSONDecoder().decode([String: [Float]].self, from: data) {
             return cached
         }
-        #if BUNDLED_SPEECH
+        #if BUNDLED_SPEECH && arch(arm64)
         var bySpeaker: [String: [Turn]] = [:]
         for turn in turns where turn.end - turn.start >= 1.0 {
             bySpeaker[turn.speaker, default: []].append(turn)

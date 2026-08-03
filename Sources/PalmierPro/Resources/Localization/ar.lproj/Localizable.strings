@@ -657,7 +657,6 @@
 "Preparing…" = "جارٍ الإعداد…";
 "Presence" = "الحضور";
 "Preview" = "المعاينة";
-"Privacy & Diagnostics" = "الخصوصية والتشخيص";
 "Pro plan" = "خطة Pro";
 "Product demos" = "عروض المنتجات";
 "Project" = "المشروع";
@@ -722,7 +721,6 @@
 "Resolution must be at least 2 × 2 pixels." = "يجب ألا تقل الدقة عن ⁨2 × 2⁩ بكسل.";
 "Resolution must not exceed 8192 pixels on either edge." = "يجب ألا تتجاوز الدقة 8192 بكسل على أي من الحافتين.";
 "Restart Palmier Pro" = "إعادة تشغيل Palmier Pro";
-"Restart Palmier Pro to apply this change." = "أعد تشغيل Palmier Pro لتطبيق هذا التغيير.";
 "Retry" = "إعادة المحاولة";
 "Retry Download" = "إعادة محاولة التنزيل";
 "Reveal in Finder" = "إظهار في Finder";
@@ -772,11 +770,8 @@
 "Selection Tool" = "أداة التحديد";
 "Send" = "إرسال";
 "Send Feedback…" = "إرسال ملاحظات…";
-"Send crash and error reports to help diagnose problems. Media and project content are never included." = "أرسل تقارير الأعطال والأخطاء للمساعدة في تشخيص المشكلات. لا يتم تضمين محتوى الوسائط أو المشاريع مطلقًا.";
-"Send crash reports" = "إرسال تقارير الأعطال";
 "Send feedback" = "إرسال ملاحظات";
 "Send only the visible clip range to the model, not the full source." = "أرسل نطاق المقطع المرئي فقط إلى النموذج، وليس المصدر كاملاً.";
-"Send usage data from your interactions with Palmier Pro to help improve the app." = "أرسل بيانات الاستخدام من تفاعلاتك مع Palmier Pro للمساعدة في تحسين التطبيق.";
 "Sending…" = "جارٍ الإرسال…";
 "Sequence" = "التسلسل";
 "Server URL" = "عنوان URL للخادم";
@@ -787,7 +782,6 @@
 "Setup instructions" = "تعليمات الإعداد";
 "Shadow" = "الظل";
 "Shadows" = "الظلال";
-"Share usage data" = "مشاركة بيانات الاستخدام";
 "Sharpen" = "زيادة الحدة";
 "Short-form and social" = "المقاطع القصيرة والتواصل الاجتماعي";
 "Shortcuts" = "الاختصارات";

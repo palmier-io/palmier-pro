@@ -1,6 +1,13 @@
 @preconcurrency import Combine
 import Foundation
+#if HOSTED_BACKEND && arch(arm64)
 @preconcurrency import ConvexMobile
+typealias TranscriptionClientError = ClientError
+#else
+enum TranscriptionClientError: Error {
+    case unavailable
+}
+#endif
 
 enum TranscriptionBackend {
     @MainActor
@@ -10,6 +17,7 @@ enum TranscriptionBackend {
         language: String?,
         projectId: String?
     ) async throws -> BackendTranscriptionSubmit {
+        #if HOSTED_BACKEND && arch(arm64)
         guard let convex = AccountService.shared.convex else {
             throw BackendError.notConfigured
         }
@@ -22,16 +30,23 @@ enum TranscriptionBackend {
             "projectId": projectId,
         ]
         return try await convex.action("transcriptions:submit", with: args)
+        #else
+        throw BackendError.notConfigured
+        #endif
     }
 
     @MainActor
-    static func subscribe(jobId: String) -> AnyPublisher<BackendTranscriptionJob?, ClientError>? {
+    static func subscribe(jobId: String) -> AnyPublisher<BackendTranscriptionJob?, TranscriptionClientError>? {
+        #if HOSTED_BACKEND && arch(arm64)
         guard let convex = AccountService.shared.convex else { return nil }
         return convex.subscribe(
             to: "transcriptions:byId",
             with: ["id": jobId],
             yielding: BackendTranscriptionJob?.self
         )
+        #else
+        return nil
+        #endif
     }
 
     static func result(jobId: String) async throws -> TranscriptionResult {
@@ -48,6 +63,7 @@ enum TranscriptionBackend {
 
     @MainActor
     private static func resultRef(jobId: String) async throws -> BackendTranscriptionResultRef {
+        #if HOSTED_BACKEND && arch(arm64)
         guard let convex = AccountService.shared.convex else {
             throw BackendError.notConfigured
         }
@@ -55,6 +71,9 @@ enum TranscriptionBackend {
             "transcriptions:result",
             with: ["id": jobId]
         )
+        #else
+        throw BackendError.notConfigured
+        #endif
     }
 
     @MainActor

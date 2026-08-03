@@ -65,6 +65,9 @@
 "Account" = "Account";
 "Account settings" = "Account settings";
 "Activity unavailable" = "Activity unavailable";
+"Add" = "Add";
+"Add Custom Model" = "Add Custom Model";
+"Add Model" = "Add Model";
 "Add Range to Chat" = "Add Range to Chat";
 "Add Text" = "Add Text";
 "Add an Anthropic API key or credits to use this model." = "Add an Anthropic API key or credits to use this model.";
@@ -73,6 +76,7 @@
 "Add captions" = "Add captions";
 "Add credits" = "Add credits";
 "Add credits to use Cloud." = "Add credits to use Cloud.";
+"Add custom Anthropic or OpenAI model IDs for BYOK chat." = "Add custom Anthropic or OpenAI model IDs for BYOK chat.";
 "Add emoji" = "Add emoji";
 "Add generated audio to an audio track at this clip's start." = "Add generated audio to an audio track at this clip's start.";
 "Add keyframe at playhead" = "Add keyframe at playhead";
@@ -87,6 +91,7 @@
 "Add to Queue" = "Add to Queue";
 "Add to chat" = "Add to chat";
 "Add video to the timeline, then mark a range to score only part of it." = "Add video to the timeline, then mark a range to score only part of it.";
+"Add your own API Key" = "Add your own API Key";
 "Added to %@" = "Added to %@";
 "Adjust" = "Adjust";
 "Adjust Range" = "Adjust Range";
@@ -119,6 +124,7 @@
 "Available" = "Available";
 "Back" = "Back";
 "Background" = "Background";
+"Base URL" = "Base URL";
 "Basic Correction" = "Basic Correction";
 "Beat detection failed. Check that the media file is reachable, then retry." = "Beat detection failed. Check that the media file is reachable, then retry.";
 "Blacks" = "Blacks";
@@ -224,6 +230,7 @@
 "Corner Radius" = "Corner Radius";
 "Could not install the on-device speech model: %@" = "Could not install the on-device speech model: %@";
 "Could not parse transcription result." = "Could not parse transcription result.";
+"Could not save API key to the Keychain. Delete any existing Palmier API key items in Keychain Access, then try again." = "Could not save API key to the Keychain. Delete any existing Palmier API key items in Keychain Access, then try again.";
 "Couldn't Prepare Media" = "Couldn't Prepare Media";
 "Couldn't align %lld clips." = "Couldn't align %lld clips.";
 "Couldn't switch angle." = "Couldn't switch angle.";
@@ -294,6 +301,7 @@
 "Dimensions" = "Dimensions";
 "Discard Changes" = "Discard Changes";
 "Dismiss" = "Dismiss";
+"Display Name" = "Display Name";
 "Documentation" = "Documentation";
 "Done" = "Done";
 "Download a local model to index your media, so you or your agent can search any clips by describing them. The model runs on-device and nothing leaves your Mac." = "Download a local model to index your media, so you or your agent can search any clips by describing them. The model runs on-device and nothing leaves your Mac.";
@@ -362,7 +370,6 @@
 "Film Grain" = "Film Grain";
 "Filmmaker" = "Filmmaker";
 "First Frame" = "First Frame";
-"First-time sign-ups only" = "First-time sign-ups only";
 "First/Last" = "First/Last";
 "Fit" = "Fit";
 "Fix names & jargon" = "Fix names & jargon";
@@ -508,7 +515,6 @@
 "Local" = "Local";
 "Local runs with Apple's SpeechAnalyzer." = "Local runs with Apple's SpeechAnalyzer.";
 "Local runs with Apple's SpeechAnalyzer. Cloud uses credits and a more accurate model with more capabilities." = "Local runs with Apple's SpeechAnalyzer. Cloud uses credits and a more accurate model with more capabilities.";
-"Log in for 250 free credits" = "Log in for 250 free credits";
 "Low" = "Low";
 "Luma" = "Luma";
 "Luminosity" = "Luminosity";
@@ -551,6 +557,7 @@
 "Mixed" = "Mixed";
 "Mode" = "Mode";
 "Model" = "Model";
+"Model ID" = "Model ID";
 "Model no longer available" = "Model no longer available";
 "Models" = "Models";
 "Modified" = "Modified";
@@ -588,6 +595,7 @@
 "No audio selected." = "No audio selected.";
 "No beats detected." = "No beats detected.";
 "No conversations yet" = "No conversations yet";
+"No custom chat models yet." = "No custom chat models yet.";
 "No exports yet" = "No exports yet";
 "No generations yet" = "No generations yet";
 "No images" = "No images";
@@ -629,6 +637,7 @@
 "Opening Google" = "Opening Google";
 "Opening Google…" = "Opening Google…";
 "Open…" = "Open…";
+"Optional" = "Optional";
 "Organize with Agent" = "Organize with Agent";
 "Original" = "Original";
 "Original FPS" = "Original FPS";
@@ -666,13 +675,13 @@
 "Preparing…" = "Preparing…";
 "Presence" = "Presence";
 "Preview" = "Preview";
-"Privacy & Diagnostics" = "Privacy & Diagnostics";
 "Pro plan" = "Pro plan";
 "Product demos" = "Product demos";
 "Project" = "Project";
 "Project Activity" = "Project Activity";
 "Projects Couldn’t Be Deleted" = "Projects Couldn’t Be Deleted";
 "Prompt" = "Prompt";
+"Provider" = "Provider";
 "Quality" = "Quality";
 "Queued" = "Queued";
 "Quit Palmier Pro" = "Quit Palmier Pro";
@@ -705,6 +714,7 @@
 "Remove API key" = "Remove API key";
 "Remove Dead Air" = "Remove Dead Air";
 "Remove background sound and keep speech" = "Remove background sound and keep speech";
+"Remove custom model" = "Remove custom model";
 "Remove filler words" = "Remove filler words";
 "Remove from Queue" = "Remove from Queue";
 "Remove from Recents" = "Remove from Recents";
@@ -726,13 +736,13 @@
 "Rerun" = "Rerun";
 "Reset All" = "Reset All";
 "Reset Clipping Indicators" = "Reset Clipping Indicators";
+"Reset to default base URL" = "Reset to default base URL";
 "Reset: %@" = "Reset: %@";
 "Resets %@" = "Resets %@";
 "Resolution" = "Resolution";
 "Resolution must be at least 2 × 2 pixels." = "Resolution must be at least 2 × 2 pixels.";
 "Resolution must not exceed 8192 pixels on either edge." = "Resolution must not exceed 8192 pixels on either edge.";
 "Restart Palmier Pro" = "Restart Palmier Pro";
-"Restart Palmier Pro to apply this change." = "Restart Palmier Pro to apply this change.";
 "Retry" = "Retry";
 "Retry Download" = "Retry Download";
 "Reveal in Finder" = "Reveal in Finder";
@@ -748,7 +758,6 @@
 "Sample Key Color" = "Sample Key Color";
 "Sample Project" = "Sample Project";
 "Sample key color" = "Sample key color";
-"Sample project couldn’t be opened. Try again." = "Sample project couldn’t be opened. Try again.";
 "Sat" = "Sat";
 "Saturation" = "Saturation";
 "Save" = "Save";
@@ -782,11 +791,8 @@
 "Selection Tool" = "Selection Tool";
 "Send" = "Send";
 "Send Feedback…" = "Send Feedback…";
-"Send crash and error reports to help diagnose problems. Media and project content are never included." = "Send crash and error reports to help diagnose problems. Media and project content are never included.";
-"Send crash reports" = "Send crash reports";
 "Send feedback" = "Send feedback";
 "Send only the visible clip range to the model, not the full source." = "Send only the visible clip range to the model, not the full source.";
-"Send usage data from your interactions with Palmier Pro to help improve the app." = "Send usage data from your interactions with Palmier Pro to help improve the app.";
 "Sending…" = "Sending…";
 "Sequence" = "Sequence";
 "Server URL" = "Server URL";
@@ -797,7 +803,6 @@
 "Setup instructions" = "Setup instructions";
 "Shadow" = "Shadow";
 "Shadows" = "Shadows";
-"Share usage data" = "Share usage data";
 "Sharpen" = "Sharpen";
 "Short-form and social" = "Short-form and social";
 "Shortcuts" = "Shortcuts";
@@ -806,10 +811,8 @@
 "Show notifications" = "Show notifications";
 "Show reasoning" = "Show reasoning";
 "Side by Side" = "Side by Side";
-"Sign In" = "Sign In";
 "Sign in" = "Sign in";
 "Sign in to generate" = "Sign in to generate";
-"Sign in to receive 250 free credits for AI chat and generation." = "Sign in to receive 250 free credits for AI chat and generation.";
 "Sign in to subscribe and use AI generation." = "Sign in to subscribe and use AI generation.";
 "Sign in to use AI" = "Sign in to use AI";
 "Sign in to use AI chat." = "Sign in to use AI chat.";
@@ -817,7 +820,6 @@
 "Sign in to use Cloud." = "Sign in to use Cloud.";
 "Sign in with Google" = "Sign in with Google";
 "Sign out" = "Sign out";
-"Sign-in couldn’t be completed. Try again." = "Sign-in couldn’t be completed. Try again.";
 "Signed in" = "Signed in";
 "Signed out" = "Signed out";
 "Silence Detection" = "Silence Detection";
@@ -989,15 +991,12 @@
 "Voice Cleanup requires audio or video" = "Voice Cleanup requires audio or video";
 "Volume" = "Volume";
 "Warmth" = "Warmth";
-"Watch the tutorial or start creating." = "Watch the tutorial or start creating.";
 "We may email you for follow-up questions" = "We may email you for follow-up questions";
 "We read every message and may reach out at %@." = "We read every message and may reach out at %@.";
 "We read every message. Add an email next time if you'd like a reply." = "We read every message. Add an email next time if you'd like a reply.";
 "We read every message. We won't email you, as requested." = "We read every message. We won't email you, as requested.";
-"Welcome" = "Welcome";
 "Welcome to Palmier Pro" = "Welcome to Palmier Pro";
 "Welcome to Palmier Pro, %@" = "Welcome to Palmier Pro, %@";
-"Welcome, %@" = "Welcome, %@";
 "What best describes your role?" = "What best describes your role?";
 "What do you make?" = "What do you make?";
 "What interests you most about Palmier Pro?" = "What interests you most about Palmier Pro?";
@@ -1030,13 +1029,13 @@
 "args" = "args";
 "by audio" = "by audio";
 "by timecode" = "by timecode";
+"claude-sonnet-4-5" = "claude-sonnet-4-5";
 "drift correction skipped — it would overwrite an adjacent clip" = "drift correction skipped — it would overwrite an adjacent clip";
 "drift-corrected" = "drift-corrected";
 "error" = "error";
+"gpt-4.1" = "gpt-4.1";
 "group moved right to fit" = "group moved right to fit";
 "lowercase" = "lowercase";
-"or add your own Anthropic key" = "or add your own Anthropic key";
-"or add your own OpenAI key" = "or add your own OpenAI key";
 "result" = "result";
 "using Anthropic API key" = "using Anthropic API key";
 "using OpenAI API key" = "using OpenAI API key";

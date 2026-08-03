@@ -1,6 +1,8 @@
 import Foundation
 import Combine
+#if HOSTED_BACKEND && arch(arm64)
 @preconcurrency import ConvexMobile
+#endif
 
 enum ModelKind: Sendable {
     case video(VideoModelConfig)
@@ -50,9 +52,14 @@ final class ModelCatalog {
     func configure() {
         guard !didConfigure else { return }
         didConfigure = true
+        #if HOSTED_BACKEND && arch(arm64)
         startSubscription()
+        #else
+        isLoaded = true
+        #endif
     }
 
+    #if HOSTED_BACKEND && arch(arm64)
     private func startSubscription() {
         guard let client = AccountService.shared.convex else { return }
 
@@ -79,7 +86,6 @@ final class ModelCatalog {
     private func handleFailure(_ err: ClientError) {
         failureCount += 1
         lastError = err.localizedDescription
-        // First failure goes to Sentry; retries only log locally.
         if failureCount == 1 {
             Log.generation.error("ModelCatalog subscription failed: \(err.localizedDescription)")
         } else {
@@ -93,6 +99,7 @@ final class ModelCatalog {
             self?.startSubscription()
         }
     }
+    #endif
 
     private func apply(_ entries: [CatalogEntry]) {
         var newVideo: [VideoModelConfig] = []

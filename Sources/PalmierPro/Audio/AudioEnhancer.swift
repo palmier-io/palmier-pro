@@ -1,5 +1,5 @@
 import AVFoundation
-#if BUNDLED_SPEECH
+#if BUNDLED_SPEECH && arch(arm64)
 import SpeechEnhancement
 #endif
 
@@ -19,9 +19,10 @@ enum AudioEnhancer {
     }
 
     static func denoisedAudio(for sourceURL: URL, mediaRef: String) async throws -> URL {
+        try MLXRuntime.requireAvailable(for: .audioDenoise)
         let outputURL = denoisedURL(for: sourceURL, mediaRef: mediaRef)
         if FileManager.default.fileExists(atPath: outputURL.path) { return outputURL }
-        #if BUNDLED_SPEECH
+        #if BUNDLED_SPEECH && arch(arm64)
         let start = ContinuousClock.now
         var dry = try await readChannels(from: sourceURL)
         guard dry.contains(where: { !$0.isEmpty }) else { throw EnhanceError.noAudioTrack }
@@ -36,11 +37,12 @@ enum AudioEnhancer {
         Log.preview.notice("denoise ok mediaRef=\(mediaRef) seconds=\(String(format: "%.0f", elapsed))")
         return outputURL
         #else
-        throw MLXRuntime.Unavailable()
+        throw MLXRuntime.Unavailable(feature: .audioDenoise)
         #endif
     }
 
     static func cachedDenoisedURL(for sourceURL: URL, mediaRef: String) -> URL? {
+        guard AppCapabilities.current.availability(of: .audioDenoise).isAvailable else { return nil }
         let url = denoisedURL(for: sourceURL, mediaRef: mediaRef)
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
@@ -49,14 +51,14 @@ enum AudioEnhancer {
         cache.directory.appendingPathComponent("\(mediaRef)_\(DiskCache.sizeMtimeTag(for: sourceURL))_wet.caf")
     }
 
-    #if BUNDLED_SPEECH
+    #if BUNDLED_SPEECH && arch(arm64)
     private static let modelBox = ModelBox()
 
     private actor ModelBox {
         private var enhancer: SpeechEnhancer?
 
         func enhance(audio: [Float], sampleRate: Int) async throws -> [Float] {
-            try await MLXRuntime.beginInference()
+            try await MLXRuntime.beginInference(for: .audioDenoise)
             defer { MLXRuntime.endInference() }
             if enhancer == nil { enhancer = try await SpeechEnhancer.fromPretrained() }
             return try enhancer!.enhanceChunked(audio: audio, sampleRate: sampleRate)

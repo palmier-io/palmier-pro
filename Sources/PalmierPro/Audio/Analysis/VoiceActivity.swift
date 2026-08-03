@@ -1,5 +1,5 @@
 import AVFoundation
-#if BUNDLED_SPEECH
+#if BUNDLED_SPEECH && arch(arm64)
 import SpeechVAD
 #endif
 
@@ -35,8 +35,9 @@ enum VoiceActivity {
     }
 
     static func analysis(for sourceURL: URL, mediaRef: String) async throws -> Analysis {
+        try MLXRuntime.requireAvailable(for: .silenceDetection)
         if let cached = cachedAnalysis(for: sourceURL, mediaRef: mediaRef) { return cached }
-        #if BUNDLED_SPEECH
+        #if BUNDLED_SPEECH && arch(arm64)
         try await pipelineGate.wait()
         defer { Task { await pipelineGate.signal() } }
         let samples: [Float]
@@ -49,11 +50,11 @@ enum VoiceActivity {
         cache(analysis, for: sourceURL, mediaRef: mediaRef)
         return analysis
         #else
-        throw MLXRuntime.Unavailable()
+        throw MLXRuntime.Unavailable(feature: .silenceDetection)
         #endif
     }
 
-    #if BUNDLED_SPEECH
+    #if BUNDLED_SPEECH && arch(arm64)
     private static let modelBox = ModelBox()
 
     /// Silero is not thread-safe; the actor serializes model use.
@@ -63,7 +64,7 @@ enum VoiceActivity {
 
         func analyze(samples: [Float]) async throws -> Analysis {
             guard !samples.isEmpty else { return Analysis(chunkCount: 0, segments: []) }
-            try await MLXRuntime.beginInference()
+            try await MLXRuntime.beginInference(for: .silenceDetection)
             defer { MLXRuntime.endInference() }
 
             // .mlx pinned: the CoreML engine soft-fails per chunk on ANE errors, caching empty segments as truth.

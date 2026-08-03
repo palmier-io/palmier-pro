@@ -94,7 +94,7 @@ enum AnthropicSSE {
 
 enum AnthropicRequestBody {
     static func build(
-        model: AgentModel,
+        model: AgentChatModel,
         reasoningEffort: AgentReasoningEffort = .medium,
         system: String,
         tools: [AgentToolSchema],
@@ -124,7 +124,7 @@ enum AnthropicRequestBody {
             messageBlocks.append(lastMsg)
         }
         var body: [String: Any] = [
-            "model": model.rawValue,
+            "model": model.apiModelID,
             "max_tokens": model.maxOutputTokens,
             "stream": true,
             "system": [["type": "text", "text": system, "cache_control": ["type": "ephemeral"]]],
@@ -134,6 +134,22 @@ enum AnthropicRequestBody {
         ]
         if !toolBlocks.isEmpty { body["tools"] = toolBlocks }
         return body
+    }
+
+    static func build(
+        model: AgentModel,
+        reasoningEffort: AgentReasoningEffort = .medium,
+        system: String,
+        tools: [AgentToolSchema],
+        messages: [AgentRequestMessage]
+    ) -> [String: Any] {
+        build(
+            model: .builtIn(model),
+            reasoningEffort: reasoningEffort,
+            system: system,
+            tools: tools,
+            messages: messages
+        )
     }
 
     private static func contentJSON(_ block: AgentRequestBlock) -> [String: Any]? {

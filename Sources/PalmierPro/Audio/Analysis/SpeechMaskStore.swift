@@ -31,10 +31,7 @@ final class SpeechMaskStore {
             } catch is CancellationError {
             } catch {
                 if VoiceActivity.isDamagedMedia(error) {
-                    Log.preview.error(
-                        "vad failed mediaRef=\(key): \(Log.detail(error))",
-                        telemetry: "VAD media decode failed"
-                    )
+                    Log.preview.error("vad failed mediaRef=\(key): \(Log.detail(error))")
                 } else {
                     Log.preview.info("vad unavailable mediaRef=\(key): \(Log.detail(error))")
                 }

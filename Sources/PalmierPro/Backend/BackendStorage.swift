@@ -1,8 +1,11 @@
 import Foundation
+#if HOSTED_BACKEND && arch(arm64)
 @preconcurrency import ConvexMobile
+#endif
 
 enum BackendStorage {
     static func uploadStaged(fileURL: URL, contentType: String) async throws -> String {
+        #if HOSTED_BACKEND && arch(arm64)
         let ticket = try await uploadTicket()
         guard let stagingURL = URL(string: ticket.uploadUrl) else {
             throw BackendError.transport("Invalid staging URL")
@@ -14,8 +17,12 @@ enum BackendStorage {
         let (data, response) = try await URLSession.shared.upload(for: request, fromFile: fileURL)
         try assertHTTPOK(respData: data, response: response)
         return try JSONDecoder().decode(StagingUploadResponse.self, from: data).storageId
+        #else
+        throw BackendError.notConfigured
+        #endif
     }
 
+    #if HOSTED_BACKEND && arch(arm64)
     @MainActor
     private static func uploadTicket() async throws -> StagingTicket {
         guard let convex = AccountService.shared.convex else {
@@ -39,6 +46,7 @@ enum BackendStorage {
         }
         throw BackendError.transport("HTTP \(http.statusCode): \(detail)")
     }
+    #endif
 }
 
 private struct StagingTicket: Decodable, Sendable {

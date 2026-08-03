@@ -85,8 +85,8 @@ struct EmbeddingStore {
                     shotEnd: raw.loadUnaligned(fromByteOffset: base + 16, as: Double.self)
                 ))
                 for d in 0..<header.dim {
-                    let half = raw.loadUnaligned(fromByteOffset: base + 24 + d * 2, as: Float16.self)
-                    vectors[i * header.dim + d] = Float(half)
+                    let bits = raw.loadUnaligned(fromByteOffset: base + 24 + d * 2, as: UInt16.self)
+                    vectors[i * header.dim + d] = IEEE754Binary16.float(fromBits: UInt16(littleEndian: bits))
                 }
             }
         }
@@ -106,8 +106,8 @@ struct EmbeddingStore {
                 data.append(Data(bytes: &v, count: 8))
             }
             for d in 0..<header.dim {
-                var half = Float16(vectors[i * header.dim + d])
-                data.append(Data(bytes: &half, count: 2))
+                var bits = IEEE754Binary16.bits(from: vectors[i * header.dim + d]).littleEndian
+                data.append(Data(bytes: &bits, count: 2))
             }
         }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

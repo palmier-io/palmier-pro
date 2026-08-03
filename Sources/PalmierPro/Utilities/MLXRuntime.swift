@@ -1,31 +1,53 @@
 import Foundation
 import os
 
-// Skip MLX model loads in unbundled builds to avoid a fatal mlx.metallib error.
 enum MLXRuntime {
-    static let isAvailable = Bundle.main.bundleURL.pathExtension == "app"
+    static var isAvailable: Bool {
+        AppCapabilities.current.availability(of: .silenceDetection).isAvailable
+    }
     private static let gate = MLXOperationGate()
 
     struct Unavailable: Error, LocalizedError {
+        let feature: AppFeature
+        let reason: AppFeatureUnavailability
+
+        init(feature: AppFeature = .silenceDetection) {
+            self.feature = feature
+            guard case .unavailable(let reason) = AppCapabilities.current.availability(of: feature) else {
+                preconditionFailure("Unavailable created for an available feature")
+            }
+            self.reason = reason
+        }
+
         var errorDescription: String? {
-            "MLX analysis is unavailable in unbundled builds (missing mlx.metallib)"
+            switch reason {
+            case .requiresAppleSilicon:
+                "\(feature.rawValue) requires Apple silicon"
+            case .buildExcludesBundledSpeech:
+                "\(feature.rawValue) is not included in this build"
+            case .buildExcludesHostedBackend:
+                "\(feature.rawValue) is not included in this build"
+            case .unpackagedSpeechResources:
+                "\(feature.rawValue) is unavailable because the MLX runtime resources are missing"
+            }
         }
     }
 
-    static func requireAvailable() throws {
-        guard isAvailable else { throw Unavailable() }
+    static func requireAvailable(for feature: AppFeature = .silenceDetection) throws {
+        guard !AppCapabilities.current.availability(of: feature).isAvailable else { return }
+        throw Unavailable(feature: feature)
     }
 
-    static func beginOperation() throws {
-        try requireAvailable()
+    static func beginOperation(for feature: AppFeature = .silenceDetection) throws {
+        try requireAvailable(for: feature)
         guard gate.begin() else { throw CancellationError() }
     }
     static func endOperation() { gate.end() }
 
     private static let inferenceGate = AsyncSemaphore(value: 1)
 
-    static func beginInference() async throws {
-        try beginOperation()
+    static func beginInference(for feature: AppFeature = .silenceDetection) async throws {
+        try beginOperation(for: feature)
         do { try await inferenceGate.wait() } catch {
             endOperation()
             throw error

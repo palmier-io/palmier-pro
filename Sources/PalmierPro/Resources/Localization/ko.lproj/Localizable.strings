@@ -657,7 +657,6 @@
 "Preparing…" = "준비하는 중…";
 "Presence" = "프레즌스";
 "Preview" = "미리보기";
-"Privacy & Diagnostics" = "개인정보 보호 및 진단";
 "Pro plan" = "Pro 요금제";
 "Product demos" = "제품 데모";
 "Project" = "프로젝트";
@@ -722,7 +721,6 @@
 "Resolution must be at least 2 × 2 pixels." = "해상도는 2 × 2픽셀 이상이어야 합니다.";
 "Resolution must not exceed 8192 pixels on either edge." = "어느 쪽도 해상도가 8192픽셀을 초과할 수 없습니다.";
 "Restart Palmier Pro" = "Palmier Pro 재시동";
-"Restart Palmier Pro to apply this change." = "이 변경 사항을 적용하려면 Palmier Pro를 재시동하세요.";
 "Retry" = "재시도";
 "Retry Download" = "다운로드 재시도";
 "Reveal in Finder" = "Finder에서 보기";
@@ -772,11 +770,8 @@
 "Selection Tool" = "선택 도구";
 "Send" = "보내기";
 "Send Feedback…" = "피드백 보내기…";
-"Send crash and error reports to help diagnose problems. Media and project content are never included." = "문제 진단에 도움이 되도록 충돌 및 오류 리포트를 보냅니다. 미디어 및 프로젝트 콘텐츠는 절대 포함되지 않습니다.";
-"Send crash reports" = "충돌 리포트 보내기";
 "Send feedback" = "피드백 보내기";
 "Send only the visible clip range to the model, not the full source." = "전체 소스가 아닌 표시되는 클립 범위만 모델에 보냅니다.";
-"Send usage data from your interactions with Palmier Pro to help improve the app." = "앱 개선에 도움이 되도록 Palmier Pro 사용 데이터 보내기";
 "Sending…" = "보내는 중…";
 "Sequence" = "시퀀스";
 "Server URL" = "서버 URL";
@@ -787,7 +782,6 @@
 "Setup instructions" = "설정 지침";
 "Shadow" = "그림자";
 "Shadows" = "섀도";
-"Share usage data" = "사용 데이터 공유";
 "Sharpen" = "선명하게";
 "Short-form and social" = "숏폼 및 소셜";
 "Shortcuts" = "단축키";

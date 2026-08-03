@@ -3,9 +3,6 @@ import SwiftUI
 struct OnboardingOverlay: View {
     @Bindable var onboarding: OnboardingStore
 
-    @Bindable private var account = AccountService.shared
-    @State private var signInFailed = false
-
     var body: some View {
         ZStack {
             AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.strong)
@@ -51,13 +48,8 @@ struct OnboardingOverlay: View {
             .padding(.horizontal, AppTheme.Spacing.xxl)
             .padding(.top, AppTheme.Spacing.xxl)
             .padding(.bottom, onboarding.step == .profile ? AppTheme.Spacing.md : AppTheme.Spacing.xxl)
-        if onboarding.step == .account {
-            ScrollView { content }
-                .scrollEdgeEffectStyle(.soft, for: .bottom)
-        } else {
-            content
-                .frame(maxHeight: .infinity, alignment: .topLeading)
-        }
+        content
+            .frame(maxHeight: .infinity, alignment: .topLeading)
     }
 
     @ViewBuilder
@@ -67,12 +59,6 @@ struct OnboardingOverlay: View {
             OnboardingWelcomeStep()
         case .profile:
             OnboardingProfileStep(onboarding: onboarding)
-        case .account:
-            OnboardingAccountStep(
-                account: account,
-                sampleState: onboarding.sampleState,
-                signInFailed: signInFailed
-            )
         }
     }
 
@@ -87,29 +73,7 @@ struct OnboardingOverlay: View {
                 primaryButton(L10n.string("Continue"), action: onboarding.advance)
             case .profile:
                 primaryButton(L10n.string("Continue"), action: onboarding.submitProfile)
-            case .account:
-                secondaryButton(
-                    L10n.string("Skip"),
-                    action: onboarding.skip,
-                    disabled: account.isSigningIn
-                )
-                accountAction
             }
-        }
-    }
-
-    @ViewBuilder
-    private var accountAction: some View {
-        if account.isSignedIn || account.isMisconfigured {
-            primaryButton(
-                onboarding.sampleState == .loading ? L10n.string("Loading…") : L10n.string("Tutorial"),
-                action: onboarding.openSampleProject
-            )
-        } else {
-            primaryButton(
-                account.isSigningIn ? L10n.string("Opening Google…") : L10n.string("Sign in with Google"),
-                action: signIn
-            )
         }
     }
 
@@ -117,28 +81,10 @@ struct OnboardingOverlay: View {
         Button(label, action: action)
             .buttonStyle(.capsule(.prominent, size: .regular))
             .keyboardShortcut(.defaultAction)
-            .disabled(isBusy)
     }
 
-    private func secondaryButton(
-        _ label: String,
-        action: @escaping () -> Void,
-        disabled: Bool? = nil
-    ) -> some View {
+    private func secondaryButton(_ label: String, action: @escaping () -> Void) -> some View {
         Button(label, action: action)
             .buttonStyle(.capsule(.secondary, size: .regular))
-            .disabled(disabled ?? isBusy)
-    }
-
-    private var isBusy: Bool {
-        account.isSigningIn || onboarding.sampleState == .loading
-    }
-
-    private func signIn() {
-        Task {
-            signInFailed = false
-            await account.signInWithGoogle()
-            signInFailed = !account.isSignedIn && account.lastError != nil
-        }
     }
 }

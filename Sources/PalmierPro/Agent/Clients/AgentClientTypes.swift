@@ -4,7 +4,7 @@ extension Notification.Name {
     static let agentAPIKeyChanged = Notification.Name("agentAPIKeyChanged")
 }
 
-enum AgentProvider: String, CaseIterable, Sendable {
+enum AgentProvider: String, CaseIterable, Codable, Sendable {
     case anthropic
     case openAI
 
@@ -13,6 +13,40 @@ enum AgentProvider: String, CaseIterable, Sendable {
         case .anthropic: "Anthropic"
         case .openAI: "OpenAI"
         }
+    }
+
+    var defaultBaseURLString: String {
+        switch self {
+        case .anthropic: "https://api.anthropic.com"
+        case .openAI: "https://api.openai.com/v1"
+        }
+    }
+
+    private var chatPathComponents: [String] {
+        switch self {
+        case .anthropic: ["v1", "messages"]
+        case .openAI: ["responses"]
+        }
+    }
+
+    func chatEndpoint(baseURLString: String?) -> URL {
+        let trimmed = baseURLString?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let candidate = trimmed.isEmpty ? defaultBaseURLString : trimmed
+        if let endpoint = endpoint(fromBase: candidate) {
+            return endpoint
+        }
+        return endpoint(fromBase: defaultBaseURLString)!
+    }
+
+    private func endpoint(fromBase base: String) -> URL? {
+        let normalized = base.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard var url = URL(string: normalized), url.scheme != nil, url.host != nil else {
+            return nil
+        }
+        for component in chatPathComponents {
+            url.append(path: component)
+        }
+        return url
     }
 
     private var credentialStorage: (account: String, environment: String) {
@@ -37,13 +71,20 @@ enum AgentProvider: String, CaseIterable, Sendable {
     }
 
     @concurrent
-    func setAPIKey(_ key: String?) async {
+    @discardableResult
+    func setAPIKey(_ key: String?) async -> Bool {
+        let account = credentialStorage.account
         if let key {
-            KeychainStore.save(key, account: credentialStorage.account)
+            guard KeychainStore.save(key, account: account) else { return false }
+            guard KeychainStore.load(account: account) == key else {
+                Log.agent.error("keychain save could not be read back account=\(account)")
+                return false
+            }
         } else {
-            KeychainStore.delete(account: credentialStorage.account)
+            guard KeychainStore.delete(account: account) else { return false }
         }
         NotificationCenter.default.post(name: .agentAPIKeyChanged, object: rawValue)
+        return true
     }
 }
 
@@ -119,25 +160,74 @@ enum AgentModel: String, CaseIterable, Codable, Sendable {
 }
 
 struct AgentRunSettings: Equatable, Sendable {
-    let model: AgentModel
+    let model: AgentChatModel
     let reasoningEffort: AgentReasoningEffort
+
+    init(model: AgentChatModel, reasoningEffort: AgentReasoningEffort) {
+        self.model = model
+        self.reasoningEffort = reasoningEffort
+    }
+
+    init(model: AgentModel, reasoningEffort: AgentReasoningEffort) {
+        self.init(model: .builtIn(model), reasoningEffort: reasoningEffort)
+    }
 }
 
 enum AgentReasoningPreferences {
+    static func effort(for model: AgentChatModel, defaults: UserDefaults) -> AgentReasoningEffort {
+        effort(forPersistenceToken: model.persistenceToken, model: model, defaults: defaults)
+    }
+
     static func effort(for model: AgentModel, defaults: UserDefaults) -> AgentReasoningEffort {
-        guard let rawValue = defaults.string(forKey: key("effort", model: model)),
+        effort(for: .builtIn(model), defaults: defaults)
+    }
+
+    static func set(_ effort: AgentReasoningEffort, for model: AgentChatModel, defaults: UserDefaults) {
+        defaults.set(effort.rawValue, forKey: key(model.persistenceToken))
+    }
+
+    static func set(_ effort: AgentReasoningEffort, for model: AgentModel, defaults: UserDefaults) {
+        set(effort, for: .builtIn(model), defaults: defaults)
+    }
+
+    private static func effort(
+        forPersistenceToken token: String,
+        model: AgentChatModel,
+        defaults: UserDefaults
+    ) -> AgentReasoningEffort {
+        guard let rawValue = defaults.string(forKey: key(token)),
               let effort = AgentReasoningEffort(rawValue: rawValue),
               model.supportedReasoningEfforts.contains(effort)
         else { return .medium }
         return effort
     }
 
-    static func set(_ effort: AgentReasoningEffort, for model: AgentModel, defaults: UserDefaults) {
-        defaults.set(effort.rawValue, forKey: key("effort", model: model))
+    private static func key(_ persistenceToken: String) -> String {
+        "agentReasoning.effort.\(persistenceToken)"
+    }
+}
+
+enum AgentBaseURLPreferences {
+    static func storedString(for provider: AgentProvider, defaults: UserDefaults) -> String {
+        defaults.string(forKey: key(for: provider))?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
-    private static func key(_ setting: String, model: AgentModel) -> String {
-        "agentReasoning.\(setting).\(model.rawValue)"
+    static func set(_ value: String?, for provider: AgentProvider, defaults: UserDefaults) {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if trimmed.isEmpty || trimmed == provider.defaultBaseURLString {
+            defaults.removeObject(forKey: key(for: provider))
+        } else {
+            defaults.set(trimmed, forKey: key(for: provider))
+        }
+    }
+
+    static func chatEndpoint(for provider: AgentProvider, defaults: UserDefaults) -> URL {
+        provider.chatEndpoint(baseURLString: storedString(for: provider, defaults: defaults))
+    }
+
+    private static func key(for provider: AgentProvider) -> String {
+        "agentBaseURL.\(provider.rawValue)"
     }
 }
 
@@ -149,14 +239,30 @@ enum AgentRoute: Equatable, Sendable {
 
 enum AgentRouting {
     static func route(
-        model: AgentModel,
+        model: AgentChatModel,
         credentials: AgentCredentialSnapshot,
         hasHostedCredits: Bool,
         hasPaidPlan: Bool
     ) -> AgentRoute {
         if !credentials[model.provider].isEmpty { return .direct }
+        // Custom models are BYOK-only; hosted backend only knows built-in IDs.
+        if model.isCustom { return .unavailable }
         if model.requiresPaidHostedPlan && !hasPaidPlan { return .unavailable }
         return hasHostedCredits ? .hosted : .unavailable
+    }
+
+    static func route(
+        model: AgentModel,
+        credentials: AgentCredentialSnapshot,
+        hasHostedCredits: Bool,
+        hasPaidPlan: Bool
+    ) -> AgentRoute {
+        route(
+            model: .builtIn(model),
+            credentials: credentials,
+            hasHostedCredits: hasHostedCredits,
+            hasPaidPlan: hasPaidPlan
+        )
     }
 }
 
@@ -214,7 +320,7 @@ struct AgentRequestContext: Equatable, Sendable {
     let outputMessageID: UUID
     let projectID: String?
 
-    func apply(to request: inout URLRequest, telemetryEnabled: Bool) {
+    func apply(to request: inout URLRequest) {
         request.setValue(conversationID.uuidString.lowercased(), forHTTPHeaderField: "X-Palmier-Conversation-Id")
         request.setValue(traceID.uuidString.lowercased(), forHTTPHeaderField: "X-Palmier-Trace-Id")
         request.setValue(spanID.uuidString.lowercased(), forHTTPHeaderField: "X-Palmier-Span-Id")
@@ -223,7 +329,6 @@ struct AgentRequestContext: Equatable, Sendable {
         if let projectID, !projectID.isEmpty {
             request.setValue(projectID, forHTTPHeaderField: "X-Palmier-Project-Id")
         }
-        request.setValue(telemetryEnabled ? "1" : "0", forHTTPHeaderField: "X-Palmier-Agent-Telemetry")
     }
 }
 

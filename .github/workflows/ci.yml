@@ -11,24 +11,30 @@ concurrency:
 
 jobs:
   build-test:
-    name: Build & Test
-    # PalmierPro targets macOS 26 (Tahoe), arm64 only. Requires a macOS 26 runner image.
+    name: Build & Test (Intel)
+    # PalmierPro Intel local/BYOK edition. Trait-free x86_64 build on macOS 26.
     runs-on: macos-26
-    timeout-minutes: 40
+    timeout-minutes: 60
+    env:
+      SWIFT_TRIPLE: x86_64-apple-macosx26.0
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
 
       - name: Show toolchain
-        run: swift --version
+        run: |
+          swift --version
+          uname -m
 
       - name: Cache SwiftPM
         uses: actions/cache@v4
         with:
           path: .build
-          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
-          restore-keys: spm-${{ runner.os }}-
+          key: spm-${{ runner.os }}-x86_64-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            spm-${{ runner.os }}-x86_64-
+            spm-${{ runner.os }}-
 
       - name: Check localization
         run: |
@@ -42,5 +48,15 @@ jobs:
           scripts/localization/sync.sh "${localization_args[@]}"
           git diff --exit-code -- Sources/PalmierPro/Resources/Localization/en.lproj/Localizable.strings
 
-      - name: Test
-        run: swift test
+      - name: Test (Intel)
+        run: swift test --triple "$SWIFT_TRIPLE"
+
+      - name: Bundle Intel DMG
+        run: scripts/bundle.sh release --intel --dmg
+
+      - name: Upload PalmierPro-Intel.dmg
+        uses: actions/upload-artifact@v4
+        with:
+          name: PalmierPro-Intel
+          path: .build/PalmierPro-Intel.dmg
+          if-no-files-found: error

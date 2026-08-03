@@ -657,7 +657,6 @@
 "Preparing…" = "প্রস্তুত করা হচ্ছে…";
 "Presence" = "প্রেজেন্স";
 "Preview" = "প্রিভিউ";
-"Privacy & Diagnostics" = "প্রাইভেসি ও ডায়াগনস্টিকস";
 "Pro plan" = "Pro প্ল্যান";
 "Product demos" = "প্রোডাক্ট ডেমো";
 "Project" = "প্রজেক্ট";
@@ -722,7 +721,6 @@
 "Resolution must be at least 2 × 2 pixels." = "রেজোলিউশন কমপক্ষে ২ × ২ পিক্সেল হতে হবে।";
 "Resolution must not exceed 8192 pixels on either edge." = "কোনো দিকেই রেজোলিউশন ৮১৯২ পিক্সেলের বেশি হতে পারবে না।";
 "Restart Palmier Pro" = "Palmier Pro রিস্টার্ট করুন";
-"Restart Palmier Pro to apply this change." = "এই পরিবর্তন প্রয়োগ করতে Palmier Pro রিস্টার্ট করুন।";
 "Retry" = "আবার চেষ্টা করুন";
 "Retry Download" = "ডাউনলোড আবার চেষ্টা করুন";
 "Reveal in Finder" = "Finder-এ দেখান";
@@ -772,11 +770,8 @@
 "Selection Tool" = "সিলেকশন টুল";
 "Send" = "পাঠান";
 "Send Feedback…" = "মতামত পাঠান…";
-"Send crash and error reports to help diagnose problems. Media and project content are never included." = "সমস্যা শনাক্ত করতে ক্র্যাশ ও এরর রিপোর্ট পাঠান। মিডিয়া ও প্রজেক্টের কনটেন্ট কখনও অন্তর্ভুক্ত হয় না।";
-"Send crash reports" = "ক্র্যাশ রিপোর্ট পাঠান";
 "Send feedback" = "মতামত পাঠান";
 "Send only the visible clip range to the model, not the full source." = "সম্পূর্ণ সোর্স নয়, শুধু ক্লিপের দৃশ্যমান রেঞ্জ মডেলে পাঠান।";
-"Send usage data from your interactions with Palmier Pro to help improve the app." = "অ্যাপ উন্নত করতে Palmier Pro-তে আপনার ব্যবহারের ডেটা পাঠান।";
 "Sending…" = "পাঠানো হচ্ছে…";
 "Sequence" = "সিকোয়েন্স";
 "Server URL" = "সার্ভার URL";
@@ -787,7 +782,6 @@
 "Setup instructions" = "সেটআপ নির্দেশনা";
 "Shadow" = "শ্যাডো";
 "Shadows" = "শ্যাডোস";
-"Share usage data" = "ব্যবহারের ডেটা শেয়ার করুন";
 "Sharpen" = "শার্পেন";
 "Short-form and social" = "শর্ট-ফর্ম ও সোশ্যাল";
 "Shortcuts" = "শর্টকাট";

@@ -232,7 +232,9 @@ final class BeatDetector: @unchecked Sendable {
     private static func floats(_ array: MLMultiArray) -> [Float] {
         switch array.dataType {
         case .float16:
-            return array.withUnsafeBufferPointer(ofType: Float16.self) { $0.map(Float.init) }
+            let start = array.dataPointer.assumingMemoryBound(to: UInt16.self)
+            let buffer = UnsafeBufferPointer(start: start, count: array.count)
+            return buffer.map { IEEE754Binary16.float(fromBits: UInt16(littleEndian: $0)) }
         case .float32:
             return array.withUnsafeBufferPointer(ofType: Float.self) { Array($0) }
         default:

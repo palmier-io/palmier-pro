@@ -63,27 +63,21 @@ struct CategoryLog {
         #endif
     }
     func info(_ m: String) { logger.info("\(m, privacy: .public)") }
-    func notice(_ m: String, telemetry: String? = nil, data: Telemetry.Payload? = nil) {
+    func notice(_ m: String) {
         mirror("NOTICE", m)
         logger.notice("\(m, privacy: .public)")
-        if let telemetry {
-            Telemetry.breadcrumb(telemetry, category: category, data: data)
-        }
     }
-    func warning(_ m: String, telemetry: String? = nil, data: Telemetry.Payload? = nil) {
+    func warning(_ m: String) {
         mirror("WARN", m)
         logger.warning("\(m, privacy: .public)")
-        Telemetry.logWarning(telemetry ?? m, category: category, data: data)
     }
-    func error(_ m: String, telemetry: String? = nil, data: Telemetry.Payload? = nil) {
+    func error(_ m: String) {
         mirror("ERROR", m)
         logger.error("\(m, privacy: .public)")
-        Telemetry.logError(telemetry ?? m, category: category, data: data)
     }
-    func fault(_ m: String, telemetry: String? = nil, data: Telemetry.Payload? = nil) {
+    func fault(_ m: String) {
         mirror("FAULT", m)
         logger.fault("\(m, privacy: .public)")
-        Telemetry.logFault(telemetry ?? m, category: category, data: data)
     }
 
     private func mirror(_ level: String, _ msg: String) {

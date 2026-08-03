@@ -145,7 +145,7 @@ struct AgentPanelView: View {
 
     private var modelPicker: some View {
         Menu {
-            ForEach(service.availableModels, id: \.self) { model in
+            ForEach(service.availableModels) { model in
                 Button {
                     service.model = model
                 } label: {
@@ -398,9 +398,6 @@ struct AgentPanelView: View {
                 VStack(spacing: AppTheme.Spacing.xs) {
                     ForEach(Self.starterPrompts) { starterPrompt in
                         AgentStarterPromptButton(starterPrompt: starterPrompt) {
-                            Analytics.capture(.agentStarterPromptClicked, properties: [
-                                "starter_prompt": starterPrompt.id,
-                            ])
                             populatePrompt(starterPrompt.prompt)
                         }
                     }
@@ -413,62 +410,13 @@ struct AgentPanelView: View {
 
     @ViewBuilder
     private var missingKeyState: some View {
-        let account = AccountService.shared
-        VStack(spacing: AppTheme.Spacing.mdLg) {
-            Button {
-                missingKeyPrimaryAction(account: account)
-            } label: {
-                HStack(spacing: AppTheme.Spacing.sm) {
-                    if let icon = missingKeyPrimaryIcon(account: account) {
-                        Image(systemName: icon)
-                    }
-                    Text(missingKeyPrimaryLabel(account: account))
-                }
-                    .font(.system(size: AppTheme.FontSize.mdLg, weight: .semibold))
-            }
-            .buttonStyle(.capsule(.prominent, size: .regular))
-
-            if !account.isSignedIn {
-                Text(L10n.string("First-time sign-ups only"))
-                    .font(.system(size: AppTheme.FontSize.sm))
-                    .foregroundStyle(AppTheme.Text.mutedColor)
-            }
-
-            Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
-                Text(missingKeyLinkLabel)
-                    .underline()
-                    .foregroundStyle(AppTheme.Text.secondaryColor)
-                    .padding(.horizontal, AppTheme.Spacing.sm)
-                    .padding(.vertical, AppTheme.Spacing.xxs)
-            }
-            .buttonStyle(.plain)
-            .font(.system(size: AppTheme.FontSize.smMd, weight: .medium))
-            .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
+        Button {
+            SettingsWindowController.shared.show(tab: .agent)
+        } label: {
+            Text(L10n.string("Add your own API Key"))
+                .font(.system(size: AppTheme.FontSize.mdLg, weight: .semibold))
         }
-    }
-
-    private var missingKeyLinkLabel: String {
-        service.model.provider.chatPresentation.missingKeyLinkTitle
-    }
-
-    private func missingKeyPrimaryLabel(account: AccountService) -> String {
-        if !account.isSignedIn { return L10n.string("Log in for 250 free credits") }
-        if !account.isPaid { return L10n.string("Subscribe") }
-        return L10n.string("Open Settings")
-    }
-
-    private func missingKeyPrimaryIcon(account: AccountService) -> String? {
-        if !account.isSignedIn { return "gift.fill" }
-        if !account.isPaid { return nil }
-        return "gearshape"
-    }
-
-    private func missingKeyPrimaryAction(account: AccountService) {
-        if !account.isSignedIn {
-            Task { await account.signInWithGoogle() }
-        } else {
-            SettingsWindowController.shared.show(tab: .account)
-        }
+        .buttonStyle(.capsule(.prominent, size: .regular))
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
@@ -615,22 +563,20 @@ private struct ChatTabView: View {
 private extension AgentProvider {
     var chatPresentation: (
         byokLabel: String, byokHelp: String,
-        unavailableMessage: String, missingKeyLinkTitle: String
+        unavailableMessage: String
     ) {
         switch self {
         case .anthropic:
             (
                 L10n.string("using Anthropic API key"),
                 L10n.string("Streaming through your Anthropic API key (BYOK)"),
-                L10n.string("Add an Anthropic API key or credits to use this model."),
-                L10n.string("or add your own Anthropic key")
+                L10n.string("Add an Anthropic API key or credits to use this model.")
             )
         case .openAI:
             (
                 L10n.string("using OpenAI API key"),
                 L10n.string("Streaming through your OpenAI API key (BYOK)"),
-                L10n.string("Add an OpenAI API key or credits to use this model."),
-                L10n.string("or add your own OpenAI key")
+                L10n.string("Add an OpenAI API key or credits to use this model.")
             )
         }
     }

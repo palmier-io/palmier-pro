@@ -57,9 +57,6 @@ struct GeneralPane: View {
                 NotificationsPane()
             }
 
-            SettingsSection(title: L10n.string("Privacy & Diagnostics")) {
-                PrivacyPane()
-            }
         }
     }
 }
