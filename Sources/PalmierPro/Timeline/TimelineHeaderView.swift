@@ -1,5 +1,17 @@
 import AppKit
 
+enum TimelineHeaderSymbol {
+    static func image(
+        named name: String,
+        tint: NSColor,
+        configuration: NSImage.SymbolConfiguration
+    ) -> NSImage? {
+        let colorConfiguration = NSImage.SymbolConfiguration(paletteColors: [tint, tint, tint])
+        return NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(configuration.applying(colorConfiguration))
+    }
+}
+
 /// Fixed track header column drawn to the left of the scrollable timeline.
 final class TimelineHeaderView: NSView {
     unowned var editor: EditorViewModel
@@ -77,7 +89,12 @@ final class TimelineHeaderView: NSView {
             // Drag handle (reorder grip)
             let gripX = stripWidth + 6
             let gripRect = NSRect(x: gripX, y: y + (h - iconSize) / 2, width: iconSize, height: iconSize)
-            drawSymbol("line.3.horizontal", in: gripRect, tint: AppTheme.Text.secondary.withAlphaComponent(0.4), config: iconConfig, context: ctx)
+            drawSymbol(
+                "line.3.horizontal",
+                in: gripRect,
+                tint: AppTheme.Text.secondary.withAlphaComponent(0.4),
+                config: iconConfig
+            )
             dragHandleRects[i] = gripRect.insetBy(dx: -4, dy: -4)
 
             // Track label
@@ -91,17 +108,17 @@ final class TimelineHeaderView: NSView {
             let syncX = rightmostX - iconSize - 4
 
             syncLockButtonRects[i] = drawToggleIcon(
-                x: syncX, y: iconY, size: iconSize, config: iconConfig, context: ctx,
+                x: syncX, y: iconY, size: iconSize, config: iconConfig,
                 active: track.syncLocked, onSymbol: "link", offSymbol: "personalhotspot.slash"
             )
             if track.type == .audio {
                 muteButtonRects[i] = drawToggleIcon(
-                    x: rightmostX, y: iconY, size: iconSize, config: iconConfig, context: ctx,
+                    x: rightmostX, y: iconY, size: iconSize, config: iconConfig,
                     active: !track.muted, onSymbol: "speaker.wave.2.fill", offSymbol: "speaker.slash.fill"
                 )
             } else {
                 hideButtonRects[i] = drawToggleIcon(
-                    x: rightmostX, y: iconY, size: iconSize, config: iconConfig, context: ctx,
+                    x: rightmostX, y: iconY, size: iconSize, config: iconConfig,
                     active: !track.hidden, onSymbol: "eye", offSymbol: "eye.slash"
                 )
             }
@@ -128,27 +145,25 @@ final class TimelineHeaderView: NSView {
     /// Draw a toggleable SF Symbol button; returns the hit-test rect (padded).
     private func drawToggleIcon(
         x: CGFloat, y: CGFloat, size: CGFloat,
-        config: NSImage.SymbolConfiguration, context: CGContext,
+        config: NSImage.SymbolConfiguration,
         active: Bool, onSymbol: String, offSymbol: String
     ) -> NSRect {
         let rect = NSRect(x: x, y: y, width: size, height: size)
         let tint = active ? AppTheme.Text.secondary : AppTheme.Text.secondary.withAlphaComponent(0.3)
-        drawSymbol(active ? onSymbol : offSymbol, in: rect, tint: tint, config: config, context: context)
+        drawSymbol(active ? onSymbol : offSymbol, in: rect, tint: tint, config: config)
         return rect.insetBy(dx: -4, dy: -4)
     }
 
-    private func drawSymbol(_ name: String, in rect: NSRect, tint: NSColor, config: NSImage.SymbolConfiguration, context: CGContext) {
-        guard let img = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
-            .withSymbolConfiguration(config) else { return }
+    private func drawSymbol(
+        _ name: String,
+        in rect: NSRect,
+        tint: NSColor,
+        config: NSImage.SymbolConfiguration
+    ) {
+        guard let img = TimelineHeaderSymbol.image(named: name, tint: tint, configuration: config) else { return }
         let symbolSize = img.size
         let drawRect = NSRect(x: rect.midX - symbolSize.width / 2, y: rect.midY - symbolSize.height / 2, width: symbolSize.width, height: symbolSize.height)
-        let tinted = NSImage(size: drawRect.size, flipped: true) { drawRect in
-            tint.set()
-            img.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: 1.0)
-            drawRect.fill(using: .sourceAtop)
-            return true
-        }
-        tinted.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: 1.0)
+        img.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: 1.0)
     }
 
     private func updateAppearanceColors() {
