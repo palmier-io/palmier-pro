@@ -281,6 +281,7 @@ struct TextFrameRendererTests {
         var style = TextStyle()
         style.tracking = 18
         style.lineSpacing = 24
+        style.shadow.enabled = true
         style.shadow.offsetX = 15
         style.shadow.offsetY = -9
         style.shadow.blur = 10
@@ -307,6 +308,7 @@ struct TextFrameRendererTests {
 
     @Test func verticalShadowOffsetExpandsMeasuredHeight() {
         var centered = TextStyle()
+        centered.shadow.enabled = true
         centered.shadow.offsetX = 0
         centered.shadow.offsetY = 0
         var shifted = centered
