@@ -67,7 +67,7 @@ enum EditAction {
                 return .disabled(reason: L10n.string("Reframe model not available"))
             }
             let duration = effectiveDurationOverride ?? asset.resolvedDuration
-            if let error = model.validateSourceDuration(duration) {
+            if let error = model.validateReframeDuration(duration) {
                 return .disabled(reason: error)
             }
             return .available

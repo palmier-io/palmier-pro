@@ -74,7 +74,7 @@ struct AITransitionPlacementTests {
         (12.0, [4, 6, 8], 8),
         (2.4, [Int](), 2),
     ]) func seedDurationSnapsToNearestSupported(seconds: Double, durations: [Int], expected: Int) {
-        #expect(EditorViewModel.nearestSupportedDuration(seconds: seconds, in: durations) == expected)
+        #expect(VideoModelConfig.nearestSupportedDuration(seconds: seconds, in: durations) == expected)
     }
 
     @Test func seedIsStaleAfterTimelineSwitchOrFilledGap() {

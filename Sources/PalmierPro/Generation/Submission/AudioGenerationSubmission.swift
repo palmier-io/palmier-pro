@@ -23,12 +23,12 @@ struct AudioGenerationSubmission {
         let shouldExtractAudio = !usesReferences && !references.isEmpty && model.usesSourceURL
             && (references.first?.type == .video || trimmedSourceOverride?.hasTrim == true)
         let extractionTrim = shouldExtractAudio ? trimmedSourceOverride : nil
-        let preprocessRef: (@Sendable (Int, MediaAsset) async throws -> URL?)?
+        let preprocessRef: (@Sendable (Int, MediaAsset, URL) async throws -> URL?)?
         if shouldExtractAudio {
-            preprocessRef = { index, asset in
+            preprocessRef = { index, _, currentURL in
                 guard index == 0 else { return nil }
                 return try await AudioTrackExtractor.extract(
-                    sourceURL: asset.url,
+                    sourceURL: currentURL,
                     trimmedSource: extractionTrim
                 )
             }

@@ -226,7 +226,8 @@ extension GenerationView {
                 flashDropError("\(videoModel.displayName) only accepts \(supported) references.")
                 return
             }
-            if let err = selection.validate(for: videoModel) {
+            let trim = pendingTrimmedSource(for: videoModel, inputAssets: selection)
+            if let err = selection.validate(for: videoModel, trimmedSource: trim) {
                 flashDropError(err)
                 return
             }

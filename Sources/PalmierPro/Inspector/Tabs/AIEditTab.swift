@@ -70,7 +70,7 @@ struct AIEditTab: View {
                                 icon: "aspectratio",
                                 title: L10n.string("Reframe"),
                                 description: L10n.string("Change aspect ratio and extend the frame with AI"),
-                                detail: VideoModelConfig.reframe?.sourceDurationLimitLabel
+                                detail: VideoModelConfig.reframe?.reframeDurationLimitLabel
                                     .map { L10n.string("Up to \($0)") }
                             )
                         }
@@ -368,8 +368,9 @@ struct AIEditTab: View {
                 trimmed: trim
             )
         case .reframe:
-            guard let stored = EditSubmitter.reframeSeed(for: asset) else { return }
-            seedPanel(stored: stored, trimmed: trimmedSourceIfEnabled())
+            let trim = trimmedSourceIfEnabled()
+            guard let stored = EditSubmitter.reframeSeed(for: asset, trimmedSource: trim) else { return }
+            seedPanel(stored: stored, trimmed: trim)
         case .lipSync:
             guard let model = VideoModelConfig.lipSync,
                   let stored = EditSubmitter.lipSyncSeed(for: asset, model: model) else { return }

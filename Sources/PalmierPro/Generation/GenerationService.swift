@@ -38,7 +38,7 @@ final class GenerationService {
         folderId: String? = nil,
         buildParams: @escaping ([String]) -> BackendGenerationParams,
         snapshotRefs: (@Sendable (inout GenerationInput, [String]) -> Void)? = nil,
-        preprocessRef: (@Sendable (Int, MediaAsset) async throws -> URL?)? = nil,
+        preprocessRef: (@Sendable (Int, MediaAsset, URL) async throws -> URL?)? = nil,
         preprocessSourceVideo: (@Sendable (URL) async throws -> URL?)? = nil,
         fileExtension: String,
         projectURL: URL?,
@@ -147,7 +147,7 @@ final class GenerationService {
         references: [MediaAsset],
         trimmedSourceOverride: TrimmedSource?,
         preUploadedURLs: [String]?,
-        preprocessRef: (@Sendable (Int, MediaAsset) async throws -> URL?)?,
+        preprocessRef: (@Sendable (Int, MediaAsset, URL) async throws -> URL?)?,
         preprocessSourceVideo: (@Sendable (URL) async throws -> URL?)?
     ) async throws -> PreparedReferences {
         if let preUploadedURLs, !preUploadedURLs.isEmpty {
@@ -158,11 +158,14 @@ final class GenerationService {
         do {
             var urlsToUpload = references.map(\.url)
             let refTypes = references.map(\.type)
-            if let trim = trimmedSourceOverride, trim.hasTrim, !urlsToUpload.isEmpty {
-                Log.generation.notice("using trimmed source: frames \(trim.trimStartFrame)+\(trim.sourceFramesConsumed) of \(urlsToUpload[0].lastPathComponent)")
+            var trimmedIndex: Int?
+            if let trim = trimmedSourceOverride, trim.hasTrim,
+               let index = urlsToUpload.firstIndex(of: trim.sourceURL) {
+                Log.generation.notice("using trimmed source: frames \(trim.trimStartFrame)+\(trim.sourceFramesConsumed) of \(urlsToUpload[index].lastPathComponent)")
                 let extracted = try await VideoTrimExtractor.extract(trim)
-                urlsToUpload[0] = extracted
+                urlsToUpload[index] = extracted
                 tempFiles.append(extracted)
+                trimmedIndex = index
             }
             if let preprocessSourceVideo, let sourceURL = urlsToUpload.first,
                let processed = try await preprocessSourceVideo(sourceURL) {
@@ -170,7 +173,11 @@ final class GenerationService {
                 tempFiles.append(processed)
             }
             if let preprocessRef, !references.isEmpty {
-                let rewrites = try await preprocessedReferenceURLs(references: references, preprocessRef: preprocessRef)
+                let rewrites = try await preprocessedReferenceURLs(
+                    references: references,
+                    currentURLs: urlsToUpload,
+                    preprocessRef: preprocessRef
+                )
                 for (i, rewritten) in rewrites {
                     guard let rewritten else { continue }
                     urlsToUpload[i] = rewritten
@@ -182,7 +189,7 @@ final class GenerationService {
                 types: refTypes,
                 cacheKeys: uploadCacheKeys(
                     references: references,
-                    trimmedFirstReference: trimmedSourceOverride?.hasTrim == true,
+                    trimmedIndex: trimmedIndex,
                     hasPreprocess: preprocessRef != nil || preprocessSourceVideo != nil
                 ),
             )
@@ -195,11 +202,13 @@ final class GenerationService {
 
     private func preprocessedReferenceURLs(
         references: [MediaAsset],
-        preprocessRef: @escaping @Sendable (Int, MediaAsset) async throws -> URL?
+        currentURLs: [URL],
+        preprocessRef: @escaping @Sendable (Int, MediaAsset, URL) async throws -> URL?
     ) async throws -> [(Int, URL?)] {
         try await withThrowingTaskGroup(of: (Int, URL?).self) { group in
             for (i, asset) in references.enumerated() {
-                group.addTask { (i, try await preprocessRef(i, asset)) }
+                let currentURL = currentURLs[i]
+                group.addTask { (i, try await preprocessRef(i, asset, currentURL)) }
             }
             var results: [(Int, URL?)] = []
             for try await result in group { results.append(result) }
@@ -209,12 +218,12 @@ final class GenerationService {
 
     private func uploadCacheKeys(
         references: [MediaAsset],
-        trimmedFirstReference: Bool,
+        trimmedIndex: Int?,
         hasPreprocess: Bool
     ) -> [MediaAsset?] {
         references.enumerated().map { index, asset in
             if hasPreprocess { return nil }
-            if index == 0 && trimmedFirstReference { return nil }
+            if index == trimmedIndex { return nil }
             return asset
         }
     }

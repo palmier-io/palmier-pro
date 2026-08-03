@@ -171,6 +171,22 @@ extension GenerationView {
         )
     }
 
+    /// Matches GenerationService: the trim rewrites the first uploaded reference whose URL matches it.
+    func pendingTrimmedSource(
+        for model: VideoModelConfig,
+        inputAssets: VideoGenerationSubmission.InputAssets
+    ) -> TrimmedSource? {
+        guard let trim = editor.pendingEditTrimmedSource, trim.hasTrim else { return nil }
+        if model.requiresSourceVideo {
+            guard let source = inputAssets.sourceVideo ?? sourceVideo,
+                  trim.sourceURL == source.url else { return nil }
+            return trim
+        }
+        guard let match = inputAssets.textToVideoReferences.first(where: { $0.url == trim.sourceURL }),
+              match.type == .video else { return nil }
+        return trim
+    }
+
     func audioInputAssets(for model: AudioModelConfig) -> AudioGenerationSubmission.InputAssets {
         guard model.supportsReferences else { return AudioGenerationSubmission.InputAssets() }
         return AudioGenerationSubmission.InputAssets(imageRefs: refImages, audioRefs: refAudios)
@@ -180,6 +196,7 @@ extension GenerationView {
         switch selectedType {
         case .video:
             let inputAssets = videoInputAssets(for: videoModel)
+            let trimmedSource = pendingTrimmedSource(for: videoModel, inputAssets: inputAssets)
             let modelError: String?
             if videoModel.requiresSourceVideo {
                 modelError = videoModel.validateSourceDuration(effectiveSourceVideoSeconds)
@@ -191,7 +208,7 @@ extension GenerationView {
                     resolution: effectiveResolution
                 )
             }
-            return modelError ?? inputAssets.validate(for: videoModel)
+            return modelError ?? inputAssets.validate(for: videoModel, trimmedSource: trimmedSource)
         case .image:
             let quality = imageModel.qualities != nil ? selectedQuality : nil
             let imageCount = imageModel.maxImages > 1
@@ -330,13 +347,7 @@ extension GenerationView {
         case .video:
             let model = videoModel
             let inputAssets = videoInputAssets(for: model)
-            let trimmedSource: TrimmedSource? = {
-                guard model.requiresSourceVideo,
-                      let trim = editor.pendingEditTrimmedSource,
-                      let sv = sourceVideo,
-                      trim.sourceURL == sv.url else { return nil }
-                return trim
-            }()
+            let trimmedSource = pendingTrimmedSource(for: model, inputAssets: inputAssets)
             let placeholderDuration: Double
             if model.requiresSourceVideo {
                 if let trim = trimmedSource, trim.hasTrim {
@@ -344,6 +355,8 @@ extension GenerationView {
                 } else {
                     placeholderDuration = sourceVideo?.duration ?? 5
                 }
+            } else if let trim = trimmedSource, trim.hasTrim {
+                placeholderDuration = trim.durationSeconds
             } else {
                 placeholderDuration = Double(selectedDuration)
             }
