@@ -830,7 +830,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .addCaptions,
-            description: "Transcribes spoken audio and creates styled caption text clips on their own track. Pass trackIndex to caption one dialogue or multicam mic track; omit it to automatically choose the timeline track with the most speech. The app uses cloud only when the signed-in account has enough credits for the uncached request; otherwise it uses local transcription. Cloud auto-detects language. Per-word animations are timed from the transcript. Returns the caption group summary (captionGroupId, clipCount, frameRange, shared style, textPreview) — restyle it later with update_text and that captionGroupId.",
+            description: "Transcribes spoken audio and creates caption text clips on their own track. Style, animation, and transform are optional overrides: omit them ALL for the app's clean default captions (plain white Helvetica, lower-third) — do not invent fonts, colors, outlines, backgrounds, or animations the user didn't ask for. Pass trackIndex to caption one dialogue or multicam mic track; omit it to automatically choose the timeline track with the most speech. The app uses cloud only when the signed-in account has enough credits for the uncached request; otherwise it uses local transcription. Cloud auto-detects language. Per-word animations are timed from the transcript. Returns the caption group summary (captionGroupId, clipCount, frameRange, shared style, textPreview) — restyle it later with update_text and that captionGroupId.",
             inputSchema: objectSchema(
                 properties: mergedProperties([
                     "language": ["type": "string", "description": "BCP-47 speech language. Applies to local only; cloud auto-detects."],
@@ -852,7 +852,7 @@ enum ToolDefinitions {
                         "description": "Extend each caption to close a shorter gap before the next generated caption. Default 0.25 seconds; 0 disables.",
                     ],
                 ], textStyleProperties(detailed: false), [
-                    "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Caption animation preset."],
+                    "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Caption animation preset. Omit for static captions; set only when the user asks for animation."],
                     "highlightColor": ["type": "string", "description": "Active-word hex."],
                 ])
             )
@@ -1155,7 +1155,7 @@ enum ToolDefinitions {
         let properties: [String: [String: Any]] = [
             "style": [
                 "type": "object",
-                "description": "Partial text-style patch. Omit properties to keep defaults or existing values.",
+                "description": "Partial text-style patch. Omitted properties keep existing values (updates) or the app's default style (new text and captions). Set only what the user asked for; omit the whole object when they didn't specify a look.",
                 "properties": [
                     "fontName": ["type": "string", "description": "Font PostScript name."],
                     "fontSize": ["type": "number", "minimum": 12, "maximum": 300, "description": "Font size in canvas points."],
@@ -1230,7 +1230,7 @@ enum ToolDefinitions {
         ]
         guard !detailed, var style = properties["style"] else { return properties }
         style = schemaWithoutDescriptions(style)
-        style["description"] = "Same partial style patch as update_text."
+        style["description"] = "Same partial style patch as update_text. Omit entirely unless the user asked for specific styling; omitted = app default style."
         return ["style": style]
     }
 

@@ -4,14 +4,8 @@ struct CaptionTab: View {
     @Environment(EditorViewModel.self) var editor
     @Bindable private var account = AccountService.shared
 
-    @State private var style: TextStyle = CaptionTab.defaultStyle
+    @State private var style: TextStyle = .caption
     @State private var center = AppTheme.Caption.defaultCenter
-
-    private static var defaultStyle: TextStyle {
-        var s = TextStyle(fontSize: AppTheme.Caption.defaultFontSize)
-        s.shadow.enabled = false
-        return s
-    }
     @State private var selectedTrackId: String?
     @State private var selectedClipTargets: [String] = []
     @State private var provider: TranscriptionProvider = .cloud
@@ -322,8 +316,8 @@ struct CaptionTab: View {
 
     private var styleSection: some View {
         TextStyleControls(
-            selection: TextStyleSelection(styles: [style], fallback: Self.defaultStyle),
-            defaults: Self.defaultStyle,
+            selection: TextStyleSelection(styles: [style], fallback: .caption),
+            defaults: .caption,
             styleExpanded: $styleExpanded,
             groupsExpandedByDefault: false,
             actions: styleActions

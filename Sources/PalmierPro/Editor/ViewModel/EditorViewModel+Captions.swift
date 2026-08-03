@@ -5,7 +5,7 @@ extension EditorViewModel {
     struct CaptionRequest {
         var sourceClipIds: [String] = []
         var autoDetect: Bool = false
-        var style: TextStyle = TextStyle()
+        var style: TextStyle = .caption
         var center: CGPoint = AppTheme.Caption.defaultCenter
         var textCase: CaptionCase = .auto
         var censorProfanity: Bool = false

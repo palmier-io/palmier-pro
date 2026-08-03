@@ -772,6 +772,7 @@ struct FCPXMLExporterTests {
         text.textContent = "Caption"
         var style = TextStyle()
         style.fontName = "Helvetica-Bold"
+        style.isBold = true
         text.textStyle = style
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [text])])
 

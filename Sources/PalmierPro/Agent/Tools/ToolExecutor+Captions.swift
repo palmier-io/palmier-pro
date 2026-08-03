@@ -11,7 +11,7 @@ extension ToolExecutor {
         try validateUnknownKeys(args, allowed: Self.addCaptionsAllowedKeys, path: "add_captions")
 
         let stylePatch = try parseTextStylePatch(args, path: "add_captions")
-        var style = TextStyle(fontSize: AppTheme.Caption.defaultFontSize)
+        var style = TextStyle.caption
         if let stylePatch { Self.applyTextStylePatch(stylePatch, to: &style) }
 
         var center = AppTheme.Caption.defaultCenter
