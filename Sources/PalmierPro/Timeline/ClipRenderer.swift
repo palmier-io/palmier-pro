@@ -128,6 +128,8 @@ enum ClipRenderer {
             drawWaveform(samples: samples, deadAirRanges: deadAirRanges(),
                          speakerMask: speakerColors.isEmpty ? nil : cache?.speakerMask(for: clip.mediaRef),
                          clip: clip, type: colorType, in: audioRect, context: context)
+        } else if type == .text, showsLabel(isSelected: isSelected, in: rect) {
+            drawTextParagraph(clip: clip, displayName: displayName, in: rect)
         }
 
         let showsFadeControls = showsFadeControls(isSelected: isSelected, isHovered: isHovered, in: rect)
@@ -184,13 +186,9 @@ enum ClipRenderer {
         let showDetailChrome = rect.width >= AppTheme.ComponentSize.timelineClipDetailMinWidth
         let showLabel = showsLabel(isSelected: isSelected, in: rect)
 
-        if showLabel {
-            if type == .text {
-                drawTextParagraph(clip: clip, displayName: displayName, in: rect)
-            } else {
-                drawLabelBar(clip: clip, type: type, in: labelRect, clipRect: rect, context: context,
-                             displayName: displayName, badge: multicamAngleLabel, fps: fps)
-            }
+        if showLabel, type != .text {
+            drawLabelBar(clip: clip, type: type, in: labelRect, clipRect: rect, context: context,
+                         displayName: displayName, badge: multicamAngleLabel, fps: fps)
         } else if multicamAngleLabel != nil, rect.width >= AppTheme.ComponentSize.timelineClipBorderMinWidth {
             let d = AppTheme.ComponentSize.timelineDotSize
             let inset = AppTheme.Spacing.xxs
