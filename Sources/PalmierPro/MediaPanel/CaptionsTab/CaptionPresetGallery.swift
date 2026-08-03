@@ -89,8 +89,7 @@ private struct CaptionPresetCell: View {
     }
 
     private var previewClip: Clip {
-        var style = TextStyle()
-        style.fontSize = 300   // fraction of render height; large so the sample reads in a small cell
+        let style = TextStyle(fontSize: 300)
         let transform = Transform(centerX: 0.5, centerY: 0.5, width: 0.92, height: 0.55)
         return CaptionPreviewRender.clip(content: Self.sample, style: style, transform: transform, preset: preset, highlight: highlight)
     }
