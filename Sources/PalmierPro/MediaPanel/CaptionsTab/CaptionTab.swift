@@ -19,6 +19,7 @@ struct CaptionTab: View {
     @State private var animationHighlight: TextStyle.RGBA = TextAnimation.defaultHighlight
     @State private var censorProfanity = false
     @State private var maxWords: Int?
+    @State private var maximumGapSeconds = CaptionGapSettings.default.maximumGapSeconds
     @State private var locale: Locale?
     @State private var supportedLocales: [Locale] = []
     @State private var isGenerating = false
@@ -196,6 +197,26 @@ struct CaptionTab: View {
                 } label: { EditorMenuValue(text: maxWords.map(String.init) ?? L10n.string("None"), expanded: true) }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
                 .frame(maxWidth: .infinity)
+            }
+            InspectorRow(
+                label: L10n.string("Close gaps"),
+                labelHelp: L10n.string("Extends a caption to close gaps up to this duration."),
+                onReset: {
+                    maximumGapSeconds = CaptionGapSettings.default.maximumGapSeconds
+                }
+            ) {
+                ScrubbableNumberField(
+                    value: maximumGapSeconds,
+                    range: CaptionGapSettings.maximumGapRange,
+                    displayMultiplier: 1_000,
+                    format: "%.0f",
+                    valueSuffix: " ms",
+                    dragSensitivity: 10,
+                    dragValueAdjustment: { ($0 / 0.05).rounded() * 0.05 },
+                    onChanged: { maximumGapSeconds = $0 },
+                    onCommit: { maximumGapSeconds = $0 }
+                )
+                .accessibilityLabel(L10n.string("Close gaps"))
             }
             InspectorRow(label: L10n.string("Censor profanity"), onReset: { censorProfanity = false }) {
                 Toggle(String(), isOn: $censorProfanity)
@@ -479,6 +500,7 @@ struct CaptionTab: View {
             censorProfanity: provider == .local && censorProfanity,
             locale: locale,
             maxWords: maxWords,
+            gapSettings: CaptionGapSettings(maximumGapSeconds: maximumGapSeconds) ?? .default,
             provider: provider,
             animation: TextAnimation(preset: animationPreset, highlight: animationHighlight)
         )

@@ -30,6 +30,14 @@ struct MCPTranscriptionTrackTests {
                 let properties = try #require(tool.inputSchema.objectValue?["properties"]?.objectValue)
                 #expect(properties["trackIndex"]?.objectValue?["type"]?.stringValue == "integer")
             }
+            let captionTool = try #require(tools.first { $0.name == "add_captions" })
+            let captionProperties = try #require(
+                captionTool.inputSchema.objectValue?["properties"]?.objectValue
+            )
+            let maximumGap = try #require(captionProperties["maximumGapSeconds"]?.objectValue)
+            #expect(maximumGap["type"]?.stringValue == "number")
+            #expect(maximumGap["minimum"]?.intValue == 0)
+            #expect(maximumGap["maximum"]?.intValue == 2)
 
             let transcript = try await client.callTool(
                 name: "get_transcript",
@@ -46,6 +54,11 @@ struct MCPTranscriptionTrackTests {
                 )
                 #expect(invalid.isError == true)
             }
+            let invalidGap = try await client.callTool(
+                name: "add_captions",
+                arguments: ["maximumGapSeconds": .double(2.1)]
+            )
+            #expect(invalidGap.isError == true)
         } catch {
             await server.stop()
             await client.disconnect()

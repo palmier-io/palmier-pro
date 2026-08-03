@@ -4,6 +4,7 @@ import Foundation
 extension ToolExecutor {
     private static let addCaptionsAllowedKeys: Set<String> = Set([
         "style", "transform", "censorProfanity", "language", "animation", "highlightColor", "maxWords", "trackIndex",
+        "maximumGapSeconds",
     ])
 
     func addCaptions(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
@@ -28,6 +29,23 @@ extension ToolExecutor {
             maxWords = n
         }
 
+        let gapSettings: CaptionGapSettings
+        if let rawMaximumGap = args["maximumGapSeconds"] {
+            guard !isJSONBoolean(rawMaximumGap),
+                  rawMaximumGap is NSNumber || rawMaximumGap is Double || rawMaximumGap is Int,
+                  let maximumGapSeconds = args.double("maximumGapSeconds"),
+                  let parsed = CaptionGapSettings(maximumGapSeconds: maximumGapSeconds) else {
+                throw ToolError(
+                    "add_captions: maximumGapSeconds must be a finite number from "
+                    + "\(CaptionGapSettings.maximumGapRange.lowerBound) through "
+                    + "\(CaptionGapSettings.maximumGapRange.upperBound)."
+                )
+            }
+            gapSettings = parsed
+        } else {
+            gapSettings = .default
+        }
+
         let scope = try resolveTranscriptionScope(editor, args, path: "add_captions")
         let cloudRequest = scope.captionRequest(in: editor, provider: .cloud)
         let context = try await transcriptionContext(args, path: "add_captions") {
@@ -46,6 +64,7 @@ extension ToolExecutor {
         request.censorProfanity = args.bool("censorProfanity") ?? false
         request.locale = context.preferredLocale
         request.maxWords = maxWords
+        request.gapSettings = gapSettings
         request.animation = animation
 
         try await Self.validateCloudTranscriptionAccess(for: request, in: editor)

@@ -11,6 +11,7 @@ extension EditorViewModel {
         var censorProfanity: Bool = false
         var locale: Locale? = nil
         var maxWords: Int? = nil
+        var gapSettings: CaptionGapSettings = .default
         var provider: TranscriptionProvider = .local
         /// Animation applied to every generated caption clip (timed from the transcript).
         var animation: TextAnimation = TextAnimation()
@@ -168,7 +169,12 @@ extension EditorViewModel {
         let animation: TextAnimation? = request.animation.isActive ? request.animation : nil
         let input = CaptionSpecBuilder.Input(
             targets: targets.compactMap { target in
-                results[target.clip.mediaRef].map { CaptionSpecBuilder.Target(clip: target.clip, result: $0) }
+                results[target.clip.mediaRef].map {
+                    CaptionSpecBuilder.Target(
+                        clip: target.clip,
+                        result: $0
+                    )
+                }
             },
             fps: timeline.fps,
             canvasWidth: timeline.width,
@@ -177,6 +183,7 @@ extension EditorViewModel {
             center: request.center,
             textCase: request.textCase,
             maxWords: request.maxWords,
+            gapSettings: request.gapSettings,
             animation: animation
         )
         let specs = try await CaptionSpecBuilder.build(input)

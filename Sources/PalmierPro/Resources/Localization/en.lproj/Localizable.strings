@@ -198,6 +198,7 @@
 "Close All Tabs" = "Close All Tabs";
 "Close Other Tabs" = "Close Other Tabs";
 "Close Tab" = "Close Tab";
+"Close gaps" = "Close gaps";
 "Cloud" = "Cloud";
 "Cloud auto-detects languages, produces more accurate transcripts, can identify speakers, and uses 25 credits/hr when a transcript is not cached." = "Cloud auto-detects languages, produces more accurate transcripts, can identify speakers, and uses 25 credits/hr when a transcript is not cached.";
 "Codec" = "Codec";
@@ -347,6 +348,7 @@
 "Exporting…" = "Exporting…";
 "Export…" = "Export…";
 "Exposure" = "Exposure";
+"Extends a caption to close gaps up to this duration." = "Extends a caption to close gaps up to this duration.";
 "Extra Large" = "Extra Large";
 "Fade In" = "Fade In";
 "Fade Out" = "Fade Out";

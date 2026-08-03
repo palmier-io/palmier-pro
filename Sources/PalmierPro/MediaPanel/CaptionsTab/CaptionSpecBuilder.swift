@@ -16,6 +16,7 @@ enum CaptionSpecBuilder {
         let center: CGPoint
         let textCase: EditorViewModel.CaptionCase
         let maxWords: Int?
+        let gapSettings: CaptionGapSettings
         let animation: TextAnimation?
     }
 
@@ -75,7 +76,71 @@ enum CaptionSpecBuilder {
             ))
             try Task.checkCancellation()
         }
-        return specs
+        return closingShortGaps(
+            in: specs,
+            settings: input.gapSettings,
+            fps: input.fps
+        )
+    }
+
+    private static func closingShortGaps(
+        in specs: [EditorViewModel.TextClipSpec],
+        settings: CaptionGapSettings,
+        fps: Int
+    ) -> [EditorViewModel.TextClipSpec] {
+        let maximumGapFrames = settings.maximumGapFrames(fps: fps)
+        guard maximumGapFrames > 0, !specs.isEmpty else { return specs }
+
+        var adjusted = specs
+        let ordered = adjusted.indices.sorted {
+            let lhs = adjusted[$0].startFrame
+            let rhs = adjusted[$1].startFrame
+            return lhs == rhs ? $0 < $1 : lhs < rhs
+        }
+        guard let firstIndex = ordered.first else { return adjusted }
+        var coverageIndex = firstIndex
+        let (firstEnd, firstEndOverflow) = adjusted[firstIndex].startFrame.addingReportingOverflow(
+            adjusted[firstIndex].durationFrames
+        )
+        var coverageEnd = firstEndOverflow ? adjusted[firstIndex].startFrame : firstEnd
+
+        for nextIndex in ordered.dropFirst() {
+            let next = adjusted[nextIndex]
+            if next.startFrame > coverageEnd {
+                let (gap, gapOverflow) = next.startFrame.subtractingReportingOverflow(coverageEnd)
+                if !gapOverflow, gap <= maximumGapFrames {
+                    let overlapFrames = next.animation?.preset.needsIncomingCaptionCoverage == true ? 1 : 0
+                    let (closedEnd, endOverflow) = next.startFrame.addingReportingOverflow(
+                        overlapFrames
+                    )
+                    let previousStart = adjusted[coverageIndex].startFrame
+                    let (duration, durationOverflow) = closedEnd.subtractingReportingOverflow(
+                        previousStart
+                    )
+                    if !endOverflow, !durationOverflow, duration > 0 {
+                        var previous = adjusted[coverageIndex]
+                        previous.durationFrames = duration
+                        if previous.animation?.preset == .wordCycle,
+                           var words = previous.words,
+                           let lastIndex = words.indices.last {
+                            words[lastIndex].endFrame = duration
+                            previous.words = words
+                        }
+                        adjusted[coverageIndex] = previous
+                        coverageEnd = closedEnd
+                    }
+                }
+            }
+
+            let (nextEnd, nextEndOverflow) = next.startFrame.addingReportingOverflow(
+                next.durationFrames
+            )
+            if !nextEndOverflow, nextEnd >= coverageEnd {
+                coverageEnd = max(coverageEnd, nextEnd)
+                coverageIndex = nextIndex
+            }
+        }
+        return adjusted
     }
 
     private static func lineFits(

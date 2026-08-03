@@ -683,7 +683,7 @@ extension EditorViewModel {
     struct TextClipSpec: Sendable {
         let trackIndex: Int
         let startFrame: Int
-        let durationFrames: Int
+        var durationFrames: Int
         let content: String
         let style: TextStyle
         /// When nil the box is auto-fit to content and centered on the canvas.

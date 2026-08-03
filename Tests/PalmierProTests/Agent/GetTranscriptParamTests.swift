@@ -183,6 +183,27 @@ struct GetTranscriptParamTests {
         }
     }
 
+    @Test func addCaptionsSchemaExposesMaximumGapSeconds() throws {
+        let tool = try #require(ToolDefinitions.mcpServer.first { $0.name == .addCaptions })
+        let properties = try #require(tool.inputSchema["properties"] as? [String: [String: Any]])
+        let maximumGap = try #require(properties["maximumGapSeconds"])
+
+        #expect(maximumGap["type"] as? String == "number")
+        #expect(maximumGap["minimum"] as? Double == CaptionGapSettings.maximumGapRange.lowerBound)
+        #expect(maximumGap["maximum"] as? Double == CaptionGapSettings.maximumGapRange.upperBound)
+    }
+
+    @Test func addCaptionsRejectsInvalidMaximumGapSecondsBeforeTranscription() async {
+        let h = ToolHarness(timeline: Fixtures.timeline())
+        let invalidValues: [Any] = [-0.1, 2.1, "0.25", true, Double.infinity]
+
+        for value in invalidValues {
+            let result = await h.runRaw("add_captions", args: ["maximumGapSeconds": value])
+            #expect(result.isError)
+            #expect(ToolHarness.textOf(result).contains("maximumGapSeconds"))
+        }
+    }
+
     @Test func segmentsGranularityDeclaresSegmentFormat() async throws {
         let h = ToolHarness(timeline: Fixtures.timeline())
         let json = try await h.runOK("get_transcript", args: ["granularity": "segments"]) as? [String: Any]

@@ -845,6 +845,12 @@ enum ToolDefinitions {
                     ],
                     "censorProfanity": ["type": "boolean", "description": "Mask profanity."],
                     "maxWords": ["type": "integer", "description": "Max words per caption."],
+                    "maximumGapSeconds": [
+                        "type": "number",
+                        "minimum": CaptionGapSettings.maximumGapRange.lowerBound,
+                        "maximum": CaptionGapSettings.maximumGapRange.upperBound,
+                        "description": "Extend each caption to close a shorter gap before the next generated caption. Default 0.25 seconds; 0 disables.",
+                    ],
                 ], textStyleProperties(detailed: false), [
                     "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Caption animation preset."],
                     "highlightColor": ["type": "string", "description": "Active-word hex."],
