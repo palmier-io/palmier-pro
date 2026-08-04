@@ -113,6 +113,29 @@ fileprivate struct RippleDeleteRangesInput: DecodableToolArgs {
     static let allowedKeys: Set<String> = ["clipId", "trackIndex", "ranges", "units", "ignoreSyncLockedTracks"]
 }
 
+fileprivate struct TrimClipInput: DecodableToolArgs {
+    struct Entry: Decodable {
+        let clipId: String
+        let edge: String
+        let deltaFrames: Int?
+        let toFrame: Int?
+        let extendToAdjacentClip: Bool?
+        static let allowedKeys: Set<String> = [
+            "clipId", "edge", "deltaFrames", "toFrame", "extendToAdjacentClip",
+        ]
+    }
+
+    let ripple: Bool
+    let trims: [Entry]
+    static let allowedKeys: Set<String> = ["ripple", "trims"]
+}
+
+fileprivate enum TrimToolEdge: String {
+    case head, tail
+
+    var trimEdge: EditorViewModel.TrimEdge { self == .head ? .left : .right }
+}
+
 fileprivate struct SetKeyframesInput: DecodableToolArgs {
     let clipId: String
     let property: String
@@ -590,7 +613,7 @@ extension ToolExecutor {
 
         if clipIds.contains(where: { editor.clipFor(id: $0)?.multicamGroupId != nil }),
            input.trimStartFrame != nil || input.trimEndFrame != nil || input.durationFrames != nil || input.speed != nil {
-            throw ToolError("Timing fields would slip a multicam clip out of sync — switch angles with change_cam; split/delete and property fields (volumeDb, opacity, edgeRounding, edgeSoftness, transform) stay editable.")
+            throw ToolError("Timing fields would slip a multicam clip out of sync — use trim_clip for head/tail timing, change_cam for angles; split/delete and property fields (volumeDb, opacity, edgeRounding, edgeSoftness, transform) stay editable.")
         }
 
         if input.fadeInFrames != nil || input.fadeOutFrames != nil {
@@ -1014,6 +1037,277 @@ extension ToolExecutor {
                 extra: extra
             )
         }
+    }
+
+    private static let trimFrameDeltaLimit = 240 * 60 * 60 * 24
+
+    fileprivate struct ResolvedTrim {
+        let path: String
+        let clip: Clip
+        let edge: TrimToolEdge
+        let requested: Int
+        let targetIds: [String]
+    }
+
+    func trimClip(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        let input: TrimClipInput = try decodeToolArgs(args, path: "trim_clip")
+        if let raws = args["trims"] as? [Any] {
+            for (idx, raw) in raws.enumerated() {
+                if let d = raw as? [String: Any] {
+                    try validateUnknownKeys(d, allowed: TrimClipInput.Entry.allowedKeys, path: "trims[\(idx)]")
+                }
+            }
+        }
+        guard !input.trims.isEmpty else { throw ToolError("Missing or empty 'trims' array") }
+        guard !input.ripple || input.trims.count == 1 else {
+            throw ToolError("ripple=true accepts one trim per call — a ripple shifts downstream frames, so later entries would target stale positions. Send one ripple trim at a time, or batch with ripple=false.")
+        }
+
+        let resolved = try Self.resolveTrims(input, editor: editor)
+        let snapshot = timelineSnapshot(editor)
+        let active = resolved.filter { $0.requested != 0 }
+        let noOpNotes = resolved.filter { $0.requested == 0 }.map {
+            "Clip \($0.clip.id) already \($0.edge == .tail ? "ends" : "begins") at that frame — no edit."
+        }
+        guard !active.isEmpty else {
+            return mutationResult(
+                editor, since: snapshot, touched: resolved.map(\.clip.id),
+                extra: ["changed": false, "ripple": input.ripple, "trims": Self.trimReceipts(resolved)],
+                notes: noOpNotes
+            )
+        }
+
+        for trim in active where trim.requested > 0 {
+            if let maximum = editor.maximumTrimExtensionFrames(
+                clipId: trim.clip.id,
+                edge: trim.edge.trimEdge,
+                propagateToLinked: true,
+                ripple: input.ripple
+            ), trim.requested > maximum {
+                throw ToolError(
+                    "\(trim.path): can't extend clip \(trim.clip.id)'s \(trim.edge.rawValue) by \(trim.requested) frames; "
+                        + "maxExtendFrames is \(maximum). Nothing changed."
+                )
+            }
+        }
+
+        let resizedClipIds = input.ripple
+            ? try Self.applyRippleTrim(active[0], editor: editor).resizedClipIds
+            : try Self.applyStandardTrims(active, editor: editor)
+
+        return mutationResult(
+            editor, since: snapshot,
+            touched: resizedClipIds,
+            extra: ["changed": true, "ripple": input.ripple, "trims": Self.trimReceipts(resolved)],
+            notes: noOpNotes
+        )
+    }
+
+    private static func resolveTrims(_ input: TrimClipInput, editor: EditorViewModel) throws -> [ResolvedTrim] {
+        var resolved: [ResolvedTrim] = []
+        var claimedEdges: Set<String> = []
+        for (idx, entry) in input.trims.enumerated() {
+            let path = input.trims.count == 1 ? "trim_clip" : "trims[\(idx)]"
+            guard let edge = TrimToolEdge(rawValue: entry.edge) else {
+                throw ToolError("\(path): edge must be 'head' or 'tail' (got '\(entry.edge)')")
+            }
+            if entry.extendToAdjacentClip == false {
+                throw ToolError("\(path): extendToAdjacentClip must be true when provided; otherwise omit it.")
+            }
+            let modeCount = [entry.deltaFrames != nil, entry.toFrame != nil, entry.extendToAdjacentClip == true]
+                .filter { $0 }.count
+            guard modeCount == 1 else {
+                throw ToolError("\(path): provide exactly one of deltaFrames, toFrame, or extendToAdjacentClip=true.")
+            }
+            if input.ripple, entry.extendToAdjacentClip == true {
+                throw ToolError("\(path): extendToAdjacentClip requires ripple=false; a ripple would move the adjacent clip instead of filling the gap.")
+            }
+            guard let loc = editor.findClip(id: entry.clipId) else {
+                throw ToolError("\(path): clip not found: \(entry.clipId)")
+            }
+            let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            let requested = try trimRequest(
+                entry, path: path, edge: edge, clip: clip, track: editor.timeline.tracks[loc.trackIndex]
+            )
+            let targetIds = [clip.id] + editor.linkedPartnerIds(of: clip.id)
+            for id in targetIds where !claimedEdges.insert("\(id)|\(edge.rawValue)").inserted {
+                throw ToolError("\(path): clip \(id)'s \(edge.rawValue) is already trimmed by an earlier entry (directly or via a linked partner). List each clip edge once.")
+            }
+            resolved.append(ResolvedTrim(path: path, clip: clip, edge: edge, requested: requested, targetIds: targetIds))
+        }
+        return resolved
+    }
+
+    private static func applyRippleTrim(_ trim: ResolvedTrim, editor: EditorViewModel) throws -> RippleTrimReport {
+        if let reason = editor.rippleTrimRefusalReason(
+            clipId: trim.clip.id,
+            edge: trim.edge.trimEdge,
+            propagateToLinked: true
+        ) {
+            throw ToolError(reason + " To resize one camera segment against its neighboring angle (e.g. move a change_cam cut) without moving the group, retry with ripple=false.")
+        }
+        let edgeDelta = trim.edge == .tail ? trim.requested : -trim.requested
+        let plan = editor.planRippleTrim(
+            clipId: trim.clip.id,
+            edge: trim.edge.trimEdge,
+            deltaFrames: edgeDelta,
+            propagateToLinked: true
+        )
+        if plan?.durationDelta != trim.requested, let frame = plan?.blockedAtFrame {
+            throw ToolError(
+                "trim_clip can't shorten through the sync-locked obstacle at frame \(frame); "
+                    + "nearestAchievableDeltaFrames is \(plan?.durationDelta ?? 0). Nothing changed."
+            )
+        }
+        try requireExactTrim(requested: trim.requested, achievable: plan?.durationDelta ?? 0)
+        try requireExactTrim(requested: trim.requested, achievable: plan?.achievableDurationDeltas ?? [])
+        guard let plan else {
+            throw ToolError("trim_clip can't move clip \(trim.clip.id)'s \(trim.edge.rawValue) in that direction. Nothing changed.")
+        }
+        return editor.undo.perform("Ripple Trim (Agent)") {
+            editor.applyRippleTrim(plan)
+        }
+    }
+
+    private static func applyStandardTrims(
+        _ trims: [ResolvedTrim], editor: EditorViewModel
+    ) throws -> [String] {
+        var plans: [EditorViewModel.StandardTrimPlan] = []
+        var jointDurationDelta: [String: Int] = [:]
+        for trim in trims {
+            let edgeDelta = trim.edge == .tail ? trim.requested : -trim.requested
+            let plan = editor.planStandardTrim(
+                clipId: trim.clip.id,
+                edge: trim.edge.trimEdge,
+                deltaFrames: edgeDelta,
+                propagateToLinked: true
+            )
+            try requireExactTrim(requested: trim.requested, achievable: plan?.leadDurationDelta ?? 0, path: trim.path)
+            try requireExactTrim(requested: trim.requested, achievable: plan?.edits.map(\.durationDelta) ?? [], path: trim.path)
+            guard let plan, plan.edgeDeltaFrames == edgeDelta else {
+                throw ToolError("\(trim.path): can't apply the requested edge exactly. Nothing changed.")
+            }
+            for edit in plan.edits {
+                jointDurationDelta[edit.clipId, default: 0] += edit.durationDelta
+            }
+            plans.append(plan)
+        }
+        for (clipId, delta) in jointDurationDelta where delta < 0 {
+            guard let clip = editor.clipFor(id: clipId), clip.durationFrames + delta >= 1 else {
+                throw ToolError("Combined trims would shrink clip \(clipId) below one frame. Nothing changed.")
+            }
+        }
+
+        var resizedClipIds: [String] = []
+        editor.undo.perform(trims.count == 1 ? "Trim Clip (Agent)" : "Trim Clips (Agent)") {
+            for plan in plans {
+                let report = editor.applyStandardTrim(plan)
+                resizedClipIds.append(contentsOf: report.resizedClipIds.filter { !resizedClipIds.contains($0) })
+            }
+        }
+        return resizedClipIds
+    }
+
+    /// Exactness is enforced before any mutation, so an applied entry's delta always equals its request.
+    private static func trimReceipts(_ resolved: [ResolvedTrim]) -> [[String: Any]] {
+        resolved.map { trim in
+            [
+                "clipId": trim.clip.id,
+                "edge": trim.edge.rawValue,
+                "requestedDeltaFrames": trim.requested,
+                "appliedDeltaFrames": trim.requested,
+                "changed": trim.requested != 0,
+            ]
+        }
+    }
+
+    private static func trimRequest(
+        _ input: TrimClipInput.Entry,
+        path: String,
+        edge: TrimToolEdge,
+        clip: Clip,
+        track: Track
+    ) throws -> Int {
+        if let delta = input.deltaFrames {
+            guard delta != 0 else {
+                throw ToolError("\(path): deltaFrames must be non-zero — positive lengthens the clip's \(edge.rawValue), negative shortens it.")
+            }
+            return try boundedTrimDelta(delta, path: path)
+        }
+        if let toFrame = input.toFrame {
+            guard toFrame >= 0 else {
+                throw ToolError("\(path): toFrame must be >= 0 (got \(toFrame)).")
+            }
+            let delta: Int
+            switch edge {
+            case .tail:
+                guard toFrame > clip.startFrame else {
+                    throw ToolError("\(path): toFrame \(toFrame) must be past clip \(clip.id)'s start frame \(clip.startFrame).")
+                }
+                delta = try subtract(toFrame, clip.endFrame, field: "\(path): toFrame")
+            case .head:
+                guard toFrame < clip.endFrame else {
+                    throw ToolError("\(path): toFrame \(toFrame) must be before clip \(clip.id)'s end frame \(clip.endFrame).")
+                }
+                delta = try subtract(clip.startFrame, toFrame, field: "\(path): toFrame")
+            }
+            return try boundedTrimDelta(delta, path: path)
+        }
+
+        switch edge {
+        case .tail:
+            guard let nextStart = track.clips
+                .filter({ $0.id != clip.id && $0.startFrame >= clip.endFrame })
+                .map(\.startFrame)
+                .min()
+            else {
+                throw ToolError("\(path): no adjacent clip follows \(clip.id) on this track; use deltaFrames or toFrame.")
+            }
+            return try boundedTrimDelta(try subtract(nextStart, clip.endFrame, field: "\(path): extendToAdjacentClip"), path: path)
+        case .head:
+            guard let previousEnd = track.clips
+                .filter({ $0.id != clip.id && $0.endFrame <= clip.startFrame })
+                .map(\.endFrame)
+                .max()
+            else {
+                throw ToolError("\(path): no adjacent clip precedes \(clip.id) on this track; use deltaFrames or toFrame.")
+            }
+            return try boundedTrimDelta(try subtract(clip.startFrame, previousEnd, field: "\(path): extendToAdjacentClip"), path: path)
+        }
+    }
+
+    private static func requireExactTrim(requested: Int, achievable: Int, path: String = "trim_clip") throws {
+        guard achievable == requested else {
+            throw ToolError(
+                "\(path): can't apply requestedDeltaFrames \(requested) exactly; "
+                    + "nearestAchievableDeltaFrames is \(achievable). Nothing changed."
+            )
+        }
+    }
+
+    private static func requireExactTrim(requested: Int, achievable: [Int], path: String = "trim_clip") throws {
+        let mismatches = achievable.filter { $0 != requested }
+        guard mismatches.isEmpty else {
+            let nearest = mismatches.min(by: { abs($0 - requested) < abs($1 - requested) }) ?? 0
+            try requireExactTrim(requested: requested, achievable: nearest, path: path)
+            return
+        }
+    }
+
+    private static func boundedTrimDelta(_ delta: Int, path: String = "trim_clip") throws -> Int {
+        let limit = trimFrameDeltaLimit
+        guard delta.magnitude <= UInt(limit) else {
+            throw ToolError("\(path): derived trim delta \(delta) is out of range; maximum magnitude is \(limit) frames.")
+        }
+        return delta
+    }
+
+    private static func subtract(_ lhs: Int, _ rhs: Int, field: String) throws -> Int {
+        let (value, overflow) = lhs.subtractingReportingOverflow(rhs)
+        guard !overflow else {
+            throw ToolError("\(field) produces a frame delta outside the supported integer range.")
+        }
+        return value
     }
 
     // MARK: - Keyframe row parsing (shared by set_keyframes)

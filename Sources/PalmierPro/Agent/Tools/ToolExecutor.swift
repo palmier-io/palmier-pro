@@ -303,6 +303,7 @@ final class ToolExecutor {
         case .setKeyframes:     return try setKeyframes(editor, args)
         case .splitClips:       return try splitClips(editor, args)
         case .rippleDeleteRanges: return try rippleDeleteRanges(editor, args)
+        case .trimClip:         return try trimClip(editor, args)
         case .removeWords:   return try await removeWords(editor, args)
         case .removeSilence: return try removeSilence(editor, args)
         case .syncClips:     return try await syncClips(editor, args)
