@@ -48,8 +48,7 @@ extension EditorViewModel {
         }
     }
 
-    /// Text clips sharing this clip's caption group (so animation applies once for the whole
-    /// caption track), or just the clip itself when it isn't part of a caption.
+    /// Returns text clip ids in the clip's caption group, or the clip's id if none.
     func captionGroupTextClipIds(for clipId: String) -> [String] {
         guard let clip = clipFor(id: clipId), let group = clip.captionGroupId else { return [clipId] }
         let ids = captionGroupTextClipIds(groupId: group)
@@ -60,6 +59,41 @@ extension EditorViewModel {
     func captionGroupTextClipIds(groupId: String) -> [String] {
         timeline.tracks.flatMap(\.clips)
             .filter { $0.captionGroupId == groupId && $0.mediaType == .text }.map(\.id)
+    }
+
+    /// For each clip id, returns all text clip ids in its caption group, or just the id itself if no group.
+    /// Fast for large selections (O(timeline) instead of O(selection × timeline)).
+    func captionGroupTextClipIds(expanding clipIds: [String]) -> [String] {
+        let requested = Set(clipIds)
+        var groupByRequestedId: [String: String] = [:]
+        for track in timeline.tracks {
+            for clip in track.clips where requested.contains(clip.id) {
+                if let group = clip.captionGroupId { groupByRequestedId[clip.id] = group }
+            }
+        }
+        let groups = Set(groupByRequestedId.values)
+
+        var seen = Set<String>()
+        var result: [String] = []
+        var groupsWithText = Set<String>()
+        for track in timeline.tracks {
+            for clip in track.clips {
+                let included: Bool
+                if let group = clip.captionGroupId, groups.contains(group) {
+                    included = clip.mediaType == .text
+                    if included { groupsWithText.insert(group) }
+                } else {
+                    included = requested.contains(clip.id)
+                }
+                if included, seen.insert(clip.id).inserted { result.append(clip.id) }
+            }
+        }
+
+        for id in clipIds where !seen.contains(id) {
+            if let group = groupByRequestedId[id], groupsWithText.contains(group) { continue }
+            if seen.insert(id).inserted { result.append(id) }
+        }
+        return result
     }
 
     func captionCanTranscribe(_ clip: Clip) -> Bool {

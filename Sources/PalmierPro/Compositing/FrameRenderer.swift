@@ -329,6 +329,9 @@ enum FrameRenderer {
             .unpremultiplyingAlpha() else { return nil }
 
         if let effects = clip.effects, !effects.isEmpty {
+            // Effects expect the full frame; a filter may map transparent pixels to visible ones.
+            let renderRect = CGRect(origin: .zero, size: renderSize)
+            image = image.composited(over: CIImage(color: .clear).cropped(to: renderRect))
             let offset = frame - clip.startFrame
             for effect in effects where effect.enabled {
                 guard let descriptor = EffectRegistry.descriptor(id: effect.type) else { continue }

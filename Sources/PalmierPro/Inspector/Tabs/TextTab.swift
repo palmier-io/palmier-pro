@@ -170,9 +170,7 @@ struct TextAnimateTab: View {
 
     private var clip: Clip { clips[0] }
     private var targetIds: [String] {
-        var seen = Set<String>()
-        return clips.flatMap { editor.captionGroupTextClipIds(for: $0.id) }
-            .filter { seen.insert($0).inserted }
+        editor.captionGroupTextClipIds(expanding: clips.map(\.id))
     }
 
     var body: some View {

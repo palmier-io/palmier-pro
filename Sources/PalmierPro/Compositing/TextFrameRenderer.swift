@@ -1,11 +1,20 @@
 import AppKit
 import CoreImage
 import CoreText
+import os
 
 /// Renders a text clip as a CIImage using CoreText on the compositor queue
 enum TextFrameRenderer {
     // NSCache is internally thread-safe; the compositor queue and main thread both hit it.
-    nonisolated(unsafe) private static let cache = NSCache<NSString, CIImage>()
+    nonisolated(unsafe) private static let cache: NSCache<NSString, CIImage> = {
+        let cache = NSCache<NSString, CIImage>()
+        cache.totalCostLimit = 256 * 1024 * 1024
+        cache.countLimit = 2048
+        return cache
+    }()
+
+    /// Test seam: called with the clip content each time a raster is actually drawn (cache miss).
+    static let onRasterize = OSAllocatedUnfairLock<(@Sendable (String) -> Void)?>(initialState: nil)
 
     static func image(clip: Clip, frame: Int, renderSize: CGSize) -> CIImage? {
         guard renderSize.width >= 1, renderSize.height >= 1 else { return nil }
@@ -17,24 +26,30 @@ enum TextFrameRenderer {
         let boxes = layoutBoxes(style: style, box: box, renderSize: renderSize)
         let fontSize = CGFloat(style.fontSize) * (renderSize.height / TextLayout.referenceCanvasHeight)
         let anim = clip.textAnimation
+        let wordMotion = anim?.isActive == true && anim?.preset.renderMode != .entrance
+        let raster = rasterBounds(style: style, boxes: boxes, fontSize: fontSize,
+                                  renderSize: renderSize, coversWordMotion: wordMotion)
 
         if let anim, anim.isActive {
             switch anim.preset.renderMode {
             case .perWord:
-                return renderPerWord(clip: clip, content: content, style: style, boxes: boxes,
+                return renderPerWord(clip: clip, content: content, style: style, boxes: boxes, raster: raster,
                                      fontSize: fontSize, anim: anim, frame: frame, renderSize: renderSize)
             case .typewriter:
-                return renderTypewriter(clip: clip, content: content, style: style, boxes: boxes,
+                return renderTypewriter(clip: clip, content: content, style: style, boxes: boxes, raster: raster,
                                         fontSize: fontSize, frame: frame, renderSize: renderSize)
             case .entrance:
                 break
             }
         }
 
-        // Static base is frame-independent → cache it. Entrance reuses it under a transform.
-        guard let base = cachedStatic(content: content, style: style, transform: transform,
-                                      boxes: boxes,
-                                      fontSize: fontSize, renderSize: renderSize) else { return nil }
+        // Static text is frame-independent; entrance animation reuses it under a CI transform.
+        let base = cachedImage(content: content, style: style, boxes: boxes, raster: raster,
+                               renderSize: renderSize) { ctx in
+            let textFrame = drawText(ctx, content: content, style: style, fontSize: fontSize, box: boxes.text)
+            drawOverlines(ctx, frame: textFrame, style: style, fontSize: fontSize)
+        }
+        guard let base else { return nil }
         guard let anim, anim.isActive else { return base }
         return applyEntrance(base, TextAnimator.clipEntry(anim, rel: frame - clip.startFrame),
                              box: box, renderSize: renderSize)
@@ -67,10 +82,63 @@ enum TextFrameRenderer {
         return LayoutBoxes(text: text, background: box)
     }
 
-    /// A render-sized context with the box fill and shadow already applied.
-    private static func beginContext(style: TextStyle, backgroundBox: CGRect, renderSize: CGSize) -> CGContext? {
-        guard let ctx = CGContext(
-            data: nil, width: Int(renderSize.width.rounded()), height: Int(renderSize.height.rounded()),
+    private static func rasterBounds(style: TextStyle, boxes: LayoutBoxes, fontSize: CGFloat,
+                                     renderSize: CGSize, coversWordMotion: Bool) -> CGRect {
+        let scale = renderSize.height / TextLayout.referenceCanvasHeight
+        var rect = boxes.text.union(boxes.background)
+        if style.background.enabled {
+            let stroke = CGFloat(max(0, style.background.outlineWidth)) * scale / 2
+            let offset = boxes.background
+                .offsetBy(dx: CGFloat(style.background.offsetX) * scale,
+                          dy: -CGFloat(style.background.offsetY) * scale)
+                .insetBy(dx: -stroke, dy: -stroke)
+            rect = rect.union(offset)
+        }
+        if style.border.enabled, style.border.width > 0 {
+            let pad = style.glyphBorderPadding(fontSize: fontSize)
+            rect = rect.insetBy(dx: -pad, dy: -pad)
+        }
+        if coversWordMotion {
+            rect = rect.insetBy(dx: -fontSize, dy: -fontSize)
+        }
+        if style.shadow.enabled {
+            let blur = max(0, CGFloat(style.shadow.blur) * scale)
+            let dx = CGFloat(style.shadow.offsetX) * scale
+            let dy = -CGFloat(style.shadow.offsetY) * scale
+            rect = CGRect(x: rect.minX + min(0, dx) - blur, y: rect.minY + min(0, dy) - blur,
+                          width: rect.width + abs(dx) + blur * 2, height: rect.height + abs(dy) + blur * 2)
+        }
+        return rect.insetBy(dx: -2, dy: -2).integral
+    }
+
+    private static func placed(_ image: CIImage, _ raster: CGRect) -> CIImage {
+        image.transformed(by: CGAffineTransform(translationX: raster.minX, y: raster.minY))
+    }
+
+    private static func cachedImage(content: String, style: TextStyle, boxes: LayoutBoxes,
+                                    raster: CGRect, renderSize: CGSize, state: Int? = nil,
+                                    draw: (CGContext) -> Void) -> CIImage? {
+        let key = signature(content, style, boxes: boxes, raster: raster, renderSize: renderSize, state: state)
+        if let cached = cache.object(forKey: key) { return placed(cached, raster) }
+        onRasterize.withLock { $0 }?(content)
+        guard let ctx = beginContext(style: style, backgroundBox: boxes.background, raster: raster,
+                                     renderSize: renderSize) else { return nil }
+        draw(ctx)
+        guard let image = finish(ctx) else { return nil }
+        cache.setObject(image, forKey: key, cost: Int(raster.width * raster.height) * 4)
+        return placed(image, raster)
+    }
+
+    private static func stateHash<Value: Hashable>(_ value: Value) -> Int {
+        var h = Hasher()
+        h.combine(value)
+        return h.finalize()
+    }
+
+    private static func beginContext(style: TextStyle, backgroundBox: CGRect, raster: CGRect,
+                                     renderSize: CGSize) -> CGContext? {
+        guard raster.width >= 1, raster.height >= 1, let ctx = CGContext(
+            data: nil, width: Int(raster.width), height: Int(raster.height),
             bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return nil }
@@ -80,6 +148,7 @@ enum TextFrameRenderer {
         ctx.setShouldSmoothFonts(true)
         ctx.setAllowsFontSubpixelPositioning(true)
         ctx.setShouldSubpixelPositionFonts(true)
+        ctx.translateBy(x: -raster.minX, y: -raster.minY)
         drawBox(ctx, style: style, box: backgroundBox, renderSize: renderSize)
         applyShadow(ctx, style: style, renderSize: renderSize)
         return ctx
@@ -117,27 +186,6 @@ enum TextFrameRenderer {
         ctx.strokeLineSegments(between: [CGPoint(x: x, y: top), CGPoint(x: x + width, y: top)])
     }
 
-    // MARK: - Static
-
-    private static func cachedStatic(content: String, style: TextStyle, transform: Transform,
-                                     boxes: LayoutBoxes,
-                                     fontSize: CGFloat, renderSize: CGSize) -> CIImage? {
-        let key = signature(content, style, transform, renderSize)
-        if let cached = cache.object(forKey: key) { return cached }
-        guard let ctx = beginContext(style: style, backgroundBox: boxes.background, renderSize: renderSize) else { return nil }
-        let frame = drawText(
-            ctx,
-            content: content,
-            style: style,
-            fontSize: fontSize,
-            box: boxes.text
-        )
-        drawOverlines(ctx, frame: frame, style: style, fontSize: fontSize)
-        guard let image = finish(ctx) else { return nil }
-        cache.setObject(image, forKey: key)
-        return image
-    }
-
     // MARK: - Entrance (whole-clip)
 
     private static func applyEntrance(_ base: CIImage, _ st: TextAnimator.ClipState,
@@ -165,13 +213,35 @@ enum TextFrameRenderer {
 
     // MARK: - Per-word
 
-    private static func renderPerWord(clip: Clip, content: String, style: TextStyle, boxes: LayoutBoxes,
-                                      fontSize: CGFloat, anim: TextAnimation, frame: Int, renderSize: CGSize) -> CIImage? {
-        guard let ctx = beginContext(style: style, backgroundBox: boxes.background, renderSize: renderSize) else { return nil }
+    /// Lays out each word's position in the raster; `nil` if the word doesn't appear on any line.
+    private struct PerWordLayout {
+        struct TokenPen { let x: CGFloat; let y: CGFloat; let width: CGFloat }
 
-        let fillAttrs = style.attributes(size: fontSize)
+        let tokens: [(range: NSRange, text: String)]
+        let timings: [WordTiming]
+        let pens: [TokenPen?]
+    }
+
+    private final class Cached<Value> {
+        let value: Value; init(_ value: Value) { self.value = value }
+    }
+
+    nonisolated(unsafe) private static let layoutCache: NSCache<NSString, Cached<PerWordLayout>> = {
+        let cache = NSCache<NSString, Cached<PerWordLayout>>()
+        cache.countLimit = 512
+        return cache
+    }()
+
+    private static func perWordLayout(clip: Clip, content: String, style: TextStyle, boxes: LayoutBoxes,
+                                      raster: CGRect, fontSize: CGFloat, renderSize: CGSize) -> PerWordLayout {
+        var h = Hasher()
+        h.combine(clip.wordTimings); h.combine(clip.durationFrames)
+        let key = signature(content, style, boxes: boxes, raster: raster, renderSize: renderSize,
+                            state: h.finalize())
+        if let cached = layoutCache.object(forKey: key) { return cached.value }
+
         let ctFrame = TextLayout.frame(
-            for: NSAttributedString(string: content, attributes: fillAttrs),
+            for: NSAttributedString(string: content, attributes: style.attributes(size: fontSize)),
             in: boxes.text
         )
         let lines = CTFrameGetLines(ctFrame) as? [CTLine] ?? []
@@ -181,42 +251,67 @@ enum TextFrameRenderer {
 
         let tokens = words(in: content)
         let timings = tokenTimings(tokens, clip.wordTimings, duration: clip.durationFrames)
-        let rel = frame - clip.startFrame
-        let undercoatAttrs = style.drawsGlyphOutline
-            ? style.outlineUndercoatAttributes(size: fontSize)
-            : nil
-        let font = fillAttrs[.font] as? NSFont
-
-        var placements: [WordPlacement] = []
+        var pens = [PerWordLayout.TokenPen?](repeating: nil, count: tokens.count)
         for (li, line) in lines.enumerated() {
             let lineRange = CTLineGetStringRange(line)
             for (ti, tok) in tokens.enumerated() {
                 guard tok.range.location >= lineRange.location,
                       tok.range.location < lineRange.location + lineRange.length else { continue }
-                let st = TextAnimator.wordState(anim, word: timings[ti], rel: rel, base: style.color)
-                guard st.opacity > 0 else { continue }
-
                 let startOff = CTLineGetOffsetForStringIndex(line, tok.range.location, nil)
                 let endOff = CTLineGetOffsetForStringIndex(line, tok.range.location + tok.range.length, nil)
+                pens[ti] = PerWordLayout.TokenPen(
+                    x: frameBounds.minX + origins[li].x + startOff - raster.minX,
+                    y: frameBounds.minY + origins[li].y - raster.minY,
+                    width: endOff - startOff
+                )
+            }
+        }
+
+        let layout = PerWordLayout(tokens: tokens, timings: timings, pens: pens)
+        layoutCache.setObject(Cached(layout), forKey: key)
+        return layout
+    }
+
+    private static func renderPerWord(clip: Clip, content: String, style: TextStyle, boxes: LayoutBoxes,
+                                      raster: CGRect, fontSize: CGFloat, anim: TextAnimation, frame: Int,
+                                      renderSize: CGSize) -> CIImage? {
+        let layout = perWordLayout(clip: clip, content: content, style: style, boxes: boxes,
+                                   raster: raster, fontSize: fontSize, renderSize: renderSize)
+        let rel = frame - clip.startFrame
+        let states = layout.timings.map { TextAnimator.wordState(anim, word: $0, rel: rel, base: style.color) }
+
+        // The output depends on the frame only through the word states.
+        return cachedImage(content: content, style: style, boxes: boxes, raster: raster,
+                           renderSize: renderSize, state: stateHash(states)) { ctx in
+            let fillAttrs = style.attributes(size: fontSize)
+            let undercoatAttrs = style.drawsGlyphOutline
+                ? style.outlineUndercoatAttributes(size: fontSize)
+                : nil
+            let font = fillAttrs[.font] as? NSFont
+
+            var placements: [WordPlacement] = []
+            for (ti, pen) in layout.pens.enumerated() {
+                guard let pen else { continue }
+                let st = states[ti]
+                guard st.opacity > 0 else { continue }
                 var wordFillAttrs = fillAttrs
                 wordFillAttrs[.foregroundColor] = st.color.nsColor
                 placements.append(WordPlacement(
                     state: st,
-                    penX: frameBounds.minX + origins[li].x + startOff,
-                    penY: frameBounds.minY + origins[li].y,
-                    width: endOff - startOff,
+                    penX: pen.x + raster.minX,
+                    penY: pen.y + raster.minY,
+                    width: pen.width,
                     fillLine: CTLineCreateWithAttributedString(
-                        NSAttributedString(string: tok.text, attributes: wordFillAttrs) as CFAttributedString),
+                        NSAttributedString(string: layout.tokens[ti].text, attributes: wordFillAttrs) as CFAttributedString),
                     undercoatLine: undercoatAttrs.map {
                         CTLineCreateWithAttributedString(
-                            NSAttributedString(string: tok.text, attributes: $0) as CFAttributedString)
+                            NSAttributedString(string: layout.tokens[ti].text, attributes: $0) as CFAttributedString)
                     }
                 ))
             }
-        }
 
-        drawWordPlacements(ctx, placements, style: style, fontSize: fontSize, font: font)
-        return finish(ctx)
+            drawWordPlacements(ctx, placements, style: style, fontSize: fontSize, font: font)
+        }
     }
 
     private struct WordPlacement {
@@ -296,9 +391,8 @@ enum TextFrameRenderer {
     // MARK: - Typewriter (whole-clip character reveal)
 
     private static func renderTypewriter(clip: Clip, content: String, style: TextStyle, boxes: LayoutBoxes,
-                                         fontSize: CGFloat, frame: Int, renderSize: CGSize) -> CIImage? {
+                                         raster: CGRect, fontSize: CGFloat, frame: Int, renderSize: CGSize) -> CIImage? {
         let holdFrames = 18
-        guard let ctx = beginContext(style: style, backgroundBox: boxes.background, renderSize: renderSize) else { return nil }
         let rel = frame - clip.startFrame
         let ns = content as NSString
 
@@ -337,19 +431,23 @@ enum TextFrameRenderer {
         // Caret blinks (~0.5s) until shortly after the last word finishes.
         let doneAt = timings.last?.endFrame ?? clip.durationFrames
         if rel <= doneAt + holdFrames, (rel / 15) % 2 == 0 { visible += "|" }
-        guard !visible.isEmpty else { return finish(ctx) }
-        // Left-anchor so the text reveals rightward in place rather than re-centering as it grows.
-        let textFrame = drawText(
-            ctx,
-            content: visible,
-            style: style,
-            fontSize: fontSize,
-            box: boxes.text,
-            alignment: .left,
-            verticallySizedFor: content
-        )
-        drawOverlines(ctx, frame: textFrame, style: style, fontSize: fontSize)
-        return finish(ctx)
+
+        // The output depends on the frame only through the visible substring.
+        return cachedImage(content: content, style: style, boxes: boxes, raster: raster,
+                           renderSize: renderSize, state: stateHash(visible)) { ctx in
+            guard !visible.isEmpty else { return }
+            // Left-anchor so the text reveals rightward in place rather than re-centering as it grows.
+            let textFrame = drawText(
+                ctx,
+                content: visible,
+                style: style,
+                fontSize: fontSize,
+                box: boxes.text,
+                alignment: .left,
+                verticallySizedFor: content
+            )
+            drawOverlines(ctx, frame: textFrame, style: style, fontSize: fontSize)
+        }
     }
 
     /// Returns one timing per token, aligning transcript spans when token counts differ.
@@ -622,11 +720,18 @@ enum TextFrameRenderer {
         CGColor(srgbRed: CGFloat(c.r), green: CGFloat(c.g), blue: CGFloat(c.b), alpha: CGFloat(c.a))
     }
 
-    private static func signature(_ content: String, _ s: TextStyle, _ t: Transform, _ size: CGSize) -> NSString {
+    private static func signature(_ content: String, _ s: TextStyle, boxes: LayoutBoxes, raster: CGRect,
+                                  renderSize: CGSize, state: Int? = nil) -> NSString {
+        func quantized(_ v: CGFloat) -> Int { Int((v * 64).rounded()) }
         var h = Hasher()
         h.combine(content); h.combine(s)
-        h.combine(t.centerX); h.combine(t.centerY); h.combine(t.width); h.combine(t.height)
-        h.combine(size)
+        h.combine(quantized(boxes.text.minX - raster.minX)); h.combine(quantized(boxes.text.minY - raster.minY))
+        h.combine(quantized(boxes.text.width)); h.combine(quantized(boxes.text.height))
+        h.combine(quantized(boxes.background.minX - raster.minX)); h.combine(quantized(boxes.background.minY - raster.minY))
+        h.combine(quantized(boxes.background.width)); h.combine(quantized(boxes.background.height))
+        h.combine(raster.width); h.combine(raster.height)
+        h.combine(renderSize)
+        if let state { h.combine(state) }
         return String(h.finalize()) as NSString
     }
 }

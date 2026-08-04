@@ -10,7 +10,7 @@ enum TextAnimator {
         static let identity = ClipState()
     }
 
-    struct WordState: Equatable {
+    struct WordState: Equatable, Hashable {
         var opacity: Float = 1
         var scale: CGFloat = 1
         var dy: CGFloat = 0
