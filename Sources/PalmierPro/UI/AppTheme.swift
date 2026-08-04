@@ -474,7 +474,7 @@ enum AppTheme {
 
     enum MediaPanel {
         static let tabRailWidth: CGFloat = IconSize.lg + Spacing.sm * 2
-        static let contextRowHeight: CGFloat = IconSize.md
+        static let contextRowHeight: CGFloat = IconSize.smMd
     }
 
     enum Export {

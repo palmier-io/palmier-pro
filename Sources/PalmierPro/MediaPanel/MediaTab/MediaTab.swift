@@ -281,14 +281,14 @@ struct MediaTab: View {
     // MARK: - Toolbar
 
     private var toolbar: some View {
-        VStack(spacing: AppTheme.Spacing.xs) {
+        VStack(spacing: AppTheme.Spacing.xxs) {
             actionsRow
             searchControlsRow
             contextBar
         }
         .padding(.horizontal, AppTheme.Spacing.sm)
         .padding(.top, AppTheme.Spacing.sm)
-        .padding(.bottom, AppTheme.Spacing.xs)
+        .padding(.bottom, AppTheme.Spacing.sm)
         .background(AppTheme.Background.surfaceColor)
     }
 

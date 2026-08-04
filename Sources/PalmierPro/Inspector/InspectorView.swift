@@ -61,20 +61,9 @@ struct InspectorView: View {
         }
     }
 
-    enum AssetTab: Hashable {
-        case details
-        case ai
-
-        var titleKey: String {
-            switch self {
-            case .details: L10n.key("Details")
-            case .ai: L10n.key("AI Edit")
-            }
-        }
-    }
-
     @State private var preferredTab: ClipTab = .video
-    @State private var preferredAssetTab: AssetTab = .details
+    @State private var assetInfoPresented = false
+    @State private var assetFileSize: AssetFileSize?
     @State private var transformExpanded = true
     @State private var imageAdjustmentExpanded = true
     @State var audioLevelsExpanded = true
@@ -417,15 +406,6 @@ struct InspectorView: View {
             tourAnchors: tabs.contains(.ai) ? [ClipTab.ai.titleKey: .aiEditTab] : [:]
         ) { title in
             if let tab = tabs.first(where: { $0.titleKey == title }) { preferredTab = tab }
-        }
-    }
-
-    private func assetTabBar(_ tabs: [AssetTab]) -> some View {
-        TitleTabBar(
-            titles: tabs.map(\.titleKey),
-            selected: preferredAssetTab.titleKey
-        ) { title in
-            if let tab = tabs.first(where: { $0.titleKey == title }) { preferredAssetTab = tab }
         }
     }
 
@@ -1033,69 +1013,70 @@ struct InspectorView: View {
 
     // MARK: - Media Asset Inspector
 
-    @ViewBuilder
     private func mediaAssetInspectorContent(_ asset: MediaAsset) -> some View {
-        if asset.type.isVisual && !AccountService.shared.isMisconfigured {
-            VStack(spacing: 0) {
-                assetTabBar([.details, .ai])
-                if preferredAssetTab == .ai {
-                    AIEditTab(asset: asset)
-                } else {
-                    assetDetailsContent(asset)
+        VStack(spacing: AppTheme.Spacing.zero) {
+            assetInspectorHeader(asset)
+            ScrollView {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
+                    if let gen = asset.generationInput {
+                        inputSection(gen)
+                    }
+                    AIEditTab(asset: asset, usesOwnScrollView: false)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-        } else {
-            assetDetailsContent(asset)
         }
     }
 
-    @ViewBuilder
-    private func assetDetailsContent(_ asset: MediaAsset) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
-                assetIdentityHeader(asset)
-                    .padding(.horizontal, AppTheme.Spacing.lg)
-                    .padding(.bottom, AppTheme.Spacing.xl)
-
-                fileSection(asset)
-
-                if let gen = asset.generationInput {
-                    if GenerationReferencesStrip.hasResolvableReferences(gen, in: editor.mediaAssets) {
-                        metadataSection(title: L10n.string("References")) {
-                            GenerationReferencesStrip(generationInput: gen)
-                        }
-                    }
-
-                    metadataSection(title: L10n.string("Generated")) {
-                        plainMetadataRow(label: L10n.string("Model"), value: ModelRegistry.displayName(for: gen.model))
-                        if !gen.aspectRatio.isEmpty {
-                            plainMetadataRow(
-                                label: L10n.string("Aspect Ratio"),
-                                value: ImageModelConfig.aspectRatioDisplayLabel(gen.aspectRatio)
-                            )
-                        }
-                        if let resolution = gen.resolution {
-                            plainMetadataRow(label: L10n.string("Resolution"), value: resolution)
-                        }
-                        if gen.duration > 0 {
-                            plainMetadataRow(label: L10n.string("Duration"), value: "\(gen.duration)s")
-                        }
-                    }
-
-                    if !gen.prompt.isEmpty {
-                        promptSection(prompt: gen.prompt)
-                            .padding(.horizontal, AppTheme.Spacing.lg)
-                    }
-                }
+    private func assetInspectorHeader(_ asset: MediaAsset) -> some View {
+        let infoLabel = assetInfoPresented ? L10n.string("Hide Info") : L10n.string("Show Info")
+        return HStack(spacing: AppTheme.Spacing.sm) {
+            Image(systemName: asset.type.sfSymbolName)
+                .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
+                .accessibilityHidden(true)
+            Text(verbatim: asset.name)
+                .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .help(Text(verbatim: asset.name))
+            Spacer(minLength: AppTheme.Spacing.xs)
+            Button {
+                assetInfoPresented.toggle()
+            } label: {
+                Image(systemName: assetInfoPresented ? "info.circle.fill" : "info.circle")
+                    .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(assetInfoPresented ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
+                    .frame(width: AppTheme.IconSize.lg, height: AppTheme.IconSize.lg)
             }
-            .padding(.top, AppTheme.Spacing.xs)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .buttonStyle(.plain)
+            .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
+            .help(infoLabel)
+            .accessibilityLabel(infoLabel)
+            .popover(isPresented: $assetInfoPresented, arrowEdge: .top) {
+                assetFileInfoContent(asset)
+                    .frame(width: AppTheme.EditorPanel.defaultWidth)
+            }
         }
+        .padding(.horizontal, AppTheme.Spacing.smMd)
+        .panelHeaderBar()
     }
 
-    @ViewBuilder
+    private func assetFileInfoContent(_ asset: MediaAsset) -> some View {
+        fileSection(asset)
+            .task(id: asset.url) {
+                let url = asset.url
+                assetFileSize = nil
+                let formattedSize = await Self.formattedFileSize(for: url)
+                guard !Task.isCancelled, asset.url == url else { return }
+                assetFileSize = formattedSize.map { AssetFileSize(url: url, formattedValue: $0) }
+            }
+    }
+
     private func fileSection(_ asset: MediaAsset) -> some View {
-        metadataSection(title: L10n.string("File")) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
             plainMetadataRow(label: L10n.string("Type"), value: asset.type.localizedTrackLabel)
             if asset.type != .audio, let width = asset.sourceWidth, let height = asset.sourceHeight {
                 plainMetadataRow(label: L10n.string("Dimensions"), value: "\(width) × \(height)")
@@ -1109,8 +1090,8 @@ struct InspectorView: View {
             if asset.duration > 0 && asset.type != .image {
                 plainMetadataRow(label: L10n.string("Duration"), value: formatDuration(asset.duration))
             }
-            if let fileSize = fileSize(for: asset.url) {
-                plainMetadataRow(label: L10n.string("Size"), value: fileSize)
+            if let fileSize = assetFileSize, fileSize.url == asset.url {
+                plainMetadataRow(label: L10n.string("Size"), value: fileSize.formattedValue)
             }
             plainMetadataRow(
                 label: L10n.string("Path"),
@@ -1118,50 +1099,91 @@ struct InspectorView: View {
                 truncate: .middle
             )
         }
+        .padding(.horizontal, AppTheme.Spacing.smMd)
+        .padding(.vertical, AppTheme.Spacing.xs)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func assetIdentityHeader(_ asset: MediaAsset) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
-            Text(asset.name)
-                .font(.system(size: AppTheme.FontSize.lg, weight: .semibold))
-                .foregroundStyle(AppTheme.Text.primaryColor)
-                .lineLimit(2)
-                .textSelection(.enabled)
-            if asset.generationInput != nil {
-                aiBadge
-            }
-            Spacer(minLength: 0)
-        }
-    }
-
-    private var aiBadge: some View {
-        Text(verbatim: "AI")
-            .font(.system(size: AppTheme.FontSize.xxs, weight: .bold))
-            .tracking(AppTheme.Tracking.wide)
-            .foregroundStyle(AppTheme.aiGradient)
-            .padding(.horizontal, AppTheme.Spacing.sm)
-            .padding(.vertical, AppTheme.Spacing.xxs)
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .strokeBorder(AppTheme.Interaction.fill(AppTheme.Opacity.muted), lineWidth: AppTheme.BorderWidth.hairline)
+    private func inputSection(_ gen: GenerationInput) -> some View {
+        let hasReferences = GenerationReferencesStrip.hasResolvableReferences(gen, in: editor.mediaAssets)
+        let metadata = inputMetadataSummary(gen)
+        return EditorPanelGroup(
+            L10n.string("Generation Input"),
+            contentSpacing: AppTheme.Spacing.zero,
+            contentInsets: EdgeInsets(
+                top: AppTheme.Spacing.xxs,
+                leading: AppTheme.Spacing.smMd,
+                bottom: AppTheme.Spacing.md,
+                trailing: AppTheme.Spacing.smMd
             )
+        ) {
+            if hasReferences {
+                GenerationReferencesStrip(generationInput: gen)
+            }
+            if !gen.prompt.isEmpty || !metadata.isEmpty {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+                    if !gen.prompt.isEmpty {
+                        promptSection(prompt: gen.prompt)
+                    }
+                    if !gen.prompt.isEmpty, !metadata.isEmpty {
+                        Rectangle()
+                            .fill(AppTheme.Border.subtleColor)
+                            .frame(height: AppTheme.BorderWidth.hairline)
+                    }
+                    if !metadata.isEmpty {
+                        Text(verbatim: metadata)
+                            .font(.system(size: AppTheme.FontSize.xs))
+                            .foregroundStyle(AppTheme.Text.tertiaryColor)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .textSelection(.enabled)
+                            .help(Text(verbatim: metadata))
+                    }
+                }
+                .padding(.horizontal, AppTheme.Spacing.smMd)
+                .padding(.vertical, AppTheme.Spacing.sm)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .themedSurface(
+                    AppTheme.Background.raisedColor,
+                    cornerRadius: AppTheme.Radius.sm,
+                    borderWidth: AppTheme.BorderWidth.hairline
+                )
+                .padding(.top, hasReferences ? AppTheme.Spacing.md : AppTheme.Spacing.zero)
+            }
+        }
+        .padding(.top, AppTheme.Spacing.xxs)
     }
 
     private func promptSection(prompt: String) -> some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
             HStack(spacing: AppTheme.Spacing.sm) {
                 Text(L10n.string("Prompt"))
-                    .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium))
-                    .foregroundStyle(AppTheme.Text.primaryColor)
+                    .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
                 Spacer()
                 PromptCopyButton(text: prompt)
             }
-            Text(prompt)
+            Text(verbatim: prompt)
                 .font(.system(size: AppTheme.FontSize.sm))
+                .lineSpacing(AppTheme.Spacing.xxs)
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private func inputMetadataSummary(_ gen: GenerationInput) -> String {
+        var values = [ModelRegistry.displayName(for: gen.model)]
+        if !gen.aspectRatio.isEmpty {
+            values.append(ImageModelConfig.aspectRatioDisplayLabel(gen.aspectRatio))
+        }
+        if let resolution = gen.resolution, !resolution.isEmpty {
+            values.append(resolution)
+        }
+        if gen.duration > 0 {
+            values.append("\(gen.duration)s")
+        }
+        return values.joined(separator: " · ")
     }
 
     // MARK: - Helpers
@@ -1172,10 +1194,17 @@ struct InspectorView: View {
         return editor.mediaAssets.first { $0.id == id }
     }
 
+    private struct AssetFileSize {
+        let url: URL
+        let formattedValue: String
+    }
 
-    private func fileSize(for url: URL) -> String? {
+    @concurrent
+    private static func formattedFileSize(for url: URL) async -> String? {
+        guard !Task.isCancelled else { return nil }
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
               let bytes = attrs[.size] as? Int64 else { return nil }
+        guard !Task.isCancelled else { return nil }
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: bytes)

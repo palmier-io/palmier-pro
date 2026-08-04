@@ -164,7 +164,6 @@
 "Chat history" = "Chat history";
 "Chat with your agent! It can generate content, edit clips, organize your assets, and much more. Start by signing in, or bring your own Anthropic API key." = "Chat with your agent! It can generate content, edit clips, organize your assets, and much more. Start by signing in, or bring your own Anthropic API key.";
 "Check for Updates…" = "Check for Updates…";
-"Choose Audio" = "Choose Audio";
 "Choose a .cube LUT file" = "Choose a .cube LUT file";
 "Choose a crop aspect" = "Choose a crop aspect";
 "Choose animation clip color" = "Choose animation clip color";
@@ -286,7 +285,6 @@
 "Designer" = "Designer";
 "Destination" = "Destination";
 "Detail" = "Detail";
-"Details" = "Details";
 "Detect Beats" = "Detect Beats";
 "Detected %lld beats at %lld BPM." = "Detected %lld beats at %lld BPM.";
 "Detected %lld beats." = "Detected %lld beats.";
@@ -403,9 +401,9 @@
 "Generate video, image, or audio with different models and settings. Drag assets from the media panel above into the reference frame." = "Generate video, image, or audio with different models and settings. Drag assets from the media panel above into the reference frame.";
 "Generate · %lld credits" = "Generate · %lld credits";
 "Generate · 1 credit" = "Generate · 1 credit";
-"Generated" = "Generated";
 "Generating…" = "Generating…";
 "Generation Failed" = "Generation Failed";
+"Generation Input" = "Generation Input";
 "Generation complete" = "Generation complete";
 "Generation in progress" = "Generation in progress";
 "Generation panel" = "Generation panel";
@@ -423,6 +421,7 @@
 "Hard Light" = "Hard Light";
 "Height" = "Height";
 "Help" = "Help";
+"Hide Info" = "Hide Info";
 "Hide keyframe timeline" = "Hide keyframe timeline";
 "Hide reasoning" = "Hide reasoning";
 "High" = "High";
@@ -804,6 +803,7 @@
 "Sharpen" = "Sharpen";
 "Short-form and social" = "Short-form and social";
 "Shortcuts" = "Shortcuts";
+"Show Info" = "Show Info";
 "Show in Finder" = "Show in Finder";
 "Show keyframe timeline" = "Show keyframe timeline";
 "Show notifications" = "Show notifications";
@@ -949,7 +949,6 @@
 "Ungroup Multicam" = "Ungroup Multicam";
 "Unlink" = "Unlink";
 "Untitled" = "Untitled";
-"Up to %@" = "Up to %@";
 "Update" = "Update";
 "Update available" = "Update available";
 "Updating %@" = "Updating %@";

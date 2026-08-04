@@ -40,7 +40,7 @@ extension MediaTab {
 
 extension MediaTab {
     func gridDimensions(width: CGFloat) -> GridDimensions {
-        let spacing = AppTheme.Spacing.xl
+        let spacing = AppTheme.Spacing.md
         let outerPadding: CGFloat = AppTheme.Spacing.md * 2
         let usable = max(0, width - outerPadding)
         let cols = max(1, Int(floor((usable + spacing) / (thumbnailSize + spacing))))
@@ -90,7 +90,6 @@ extension MediaTab {
         cols: Int,
         tileWidth: CGFloat,
         spacing: CGFloat,
-        topPadding: CGFloat,
         @ViewBuilder cellView: @escaping (Cell) -> Content
     ) -> some View where Cell.ID == String {
         ScrollViewReader { proxy in
@@ -103,8 +102,8 @@ extension MediaTab {
                             .id(cell.id)
                     }
                 }
-                .padding(AppTheme.Spacing.md)
-                .padding(.top, topPadding)
+                .padding(.horizontal, AppTheme.Spacing.md)
+                .padding(.bottom, AppTheme.Spacing.md)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .coordinateSpace(name: "mediaGrid")
@@ -139,8 +138,7 @@ extension MediaTab {
                 orderedIds: layout.orderedIds,
                 cols: layout.cols,
                 tileWidth: layout.tileWidth,
-                spacing: layout.spacing,
-                topPadding: AppTheme.Spacing.sm
+                spacing: layout.spacing
             ) { cell in
                 cellView(for: cell)
             }
@@ -162,8 +160,7 @@ extension MediaTab {
                 orderedIds: orderedIds,
                 cols: dims.cols,
                 tileWidth: dims.tileWidth,
-                spacing: dims.spacing,
-                topPadding: AppTheme.Spacing.sm
+                spacing: dims.spacing
             ) { cell in
                 cellView(for: cell)
             }

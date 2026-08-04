@@ -4,6 +4,7 @@ struct AIEditTab: View {
     let asset: MediaAsset
     /// Clip id from the timeline.
     let clipId: String?
+    let usesOwnScrollView: Bool
     @Environment(EditorViewModel.self) private var editor
     @Bindable private var account = AccountService.shared
     @State private var replaceClipSource: Bool = false
@@ -11,123 +12,154 @@ struct AIEditTab: View {
     @State private var placeAudioOnTimeline: Bool = true
     @State private var aiEnhanceExpanded: Bool = true
     @State private var aiAudioExpanded: Bool = true
+    @State private var createVideoOptionsPresented = false
 
-    init(asset: MediaAsset, clipId: String? = nil) {
+    init(asset: MediaAsset, clipId: String? = nil, usesOwnScrollView: Bool = true) {
         self.asset = asset
         self.clipId = clipId
+        self.usesOwnScrollView = usesOwnScrollView
     }
 
+    @ViewBuilder
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
-                if trimmedClipAvailable {
-                    trimmedClipToggle
-                        .padding(AppTheme.Spacing.smMd)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(AppTheme.Background.surfaceColor)
-                        .overlay(alignment: .bottom) {
-                            Rectangle()
-                                .fill(AppTheme.Border.primaryColor)
-                                .frame(height: AppTheme.BorderWidth.thin)
-                        }
-                }
-
-                if isVisualClipContext {
-                    EditorPanelGroup(L10n.string("AI Enhance"), isExpanded: $aiEnhanceExpanded, contentSpacing: AppTheme.Spacing.smMd) {
-                        if clipId != nil { replaceToggle }
-                        actionRow(
-                            action: .upscale,
-                            icon: "sparkles.rectangle.stack",
-                            title: L10n.string("Upscale"),
-                            description: L10n.string("Enhance resolution or frame rate with AI")
-                        )
-                        actionRow(
-                            action: .edit,
-                            icon: "wand.and.stars",
-                            title: L10n.string("Edit"),
-                            description: L10n.string("Transform with a prompt or motion reference")
-                        )
-                        actionRow(
-                            action: .rerun,
-                            icon: "arrow.clockwise",
-                            title: L10n.string("Rerun"),
-                            description: L10n.string("Regenerate with the same parameters"),
-                            detail: rerunCost
-                        )
-                        if asset.type == .video, let model = VideoModelConfig.lipSync {
-                            actionRow(
-                                action: .lipSync,
-                                icon: "mouth",
-                                title: L10n.string("Lip Sync"),
-                                description: L10n.string("Match mouth movement to replacement audio"),
-                                detail: model.sourceDurationLimitLabel.map { L10n.string("Up to \($0)") },
-                                triggerTitle: L10n.string("Choose Audio")
-                            )
-                        }
-                        if asset.type == .video {
-                            actionRow(
-                                action: .reframe,
-                                icon: "aspectratio",
-                                title: L10n.string("Reframe"),
-                                description: L10n.string("Change aspect ratio and extend the frame with AI"),
-                                detail: VideoModelConfig.reframe?.reframeDurationLimitLabel
-                                    .map { L10n.string("Up to \($0)") }
-                            )
-                        }
-                        if asset.type == .image {
-                            actionRow(
-                                action: .createVideo,
-                                icon: "video.badge.plus",
-                                title: L10n.string("Create Video"),
-                                description: L10n.string("Use as first frame or reference")
-                            )
-                        }
-                    }
-                }
-
-                if asset.type == .video || asset.type == .audio {
-                    EditorPanelGroup(L10n.string("AI Audio"), isExpanded: $aiAudioExpanded, contentSpacing: AppTheme.Spacing.smMd) {
-                        if showsAudioOutputOptions {
-                            audioPlacementToggle
-                        }
-                        if asset.type == .audio {
-                            actionRow(
-                                action: .rerun,
-                                icon: "arrow.clockwise",
-                                title: L10n.string("Rerun"),
-                                description: L10n.string("Regenerate with the same parameters"),
-                                detail: rerunCost
-                            )
-                        }
-                        if clipId != nil {
-                            audioTransformActionRow(kind: .cleanup)
-                            audioTransformActionRow(kind: .dubbing)
-                        }
-                        if isVisualClipContext, asset.type == .video {
-                            videoAudioActionRow(kind: .music)
-                            videoAudioActionRow(kind: .sfx)
-                        }
-                    }
-                }
+        if usesOwnScrollView {
+            ScrollView {
+                panelContent
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            panelContent
         }
     }
 
-    private var showsAudioOutputOptions: Bool {
-        (asset.type == .video || asset.type == .audio) && clipId != nil
+    private var panelContent: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
+            if trimmedClipAvailable {
+                trimmedClipToggle
+                    .padding(AppTheme.Spacing.smMd)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(AppTheme.Background.surfaceColor)
+                    .overlay(alignment: .bottom) {
+                        Rectangle()
+                            .fill(AppTheme.Border.primaryColor)
+                            .frame(height: AppTheme.BorderWidth.thin)
+                    }
+            }
+
+            if isVisualClipContext {
+                EditorPanelGroup(
+                    L10n.string("AI Enhance"),
+                    isExpanded: $aiEnhanceExpanded,
+                    contentSpacing: AppTheme.Spacing.smMd,
+                    contentInsets: actionGroupInsets
+                ) {
+                    if clipId != nil { replaceToggle }
+                    visualActionGrid
+                }
+                .padding(.top, AppTheme.Spacing.xxs)
+            }
+
+            if asset.type == .video || asset.type == .audio {
+                EditorPanelGroup(
+                    L10n.string("AI Audio"),
+                    isExpanded: $aiAudioExpanded,
+                    contentSpacing: AppTheme.Spacing.smMd,
+                    contentInsets: actionGroupInsets
+                ) {
+                    if clipId != nil {
+                        audioPlacementToggle
+                    }
+                    audioActionGrid
+                }
+                .padding(.top, AppTheme.Spacing.xxs)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var actionGroupInsets: EdgeInsets {
+        EdgeInsets(
+            top: AppTheme.Spacing.xxs,
+            leading: AppTheme.Spacing.smMd,
+            bottom: AppTheme.Spacing.md,
+            trailing: AppTheme.Spacing.smMd
+        )
+    }
+
+    private var actionGridColumns: [GridItem] {
+        [
+            GridItem(.flexible(), spacing: AppTheme.Spacing.sm),
+            GridItem(.flexible(), spacing: AppTheme.Spacing.sm),
+        ]
+    }
+
+    private var visualActionGrid: some View {
+        LazyVGrid(columns: actionGridColumns, spacing: AppTheme.Spacing.sm) {
+            actionTile(
+                action: .upscale,
+                icon: "sparkles.rectangle.stack",
+                title: L10n.string("Upscale"),
+                description: L10n.string("Enhance resolution or frame rate with AI")
+            )
+            actionTile(
+                action: .edit,
+                icon: "wand.and.stars",
+                title: L10n.string("Edit"),
+                description: L10n.string("Transform with a prompt or motion reference")
+            )
+            actionTile(
+                action: .rerun,
+                icon: "arrow.clockwise",
+                title: L10n.string("Rerun"),
+                description: L10n.string("Regenerate with the same parameters")
+            )
+            if asset.type == .video, VideoModelConfig.lipSync != nil {
+                actionTile(
+                    action: .lipSync,
+                    icon: "mouth",
+                    title: L10n.string("Lip Sync"),
+                    description: L10n.string("Match mouth movement to replacement audio")
+                )
+            }
+            if asset.type == .video {
+                actionTile(
+                    action: .reframe,
+                    icon: "aspectratio",
+                    title: L10n.string("Reframe"),
+                    description: L10n.string("Change aspect ratio and extend the frame with AI")
+                )
+            }
+            if asset.type == .image {
+                actionTile(
+                    action: .createVideo,
+                    icon: "video.badge.plus",
+                    title: L10n.string("Create Video"),
+                    description: L10n.string("Use as first frame or reference")
+                )
+            }
+        }
+    }
+
+    private var audioActionGrid: some View {
+        LazyVGrid(columns: actionGridColumns, spacing: AppTheme.Spacing.sm) {
+            if asset.type == .audio {
+                actionTile(
+                    action: .rerun,
+                    icon: "arrow.clockwise",
+                    title: L10n.string("Rerun"),
+                    description: L10n.string("Regenerate with the same parameters")
+                )
+            }
+            audioTransformActionTile(kind: .cleanup)
+            audioTransformActionTile(kind: .dubbing)
+            if isVisualClipContext, asset.type == .video {
+                videoAudioActionTile(kind: .music)
+                videoAudioActionTile(kind: .sfx)
+            }
+        }
     }
 
     private var isVisualClipContext: Bool {
         timelineClip?.mediaType.isVisual ?? asset.type.isVisual
-    }
-
-    private var rerunCost: String? {
-        guard let gen = asset.generationInput,
-              let cost = CostEstimator.cost(for: gen) else {
-            return nil
-        }
-        return CostEstimator.localizedDescription(cost)
     }
 
     // MARK: - Replace toggle
@@ -205,16 +237,15 @@ struct AIEditTab: View {
         trimmedSourceIfEnabled()?.durationSeconds
     }
 
-    // MARK: - Action row
+    // MARK: - Action tiles
 
     @ViewBuilder
-    private func actionRow(
+    private func actionTile(
         action: EditAction,
         icon: String,
         title: String,
         description: String,
-        detail: String? = nil,
-        triggerTitle: String? = nil
+        detail: String? = nil
     ) -> some View {
         let availability = action.availability(
             for: asset,
@@ -225,132 +256,177 @@ struct AIEditTab: View {
         let disabledReason = aiDisabledReason
             ?? (paidBlocked ? L10n.string("Requires a paid plan") : availability.reason)
 
-        descriptiveActionRow(
-            icon: icon,
-            title: title,
-            description: description,
-            detail: detail,
-            isEnabled: isEnabled,
-            disabledReason: disabledReason
-        ) {
-            actionTrigger(action: action, title: triggerTitle ?? title, isEnabled: isEnabled)
+        switch action {
+        case .createVideo:
+            actionTileSurface(
+                description: description,
+                isEnabled: isEnabled,
+                disabledReason: disabledReason
+            ) {
+                actionButton(
+                    icon: icon,
+                    title: title,
+                    detail: detail,
+                    isEnabled: isEnabled,
+                    showsMenuIndicator: true
+                ) {
+                    createVideoOptionsPresented = true
+                }
+                .popover(isPresented: $createVideoOptionsPresented, arrowEdge: .bottom) {
+                    createVideoOptions
+                }
+            }
+        case .upscale, .lipSync, .reframe, .edit, .generateMusic, .generateSFX, .rerun:
+            actionTileSurface(
+                description: description,
+                isEnabled: isEnabled,
+                disabledReason: disabledReason
+            ) {
+                actionButton(
+                    icon: icon,
+                    title: title,
+                    detail: detail,
+                    isEnabled: isEnabled
+                ) {
+                    present(action)
+                }
+            }
         }
     }
 
-    private func videoAudioActionRow(kind: VideoToAudioEditKind) -> some View {
-        actionRow(
+    private func videoAudioActionTile(kind: VideoToAudioEditKind) -> some View {
+        actionTile(
             action: kind.action,
             icon: kind.iconName,
             title: L10n.string(key: kind.title),
-            description: L10n.string(key: kind.description),
-            triggerTitle: L10n.string("Generate")
+            description: L10n.string(key: kind.description)
         )
     }
 
-    @ViewBuilder
-    private func audioTransformActionRow(kind: AudioTransformEditKind) -> some View {
-        let model = kind.model
+    private func audioTransformActionTile(kind: AudioTransformEditKind) -> some View {
         let availability = kind.availability(
             for: asset,
             effectiveDurationOverride: effectiveDurationForAvailability
         )
-        let paidBlocked = model?.paidOnly == true && !account.isPaid
+        let paidBlocked = kind.model?.paidOnly == true && !account.isPaid
         let isEnabled = availability.isAvailable && !paidBlocked && aiDisabledReason == nil
         let disabledReason = aiDisabledReason
             ?? (paidBlocked ? L10n.string("Requires a paid plan") : availability.reason)
 
-        descriptiveActionRow(
-            icon: kind.iconName,
-            title: L10n.string(key: kind.title),
+        return actionTileSurface(
             description: L10n.string(key: kind.description),
             isEnabled: isEnabled,
             disabledReason: disabledReason
         ) {
-            Button(L10n.string("Generate")) {
+            actionButton(
+                icon: kind.iconName,
+                title: L10n.string(key: kind.title),
+                isEnabled: isEnabled
+            ) {
                 presentAudioTransform(kind)
             }
-            .buttonStyle(.capsule(.secondary))
-            .controlSize(.small)
-            .disabled(!isEnabled)
         }
     }
 
-    private func descriptiveActionRow<Trailing: View>(
-        icon: String,
-        title: String,
+    private func actionTileSurface<Content: View>(
         description: String,
-        detail: String? = nil,
         isEnabled: Bool,
         disabledReason: String?,
-        @ViewBuilder trailing: () -> Trailing
+        @ViewBuilder content: () -> Content
     ) -> some View {
-        HStack(alignment: .center, spacing: AppTheme.Spacing.sm) {
-            Image(systemName: icon)
-                .font(.system(size: AppTheme.FontSize.md))
-                .foregroundStyle(isEnabled ? AppTheme.Text.secondaryColor : AppTheme.Text.mutedColor)
-                .frame(width: AppTheme.Spacing.lgXl, alignment: .center)
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
-                Text(L10n.string(key: title))
-                    .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+        content()
+            .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
+            .themedSurface(
+                AppTheme.Background.raisedColor,
+                cornerRadius: AppTheme.Radius.sm,
+                borderWidth: AppTheme.BorderWidth.hairline
+            )
+            .disabled(!isEnabled)
+            .help(disabledReason ?? description)
+            .accessibilityHint(disabledReason ?? description)
+    }
+
+    private func actionButton(
+        icon: String,
+        title: String,
+        detail: String? = nil,
+        isEnabled: Bool,
+        showsMenuIndicator: Bool = false,
+        perform: @escaping () -> Void
+    ) -> some View {
+        Button(action: perform) {
+            HStack(spacing: AppTheme.Spacing.sm) {
+                Image(systemName: icon)
+                    .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(isEnabled ? AppTheme.Text.secondaryColor : AppTheme.Text.mutedColor)
+                    .frame(
+                        width: AppTheme.IconSize.xs,
+                        height: AppTheme.IconSize.xs,
+                        alignment: .center
+                    )
+                Text(verbatim: title)
+                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
                     .foregroundStyle(isEnabled ? AppTheme.Text.primaryColor : AppTheme.Text.mutedColor)
-                if let disabledReason {
-                    Text(disabledReason)
-                        .font(.system(size: AppTheme.FontSize.xs))
-                        .foregroundStyle(AppTheme.Text.secondaryColor)
-                        .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
+                Spacer(minLength: AppTheme.Spacing.xs)
+                if isEnabled, let detail {
+                    Text(verbatim: detail)
+                        .font(.system(size: AppTheme.FontSize.xxs))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        .lineLimit(1)
+                }
+                if showsMenuIndicator {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
+                        .foregroundStyle(isEnabled ? AppTheme.Text.tertiaryColor : AppTheme.Text.mutedColor)
                 }
             }
-            Spacer(minLength: AppTheme.Spacing.xs)
-            if isEnabled, let detail {
-                Text(detail)
-                    .font(.system(size: AppTheme.FontSize.xs))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    .lineLimit(1)
-            }
-            trailing()
-                .accessibilityHint(disabledReason ?? description)
+            .padding(.horizontal, AppTheme.Spacing.smMd)
+            .padding(.vertical, AppTheme.Spacing.sm)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
+            )
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .buttonStyle(.plain)
     }
 
     private func presentAudioTransform(_ kind: AudioTransformEditKind) {
-        guard let clipId else { return }
-        editor.beginAIAudioTransform(
-            clipId: clipId,
-            kind: kind,
-            useTrimmedClip: useTrimmedClip,
-            placeOnTimeline: placeAudioOnTimeline
-        )
+        if let clipId {
+            editor.beginAIAudioTransform(
+                clipId: clipId,
+                kind: kind,
+                useTrimmedClip: useTrimmedClip,
+                placeOnTimeline: placeAudioOnTimeline
+            )
+        } else if let stored = EditSubmitter.audioTransformSeed(for: asset, kind: kind) {
+            editor.seedGenerationPanel(asset: asset, stored: stored)
+        }
     }
 
-    @ViewBuilder
-    private func actionTrigger(action: EditAction, title: String, isEnabled: Bool) -> some View {
-        switch action {
-        case .upscale:
-            Button(title) {
-                present(action)
-            }
-            .buttonStyle(.capsule(.secondary))
-            .controlSize(.small)
-            .disabled(!isEnabled)
-        case .createVideo:
-            Menu(title) {
-                Button(L10n.string("Set as first frame")) { sendToVideo(asReference: false) }
-                Button(L10n.string("Set as reference")) { sendToVideo(asReference: true) }
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .controlSize(.small)
-            .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
-            .disabled(!isEnabled)
-        case .lipSync, .reframe, .edit, .generateMusic, .generateSFX, .rerun:
-            Button(title) {
-                present(action)
-            }
-            .buttonStyle(.capsule(.secondary))
-            .controlSize(.small)
-            .disabled(!isEnabled)
+    private var createVideoOptions: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
+            createVideoOption(L10n.string("Set as first frame"), asReference: false)
+            createVideoOption(L10n.string("Set as reference"), asReference: true)
         }
+        .padding(.vertical, AppTheme.Spacing.xs)
+    }
+
+    private func createVideoOption(_ title: String, asReference: Bool) -> some View {
+        Button {
+            createVideoOptionsPresented = false
+            sendToVideo(asReference: asReference)
+        } label: {
+            Text(verbatim: title)
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.primaryColor)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, AppTheme.Spacing.md)
+                .padding(.vertical, AppTheme.Spacing.sm)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
     }
 
     private func sendToVideo(asReference: Bool) {

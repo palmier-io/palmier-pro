@@ -227,8 +227,8 @@ struct AssetThumbnailView: View {
     }
 
     private var durationBadge: some View {
-        Text(formatDuration(asset.duration))
-            .font(.system(size: AppTheme.FontSize.xxs, weight: .medium))
+        Text(verbatim: formatMediaTileDuration(asset.duration))
+            .font(.system(size: AppTheme.FontSize.micro, weight: .medium))
             .monospacedDigit()
             .tileBadge()
     }
@@ -262,13 +262,6 @@ struct AssetThumbnailView: View {
                 .foregroundStyle(AppTheme.MediaOverlay.secondaryColor)
         }
         .help(L10n.string("Palmier couldn't load this source file. It may be missing, on an ejected drive, or unreadable."))
-    }
-
-    private func formatDuration(_ seconds: Double) -> String {
-        let total = Int(seconds)
-        let m = total / 60
-        let s = total % 60
-        return String(format: "%02d:%02d", m, s)
     }
 
     private var isSelected: Bool {

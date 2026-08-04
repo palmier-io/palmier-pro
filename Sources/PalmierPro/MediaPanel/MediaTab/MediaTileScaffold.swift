@@ -95,3 +95,22 @@ extension View {
             .padding(AppTheme.Spacing.xs)
     }
 }
+
+func formatMediaTileDuration(_ seconds: Double) -> String {
+    guard seconds.isFinite, seconds > 0 else { return "0s" }
+    let total = max(1, Int(seconds.rounded()))
+    let hours = total / 3600
+    let minutes = (total % 3600) / 60
+    let remainingSeconds = total % 60
+    if hours > 0 {
+        return "\(hours):\(mediaTileTwoDigits(minutes)):\(mediaTileTwoDigits(remainingSeconds))"
+    }
+    if minutes > 0 {
+        return "\(minutes):\(mediaTileTwoDigits(remainingSeconds))"
+    }
+    return "\(remainingSeconds)s"
+}
+
+private func mediaTileTwoDigits(_ value: Int) -> String {
+    value < 10 ? "0\(value)" : "\(value)"
+}
