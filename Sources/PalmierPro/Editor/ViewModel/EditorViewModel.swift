@@ -125,6 +125,7 @@ final class EditorViewModel {
     var rotationSnapGuidesVisible: Bool = false
     var timelineVisibleWidth: Double = 0
     var timelineRenderRevision: Int = 0
+    @ObservationIgnored private var clipLocationIndexCache: (revision: Int, timelineId: String, index: [String: ClipLocation])?
     /// Live horizontal scroll of the timeline panel, mirrored from AppKit for view-state stash.
     @ObservationIgnored var timelineScrollOffsetX: Double = 0
     var timelineScrollRestoreX: Double?
@@ -588,12 +589,26 @@ final class EditorViewModel {
     }
 
     func findClip(id: String) -> ClipLocation? {
-        for ti in timeline.tracks.indices {
-            if let ci = timeline.tracks[ti].clips.firstIndex(where: { $0.id == id }) {
-                return ClipLocation(trackIndex: ti, clipIndex: ci)
+        clipLocationIndex[id]
+    }
+
+    private var clipLocationIndex: [String: ClipLocation] {
+        let current = timeline
+        if let cache = clipLocationIndexCache,
+           cache.revision == timelineRenderRevision, cache.timelineId == current.id {
+            return cache.index
+        }
+        var index: [String: ClipLocation] = [:]
+        for ti in current.tracks.indices {
+            for ci in current.tracks[ti].clips.indices {
+                let id = current.tracks[ti].clips[ci].id
+                if index[id] == nil {
+                    index[id] = ClipLocation(trackIndex: ti, clipIndex: ci)
+                }
             }
         }
-        return nil
+        clipLocationIndexCache = (timelineRenderRevision, current.id, index)
+        return index
     }
 
     func clipFor(id: String) -> Clip? {

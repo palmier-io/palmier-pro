@@ -590,19 +590,11 @@ extension EditorViewModel {
     }
 
     private func clipLocations(for clipIds: [String]) -> [String: ClipLocation] {
-        let requestedIds = Set(clipIds)
-        guard !requestedIds.isEmpty else { return [:] }
-
         var locations: [String: ClipLocation] = [:]
-        locations.reserveCapacity(requestedIds.count)
-        for trackIndex in timeline.tracks.indices {
-            for clipIndex in timeline.tracks[trackIndex].clips.indices {
-                let clipId = timeline.tracks[trackIndex].clips[clipIndex].id
-                guard requestedIds.contains(clipId), locations[clipId] == nil else { continue }
-                locations[clipId] = ClipLocation(trackIndex: trackIndex, clipIndex: clipIndex)
-                if locations.count == requestedIds.count {
-                    return locations
-                }
+        locations.reserveCapacity(clipIds.count)
+        for clipId in clipIds {
+            if let location = findClip(id: clipId) {
+                locations[clipId] = location
             }
         }
         return locations
