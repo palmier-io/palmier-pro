@@ -515,7 +515,11 @@ struct MediaTab: View {
     }
 
     func searchFilteredTimelines(_ timelines: [Timeline]) -> [Timeline] {
-        let q = searchQuery.trimmingCharacters(in: .whitespaces)
+        Self.timelinesMatchingName(timelines, query: searchQuery)
+    }
+
+    static func timelinesMatchingName(_ timelines: [Timeline], query: String) -> [Timeline] {
+        let q = query.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return timelines }
         return timelines.filter { $0.name.localizedCaseInsensitiveContains(q) }
     }

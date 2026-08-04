@@ -413,7 +413,7 @@ extension MediaTab {
         }
     }
 
-    fileprivate func timelineTile(_ timeline: Timeline) -> some View {
+    func timelineTile(_ timeline: Timeline) -> some View {
         TimelineTileView(
             timeline: timeline,
             posterImage: timelinePoster(timeline),
@@ -442,7 +442,7 @@ extension MediaTab {
     }
 
     /// First visual clip's cached asset thumbnail — no dedicated timeline render.
-    fileprivate func timelinePoster(_ timeline: Timeline) -> NSImage? {
+    func timelinePoster(_ timeline: Timeline) -> NSImage? {
         for track in timeline.tracks where track.type == .video {
             for clip in track.clips where clip.mediaType == .video || clip.mediaType == .image {
                 if let thumb = editor.mediaAssets.first(where: { $0.id == clip.mediaRef })?.thumbnail {

@@ -8,9 +8,11 @@ extension MediaTab {
 
     var searchResults: some View {
         let nameMatches = sortAndFilter(editor.mediaAssets)
-        let orderedAssetIds = Self.searchOrderedAssetIds(
+        let timelineMatches = searchFilteredTimelines(editor.timelines)
+        let orderedItemIds = Self.searchOrderedItemIds(
             momentAssetIds: visualHits.map(\.assetID),
             spokenAssetIds: spokenHits.map(\.assetID),
+            timelineItemIds: timelineMatches.map { MediaPanelItemKey.timeline($0.id) },
             fileAssetIds: nameMatches.map(\.id),
             collapsedSectionTitles: collapsedSearchSections
         )
@@ -31,11 +33,20 @@ extension MediaTab {
                         .padding(.bottom, AppTheme.Spacing.sm)
                     }
                 }
+                if !timelineMatches.isEmpty {
+                    momentHeader(L10n.key("Timelines"), icon: "film.stack", count: timelineMatches.count)
+                    resultsGrid {
+                        ForEach(timelineMatches) { timeline in
+                            timelineTile(timeline)
+                                .id(MediaPanelItemKey.timeline(timeline.id))
+                        }
+                    }
+                }
                 if !nameMatches.isEmpty {
                     momentHeader(L10n.key("Files"), icon: "doc", count: nameMatches.count)
                     resultsGrid { ForEach(nameMatches) { fileCard($0) } }
                 }
-                if visualHits.isEmpty, spokenHits.isEmpty, nameMatches.isEmpty {
+                if visualHits.isEmpty, spokenHits.isEmpty, timelineMatches.isEmpty, nameMatches.isEmpty {
                     Text(L10n.string("No matches for “\(trimmedSearchQuery)”"))
                         .font(.system(size: AppTheme.FontSize.sm))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
@@ -46,19 +57,21 @@ extension MediaTab {
             .padding(.top, AppTheme.Spacing.sm)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .onAppear { publishGridState(orderedIds: orderedAssetIds, columnCount: 1) }
-        .onChange(of: orderedAssetIds) { _, ids in publishOrderedIds(ids) }
+        .onAppear { publishGridState(orderedIds: orderedItemIds, columnCount: 1) }
+        .onChange(of: orderedItemIds) { _, ids in publishOrderedIds(ids) }
     }
 
-    static func searchOrderedAssetIds(
+    static func searchOrderedItemIds(
         momentAssetIds: [String],
         spokenAssetIds: [String],
+        timelineItemIds: [String],
         fileAssetIds: [String],
         collapsedSectionTitles: Set<String>
     ) -> [String] {
         let sections = [
             collapsedSectionTitles.contains(L10n.key("Moments")) ? [] : momentAssetIds,
             collapsedSectionTitles.contains(L10n.key("Spoken")) ? [] : spokenAssetIds,
+            timelineItemIds,
             fileAssetIds,
         ]
         var seen: Set<String> = []
