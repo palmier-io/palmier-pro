@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="PalmierPro.App.Editor.MediaPanelHost"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:PalmierPro.App.Editor">
+
+    <Grid Background="Transparent">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Row 1: Import · New Folder · Delete · Generate -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" Padding="10,10,10,4">
+            <Button x:Name="ImportButton" FontSize="{StaticResource FontSizeSmMd}"
+                    Padding="10,4" Click="OnImportClicked" />
+            <Button x:Name="NewFolderButton" Content="New Folder"
+                    FontSize="{StaticResource FontSizeSmMd}" Padding="10,4"
+                    Click="OnNewFolderClicked" />
+            <Button x:Name="DeleteButton" FontSize="{StaticResource FontSizeSmMd}"
+                    Padding="10,4" Click="OnDeleteClicked" IsEnabled="False"
+                    ToolTipService.ToolTip="Delete selected media">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <FontIcon Glyph="&#xE74D;" FontSize="11" />
+                    <TextBlock x:Name="DeleteButtonLabel" Text="Delete" FontSize="12" />
+                </StackPanel>
+            </Button>
+            <Button x:Name="GenerateToolbarButton" FontSize="{StaticResource FontSizeSmMd}"
+                    Padding="10,4" Click="OnGenerateToolbarClicked">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <FontIcon Glyph="&#xE735;" FontSize="11" />
+                    <TextBlock x:Name="GenerateToolbarLabel" Text="Generate" FontSize="12" />
+                </StackPanel>
+            </Button>
+        </StackPanel>
+
+        <!-- Row 2: Search -->
+        <Grid Grid.Row="1" Padding="10,0,10,6" ColumnSpacing="6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="LibrarySearchBox" PlaceholderText="Search"
+                     KeyDown="OnLibrarySearchKeyDown" />
+            <Button Grid.Column="1" x:Name="LibrarySearchButton" Content="Go"
+                    Padding="10,4" Click="OnLibrarySearchClicked" />
+        </Grid>
+
+        <Pivot x:Name="MediaPivot" Grid.Row="2">
+            <PivotItem x:Name="MediaTab" Header="Media">
+                <GridView x:Name="MediaGrid" Padding="8"
+                          SelectionMode="Extended" IsItemClickEnabled="True"
+                          CanDragItems="True"
+                          DragItemsStarting="OnMediaDragItemsStarting"
+                          SelectionChanged="OnMediaSelectionChanged"
+                          RightTapped="OnMediaGridRightTapped"
+                          KeyDown="OnMediaGridKeyDown">
+                    <GridView.ItemTemplate>
+                        <DataTemplate x:DataType="local:MediaItemViewModel">
+                            <StackPanel Width="126" Spacing="4" Loaded="OnMediaTileLoaded">
+                                <Grid Width="126" Height="72" CornerRadius="{StaticResource RadiusXsSm}"
+                                      Background="{ThemeResource BackgroundRaisedBrush}">
+                                    <FontIcon Glyph="&#xE714;" FontSize="20"
+                                              Foreground="{ThemeResource TextMutedBrush}" />
+                                    <Image Source="{x:Bind Thumbnail, Mode=OneWay}" Stretch="UniformToFill" />
+                                    <!-- AI badge -->
+                                    <Border Background="#CC5B4B8A"
+                                            CornerRadius="{StaticResource RadiusXs}"
+                                            HorizontalAlignment="Left" VerticalAlignment="Top"
+                                            Margin="4" Padding="4,1"
+                                            Visibility="{x:Bind AiBadgeVisibility}">
+                                        <TextBlock Text="AI" FontSize="9" FontWeight="SemiBold"
+                                                   Foreground="White" />
+                                    </Border>
+                                    <Border Background="{ThemeResource MediaOverlayBackgroundBrush}"
+                                            Opacity="0.7" CornerRadius="{StaticResource RadiusXs}"
+                                            HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                            Margin="4" Padding="4,1"
+                                            Visibility="{x:Bind DurationBadgeVisibility}">
+                                        <TextBlock Text="{x:Bind DurationText}" FontSize="10"
+                                                   Foreground="{ThemeResource MediaOverlayPrimaryBrush}" />
+                                    </Border>
+                                    <Border Background="{ThemeResource MediaOverlayBackgroundBrush}"
+                                            Opacity="0.85" Visibility="{x:Bind GeneratingVisibility}">
+                                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="4">
+                                            <TextBlock Text="Generating…" FontSize="10"
+                                                       Foreground="{ThemeResource MediaOverlayPrimaryBrush}"
+                                                       HorizontalAlignment="Center" />
+                                            <ProgressBar IsIndeterminate="True" Width="72" Height="3" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Background="{ThemeResource MediaOverlayBackgroundBrush}"
+                                            Opacity="0.8" Visibility="{x:Bind OfflineVisibility}">
+                                        <TextBlock Text="Offline" FontSize="10"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                   Foreground="{ThemeResource MediaOverlaySecondaryBrush}" />
+                                    </Border>
+                                </Grid>
+                                <TextBlock Text="{x:Bind Name}" FontSize="11" MaxLines="1"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{ThemeResource TextSecondaryBrush}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </GridView.ItemTemplate>
+                </GridView>
+            </PivotItem>
+
+            <PivotItem x:Name="AudioTab" Header="Audio">
+                <GridView x:Name="AudioGrid" Padding="8"
+                          SelectionMode="Extended" IsItemClickEnabled="True"
+                          CanDragItems="True"
+                          DragItemsStarting="OnMediaDragItemsStarting"
+                          SelectionChanged="OnMediaSelectionChanged"
+                          RightTapped="OnMediaGridRightTapped"
+                          KeyDown="OnMediaGridKeyDown">
+                    <GridView.ItemTemplate>
+                        <DataTemplate x:DataType="local:MediaItemViewModel">
+                            <StackPanel Width="126" Spacing="4" Loaded="OnMediaTileLoaded">
+                                <Grid Width="126" Height="72" CornerRadius="{StaticResource RadiusXsSm}"
+                                      Background="{ThemeResource BackgroundRaisedBrush}">
+                                    <FontIcon Glyph="&#xE8D6;" FontSize="24"
+                                              Foreground="{ThemeResource TextMutedBrush}" />
+                                    <Border Background="{ThemeResource MediaOverlayBackgroundBrush}"
+                                            Opacity="0.7" CornerRadius="{StaticResource RadiusXs}"
+                                            HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                            Margin="4" Padding="4,1"
+                                            Visibility="{x:Bind DurationBadgeVisibility}">
+                                        <TextBlock Text="{x:Bind DurationText}" FontSize="10"
+                                                   Foreground="{ThemeResource MediaOverlayPrimaryBrush}" />
+                                    </Border>
+                                </Grid>
+                                <TextBlock Text="{x:Bind Name}" FontSize="11" MaxLines="1"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{ThemeResource TextSecondaryBrush}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </GridView.ItemTemplate>
+                </GridView>
+            </PivotItem>
+
+            <PivotItem x:Name="SearchTab" Header="Search">
+                <ScrollViewer Padding="12">
+                    <StackPanel Spacing="8">
+                        <TextBox x:Name="SearchBox" PlaceholderText="Search spoken or visual…"
+                                 KeyDown="OnSearchKeyDown" />
+                        <ComboBox x:Name="SearchScopeBox" HorizontalAlignment="Stretch" SelectedIndex="2">
+                            <ComboBoxItem Content="Spoken" Tag="spoken" />
+                            <ComboBoxItem Content="Visual" Tag="visual" />
+                            <ComboBoxItem Content="Both" Tag="both" />
+                        </ComboBox>
+                        <Button x:Name="SearchButton" Click="OnSearchClicked" />
+                        <ListView x:Name="SearchResults" SelectionChanged="OnSearchResultSelected">
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="local:MediaSearchHitViewModel">
+                                    <StackPanel Spacing="2" Padding="0,4">
+                                        <TextBlock Text="{x:Bind Title}" FontWeight="SemiBold" FontSize="12" />
+                                        <TextBlock Text="{x:Bind Detail}" FontSize="11" Opacity="0.7"
+                                                   TextWrapping="WrapWholeWords" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </StackPanel>
+                </ScrollViewer>
+            </PivotItem>
+
+            <PivotItem x:Name="CaptionsTab" Header="Captions">
+                <ScrollViewer Padding="12">
+                    <StackPanel Spacing="12">
+                        <TextBlock x:Name="CaptionsHint" TextWrapping="WrapWholeWords"
+                                   FontSize="11" Opacity="0.65" />
+                        <TextBlock x:Name="TranscriptSummary" FontSize="12" TextWrapping="WrapWholeWords" />
+                        <TextBlock Text="Caption size" FontSize="11" Opacity="0.65" />
+                        <Slider x:Name="CaptionFontSlider" Minimum="18" Maximum="96" Value="42" />
+                        <TextBlock Text="Style" FontSize="11" Opacity="0.65" />
+                        <ComboBox x:Name="CaptionStyleBox" SelectedIndex="0"
+                                  HorizontalAlignment="Stretch">
+                            <ComboBoxItem Content="Lower third" Tag="lower" />
+                            <ComboBoxItem Content="Center" Tag="center" />
+                            <ComboBoxItem Content="Top" Tag="top" />
+                        </ComboBox>
+                        <TextBlock Text="Engine" FontSize="11" Opacity="0.65" />
+                        <ComboBox x:Name="CaptionEngineBox" SelectedIndex="0"
+                                  HorizontalAlignment="Stretch">
+                            <ComboBoxItem Content="Local (Whisper / on-device)" Tag="local" />
+                            <ComboBoxItem Content="Cloud (signed-in)" Tag="cloud" />
+                        </ComboBox>
+                        <Button x:Name="TranscribeButton" Content="Transcribe selected media"
+                                Click="OnTranscribeClicked" />
+                        <TextBlock x:Name="TranscribeStatus" FontSize="11" Opacity="0.7"
+                                   TextWrapping="WrapWholeWords" />
+                        <Button x:Name="RefreshTranscriptButton" Content="Refresh transcript preview"
+                                Click="OnRefreshTranscriptClicked" />
+                        <Button x:Name="AddCaptionsButton" Click="OnAddCaptionsClicked" />
+                        <ListView x:Name="CaptionPreviewList" MaxHeight="220" />
+                    </StackPanel>
+                </ScrollViewer>
+            </PivotItem>
+
+            <PivotItem x:Name="GenerationTab" Header="Generation">
+                <ScrollViewer Padding="12">
+                    <StackPanel Spacing="10">
+                        <TextBlock x:Name="GenerationHint" TextWrapping="WrapWholeWords"
+                                   FontSize="11" Opacity="0.65" />
+                        <TextBlock Text="Kind" FontSize="11" Opacity="0.65" />
+                        <ComboBox x:Name="KindBox" SelectedIndex="0"
+                                  HorizontalAlignment="Stretch" SelectionChanged="OnKindChanged">
+                            <ComboBoxItem Content="Video" Tag="video" />
+                            <ComboBoxItem Content="Image" Tag="image" />
+                            <ComboBoxItem Content="Audio" Tag="audio" />
+                        </ComboBox>
+                        <TextBlock Text="Model" FontSize="11" Opacity="0.65" />
+                        <ComboBox x:Name="ModelBox" HorizontalAlignment="Stretch"
+                                  DisplayMemberPath="DisplayName" />
+                        <TextBox x:Name="PromptBox" PlaceholderText="Describe what to generate…"
+                                 AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" />
+                        <Button x:Name="GenerateButton" Click="OnGenerateClicked" />
+                        <TextBlock x:Name="CreditsHint" FontSize="11" Opacity="0.65" />
+                        <TextBlock x:Name="GenerationStatus" FontSize="11" Opacity="0.7"
+                                   TextWrapping="WrapWholeWords" />
+                    </StackPanel>
+                </ScrollViewer>
+            </PivotItem>
+        </Pivot>
+
+        <TextBlock Grid.Row="3" x:Name="StatusTextBlock" Padding="12,6"
+                   FontSize="11" Foreground="{ThemeResource TextTertiaryBrush}" />
+    </Grid>
+</UserControl>

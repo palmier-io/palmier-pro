@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>PalmierPro.Media</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Platforms>x64;ARM64</Platforms>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Vortice.MediaFoundation" Version="3.6.2" />
+    <PackageReference Include="Vortice.Direct3D11" Version="3.6.2" />
+    <PackageReference Include="Vortice.DXGI" Version="3.6.2" />
+    <PackageReference Include="Vortice.Direct2D1" Version="3.6.2" />
+    <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="System.Drawing.Common" Version="8.0.10" />
+    <PackageReference Include="Whisper.net" Version="1.7.4" />
+    <PackageReference Include="Whisper.net.Runtime" Version="1.7.4" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.19.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\PalmierPro.Core\PalmierPro.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="PalmierPro.Media.Tests" />
+  </ItemGroup>
+  <!-- Ship on-device models next to the app when present under windows/models. -->
+  <ItemGroup>
+    <Content Include="..\..\models\ggml-*.bin" Link="models\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\models')" />
+    <Content Include="..\..\models\silero_vad.onnx" Link="models\silero_vad.onnx"
+             CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\models\silero_vad.onnx')" />
+    <Content Include="..\..\models\siglip.onnx" Link="models\siglip.onnx"
+             CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\models\siglip.onnx')" />
+    <Content Include="..\..\models\deepfilter.onnx" Link="models\deepfilter.onnx"
+             CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\models\deepfilter.onnx')" />
+    <Content Include="..\..\models\beat.onnx" Link="models\beat.onnx"
+             CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\models\beat.onnx')" />
+    <Content Include="..\..\models\speaker.onnx" Link="models\speaker.onnx"
+             CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\models\speaker.onnx')" />
+  </ItemGroup>
+</Project>

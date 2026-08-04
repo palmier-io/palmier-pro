@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="PalmierPro.App.Editor.ProjectWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:PalmierPro.App.Editor"
+    xmlns:timeline="using:PalmierPro.App.TimelineUI">
+
+    <!-- Mac Default layout: Agent | [Media | Preview | Inspector] / Timeline -->
+    <Grid Background="{ThemeResource BackgroundBaseBrush}" Padding="5">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="36" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Title strip -->
+        <Grid Grid.Row="0" Margin="0,0,0,5">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="ProjectNameText"
+                       Grid.Column="1"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       FontSize="{StaticResource FontSizeMd}"
+                       Foreground="{ThemeResource TextSecondaryBrush}" />
+            <Button x:Name="ExportTitleButton" Grid.Column="2"
+                    HorizontalAlignment="Right" VerticalAlignment="Center"
+                    Padding="12,4" FontSize="{StaticResource FontSizeSmMd}"
+                    Click="OnExportClicked" Content="Export" />
+        </Grid>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="280" MinWidth="240" MaxWidth="640" />
+                <ColumnDefinition Width="5" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Agent (full height, left) -->
+            <Border Grid.Column="0"
+                    Background="{ThemeResource BackgroundSurfaceBrush}"
+                    CornerRadius="{StaticResource RadiusSm}"
+                    BorderBrush="{ThemeResource BorderSubtleBrush}"
+                    BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="Agent" Padding="12,10,12,6"
+                               FontSize="{StaticResource FontSizeSm}"
+                               Foreground="{ThemeResource TextMutedBrush}" />
+                    <local:AgentPanelHost x:Name="AgentHost" Grid.Row="1" />
+                </Grid>
+            </Border>
+
+            <!-- Right stack: upper panels + timeline -->
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="7*" MinHeight="280" />
+                    <RowDefinition Height="5" />
+                    <RowDefinition Height="3*" MinHeight="160" />
+                </Grid.RowDefinitions>
+
+                <!-- Upper: Media | Preview | Inspector -->
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="500" MinWidth="280" />
+                        <ColumnDefinition Width="5" />
+                        <ColumnDefinition Width="*" MinWidth="400" />
+                        <ColumnDefinition Width="5" />
+                        <ColumnDefinition Width="340" MinWidth="240" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0"
+                            Background="{ThemeResource BackgroundSurfaceBrush}"
+                            CornerRadius="{StaticResource RadiusSm}"
+                            BorderBrush="{ThemeResource BorderSubtleBrush}"
+                            BorderThickness="1">
+                        <local:MediaPanelHost x:Name="MediaHost" />
+                    </Border>
+
+                    <!-- Preview -->
+                    <Border Grid.Column="2"
+                            Background="{ThemeResource BackgroundSurfaceBrush}"
+                            CornerRadius="{StaticResource RadiusSm}"
+                            BorderBrush="{ThemeResource BorderSubtleBrush}"
+                            BorderThickness="1">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0" Background="#FF000000">
+                                <SwapChainPanel x:Name="PreviewPanel" SizeChanged="OnPreviewSizeChanged" />
+                                <local:ScopesOverlay x:Name="ScopesView"
+                                                     HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                     Width="200" Height="100" Margin="12" />
+                                <ToggleButton x:Name="ScopesToggle"
+                                              HorizontalAlignment="Right" VerticalAlignment="Top"
+                                              Margin="12,118,12,0" Padding="8,4"
+                                              Click="OnScopesToggleClicked">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="&#xE9D9;" FontSize="12" />
+                                        <TextBlock x:Name="ScopesToggleLabel" Text="Scopes" FontSize="11" />
+                                    </StackPanel>
+                                </ToggleButton>
+                            </Grid>
+
+                            <!-- Transport + format chips -->
+                            <Grid Grid.Row="1" Padding="12,8"
+                                  BorderBrush="{ThemeResource BorderSubtleBrush}"
+                                  BorderThickness="0,1,0,0"
+                                  ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="2">
+                                    <Button Click="OnStepBackClicked" Padding="8,4">
+                                        <FontIcon Glyph="&#xE892;" FontSize="12" />
+                                    </Button>
+                                    <Button x:Name="PlayPauseButton" Click="OnPlayPauseClicked" Padding="10,4">
+                                        <FontIcon x:Name="PlayPauseIcon" Glyph="&#xE768;" FontSize="14" />
+                                    </Button>
+                                    <Button Click="OnStepForwardClicked" Padding="8,4">
+                                        <FontIcon Glyph="&#xE893;" FontSize="12" />
+                                    </Button>
+                                </StackPanel>
+
+                                <TextBlock Grid.Column="1" VerticalAlignment="Center"
+                                           FontSize="12" FontFamily="Consolas"
+                                           Foreground="{ThemeResource AccentTimecodeBrush}"
+                                           Text="{x:Bind ViewModel.TimecodeText, Mode=OneWay}" />
+
+                                <Slider x:Name="ScrubSlider" Grid.Column="2" Minimum="0"
+                                        VerticalAlignment="Center" IsThumbToolTipEnabled="False"
+                                        Maximum="{x:Bind ViewModel.DurationFrames, Mode=OneWay}"
+                                        ValueChanged="OnScrubValueChanged"
+                                        PointerCaptureLost="OnScrubEnded" />
+
+                                <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6"
+                                            VerticalAlignment="Center">
+                                    <Border Background="{ThemeResource BackgroundRaisedBrush}"
+                                            CornerRadius="{StaticResource RadiusXs}" Padding="6,2">
+                                        <TextBlock x:Name="AspectChip" Text="16:9" FontSize="10"
+                                                   Foreground="{ThemeResource TextTertiaryBrush}" />
+                                    </Border>
+                                    <Border Background="{ThemeResource BackgroundRaisedBrush}"
+                                            CornerRadius="{StaticResource RadiusXs}" Padding="6,2">
+                                        <TextBlock x:Name="FpsChip" Text="24" FontSize="10"
+                                                   Foreground="{ThemeResource TextTertiaryBrush}" />
+                                    </Border>
+                                    <Border Background="{ThemeResource BackgroundRaisedBrush}"
+                                            CornerRadius="{StaticResource RadiusXs}" Padding="6,2">
+                                        <TextBlock x:Name="ResChip" Text="FHD" FontSize="10"
+                                                   Foreground="{ThemeResource TextTertiaryBrush}" />
+                                    </Border>
+                                    <Border Background="{ThemeResource BackgroundRaisedBrush}"
+                                            CornerRadius="{StaticResource RadiusXs}" Padding="6,2">
+                                        <TextBlock Text="Fit" FontSize="10"
+                                                   Foreground="{ThemeResource TextTertiaryBrush}" />
+                                    </Border>
+                                </StackPanel>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- Inspector -->
+                    <Border Grid.Column="4"
+                            Background="{ThemeResource BackgroundSurfaceBrush}"
+                            CornerRadius="{StaticResource RadiusSm}"
+                            BorderBrush="{ThemeResource BorderSubtleBrush}"
+                            BorderThickness="1">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" x:Name="InspectorHeader" Text="Inspector"
+                                       Padding="12,10,12,6"
+                                       FontSize="{StaticResource FontSizeSm}"
+                                       Foreground="{ThemeResource TextMutedBrush}" />
+                            <local:InspectorPanel x:Name="Inspector" Grid.Row="1" />
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <!-- Timeline -->
+                <Border Grid.Row="2"
+                        Background="{ThemeResource BackgroundSurfaceBrush}"
+                        CornerRadius="{StaticResource RadiusSm}"
+                        BorderBrush="{ThemeResource BorderSubtleBrush}"
+                        BorderThickness="1">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4"
+                                    Padding="8,6"
+                                    BorderBrush="{ThemeResource BorderSubtleBrush}"
+                                    BorderThickness="0,0,0,1">
+                            <ToggleButton x:Name="PointerToolButton" IsChecked="True"
+                                          Padding="8,4" Click="OnPointerToolClicked"
+                                          ToolTipService.ToolTip="Pointer (V)">
+                                <FontIcon Glyph="&#xE8B0;" FontSize="12" />
+                            </ToggleButton>
+                            <ToggleButton x:Name="RazorToolButton"
+                                          Padding="8,4" Click="OnRazorToolClicked"
+                                          ToolTipService.ToolTip="Razor (C)">
+                                <FontIcon Glyph="&#xE8B6;" FontSize="12" />
+                            </ToggleButton>
+                        </StackPanel>
+                        <timeline:TimelineControl x:Name="TimelineView" Grid.Row="1" />
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>

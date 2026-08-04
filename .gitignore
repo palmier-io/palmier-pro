@@ -14,6 +14,12 @@ playground.xcworkspace
 
 wwdc/
 
+# Windows (.NET) build outputs
+windows/**/bin/
+windows/**/obj/
+windows/**/*.user
+windows/artifacts/
+
 # Secrets
 .env
 .env.*
@@ -35,5 +41,9 @@ models/*/.venv/
 models/*/build*/
 models/*/checkpoint*
 models/*/convert*.log
+
+# Windows on-device ML weights (fetch via windows/scripts/fetch-models.ps1)
+windows/models/*.bin
+windows/models/*.onnx
 
 AUDIO_SUITE_*
