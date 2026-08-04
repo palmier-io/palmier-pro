@@ -44,6 +44,27 @@ struct TextAnimationRenderTests {
         return n
     }
 
+    private func highlightAmount(
+        _ preset: TextAnimation.Preset,
+        word: WordTiming,
+        nextWord: WordTiming?,
+        frame: Int
+    ) -> Double {
+        let animation = TextAnimation(
+            preset: preset,
+            perWordFrames: 6,
+            highlight: .init(r: 1, g: 0, b: 0, a: 1)
+        )
+        let state = TextAnimator.wordState(
+            animation,
+            word: word,
+            nextWord: nextWord,
+            rel: frame,
+            base: .init(r: 0, g: 0, b: 0, a: 1)
+        )
+        return preset == .highlightBlock ? state.bgColor?.a ?? 0 : state.color.r
+    }
+
     @Test func wordPopRevealsProgressively() {
         let c = clip(TextAnimation(preset: .wordPop, perWordFrames: 6))
         let early = pixels(c, frame: 5)   // only ONE has started
@@ -60,6 +81,41 @@ struct TextAnimationRenderTests {
         for i in stride(from: 0, to: mid.count, by: 4)
         where mid[i] > 180 && mid[i + 1] > 150 && mid[i + 2] < 90 { yellow += 1 }
         #expect(yellow > 20, "active word should be highlighted yellow (\(yellow))")
+    }
+
+    @Test(arguments: [TextAnimation.Preset.highlightPop, .highlightBlock])
+    func shortWordHighlightAttackUsesOriginalTiming(preset: TextAnimation.Preset) {
+        let word = WordTiming(text: "A", startFrame: 10, endFrame: 12)
+        let nextWord = WordTiming(text: "pause", startFrame: 30, endFrame: 40)
+
+        #expect(highlightAmount(preset, word: word, nextWord: nextWord, frame: 11) == 1)
+    }
+
+    @Test(arguments: [TextAnimation.Preset.highlightPop, .highlightBlock])
+    func highlightHoldsAcrossPause(preset: TextAnimation.Preset) {
+        let word = WordTiming(text: "hold", startFrame: 0, endFrame: 2)
+        let nextWord = WordTiming(text: "next", startFrame: 20, endFrame: 30)
+
+        #expect(highlightAmount(preset, word: word, nextWord: nextWord, frame: 15) == 1)
+    }
+
+    @Test(arguments: [TextAnimation.Preset.highlightPop, .highlightBlock])
+    func adjacentWordHighlightsCrossfadeWithoutGap(preset: TextAnimation.Preset) {
+        let word = WordTiming(text: "first", startFrame: 0, endFrame: 2)
+        let nextWord = WordTiming(text: "next", startFrame: 20, endFrame: 30)
+
+        for frame in 20...24 {
+            let outgoing = highlightAmount(preset, word: word, nextWord: nextWord, frame: frame)
+            let incoming = highlightAmount(preset, word: nextWord, nextWord: nil, frame: frame)
+            #expect(abs(outgoing + incoming - 1) < 0.000_001)
+        }
+    }
+
+    @Test(arguments: [TextAnimation.Preset.highlightPop, .highlightBlock])
+    func finalWordHighlightHolds(preset: TextAnimation.Preset) {
+        let word = WordTiming(text: "final", startFrame: 70, endFrame: 72)
+
+        #expect(highlightAmount(preset, word: word, nextWord: nil, frame: 89) == 1)
     }
 
     @Test func typewriterShowsCompleteTextOnFinalFrame() {
