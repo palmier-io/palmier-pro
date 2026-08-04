@@ -28,6 +28,7 @@ final class VideoEngine {
     private var playbackEndObserver: NSObjectProtocol?
     private(set) var rebuildTask: Task<Void, Never>?
     private var rebuildGeneration = 0
+    private var visualRefreshGeneration = 0
     private(set) var sourcePreviewTask: Task<Void, Never>?
     private var sourcePreviewGeneration = 0
     private var sourceTrackStart: CMTime = .zero
@@ -285,9 +286,15 @@ final class VideoEngine {
         let missingMediaRefs: Set<String>
     }
 
+    private typealias CompositionVisuals = (
+        audioMix: AVMutableAudioMix,
+        videoComposition: AVVideoComposition
+    )
+
     func rebuild(visualsCurrent: Bool = false) {
         guard let editor, editor.activePreviewTab == .timeline else { return }
         let generation = invalidateRebuild()
+        let startingVisualRefreshGeneration = visualRefreshGeneration
 
         let mediaURLs = editor.mediaResolver.expectedURLMap()
         let missingMediaRefs = editor.missingMediaRefs
@@ -341,15 +348,35 @@ final class VideoEngine {
                 return
             }
 
-            guard generation == rebuildGeneration else { return }
-            rebuildTask = nil
-            guard !Task.isCancelled else { return }
+            guard generation == rebuildGeneration,
+                  !Task.isCancelled,
+                  editor.activePreviewTab == .timeline,
+                  editor.timeline.id == timelineId else { return }
 
+            let useCurrentVisuals = startingVisualRefreshGeneration != visualRefreshGeneration
+            let appliedTimelineResolver = useCurrentVisuals ? editor.timelineResolver() : resolveTimeline
+            let correctiveVisuals = useCurrentVisuals
+                ? CompositionBuilder.buildVisuals(
+                    timeline: editor.timeline,
+                    trackMappings: result.trackMappings,
+                    clipNaturalSizes: result.clipNaturalSizes,
+                    clipTransforms: result.clipTransforms,
+                    resolveTimeline: appliedTimelineResolver,
+                    compositionDuration: result.composition.duration,
+                    renderSize: CGSize(width: editor.timeline.width, height: editor.timeline.height)
+                )
+                : nil
+
+            rebuildTask = nil
             if result.offlineMediaRefs.isEmpty && result.unprocessableMediaRefs.isEmpty {
                 compositionCache[timelineId] = (inputs, result)
             }
             compositionCache = compositionCache.filter { editor.openTimelineIds.contains($0.key) }
-            apply(result, editor: editor)
+            apply(
+                result,
+                editor: editor,
+                visuals: correctiveVisuals
+            )
         }
     }
 
@@ -367,7 +394,11 @@ final class VideoEngine {
         compositionCache.removeValue(forKey: timelineId)
     }
 
-    private func apply(_ result: CompositionResult, editor: EditorViewModel) {
+    private func apply(
+        _ result: CompositionResult,
+        editor: EditorViewModel,
+        visuals: CompositionVisuals? = nil
+    ) {
         trackMappings = result.trackMappings
         clipNaturalSizes = result.clipNaturalSizes
         clipTransforms = result.clipTransforms
@@ -375,9 +406,13 @@ final class VideoEngine {
         editor.offlineMediaRefs = result.offlineMediaRefs
         editor.unprocessableMediaRefs = result.unprocessableMediaRefs
 
+        let appliedVisuals = visuals ?? (
+            audioMix: result.audioMix,
+            videoComposition: result.videoComposition
+        )
         let item = AVPlayerItem(asset: result.composition)
-        item.audioMix = result.audioMix
-        item.videoComposition = result.videoComposition
+        item.audioMix = appliedVisuals.audioMix
+        item.videoComposition = appliedVisuals.videoComposition
         replacePlayerItem(item, reason: "rebuild")
 
         seek(to: editor.currentFrame, mode: .exact)
@@ -385,6 +420,7 @@ final class VideoEngine {
     }
 
     func refreshVisuals() {
+        visualRefreshGeneration &+= 1
         guard let editor, editor.activePreviewTab == .timeline,
               let currentItem = player.currentItem,
               !trackMappings.isEmpty else {
