@@ -243,7 +243,7 @@ enum Transcription {
         range: ClosedRange<Double>? = nil,
         fileExtension: String = "caf"
     ) async throws -> URL {
-        let outURL = FileManager.default.temporaryDirectory
+        let outURL = StorageLocations.temporaryDirectory
             .appendingPathComponent("palmier-stt-\(UUID().uuidString).\(fileExtension)")
         try await audioExtractionGate.wait()
         defer { Task { await audioExtractionGate.signal() } }

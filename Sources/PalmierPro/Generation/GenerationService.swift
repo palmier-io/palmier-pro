@@ -266,7 +266,7 @@ final class GenerationService {
         if let projectURL {
             return projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
         }
-        return FileManager.default.temporaryDirectory
+        return StorageLocations.temporaryDirectory
     }
 
     @discardableResult
