@@ -22,7 +22,7 @@ enum Layout {
 
     // Timeline
     static let timelineMinHeight: CGFloat = 100
-    static let timelineDefaultHeightFraction: CGFloat = 0.25
+    static let timelineDefaultHeightFraction: CGFloat = 0.35
     static let trackHeight: CGFloat = TrackSize.defaultHeight
     static let rulerHeight: CGFloat = 24
     static let trackHeaderWidth: CGFloat = 100
