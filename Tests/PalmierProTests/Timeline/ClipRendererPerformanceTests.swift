@@ -4,17 +4,35 @@ import Testing
 
 @Suite struct ClipRendererPerformanceTests {
     @Test func volumeKeyframesUseTheSameVisibilityRulesAsRendering() {
-        let compactRect = CGRect(x: 0, y: 0, width: 0.5, height: 64)
-        let detailRect = CGRect(
+        let narrowRect = CGRect(
             x: 0,
             y: 0,
-            width: AppTheme.ComponentSize.timelineClipDetailMinWidth,
+            width: AppTheme.ComponentSize.timelineClipControlsMinWidth - AppTheme.BorderWidth.hairline,
+            height: 64
+        )
+        let controlsRect = CGRect(
+            x: 0,
+            y: 0,
+            width: AppTheme.ComponentSize.timelineClipControlsMinWidth,
             height: 64
         )
 
-        #expect(!ClipRenderer.showsVolumeKeyframes(isSelected: true, isHovered: true, in: compactRect))
-        #expect(!ClipRenderer.showsVolumeKeyframes(isSelected: false, isHovered: true, in: detailRect))
-        #expect(ClipRenderer.showsVolumeKeyframes(isSelected: true, isHovered: false, in: detailRect))
+        #expect(!ClipRenderer.showsFadeControls(isSelected: true, isHovered: true, in: narrowRect))
+        #expect(!ClipRenderer.showsVolumeKeyframes(isSelected: true, isHovered: true, in: narrowRect))
+        #expect(ClipRenderer.showsFadeControls(isSelected: false, isHovered: true, in: controlsRect))
+        #expect(!ClipRenderer.showsVolumeKeyframes(isSelected: false, isHovered: true, in: controlsRect))
+        #expect(ClipRenderer.showsVolumeKeyframes(isSelected: true, isHovered: false, in: controlsRect))
+    }
+
+    @Test @MainActor func narrowClipsUseTheirWholeWidthForMoveDragging() {
+        let narrowWidth = AppTheme.ComponentSize.timelineClipControlsMinWidth - AppTheme.BorderWidth.hairline
+        let controlsWidth = AppTheme.ComponentSize.timelineClipControlsMinWidth
+
+        #expect(TimelineInputController.trimEdge(localX: 0, clipWidth: narrowWidth) == nil)
+        #expect(TimelineInputController.trimEdge(localX: narrowWidth, clipWidth: narrowWidth) == nil)
+        #expect(TimelineInputController.trimEdge(localX: 0, clipWidth: controlsWidth) == .left)
+        #expect(TimelineInputController.trimEdge(localX: controlsWidth, clipWidth: controlsWidth) == .right)
+        #expect(TimelineInputController.trimEdge(localX: controlsWidth / 2, clipWidth: controlsWidth) == nil)
     }
 
     @Test func compactSelectedClipsRenderWithinInteractionBudget() throws {

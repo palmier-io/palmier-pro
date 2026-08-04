@@ -49,6 +49,14 @@ enum ClipRenderer {
         rect.width < AppTheme.ComponentSize.timelineClipBorderMinWidth
     }
 
+    static func supportsPrecisionControls(atWidth width: CGFloat) -> Bool {
+        width >= AppTheme.ComponentSize.timelineClipControlsMinWidth
+    }
+
+    static func supportsPrecisionControls(in rect: NSRect) -> Bool {
+        supportsPrecisionControls(atWidth: rect.width)
+    }
+
     static func showsLabel(isSelected: Bool, in rect: NSRect) -> Bool {
         let minimumWidth = isSelected
             ? AppTheme.ComponentSize.timelineClipDetailMinWidth
@@ -57,8 +65,8 @@ enum ClipRenderer {
     }
 
     static func showsFadeControls(isSelected: Bool, isHovered: Bool, in rect: NSRect) -> Bool {
-        guard !usesCompactRendering(in: rect) else { return false }
-        return isHovered || (isSelected && rect.width >= AppTheme.ComponentSize.timelineClipDetailMinWidth)
+        guard supportsPrecisionControls(in: rect) else { return false }
+        return isHovered || isSelected
     }
 
     static func showsVolumeKeyframes(isSelected: Bool, isHovered: Bool, in rect: NSRect) -> Bool {

@@ -167,8 +167,21 @@ final class TimelineView: NSView {
 
     func setHoveredClipId(_ clipId: String?) {
         guard hoveredClipId != clipId else { return }
+        let previousClipId = hoveredClipId
         hoveredClipId = clipId
-        needsDisplay = true
+
+        let padding = AppTheme.BorderWidth.thick
+        var requiresFullRedraw = false
+        for id in [previousClipId, clipId].compactMap({ $0 }) {
+            guard let rect = clipDisplayRects[id] else {
+                requiresFullRedraw = true
+                continue
+            }
+            setNeedsDisplay(rect.insetBy(dx: -padding, dy: -padding))
+        }
+        if requiresFullRedraw {
+            needsDisplay = true
+        }
     }
 
     @discardableResult

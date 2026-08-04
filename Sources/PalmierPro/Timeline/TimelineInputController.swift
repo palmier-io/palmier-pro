@@ -20,7 +20,7 @@ final class TimelineInputController {
         case end
     }
 
-    private enum TrimEdge {
+    enum TrimEdge: Equatable {
         case left
         case right
     }
@@ -162,8 +162,8 @@ final class TimelineInputController {
 
         if let hit = hitTestClip(at: point, trackIndex: trackIndex, geometry: geometry) {
             let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
-            view.setHoveredClipId(clip.id)
             let rect = geometry.clipRect(for: clip, trackIndex: hit.trackIndex)
+            view.setHoveredClipId(ClipRenderer.supportsPrecisionControls(in: rect) ? clip.id : nil)
             let isShift = event.modifierFlags.contains(.shift)
             let isOption = event.modifierFlags.contains(.option)
             // Linked behavior is always on; Option is the per-drag override.
@@ -740,8 +740,8 @@ final class TimelineInputController {
 
         if let hit = hitTestClip(at: point, trackIndex: trackIndex, geometry: geometry) {
             let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
-            view.setHoveredClipId(clip.id)
             let rect = geometry.clipRect(for: clip, trackIndex: hit.trackIndex)
+            view.setHoveredClipId(ClipRenderer.supportsPrecisionControls(in: rect) ? clip.id : nil)
             let localX = point.x - rect.minX
             if let trimEdge = Self.trimEdge(localX: localX, clipWidth: rect.width) {
                 Self.trimCursor(for: trimEdge).set()
@@ -770,7 +770,8 @@ final class TimelineInputController {
         NSCursor.arrow.set()
     }
 
-    private static func trimEdge(localX: CGFloat, clipWidth: CGFloat) -> TrimEdge? {
+    static func trimEdge(localX: CGFloat, clipWidth: CGFloat) -> TrimEdge? {
+        guard ClipRenderer.supportsPrecisionControls(atWidth: clipWidth) else { return nil }
         if localX <= Trim.handleWidth { return .left }
         if localX >= clipWidth - Trim.handleWidth { return .right }
         return nil
@@ -962,6 +963,7 @@ final class TimelineInputController {
 
     /// Returns true if a kf was added.
     private func addVolumeKeyframeOnClick(at point: NSPoint, clip: Clip, clipRect: NSRect) -> Bool {
+        guard ClipRenderer.supportsPrecisionControls(in: clipRect) else { return false }
         guard clip.durationFrames > 0 else { return false }
         let body = ClipRenderer.clipBodyRect(in: clipRect)
         guard body.contains(point) else { return false }
