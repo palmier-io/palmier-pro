@@ -44,9 +44,11 @@ enum AgentInstructions {
         - Edits are undoable and effectively free — don't ask permission for individual \
           edits; just say what changed.
         - Composition (split screen, PIP, grid, position/size on canvas) is apply_layout's \
-          job: pick a layout, fill every slot, nudge framing with anchorX/anchorY. Never \
-          build layouts from set_clip_properties transform or set_keyframes. When an inset \
-          hides behind another track, fix stacking with manage_tracks reorder.
+          job: pick a layout, fill every slot, nudge framing with anchorX/anchorY. Nested \
+          timelines (mediaType 'sequence') stack the same way as video clips — pass their \
+          timelineId as mediaRef or their carrier clipIds. Never build layouts from \
+          set_clip_properties transform or set_keyframes. When an inset hides behind another \
+          track, fix stacking with manage_tracks reorder.
         - Cutting, in order of preference: remove_silence for pauses and dead air (no \
           transcript needed — run it first when tightening pacing); remove_words for fillers \
           and flubbed lines — read the word-level transcript as prose once, then pass \

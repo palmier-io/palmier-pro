@@ -103,15 +103,15 @@ extension ToolExecutor {
             guard startFrame >= 0 else { throw ToolError("startFrame must be >= 0 (got \(startFrame))") }
             guard duration >= 1 else { throw ToolError("apply_layout placing new clips requires endFrame > startFrame.") }
             for e in entries {
-                let a = try asset(e.entry.mediaRef!, editor: editor)
-                guard a.type == .video || a.type == .image else {
-                    throw ToolError("slot '\(e.slot.id)': asset \(e.entry.mediaRef!) is \(a.type.rawValue); layout slots take video or image.")
+                let a = try clipSource(e.entry.mediaRef!, editor: editor, path: "slot '\(e.slot.id)'")
+                guard a.type == .video || a.type == .image || a.type == .sequence else {
+                    throw ToolError("slot '\(e.slot.id)': \(e.entry.mediaRef!) is \(a.type.rawValue); layout slots take video, image, or nested timeline.")
                 }
                 assetBySlot[e.slot.id] = a
             }
             settingsNote = applySettingsIfNeededForAgent(
                 editor,
-                assets: layout.slots.compactMap { assetBySlot[$0.id] }
+                assets: layout.slots.compactMap { assetBySlot[$0.id] }.filter { $0.type != .sequence }
             )
         } else {
             var rangesByTrack: [String: [(slot: String, start: Int, end: Int)]] = [:]
@@ -120,8 +120,8 @@ extension ToolExecutor {
                 for cid in e.entry.clipIds! {
                     guard let loc = editor.findClip(id: cid) else { throw ToolError("slot '\(e.slot.id)': clip not found: \(cid)") }
                     let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-                    guard clip.mediaType == .video || clip.mediaType == .image else {
-                        throw ToolError("slot '\(e.slot.id)': clip \(cid) is \(clip.mediaType.rawValue); layout applies to video/image clips.")
+                    guard clip.mediaType == .video || clip.mediaType == .image || clip.mediaType == .sequence else {
+                        throw ToolError("slot '\(e.slot.id)': clip \(cid) is \(clip.mediaType.rawValue); layout applies to video, image, and nested timeline clips.")
                     }
                     let trackId = editor.timeline.tracks[loc.trackIndex].id
                     let start = clip.startFrame, end = clip.startFrame + clip.durationFrames

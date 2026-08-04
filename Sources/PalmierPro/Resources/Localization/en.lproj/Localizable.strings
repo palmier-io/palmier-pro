@@ -905,6 +905,7 @@
 "This is your preview panel to play a selected media or the whole timeline." = "This is your preview panel to play a selected media or the whole timeline.";
 "This model cannot cap the output at 60 FPS." = "This model cannot cap the output at 60 FPS.";
 "This permanently removes %@." = "This permanently removes %@.";
+"Three-Stack" = "Three-Stack";
 "Three-Up" = "Three-Up";
 "Threshold" = "Threshold";
 "Thumbnail Size" = "Thumbnail Size";
