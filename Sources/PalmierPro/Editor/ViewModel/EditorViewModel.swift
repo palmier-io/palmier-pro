@@ -475,7 +475,7 @@ final class EditorViewModel {
         if refreshVisuals {
             videoEngine?.refreshVisuals()
         }
-        videoEngine?.rebuild()
+        videoEngine?.rebuild(visualsCurrent: refreshVisuals)
     }
 
     /// Coalesce rapid rebuilds. An immediate `notifyTimelineChanged` cancels any pending debounced one.

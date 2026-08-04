@@ -46,7 +46,6 @@ final class VideoEngine {
 
     private var trackMappings: [TrackMapping] = []
     private var clipNaturalSizes: [String: CGSize] = [:]
-    private var resolveTimelineSnapshot: @Sendable (String) -> Timeline? = { _ in nil }
     private var clipTransforms: [String: CGAffineTransform] = [:]
     private var compositionDuration: CMTime = .zero
 
@@ -279,13 +278,14 @@ final class VideoEngine {
 
     /// Everything CompositionBuilder.build reads; equal inputs → identical composition.
     private struct RebuildInputs: Equatable {
-        let involved: [Timeline]  // active timeline plus nested children
+        let involved: [Timeline]
+        let involvedTotalFrames: [Int]
         let mediaURLs: [String: URL]
         let assetSizes: [String: CGSize]
         let missingMediaRefs: Set<String>
     }
 
-    func rebuild() {
+    func rebuild(visualsCurrent: Bool = false) {
         guard let editor, editor.activePreviewTab == .timeline else { return }
         let generation = invalidateRebuild()
 
@@ -300,18 +300,27 @@ final class VideoEngine {
         let resolveTimeline = editor.timelineResolver()
 
         let timelineId = editor.timeline.id
+        let involvedTimelines = [editor.timeline]
+            + editor.timeline.reachableTimelines(resolve: { editor.timeline(for: $0) })
         let inputs = RebuildInputs(
-            involved: [editor.timeline] + editor.timeline.reachableTimelines(resolve: { editor.timeline(for: $0) }),
+            involved: involvedTimelines.map { $0.strippingTextClips() },
+            involvedTotalFrames: involvedTimelines.map(\.totalFrames),
             mediaURLs: mediaURLs,
             assetSizes: assetSizes,
             missingMediaRefs: missingMediaRefs
         )
         if let cached = compositionCache[timelineId], cached.inputs == inputs {
-            apply(cached.result, resolveTimeline: resolveTimeline, editor: editor)
+            let needsApply = player.currentItem?.asset !== cached.result.composition
+            if needsApply {
+                apply(cached.result, editor: editor)
+            }
+            if !trackMappings.isEmpty, needsApply || !visualsCurrent {
+                refreshVisuals()
+            }
             return
         }
 
-        let snapshot = inputs.involved[0]
+        let snapshot = involvedTimelines[0]
         rebuildTask = Task {
             let result: CompositionResult
             do {
@@ -340,7 +349,7 @@ final class VideoEngine {
                 compositionCache[timelineId] = (inputs, result)
             }
             compositionCache = compositionCache.filter { editor.openTimelineIds.contains($0.key) }
-            apply(result, resolveTimeline: resolveTimeline, editor: editor)
+            apply(result, editor: editor)
         }
     }
 
@@ -358,12 +367,11 @@ final class VideoEngine {
         compositionCache.removeValue(forKey: timelineId)
     }
 
-    private func apply(_ result: CompositionResult, resolveTimeline: @escaping @Sendable (String) -> Timeline?, editor: EditorViewModel) {
+    private func apply(_ result: CompositionResult, editor: EditorViewModel) {
         trackMappings = result.trackMappings
         clipNaturalSizes = result.clipNaturalSizes
         clipTransforms = result.clipTransforms
         compositionDuration = result.composition.duration
-        resolveTimelineSnapshot = resolveTimeline
         editor.offlineMediaRefs = result.offlineMediaRefs
         editor.unprocessableMediaRefs = result.unprocessableMediaRefs
 
@@ -389,7 +397,7 @@ final class VideoEngine {
             trackMappings: trackMappings,
             clipNaturalSizes: clipNaturalSizes,
             clipTransforms: clipTransforms,
-            resolveTimeline: resolveTimelineSnapshot,
+            resolveTimeline: editor.timelineResolver(),
             compositionDuration: compositionDuration,
             renderSize: CGSize(width: editor.timeline.width, height: editor.timeline.height)
         )
@@ -730,4 +738,14 @@ final class VideoEngine {
     }
 
     private static let interactiveSeekInterval: TimeInterval = 1.0 / 30.0
+}
+
+extension Timeline {
+    func strippingTextClips() -> Timeline {
+        var stripped = self
+        for index in stripped.tracks.indices {
+            stripped.tracks[index].clips.removeAll { $0.mediaType == .text }
+        }
+        return stripped
+    }
 }
