@@ -138,7 +138,6 @@
 "Can't import \"%@\" — unsupported file type." = "Can't import \"%@\" — unsupported file type.";
 "Can't paste \"%@\" here — it would nest this timeline inside itself." = "Can't paste \"%@\" here — it would nest this timeline inside itself.";
 "Can't relink \"%@\". Required media type: %@. Selected media type: %@." = "Can't relink \"%@\". Required media type: %@. Selected media type: %@.";
-"Can't swap this clip. Required media type: %@." = "Can't swap this clip. Required media type: %@.";
 "Can't unlock sync on a multicam track — \"%@\" stays aligned through it." = "Can't unlock sync on a multicam track — \"%@\" stays aligned through it.";
 "Cancel" = "Cancel";
 "Cancel Export" = "Cancel Export";
@@ -912,6 +911,7 @@
 "This is your preview panel to play a selected media or the whole timeline." = "This is your preview panel to play a selected media or the whole timeline.";
 "This model cannot cap the output at 60 FPS." = "This model cannot cap the output at 60 FPS.";
 "This permanently removes %@." = "This permanently removes %@.";
+"This source can’t replace the clip." = "This source can’t replace the clip.";
 "Three-Stack" = "Three-Stack";
 "Three-Up" = "Three-Up";
 "Threshold" = "Threshold";

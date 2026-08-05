@@ -31,6 +31,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case removeClips = "remove_clips"
     case splitClips = "split_clips"
     case rippleDeleteRanges = "ripple_delete_ranges"
+    case swapClipMedia = "swap_clip_media"
     case setClipProperties = "set_clip_properties"
     case setKeyframes = "set_keyframes"
     case applyLayout = "apply_layout"
@@ -482,6 +483,15 @@ enum ToolDefinitions {
                     ],
                 ],
                 required: ["ranges"]
+            )
+        ),
+        AgentTool(
+            name: .swapClipMedia,
+            description: "Replace a clip's source with another library asset while preserving its edit, timing, framing, effects, and keyframes. Linked video/audio clips that share the source are updated together. The replacement must have the same source type, contain audio when a linked audio clip needs it, and cover the current source range; extra tail remains available for trimming. Text, nested timeline, and multicam clips are refused; use change_cam for multicam.",
+            inputSchema: objectSchema(
+                properties: ["clipId": ["type": "string", "description": "Clip ID from get_timeline."],
+                             "mediaRef": ["type": "string", "description": "Replacement asset ID from get_media."]],
+                required: ["clipId", "mediaRef"]
             )
         ),
         AgentTool(

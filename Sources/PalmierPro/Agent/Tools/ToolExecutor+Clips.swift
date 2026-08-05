@@ -520,6 +520,25 @@ extension ToolExecutor {
         return mutationResult(editor, since: snapshot, touched: allMoves.map(\.clipId))
     }
 
+    // MARK: swap_clip_media
+
+    func swapClipMedia(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        try validateUnknownKeys(args, allowed: ["clipId", "mediaRef"], path: "swap_clip_media")
+        let clipId = try args.requireString("clipId")
+        let replacement = try asset(args.requireString("mediaRef"), editor: editor, label: "Replacement media")
+        let snapshot = timelineSnapshot(editor)
+        let plan = try editor.swapClipMedia(clipId: clipId, replacement: replacement)
+
+        return mutationResult(
+            editor,
+            since: snapshot,
+            touched: plan.changed ? plan.affectedClipIds : [],
+            extra: ["changed": plan.changed, "clipId": plan.clipId,
+                    "oldMediaRef": plan.oldMediaRef, "mediaRef": plan.newMediaRef,
+                    "affectedClipIds": plan.affectedClipIds]
+        )
+    }
+
     // MARK: set_clip_properties
 
     func setClipProperties(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
