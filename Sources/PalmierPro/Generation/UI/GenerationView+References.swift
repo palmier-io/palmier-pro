@@ -27,8 +27,9 @@ extension GenerationView {
     var showsRefSections: Bool {
         switch selectedType {
         case .video:
-            guard videoModel.supportsReferences, !videoModel.requiresSourceVideo else { return false }
-            return !videoModel.framesAndReferencesExclusive || framesRefsMode == .reference
+            guard videoModel.supportsReferences, !usesSourceVideoInput else { return false }
+            return !videoModel.framesAndReferencesExclusive
+                || videoInputMode == .references
         case .audio:
             return audioModel.supportsReferences && !audioUsesSource
         case .image, .upscale:
@@ -38,15 +39,27 @@ extension GenerationView {
 
     var showsFrameStrip: Bool {
         guard selectedType == .video, videoModel.supportsFirstFrame else { return false }
-        if videoModel.requiresSourceVideo { return false }
+        if usesSourceVideoInput { return false }
         if videoModel.framesAndReferencesExclusive {
-            return framesRefsMode == .firstLast
+            return videoInputMode == .frames
         }
         return true
     }
 
-    var showsFramesRefsPicker: Bool {
-        selectedType == .video && videoModel.framesAndReferencesExclusive
+    var showsVideoInputModePicker: Bool {
+        selectedType == .video && availableVideoInputModes.count > 1
+    }
+
+    var availableVideoInputModes: [VideoInputMode] {
+        guard selectedType == .video else { return [] }
+        var modes: [VideoInputMode] = [.frames]
+        if videoModel.framesAndReferencesExclusive && videoModel.supportsReferences {
+            modes.append(.references)
+        }
+        if videoModel.supportsSourceVideo && !videoModel.requiresSourceVideo {
+            modes.append(.sourceVideo)
+        }
+        return modes
     }
 
     private var refGridColumns: [GridItem] {
@@ -66,19 +79,28 @@ extension GenerationView {
         }
     }
 
-    // MARK: - First/Last / Reference mode picker (Seedance, Grok)
+    // MARK: - Video input mode picker
 
-    var framesRefsModePicker: some View {
+    var videoInputModePicker: some View {
         Menu {
-            ForEach(FramesRefsMode.allCases, id: \.self) { mode in
+            ForEach(availableVideoInputModes, id: \.self) { mode in
                 Button {
-                    framesRefsMode = mode
+                    videoInputMode = mode
                     switch mode {
-                    case .firstLast: resetRefPools()
-                    case .reference: firstFrame = nil; lastFrame = nil
+                    case .frames:
+                        resetRefPools()
+                        sourceVideo = nil
+                    case .references:
+                        firstFrame = nil
+                        lastFrame = nil
+                        sourceVideo = nil
+                    case .sourceVideo:
+                        firstFrame = nil
+                        lastFrame = nil
+                        resetRefPools()
                     }
                 } label: {
-                    if framesRefsMode == mode {
+                    if videoInputMode == mode {
                         Label(L10n.string(key: mode.title), systemImage: "checkmark")
                     } else {
                         Text(L10n.string(key: mode.title))
@@ -87,10 +109,9 @@ extension GenerationView {
             }
         } label: {
             HStack(spacing: AppTheme.Spacing.xs) {
-                Text(L10n.string(key: framesRefsMode.title))
+                Text(L10n.string(key: videoInputMode.title))
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
-                    .lineLimit(1)
                 Image(systemName: "chevron.down")
                     .font(.system(size: AppTheme.FontSize.micro, weight: .semibold))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)

@@ -5,6 +5,8 @@ func unsupportedValue(model displayName: String, field: String, value: String, a
 }
 
 struct VideoModelConfig: Identifiable, Sendable {
+    static let draftResolution = "720p"
+
     @MainActor
     static var allModels: [VideoModelConfig] { ModelCatalog.shared.video }
 
@@ -112,9 +114,18 @@ struct VideoModelConfig: Identifiable, Sendable {
     var framesAndReferencesExclusive: Bool { caps.framesAndReferencesExclusive }
     var referenceTagNoun: String { caps.referenceTagNoun }
     var requiresSourceVideo: Bool { caps.requiresSourceVideo }
+    var supportsSourceVideo: Bool { requiresSourceVideo || sourceVideoCreditsPerSecond != nil }
     var maxSourceVideoSeconds: Double? { caps.maxSourceVideoSeconds }
     var requiresReferenceImage: Bool { caps.requiresReferenceImage }
     var requiresReferenceAudio: Bool { caps.requiresReferenceAudio ?? false }
+    var supportsDraft: Bool { draftCreditsPerSecond != nil }
+    var draftCreditsPerSecond: Double? { caps.draftCreditsPerSecond }
+    var draftEnhanceCreditsPerSecond: Double? { caps.draftEnhanceCreditsPerSecond }
+    /// Extension models with selectable output durations bill on the output,
+    /// not the source clip.
+    var usesOutputDuration: Bool { supportsSourceVideo && !durations.isEmpty }
+    var sourceVideoCreditsPerSecond: [String: Double]? { caps.sourceVideoCreditsPerSecond }
+    var sourceVideoDraftCreditsPerSecond: Double? { caps.sourceVideoDraftCreditsPerSecond }
     var isEdit: Bool {
         supportsPrompt && requiresSourceVideo && !requiresReferenceImage && !requiresReferenceAudio
     }
@@ -187,6 +198,7 @@ struct VideoGenerationParams: Encodable, Sendable {
     let referenceVideoURLs: [String]
     let referenceAudioURLs: [String]
     let generateAudio: Bool
+    let draft: Bool?
 
     init(
         prompt: String, duration: Int, aspectRatio: String, resolution: String?,
@@ -196,7 +208,8 @@ struct VideoGenerationParams: Encodable, Sendable {
         referenceImageURLs: [String] = [],
         referenceVideoURLs: [String] = [],
         referenceAudioURLs: [String] = [],
-        generateAudio: Bool = true
+        generateAudio: Bool = true,
+        draft: Bool? = nil
     ) {
         self.prompt = prompt; self.duration = duration; self.sourceVideoDuration = sourceVideoDuration
         self.aspectRatio = aspectRatio; self.resolution = resolution
@@ -206,12 +219,13 @@ struct VideoGenerationParams: Encodable, Sendable {
         self.referenceVideoURLs = referenceVideoURLs
         self.referenceAudioURLs = referenceAudioURLs
         self.generateAudio = generateAudio
+        self.draft = draft
     }
 
     enum CodingKeys: String, CodingKey {
         case kind, prompt, duration, sourceVideoDuration, aspectRatio, resolution, sourceVideoURL
         case startFrameURL, endFrameURL, referenceImageURLs, referenceVideoURLs
-        case referenceAudioURLs, generateAudio
+        case referenceAudioURLs, generateAudio, draft
     }
 
     func encode(to encoder: Encoder) throws {
@@ -229,5 +243,6 @@ struct VideoGenerationParams: Encodable, Sendable {
         if !referenceVideoURLs.isEmpty { try c.encode(referenceVideoURLs, forKey: .referenceVideoURLs) }
         if !referenceAudioURLs.isEmpty { try c.encode(referenceAudioURLs, forKey: .referenceAudioURLs) }
         try c.encode(generateAudio, forKey: .generateAudio)
+        try c.encodeIfPresent(draft, forKey: .draft)
     }
 }

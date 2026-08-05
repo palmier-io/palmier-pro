@@ -61,6 +61,17 @@ enum GenerationBackend {
         )
         return result.jobId
     }
+
+    static func enhanceDraft(sourceJobId: String) async throws -> String {
+        guard let convex = AccountService.shared.convex else {
+            throw BackendError.notConfigured
+        }
+        let result: SubmitGenerationResult = try await convex.mutation(
+            "generations:enhanceDraft",
+            with: ["sourceJobId": sourceJobId],
+        )
+        return result.jobId
+    }
 }
 
 // MARK: - Backend generation types

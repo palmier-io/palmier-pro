@@ -15,7 +15,7 @@ extension GenerationView {
                 return availableUpscaleOptions(setting).contains(where: { $0.value == value })
             }
         }
-        if selectedType == .video && videoModel.requiresSourceVideo {
+        if selectedType == .video && usesSourceVideoInput {
             guard sourceVideo != nil else { return false }
             if videoModel.requiresReferenceImage && imageReferences.isEmpty { return false }
             if videoModel.requiresReferenceAudio && refAudios.isEmpty { return false }
@@ -24,7 +24,7 @@ extension GenerationView {
             return true
         }
         if selectedType == .video && videoModel.framesAndReferencesExclusive
-            && framesRefsMode == .reference && refImages.isEmpty
+            && videoInputMode == .references && refImages.isEmpty
             && refVideos.isEmpty && refAudios.isEmpty {
             return false
         }
@@ -47,7 +47,9 @@ extension GenerationView {
                 model: videoModel,
                 durationSeconds: effectiveVideoSeconds,
                 resolution: effectiveResolution,
-                generateAudio: effectiveGenerateAudio
+                generateAudio: effectiveGenerateAudio,
+                draft: isDraftGeneration,
+                usesSourceVideo: usesSourceVideoInput
             )
         case .image:
             let quality = imageModel.qualities != nil ? selectedQuality : nil
@@ -149,7 +151,7 @@ extension GenerationView {
     // MARK: - Actions
 
     func videoInputAssets(for model: VideoModelConfig) -> VideoGenerationSubmission.InputAssets {
-        if model.requiresSourceVideo {
+        if usesSourceVideoInput {
             return VideoGenerationSubmission.InputAssets(
                 sourceVideo: sourceVideo,
                 imageRefs: Array(imageReferences.prefix(model.maxReferenceImages)),
@@ -177,7 +179,7 @@ extension GenerationView {
         inputAssets: VideoGenerationSubmission.InputAssets
     ) -> TrimmedSource? {
         guard let trim = editor.pendingEditTrimmedSource, trim.hasTrim else { return nil }
-        if model.requiresSourceVideo {
+        if model.requiresSourceVideo || inputAssets.sourceVideo != nil {
             guard let source = inputAssets.sourceVideo ?? sourceVideo,
                   trim.sourceURL == source.url else { return nil }
             return trim
@@ -197,17 +199,18 @@ extension GenerationView {
         case .video:
             let inputAssets = videoInputAssets(for: videoModel)
             let trimmedSource = pendingTrimmedSource(for: videoModel, inputAssets: inputAssets)
-            let modelError: String?
-            if videoModel.requiresSourceVideo {
-                modelError = videoModel.validateSourceDuration(effectiveSourceVideoSeconds)
-                    ?? videoModel.validate(duration: 0, aspectRatio: "", resolution: nil)
-            } else {
-                modelError = videoModel.validate(
+            let modelError = usesSourceVideoInput
+                ? videoModel.validateSourceDuration(effectiveSourceVideoSeconds)
+                    ?? videoModel.validate(
+                        duration: videoModel.usesOutputDuration ? selectedDuration : 0,
+                        aspectRatio: videoModel.usesOutputDuration ? selectedAspectRatio : "",
+                        resolution: videoModel.usesOutputDuration ? effectiveResolution : nil
+                    )
+                : videoModel.validate(
                     duration: selectedDuration,
                     aspectRatio: selectedAspectRatio,
                     resolution: effectiveResolution
                 )
-            }
             return modelError ?? inputAssets.validate(for: videoModel, trimmedSource: trimmedSource)
         case .image:
             let quality = imageModel.qualities != nil ? selectedQuality : nil
@@ -302,7 +305,9 @@ extension GenerationView {
                 ? selectedTargetLanguage : nil,
             multilingual: selectedType == .audio && audioModel.supportsMultilingual
                 ? multilingual : nil,
-            generateAudio: supportsAudioToggle ? generateAudio : nil
+            generateAudio: supportsAudioToggle ? generateAudio : nil,
+            draft: supportsDraftToggle ? videoDraft : nil,
+            usesSourceVideo: selectedType == .video ? usesSourceVideoInput : nil
         )
         let imageCount: Int = {
             guard selectedType == .image, imageModel.maxImages > 1 else { return 1 }
@@ -348,20 +353,13 @@ extension GenerationView {
             let model = videoModel
             let inputAssets = videoInputAssets(for: model)
             let trimmedSource = pendingTrimmedSource(for: model, inputAssets: inputAssets)
-            let placeholderDuration: Double
-            if model.requiresSourceVideo {
-                if let trim = trimmedSource, trim.hasTrim {
-                    placeholderDuration = trim.durationSeconds
-                } else {
-                    placeholderDuration = sourceVideo?.duration ?? 5
-                }
-            } else if let trim = trimmedSource, trim.hasTrim {
-                placeholderDuration = trim.durationSeconds
-            } else {
-                placeholderDuration = Double(selectedDuration)
-            }
+            let placeholderDuration = usesSourceVideoInput
+                ? (model.usesOutputDuration
+                    ? Double(selectedDuration)
+                    : effectiveSourceVideoSeconds)
+                : (trimmedSource?.durationSeconds ?? Double(selectedDuration))
             let videoFolderId: String? = editFolderId ?? (
-                model.requiresSourceVideo
+                usesSourceVideoInput
                     ? (inputAssets.sourceVideo?.folderId ?? inputAssets.imageRefs.last?.folderId)
                     : inputAssets.textToVideoReferences.last?.folderId
             ) ?? editor.mediaPanelCurrentFolderId
@@ -531,6 +529,7 @@ extension GenerationView {
         styleInstructions = stored.styleInstructions ?? ""
         instrumental = stored.instrumental ?? false
         generateAudio = stored.generateAudio ?? true
+        videoDraft = stored.draft ?? false
         if selectedType == .upscale {
             upscaleSettings = stored.upscaleSettings ?? upscaleModel.defaultSettings
         }
@@ -543,7 +542,10 @@ extension GenerationView {
 
         switch selectedType {
         case .video:
-            if videoModel.requiresSourceVideo {
+            let storedUsesSourceVideo = videoModel.requiresSourceVideo
+                || stored.usesSourceVideo == true
+            videoInputMode = storedUsesSourceVideo ? .sourceVideo : .frames
+            if storedUsesSourceVideo {
                 sourceVideo = primary.first
                 imageReferences = (stored.referenceImageAssetIds ?? []).compactMap(lookup)
                 refVideos = (stored.referenceVideoAssetIds ?? []).compactMap(lookup)
@@ -562,10 +564,10 @@ extension GenerationView {
                 refVideos = (stored.referenceVideoAssetIds ?? []).compactMap(lookup)
                 refAudios = (stored.referenceAudioAssetIds ?? []).compactMap(lookup)
                 if videoModel.framesAndReferencesExclusive {
-                    framesRefsMode = (!refImages.isEmpty || !refVideos.isEmpty || !refAudios.isEmpty)
-                        ? .reference : .firstLast
+                    videoInputMode = (!refImages.isEmpty || !refVideos.isEmpty || !refAudios.isEmpty)
+                        ? .references : .frames
                 } else {
-                    framesRefsMode = .firstLast
+                    videoInputMode = .frames
                 }
             }
         case .image:
@@ -629,7 +631,15 @@ extension GenerationView {
         if selectedType == .video, !videoModel.durations.contains(selectedDuration) {
             selectedDuration = videoModel.durations.first ?? 5
         }
-        if selectedType == .video { generateAudio = true }
+        if selectedType == .video {
+            generateAudio = true
+            if !isPopulatingPanel {
+                videoInputMode = videoModel.requiresSourceVideo ? .sourceVideo : .frames
+            }
+            if !isPopulatingPanel || !videoModel.supportsDraft {
+                videoDraft = false
+            }
+        }
         if selectedType == .image {
             selectedNumImages = min(max(1, selectedNumImages), imageModel.maxImages)
         }

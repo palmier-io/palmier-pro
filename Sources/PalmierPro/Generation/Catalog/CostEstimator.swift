@@ -6,11 +6,20 @@ enum CostEstimator {
         model: VideoModelConfig,
         durationSeconds: Int,
         resolution: String?,
-        generateAudio: Bool
+        generateAudio: Bool,
+        draft: Bool = false,
+        usesSourceVideo: Bool = false
     ) -> Int? {
-        guard !model.creditsPerSecond.isEmpty, durationSeconds > 0 else { return nil }
-        guard var rate = resolvedRate(model.creditsPerSecond, key: resolution) else { return nil }
-        if !generateAudio, let discount = model.audioDiscount(for: resolution) {
+        guard durationSeconds > 0 else { return nil }
+        // Source-video extension rates when defined, otherwise base rates.
+        let rates = (usesSourceVideo ? model.sourceVideoCreditsPerSecond : nil)
+            ?? model.creditsPerSecond
+        guard var rate = draft
+            ? (usesSourceVideo
+                ? model.sourceVideoDraftCreditsPerSecond
+                : model.draftCreditsPerSecond)
+            : resolvedRate(rates, key: resolution) else { return nil }
+        if !draft, !generateAudio, let discount = model.audioDiscount(for: resolution) {
             rate *= discount
         }
         return ceilCredits(rate * Double(durationSeconds))
@@ -110,7 +119,9 @@ enum CostEstimator {
                 model: m,
                 durationSeconds: genInput.duration,
                 resolution: genInput.resolution,
-                generateAudio: genInput.generateAudio ?? true
+                generateAudio: genInput.generateAudio ?? true,
+                draft: genInput.draft ?? false,
+                usesSourceVideo: genInput.usesSourceVideo ?? false
             )
         case .image(let m):
             return imageCost(

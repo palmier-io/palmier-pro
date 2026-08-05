@@ -266,7 +266,9 @@ extension GenerationView {
             if audioModel.supportsMultilingual && multilingual { parts.append(L10n.string("Multilingual")) }
             return parts.isEmpty ? L10n.string("Settings") : parts.joined(separator: " \u{00B7} ")
         }
-        if currentResolutions != nil { parts.append(resolutionLabel(selectedResolution)) }
+        if !isDraftGeneration, currentResolutions != nil {
+            parts.append(resolutionLabel(selectedResolution))
+        }
         if currentQualities != nil { parts.append(selectedQuality) }
         if selectedType == .video { parts.append("\(selectedDuration)s") }
         if !selectedAspectRatio.isEmpty, !currentAspectRatios.isEmpty {
@@ -314,6 +316,19 @@ extension GenerationView {
         }
     }
 
+    var draftToggleButton: some View {
+        Toggle(isOn: $videoDraft) {
+            Text(L10n.string("Draft"))
+                .font(.system(size: AppTheme.FontSize.xxs, weight: .medium))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+        }
+        .toggleStyle(.checkbox)
+        .controlSize(.mini)
+        .help(L10n.string(
+            "Generate a lower-cost 720p preview that can be enhanced later."
+        ))
+    }
+
     @ViewBuilder
     private var settingsPopoverContent: some View {
         if selectedType == .upscale {
@@ -358,7 +373,7 @@ extension GenerationView {
                         aspectRatioLabel($0)
                     }
                 }
-                if let resolutions = currentResolutions {
+                if let resolutions = currentResolutions, !isDraftGeneration {
                     settingsPicker(L10n.string("Resolution"), selection: $selectedResolution, options: resolutions) { resolutionLabel($0) }
                 }
                 if let qualities = currentQualities {

@@ -585,6 +585,24 @@ struct ToolExecutorReadOnlyTests {
         #expect(timelines?.first?["active"] as? Bool == true)
     }
 
+    @Test func getMediaIdentifiesEnhanceableDrafts() async throws {
+        let h = ToolHarness()
+        let asset = h.makeAsset(name: "Draft")
+        var input = GenerationInput(
+            prompt: "Draft", model: "flux-3", duration: 8,
+            aspectRatio: "16:9", resolution: "720p", draft: true
+        )
+        input.backendJobId = "draft-job"
+        input.resultURLs = ["video", "cache"]
+        asset.generationInput = input
+        h.editor.updateManifestMetadata(for: [asset])
+
+        let json = try await h.runOK("get_media", args: ["ids": [asset.id]]) as? [String: Any]
+        let result = (json?["assets"] as? [[String: Any]])?.first
+        #expect(result?["draft"] as? Bool == true)
+        #expect(result?["canEnhanceDraft"] as? Bool == true)
+    }
+
     @Test func getMediaRoundsFloatingPointNumbersToThreeDecimalPlaces() async throws {
         let h = ToolHarness()
         var input = GenerationInput(

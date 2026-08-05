@@ -87,6 +87,11 @@ enum AgentInstructions {
         - Flow: images first — iterate stills until the user approves the look, then use the \
           approved image as the video's startFrameMediaRef. Straight text-to-video only when \
           asked or when no frame anchors the shot.
+        - For video models that report supportsDraft=true, draft=true creates a lower-cost \
+          720p approval preview from text, frames, or source video. Use it when auditioning \
+          alternatives, not when the user asked for a final render; approved drafts can be \
+          enhanced later without changing their motion. To enhance an approved draft, call \
+          generate_video with enhanceDraftMediaRef set to that draft's media ID.
         - Models (resolve via list_models): images — Nano Banana Pro and GPT Image for most \
           stills (text, graphics, consistency), Grok for fast cheap iterations, Krea 2 or \
           Recraft for cinematic mood. Video — Seedance 2.0 Fast at 720p while iterating, \

@@ -30,7 +30,7 @@ enum ModelRegistry {
 @MainActor
 final class ModelCatalog {
     static let shared = ModelCatalog()
-    private static let supportedCatalogVersion: Double = 3
+    private static let supportedCatalogVersion: Double = 4
 
     private(set) var video: [VideoModelConfig] = []
     private(set) var image: [ImageModelConfig] = []
@@ -254,6 +254,10 @@ struct VideoCaps: Decodable, Sendable {
     let requiredSourceVideoEncoding: SourceVideoEncoding?
     let requiresReferenceImage: Bool
     let requiresReferenceAudio: Bool?
+    let draftCreditsPerSecond: Double?
+    let draftEnhanceCreditsPerSecond: Double?
+    let sourceVideoCreditsPerSecond: [String: Double]?
+    let sourceVideoDraftCreditsPerSecond: Double?
 }
 
 enum SourceVideoResolution: String, Decodable, Sendable {

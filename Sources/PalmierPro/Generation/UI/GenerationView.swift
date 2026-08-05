@@ -26,6 +26,7 @@ struct GenerationView: View {
     @State var selectedTargetLanguage = ""
     @State var multilingual = false
     @State var generateAudio = true
+    @State var videoDraft = false
     @State var upscaleSettings = UpscaleSettings()
     @State var showSettingsPopover = false
     @FocusState private var isPromptFocused: Bool
@@ -46,8 +47,7 @@ struct GenerationView: View {
     @State var refAudios: [MediaAsset] = []
     @State var refsTargeted = false
 
-    /// See frames/references mode for `framesAndReferencesExclusive` models.
-    @State var framesRefsMode: FramesRefsMode = .firstLast
+    @State var videoInputMode: VideoInputMode = .frames
 
     // Source video (for video-to-video edit models)
     @State var sourceVideo: MediaAsset?
@@ -100,14 +100,16 @@ struct GenerationView: View {
         return AppTheme.GenerationPanel.promptMinHeight + CGFloat(extra)
     }
 
-    enum FramesRefsMode: String, CaseIterable {
-        case firstLast = "First/Last"
-        case reference = "References"
+    enum VideoInputMode: String, CaseIterable {
+        case frames = "First/Last"
+        case references = "References"
+        case sourceVideo = "Extend"
 
         var title: String {
             switch self {
-            case .firstLast: L10n.key("First/Last")
-            case .reference: L10n.key("References")
+            case .frames: L10n.key("First/Last")
+            case .references: L10n.key("References")
+            case .sourceVideo: L10n.key("Extend")
             }
         }
     }
@@ -303,10 +305,10 @@ struct GenerationView: View {
             guard !isPopulatingPanel else { return }
             if selectedType == .video {
                 resetSettings()
+                videoInputMode = .frames
                 if !videoModel.requiresSourceVideo {
                     sourceVideo = nil
                 }
-                framesRefsMode = .firstLast
                 resetRefPools()
             }
         }
@@ -338,7 +340,7 @@ struct GenerationView: View {
     private var referencesContent: some View {
         if selectedType == .upscale {
             upscaleSourceStrip
-        } else if selectedType == .video && videoModel.requiresSourceVideo {
+        } else if selectedType == .video && usesSourceVideoInput {
             editVideoStrip
         } else if selectedType == .video {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
@@ -450,13 +452,14 @@ struct GenerationView: View {
     private var inputToolbar: some View {
         HStack(spacing: AppTheme.Spacing.sm) {
             modelPicker
-            if showsFramesRefsPicker { framesRefsModePicker }
+            if showsVideoInputModePicker { videoInputModePicker }
             if selectedType == .audio, audioModel.voices != nil {
                 voicePicker
             }
             if selectedType == .audio, audioModel.targetLanguages != nil {
                 languagePicker
             }
+            if supportsDraftToggle { draftToggleButton }
             if hasAnySettings { settingsButton }
 
             Spacer(minLength: AppTheme.Spacing.xs)

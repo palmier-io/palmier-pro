@@ -984,7 +984,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .listModels,
-            description: "Lists AI models with their capabilities (durations, aspect ratios, resolutions, first/last frame support, reference support, voices/category for audio, and configurable settings for upscalers). Always call before generate_video, generate_image, generate_audio, or upscale_media so the model you pick actually supports the constraints you need. Returns { models, loaded } — if loaded=false the catalog hasn't synced yet (e.g. user not signed in); the models array may be empty even when models exist, so do not conclude no models are available. Retry after the user signs in.",
+            description: "Lists AI models with their capabilities (durations, aspect ratios, resolutions, draft mode, first/last frame support, reference support, voices/category for audio, and configurable settings for upscalers). Always call before generate_video, generate_image, generate_audio, or upscale_media so the model you pick actually supports the constraints you need. Returns { models, loaded } — if loaded=false the catalog hasn't synced yet (e.g. user not signed in); the models array may be empty even when models exist, so do not conclude no models are available. Retry after the user signs in.",
             inputSchema: objectSchema(
                 properties: [
                     "type": ["type": "string", "enum": ["video", "image", "audio", "upscale"], "description": "Filter by type. Omit to list all models."],
@@ -1002,9 +1002,11 @@ enum ToolDefinitions {
                     "duration": ["type": "integer", "description": "Duration in seconds. Valid values depend on model."],
                     "aspectRatio": ["type": "string", "description": "Aspect ratio (e.g. '16:9', '9:16', '1:1')"],
                     "resolution": ["type": "string", "description": "Resolution (e.g. '720p', '1080p', '4k')"],
+                    "draft": ["type": "boolean", "description": "Generate a lower-cost 720p preview when list_models reports supportsDraft=true. The resulting media can be enhanced later without changing its motion."],
+                    "enhanceDraftMediaRef": ["type": "string", "description": "Completed draft asset ID to render at full quality without changing its motion. Use alone instead of prompt/model/input parameters."],
                     "startFrameMediaRef": ["type": "string", "description": "Media asset ID to use as the first frame (image-to-video)"],
                     "endFrameMediaRef": ["type": "string", "description": "Media asset ID to use as the last frame (supported by some models)"],
-                    "sourceVideoMediaRef": ["type": "string", "description": "Media asset ID of a source video required by video-to-video models. Source duration determines billing; aspectRatio and resolution apply when listed by the selected model."],
+                    "sourceVideoMediaRef": ["type": "string", "description": "Media asset ID of a source video required by video-to-video models. Pass duration when the selected model lists output durations; otherwise the source duration determines billing."],
                     "sourceClipId": ["type": "string", "description": "Optional. Clip id (from get_timeline) referencing sourceVideoMediaRef. When set and the clip is trimmed, only the clip's visible range is sent to the model, not the full source — matches the UI's 'Use trimmed portion only'."],
                     "referenceImageMediaRefs": ["type": "array", "items": ["type": "string"], "description": "Media asset IDs of image references. Covers both reference-to-video generation (Seedance, Kling V3/O3 elements, Grok — refer as @Image1/@Element1 in prompt) and the single-image ref used by video-to-video edit models (Kling V3 Motion Control). See list_models maxReferenceImages for per-model cap."],
                     "referenceVideoMediaRefs": ["type": "array", "items": ["type": "string"], "description": "Media asset IDs of video references (Seedance only). Refer to them as @Video1, @Video2. See maxReferenceVideos and maxCombinedVideoRefSeconds."],

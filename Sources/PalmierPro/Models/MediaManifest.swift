@@ -65,6 +65,8 @@ struct GenerationInput: Codable, Sendable, Equatable {
     var audioInput: String?
     /// Video-only
     var generateAudio: Bool?
+    var draft: Bool?
+    var usesSourceVideo: Bool?
     var referenceImageURLs: [String]?
     var referenceVideoURLs: [String]?
     var referenceAudioURLs: [String]?

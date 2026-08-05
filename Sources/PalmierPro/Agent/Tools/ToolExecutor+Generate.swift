@@ -14,6 +14,14 @@ extension ToolExecutor {
         }
     }
 
+    private func draftMode(_ args: [String: Any], model: VideoModelConfig) throws -> Bool {
+        let draft = args.bool("draft") ?? false
+        if draft && !model.supportsDraft {
+            throw ToolError("Model '\(model.id)' does not support draft generation.")
+        }
+        return draft
+    }
+
     private func defaultModelId(_ ids: [(id: String, paidOnly: Bool)], kind: String) throws -> String {
         guard !ids.isEmpty else {
             throw ToolError("Model catalog not loaded yet. Try again in a moment.")
@@ -36,15 +44,30 @@ extension ToolExecutor {
         case .sequence:
             throw ToolError("Cannot generate a sequence. Sequences are timelines.")
         case .video:
+            if let mediaRef = args.string("enhanceDraftMediaRef") {
+                let draft = try asset(mediaRef, editor: editor, label: "Draft")
+                guard let placeholderId = editor.generationService.enhanceDraft(
+                    asset: draft,
+                    editor: editor
+                ) else {
+                    throw ToolError("Asset '\(mediaRef)' is not a completed enhanceable draft.")
+                }
+                return .ok("Draft enhancement started. Placeholder asset ID: \(placeholderId)")
+            }
             let modelId = try args.string("model") ?? defaultModelId(
                 VideoModelConfig.allModels.map { (id: $0.id, paidOnly: $0.paidOnly) }, kind: "video")
             guard let model = VideoModelConfig.allModels.first(where: { $0.id == modelId }) else {
                 throw ToolError("Unknown model '\(modelId)'. Available: \(VideoModelConfig.allModels.map(\.id).joined(separator: ", "))")
             }
             try requirePlan(for: model.id, paidOnly: model.paidOnly)
-            return model.requiresSourceVideo
-                ? try generateVideoEdit(editor, args, prompt: prompt, model: model)
-                : try generateVideoText(editor, args, prompt: prompt, model: model)
+            let hasSourceVideo = args.string("sourceVideoMediaRef") != nil
+            if hasSourceVideo && !model.supportsSourceVideo {
+                throw ToolError("Model '\(model.id)' does not accept a source video.")
+            }
+            if model.requiresSourceVideo || hasSourceVideo {
+                return try generateVideoEdit(editor, args, prompt: prompt, model: model)
+            }
+            return try generateVideoText(editor, args, prompt: prompt, model: model)
         case .image:
             return try generateImage(editor, args, prompt: prompt)
         case .audio:
@@ -73,15 +96,6 @@ extension ToolExecutor {
         let audioRefs = try referenceAssets(
             args, key: "referenceAudioMediaRefs", label: "Reference audio", editor: editor)
 
-        let aspectRatio = args.string("aspectRatio") ?? model.aspectRatios.first ?? ""
-        let resolution = args.string("resolution") ?? model.resolutions?.first
-        if let err = model.validate(
-            duration: 0,
-            aspectRatio: aspectRatio,
-            resolution: resolution
-        ) {
-            throw ToolError(err)
-        }
         let inputAssets = VideoGenerationSubmission.InputAssets(
             sourceVideo: sourceAsset,
             imageRefs: imageRefs,
@@ -93,27 +107,47 @@ extension ToolExecutor {
         }
 
         let sourceVideoDuration = trimmed?.durationSeconds ?? sourceAsset.resolvedDuration
-        if let error = model.validateSourceDuration(sourceVideoDuration) {
-            throw ToolError(error)
+        let draft = try draftMode(args, model: model)
+        let duration: Int
+        if model.usesOutputDuration {
+            duration = args.int("duration") ?? model.durations.first ?? 0
+        } else {
+            guard let billingDuration = model.billingDurationSeconds(
+                sourceVideoDuration: sourceVideoDuration,
+                sourceAudioDuration: audioRefs.first?.resolvedDuration
+            ) else {
+                throw ToolError(model.isLipSync
+                    ? "Replacement audio has an invalid duration."
+                    : "Source video has an invalid duration.")
+            }
+            duration = billingDuration
         }
-        guard let duration = model.billingDurationSeconds(
-            sourceVideoDuration: sourceVideoDuration,
-            sourceAudioDuration: audioRefs.first?.resolvedDuration
-        ) else {
-            throw ToolError(model.isLipSync
-                ? "Replacement audio has an invalid duration."
-                : "Source video has an invalid duration.")
+        let aspectRatio = args.string("aspectRatio") ?? model.aspectRatios.first ?? ""
+        let resolution = draft
+            ? VideoModelConfig.draftResolution
+            : (args.string("resolution") ?? model.resolutions?.first)
+        if let error = model.validateSourceDuration(sourceVideoDuration)
+            ?? model.validate(
+                duration: model.usesOutputDuration ? duration : 0,
+                aspectRatio: model.usesOutputDuration ? aspectRatio : "",
+                resolution: model.usesOutputDuration ? resolution : nil
+            ) {
+            throw ToolError(error)
         }
         let genInput = GenerationInput(
             prompt: prompt, model: model.id,
             duration: duration,
-            aspectRatio: aspectRatio, resolution: resolution
+            aspectRatio: aspectRatio, resolution: resolution,
+            draft: draft,
+            usesSourceVideo: true
         )
         let placeholderId = VideoGenerationSubmission.make(
             genInput: genInput,
             model: model,
             inputAssets: inputAssets,
-            placeholderDuration: sourceVideoDuration,
+            placeholderDuration: model.usesOutputDuration
+                ? Double(max(1, duration))
+                : sourceVideoDuration,
             trimmedSourceOverride: trimmed,
             name: args.string("name"),
             folderId: sourceAsset.folderId,
@@ -123,7 +157,8 @@ extension ToolExecutor {
             projectURL: editor.projectURL,
             editor: editor
         )
-        return .ok("Edit started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), source: \(sourceAsset.name)")
+        let draftSummary = draft ? ", draft: true" : ""
+        return .ok("Edit started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), source: \(sourceAsset.name)\(draftSummary)")
     }
 
     private func generateVideoText(
@@ -132,12 +167,18 @@ extension ToolExecutor {
     ) throws -> ToolResult {
         guard !prompt.isEmpty else { throw ToolError("Empty prompt") }
 
+        let draft = try draftMode(args, model: model)
         let duration = args.int("duration") ?? model.durations.first ?? 0
         let aspectRatio = args.string("aspectRatio") ?? model.aspectRatios.first ?? ""
-        let resolution = args.string("resolution") ?? model.resolutions?.first
-
-        if let err = model.validate(duration: duration, aspectRatio: aspectRatio, resolution: resolution) {
-            throw ToolError(err)
+        let resolution = draft
+            ? VideoModelConfig.draftResolution
+            : (args.string("resolution") ?? model.resolutions?.first)
+        if let error = model.validate(
+            duration: duration,
+            aspectRatio: aspectRatio,
+            resolution: resolution
+        ) {
+            throw ToolError(error)
         }
 
         var frameSlots: [MediaAsset] = []
@@ -171,7 +212,8 @@ extension ToolExecutor {
 
         let genInput = GenerationInput(
             prompt: prompt, model: model.id, duration: duration,
-            aspectRatio: aspectRatio, resolution: resolution
+            aspectRatio: aspectRatio, resolution: resolution,
+            draft: draft
         )
 
         let folderId = try resolveFolder(
@@ -193,7 +235,8 @@ extension ToolExecutor {
         let refSummary = totalRefs > 0
             ? ", refs: \(imageRefCount)img/\(videoRefCount)vid/\(audioRefCount)aud"
             : ""
-        return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), duration: \(duration)s, aspect: \(aspectRatio)\(refSummary)")
+        let draftSummary = draft ? ", draft: true" : ""
+        return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), duration: \(duration)s, aspect: \(aspectRatio)\(refSummary)\(draftSummary)")
     }
 
     private func referenceAssets(
@@ -600,9 +643,19 @@ extension ToolExecutor {
             info["referenceTagNoun"] = m.referenceTagNoun
         }
         if m.requiresSourceVideo { info["requiresSourceVideo"] = true }
+        if m.supportsSourceVideo { info["supportsSourceVideo"] = true }
         if let seconds = m.maxSourceVideoSeconds { info["maxSourceVideoSeconds"] = seconds }
         if m.requiresReferenceImage { info["requiresReferenceImage"] = true }
         if m.requiresReferenceAudio { info["requiresReferenceAudio"] = true }
+        if m.usesOutputDuration { info["usesOutputDuration"] = true }
+        if let rate = m.draftCreditsPerSecond {
+            info["supportsDraft"] = true
+            info["draftResolution"] = VideoModelConfig.draftResolution
+            info["draftCreditsPerSecond"] = rate
+            if let enhanceRate = m.draftEnhanceCreditsPerSecond {
+                info["draftEnhanceCreditsPerSecond"] = enhanceRate
+            }
+        }
         return info
     }
 

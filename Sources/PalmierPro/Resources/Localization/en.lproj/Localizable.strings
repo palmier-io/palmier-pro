@@ -301,6 +301,8 @@
 "Downloading the on-device model that powers visual search." = "Downloading the on-device model that powers visual search.";
 "Downloading…" = "Downloading…";
 "Downloads a %@ on-device model so you can search media visually." = "Downloads a %@ on-device model so you can search media visually.";
+"Draft" = "Draft";
+"Draft already enhanced or cache unavailable" = "Draft already enhanced or cache unavailable";
 "Drag to add or shape a point · double-click to remove" = "Drag to add or shape a point · double-click to remove";
 "Drop files here or import from disk" = "Drop files here or import from disk";
 "Dubbing" = "Dubbing";
@@ -333,6 +335,7 @@
 "Enable: %@" = "Enable: %@";
 "Enhance" = "Enhance";
 "Enhance resolution or frame rate with AI" = "Enhance resolution or frame rate with AI";
+"Enhanced with FLUX.3 at 1080p." = "Enhanced with FLUX.3 at 1080p.";
 "Enter Full Screen" = "Enter Full Screen";
 "Estimated cost. Actual billing may differ slightly." = "Estimated cost. Actual billing may differ slightly.";
 "Exclusion" = "Exclusion";
@@ -346,8 +349,10 @@
 "Exporting…" = "Exporting…";
 "Export…" = "Export…";
 "Exposure" = "Exposure";
+"Extend" = "Extend";
 "Extends a caption to close gaps up to this duration." = "Extends a caption to close gaps up to this duration.";
 "Extra Large" = "Extra Large";
+"FLUX Enhance" = "FLUX Enhance";
 "Fade In" = "Fade In";
 "Fade Out" = "Fade Out";
 "Failed" = "Failed";
@@ -395,6 +400,7 @@
 "Generate SFX" = "Generate SFX";
 "Generate SFX only works on video" = "Generate SFX only works on video";
 "Generate SFX…" = "Generate SFX…";
+"Generate a lower-cost 720p preview that can be enhanced later." = "Generate a lower-cost 720p preview that can be enhanced later.";
 "Generate audio" = "Generate audio";
 "Generate music for the timeline" = "Generate music for the timeline";
 "Generate music that fits the video" = "Generate music that fits the video";
@@ -683,6 +689,7 @@
 "Range" = "Range";
 "Razor (C)" = "Razor (C)";
 "Razor Tool" = "Razor Tool";
+"Re-render the same motion at full quality in 1080p" = "Re-render the same motion at full quality in 1080p";
 "Reasoning effort" = "Reasoning effort";
 "Redetect Beats" = "Redetect Beats";
 "Redo" = "Redo";

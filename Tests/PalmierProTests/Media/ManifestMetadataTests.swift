@@ -27,4 +27,22 @@ import Testing
         await editor.pendingManifestMetadataFlushTask?.value
         #expect(editor.mediaManifest.entries.map(\.name) == ["Latest"])
     }
+    @Test func draftGenerationSurvivesManifestRoundTrip() throws {
+        var input = GenerationInput(
+            prompt: "Draft", model: "flux-3", duration: 8,
+            aspectRatio: "16:9", resolution: "720p", draft: true
+        )
+        input.backendJobId = "draft-job"
+        input.resultURLs = ["video", "cache"]
+        let generated = MediaAsset(
+            url: URL(fileURLWithPath: "/tmp/draft.mp4"),
+            type: .video,
+            name: "Draft",
+            generationInput: input
+        )
+        let data = try JSONEncoder().encode(generated.toManifestEntry(projectURL: nil))
+        let restored = try JSONDecoder().decode(MediaManifestEntry.self, from: data)
+        #expect(restored.generationInput?.draft == true)
+        #expect(MediaAsset(entry: restored, resolvedURL: generated.url).canEnhanceDraft)
+    }
 }

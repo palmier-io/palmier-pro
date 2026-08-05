@@ -55,7 +55,7 @@ struct VideoGenerationSubmission {
     ) -> VideoGenerationSubmission {
         var genInput = baseInput
         let outputName = name ?? (model.supportsPrompt ? nil : model.displayName)
-        if model.requiresSourceVideo {
+        if model.requiresSourceVideo || inputAssets.sourceVideo != nil {
             let sourceCount = inputAssets.sourceVideo == nil ? 0 : 1
             let imageRefCount = inputAssets.imageRefs.count
             let videoRefCount = inputAssets.videoRefs.count
@@ -116,7 +116,8 @@ struct VideoGenerationSubmission {
                         referenceImageURLs: urls.imageRefs,
                         referenceVideoURLs: urls.videoRefs,
                         referenceAudioURLs: urls.audioRefs,
-                        generateAudio: generateAudio
+                        generateAudio: generateAudio,
+                        draft: genInput.draft
                     ))
                 },
                 snapshotRefs: snapshotRefs,
@@ -171,7 +172,8 @@ struct VideoGenerationSubmission {
                     duration: genInput.duration,
                     aspectRatio: genInput.aspectRatio,
                     resolution: genInput.resolution,
-                    generateAudio: generateAudio
+                    generateAudio: generateAudio,
+                    draft: genInput.draft
                 )
                 return .video(params)
             },
@@ -213,7 +215,7 @@ struct VideoGenerationSubmission {
             for model: VideoModelConfig,
             trimmedSource: TrimmedSource? = nil
         ) -> String? {
-            if model.requiresSourceVideo {
+            if model.requiresSourceVideo || sourceVideo != nil {
                 return validateEditReferences(for: model, trimmedSource: trimmedSource)
             }
             return validateTextToVideoReferences(for: model, trimmedSource: trimmedSource)
@@ -279,7 +281,7 @@ struct VideoGenerationSubmission {
             includingFrames: Bool,
             trimmedSource: TrimmedSource?
         ) -> String? {
-            let referenceLabel = model.requiresSourceVideo ? "reference(s)" : "references"
+            let referenceLabel = sourceVideo != nil ? "reference(s)" : "references"
             if imageRefs.count > model.maxReferenceImages {
                 return "\(model.displayName) accepts at most \(model.maxReferenceImages) image \(referenceLabel)"
             }
@@ -364,7 +366,8 @@ struct VideoGenerationSubmission {
             duration: Int,
             aspectRatio: String,
             resolution: String?,
-            generateAudio: Bool
+            generateAudio: Bool,
+            draft: Bool?
         ) -> VideoGenerationParams {
             VideoGenerationParams(
                 prompt: prompt,
@@ -377,7 +380,8 @@ struct VideoGenerationSubmission {
                 referenceImageURLs: imageRefs,
                 referenceVideoURLs: videoRefs,
                 referenceAudioURLs: audioRefs,
-                generateAudio: generateAudio
+                generateAudio: generateAudio,
+                draft: draft
             )
         }
     }

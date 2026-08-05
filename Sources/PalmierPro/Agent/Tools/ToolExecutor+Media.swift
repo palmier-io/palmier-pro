@@ -46,6 +46,12 @@ extension ToolExecutor {
             if !idFilter.isEmpty, let status, status.hasPrefix("failed: ") {
                 feedbackState.recordError(String(status.dropFirst("failed: ".count)))
             }
+            if let input = entry.generationInput, input.draft == true {
+                a["draft"] = true
+                if !pending, input.backendJobId != nil, (input.resultURLs?.count ?? 0) >= 2 {
+                    a["canEnhanceDraft"] = true
+                }
+            }
             if let prompt = Self.truncatedPrompt(entry.generationInput?.prompt) { a["prompt"] = prompt }
             assets.append(a)
         }

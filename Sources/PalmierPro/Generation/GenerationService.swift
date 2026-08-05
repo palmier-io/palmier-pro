@@ -106,11 +106,17 @@ final class GenerationService {
 
                 await self.runJob(
                     placeholders: placeholders,
-                    params: params,
                     genInput: finalGenInput,
                     editor: editor,
                     onComplete: onComplete,
-                    onFailure: onFailure
+                    onFailure: onFailure,
+                    submit: {
+                        try await GenerationBackend.submit(
+                            model: finalGenInput.model,
+                            params: params,
+                            projectId: editor.projectId
+                        )
+                    }
                 )
             } catch {
                 let message = error.localizedDescription
@@ -303,6 +309,52 @@ final class GenerationService {
         }
     }
 
+    @discardableResult
+    func enhanceDraft(asset: MediaAsset, editor: EditorViewModel) -> String? {
+        guard asset.canEnhanceDraft,
+              let originalInput = asset.generationInput,
+              let sourceJobId = originalInput.backendJobId else { return nil }
+        var enhancedInput = originalInput
+        enhancedInput.draft = false
+        enhancedInput.resolution = "1080p"
+        enhancedInput.backendJobId = nil
+        enhancedInput.resultURLs = nil
+        enhancedInput.createdAt = Date()
+        let placeholder = createPlaceholder(
+            type: .video,
+            name: "\(asset.name) 1080p",
+            duration: asset.resolvedDuration,
+            genInput: enhancedInput,
+            folderId: asset.folderId,
+            destDir: Self.destinationDirectory(for: editor.projectURL),
+            fileExtension: "mp4",
+            editor: editor
+        )
+
+        Task { @MainActor in
+            await self.runJob(
+                placeholders: [placeholder],
+                genInput: enhancedInput,
+                editor: editor,
+                onComplete: { _ in
+                    editor.mediaPanelToast = MediaPanelToast(
+                        message: L10n.string("Enhanced with FLUX.3 at 1080p."),
+                        kind: .success
+                    )
+                },
+                onFailure: {
+                    if case .failed(let message) = placeholder.generationStatus {
+                        editor.mediaPanelToast = MediaPanelToast(message: message)
+                    }
+                },
+                submit: {
+                    try await GenerationBackend.enhanceDraft(sourceJobId: sourceJobId)
+                }
+            )
+        }
+        return placeholder.id
+    }
+
     func resumePendingGenerations(editor: EditorViewModel) {
         func sorted(_ assets: [MediaAsset]) -> [MediaAsset] {
             assets.sorted {
@@ -450,11 +502,11 @@ final class GenerationService {
 
     private func runJob(
         placeholders: [MediaAsset],
-        params: BackendGenerationParams,
         genInput: GenerationInput,
         editor: EditorViewModel,
         onComplete: (@MainActor (MediaAsset) -> Void)?,
-        onFailure: (@MainActor () -> Void)?
+        onFailure: (@MainActor () -> Void)?,
+        submit: () async throws -> String
     ) async {
         let runId = String(UUID().uuidString.prefix(8))
         Log.generation.notice("run \(runId) start model=\(genInput.model) placeholders=\(placeholders.count)")
@@ -462,11 +514,7 @@ final class GenerationService {
 
         let jobId: String
         do {
-            jobId = try await GenerationBackend.submit(
-                model: genInput.model,
-                params: params,
-                projectId: editor.projectId,
-            )
+            jobId = try await submit()
         } catch {
             let (code, message) = backendError(error)
             let expected: Set<String> = [
