@@ -116,6 +116,16 @@ struct PreviewContainerView: View {
                 }
                 transportButton("forward.frame.fill") { seekTo(playheadFrame + 1) }
                 transportButton("forward.end.fill") { seekTo(duration) }
+                if isTimeline {
+                    transportButton("repeat", active: editor.isLoopEnabled, help: "Loop the selected range") {
+                        editor.isLoopEnabled.toggle()
+                    }
+                    transportButton("rectangle.stack.badge.plus") {
+                        editor.compSelectedRangeFromSelectedTake()
+                    }
+                    .disabled(!editor.canCompSelection)
+                    .help("Comp the selected take into the selected range (Y)")
+                }
             }
 
             Spacer()
@@ -339,7 +349,7 @@ struct PreviewContainerView: View {
         let frame = editor.playheadState.timelineFrame
         var offline: Clip?
         var generatingLabel: String?
-        for track in editor.timeline.tracks where track.type != .audio && !track.hidden {
+        for track in editor.timeline.tracks where track.type != .audio && !editor.timeline.effectiveHidden(for: track) {
             for clip in track.clips where clip.mediaType != .text {
                 guard clip.contains(timelineFrame: frame), clip.opacityAt(frame: frame) > 0.01 else { continue }
                 if let asset = generatingAsset(for: clip) {
@@ -760,6 +770,18 @@ struct PreviewContainerView: View {
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
+    }
+
+    private func transportButton(_ systemName: String, active: Bool, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(active ? AppTheme.Accent.primary : AppTheme.Text.secondaryColor)
+                .frame(width: 32, height: 28)
+                .hoverHighlight()
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 }
 

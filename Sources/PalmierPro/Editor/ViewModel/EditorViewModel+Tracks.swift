@@ -18,6 +18,7 @@ extension EditorViewModel {
     /// "V1", "A1", "I1" label for the track at the given index.
     func timelineTrackDisplayLabel(at trackIndex: Int) -> String {
         guard timeline.tracks.indices.contains(trackIndex) else { return "" }
+        if timeline.tracks[trackIndex].isComp { return "Comp" }
         let type = timeline.tracks[trackIndex].type
         var n = 0
         if type == .audio {
@@ -91,6 +92,82 @@ extension EditorViewModel {
 
     func toggleTrackHidden(trackIndex: Int) {
         toggleTrackFlag(trackIndex: trackIndex, keyPath: \.hidden, onName: "Hide Track", offName: "Show Track")
+    }
+
+    /// Solo the track and its link-group partners as a unit. A plain click is exclusive —
+    /// it replaces the current solo set, or clears it when this group is already the only solo.
+    /// A Shift-click is additive, toggling just this group and leaving other solos in place.
+    func toggleTrackSolo(trackIndex: Int, exclusive: Bool = true) {
+        guard timeline.tracks.indices.contains(trackIndex) else { return }
+        let group = soloGroupTrackIds(forTrackAt: trackIndex)
+        let current = Set(timeline.tracks.filter(\.soloed).map(\.id))
+        let groupSoloed = group.isSubset(of: current)
+
+        let target: Set<String>
+        let turningOff: Bool
+        if exclusive {
+            let isOnlySolo = current == group
+            target = isOnlySolo ? [] : group
+            turningOff = isOnlySolo
+        } else if groupSoloed {
+            target = current.subtracting(group)
+            turningOff = true
+        } else {
+            target = current.union(group)
+            turningOff = false
+        }
+        applySoloSet(target, actionName: turningOff ? "Unsolo Track" : "Solo Track")
+    }
+
+    /// Declarative solo used by the Agent: set this track and its link-group partners on or off,
+    /// without disturbing other tracks' solo state.
+    func setTrackSolo(trackIndex: Int, soloed: Bool) {
+        guard timeline.tracks.indices.contains(trackIndex) else { return }
+        let group = soloGroupTrackIds(forTrackAt: trackIndex)
+        let current = Set(timeline.tracks.filter(\.soloed).map(\.id))
+        let target = soloed ? current.union(group) : current.subtracting(group)
+        applySoloSet(target, actionName: soloed ? "Solo Track" : "Unsolo Track")
+    }
+
+    /// Track ids that solo together: the target plus any track sharing a clip `linkGroupId` with it.
+    private func soloGroupTrackIds(forTrackAt index: Int) -> Set<String> {
+        guard timeline.tracks.indices.contains(index) else { return [] }
+        let target = timeline.tracks[index]
+        var ids: Set<String> = [target.id]
+        let targetLinkIds = Set(target.clips.compactMap(\.linkGroupId))
+        guard !targetLinkIds.isEmpty else { return ids }
+        for t in timeline.tracks where t.id != target.id {
+            if t.clips.contains(where: { $0.linkGroupId.map(targetLinkIds.contains) ?? false }) {
+                ids.insert(t.id)
+            }
+        }
+        return ids
+    }
+
+    /// Set every track's `soloed` flag to match `soloedIds` in one undoable step. No-op when unchanged.
+    private func applySoloSet(_ soloedIds: Set<String>, actionName: String) {
+        withTimelineSwap(actionName: actionName) {
+            for i in timeline.tracks.indices {
+                timeline.tracks[i].soloed = soloedIds.contains(timeline.tracks[i].id)
+            }
+        }
+    }
+
+    // MARK: - Solo (derived audition state)
+
+    /// True when any track in the requested zone is soloed.
+    func isAnySoloActive(inAudioZone: Bool) -> Bool {
+        timeline.isAnySoloActive(inAudioZone: inAudioZone)
+    }
+
+    /// Visual track hidden by its own flag or excluded by a video-zone solo. Derived — never stored.
+    func effectiveHidden(for track: Track) -> Bool {
+        timeline.effectiveHidden(for: track)
+    }
+
+    /// Audio track silenced by its own flag or by an active solo it isn't part of. Derived — never stored.
+    func effectiveMuted(for track: Track) -> Bool {
+        timeline.effectiveMuted(for: track)
     }
 
     func toggleTrackSyncLock(trackIndex: Int) {

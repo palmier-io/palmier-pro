@@ -12,7 +12,7 @@ enum PreviewHitTester {
 
         // Text draws above all video; within text, higher track index is on top, so keep the last hit.
         var topText: String?
-        for track in editor.timeline.tracks where !track.hidden {
+        for track in editor.timeline.tracks where !editor.timeline.effectiveHidden(for: track) {
             for clip in track.clips where clip.mediaType == .text {
                 guard clip.contains(timelineFrame: frame), clip.opacityAt(frame: frame) > 0.01 else { continue }
                 if textHit(clip, frame: frame, point: point, videoRect: videoRect) { topText = clip.id }
@@ -21,7 +21,7 @@ enum PreviewHitTester {
         if let topText { return topText }
 
         // Video/image: track 0 is topmost (see CompositionBuilder), so first hit wins.
-        for track in editor.timeline.tracks where track.type != .audio && !track.hidden {
+        for track in editor.timeline.tracks where track.type != .audio && !editor.timeline.effectiveHidden(for: track) {
             for clip in track.clips where clip.mediaType != .text && clip.mediaType != .audio {
                 guard clip.contains(timelineFrame: frame), clip.opacityAt(frame: frame) > 0.01 else { continue }
                 if videoHit(clip, frame: frame, point: point, videoRect: videoRect) { return clip.id }

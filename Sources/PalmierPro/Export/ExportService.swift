@@ -439,6 +439,7 @@ final class ExportService {
                 timeline: timeline,
                 resolveURL: { resolver.resolveURL(for: $0) },
                 missingMediaRefs: missingMediaRefs,
+                honorSolo: false,
                 renderSize: renderSize
             )
             try checkCancellation()
@@ -582,6 +583,7 @@ final class ExportService {
             resolveURL: { mediaURLs[$0] },
             resolveTimeline: resolveTimeline,
             missingMediaRefs: missingMediaRefs,
+            honorSolo: false,
             renderSize: renderSize
         )
         try Task.checkCancellation()

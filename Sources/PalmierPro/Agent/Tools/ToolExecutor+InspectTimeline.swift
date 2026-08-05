@@ -89,7 +89,7 @@ extension ToolExecutor {
     static func visibleClips(at frame: Int, in timeline: Timeline) -> [String] {
         var ids: [String] = []
         var seenGroups = Set<String>()
-        for track in timeline.tracks where track.type == .video && !track.hidden {
+        for track in timeline.tracks where track.type == .video && !timeline.effectiveHidden(for: track) {
             for clip in track.clips where clip.startFrame <= frame && frame < clip.startFrame + clip.durationFrames {
                 if let gid = clip.captionGroupId {
                     if seenGroups.insert(gid).inserted { ids.append(gid) }

@@ -654,7 +654,7 @@ final class VideoEngine {
     private func activeVideoLayerCount(at frame: Int, editor: EditorViewModel) -> Int {
         guard editor.activePreviewTab == .timeline else { return 1 }
         return editor.timeline.tracks.count { track in
-            guard track.type == .video, !track.hidden else { return false }
+            guard track.type == .video, !editor.timeline.effectiveHidden(for: track) else { return false }
             return track.clips.contains { clip in
                 (clip.mediaType == .video || clip.mediaType == .image || clip.mediaType == .sequence)
                     && frame >= clip.startFrame
@@ -691,6 +691,12 @@ final class VideoEngine {
         guard let item = player.currentItem,
               ObjectIdentifier(item) == itemIdentifier,
               let editor else { return }
+        if let loop = timelineLoopRange(for: editor) {
+            editor.currentFrame = loop.startFrame
+            seek(to: loop.startFrame, mode: .exact)
+            resumePlayback()
+            return
+        }
         pause()
         let duration = playbackDurationFrames(for: editor)
         if editor.activePreviewTab == .timeline {
@@ -726,6 +732,11 @@ final class VideoEngine {
         )
         let duration = playbackDurationFrames(for: editor)
         let clamped = duration > 0 ? min(frame, duration) : frame
+        if let loop = timelineLoopRange(for: editor), frame >= loop.endFrame {
+            editor.currentFrame = loop.startFrame
+            seek(to: loop.startFrame, mode: .exact)
+            return
+        }
         if editor.activePreviewTab == .timeline {
             editor.currentFrame = clamped
         } else {
@@ -734,6 +745,12 @@ final class VideoEngine {
         if duration > 0, frame >= duration {
             pause()
         }
+    }
+
+    /// The active loop range, only when timeline looping is engaged over a valid selection.
+    private func timelineLoopRange(for editor: EditorViewModel) -> TimelineRangeSelection? {
+        guard editor.activePreviewTab == .timeline, editor.isLoopEnabled else { return nil }
+        return editor.validSelectedTimelineRange
     }
 
     nonisolated static func playheadObserverInterval(for playbackRate: PreviewPlaybackRate) -> CMTime {
@@ -747,6 +764,14 @@ final class VideoEngine {
     private func playbackStartFrame(for editor: EditorViewModel) -> Int {
         let duration = playbackDurationFrames(for: editor)
         guard duration > 0 else { return 0 }
+        if let loop = timelineLoopRange(for: editor) {
+            let current = editor.currentFrame
+            guard current >= loop.startFrame, current < loop.endFrame else {
+                editor.currentFrame = loop.startFrame
+                return loop.startFrame
+            }
+            return current
+        }
         let current = editor.activePreviewTab == .timeline ? editor.currentFrame : editor.sourcePlayheadFrame
         guard current >= duration else { return current }
         if editor.activePreviewTab == .timeline {

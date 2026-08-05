@@ -105,6 +105,8 @@ final class EditorViewModel {
     }
     var activeFrame: Int { playheadState.timelineFrame }
     var isPlaying: Bool = false
+    /// When on, timeline playback loops over `selectedTimelineRange` instead of stopping at its end.
+    var isLoopEnabled: Bool = false
     private(set) var playbackRate: PreviewPlaybackRate = .normal
     var selectedClipIds: Set<String> = []
     var isMarqueeSelecting: Bool = false

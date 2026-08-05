@@ -424,6 +424,7 @@ enum ToolDefinitions {
                                 "index": ["type": "integer", "description": "Track to change (0-based, current order)."],
                                 "muted": ["type": "boolean", "description": "Silence/unsilence the track's audio."],
                                 "hidden": ["type": "boolean", "description": "Exclude/include a video track in the render."],
+                                "soloed": ["type": "boolean", "description": "Audition-only: solo a track to preview it in isolation. Soloing a video track pulls in its linked audio; soloing silences other tracks in the same zone. Derived, does not affect export."],
                                 "syncLocked": ["type": "boolean", "description": "Whether ripple edits shift this track along."],
                             ],
                         ],
