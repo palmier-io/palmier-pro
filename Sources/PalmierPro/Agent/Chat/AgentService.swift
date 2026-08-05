@@ -421,7 +421,9 @@ final class AgentService {
             return
         }
         if Task.isCancelled { return }
-        await SkillStore.shared.reloadInBackground()
+        await SkillStore.shared.waitForSkillSync()
+        if Task.isCancelled { return }
+        await SkillStore.shared.reloadSkills()
         let tools = ToolDefinitions.inAppAgent.map {
             AgentToolSchema(name: $0.name.rawValue, description: $0.description, inputSchema: $0.inputSchema)
         }

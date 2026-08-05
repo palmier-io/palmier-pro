@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = Updater.shared
 
         HomeWindowController.shared.showWindow(nil)
+        SkillStore.shared.startSkillSync()
         Task.detached(priority: .utility) {
             Project.ensureStorageDirectory()
         }
@@ -65,6 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         processID: ProcessInfo.processInfo.processIdentifier
                     )
                 }
+                await SkillStore.shared.prepareForTermination()
                 if !MLXRuntime.beginTermination() {
                     await MLXRuntime.waitUntilIdle()
                 }

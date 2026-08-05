@@ -50,8 +50,7 @@ struct SkillsPane: View {
         .padding(.horizontal, AppTheme.Spacing.xxl)
         .padding(.bottom, AppTheme.Spacing.xxl)
         .onAppear {
-            Task { await store.reloadInBackground() }
-            Task { await catalog.refresh() }
+            Task { await store.syncSkills() }
         }
         .sheet(item: $presentedSkill) { item in
             SkillDetailSheet(skillID: item.id)
@@ -111,7 +110,7 @@ struct SkillsPane: View {
                 Button(L10n.string("Open Skills Folder"), systemImage: "folder") { store.openFolder() }
                 Divider()
                 Button(L10n.string("Refresh Community Skills"), systemImage: "arrow.clockwise") {
-                    Task { await catalog.refresh() }
+                    Task { await store.syncSkills() }
                 }
             } label: {
                 Image(systemName: "ellipsis")
@@ -223,7 +222,7 @@ struct SkillsPane: View {
                         title: L10n.string("Community Skills Unavailable"),
                         message: error,
                         actionTitle: L10n.string("Try Again"),
-                        action: { Task { await catalog.refresh() } }
+                        action: { Task { await store.syncSkills() } }
                     )
                 } else if query.isEmpty {
                     SkillEmptyState(
@@ -231,7 +230,7 @@ struct SkillsPane: View {
                         title: L10n.string("No Community Skills"),
                         message: L10n.string("Refresh to check for available skills."),
                         actionTitle: L10n.string("Refresh"),
-                        action: { Task { await catalog.refresh() } }
+                        action: { Task { await store.syncSkills() } }
                     )
                 } else {
                     noMatchesState
@@ -289,10 +288,12 @@ struct SkillsPane: View {
     }
 
     private func createSkill() {
-        guard let id = store.newSkill() else { return }
-        collection = .installed
-        query = ""
-        present(id)
+        Task {
+            guard let id = await store.newSkill() else { return }
+            collection = .installed
+            query = ""
+            present(id)
+        }
     }
 
     private func install(_ entry: SkillCatalogEntry) {

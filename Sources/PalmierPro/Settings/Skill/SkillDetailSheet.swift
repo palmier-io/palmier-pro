@@ -112,8 +112,7 @@ struct SkillDetailSheet: View {
             presenting: self.skill
         ) { skill in
             Button(L10n.string("Delete \u{201C}\(skill.name)\u{201D}"), role: .destructive) {
-                store.delete(skill)
-                dismiss()
+                Task { if await store.delete(skill) { dismiss() } }
             }
             Button(L10n.string("Keep Skill"), role: .cancel) {}
         } message: { skill in
@@ -157,14 +156,14 @@ struct SkillDetailSheet: View {
 
                 if dirty {
                     Button(L10n.string("Save Changes")) {
-                        commitDraftIfDirty()
+                        Task { _ = await commitDraftIfDirty() }
                     }
                     .buttonStyle(.capsule(.prominent))
                     .keyboardShortcut("s", modifiers: .command)
                 }
 
                 Button(editing ? L10n.string("Preview") : L10n.string("Edit")) {
-                    toggleEditing(skill)
+                    Task { await toggleEditing(skill) }
                 }
                 .buttonStyle(.capsule(.secondary, fill: AnyShapeStyle(AppTheme.Background.raisedColor)))
 
@@ -205,8 +204,8 @@ struct SkillDetailSheet: View {
                     cornerRadius: AppTheme.Radius.xs,
                     border: AppTheme.Accent.link.opacity(AppTheme.Opacity.medium)
                 )
-                .onSubmit { commitTitle() }
-                .onChange(of: titleFocused) { if !titleFocused { commitTitle() } }
+                .onSubmit { Task { await commitTitle() } }
+                .onChange(of: titleFocused) { if !titleFocused { Task { await commitTitle() } } }
         } else {
             Text(skill.name)
                 .font(.system(size: AppTheme.FontSize.xl, weight: AppTheme.FontWeight.regular))
@@ -245,13 +244,13 @@ struct SkillDetailSheet: View {
         .help(L10n.string("More skill actions"))
     }
 
-    private func toggleEditing(_ skill: Skill) {
+    private func toggleEditing(_ skill: Skill) async {
         if editing {
-            finish(.preview)
+            await finish(.preview)
             return
         }
 
-        commitTitle()
+        await commitTitle()
         draft = (try? String(contentsOf: skill.path, encoding: .utf8)) ?? ""
         originalDraft = draft
         editing = true
@@ -267,9 +266,9 @@ struct SkillDetailSheet: View {
     }
 
     @discardableResult
-    private func commitDraftIfDirty(onFailure exit: ExitAction? = nil) -> Bool {
+    private func commitDraftIfDirty(onFailure exit: ExitAction? = nil) async -> Bool {
         guard draft != originalDraft else { return true }
-        guard let skill, store.save(skill, raw: draft) else {
+        guard let skill, await store.save(skill, raw: draft) else {
             failedExit = exit
             showingSaveError = true
             return false
@@ -279,10 +278,10 @@ struct SkillDetailSheet: View {
         return true
     }
 
-    private func commitTitle() {
+    private func commitTitle() async {
         guard editingTitle, let skill else { return }
         editingTitle = false
-        store.rename(skill, to: draftTitle)
+        await store.rename(skill, to: draftTitle)
     }
 
     private func cancelTitleEditing() {
@@ -290,17 +289,15 @@ struct SkillDetailSheet: View {
         draftTitle = skill?.name ?? ""
     }
 
-    private func close() {
-        finish(.close)
-    }
+    private func close() { Task { await finish(.close) } }
 
-    private func finish(_ action: ExitAction) {
+    private func finish(_ action: ExitAction) async {
         guard skill != nil else {
             dismiss()
             return
         }
-        guard commitDraftIfDirty(onFailure: action) else { return }
-        commitTitle()
+        guard await commitDraftIfDirty(onFailure: action) else { return }
+        await commitTitle()
         switch action {
         case .close: dismiss()
         case .preview: editing = false
