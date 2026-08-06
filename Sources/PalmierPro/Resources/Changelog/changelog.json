@@ -2,22 +2,14 @@
   "changelogURL": "https://github.com/palmier-io/palmier-pro/releases",
   "entries": [
     {
-      "version": "0.7.0",
-      "date": "2026-08-02",
+      "version": "0.7.2",
+      "date": "2026-08-05",
       "sections": [
         {
           "heading": "New",
           "items": [
-            "OpenAI models inside AI chat: We are bringing GPT 5.6 Sol, Terra, and Luna to the side chat, along with Opus 5 and Fable 5.",
-            "Localization: Palmier Pro now supports 15 new languages. Go to Settings > General > Languages.",
-            "Appearance settings: Choose a light, dark, or system theme, switch workspace layouts with ⌘1–⌘3, and customize timeline clip colors"
-          ]
-        },
-        {
-          "heading": "Improved",
-          "items": [
-            "Agent thinking: You can now see thinking token to understand the Agent's reasoning while it works",
-            "Agent clip linking: The Agent can now link and unlink clips to build J and L cuts"
+            "New Video Models: Minimax H3 and Flux 3 are available on Palmier Pro. Flux 3 supports draft mode which is a faster and cheaper way to iterate",
+            "Agent can now swap media in your timeline"
           ]
         }
       ]
