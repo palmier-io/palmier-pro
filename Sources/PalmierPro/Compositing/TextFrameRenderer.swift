@@ -252,7 +252,7 @@ enum TextFrameRenderer {
             in: boxes.text
         )
 
-        let tokens = words(in: content)
+        let tokens = wordTokens(in: content)
         let timings = tokenTimings(tokens, clip.wordTimings, duration: clip.durationFrames)
         var pens = [PerWordLayout.TokenPen?](repeating: nil, count: tokens.count)
         for (line, origin) in positionedLines(in: ctFrame) {
@@ -410,7 +410,7 @@ enum TextFrameRenderer {
         let rel = frame - clip.startFrame
         let ns = content as NSString
 
-        let tokens = words(in: content)
+        let tokens = wordTokens(in: content)
         let timings = tokenTimings(tokens, clip.wordTimings, duration: clip.durationFrames)
         var visLen = 0
         for (i, tok) in tokens.enumerated() {
@@ -620,7 +620,7 @@ enum TextFrameRenderer {
         return out
     }
 
-    private static func words(in content: String) -> [(range: NSRange, text: String)] {
+    static func wordTokens(in content: String) -> [(range: NSRange, text: String)] {
         let ns = content as NSString
         let ws = CharacterSet.whitespacesAndNewlines
         // A surrogate half (emoji etc.) maps to no scalar — treat it as part of a word, not whitespace.

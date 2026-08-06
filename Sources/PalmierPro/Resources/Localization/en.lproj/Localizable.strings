@@ -129,6 +129,7 @@
 "Bold" = "Bold";
 "Both" = "Both";
 "Bottom" = "Bottom";
+"Browse" = "Browse";
 "Browse Community Skills ↗" = "Browse Community Skills ↗";
 "Buy" = "Buy";
 "Buy $%lld" = "Buy $%lld";
@@ -500,6 +501,7 @@
 "Invert Colors" = "Invert Colors";
 "Inverted" = "Inverted";
 "Italic" = "Italic";
+"Jump to Playhead" = "Jump to Playhead";
 "Keep Current" = "Keep Current";
 "Keep Editing" = "Keep Editing";
 "Keep Skill" = "Keep Skill";
@@ -860,6 +862,7 @@
 "Show in Finder" = "Show in Finder";
 "Show notifications" = "Show notifications";
 "Show reasoning" = "Show reasoning";
+"Show the caption at the playhead" = "Show the caption at the playhead";
 "Side by Side" = "Side by Side";
 "Sign In" = "Sign In";
 "Sign in" = "Sign in";
