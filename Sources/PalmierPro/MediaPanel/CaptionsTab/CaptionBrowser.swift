@@ -1,10 +1,5 @@
 import SwiftUI
 
-private struct CaptionBrowserTimedWord {
-    let range: NSRange
-    let timing: WordTiming
-}
-
 struct CaptionBrowserItem: Identifiable {
     let number: Int
     let clip: Clip
@@ -136,7 +131,6 @@ private struct CaptionBrowserRow: View {
             durationFrames: clip.durationFrames,
             fps: fps
         )
-        let timedWords = Self.timedWords(for: clip, content: content)
 
         Button(action: select) {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
@@ -160,8 +154,7 @@ private struct CaptionBrowserRow: View {
                 CaptionBrowserPlayheadText(
                     content: content,
                     clipStartFrame: clip.startFrame,
-                    clipDurationFrames: clip.durationFrames,
-                    timedWords: timedWords,
+                    clipEndFrame: clip.endFrame,
                     playheadState: playheadState
                 )
                 .font(.system(size: AppTheme.FontSize.smMd))
@@ -193,15 +186,6 @@ private struct CaptionBrowserRow: View {
         return timeRange
     }
 
-    private static func timedWords(for clip: Clip, content: String) -> [CaptionBrowserTimedWord] {
-        guard let words = clip.wordTimings, !words.isEmpty else { return [] }
-        let tokens = TextFrameRenderer.wordTokens(in: content)
-        let timings = TextFrameRenderer.tokenTimings(tokens, words, duration: clip.durationFrames)
-        return zip(tokens, timings).map {
-            CaptionBrowserTimedWord(range: $0.range, timing: $1)
-        }
-    }
-
     private func select() {
         editor.selectedGap = nil
         editor.selectedTimelineRange = nil
@@ -213,44 +197,30 @@ private struct CaptionBrowserRow: View {
 private struct CaptionBrowserPlayheadText: View {
     let content: String
     let clipStartFrame: Int
-    let clipDurationFrames: Int
-    let timedWords: [CaptionBrowserTimedWord]
+    let clipEndFrame: Int
     let playheadState: PreviewPlayheadState
 
     var body: some View {
-        highlightedText(at: playheadState.timelineFrame)
+        let frame = playheadState.timelineFrame
+        CaptionBrowserCurrentText(
+            content: content,
+            isCurrent: clipStartFrame <= frame && frame < clipEndFrame
+        )
+        .equatable()
     }
+}
 
-    private func highlightedText(at timelineFrame: Int) -> Text {
-        let relativeFrame = timelineFrame - clipStartFrame
-        guard relativeFrame >= 0,
-              relativeFrame < clipDurationFrames,
-              let active = timedWords.first(where: {
-                  relativeFrame >= $0.timing.startFrame && relativeFrame < $0.timing.endFrame
-              }) else {
-            return Text(verbatim: content)
-                .foregroundColor(AppTheme.Text.primaryColor)
-        }
+private struct CaptionBrowserCurrentText: View, Equatable {
+    let content: String
+    let isCurrent: Bool
 
-        let text = content as NSString
-        guard active.range.location >= 0,
-              NSMaxRange(active.range) <= text.length else {
-            return Text(verbatim: content)
-                .foregroundColor(AppTheme.Text.primaryColor)
-        }
-
-        let prefix = text.substring(to: active.range.location)
-        let word = text.substring(with: active.range)
-        let suffix = text.substring(from: NSMaxRange(active.range))
-        var highlighted = AttributedString(prefix)
-        highlighted.foregroundColor = AppTheme.Text.primaryColor
-        var activeWord = AttributedString(word)
-        activeWord.foregroundColor = AppTheme.Accent.timecodeColor
-        var remainder = AttributedString(suffix)
-        remainder.foregroundColor = AppTheme.Text.primaryColor
-        highlighted.append(activeWord)
-        highlighted.append(remainder)
-        return Text(highlighted)
+    var body: some View {
+        Text(verbatim: content)
+            .foregroundStyle(
+                isCurrent
+                    ? AppTheme.Accent.timecodeColor
+                    : AppTheme.Text.primaryColor
+            )
     }
 }
 
