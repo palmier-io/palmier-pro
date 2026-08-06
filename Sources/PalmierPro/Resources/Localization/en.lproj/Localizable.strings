@@ -485,7 +485,6 @@
 "Large" = "Large";
 "Last Frame" = "Last Frame";
 "Layout" = "Layout";
-"Left %lld dBFS, right %lld dBFS" = "Left %lld dBFS, right %lld dBFS";
 "Length of the generated music. It's placed at the playhead, or at the marked range start." = "Length of the generated music. It's placed at the playhead, or at the marked range start.";
 "Let Agent create captions for you. Choose a predefined task, or ask Agent in the chat." = "Let Agent create captions for you. Choose a predefined task, or ask Agent in the chat.";
 "Let Agent generate music for you. Choose a starter, or ask Agent in the chat." = "Let Agent generate music for you. Choose a starter, or ask Agent in the chat.";
