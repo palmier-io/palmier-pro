@@ -21,6 +21,26 @@ enum Analytics {
         return ["source": origin.source, "session_id": origin.sessionID]
     }
 
+    static func skillReadProperties(
+        skillID: String,
+        skillSHA: String?,
+        skillOrigin: String
+    ) -> Payload {
+        var properties = originProperties()
+        properties["skill_id"] = skillID
+        properties["skill_origin"] = skillOrigin
+        if let skillSHA {
+            properties["skill_sha"] = skillSHA
+        }
+        return properties
+    }
+
+    static func skillCreatedProperties(skillName: String) -> Payload {
+        var properties = originProperties()
+        properties["skill_name"] = skillName
+        return properties
+    }
+
     struct SessionActivation {
         private(set) var isActivated: Bool
 
@@ -45,6 +65,8 @@ enum Analytics {
         case exportFailed = "export failed"
         case agentSessionStarted = "agent session started"
         case agentToolCalled = "agent tool called"
+        case skillCreated = "skill created"
+        case skillRead = "skill read"
         case agentStarterPromptClicked = "agent starter prompt clicked"
         case editorEditCommitted = "editor edit committed"
         case generationSubmitted = "generation submitted"
@@ -150,6 +172,23 @@ enum Analytics {
         #endif
     }
 
+    @discardableResult
+    static func captureSkillCreated(skillName: String) -> Bool {
+        capture(.skillCreated, properties: skillCreatedProperties(skillName: skillName))
+    }
+
+    @discardableResult
+    static func captureSkillRead(skillID: String, skillSHA: String?, skillOrigin: String) -> Bool {
+        capture(
+            .skillRead,
+            properties: skillReadProperties(
+                skillID: skillID,
+                skillSHA: skillSHA,
+                skillOrigin: skillOrigin
+            )
+        )
+    }
+
     static func captureProjectActive(projectId: String?, properties: Payload = [:]) {
         let day = Self.dayString(Date())
         let id = projectId ?? "unknown"
@@ -241,6 +280,10 @@ enum Analytics {
             "resolution",
             "roles",
             "session_id",
+            "skill_id",
+            "skill_name",
+            "skill_origin",
+            "skill_sha",
             "source",
             "starter_prompt",
             "status",

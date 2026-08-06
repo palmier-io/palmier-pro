@@ -36,6 +36,12 @@ struct SkillLedger: Equatable, Sendable {
     var suppressed: Set<String> = []
 }
 
+enum SkillOrigin: String, Sendable {
+    case community
+    case communityModified = "community_modified"
+    case local
+}
+
 private struct PersistedSkillLedger: Codable {
     static let currentVersion = 1
 
@@ -141,6 +147,17 @@ final class SkillStore {
     // MARK: Catalog install / ledger
 
     func localSha(_ skill: Skill) -> String? { shaCache[skill.id] }
+
+    func contentSHA(for id: String) -> String? { shaCache[id] }
+
+    func origin(for id: String) -> SkillOrigin {
+        Self.skillOrigin(installedSHA: ledger?.installed[id], localSHA: shaCache[id])
+    }
+
+    nonisolated static func skillOrigin(installedSHA: String?, localSHA: String?) -> SkillOrigin {
+        guard let installedSHA else { return .local }
+        return localSHA == installedSHA ? .community : .communityModified
+    }
 
     func startSkillSync() {
         guard syncTask == nil else { return }
@@ -342,6 +359,13 @@ final class SkillStore {
 
     func body(for id: String) -> String? { bodyCache[id] }
 
+    func rawContents(for skill: Skill) async -> String? {
+        let path = skill.path
+        return await Task.detached(priority: .utility) {
+            try? String(contentsOf: path, encoding: .utf8)
+        }.value
+    }
+
     /// One-line list of skills; full content loads on demand.
     var skillIndex: String {
         skills.map { "- \($0.id): \($0.description)" }.joined(separator: "\n")
@@ -404,16 +428,32 @@ final class SkillStore {
         } ?? false
     }
 
+    static let newSkillTemplate = """
+        ---
+        name: New skill
+        description: Describe in one line when the assistant should use this skill.
+        ---
+
+        ## Workflow
+        1. First step.
+        2. Second step.
+        """
+
     @discardableResult
-    func newSkill() async -> String? {
-        await serializeMutation("create skill") { [self] in
-            let id = try await Self.performFileOperation { try Self.createSkillFile() }
+    func createSkill(raw: String) async -> String? {
+        guard let parsed = SkillFrontmatter.requiredFields(raw) else { return nil }
+        guard let id = await serializeMutation("create skill", { [self] in
+            let id = try await Self.performFileOperation { try Self.createSkillFile(raw: raw) }
             await reloadInBackground()
             return id
+        }) else {
+            return nil
         }
+        Analytics.captureSkillCreated(skillName: parsed.name)
+        return id
     }
 
-    nonisolated private static func createSkillFile() throws -> String {
+    nonisolated private static func createSkillFile(raw: String) throws -> String {
         let fm = FileManager.default
         var id = "new-skill"
         var n = 2
@@ -422,18 +462,8 @@ final class SkillStore {
         }
         let dir = Self.directory.appendingPathComponent(id, isDirectory: true)
         let md = dir.appendingPathComponent("SKILL.md")
-        let template = """
-            ---
-            name: New skill
-            description: Describe in one line when the assistant should use this skill.
-            ---
-
-            ## Workflow
-            1. First step.
-            2. Second step.
-            """
         try fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        try template.write(to: md, atomically: true, encoding: .utf8)
+        try raw.write(to: md, atomically: true, encoding: .utf8)
         return id
     }
 

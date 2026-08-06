@@ -417,7 +417,7 @@ enum AppTheme {
         static let skillsSearchWidth: CGFloat = 260
         static let skillRowIconFrame: CGFloat = 42
         static let skillStatusWidth: CGFloat = 124
-        static let skillActionWidth: CGFloat = 72
+        static let skillActionWidth: CGFloat = 112
         static let skillDetailWidth: CGFloat = 720
         static let skillDetailMinHeight: CGFloat = 600
         static let skillToastWidth: CGFloat = 380

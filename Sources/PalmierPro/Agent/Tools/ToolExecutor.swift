@@ -340,6 +340,11 @@ final class ToolExecutor {
         guard let body = SkillStore.shared.body(for: id) else {
             return .error("Unknown skill: \(id)")
         }
+        Analytics.captureSkillRead(
+            skillID: id,
+            skillSHA: SkillStore.shared.contentSHA(for: id),
+            skillOrigin: SkillStore.shared.origin(for: id).rawValue
+        )
         return .ok(body)
     }
 
