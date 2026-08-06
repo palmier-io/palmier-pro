@@ -2,13 +2,18 @@ import Testing
 @testable import PalmierPro
 
 @Suite struct CaptionBrowserTests {
-    private func caption(_ id: String, text: String, start: Int) -> Clip {
+    private func caption(
+        _ id: String,
+        text: String,
+        start: Int,
+        duration: Int = 10
+    ) -> Clip {
         var clip = Fixtures.clip(
             id: id,
             mediaRef: "text",
             mediaType: .text,
             start: start,
-            duration: 10
+            duration: duration
         )
         clip.textContent = text
         clip.captionGroupId = "captions"
@@ -88,12 +93,26 @@ import Testing
             caption("first", text: "First", start: 0),
             caption("second", text: "Second", start: 10),
         ]
+        let index = CaptionBrowserTimelineIndex(sortedCaptions: captions)
 
-        #expect(CaptionBrowserNavigation.currentCaption(in: captions, at: -1) == nil)
-        #expect(CaptionBrowserNavigation.currentCaption(in: captions, at: 0)?.id == "first")
-        #expect(CaptionBrowserNavigation.currentCaption(in: captions, at: 9)?.id == "first")
-        #expect(CaptionBrowserNavigation.currentCaption(in: captions, at: 10)?.id == "second")
-        #expect(CaptionBrowserNavigation.currentCaption(in: captions, at: 19)?.id == "second")
-        #expect(CaptionBrowserNavigation.currentCaption(in: captions, at: 20) == nil)
+        #expect(index.currentCaption(at: -1) == nil)
+        #expect(index.currentCaption(at: 0)?.id == "first")
+        #expect(index.currentCaption(at: 9)?.id == "first")
+        #expect(index.currentCaption(at: 10)?.id == "second")
+        #expect(index.currentCaption(at: 19)?.id == "second")
+        #expect(index.currentCaption(at: 20) == nil)
+    }
+
+    @Test func currentCaptionFallsBackToEarlierOverlappingCaption() {
+        let captions = [
+            caption("long", text: "Long caption", start: 0, duration: 100),
+            caption("short", text: "Short caption", start: 10, duration: 5),
+        ]
+        let index = CaptionBrowserTimelineIndex(sortedCaptions: captions)
+
+        #expect(index.currentCaption(at: 14)?.id == "short")
+        #expect(index.currentCaption(at: 15)?.id == "long")
+        #expect(index.currentCaption(at: 99)?.id == "long")
+        #expect(index.currentCaption(at: 100) == nil)
     }
 }

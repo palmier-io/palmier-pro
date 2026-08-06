@@ -22,10 +22,11 @@ struct CaptionBrowser: View {
     var body: some View {
         let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         let rows = CaptionBrowserNavigation.numberedCaptions(captions, matching: query)
+        let timelineIndex = CaptionBrowserTimelineIndex(sortedCaptions: captions)
 
         return ScrollViewReader { proxy in
             VStack(spacing: AppTheme.Spacing.zero) {
-                controls { captionId in
+                controls(timelineIndex: timelineIndex) { captionId in
                     searchQuery = ""
                     jumpTargetId = captionId
                 }
@@ -70,12 +71,15 @@ struct CaptionBrowser: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
-    private func controls(onJump: @escaping (String) -> Void) -> some View {
+    private func controls(
+        timelineIndex: CaptionBrowserTimelineIndex,
+        onJump: @escaping (String) -> Void
+    ) -> some View {
         HStack(spacing: AppTheme.Spacing.xs) {
             PanelSearchField(text: $searchQuery)
                 .layoutPriority(1)
             CaptionJumpToPlayheadButton(
-                captions: captions,
+                timelineIndex: timelineIndex,
                 playheadState: editor.playheadState,
                 onJump: onJump
             )
@@ -88,15 +92,12 @@ struct CaptionBrowser: View {
 }
 
 private struct CaptionJumpToPlayheadButton: View {
-    let captions: [Clip]
+    let timelineIndex: CaptionBrowserTimelineIndex
     let playheadState: PreviewPlayheadState
     let onJump: (String) -> Void
 
     var body: some View {
-        let currentCaption = CaptionBrowserNavigation.currentCaption(
-            in: captions,
-            at: playheadState.timelineFrame
-        )
+        let currentCaption = timelineIndex.currentCaption(at: playheadState.timelineFrame)
 
         Button {
             if let currentCaption { onJump(currentCaption.id) }
@@ -263,6 +264,48 @@ enum CaptionBrowserMetrics {
     }
 }
 
+struct CaptionBrowserTimelineIndex {
+    private let captions: [Clip]
+    private let longestEndingCaptionByPrefix: [Int]
+
+    init(sortedCaptions captions: [Clip]) {
+        self.captions = captions
+        var longestEndingCaptionByPrefix: [Int] = []
+        if !captions.isEmpty {
+            var longestEndingIndex = 0
+            for index in captions.indices {
+                if captions[index].endFrame >= captions[longestEndingIndex].endFrame {
+                    longestEndingIndex = index
+                }
+                longestEndingCaptionByPrefix.append(longestEndingIndex)
+            }
+        }
+        self.longestEndingCaptionByPrefix = longestEndingCaptionByPrefix
+    }
+
+    func currentCaption(at frame: Int) -> Clip? {
+        var lowerBound = 0
+        var upperBound = captions.count
+        while lowerBound < upperBound {
+            let midpoint = lowerBound + (upperBound - lowerBound) / 2
+            if captions[midpoint].startFrame <= frame {
+                lowerBound = midpoint + 1
+            } else {
+                upperBound = midpoint
+            }
+        }
+
+        guard lowerBound > 0 else { return nil }
+        let latestIndex = lowerBound - 1
+        let latest = captions[latestIndex]
+        if frame < latest.endFrame { return latest }
+
+        guard latestIndex > 0 else { return nil }
+        let fallback = captions[longestEndingCaptionByPrefix[latestIndex - 1]]
+        return frame < fallback.endFrame ? fallback : nil
+    }
+}
+
 enum CaptionBrowserNavigation {
     static func hasCaptions(in timeline: Timeline) -> Bool {
         timeline.tracks.contains { $0.clips.contains(where: isCaption) }
@@ -292,23 +335,6 @@ enum CaptionBrowserNavigation {
             return CaptionBrowserItem(number: index + 1, clip: caption)
         }
     }
-
-    static func currentCaption(in captions: [Clip], at frame: Int) -> Clip? {
-        var lowerBound = 0
-        var upperBound = captions.count
-        while lowerBound < upperBound {
-            let midpoint = lowerBound + (upperBound - lowerBound) / 2
-            if captions[midpoint].startFrame <= frame {
-                lowerBound = midpoint + 1
-            } else {
-                upperBound = midpoint
-            }
-        }
-        guard lowerBound > 0 else { return nil }
-        let candidate = captions[lowerBound - 1]
-        return frame < candidate.endFrame ? candidate : nil
-    }
-
     private static func isCaption(_ clip: Clip) -> Bool {
         clip.mediaType == .text && clip.captionGroupId != nil
     }
