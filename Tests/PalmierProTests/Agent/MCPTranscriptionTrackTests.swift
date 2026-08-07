@@ -41,6 +41,9 @@ struct MCPTranscriptionTrackTests {
             let maxCharacters = try #require(captionProperties["maxCharacters"]?.objectValue)
             #expect(maxCharacters["type"]?.stringValue == "integer")
             #expect(maxCharacters["minimum"]?.intValue == 1)
+            let transform = try #require(captionProperties["transform"]?.objectValue)
+            let transformProperties = try #require(transform["properties"]?.objectValue)
+            #expect(Set(transformProperties.keys) == ["x", "y", "rotation"])
 
             let transcript = try await client.callTool(
                 name: "get_transcript",

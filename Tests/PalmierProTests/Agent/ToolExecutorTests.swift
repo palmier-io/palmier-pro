@@ -433,7 +433,10 @@ struct ToolExecutorReadOnlyTests {
         #expect(shared?["mediaType"] as? String == "text")
         #expect((shared?["textStyle"] as? [String: Any])?["fontName"] as? String == "Avenir")
         let sharedTransform = shared?["transform"] as? [String: Any]
-        #expect(sharedTransform?["centerY"] as? Double == 0.85)
+        #expect(sharedTransform?["x"] as? Double == 0.5)
+        #expect(sharedTransform?["y"] as? Double == 0.85)
+        #expect(sharedTransform?["centerX"] == nil)
+        #expect(sharedTransform?["centerY"] == nil)
         #expect(sharedTransform?["width"] == nil)
         #expect(sharedTransform?["height"] == nil)
 
@@ -1961,7 +1964,7 @@ struct ToolExecutorTextFolderTests {
 
     // MARK: - add_texts
 
-    @Test func textSchemasExposeStyleScaleWithoutBoxDimensions() throws {
+    @Test func textSchemasExposeAlignmentRelativePositionWithoutBoxDimensions() throws {
         let updateTool = try #require(ToolDefinitions.mcpServer.first { $0.name == .updateText })
         let updateProperties = try #require(updateTool.inputSchema["properties"] as? [String: [String: Any]])
         let style = try #require(updateProperties["style"])
@@ -1973,7 +1976,7 @@ struct ToolExecutorTextFolderTests {
         #expect((styleProperties["heightScale"]?["maximum"] as? NSNumber)?.doubleValue == 10)
 
         let updateTransform = try #require(updateProperties["transform"]?["properties"] as? [String: [String: Any]])
-        #expect(Set(updateTransform.keys) == ["centerX", "centerY", "rotation"])
+        #expect(Set(updateTransform.keys) == ["x", "y", "rotation"])
 
         let addTool = try #require(ToolDefinitions.mcpServer.first { $0.name == .addTexts })
         let addProperties = try #require(addTool.inputSchema["properties"] as? [String: [String: Any]])
@@ -1981,7 +1984,12 @@ struct ToolExecutorTextFolderTests {
         let items = try #require(entries["items"] as? [String: Any])
         let entryProperties = try #require(items["properties"] as? [String: [String: Any]])
         let addTransform = try #require(entryProperties["transform"]?["properties"] as? [String: [String: Any]])
-        #expect(Set(addTransform.keys) == ["centerX", "centerY", "rotation"])
+        #expect(Set(addTransform.keys) == ["x", "y", "rotation"])
+
+        let captionsTool = try #require(ToolDefinitions.mcpServer.first { $0.name == .addCaptions })
+        let captionsProperties = try #require(captionsTool.inputSchema["properties"] as? [String: [String: Any]])
+        let captionsTransform = try #require(captionsProperties["transform"]?["properties"] as? [String: [String: Any]])
+        #expect(Set(captionsTransform.keys) == ["x", "y", "rotation"])
     }
 
     @Test func addTextsCreatesNewTrackWhenIndexOmitted() async throws {
@@ -2021,7 +2029,61 @@ struct ToolExecutorTextFolderTests {
         #expect(clip.textStyle?.fontSize == 48)
     }
 
-    @Test func updateTextAutoFitsContentAtRequestedCenter() async throws {
+    @Test func addTextsPositionsXAtTheSelectedAlignmentEdge() async throws {
+        let h = ToolHarness()
+        _ = h.editor.insertTrack(at: 0, type: .video)
+
+        let result = await h.runRaw("add_texts", args: [
+            "entries": [[
+                "trackIndex": 0,
+                "startFrame": 0,
+                "endFrame": 60,
+                "content": "Left anchored",
+                "style": ["alignment": "left"],
+                "transform": ["x": 0.1],
+            ]]
+        ])
+
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let clip = try #require(h.editor.timeline.tracks[0].clips.first)
+        #expect(abs(clip.transform.topLeft.x - 0.1) < 0.0001)
+        #expect(clip.transform.centerY == 0.5)
+
+        let payload = try #require(
+            JSONSerialization.jsonObject(with: Data(ToolHarness.textOf(result).utf8)) as? [String: Any]
+        )
+        let transform = try #require(
+            (payload["clips"] as? [[String: Any]])?.first?["transform"] as? [String: Any]
+        )
+        #expect(abs((transform["x"] as? Double ?? -1) - 0.1) < 0.0001)
+        #expect(transform["y"] as? Double == 0.5)
+        #expect(transform["centerX"] == nil)
+        #expect(transform["centerY"] == nil)
+        #expect(transform["width"] == nil)
+        #expect(transform["height"] == nil)
+    }
+
+    @Test func addTextsAllowsYWithoutChangingTheDefaultHorizontalCenter() async throws {
+        let h = ToolHarness()
+        _ = h.editor.insertTrack(at: 0, type: .video)
+
+        let result = await h.runRaw("add_texts", args: [
+            "entries": [[
+                "trackIndex": 0,
+                "startFrame": 0,
+                "endFrame": 60,
+                "content": "Vertically placed",
+                "transform": ["y": 0.8],
+            ]]
+        ])
+
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let clip = try #require(h.editor.timeline.tracks[0].clips.first)
+        #expect(clip.transform.centerX == 0.5)
+        #expect(clip.transform.centerY == 0.8)
+    }
+
+    @Test func updateTextAutoFitsContentAtRequestedAnchor() async throws {
         var clip = Fixtures.clip(id: "title", mediaRef: "", mediaType: .text, start: 0, duration: 60)
         clip.textContent = "I"
         var style = TextStyle()
@@ -2034,7 +2096,7 @@ struct ToolExecutorTextFolderTests {
         let result = await h.runRaw("update_text", args: [
             "clipIds": [clip.id],
             "content": content,
-            "transform": ["centerX": 0.2, "centerY": 0.3],
+            "transform": ["x": 0.2, "y": 0.3],
         ])
 
         #expect(result.isError == false, "\(ToolHarness.textOf(result))")
@@ -2045,10 +2107,38 @@ struct ToolExecutorTextFolderTests {
             maxWidth: CGFloat(h.editor.timeline.width) * 0.9,
             canvasHeight: CGFloat(h.editor.timeline.height)
         )
-        #expect(updated.transform.centerX == 0.2)
+        #expect(abs(updated.transform.centerX + updated.transform.width / 2 - 0.2) < 0.0001)
         #expect(updated.transform.centerY == 0.3)
         #expect(abs(updated.transform.width - Double(natural.width) / Double(h.editor.timeline.width)) < 0.0001)
         #expect(abs(updated.transform.height - Double(natural.height) / Double(h.editor.timeline.height)) < 0.0001)
+
+        let resize = await h.runRaw("update_text", args: [
+            "clipIds": [clip.id],
+            "content": "\(content) that keeps growing",
+        ])
+        #expect(resize.isError == false, "\(ToolHarness.textOf(resize))")
+        let resized = try #require(h.editor.clipFor(id: clip.id))
+        #expect(resized.transform.width > updated.transform.width)
+        #expect(abs(resized.transform.centerX + resized.transform.width / 2 - 0.2) < 0.0001)
+    }
+
+    @Test func updateTextKeepsTheAnchorWhenAlignmentChanges() async throws {
+        var clip = Fixtures.clip(id: "title", mediaRef: "", mediaType: .text, start: 0, duration: 60)
+        clip.textContent = "Title"
+        clip.textStyle = TextStyle()
+        clip.transform = Transform(centerX: 0.4, centerY: 0.6, width: 0.2, height: 0.1)
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])]))
+
+        let result = await h.runRaw("update_text", args: [
+            "clipIds": [clip.id],
+            "style": ["alignment": "left"],
+        ])
+
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let updated = try #require(h.editor.clipFor(id: clip.id))
+        #expect(updated.textStyle?.alignment == .left)
+        #expect(abs(updated.transform.topLeft.x - 0.4) < 0.0001)
+        #expect(updated.transform.centerY == 0.6)
     }
 
     @Test func addTextsAppliesRichTextStyleFields() async throws {

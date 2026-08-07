@@ -322,7 +322,27 @@ extension ToolExecutor {
             out["audio"] = audioSummary(partner.clip, trackIndex: partner.trackIndex, visual: clip)
             out.removeValue(forKey: "linkGroupId")
         }
+        if clip["mediaType"] as? String == ClipType.text.rawValue {
+            shapeTextTransform(&out, from: clip)
+        }
         return out
+    }
+
+    private static func shapeTextTransform(_ output: inout [String: Any], from rawClip: [String: Any]) {
+        guard let rawTransform = rawClip["transform"] as? [String: Any],
+              let centerX = (rawTransform["centerX"] as? NSNumber)?.doubleValue,
+              let centerY = (rawTransform["centerY"] as? NSNumber)?.doubleValue,
+              let width = (rawTransform["width"] as? NSNumber)?.doubleValue else { return }
+        let rawAlignment = (rawClip["textStyle"] as? [String: Any])?["alignment"] as? String
+        let alignment = rawAlignment.flatMap(TextStyle.Alignment.init(rawValue:)) ?? .center
+        var transform = output["transform"] as? [String: Any] ?? [:]
+        transform.removeValue(forKey: "centerX")
+        transform.removeValue(forKey: "centerY")
+        transform.removeValue(forKey: "width")
+        transform.removeValue(forKey: "height")
+        transform["x"] = textAnchorX(centerX: centerX, width: width, alignment: alignment)
+        transform["y"] = centerY
+        output["transform"] = transform
     }
 
     /// Removes keys whose values equal the defaults; recurses into nested objects.

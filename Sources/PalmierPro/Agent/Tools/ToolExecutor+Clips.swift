@@ -119,7 +119,7 @@ fileprivate struct SetKeyframesInput: DecodableToolArgs {
     static let allowedKeys: Set<String> = ["clipId", "property", "keyframes"]
 }
 
-/// Partial transform shared by clip and text property tools.
+/// Partial transform for generic clip property updates.
 struct ParsedTransform: Decodable {
     var centerX: Double?
     var centerY: Double?

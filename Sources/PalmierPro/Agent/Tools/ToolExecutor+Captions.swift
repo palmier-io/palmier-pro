@@ -14,12 +14,10 @@ extension ToolExecutor {
         var style = TextStyle.caption
         if let stylePatch { Self.applyTextStylePatch(stylePatch, to: &style) }
 
+        let transform = try parseTextTransform(args["transform"], path: "add_captions.transform")
         var center = AppTheme.Caption.defaultCenter
-        if let t = args["transform"] as? [String: Any] {
-            try validateUnknownKeys(t, allowed: ["centerX", "centerY"], path: "add_captions.transform")
-            if let x = t.double("centerX") { center.x = CGFloat(x) }
-            if let y = t.double("centerY") { center.y = CGFloat(y) }
-        }
+        if let x = transform?.x { center.x = CGFloat(x) }
+        if let y = transform?.y { center.y = CGFloat(y) }
 
         let animation = try parseTextAnimation(preset: args.string("animation"), highlightColor: args.string("highlightColor"), path: "add_captions") ?? TextAnimation()
 
@@ -69,7 +67,24 @@ extension ToolExecutor {
 
         let snapshot = timelineSnapshot(editor)
         let ids = try await editor.generateCaptions(for: request, applying: { mutation in
-            editor.undo.perform("Generate Captions (Agent)", mutation)
+            editor.undo.perform("Generate Captions (Agent)") {
+                let ids = mutation()
+                if transform?.x != nil || transform?.rotation != nil {
+                    editor.commitClipProperties(clipIds: ids, actionName: "Transform Captions (Agent)") { clip in
+                        if let x = transform?.x {
+                            clip.transform.centerX = Self.textCenterX(
+                                anchorX: x,
+                                width: clip.transform.width,
+                                alignment: style.alignment
+                            )
+                        }
+                        if let rotation = transform?.rotation {
+                            clip.transform.rotation = rotation
+                        }
+                    }
+                }
+                return ids
+            }
         })
         guard !ids.isEmpty else { throw ToolError("No speech detected to caption.") }
         return mutationResult(editor, since: snapshot)
