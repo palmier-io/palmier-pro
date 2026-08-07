@@ -1,6 +1,6 @@
 struct CaptionGapSettings: Equatable, Sendable {
     static let maximumGapRange = 0.0...2.0
-    static let `default` = CaptionGapSettings(uncheckedMaximumGapSeconds: 0.25)
+    static let `default` = CaptionGapSettings(uncheckedMaximumGapSeconds: 0.5)
 
     let maximumGapSeconds: Double
 

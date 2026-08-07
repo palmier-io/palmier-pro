@@ -212,6 +212,7 @@ extension EditorViewModel {
                 }
             },
             fps: timeline.fps,
+            timelineEndFrame: preparationTimeline.totalFrames,
             canvasWidth: timeline.width,
             canvasHeight: timeline.height,
             style: request.style,

@@ -861,7 +861,7 @@ enum ToolDefinitions {
                         "type": "number",
                         "minimum": CaptionGapSettings.maximumGapRange.lowerBound,
                         "maximum": CaptionGapSettings.maximumGapRange.upperBound,
-                        "description": "Extend each caption to close a shorter gap before the next generated caption. Default 0.25 seconds; 0 disables.",
+                        "description": "Extend captions to close shorter gaps and hold the final caption for up to this duration. Default 0.5 seconds; 0 disables.",
                     ],
                 ], textStyleProperties(detailed: false), [
                     "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Caption animation preset. Omit for static captions; set only when the user asks for animation."],

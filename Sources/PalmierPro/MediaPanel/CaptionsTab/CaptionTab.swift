@@ -213,7 +213,7 @@ struct CaptionTab: View {
             }
             InspectorRow(
                 label: L10n.string("Close gaps"),
-                labelHelp: L10n.string("Extends a caption to close gaps up to this duration."),
+                labelHelp: L10n.string("Extends captions across short gaps and holds the final caption."),
                 onReset: {
                     maximumGapSeconds = CaptionGapSettings.default.maximumGapSeconds
                 }

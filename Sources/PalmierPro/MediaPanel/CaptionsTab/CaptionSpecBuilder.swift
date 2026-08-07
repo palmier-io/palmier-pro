@@ -10,6 +10,7 @@ enum CaptionSpecBuilder {
     struct Input: Sendable {
         let targets: [Target]
         let fps: Int
+        let timelineEndFrame: Int
         let canvasWidth: Int
         let canvasHeight: Int
         let style: TextStyle
@@ -80,7 +81,8 @@ enum CaptionSpecBuilder {
         return adjustedCaptionTiming(
             in: specs,
             settings: input.gapSettings,
-            fps: input.fps
+            fps: input.fps,
+            timelineEndFrame: input.timelineEndFrame
         )
     }
 
@@ -92,7 +94,8 @@ enum CaptionSpecBuilder {
     private static func adjustedCaptionTiming(
         in specs: [EditorViewModel.TextClipSpec],
         settings: CaptionGapSettings,
-        fps: Int
+        fps: Int,
+        timelineEndFrame: Int
     ) -> [EditorViewModel.TextClipSpec] {
         let orderedIndices = specs.indices.sorted {
             let lhsStart = specs[$0].startFrame
@@ -126,6 +129,23 @@ enum CaptionSpecBuilder {
                     durationFrames: duration,
                     extendWordCycle: true
                 )
+            }
+        }
+
+        if maximumGapFrames > 0,
+           let lastIndex = captions.indices.last,
+           let currentEnd = endFrame(of: captions[lastIndex].spec) {
+            let available = timelineEndFrame.subtractingReportingOverflow(currentEnd)
+            if !available.overflow {
+                let holdFrames = min(maximumGapFrames, max(0, available.partialValue))
+                let duration = captions[lastIndex].spec.durationFrames.addingReportingOverflow(holdFrames)
+                if holdFrames > 0, !duration.overflow {
+                    captions[lastIndex].spec = resized(
+                        captions[lastIndex].spec,
+                        durationFrames: duration.partialValue,
+                        extendWordCycle: true
+                    )
+                }
             }
         }
         return captions.map(\.spec)

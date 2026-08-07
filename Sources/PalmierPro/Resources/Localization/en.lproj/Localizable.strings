@@ -350,7 +350,7 @@
 "Export…" = "Export…";
 "Exposure" = "Exposure";
 "Extend" = "Extend";
-"Extends a caption to close gaps up to this duration." = "Extends a caption to close gaps up to this duration.";
+"Extends captions across short gaps and holds the final caption." = "Extends captions across short gaps and holds the final caption.";
 "Extra Large" = "Extra Large";
 "FLUX Enhance" = "FLUX Enhance";
 "Fade In" = "Fade In";
