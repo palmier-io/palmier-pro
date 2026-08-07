@@ -32,16 +32,6 @@ struct TextAnimation: Codable, Sendable, Equatable {
         var isPerWord: Bool { renderMode == .perWord }
         var usesHighlight: Bool { isPerWord }
 
-        var needsIncomingCaptionCoverage: Bool {
-            switch self {
-            case .fadeIn, .popIn, .slideUp, .typewriter,
-                 .wordReveal, .wordSlide, .wordPop, .wordCycle:
-                true
-            default:
-                false
-            }
-        }
-
         var displayName: String {
             switch self {
             case .none: L10n.key("Off")

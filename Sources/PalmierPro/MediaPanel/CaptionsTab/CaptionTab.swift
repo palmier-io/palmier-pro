@@ -13,6 +13,7 @@ struct CaptionTab: View {
     @State private var animationHighlight: TextStyle.RGBA = TextAnimation.defaultHighlight
     @State private var censorProfanity = false
     @State private var maxWords: Int?
+    @State private var maxCharacters: Int?
     @State private var maximumGapSeconds = CaptionGapSettings.default.maximumGapSeconds
     @State private var locale: Locale?
     @State private var supportedLocales: [Locale] = []
@@ -26,6 +27,8 @@ struct CaptionTab: View {
     @State private var placementExpanded = true
 
     private static let previewText = L10n.key("Captions will look like this")
+    private static let maxWordRange = 0.0...50.0
+    private static let maxCharacterRange = 0.0...200.0
 
     private var aspect: CGFloat { CGFloat(editor.timeline.width) / CGFloat(max(1, editor.timeline.height)) }
 
@@ -183,14 +186,30 @@ struct CaptionTab: View {
                 labelHelp: L10n.string("Cap the words shown per caption. None fits each line to the box."),
                 onReset: { maxWords = nil }
             ) {
-                Menu {
-                    Button(L10n.string("None")) { maxWords = nil }
-                    ForEach(1...8, id: \.self) { n in
-                        Button(action: { maxWords = n }) { Text(verbatim: "\(n)") }
-                    }
-                } label: { EditorMenuValue(text: maxWords.map(String.init) ?? L10n.string("None"), expanded: true) }
-                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
-                .frame(maxWidth: .infinity)
+                ScrubbableNumberField(
+                    value: Double(maxWords ?? 0),
+                    range: Self.maxWordRange,
+                    dragValueAdjustment: { $0.rounded() },
+                    displayTextOverride: { $0 < 1 ? L10n.string("None") : nil },
+                    onChanged: updateMaxWords,
+                    onCommit: updateMaxWords
+                )
+                .accessibilityLabel(L10n.string("Max words"))
+            }
+            InspectorRow(
+                label: L10n.string("Max characters"),
+                labelHelp: L10n.string("Cap characters per caption, including spaces and punctuation. A single word may exceed the limit."),
+                onReset: { maxCharacters = nil }
+            ) {
+                ScrubbableNumberField(
+                    value: Double(maxCharacters ?? 0),
+                    range: Self.maxCharacterRange,
+                    dragValueAdjustment: { $0.rounded() },
+                    displayTextOverride: { $0 < 1 ? L10n.string("None") : nil },
+                    onChanged: updateMaxCharacters,
+                    onCommit: updateMaxCharacters
+                )
+                .accessibilityLabel(L10n.string("Max characters"))
             }
             InspectorRow(
                 label: L10n.string("Close gaps"),
@@ -494,6 +513,7 @@ struct CaptionTab: View {
             censorProfanity: provider == .local && censorProfanity,
             locale: locale,
             maxWords: maxWords,
+            maxCharacters: maxCharacters,
             gapSettings: CaptionGapSettings(maximumGapSeconds: maximumGapSeconds) ?? .default,
             provider: provider,
             animation: TextAnimation(preset: animationPreset, highlight: animationHighlight)
@@ -518,6 +538,16 @@ struct CaptionTab: View {
                 note = localizedCaptionError(error)
             }
         }
+    }
+
+    private func updateMaxCharacters(_ value: Double) {
+        let count = Int(value.rounded())
+        maxCharacters = count > 0 ? count : nil
+    }
+
+    private func updateMaxWords(_ value: Double) {
+        let count = Int(value.rounded())
+        maxWords = count > 0 ? count : nil
     }
 
     private func cloudUnavailableMessage(cost: Int?, provider mode: TranscriptionProvider? = nil) -> String? {

@@ -147,6 +147,7 @@
 "Canceling" = "Canceling";
 "Cancels %@" = "Cancels %@";
 "Canvas Zoom" = "Canvas Zoom";
+"Cap characters per caption, including spaces and punctuation. A single word may exceed the limit." = "Cap characters per caption, including spaces and punctuation. A single word may exceed the limit.";
 "Cap the words shown per caption. None fits each line to the box." = "Cap the words shown per caption. None fits each line to the box.";
 "Captions" = "Captions";
 "Captions will look like this" = "Captions will look like this";
@@ -540,6 +541,7 @@
 "Match mouth movement to replacement audio" = "Match mouth movement to replacement audio";
 "Matches voices across clips, transcribing untranscribed timeline clips first (uses credits). Transcripts and voice fingerprints are cached, so re-runs are fast." = "Matches voices across clips, transcribing untranscribed timeline clips first (uses credits). Transcripts and voice fingerprints are cached, so re-runs are fast.";
 "Max" = "Max";
+"Max characters" = "Max characters";
 "Max plan" = "Max plan";
 "Max words" = "Max words";
 "Maximize Focused Panel" = "Maximize Focused Panel";

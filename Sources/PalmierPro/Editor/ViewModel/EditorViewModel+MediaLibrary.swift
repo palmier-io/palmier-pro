@@ -682,7 +682,7 @@ extension EditorViewModel {
 
     struct TextClipSpec: Sendable {
         let trackIndex: Int
-        let startFrame: Int
+        var startFrame: Int
         var durationFrames: Int
         let content: String
         let style: TextStyle

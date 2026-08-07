@@ -854,7 +854,12 @@ enum ToolDefinitions {
                         ],
                     ],
                     "censorProfanity": ["type": "boolean", "description": "Mask profanity."],
-                    "maxWords": ["type": "integer", "description": "Max words per caption."],
+                    "maxWords": ["type": "integer", "minimum": 1, "description": "Max words per caption."],
+                    "maxCharacters": [
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Max characters per caption, including spaces and punctuation. A single word may exceed this limit.",
+                    ],
                     "maximumGapSeconds": [
                         "type": "number",
                         "minimum": CaptionGapSettings.maximumGapRange.lowerBound,

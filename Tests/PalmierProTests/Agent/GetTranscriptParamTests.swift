@@ -193,6 +193,27 @@ struct GetTranscriptParamTests {
         #expect(maximumGap["maximum"] as? Double == CaptionGapSettings.maximumGapRange.upperBound)
     }
 
+    @Test func addCaptionsSchemaExposesLengthLimits() throws {
+        let tool = try #require(ToolDefinitions.mcpServer.first { $0.name == .addCaptions })
+        let properties = try #require(tool.inputSchema["properties"] as? [String: [String: Any]])
+
+        for key in ["maxWords", "maxCharacters"] {
+            #expect(properties[key]?["type"] as? String == "integer")
+            #expect(properties[key]?["minimum"] as? Int == 1)
+        }
+    }
+
+    @Test func addCaptionsRejectsInvalidMaxCharactersBeforeTranscription() async {
+        let h = ToolHarness(timeline: Fixtures.timeline())
+        let invalidValues: [Any] = [0, -1, 1.5, "10", true]
+
+        for value in invalidValues {
+            let result = await h.runRaw("add_captions", args: ["maxCharacters": value])
+            #expect(result.isError)
+            #expect(ToolHarness.textOf(result).contains("maxCharacters"))
+        }
+    }
+
     @Test func addCaptionsRejectsInvalidMaximumGapSecondsBeforeTranscription() async {
         let h = ToolHarness(timeline: Fixtures.timeline())
         let invalidValues: [Any] = [-0.1, 2.1, "0.25", true, Double.infinity]
