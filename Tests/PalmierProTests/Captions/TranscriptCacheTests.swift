@@ -45,4 +45,47 @@ struct TranscriptCacheTests {
         #expect(decoded.words.count == full.words.count)
         #expect(decoded.words[0].start == full.words[0].start)
     }
+
+    @Test func cachedTranscriptFindsLocaleKeyedCloudFull() async throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cloud-lang-\(UUID().uuidString).wav")
+        try Data("audio".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        await TranscriptCache.shared.storeCloudTranscript(
+            full,
+            for: url,
+            range: nil,
+            language: "en"
+        )
+        let cached = await TranscriptCache.shared.cachedTranscript(for: url)
+        #expect(cached?.text == full.text)
+        #expect(cached?.language == full.language)
+    }
+
+    @Test func storeCloudTranscriptPostsDidStoreNotification() async throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cloud-notify-\(UUID().uuidString).wav")
+        try Data("audio".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let expectedPath = url.path
+        await confirmation("transcriptCacheDidStore") { confirm in
+            let token = NotificationCenter.default.addObserver(
+                forName: .transcriptCacheDidStore,
+                object: nil,
+                queue: nil
+            ) { notification in
+                guard let stored = notification.object as? URL, stored.path == expectedPath else { return }
+                confirm()
+            }
+            defer { NotificationCenter.default.removeObserver(token) }
+            await TranscriptCache.shared.storeCloudTranscript(
+                full,
+                for: url,
+                range: nil,
+                language: "en"
+            )
+        }
+    }
 }

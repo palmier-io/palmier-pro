@@ -6,6 +6,7 @@ struct PreviewContainerView: View {
 
     private var isTimeline: Bool { editor.activePreviewTab == .timeline }
     private var isImage: Bool { editor.activePreviewTab.clipType == .image }
+    private var isAudio: Bool { editor.activePreviewTab.clipType == .audio }
 
     @State private var hoveredTabId: String?
     @State private var failedImagePreviewKey: String?
@@ -17,15 +18,22 @@ struct PreviewContainerView: View {
                 .panelHeaderBar()
 
             GeometryReader { geo in
-                let aspect = generatingAspect ?? CGFloat(editor.timeline.width) / CGFloat(editor.timeline.height)
-                let fitSize = fitSize(in: geo.size, aspect: aspect)
-                let scaledWidth = fitSize.width * editor.canvasZoom
-                let scaledHeight = fitSize.height * editor.canvasZoom
                 let timelineState = timelineFrameState
+                let aspect = generatingAspect ?? CGFloat(editor.timeline.width) / CGFloat(editor.timeline.height)
+                let baseSize = isAudio ? geo.size : fitSize(in: geo.size, aspect: aspect)
+                let zoom = isAudio ? 1 : editor.canvasZoom
+                let scaledWidth = baseSize.width * zoom
+                let scaledHeight = baseSize.height * zoom
                 ZStack {
                     PreviewView()
                     if isImage {
                         imagePreview
+                    } else if isAudio,
+                              let asset = activeMediaAsset,
+                              !asset.isGenerating,
+                              activeFailedError == nil,
+                              !activeMediaMissing {
+                        AudioPreviewView(asset: asset)
                     }
                     if let error = activeFailedError {
                         failedPreview(error: error)
@@ -38,12 +46,14 @@ struct PreviewContainerView: View {
                     if let overlay = offlineOverlay(timelineState: timelineState) {
                         offlinePreview(assetId: overlay.assetId, path: overlay.path, isUnprocessable: overlay.isUnprocessable)
                     }
-                    if editor.chromaKeySamplingClipId != nil {
-                        ChromaKeySamplerOverlayView()
-                    } else if editor.cropEditingActive {
-                        CropOverlayView()
-                    } else {
-                        TransformOverlayView()
+                    if !isAudio {
+                        if editor.chromaKeySamplingClipId != nil {
+                            ChromaKeySamplerOverlayView()
+                        } else if editor.cropEditingActive {
+                            CropOverlayView()
+                        } else {
+                            TransformOverlayView()
+                        }
                     }
                     if let slip = editor.slipPreview, isTimeline {
                         SlipTwoUpView(state: slip)
@@ -67,12 +77,17 @@ struct PreviewContainerView: View {
                 .overlay(
                     Rectangle()
                         .stroke(
-                            AppTheme.MediaOverlay.primaryColor.opacity(editor.canvasZoom < 1.0 ? AppTheme.Opacity.moderate : 0),
+                            AppTheme.MediaOverlay.primaryColor.opacity(
+                                !isAudio && editor.canvasZoom < 1.0 ? AppTheme.Opacity.moderate : 0
+                            ),
                             lineWidth: AppTheme.BorderWidth.thin
                         )
                 )
                 .position(x: geo.size.width / 2, y: geo.size.height / 2)
-                .offset(x: editor.canvasOffset.width, y: editor.canvasOffset.height)
+                .offset(
+                    x: isAudio ? 0 : editor.canvasOffset.width,
+                    y: isAudio ? 0 : editor.canvasOffset.height
+                )
             }
             .clipped()
             if !isImage {
@@ -130,12 +145,14 @@ struct PreviewContainerView: View {
             ) {
                 playbackRateMenuItems
             }
-            settingsMenuButton(
-                systemImage: "magnifyingglass",
-                label: zoomBadgeLabel,
-                help: L10n.string("Canvas Zoom")
-            ) {
-                zoomMenuItems
+            if !isAudio {
+                settingsMenuButton(
+                    systemImage: "magnifyingglass",
+                    label: zoomBadgeLabel,
+                    help: L10n.string("Canvas Zoom")
+                ) {
+                    zoomMenuItems
+                }
             }
         }
         .padding(.horizontal, AppTheme.Spacing.lg)
