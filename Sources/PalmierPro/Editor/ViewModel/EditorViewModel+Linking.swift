@@ -159,26 +159,93 @@ extension EditorViewModel {
         case left, right
     }
 
-    /// Apply a trim-drag commit. Expands the edit set to linked partners when `propagateToLinked` is on and hands off to `trimClips`.
+    struct StandardTrimPlan {
+        struct Edit {
+            let clipId: String
+            let durationDelta: Int
+        }
+
+        let edge: TrimEdge
+        let edgeDeltaFrames: Int
+        let edits: [Edit]
+        var leadDurationDelta: Int { edits.first?.durationDelta ?? 0 }
+        var resizedClipIds: [String] { edits.map(\.clipId) }
+    }
+
+    struct StandardTrimReport {
+        let durationDelta: Int
+        let resizedClipIds: [String]
+    }
+
     func commitTrim(clipId: String, edge: TrimEdge, deltaFrames: Int, propagateToLinked: Bool) {
-        guard let loc = findClip(id: clipId) else { return }
-        let leadClip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-        var targets = [leadClip]
-        if propagateToLinked {
-            targets += linkedPartnerIds(of: clipId).compactMap { pid in
-                findClip(id: pid).map { timeline.tracks[$0.trackIndex].clips[$0.clipIndex] }
+        guard let plan = planStandardTrim(
+            clipId: clipId,
+            edge: edge,
+            deltaFrames: deltaFrames,
+            propagateToLinked: propagateToLinked
+        ) else { return }
+        applyStandardTrim(plan)
+    }
+
+    func planStandardTrim(
+        clipId: String,
+        edge: TrimEdge,
+        deltaFrames: Int,
+        propagateToLinked: Bool
+    ) -> StandardTrimPlan? {
+        guard deltaFrames != 0 else { return nil }
+        let targets = standardTrimTargets(clipId: clipId, propagateToLinked: propagateToLinked)
+        guard !targets.isEmpty else { return nil }
+
+        var appliedEdgeDelta = deltaFrames
+        let shrinkLimit = targets.map { max(0, $0.durationFrames - 1) }.min() ?? 0
+        switch edge {
+        case .left:
+            appliedEdgeDelta = min(appliedEdgeDelta, shrinkLimit)
+            if appliedEdgeDelta < 0 {
+                let limit = maximumTrimExtensionFrames(
+                    targets: targets,
+                    edge: edge,
+                    ripple: false
+                ) ?? Int.max
+                appliedEdgeDelta = max(appliedEdgeDelta, -limit)
+            }
+        case .right:
+            appliedEdgeDelta = max(appliedEdgeDelta, -shrinkLimit)
+            if appliedEdgeDelta > 0 {
+                let limit = maximumTrimExtensionFrames(
+                    targets: targets,
+                    edge: edge,
+                    ripple: false
+                ) ?? Int.max
+                appliedEdgeDelta = min(appliedEdgeDelta, limit)
             }
         }
-        var deltaFrames = deltaFrames
-        for target in targets {
-            guard let bounds = multicamTrimBounds(for: target) else { continue }
-            deltaFrames = edge == .left ? max(deltaFrames, -bounds.left) : min(deltaFrames, bounds.right)
+        guard appliedEdgeDelta != 0 else { return nil }
+
+        let edits = targets.map { clip in
+            StandardTrimPlan.Edit(
+                clipId: clip.id,
+                durationDelta: trimDurationDelta(for: clip, edge: edge, delta: appliedEdgeDelta)
+            )
         }
-        let edits = targets.map { clip -> (clipId: String, trimStartFrame: Int, trimEndFrame: Int) in
-            let v = trimValues(for: clip, edge: edge, delta: deltaFrames)
-            return (clip.id, v.trimStart, v.trimEnd)
+        return StandardTrimPlan(edge: edge, edgeDeltaFrames: appliedEdgeDelta, edits: edits)
+    }
+
+    /// Recomputes trim values from live clip state so plans queued in a batch
+    /// compose with edits (e.g. the other edge, or an earlier overwrite) applied before them.
+    @discardableResult
+    func applyStandardTrim(_ plan: StandardTrimPlan) -> StandardTrimReport {
+        let edits = plan.edits.compactMap { edit -> (clipId: String, trimStartFrame: Int, trimEndFrame: Int)? in
+            guard let clip = clipFor(id: edit.clipId) else { return nil }
+            let values = trimValues(for: clip, edge: plan.edge, delta: plan.edgeDeltaFrames)
+            return (edit.clipId, values.trimStart, values.trimEnd)
         }
         trimClips(edits)
+        return StandardTrimReport(
+            durationDelta: plan.leadDurationDelta,
+            resizedClipIds: plan.resizedClipIds
+        )
     }
 
     /// Nest trim limits come from the child's live length, not creation time.
@@ -240,6 +307,26 @@ extension EditorViewModel {
         }
     }
 
+    func maximumTrimExtensionFrames(
+        clipId: String,
+        edge: TrimEdge,
+        propagateToLinked: Bool,
+        ripple: Bool
+    ) -> Int? {
+        let targets = ripple
+            ? rippleTrimTargets(clipId: clipId, edge: edge, propagateToLinked: propagateToLinked)
+            : standardTrimTargets(clipId: clipId, propagateToLinked: propagateToLinked)
+        guard !targets.isEmpty else { return 0 }
+        return maximumTrimExtensionFrames(targets: targets, edge: edge, ripple: ripple)
+    }
+
+    func trimDurationDelta(for clip: Clip, edge: TrimEdge, delta: Int) -> Int {
+        let fields = trimValues(for: clip, edge: edge, delta: delta)
+        let startShift = fields.trimStart - clip.trimStartFrame
+        let endShift = fields.trimEnd - clip.trimEndFrame
+        return -Int((Double(startShift + endShift) / clip.speed).rounded())
+    }
+
     func trimValues(for clip: Clip, edge: TrimEdge, delta: Int) -> (trimStart: Int, trimEnd: Int) {
         let sourceDelta = Int((Double(delta) * clip.speed).rounded())
         // Image/Text clips have no source-material bound, so their trim fields can go negative
@@ -252,6 +339,41 @@ extension EditorViewModel {
             let newEnd = clip.trimEndFrame - sourceDelta
             return (clip.trimStartFrame, unbounded ? newEnd : max(0, newEnd))
         }
+    }
+
+    private func standardTrimTargets(clipId: String, propagateToLinked: Bool) -> [Clip] {
+        guard let lead = clipFor(id: clipId) else { return [] }
+        guard propagateToLinked else { return [lead] }
+        return [lead] + linkedPartnerIds(of: clipId).compactMap { clipFor(id: $0) }
+    }
+
+    private func maximumTrimExtensionFrames(
+        targets: [Clip],
+        edge: TrimEdge,
+        ripple: Bool
+    ) -> Int? {
+        var limits: [Int] = []
+        for clip in targets {
+            if clip.mediaType != .image && clip.mediaType != .text {
+                let sourceFrames = edge == .left ? clip.trimStartFrame : effectiveTrimEnd(for: clip)
+                limits.append(timelineFramesForSourceRoom(sourceFrames, speed: clip.speed))
+            }
+            guard !ripple else { continue }
+            if edge == .left {
+                limits.append(max(0, clip.startFrame))
+            }
+            if let bounds = multicamTrimBounds(for: clip) {
+                limits.append(edge == .left ? bounds.left : bounds.right)
+            }
+        }
+        return limits.min()
+    }
+
+    private func timelineFramesForSourceRoom(_ sourceFrames: Int, speed: Double) -> Int {
+        guard sourceFrames > 0, speed.isFinite, speed > 0 else { return 0 }
+        let value = (Double(sourceFrames) / speed).rounded()
+        guard value.isFinite, value > 0 else { return 0 }
+        return Int(exactly: value) ?? Int.max
     }
 
     // MARK: - Track-zone routing for drops
