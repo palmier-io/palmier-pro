@@ -127,6 +127,7 @@
 "Blur" = "Blur";
 "Bold" = "Bold";
 "Both" = "Both";
+"Browse" = "Browse";
 "Browse Community Skills ↗" = "Browse Community Skills ↗";
 "Buy" = "Buy";
 "Buy $%lld" = "Buy $%lld";
@@ -472,6 +473,7 @@
 "Intensity" = "Intensity";
 "Invert Colors" = "Invert Colors";
 "Italic" = "Italic";
+"Jump to Playhead" = "Jump to Playhead";
 "Keep Current" = "Keep Current";
 "Keep Editing" = "Keep Editing";
 "Keep Skill" = "Keep Skill";
@@ -815,6 +817,7 @@
 "Show keyframe timeline" = "Show keyframe timeline";
 "Show notifications" = "Show notifications";
 "Show reasoning" = "Show reasoning";
+"Show the caption at the playhead" = "Show the caption at the playhead";
 "Side by Side" = "Side by Side";
 "Sign In" = "Sign In";
 "Sign in" = "Sign in";
