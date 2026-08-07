@@ -50,7 +50,7 @@ extension EditorViewModel {
 
         // Each target's own source headroom caps how far it can ripple; bind to the smallest.
         let sourceDelta = targetClips
-            .map { rippleTrimDurationDelta(for: $0, edge: edge, delta: deltaFrames) }
+            .map { trimDurationDelta(for: $0, edge: edge, delta: deltaFrames) }
             .min(by: { abs($0) < abs($1) }) ?? 0
 
         // Shrinking shifts sync-locked followers left; clamp to the tightest available room.
@@ -124,6 +124,13 @@ extension EditorViewModel {
         }
     }
 
+    /// Dry-run refusal reason for a ripple trim, or nil when allowed — the same rule `rippleTrimClip` enforces.
+    func rippleTrimRefusalReason(clipId: String, edge: TrimEdge, propagateToLinked: Bool) -> String? {
+        guard let leadLoc = findClip(id: clipId) else { return nil }
+        let targets = rippleTrimTargets(clipId: clipId, edge: edge, propagateToLinked: propagateToLinked)
+        return rippleTrimRefusal(leadLoc: leadLoc, edge: edge, targetIds: Set(targets.map(\.id)))
+    }
+
     func rippleTrimTargets(clipId: String, edge: TrimEdge, propagateToLinked: Bool) -> [Clip] {
         guard clipFor(id: clipId) != nil else { return [] }
         var targetIds: Set<String> = [clipId]
@@ -159,8 +166,8 @@ extension EditorViewModel {
         return multicamManualRippleViolation(shiftingTrackIds: shiftingTrackIds, atFrame: shiftPoint)
     }
 
-    /// Timeline delta from a ripple trim of `clip` by `delta` frames.
-    private func rippleTrimDurationDelta(for clip: Clip, edge: TrimEdge, delta: Int) -> Int {
+    /// Timeline duration change when `clip`'s edge is trimmed by `delta` frames, after per-clip speed rounding.
+    func trimDurationDelta(for clip: Clip, edge: TrimEdge, delta: Int) -> Int {
         let fields = trimValues(for: clip, edge: edge, delta: delta)
         let sourceShift = (fields.trimStart - clip.trimStartFrame) + (fields.trimEnd - clip.trimEndFrame)
         return -Int((Double(sourceShift) / clip.speed).rounded())

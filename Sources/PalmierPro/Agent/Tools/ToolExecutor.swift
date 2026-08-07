@@ -303,6 +303,7 @@ final class ToolExecutor {
         case .setClipProperties: return try setClipProperties(editor, args)
         case .setKeyframes:     return try setKeyframes(editor, args)
         case .splitClips:       return try splitClips(editor, args)
+        case .trimClips:        return try trimClips(editor, args)
         case .rippleDeleteRanges: return try rippleDeleteRanges(editor, args)
         case .removeWords:   return try await removeWords(editor, args)
         case .removeSilence: return try removeSilence(editor, args)
@@ -403,6 +404,13 @@ func validateUnknownKeys(_ entry: [String: Any], allowed: Set<String>, path: Str
     guard unknown.isEmpty else {
         let allowedFields = allowed.isEmpty ? "none" : allowed.sorted().joined(separator: ", ")
         throw ToolError("\(path): unknown field(s) '\(unknown.sorted().joined(separator: "', '"))'. Allowed: \(allowedFields).")
+    }
+}
+
+func validateEntryKeys(in args: [String: Any], arrayKey: String, allowed: Set<String>) throws {
+    for (idx, raw) in (args[arrayKey] as? [Any] ?? []).enumerated() {
+        guard let entry = raw as? [String: Any] else { continue }
+        try validateUnknownKeys(entry, allowed: allowed, path: "\(arrayKey)[\(idx)]")
     }
 }
 

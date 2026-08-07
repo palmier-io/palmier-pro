@@ -30,6 +30,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case moveClips = "move_clips"
     case removeClips = "remove_clips"
     case splitClips = "split_clips"
+    case trimClips = "trim_clips"
     case rippleDeleteRanges = "ripple_delete_ranges"
     case swapClipMedia = "swap_clip_media"
     case setClipProperties = "set_clip_properties"
@@ -461,6 +462,28 @@ enum ToolDefinitions {
                     ],
                 ],
                 required: []
+            )
+        ),
+        AgentTool(
+            name: .trimClips,
+            description: "Trim or extend clip edges — move where clips start or end — for one or many clips in a single undoable action. Each edit gives absolute PROJECT frames: startFrame moves the clip's leading edge, endFrame its trailing edge (end-exclusive, matching get_timeline); pass either or both. Moving an edge inward trims material away; outward extends it, revealing more source when the media has headroom (images and text extend freely). Linked audio/video partners trim together so A/V stays in sync — list a clip OR its partner, not both.\n\nripple=false (default): only the edited clips change — extending overwrites whatever the new span overlaps on that track, and trimming leaves a gap.\nripple=true: like a ripple-trim drag — downstream clips and sync-locked tracks shift to close (or open) the gap. The edited clip keeps its start position; each requested frame is read as an amount of material to add or remove at that edge (requested minus current edge), applied before the shift.\n\nRequests are clamped by source headroom, multicam sync bounds, and sync-locked track room; the receipt lists resulting clip frames plus a note for every clamp, skipped no-op edge, and linked partner whose retimed speed rounds to a different move — verify against it instead of assuming the exact frames landed. Refused with no changes when a ripple edit would break a multicam group. Related tools: ripple_delete_ranges cuts ranges mid-clip, split_clips only inserts boundaries, move_clips repositions without changing content, set_clip_properties sets raw source trim offsets without ripple.",
+            inputSchema: objectSchema(
+                properties: [
+                    "edits": [
+                        "type": "array",
+                        "description": "Per-clip edge targets. A clip (or its linked partner) may appear in at most one edit.",
+                        "items": objectSchema(
+                            properties: [
+                                "clipId": ["type": "string", "description": "Clip to trim (from get_timeline)."],
+                                "startFrame": ["type": "integer", "description": "Project frame the leading edge should move to. Greater than the current start trims the head; smaller extends it."],
+                                "endFrame": ["type": "integer", "description": "Project frame the trailing edge should move to (end-exclusive). Smaller than the current end trims the tail; greater extends it."],
+                            ],
+                            required: ["clipId"]
+                        ),
+                    ],
+                    "ripple": ["type": "boolean", "description": "true shifts downstream clips and sync-locked tracks to keep the timeline closed, like a ripple trim. Default false."],
+                ],
+                required: ["edits"]
             )
         ),
         AgentTool(
