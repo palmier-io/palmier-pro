@@ -783,7 +783,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .addTexts,
-            description: "Adds text clips as timeline layers. Omit trackIndex on every entry to create one new top video track; otherwise set trackIndex on every entry. Transform is normalized text-box center/size; center-only auto-fits, all four fields override the box. Use the nested style object for typography, outline, shadow, and background. fillMode 'footage' stencils layers below through the letter shapes. Use add_captions for spoken audio captions. Unknown fields are rejected.",
+            description: "Adds text clips as timeline layers. Omit trackIndex on every entry to create one new top video track; otherwise set trackIndex on every entry. Text boxes auto-fit their content; transform optionally sets normalized center and rotation. Use style widthScale and heightScale to stretch glyphs. Use the nested style object for typography, outline, shadow, and background. fillMode 'footage' stencils layers below through the letter shapes. Use add_captions for spoken audio captions. Unknown fields are rejected.",
             inputSchema: objectSchema(
                 properties: [
                     "entries": [
@@ -798,8 +798,8 @@ enum ToolDefinitions {
                                 "content": ["type": "string", "description": "Text. Supports \\n."],
                                 "transform": [
                                     "type": "object",
-                                    "description": "Text box. Omit for centered auto-fit; rotation alone rotates an auto-fit box; center only auto-fits size; all four override.",
-                                    "properties": textBoxTransformProperties(),
+                                    "description": "Optional position and rotation. Set centerX and centerY together. Size always auto-fits the text.",
+                                    "properties": textTransformProperties(),
                                 ],
                             ], textStyleProperties(detailed: false), [
                                 "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Animation preset; off clears."],
@@ -815,7 +815,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .updateText,
-            description: "Updates text clips or a captionGroupId. The nested style object is a partial patch: omitted values stay unchanged. Use it for typography, color, outline, shadow, and background. fillMode 'footage' stencils layers below through the glyphs. Content and layout-affecting style changes auto-fit the box unless transform includes box geometry; rotation alone keeps auto-fit. Static rotation uses clockwise degrees and clears rotation keyframes. Unknown fields are rejected.",
+            description: "Updates text clips or a captionGroupId. The nested style object is a partial patch: omitted values stay unchanged. Use it for typography, color, outline, shadow, and background. Use style widthScale and heightScale to stretch glyphs. fillMode 'footage' stencils layers below through the glyphs. Content and layout-affecting style changes auto-fit the box; transform can reposition or rotate it without changing its size. Static rotation uses clockwise degrees and clears rotation keyframes. Unknown fields are rejected.",
             inputSchema: objectSchema(
                 properties: mergedProperties([
                     "clipIds": [
@@ -827,8 +827,8 @@ enum ToolDefinitions {
                     "content": ["type": "string", "description": "Replacement text. Supports \\n."],
                     "transform": [
                         "type": "object",
-                        "description": "Partial text-box transform; omitted fields keep current values.",
-                        "properties": textBoxTransformProperties(),
+                        "description": "Partial position and rotation; omitted fields keep current values. Size remains auto-fit.",
+                        "properties": textTransformProperties(),
                     ],
                 ], textStyleProperties(detailed: true), [
                     "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Animation preset; off clears."],
@@ -1158,12 +1158,10 @@ enum ToolDefinitions {
     static var mcpServer: [AgentTool] { all + [manageProject] }
     static var inAppAgent: [AgentTool] { all + [readSkill] }
 
-    private static func textBoxTransformProperties() -> [String: [String: Any]] {
+    private static func textTransformProperties() -> [String: [String: Any]] {
         [
             "centerX": ["type": "number", "description": "0-1 horizontal center."],
             "centerY": ["type": "number", "description": "0-1 vertical center."],
-            "width": ["type": "number", "description": "0-1 width."],
-            "height": ["type": "number", "description": "0-1 height."],
             "rotation": ["type": "number", "description": "Clockwise degrees."],
         ]
     }

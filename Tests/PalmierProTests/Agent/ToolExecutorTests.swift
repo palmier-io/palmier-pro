@@ -1961,16 +1961,27 @@ struct ToolExecutorTextFolderTests {
 
     // MARK: - add_texts
 
-    @Test func updateTextSchemaExposesIndependentTextScale() throws {
-        let tool = try #require(ToolDefinitions.mcpServer.first { $0.name == .updateText })
-        let properties = try #require(tool.inputSchema["properties"] as? [String: [String: Any]])
-        let style = try #require(properties["style"])
+    @Test func textSchemasExposeStyleScaleWithoutBoxDimensions() throws {
+        let updateTool = try #require(ToolDefinitions.mcpServer.first { $0.name == .updateText })
+        let updateProperties = try #require(updateTool.inputSchema["properties"] as? [String: [String: Any]])
+        let style = try #require(updateProperties["style"])
         let styleProperties = try #require(style["properties"] as? [String: [String: Any]])
 
         #expect((styleProperties["widthScale"]?["minimum"] as? NSNumber)?.doubleValue == 0.1)
         #expect((styleProperties["widthScale"]?["maximum"] as? NSNumber)?.doubleValue == 10)
         #expect((styleProperties["heightScale"]?["minimum"] as? NSNumber)?.doubleValue == 0.1)
         #expect((styleProperties["heightScale"]?["maximum"] as? NSNumber)?.doubleValue == 10)
+
+        let updateTransform = try #require(updateProperties["transform"]?["properties"] as? [String: [String: Any]])
+        #expect(Set(updateTransform.keys) == ["centerX", "centerY", "rotation"])
+
+        let addTool = try #require(ToolDefinitions.mcpServer.first { $0.name == .addTexts })
+        let addProperties = try #require(addTool.inputSchema["properties"] as? [String: [String: Any]])
+        let entries = try #require(addProperties["entries"])
+        let items = try #require(entries["items"] as? [String: Any])
+        let entryProperties = try #require(items["properties"] as? [String: [String: Any]])
+        let addTransform = try #require(entryProperties["transform"]?["properties"] as? [String: [String: Any]])
+        #expect(Set(addTransform.keys) == ["centerX", "centerY", "rotation"])
     }
 
     @Test func addTextsCreatesNewTrackWhenIndexOmitted() async throws {
@@ -2008,6 +2019,36 @@ struct ToolExecutorTextFolderTests {
         let clip = h.editor.timeline.tracks[0].clips[0]
         #expect(clip.textContent == "Caption")
         #expect(clip.textStyle?.fontSize == 48)
+    }
+
+    @Test func updateTextAutoFitsContentAtRequestedCenter() async throws {
+        var clip = Fixtures.clip(id: "title", mediaRef: "", mediaType: .text, start: 0, duration: 60)
+        clip.textContent = "I"
+        var style = TextStyle()
+        style.alignment = .right
+        clip.textStyle = style
+        clip.transform = Transform(centerX: 0.5, centerY: 0.5, width: 0.8, height: 0.6)
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])]))
+
+        let content = "A much longer title"
+        let result = await h.runRaw("update_text", args: [
+            "clipIds": [clip.id],
+            "content": content,
+            "transform": ["centerX": 0.2, "centerY": 0.3],
+        ])
+
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let updated = try #require(h.editor.clipFor(id: clip.id))
+        let natural = TextLayout.naturalSize(
+            content: content,
+            style: style,
+            maxWidth: CGFloat(h.editor.timeline.width) * 0.9,
+            canvasHeight: CGFloat(h.editor.timeline.height)
+        )
+        #expect(updated.transform.centerX == 0.2)
+        #expect(updated.transform.centerY == 0.3)
+        #expect(abs(updated.transform.width - Double(natural.width) / Double(h.editor.timeline.width)) < 0.0001)
+        #expect(abs(updated.transform.height - Double(natural.height) / Double(h.editor.timeline.height)) < 0.0001)
     }
 
     @Test func addTextsAppliesRichTextStyleFields() async throws {

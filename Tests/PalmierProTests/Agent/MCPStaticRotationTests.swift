@@ -23,11 +23,15 @@ struct MCPStaticRotationTests {
             let entryProperties = try #require(entries["items"]?.objectValue?["properties"]?.objectValue)
             let addTransform = try #require(entryProperties["transform"]?.objectValue?["properties"]?.objectValue)
             #expect(addTransform["rotation"]?.objectValue?["type"]?.stringValue == "number")
+            #expect(addTransform["width"] == nil)
+            #expect(addTransform["height"] == nil)
 
             let updateTool = try #require(tools.first { $0.name == "update_text" })
             let updateProperties = try #require(updateTool.inputSchema.objectValue?["properties"]?.objectValue)
             let updateTransform = try #require(updateProperties["transform"]?.objectValue?["properties"]?.objectValue)
             #expect(updateTransform["rotation"]?.objectValue?["type"]?.stringValue == "number")
+            #expect(updateTransform["width"] == nil)
+            #expect(updateTransform["height"] == nil)
         }
     }
 
@@ -101,7 +105,7 @@ struct MCPStaticRotationTests {
         }
     }
 
-    @Test func rotationDoesNotDisableContentAutoFitThroughMCP() async throws {
+    @Test func positionAndRotationDoNotDisableContentAutoFitThroughMCP() async throws {
         let harness = ToolHarness()
         let undoManager = UndoManager()
         harness.editor.undo.attach(undoManager)
@@ -121,10 +125,16 @@ struct MCPStaticRotationTests {
             let updateResult = try await client.callTool(name: "update_text", arguments: [
                 "clipIds": .array([.string(original.id)]),
                 "content": .string("A much longer title"),
-                "transform": .object(["rotation": .double(45)]),
+                "transform": .object([
+                    "centerX": .double(0.25),
+                    "centerY": .double(0.75),
+                    "rotation": .double(45),
+                ]),
             ])
             #expect(updateResult.isError != true)
             let updated = try #require(harness.editor.clipFor(id: original.id))
+            #expect(updated.transform.centerX == 0.25)
+            #expect(updated.transform.centerY == 0.75)
             #expect(updated.transform.rotation == 45)
             #expect(updated.transform.width > original.transform.width)
 
@@ -132,6 +142,40 @@ struct MCPStaticRotationTests {
             let restored = try #require(harness.editor.clipFor(id: original.id))
             #expect(restored.textContent == "I")
             #expect(restored.transform == original.transform)
+        }
+    }
+
+    @Test func textBoxDimensionsAreRejectedWithoutMutationThroughMCP() async throws {
+        var clip = Fixtures.clip(id: "title", mediaRef: "", mediaType: .text, start: 0, duration: 60)
+        clip.textContent = "Title"
+        let original = clip
+        let harness = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])]))
+        let undoManager = UndoManager()
+        harness.editor.undo.attach(undoManager)
+
+        try await withClient(harness: harness, name: "text-box-dimensions-test") { client in
+            let addResult = try await client.callTool(name: "add_texts", arguments: [
+                "entries": .array([.object([
+                    "startFrame": .int(60),
+                    "endFrame": .int(120),
+                    "content": .string("Invalid box"),
+                    "transform": .object([
+                        "centerX": .double(0.5),
+                        "centerY": .double(0.5),
+                        "width": .double(0.5),
+                    ]),
+                ])]),
+            ])
+            #expect(addResult.isError == true)
+            #expect(harness.editor.timeline.tracks.flatMap(\.clips) == [original])
+
+            let updateResult = try await client.callTool(name: "update_text", arguments: [
+                "clipIds": .array([.string(clip.id)]),
+                "transform": .object(["height": .double(0.5)]),
+            ])
+            #expect(updateResult.isError == true)
+            #expect(harness.editor.clipFor(id: clip.id) == original)
+            #expect((try await client.callTool(name: "undo")).isError == true)
         }
     }
 

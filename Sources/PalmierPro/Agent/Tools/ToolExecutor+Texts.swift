@@ -366,11 +366,9 @@ extension ToolExecutor {
         path: String
     ) throws -> Transform? {
         guard let tDict else { return nil }
-        try validateUnknownKeys(tDict, allowed: ["centerX", "centerY", "width", "height", "rotation"], path: "\(path).transform")
+        try validateUnknownKeys(tDict, allowed: ["centerX", "centerY", "rotation"], path: "\(path).transform")
         let cX = try optionalNumber(tDict, key: "centerX", path: "\(path).transform")
         let cY = try optionalNumber(tDict, key: "centerY", path: "\(path).transform")
-        let w = try optionalNumber(tDict, key: "width", path: "\(path).transform")
-        let h = try optionalNumber(tDict, key: "height", path: "\(path).transform")
         let rotation = try optionalNumber(tDict, key: "rotation", path: "\(path).transform")
 
         func autoFit(centerX: Double, centerY: Double) -> Transform {
@@ -384,30 +382,24 @@ extension ToolExecutor {
             )
         }
 
-        if cX == nil && cY == nil && w == nil && h == nil {
+        if cX == nil && cY == nil {
             guard rotation != nil else { return nil }
             return autoFit(centerX: 0.5, centerY: 0.5)
         }
         guard let cx = cX, let cy = cY else {
-            throw ToolError("\(path): transform must be either {centerX, centerY} for auto-fit, or all four of {centerX, centerY, width, height}")
-        }
-        if let ww = w, let hh = h {
-            return Transform(centerX: cx, centerY: cy, width: ww, height: hh, rotation: rotation ?? 0)
-        }
-        guard w == nil && h == nil else {
-            throw ToolError("\(path): transform must be either {centerX, centerY} for auto-fit, or all four of {centerX, centerY, width, height}")
+            throw ToolError("\(path): transform must provide both centerX and centerY")
         }
         return autoFit(centerX: cx, centerY: cy)
     }
 
     private func parseUpdateTextTransform(_ tDict: [String: Any]?, path: String) throws -> ParsedTransform? {
         guard let tDict else { return nil }
-        try validateUnknownKeys(tDict, allowed: ["centerX", "centerY", "width", "height", "rotation"], path: "\(path).transform")
+        try validateUnknownKeys(tDict, allowed: ["centerX", "centerY", "rotation"], path: "\(path).transform")
         let transform = ParsedTransform(
             centerX: try optionalNumber(tDict, key: "centerX", path: "\(path).transform"),
             centerY: try optionalNumber(tDict, key: "centerY", path: "\(path).transform"),
-            width: try optionalNumber(tDict, key: "width", path: "\(path).transform"),
-            height: try optionalNumber(tDict, key: "height", path: "\(path).transform"),
+            width: nil,
+            height: nil,
             rotation: try optionalNumber(tDict, key: "rotation", path: "\(path).transform"),
             flipHorizontal: nil,
             flipVertical: nil
@@ -596,7 +588,7 @@ extension ToolExecutor {
         }
         let snapshot = timelineSnapshot(editor)
         let actionName = clipIds.count == 1 ? "Update Text (Agent)" : "Update Texts (Agent)"
-        let shouldFitToContent = transform?.hasLayoutField != true && (hasContent || textStylePatch?.affectsLayout == true)
+        let shouldFitToContent = hasContent || textStylePatch?.affectsLayout == true
         let canvasW = Double(editor.timeline.width)
         let canvasH = Double(editor.timeline.height)
         editor.undo.perform(actionName) {
@@ -611,6 +603,9 @@ extension ToolExecutor {
                     var style = clip.textStyle ?? TextStyle()
                     Self.applyTextStylePatch(textStylePatch, to: &style)
                     clip.textStyle = style
+                }
+                if shouldFitToContent {
+                    _ = editor.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
                 }
                 if let t = transform {
                     t.apply(to: &clip)
@@ -634,9 +629,6 @@ extension ToolExecutor {
                 }
                 if let fillMode {
                     clip.textFillMode = fillMode == .footage ? .footage : nil
-                }
-                if shouldFitToContent {
-                    _ = editor.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
                 }
             }
         }
