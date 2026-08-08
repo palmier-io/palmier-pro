@@ -385,7 +385,6 @@ enum AppTheme {
     }
 
     enum ComponentSize {
-        static let captionPreviewMaxHeight: CGFloat = 150
         static let captionPreviewMaxTextWidthRatio: CGFloat = 0.9
         static let toolImagePreviewMaxHeight: CGFloat = 50
         static let projectCardWidth: CGFloat = 150
@@ -452,8 +451,6 @@ enum AppTheme {
 
     enum Caption {
         static let defaultFontSize: Double = 48
-        static let minPosition: Double = 0
-        static let maxPosition: Double = 1
         static let centerSnapValue: CGFloat = 0.5
         static let centerSnapThreshold: Double = 0.02
         static let defaultCenterY: CGFloat = 0.9

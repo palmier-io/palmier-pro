@@ -24,13 +24,20 @@ struct CaptionTab: View {
     @State private var settingsExpanded = true
     @State private var styleExpanded = false
     @State private var animationExpanded = false
-    @State private var placementExpanded = true
 
     private static let previewText = L10n.key("Captions will look like this")
     private static let maxWordRange = 0.0...50.0
     private static let maxCharacterRange = 0.0...200.0
 
-    private var aspect: CGFloat { CGFloat(editor.timeline.width) / CGFloat(max(1, editor.timeline.height)) }
+    private var previewConfiguration: CaptionPreviewConfiguration {
+        CaptionPreviewConfiguration(
+            text: L10n.string(key: Self.previewText),
+            style: style,
+            center: center,
+            preset: animationPreset,
+            highlight: animationHighlight
+        )
+    }
 
     private var liveTargets: [String] {
         let sel = editor.selectedClipIds
@@ -102,13 +109,13 @@ struct CaptionTab: View {
     var body: some View {
         ZStack {
             VStack(spacing: AppTheme.Spacing.zero) {
+                previewToggleBar
                 ScrollView {
                     VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
                         sourceSection
                         settingsSection
                         styleSection
                         animationSection
-                        placementSection
                     }
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
@@ -127,7 +134,17 @@ struct CaptionTab: View {
             supportedLocales = (await Transcription.supportedLocales())
                 .sorted { languageName($0) < languageName($1) }
         }
-        .onAppear { rememberSelectedClipTargets() }
+        .onAppear {
+            rememberSelectedClipTargets()
+            editor.captionPreviewCenterChange = { center = $0 }
+            showCaptionPreview()
+        }
+        .onDisappear {
+            editor.captionPreviewConfiguration = nil
+            editor.captionPreviewCenterChange = nil
+        }
+        .onChange(of: previewConfiguration) { _, _ in showCaptionPreview() }
+        .onChange(of: editor.mediaPanelVisible) { _, _ in showCaptionPreview() }
         .onChange(of: editor.selectedClipIds) { _, _ in
             guard !editor.isMarqueeSelecting else { return }
             rememberSelectedClipTargets()
@@ -145,6 +162,39 @@ struct CaptionTab: View {
             let cost = await editor.captionCloudCreditCost(for: request)
             guard !Task.isCancelled else { return }
             estimatedCloudCost = cost
+        }
+    }
+
+    private var previewToggleBar: some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            Image(systemName: editor.captionPreviewEnabled ? "eye" : "eye.slash")
+                .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
+            Text(L10n.string("Preview"))
+                .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium))
+                .foregroundStyle(AppTheme.Text.primaryColor)
+            Spacer(minLength: AppTheme.Spacing.sm)
+            Toggle(
+                String(),
+                isOn: Binding(
+                    get: { editor.captionPreviewEnabled },
+                    set: { editor.captionPreviewEnabled = $0 }
+                )
+            )
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .accessibilityLabel(L10n.string("Preview"))
+            .tint(AppTheme.Text.primaryColor.opacity(AppTheme.Opacity.strong))
+        }
+        .padding(.horizontal, AppTheme.Spacing.smMd)
+        .frame(maxWidth: .infinity, minHeight: AppTheme.EditorPanel.groupHeaderHeight)
+        .background(AppTheme.Background.surfaceColor)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(AppTheme.Border.primaryColor)
+                .frame(height: AppTheme.BorderWidth.thin)
         }
     }
 
@@ -339,8 +389,52 @@ struct CaptionTab: View {
             defaults: .caption,
             styleExpanded: $styleExpanded,
             groupsExpandedByDefault: false,
-            actions: styleActions
+            actions: styleActions,
+            afterAlignment: { captionPositionRow },
+            afterColor: { EmptyView() }
         )
+    }
+
+    private var captionPositionRow: some View {
+        InspectorRow(
+            label: L10n.string("Position"),
+            onReset: { center = AppTheme.Caption.defaultCenter }
+        ) {
+            HStack(spacing: AppTheme.Spacing.sm) {
+                captionPositionField(
+                    value: center.x,
+                    canvasLength: max(1, editor.timeline.width),
+                    label: "X",
+                    onChange: { center.x = $0 }
+                )
+                captionPositionField(
+                    value: center.y,
+                    canvasLength: max(1, editor.timeline.height),
+                    label: "Y",
+                    onChange: { center.y = $0 }
+                )
+            }
+            .fixedSize()
+        }
+    }
+
+    private func captionPositionField(
+        value: CGFloat,
+        canvasLength: Int,
+        label: String,
+        onChange: @escaping (CGFloat) -> Void
+    ) -> some View {
+        ScrubbableNumberField(
+            value: Double(value),
+            range: -10...10,
+            displayMultiplier: Double(canvasLength),
+            format: "%.0f",
+            fieldWidth: AppTheme.EditorPanel.compactNumericFieldWidth,
+            trailingLabel: label,
+            onChanged: { onChange(CaptionPreviewPlacement.snappedCoordinate($0)) }
+        ) {
+            onChange(CaptionPreviewPlacement.snappedCoordinate($0))
+        }
     }
 
     private var styleActions: TextStyleEditingActions {
@@ -366,17 +460,6 @@ struct CaptionTab: View {
                 ) {
                     ColorField(displayColor: animationHighlight.swiftUIColor, onUserChange: { animationHighlight = TextStyle.RGBA($0) })
                 }
-            }
-        }
-    }
-
-    private var placementSection: some View {
-        EditorPanelGroup(L10n.string("Placement"), isExpanded: $placementExpanded) {
-            previewBox
-            HStack(spacing: AppTheme.Spacing.mdLg) {
-                Spacer(minLength: AppTheme.Spacing.xs)
-                posField("X", value: center.x) { center.x = $0 }
-                posField("Y", value: center.y) { center.y = $0 }
             }
         }
     }
@@ -413,65 +496,6 @@ struct CaptionTab: View {
         service.newChat()
         service.draft = prompt
         editor.agentPanelVisible = true
-    }
-
-    private var previewBox: some View {
-        ZStack {
-            AppTheme.Background.previewCanvasColor
-            centerGuides
-            GeometryReader { geo in
-                CaptionAnimatedPreview(
-                    text: L10n.string(key: Self.previewText), style: style, center: center,
-                    preset: animationPreset, highlight: animationHighlight,
-                    canvas: CGSize(width: max(1, editor.timeline.width), height: max(1, editor.timeline.height)),
-                    size: geo.size
-                )
-            }
-        }
-        .aspectRatio(aspect, contentMode: .fit)
-        .frame(maxWidth: .infinity, maxHeight: AppTheme.ComponentSize.captionPreviewMaxHeight)
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                .strokeBorder(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.hairline)
-        )
-    }
-
-    private var centerGuides: some View {
-        GeometryReader { geo in
-            let guide = AppTheme.Accent.timecodeColor.opacity(AppTheme.Opacity.prominent)
-            ZStack {
-                if center.x == AppTheme.Caption.centerSnapValue {
-                    Rectangle().fill(guide).frame(width: AppTheme.BorderWidth.hairline, height: geo.size.height)
-                }
-                if center.y == AppTheme.Caption.centerSnapValue {
-                    Rectangle().fill(guide).frame(width: geo.size.width, height: AppTheme.BorderWidth.hairline)
-                }
-            }
-            .position(x: geo.size.width / 2, y: geo.size.height / 2)
-        }
-        .allowsHitTesting(false)
-    }
-
-    private func snapCenter(_ v: Double) -> CGFloat {
-        let centerValue = Double(AppTheme.Caption.centerSnapValue)
-        return CGFloat(abs(v - centerValue) < AppTheme.Caption.centerSnapThreshold ? centerValue : v)
-    }
-
-    private func posField(_ label: String, value: CGFloat, onChange: @escaping (CGFloat) -> Void) -> some View {
-        HStack(spacing: AppTheme.Spacing.xxs) {
-            Text(label)
-                .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-            ScrubbableNumberField(
-                value: Double(value),
-                range: AppTheme.Caption.minPosition...AppTheme.Caption.maxPosition,
-                displayMultiplier: 100,
-                format: "%.0f",
-                valueSuffix: "%",
-                onChanged: { onChange(snapCenter($0)) }
-            ) { onChange(snapCenter($0)) }
-        }
     }
 
     private var generateBar: some View {
@@ -533,11 +557,19 @@ struct CaptionTab: View {
                         return
                     }
                 }
-                if try await editor.generateCaptions(for: request).isEmpty { note = L10n.string("No speech detected.") }
+                if try await editor.generateCaptions(for: request).isEmpty {
+                    note = L10n.string("No speech detected.")
+                } else {
+                    editor.captionPreviewEnabled = false
+                }
             } catch {
                 note = localizedCaptionError(error)
             }
         }
+    }
+
+    private func showCaptionPreview() {
+        editor.captionPreviewConfiguration = editor.mediaPanelVisible ? previewConfiguration : nil
     }
 
     private func updateMaxCharacters(_ value: Double) {

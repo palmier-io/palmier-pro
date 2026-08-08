@@ -22,6 +22,9 @@ struct PreviewContainerView: View {
                 let scaledWidth = fitSize.width * editor.canvasZoom
                 let scaledHeight = fitSize.height * editor.canvasZoom
                 let timelineState = timelineFrameState
+                let captionPreview = isTimeline && editor.captionPreviewEnabled
+                    ? editor.captionPreviewConfiguration
+                    : nil
                 ZStack {
                     PreviewView()
                     if isImage {
@@ -42,6 +45,16 @@ struct PreviewContainerView: View {
                         ChromaKeySamplerOverlayView()
                     } else if editor.cropEditingActive {
                         CropOverlayView()
+                    } else if let configuration = captionPreview {
+                        CaptionPreviewOverlay(
+                            configuration: configuration,
+                            canvas: CGSize(
+                                width: max(1, editor.timeline.width),
+                                height: max(1, editor.timeline.height)
+                            ),
+                            size: CGSize(width: scaledWidth, height: scaledHeight),
+                            onCenterChange: { editor.captionPreviewCenterChange?($0) }
+                        )
                     } else {
                         TransformOverlayView()
                     }
@@ -54,6 +67,7 @@ struct PreviewContainerView: View {
                     SpatialTapGesture()
                         .onEnded { value in
                             guard isTimeline,
+                                  captionPreview == nil,
                                   !editor.cropEditingActive,
                                   editor.chromaKeySamplingClipId == nil,
                                   let id = PreviewHitTester.clipID(
