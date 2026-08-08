@@ -301,6 +301,7 @@ final class ToolExecutor {
         case .applyLayout:      return try applyLayout(editor, args)
         case .swapClipMedia:    return try swapClipMedia(editor, args)
         case .setClipProperties: return try setClipProperties(editor, args)
+        case .copyClipSettings: return try copyClipSettings(editor, args)
         case .setKeyframes:     return try setKeyframes(editor, args)
         case .splitClips:       return try splitClips(editor, args)
         case .rippleDeleteRanges: return try rippleDeleteRanges(editor, args)

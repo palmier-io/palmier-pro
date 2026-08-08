@@ -104,6 +104,18 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
     }
 }
 
+fileprivate struct CopyClipSettingsInput: DecodableToolArgs {
+    struct TargetTrack: Decodable {
+        let trackId: String
+        let range: [Int]?
+    }
+
+    let sourceClipId: String
+    let targetClipIds: [String]?
+    let targetTrack: TargetTrack?
+    static let allowedKeys: Set<String> = ["sourceClipId", "targetClipIds", "targetTrack"]
+}
+
 fileprivate struct RippleDeleteRangesInput: DecodableToolArgs {
     let clipId: String?
     let trackIndex: Int?
@@ -830,6 +842,102 @@ extension ToolExecutor {
             throw ToolError("\(field) must be 'linear' or 'smooth' (got '\(rawValue)')")
         }
         return value
+    }
+
+    // MARK: copy_clip_settings
+
+    func copyClipSettings(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        if let rawTargetTrack = args["targetTrack"] {
+            guard let targetTrack = rawTargetTrack as? [String: Any] else {
+                throw ToolError("copy_clip_settings.targetTrack: expected object")
+            }
+            try validateUnknownKeys(
+                targetTrack,
+                allowed: ["trackId", "range"],
+                path: "copy_clip_settings.targetTrack"
+            )
+        }
+        let input: CopyClipSettingsInput = try decodeToolArgs(args, path: "copy_clip_settings")
+        guard (input.targetClipIds != nil) != (input.targetTrack != nil) else {
+            throw ToolError("Provide exactly one of 'targetClipIds' or 'targetTrack'")
+        }
+
+        let settings = try editor.clipSettingsSnapshot(for: input.sourceClipId)
+
+        var targetSelection: [String: Any]?
+        var incompatibleClipCount = 0
+        var sourceExcluded = false
+        let targetClipIds: [String]
+        if let explicitIds = input.targetClipIds {
+            var seen = Set<String>()
+            targetClipIds = explicitIds.filter { seen.insert($0).inserted }
+            guard !targetClipIds.isEmpty else {
+                throw ToolError("Provide a non-empty 'targetClipIds' array")
+            }
+        } else {
+            guard let targetTrack = input.targetTrack else {
+                throw ToolError("Provide exactly one of 'targetClipIds' or 'targetTrack'")
+            }
+            guard let track = editor.timeline.tracks.first(where: { $0.id == targetTrack.trackId }) else {
+                throw ToolError("Track not found: \(targetTrack.trackId)")
+            }
+            let range: Range<Int>?
+            if let frames = targetTrack.range {
+                guard frames.count == 2, frames[0] >= 0, frames[1] > frames[0] else {
+                    throw ToolError("targetTrack.range must be [startFrame, endFrame) with 0 <= startFrame < endFrame")
+                }
+                range = frames[0]..<frames[1]
+            } else {
+                range = nil
+            }
+            let scopedClips = track.clips.filter { clip in
+                range.map { clip.startFrame < $0.upperBound && clip.endFrame > $0.lowerBound } ?? true
+            }
+            targetClipIds = scopedClips.compactMap {
+                $0.id != input.sourceClipId && $0.mediaType == settings.mediaType ? $0.id : nil
+            }
+            sourceExcluded = scopedClips.contains { $0.id == input.sourceClipId }
+            incompatibleClipCount = scopedClips.count {
+                $0.id != input.sourceClipId && $0.mediaType != settings.mediaType
+            }
+            guard !targetClipIds.isEmpty else {
+                throw ToolError("No \(settings.mediaType.rawValue) clips matched targetTrack \(targetTrack.trackId)")
+            }
+            var selection: [String: Any] = ["trackId": targetTrack.trackId]
+            if let frames = targetTrack.range { selection["range"] = frames }
+            targetSelection = selection
+        }
+
+        let snapshot = timelineSnapshot(editor)
+        let transfer = try editor.applyClipSettings(
+            settings,
+            to: targetClipIds,
+            actionName: "Copy Clip Settings (Agent)"
+        )
+
+        var extra: [String: Any] = [
+            "changed": !transfer.changedClipIds.isEmpty,
+            "sourceClipId": input.sourceClipId,
+            "mediaType": settings.mediaType.rawValue,
+        ]
+        if let targetSelection {
+            extra["targetTrack"] = targetSelection
+            extra["matchedClipCount"] = targetClipIds.count
+            extra["changedClipCount"] = transfer.changedClipIds.count
+            extra["unchangedClipCount"] = transfer.unchangedClipIds.count
+            extra["incompatibleClipCount"] = incompatibleClipCount
+            extra["sourceExcluded"] = sourceExcluded
+        } else {
+            extra["targetClipIds"] = targetClipIds
+            extra["changedClipIds"] = transfer.changedClipIds
+            extra["unchangedClipIds"] = transfer.unchangedClipIds
+        }
+        return mutationResult(
+            editor,
+            since: snapshot,
+            touched: targetSelection == nil ? transfer.changedClipIds : [],
+            extra: extra
+        )
     }
 
     // MARK: set_keyframes
