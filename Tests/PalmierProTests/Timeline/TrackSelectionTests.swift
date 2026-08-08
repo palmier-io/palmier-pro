@@ -16,9 +16,14 @@ struct TrackSelectionTests {
             ]),
         ])
         editor.selectedClipIds = ["audio"]
+        editor.selectedGap = GapSelection(
+            trackIndex: 1,
+            range: FrameRange(start: 60, end: 90)
+        )
 
         #expect(editor.selectAllClips(onTrack: "target"))
         #expect(editor.selectedClipIds == ["video", "title"])
+        #expect(editor.selectedGap == nil)
     }
 
     @Test func unavailableTrackPreservesSelection() {
@@ -27,9 +32,14 @@ struct TrackSelectionTests {
             Fixtures.videoTrack(id: "empty"),
         ])
         editor.selectedClipIds = ["existing"]
+        editor.selectedGap = GapSelection(
+            trackIndex: 0,
+            range: FrameRange(start: 0, end: 30)
+        )
 
         #expect(!editor.selectAllClips(onTrack: "empty"))
         #expect(!editor.selectAllClips(onTrack: "missing"))
         #expect(editor.selectedClipIds == ["existing"])
+        #expect(editor.selectedGap != nil)
     }
 }

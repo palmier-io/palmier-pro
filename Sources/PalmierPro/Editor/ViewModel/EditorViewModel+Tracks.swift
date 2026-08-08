@@ -36,6 +36,7 @@ extension EditorViewModel {
     func selectAllClips(onTrack trackId: String) -> Bool {
         guard let track = timeline.tracks.first(where: { $0.id == trackId }),
               !track.clips.isEmpty else { return false }
+        selectedGap = nil
         selectedClipIds = Set(track.clips.map(\.id))
         return true
     }
