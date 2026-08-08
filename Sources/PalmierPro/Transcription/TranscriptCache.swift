@@ -12,6 +12,7 @@ actor TranscriptCache {
     private static let memoryMax = 4
 
     func transcript(for url: URL, isVideo: Bool, range: ClosedRange<Double>?, preferredLocale: Locale? = nil) async throws -> TranscriptionResult {
+        try Task.checkCancellation()
         // When a locale is forced, bypass the cache — locale variants must not overwrite the auto-detected entry.
         if let preferredLocale {
             return isVideo
@@ -27,8 +28,10 @@ actor TranscriptCache {
             full = isVideo
                 ? try await Transcription.transcribeVideoAudio(videoURL: url)
                 : try await Transcription.transcribe(fileURL: url)
+            try Task.checkCancellation()
             if let key { store(full, key: key) }
         }
+        try Task.checkCancellation()
         return range.map { Self.filter(full, to: $0) } ?? full
     }
 
