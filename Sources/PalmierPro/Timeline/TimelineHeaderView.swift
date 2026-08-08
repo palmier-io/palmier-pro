@@ -181,6 +181,18 @@ final class TimelineHeaderView: NSView {
     private var resizeDrag: (trackIndex: Int, originalHeight: CGFloat)?
     private var reorderDrag: (id: String, before: Timeline)?
 
+    private func hitTestTrack(at point: NSPoint) -> Int? {
+        let geo = TimelineGeometry(editor: editor, bounds: bounds)
+        return editor.timeline.tracks.indices.first { index in
+            NSRect(
+                x: bounds.minX,
+                y: geo.trackY(at: index),
+                width: bounds.width,
+                height: geo.trackHeight(at: index)
+            ).contains(point)
+        }
+    }
+
     private func hitTestResizeHandle(at point: NSPoint) -> Int? {
         let geo = TimelineGeometry(editor: editor, bounds: bounds)
         for i in editor.timeline.tracks.indices {
@@ -190,6 +202,31 @@ final class TimelineHeaderView: NSView {
             }
         }
         return nil
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let point = convert(event.locationInWindow, from: nil)
+        guard let trackIndex = hitTestTrack(at: point) else { return nil }
+        let track = editor.timeline.tracks[trackIndex]
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let item = NSMenuItem(
+            title: L10n.string("Select All Clips on Track"),
+            action: #selector(performSelectAllClipsOnTrack(_:)),
+            keyEquivalent: ""
+        )
+        item.target = self
+        item.representedObject = track.id
+        item.isEnabled = !track.clips.isEmpty
+        menu.addItem(item)
+        return menu
+    }
+
+    @objc private func performSelectAllClipsOnTrack(_ sender: NSMenuItem) {
+        guard let trackId = sender.representedObject as? String,
+              editor.selectAllClips(onTrack: trackId) else { return }
+        needsDisplay = true
+        requestCanvasRedraw?()
     }
 
     override func mouseDown(with event: NSEvent) {
