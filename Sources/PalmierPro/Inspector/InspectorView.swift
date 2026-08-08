@@ -1023,6 +1023,7 @@ struct InspectorView: View {
     }
 
     private func applyCropPreset(_ preset: CropAspectLock, on clip: Clip) {
+        let currentAspect = editor.displayedCropAspectRatio(for: clip)?.pixelAspect
         editor.cropAspectLock = preset
         switch preset {
         case .free:
@@ -1031,6 +1032,7 @@ struct InspectorView: View {
             editor.commitCrop(clipId: clip.id, newCrop: Crop())
         default:
             guard let target = preset.pixelAspect else { return }
+            guard currentAspect.map({ abs($0 - target) > 1e-4 }) ?? true else { return }
             editor.commitCrop(clipId: clip.id, newCrop: editor.cropFittingAspect(for: clip, targetPixelAspect: target))
         }
     }
