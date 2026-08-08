@@ -34,4 +34,33 @@ struct CaptionPreviewPlacementTests {
             in: .zero
         ) == start)
     }
+
+    @Test func viewOffsetMovesCenteredRasterToPreviewPosition() {
+        let offset = CaptionPreviewPlacement.viewOffset(
+            for: CGPoint(x: 1.4, y: -0.4),
+            in: CGSize(width: 200, height: 200)
+        )
+
+        #expect(abs(offset.width - 180) < 0.000_001)
+        #expect(abs(offset.height + 180) < 0.000_001)
+    }
+
+    @Test func equivalentSyntheticPreviewClipsHaveStableIdentity() {
+        let first = CaptionPreviewRender.clip(
+            content: "Preview",
+            style: .caption,
+            transform: Transform(),
+            preset: .none,
+            highlight: nil
+        )
+        let second = CaptionPreviewRender.clip(
+            content: "Preview",
+            style: .caption,
+            transform: Transform(),
+            preset: .none,
+            highlight: nil
+        )
+
+        #expect(first == second)
+    }
 }

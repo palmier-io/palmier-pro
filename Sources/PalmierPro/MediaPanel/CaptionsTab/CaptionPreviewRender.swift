@@ -4,13 +4,19 @@ import CoreImage
 /// Renders a text clip as an NSImage for caption previews at backing resolution.
 enum CaptionPreviewRender {
     private static let ciContext = CIContext(options: [.workingColorSpace: NSNull()])
+    private static let syntheticClipID = "caption-preview"
 
     static func loopFrames(_ preset: TextAnimation.Preset) -> Int { preset.renderMode == .entrance ? 28 : 54 }
 
     /// A synthetic text clip for preview rendering.
     static func clip(content: String, style: TextStyle, transform: Transform,
                      preset: TextAnimation.Preset, highlight: TextStyle.RGBA?) -> Clip {
-        var c = Clip(mediaRef: "", startFrame: 0, durationFrames: loopFrames(preset))
+        var c = Clip(
+            id: syntheticClipID,
+            mediaRef: "",
+            startFrame: 0,
+            durationFrames: loopFrames(preset)
+        )
         c.mediaType = .text
         c.textContent = content
         c.textStyle = style

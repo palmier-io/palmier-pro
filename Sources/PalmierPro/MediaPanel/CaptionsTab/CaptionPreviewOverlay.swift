@@ -25,6 +25,16 @@ enum CaptionPreviewPlacement {
             y: snappedCoordinate(Double(start.y + translation.height / size.height))
         )
     }
+
+    static func viewOffset(for center: CGPoint, in size: CGSize) -> CGSize {
+        guard center.x.isFinite, center.y.isFinite,
+              size.width.isFinite, size.height.isFinite else { return .zero }
+        let origin = AppTheme.Caption.centerSnapValue
+        return CGSize(
+            width: (center.x - origin) * size.width,
+            height: (center.y - origin) * size.height
+        )
+    }
 }
 
 struct CaptionPreviewOverlay: View {
@@ -51,9 +61,11 @@ struct CaptionPreviewOverlay: View {
             canvasHeight: canvas.height
         )
         let clip = makePreviewClip(naturalSize: naturalSize)
+        let offset = CaptionPreviewPlacement.viewOffset(for: configuration.center, in: size)
 
         centerGuides
         CaptionAnimatedPreview(clip: clip, size: size)
+            .offset(x: offset.width, y: offset.height)
             .allowsHitTesting(false)
         dragTarget(naturalSize: naturalSize)
         previewTag
@@ -105,8 +117,8 @@ struct CaptionPreviewOverlay: View {
 
     private func makePreviewClip(naturalSize: CGSize) -> Clip {
         let transform = Transform(
-            centerX: configuration.center.x,
-            centerY: configuration.center.y,
+            centerX: AppTheme.Caption.centerSnapValue,
+            centerY: AppTheme.Caption.centerSnapValue,
             width: naturalSize.width / canvas.width,
             height: naturalSize.height / canvas.height
         )
