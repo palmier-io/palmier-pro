@@ -1023,7 +1023,7 @@ struct InspectorView: View {
     }
 
     private func applyCropPreset(_ preset: CropAspectLock, on clip: Clip) {
-        let currentAspect = editor.displayedCropAspectRatio(for: clip)?.pixelAspect
+        let currentAspect = editor.displayedCropAspectRatio(for: clip, preferLockedRatio: false)?.pixelAspect
         editor.cropAspectLock = preset
         switch preset {
         case .free:
