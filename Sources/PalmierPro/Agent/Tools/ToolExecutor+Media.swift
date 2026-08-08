@@ -195,7 +195,9 @@ extension ToolExecutor {
             imageBlocks = frames.map { .image(base64: $0.jpeg.base64EncodedString(), mediaType: "image/jpeg") }
         }
 
-        switch await transcriptTask {
+        let transcriptOutcome = await transcriptTask
+        try Task.checkCancellation()
+        switch transcriptOutcome {
         case .success(let transcript):
             meta["transcription"] = Self.transcriptionMeta(
                 from: transcript, mapping: mapping, includeWords: args.bool("wordTimestamps") ?? false
@@ -299,8 +301,10 @@ extension ToolExecutor {
         do {
             transcript = try await TranscriptCache.shared.transcript(for: asset.url, isVideo: false, range: range, preferredLocale: preferredLocale)
         } catch {
+            try Task.checkCancellation()
             throw ToolError("Transcription failed: \(error.localizedDescription)")
         }
+        try Task.checkCancellation()
 
         var meta = Self.baseMeta(for: asset)
         if let range { meta["timeRange"] = [range.lowerBound, range.upperBound] }
