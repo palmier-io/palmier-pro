@@ -78,6 +78,7 @@ struct CropAspectFields: View {
             updateValues(from: ratio)
             return
         }
+        guard abs(newRatio.pixelAspect - ratio.pixelAspect) > 1e-4 else { return }
         onCommit(newRatio)
     }
 
