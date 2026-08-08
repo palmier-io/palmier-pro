@@ -29,9 +29,9 @@ extension CropAspectLock {
     @MainActor
     var localizedLabel: String {
         switch self {
-        case .free: L10n.string("Custom")
+        case .free: L10n.string("Freeform")
         case .original: L10n.string("Original")
-        case .r16x9, .r9x16, .r1x1, .r4x3, .r3x4, .r21x9: label
+        case .fixed: label
         }
     }
 }

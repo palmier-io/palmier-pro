@@ -950,9 +950,18 @@ struct InspectorView: View {
                     editor.cropEditingActive.toggle()
                 }
                 .disabled(disabled)
-                cropMenu(single: single)
-                if let cid = single?.id {
-                    keyframeControls(clipId: cid, property: .crop)
+                if editing, let clip = single, let ratio = editor.displayedCropAspectRatio(for: clip) {
+                    HStack(spacing: AppTheme.Spacing.xxs) {
+                        CropAspectFields(ratio: ratio) {
+                            applyCropPreset(.locked(to: $0), on: clip)
+                        }
+                        cropMenu(single: clip, compact: true)
+                    }
+                } else {
+                    cropMenu(single: single)
+                }
+                if let clipId = single?.id {
+                    keyframeControls(clipId: clipId, property: .crop)
                 } else {
                     keyframeControlsPlaceholder
                 }
@@ -962,33 +971,33 @@ struct InspectorView: View {
         .opacity(disabled ? 0.4 : 1)
     }
 
-    @ViewBuilder
-    private func cropMenu(single: Clip?) -> some View {
+    private func cropMenu(single: Clip?, compact: Bool = false) -> some View {
         let active = editor.cropAspectLock
-        Menu {
-            ForEach(CropAspectLock.allCases, id: \.self) { preset in
-                Button {
-                    if let clip = single { applyCropPreset(preset, on: clip) }
-                } label: {
-                    if preset == active {
-                        Label(preset.localizedLabel, systemImage: "checkmark")
-                    } else {
-                        Text(preset.localizedLabel)
-                    }
-                }
+        return Menu {
+            if let single {
+                cropMenuItems(for: single)
             }
         } label: {
-            HStack(spacing: AppTheme.Spacing.xs) {
-                Text(active.localizedLabel)
-                    .font(.system(size: AppTheme.FontSize.sm, weight: .medium).monospacedDigit())
-                    .foregroundStyle(AppTheme.Text.secondaryColor)
+            if compact {
                 Image(systemName: "chevron.down")
                     .font(.system(size: AppTheme.FontSize.xxs, weight: .semibold))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .frame(width: AppTheme.IconSize.md, height: AppTheme.EditorPanel.fieldMinHeight)
+                    .editorValueField()
+                    .contentShape(Rectangle())
+            } else {
+                HStack(spacing: AppTheme.Spacing.xs) {
+                    Text(active.localizedLabel)
+                        .font(.system(size: AppTheme.FontSize.sm, weight: .medium).monospacedDigit())
+                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: AppTheme.FontSize.xxs, weight: .semibold))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                }
+                .padding(.horizontal, AppTheme.Spacing.sm)
+                .padding(.vertical, AppTheme.Spacing.xxs)
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, AppTheme.Spacing.sm)
-            .padding(.vertical, AppTheme.Spacing.xxs)
-            .contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -997,16 +1006,33 @@ struct InspectorView: View {
         .help(L10n.string("Choose a crop aspect"))
     }
 
+    @ViewBuilder
+    private func cropMenuItems(for clip: Clip) -> some View {
+        let active = editor.cropAspectLock
+        ForEach(CropAspectLock.presets, id: \.self) { preset in
+            Button {
+                applyCropPreset(preset, on: clip)
+            } label: {
+                if preset == active {
+                    Label(preset.localizedLabel, systemImage: "checkmark")
+                } else {
+                    Text(preset.localizedLabel)
+                }
+            }
+        }
+    }
+
     private func applyCropPreset(_ preset: CropAspectLock, on clip: Clip) {
+        let currentAspect = editor.displayedCropAspectRatio(for: clip, preferLockedRatio: false)?.pixelAspect
         editor.cropAspectLock = preset
         switch preset {
         case .free:
-            // Don't mutate crop; user keeps current shape and drags freely.
             break
         case .original:
             editor.commitCrop(clipId: clip.id, newCrop: Crop())
         default:
             guard let target = preset.pixelAspect else { return }
+            guard currentAspect.map({ abs($0 - target) > 1e-4 }) ?? true else { return }
             editor.commitCrop(clipId: clip.id, newCrop: editor.cropFittingAspect(for: clip, targetPixelAspect: target))
         }
     }

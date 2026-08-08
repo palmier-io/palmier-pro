@@ -631,32 +631,80 @@ struct Crop: Codable, Sendable, Equatable {
     var visibleHeightFraction: Double { max(0, 1 - top - bottom) }
 }
 
-/// Aspect-ratio constraint for the Crop overlay.
-enum CropAspectLock: Hashable, CaseIterable {
-    case free, original, r16x9, r9x16, r1x1, r4x3, r3x4, r21x9
+struct CropAspectRatio: Hashable, Sendable {
+    let horizontal: Double
+    let vertical: Double
+
+    init?(horizontal: Double, vertical: Double) {
+        guard horizontal.isFinite, vertical.isFinite,
+              horizontal > 0, vertical > 0,
+              (horizontal / vertical).isFinite else { return nil }
+        self.horizontal = horizontal
+        self.vertical = vertical
+    }
+
+    init?(pixelWidth: Int, pixelHeight: Int) {
+        guard pixelWidth > 0, pixelHeight > 0 else { return nil }
+        var a = pixelWidth
+        var b = pixelHeight
+        while b != 0 { (a, b) = (b, a % b) }
+        self.init(horizontal: Double(pixelWidth / a), vertical: Double(pixelHeight / a))
+    }
+
+    init?(pixelAspect: Double) {
+        guard pixelAspect.isFinite, pixelAspect > 0 else { return nil }
+        self.init(horizontal: max(pixelAspect, 1), vertical: max(1 / pixelAspect, 1))
+    }
+
+    var pixelAspect: Double { horizontal / vertical }
+    var horizontalText: String { Self.format(horizontal) }
+    var verticalText: String { Self.format(vertical) }
+    var label: String { "\(horizontalText):\(verticalText)" }
+
+    private static func format(_ value: Double) -> String {
+        String(format: "%.6g", locale: Locale(identifier: "en_US_POSIX"), value)
+    }
+
+    static func preset(_ horizontal: Double, _ vertical: Double) -> CropAspectRatio {
+        CropAspectRatio(validatedHorizontal: horizontal, vertical: vertical)
+    }
+
+    private init(validatedHorizontal: Double, vertical: Double) {
+        self.horizontal = validatedHorizontal
+        self.vertical = vertical
+    }
+}
+
+enum CropAspectLock: Hashable, Sendable {
+    case free, original, fixed(CropAspectRatio)
+
+    static let r16x9 = fixed(CropAspectRatio.preset(16, 9))
+    static let r9x16 = fixed(CropAspectRatio.preset(9, 16))
+    static let r1x1 = fixed(CropAspectRatio.preset(1, 1))
+    static let r4x3 = fixed(CropAspectRatio.preset(4, 3))
+    static let r3x4 = fixed(CropAspectRatio.preset(3, 4))
+    static let r21x9 = fixed(CropAspectRatio.preset(21, 9))
+    static let presets = [free, original, r16x9, r9x16, r1x1, r4x3, r3x4, r21x9]
 
     var label: String {
         switch self {
-        case .free: "Custom"
+        case .free: "Freeform"
         case .original: "Original"
-        case .r16x9: "16:9"
-        case .r9x16: "9:16"
-        case .r1x1: "1:1"
-        case .r4x3: "4:3"
-        case .r3x4: "3:4"
-        case .r21x9: "21:9"
+        case let .fixed(ratio): ratio.label
         }
     }
 
-    var pixelAspect: Double? {
-        switch self {
-        case .free, .original: nil
-        case .r16x9: 16.0 / 9.0
-        case .r9x16: 9.0 / 16.0
-        case .r1x1: 1.0
-        case .r4x3: 4.0 / 3.0
-        case .r3x4: 3.0 / 4.0
-        case .r21x9: 21.0 / 9.0
-        }
+    var aspectRatio: CropAspectRatio? {
+        guard case let .fixed(ratio) = self else { return nil }
+        return ratio
+    }
+
+    var pixelAspect: Double? { aspectRatio?.pixelAspect }
+
+    static func locked(to ratio: CropAspectRatio) -> CropAspectLock {
+        presets.first {
+            guard let preset = $0.pixelAspect else { return false }
+            return abs(preset - ratio.pixelAspect) < 1e-9
+        } ?? .fixed(ratio)
     }
 }

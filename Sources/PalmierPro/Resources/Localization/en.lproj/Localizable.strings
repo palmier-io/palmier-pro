@@ -243,7 +243,6 @@
 "Crop" = "Crop";
 "Crop applies to one clip at a time" = "Crop applies to one clip at a time";
 "Curves" = "Curves";
-"Custom" = "Custom";
 "Custom Aspect Ratio" = "Custom Aspect Ratio";
 "Custom…" = "Custom…";
 "Cut" = "Cut";
@@ -385,6 +384,7 @@
 "Founder" = "Founder";
 "Frame Rate" = "Frame Rate";
 "Free" = "Free";
+"Freeform" = "Freeform";
 "Full Frame" = "Full Frame";
 "Full Screen" = "Full Screen";
 "Full changelog" = "Full changelog";
