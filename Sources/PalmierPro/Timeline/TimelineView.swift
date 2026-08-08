@@ -1101,6 +1101,15 @@ final class TimelineView: NSView {
             pasteItem.representedObject = ["trackIndex": hit.trackIndex, "frame": clickFrame] as [String: Any]
             timelineItems.append(pasteItem)
         }
+        if let snapshot = editor.copiedClipSettings(for: clip.mediaType) {
+            let targetIds = editor.compatibleClipSettingsTargets(in: targetClipIds, for: snapshot)
+            if !targetIds.isEmpty {
+                let pasteSettingsItem = NSMenuItem(title: L10n.string("Paste Settings"), action: #selector(performPasteClipSettings(_:)), keyEquivalent: "")
+                pasteSettingsItem.target = self
+                pasteSettingsItem.representedObject = targetIds
+                timelineItems.append(pasteSettingsItem)
+            }
+        }
         if editor.canLinkSelected {
             let item = NSMenuItem(title: L10n.string("Link"), action: #selector(performLink(_:)), keyEquivalent: "")
             item.target = self
@@ -1371,6 +1380,12 @@ final class TimelineView: NSView {
 
     @objc private func performCopyClips(_ sender: Any?) {
         editor.copySelectedClipsToClipboard()
+    }
+
+    @objc private func performPasteClipSettings(_ sender: Any?) {
+        guard let clipIds = (sender as? NSMenuItem)?.representedObject as? [String] else { return }
+        editor.pasteClipSettingsFromClipboard(to: clipIds)
+        needsDisplay = true
     }
 
     @objc private func performPasteClips(_ sender: Any?) {

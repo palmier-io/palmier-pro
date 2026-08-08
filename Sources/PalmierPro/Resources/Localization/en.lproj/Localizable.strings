@@ -221,6 +221,7 @@
 "Copy" = "Copy";
 "Copy Path" = "Copy Path";
 "Copy message" = "Copy message";
+"Copy one clip of the same type and try again." = "Copy one clip of the same type and try again.";
 "Copy prompt" = "Copy prompt";
 "Corner Radius" = "Corner Radius";
 "Could not install the on-device speech model: %@" = "Could not install the on-device speech model: %@";
@@ -653,6 +654,8 @@
 "Palmier couldn't load this source file. It may be missing, on an ejected drive, or unreadable." = "Palmier couldn't load this source file. It may be missing, on an ejected drive, or unreadable.";
 "Palmier loaded this clip's source file but couldn't prepare it for playback. The file may be corrupt or in an unsupported format." = "Palmier loaded this clip's source file but couldn't prepare it for playback. The file may be corrupt or in an unsupported format.";
 "Paste" = "Paste";
+"Paste Clip Settings" = "Paste Clip Settings";
+"Paste Settings" = "Paste Settings";
 "Path" = "Path";
 "Per line" = "Per line";
 "Per word" = "Per word";
@@ -785,6 +788,7 @@
 "Select Forward on Track" = "Select Forward on Track";
 "Select Range" = "Select Range";
 "Select a single clip to enable" = "Select a single clip to enable";
+"Select compatible clips and paste settings again." = "Select compatible clips and paste settings again.";
 "Select media files or folders to import" = "Select media files or folders to import";
 "Selected" = "Selected";
 "Selected Clips · %lld" = "Selected Clips · %lld";
