@@ -31,16 +31,13 @@ struct CaptionPreviewOverlay: View {
     let configuration: CaptionPreviewConfiguration
     let canvas: CGSize
     let size: CGSize
-    let isEnabled: Bool
     let onCenterChange: (CGPoint) -> Void
 
     @State private var dragStart: CGPoint?
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            if isEnabled {
-                previewContent
-            }
+            previewContent
         }
         .frame(width: size.width, height: size.height, alignment: .topLeading)
     }
@@ -163,11 +160,19 @@ struct CaptionPreviewOverlay: View {
     }
 }
 
+private struct CaptionPreviewRenderRequest: Equatable, Sendable {
+    let clip: Clip
+    let frame: Int
+    let size: CGSize
+    let scale: CGFloat
+}
+
 private struct CaptionAnimatedPreview: View {
     let clip: Clip
     let size: CGSize
 
     @State private var start = Date()
+    @State private var image: NSImage?
     @Environment(\.displayScale) private var displayScale
 
     private static let fps = 30
@@ -186,19 +191,31 @@ private struct CaptionAnimatedPreview: View {
         }
     }
 
-    @ViewBuilder
     private func frameView(at frame: Int) -> some View {
-        if let img = CaptionPreviewRender.nsImage(
+        let request = CaptionPreviewRenderRequest(
             clip: clip,
             frame: frame,
             size: size,
             scale: max(1, displayScale)
-        ) {
-            Image(nsImage: img)
-                .interpolation(.high)
-                .frame(width: size.width, height: size.height)
-        } else {
-            Color.clear
+        )
+        return Group {
+            if let image {
+                Image(nsImage: image)
+                    .interpolation(.high)
+            } else {
+                Color.clear
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .task(id: request) {
+            let cgImage = await CaptionPreviewRasterizer.shared.image(
+                clip: request.clip,
+                frame: request.frame,
+                size: request.size,
+                scale: request.scale
+            )
+            guard !Task.isCancelled else { return }
+            image = cgImage.map { NSImage(cgImage: $0, size: request.size) }
         }
     }
 }

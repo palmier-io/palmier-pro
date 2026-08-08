@@ -22,6 +22,9 @@ struct PreviewContainerView: View {
                 let scaledWidth = fitSize.width * editor.canvasZoom
                 let scaledHeight = fitSize.height * editor.canvasZoom
                 let timelineState = timelineFrameState
+                let captionPreview = isTimeline && editor.captionPreviewEnabled
+                    ? editor.captionPreviewConfiguration
+                    : nil
                 ZStack {
                     PreviewView()
                     if isImage {
@@ -42,10 +45,7 @@ struct PreviewContainerView: View {
                         ChromaKeySamplerOverlayView()
                     } else if editor.cropEditingActive {
                         CropOverlayView()
-                    } else {
-                        TransformOverlayView()
-                    }
-                    if isTimeline, let configuration = editor.captionPreviewConfiguration {
+                    } else if let configuration = captionPreview {
                         CaptionPreviewOverlay(
                             configuration: configuration,
                             canvas: CGSize(
@@ -53,9 +53,10 @@ struct PreviewContainerView: View {
                                 height: max(1, editor.timeline.height)
                             ),
                             size: CGSize(width: scaledWidth, height: scaledHeight),
-                            isEnabled: editor.captionPreviewEnabled,
                             onCenterChange: { editor.captionPreviewCenterChange?($0) }
                         )
+                    } else {
+                        TransformOverlayView()
                     }
                     if let slip = editor.slipPreview, isTimeline {
                         SlipTwoUpView(state: slip)
@@ -66,6 +67,7 @@ struct PreviewContainerView: View {
                     SpatialTapGesture()
                         .onEnded { value in
                             guard isTimeline,
+                                  captionPreview == nil,
                                   !editor.cropEditingActive,
                                   editor.chromaKeySamplingClipId == nil,
                                   let id = PreviewHitTester.clipID(

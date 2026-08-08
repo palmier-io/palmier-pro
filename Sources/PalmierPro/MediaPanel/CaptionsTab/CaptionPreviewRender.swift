@@ -19,7 +19,7 @@ enum CaptionPreviewRender {
         return c
     }
 
-    static func nsImage(clip: Clip, frame: Int, size: CGSize, scale: CGFloat) -> NSImage? {
+    static func cgImage(clip: Clip, frame: Int, size: CGSize, scale: CGFloat) -> CGImage? {
         let px = CGSize(width: size.width * scale, height: size.height * scale)
         guard px.width >= 1, px.height >= 1,
               let ci = TextFrameRenderer.image(clip: clip, frame: frame, renderSize: px),
@@ -27,6 +27,21 @@ enum CaptionPreviewRender {
                 ci, from: CGRect(origin: .zero, size: px),
                 format: .RGBA8, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!)
         else { return nil }
+        return cg
+    }
+
+    static func nsImage(clip: Clip, frame: Int, size: CGSize, scale: CGFloat) -> NSImage? {
+        guard let cg = cgImage(clip: clip, frame: frame, size: size, scale: scale) else { return nil }
         return NSImage(cgImage: cg, size: size)
+    }
+}
+
+actor CaptionPreviewRasterizer {
+    static let shared = CaptionPreviewRasterizer()
+
+    func image(clip: Clip, frame: Int, size: CGSize, scale: CGFloat) -> CGImage? {
+        guard !Task.isCancelled else { return nil }
+        let image = CaptionPreviewRender.cgImage(clip: clip, frame: frame, size: size, scale: scale)
+        return Task.isCancelled ? nil : image
     }
 }
