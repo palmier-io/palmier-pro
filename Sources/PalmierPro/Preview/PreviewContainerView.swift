@@ -45,6 +45,18 @@ struct PreviewContainerView: View {
                     } else {
                         TransformOverlayView()
                     }
+                    if isTimeline, let configuration = editor.captionPreviewConfiguration {
+                        CaptionPreviewOverlay(
+                            configuration: configuration,
+                            canvas: CGSize(
+                                width: max(1, editor.timeline.width),
+                                height: max(1, editor.timeline.height)
+                            ),
+                            size: CGSize(width: scaledWidth, height: scaledHeight),
+                            isEnabled: editor.captionPreviewEnabled,
+                            onCenterChange: { editor.captionPreviewCenterChange?($0) }
+                        )
+                    }
                     if let slip = editor.slipPreview, isTimeline {
                         SlipTwoUpView(state: slip)
                     }
