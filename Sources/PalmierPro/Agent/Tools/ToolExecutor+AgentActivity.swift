@@ -10,7 +10,7 @@ extension ToolName {
         .manageClipLinks,
         .addClips, .insertClips, .moveClips, .removeClips,
         .splitClips, .rippleDeleteRanges, .swapClipMedia,
-        .setClipProperties, .setKeyframes, .applyLayout, .syncClips, .undo,
+        .setClipProperties, .copyClipSettings, .setKeyframes, .applyLayout, .syncClips, .undo,
         .manageMulticam, .changeCam,
         .removeWords, .removeSilence,
         .addTexts, .updateText, .addCaptions,

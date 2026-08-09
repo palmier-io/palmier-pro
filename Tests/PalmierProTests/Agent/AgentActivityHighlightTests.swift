@@ -50,9 +50,31 @@ struct AgentActivityHighlightTests {
         harness.editor.clearAgentActivity()
     }
 
+    @Test func copySettingsHighlightsOnlyChangedTargets() async throws {
+        var source = Fixtures.clip(id: "source", start: 0, duration: 30)
+        source.opacity = 0.5
+        let target = Fixtures.clip(id: "target", start: 40, duration: 30)
+        let harness = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [source, target]),
+        ]))
+        let args: [String: Any] = [
+            "sourceClipId": source.id,
+            "targetClipIds": [target.id],
+        ]
+
+        _ = try await harness.runOK("copy_clip_settings", args: args)
+        #expect(harness.editor.agentActivity.mutatedClipIds == [target.id])
+        harness.editor.clearAgentActivity()
+
+        _ = try await harness.runOK("copy_clip_settings", args: args)
+        #expect(harness.editor.agentActivity.isEmpty)
+    }
+
     @Test func onlyMutationToolsPublishTimelineChanges() {
         let excluded: [ToolName] = [.inspectTimeline, .getTranscript, .organizeMedia]
-        let included: [ToolName] = [.manageTracks, .setClipProperties, .denoiseAudio, .generateAudio]
+        let included: [ToolName] = [
+            .manageTracks, .setClipProperties, .copyClipSettings, .denoiseAudio, .generateAudio,
+        ]
         #expect(excluded.allSatisfy { !$0.publishesTimelineChanges })
         #expect(included.allSatisfy { $0.publishesTimelineChanges })
     }
