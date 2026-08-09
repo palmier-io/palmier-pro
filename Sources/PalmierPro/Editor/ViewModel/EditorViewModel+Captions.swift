@@ -44,7 +44,7 @@ extension EditorViewModel {
         var errorDescription: String? {
             switch self {
             case .noSource: "No audio clips to caption."
-            case .timelineChanged: "The timeline changed while captions were being prepared. Generate captions again."
+            case .timelineChanged: "The timeline changed while captions were being prepared. Try again."
             }
         }
     }
@@ -232,9 +232,46 @@ extension EditorViewModel {
         }
         guard !specs.isEmpty else { return [] }
         if let mutation {
-            return try await mutation { self.placeCaptionTrack(specs) }
+            return try await mutation { self.placeCaptionTrack(specs, actionName: "Generate Captions") }
         }
-        return placeCaptionTrack(specs)
+        return placeCaptionTrack(specs, actionName: "Generate Captions")
+    }
+
+    /// Places each subtitle asset's cues as one caption group on a new top track
+    func placeCaptions(fromSubtitleAssets assets: [MediaAsset]) async {
+        for asset in assets where asset.type == .subtitle {
+            guard let url = mediaResolver.resolveURL(for: asset.id) else {
+                mediaPanelToast = MediaPanelToast(message: L10n.string("Can't add captions — \"\(asset.name)\" is offline."))
+                continue
+            }
+            do {
+                try await importCaptions(from: url)
+            } catch is CancellationError {
+                return
+            } catch {
+                mediaPanelToast = MediaPanelToast(
+                    message: L10n.string("Can't add captions from \"\(asset.name)\" — \(error.localizedDescription)")
+                )
+            }
+        }
+    }
+
+    /// Imports an SRT or WebVTT file as one caption group on a new top track. One undo step.
+    @discardableResult
+    func importCaptions(from url: URL) async throws -> [String] {
+        let owningTimelineId = activeTimelineId
+        let preparationTimeline = timeline
+        let cues = try await SubtitleFileParser.parseFile(at: url)
+        let specs = try await CaptionSpecBuilder.build(
+            cues: cues, fps: preparationTimeline.fps,
+            canvasWidth: preparationTimeline.width, canvasHeight: preparationTimeline.height,
+            style: .caption, center: AppTheme.Caption.defaultCenter
+        )
+        try Task.checkCancellation()
+        guard captionPreparationIsCurrent(timelineId: owningTimelineId, snapshot: preparationTimeline) else {
+            throw CaptionError.timelineChanged
+        }
+        return placeCaptionTrack(specs, actionName: "Add Captions")
     }
 
     // Estimate the cost of cloud transcription given the request. 0 if hit cache.
@@ -354,8 +391,8 @@ extension EditorViewModel {
         return wordsByTrack.filter { $0.value > 0 }.max { $0.value < $1.value }?.key
     }
 
-    private func placeCaptionTrack(_ specs: [TextClipSpec]) -> [String] {
-        undo.perform("Generate Captions") {
+    private func placeCaptionTrack(_ specs: [TextClipSpec], actionName: String) -> [String] {
+        undo.perform(actionName) {
             let before = timeline
             let ids = undo.withoutRegistration {
                 timeline.tracks.insert(Track(type: .video), at: 0)
@@ -366,7 +403,7 @@ extension EditorViewModel {
                 videoEngine?.refreshVisuals()
                 return []
             }
-            registerTimelineSwap(undoState: before, redoState: timeline, actionName: "Generate Captions")
+            registerTimelineSwap(undoState: before, redoState: timeline, actionName: actionName)
             notifyTimelineChanged(refreshVisuals: false)
             return ids
         }

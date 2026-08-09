@@ -429,6 +429,7 @@ extension EditorViewModel {
         } else {
             addClipsWithSettingsCheck(assets: placeable, operation: operation)
         }
+        await placeCaptions(fromSubtitleAssets: placeable.filter { $0.type == .subtitle })
     }
 
     @discardableResult

@@ -1618,10 +1618,20 @@ final class TimelineView: NSView {
 
             let assets = editor.assetsFromDragPayload(urlString)
             if !assets.isEmpty {
-                let segments = editor.segmentsFromDragPayload(urlString)
-                let ripple = NSEvent.modifierFlags.contains(.command)
-                editor.addClipsWithSettingsCheck(assets: assets) {
-                    editor.placeDroppedAssets(assets, cursor: cursorTarget, atFrame: targetFrame, segments: segments, ripple: ripple)
+                let subtitles = assets.filter { $0.type == .subtitle }
+                let media = assets.filter { $0.type != .subtitle }
+                if !subtitles.isEmpty {
+                    Task { @MainActor in
+                        await editor.placeCaptions(fromSubtitleAssets: subtitles)
+                        self.needsDisplay = true
+                    }
+                }
+                if !media.isEmpty {
+                    let segments = editor.segmentsFromDragPayload(urlString)
+                    let ripple = NSEvent.modifierFlags.contains(.command)
+                    editor.addClipsWithSettingsCheck(assets: media) {
+                        editor.placeDroppedAssets(media, cursor: cursorTarget, atFrame: targetFrame, segments: segments, ripple: ripple)
+                    }
                 }
                 needsDisplay = true
                 return true
