@@ -651,7 +651,7 @@ extension EditorViewModel {
             mediaVisualCache.generateWaveform(for: asset)
         case .image:
             mediaVisualCache.generateImageThumbnail(for: asset)
-        case .text, .lottie, .sequence:
+        case .text, .lottie, .sequence, .subtitle:
             break
         }
     }

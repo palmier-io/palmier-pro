@@ -82,7 +82,7 @@ extension ToolExecutor {
         }
         let ext = fileURL.pathExtension.lowercased()
         guard let type = ClipType(fileExtension: ext) else {
-            throw ToolError("Unsupported file extension '.\(ext)'. Supported: mov/mp4/m4v, mp3/wav/aac/m4a/aiff/aifc/caf/flac, png/jpg/jpeg/tiff/heic, json (Lottie).")
+            throw ToolError("Unsupported file extension '.\(ext)'. Supported: mov/mp4/m4v, mp3/wav/aac/m4a/aiff/aifc/caf/flac, png/jpg/jpeg/tiff/heic, json (Lottie), srt/vtt (subtitles).")
         }
         if type == .lottie, !LottieVideoGenerator.isLottie(at: fileURL) {
             throw ToolError("Unsupported Lottie file: \(fileURL.lastPathComponent)")

@@ -7,6 +7,7 @@ extension ClipType {
         case .image: L10n.string("Image")
         case .text: L10n.string("Text")
         case .lottie: "Lottie"
+        case .subtitle: L10n.string("Subtitle")
         }
     }
 }
