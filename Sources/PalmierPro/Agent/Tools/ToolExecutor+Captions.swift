@@ -15,6 +15,10 @@ extension ToolExecutor {
         if let stylePatch { Self.applyTextStylePatch(stylePatch, to: &style) }
 
         let transform = try parseTextTransform(args["transform"], path: "add_captions.transform")
+        guard transform?.rotationX == nil,
+              transform?.rotationY == nil else {
+            throw ToolError("add_captions.transform supports x, y, and rotation; use update_text to tilt captions")
+        }
         var center = AppTheme.Caption.defaultCenter
         if let x = transform?.x { center.x = CGFloat(x) }
         if let y = transform?.y { center.y = CGFloat(y) }

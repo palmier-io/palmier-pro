@@ -51,6 +51,7 @@ struct ProjectRoundTripTests {
     @Test func clipTransformAndCropSurviveRoundTrip() throws {
         var clip = Fixtures.clip(start: 0, duration: 30)
         clip.transform = Transform(centerX: 0.4, centerY: 0.6, width: 0.5, height: 0.5, rotation: 45,
+                                   rotationX: 20, rotationY: -30,
                                    flipHorizontal: true, flipVertical: false)
         clip.crop = Crop(left: 0.1, top: 0.2, right: 0.3, bottom: 0.4)
         clip.edgeRounding = 0.35
@@ -62,6 +63,8 @@ struct ProjectRoundTripTests {
         #expect(dc.transform.centerX == 0.4)
         #expect(dc.transform.centerY == 0.6)
         #expect(dc.transform.rotation == 45)
+        #expect(dc.transform.rotationX == 20)
+        #expect(dc.transform.rotationY == -30)
         #expect(dc.transform.flipHorizontal == true)
         #expect(dc.crop == Crop(left: 0.1, top: 0.2, right: 0.3, bottom: 0.4))
         #expect(dc.edgeRounding == 0.35)

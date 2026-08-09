@@ -104,8 +104,12 @@ struct ParsedTextTransform {
     let x: Double?
     let y: Double?
     let rotation: Double?
+    let rotationX: Double?
+    let rotationY: Double?
 
-    var hasAnyField: Bool { x != nil || y != nil || rotation != nil }
+    var hasAnyField: Bool {
+        x != nil || y != nil || rotation != nil || rotationX != nil || rotationY != nil
+    }
 }
 
 extension ToolExecutor {
@@ -372,11 +376,18 @@ extension ToolExecutor {
         guard let args = raw as? [String: Any] else {
             throw ToolError("\(path): expected object")
         }
-        try validateUnknownKeys(args, allowed: ["x", "y", "rotation"], path: path)
+        try validateUnknownKeys(
+            args,
+            allowed: ["x", "y", "rotation", "rotationX", "rotationY"],
+            path: path
+        )
+        let tilt = Transform.tiltRotationRange
         let transform = ParsedTextTransform(
             x: try optionalNumber(args, key: "x", path: path),
             y: try optionalNumber(args, key: "y", path: path),
-            rotation: try optionalNumber(args, key: "rotation", path: path)
+            rotation: try optionalNumber(args, key: "rotation", path: path),
+            rotationX: try optionalNumber(args, key: "rotationX", path: path, range: tilt),
+            rotationY: try optionalNumber(args, key: "rotationY", path: path, range: tilt)
         )
         return transform.hasAnyField ? transform : nil
     }
@@ -399,7 +410,9 @@ extension ToolExecutor {
             centerY: transform.y ?? 0.5,
             width: width,
             height: Double(natural.height) / canvas.h,
-            rotation: transform.rotation ?? 0
+            rotation: transform.rotation ?? 0,
+            rotationX: transform.rotationX ?? 0,
+            rotationY: transform.rotationY ?? 0
         )
     }
 
@@ -635,6 +648,12 @@ extension ToolExecutor {
                 if let rotation = transform?.rotation {
                     clip.transform.rotation = rotation
                     clip.rotationTrack = nil
+                }
+                if let rotationX = transform?.rotationX {
+                    clip.transform.rotationX = rotationX
+                }
+                if let rotationY = transform?.rotationY {
+                    clip.transform.rotationY = rotationY
                 }
                 if shouldSetAnimation {
                     if let animation {

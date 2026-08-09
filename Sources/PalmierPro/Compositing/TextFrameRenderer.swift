@@ -111,6 +111,17 @@ enum TextFrameRenderer {
         return rect.insetBy(dx: -2, dy: -2).integral
     }
 
+    /// Lines with their origins resolved into the frame path's coordinate space.
+    private static func positionedLines(in frame: CTFrame) -> [(line: CTLine, origin: CGPoint)] {
+        let lines = CTFrameGetLines(frame) as? [CTLine] ?? []
+        var origins = [CGPoint](repeating: .zero, count: lines.count)
+        CTFrameGetLineOrigins(frame, CFRange(location: 0, length: 0), &origins)
+        let frameOrigin = CTFrameGetPath(frame).boundingBox.origin
+        return lines.indices.map { index in
+            (lines[index], CGPoint(x: frameOrigin.x + origins[index].x, y: frameOrigin.y + origins[index].y))
+        }
+    }
+
     private static func placed(_ image: CIImage, _ raster: CGRect) -> CIImage {
         image.transformed(by: CGAffineTransform(translationX: raster.minX, y: raster.minY))
     }
@@ -163,15 +174,10 @@ enum TextFrameRenderer {
     private static func drawOverlines(_ ctx: CGContext, frame: CTFrame, style: TextStyle,
                                       fontSize: CGFloat) {
         guard style.isOverlined else { return }
-        let lines = CTFrameGetLines(frame) as? [CTLine] ?? []
-        var origins = [CGPoint](repeating: .zero, count: lines.count)
-        CTFrameGetLineOrigins(frame, CFRange(location: 0, length: 0), &origins)
-        let frameBounds = CTFrameGetPath(frame).boundingBox
         let font = style.resolvedFont(size: fontSize)
-        for (index, line) in lines.enumerated() {
+        for (line, origin) in positionedLines(in: frame) {
             let width = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil) - CTLineGetTrailingWhitespaceWidth(line))
-            drawOverline(ctx, x: frameBounds.minX + origins[index].x, y: frameBounds.minY + origins[index].y,
-                         width: width, font: font, color: style.color)
+            drawOverline(ctx, x: origin.x, y: origin.y, width: width, font: font, color: style.color)
         }
     }
 
@@ -244,15 +250,11 @@ enum TextFrameRenderer {
             for: NSAttributedString(string: content, attributes: style.attributes(size: fontSize)),
             in: boxes.text
         )
-        let lines = CTFrameGetLines(ctFrame) as? [CTLine] ?? []
-        var origins = [CGPoint](repeating: .zero, count: lines.count)
-        CTFrameGetLineOrigins(ctFrame, CFRange(location: 0, length: 0), &origins)
-        let frameBounds = CTFrameGetPath(ctFrame).boundingBox
 
         let tokens = words(in: content)
         let timings = tokenTimings(tokens, clip.wordTimings, duration: clip.durationFrames)
         var pens = [PerWordLayout.TokenPen?](repeating: nil, count: tokens.count)
-        for (li, line) in lines.enumerated() {
+        for (line, origin) in positionedLines(in: ctFrame) {
             let lineRange = CTLineGetStringRange(line)
             for (ti, tok) in tokens.enumerated() {
                 guard tok.range.location >= lineRange.location,
@@ -260,8 +262,8 @@ enum TextFrameRenderer {
                 let startOff = CTLineGetOffsetForStringIndex(line, tok.range.location, nil)
                 let endOff = CTLineGetOffsetForStringIndex(line, tok.range.location + tok.range.length, nil)
                 pens[ti] = PerWordLayout.TokenPen(
-                    x: frameBounds.minX + origins[li].x + startOff - raster.minX,
-                    y: frameBounds.minY + origins[li].y - raster.minY,
+                    x: origin.x + startOff - raster.minX,
+                    y: origin.y - raster.minY,
                     width: endOff - startOff
                 )
             }

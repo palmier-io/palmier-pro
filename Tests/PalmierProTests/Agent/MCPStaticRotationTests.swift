@@ -23,6 +23,8 @@ struct MCPStaticRotationTests {
             let entryProperties = try #require(entries["items"]?.objectValue?["properties"]?.objectValue)
             let addTransform = try #require(entryProperties["transform"]?.objectValue?["properties"]?.objectValue)
             #expect(addTransform["rotation"]?.objectValue?["type"]?.stringValue == "number")
+            #expect(addTransform["rotationX"]?.objectValue?["type"]?.stringValue == "number")
+            #expect(addTransform["rotationY"]?.objectValue?["type"]?.stringValue == "number")
             #expect(addTransform["width"] == nil)
             #expect(addTransform["height"] == nil)
 
@@ -30,6 +32,8 @@ struct MCPStaticRotationTests {
             let updateProperties = try #require(updateTool.inputSchema.objectValue?["properties"]?.objectValue)
             let updateTransform = try #require(updateProperties["transform"]?.objectValue?["properties"]?.objectValue)
             #expect(updateTransform["rotation"]?.objectValue?["type"]?.stringValue == "number")
+            #expect(updateTransform["rotationX"]?.objectValue?["minimum"]?.intValue == -89)
+            #expect(updateTransform["rotationY"]?.objectValue?["maximum"]?.intValue == 89)
             #expect(updateTransform["width"] == nil)
             #expect(updateTransform["height"] == nil)
         }
@@ -46,16 +50,28 @@ struct MCPStaticRotationTests {
                     "startFrame": .int(0),
                     "endFrame": .int(60),
                     "content": .string("Rotated title"),
-                    "transform": .object(["rotation": .double(30)]),
+                    "transform": .object([
+                        "rotation": .double(30),
+                        "rotationX": .double(20),
+                        "rotationY": .double(-25),
+                    ]),
                 ])]),
             ])
             #expect(addResult.isError != true)
             let textClip = try #require(harness.editor.timeline.tracks.flatMap(\.clips).first { $0.mediaType == .text })
             let clipId = textClip.id
             #expect(textClip.transform.rotation == 30)
+            #expect(textClip.transform.rotationX == 20)
+            #expect(textClip.transform.rotationY == -25)
             #expect(textClip.transform.width < 1)
             #expect(textClip.transform.height < 1)
-            try await expectTimelineRotation(30, clipId: clipId, client: client)
+            try await expectTimelineRotation(
+                30,
+                rotationX: 20,
+                rotationY: -25,
+                clipId: clipId,
+                client: client
+            )
 
             let keyframeResult = try await client.callTool(name: "set_keyframes", arguments: [
                 "clipId": .string(clipId),
@@ -67,6 +83,16 @@ struct MCPStaticRotationTests {
             ])
             #expect(keyframeResult.isError != true)
 
+            let tiltResult = try await client.callTool(name: "update_text", arguments: [
+                "clipIds": .array([.string(clipId)]),
+                "transform": .object([
+                    "rotationX": .double(-15),
+                    "rotationY": .double(35),
+                ]),
+            ])
+            #expect(tiltResult.isError != true)
+            #expect(harness.editor.clipFor(id: clipId)?.rotationTrack?.keyframes.map(\.value) == [15, 45])
+
             let updateResult = try await client.callTool(name: "update_text", arguments: [
                 "clipIds": .array([.string(clipId)]),
                 "transform": .object(["rotation": .double(90)]),
@@ -77,14 +103,26 @@ struct MCPStaticRotationTests {
             #expect(notes?.contains { $0.contains("cleared existing rotation keyframes") } == true)
             let updated = try #require(harness.editor.clipFor(id: clipId))
             #expect(updated.transform.rotation == 90)
+            #expect(updated.transform.rotationX == -15)
+            #expect(updated.transform.rotationY == 35)
             #expect(updated.rotationTrack == nil)
             #expect(updated.transform.width == textClip.transform.width)
             #expect(updated.transform.height == textClip.transform.height)
-            try await expectTimelineRotation(90, clipId: clipId, client: client)
+            try await expectTimelineRotation(
+                90,
+                rotationX: -15,
+                rotationY: 35,
+                clipId: clipId,
+                client: client
+            )
 
             let repeatedResult = try await client.callTool(name: "update_text", arguments: [
                 "clipIds": .array([.string(clipId)]),
-                "transform": .object(["rotation": .double(90)]),
+                "transform": .object([
+                    "rotation": .double(90),
+                    "rotationX": .double(-15),
+                    "rotationY": .double(35),
+                ]),
             ])
             #expect(repeatedResult.isError != true)
             let repeatedReceipt = try json(text(repeatedResult.content))
@@ -94,6 +132,13 @@ struct MCPStaticRotationTests {
             let restoredTrack = try #require(harness.editor.clipFor(id: clipId)?.rotationTrack)
             #expect(restoredTrack.keyframes.map(\.value) == [15, 45])
             #expect(harness.editor.clipFor(id: clipId)?.transform.rotation == 30)
+            #expect(harness.editor.clipFor(id: clipId)?.transform.rotationX == -15)
+            #expect(harness.editor.clipFor(id: clipId)?.transform.rotationY == 35)
+
+            #expect((try await client.callTool(name: "undo")).isError != true)
+            #expect(harness.editor.clipFor(id: clipId)?.rotationTrack?.keyframes.map(\.value) == [15, 45])
+            #expect(harness.editor.clipFor(id: clipId)?.transform.rotationX == 20)
+            #expect(harness.editor.clipFor(id: clipId)?.transform.rotationY == -25)
 
             #expect((try await client.callTool(name: "undo")).isError != true)
             #expect(harness.editor.clipFor(id: clipId)?.rotationTrack == nil)
@@ -221,6 +266,13 @@ struct MCPStaticRotationTests {
 
             #expect(result.isError == true)
             #expect(harness.editor.clipFor(id: "title")?.transform.rotation == 12)
+
+            let outOfRange = try await client.callTool(name: "update_text", arguments: [
+                "clipIds": .array([.string("title")]),
+                "transform": .object(["rotationX": .double(90)]),
+            ])
+            #expect(outOfRange.isError == true)
+            #expect(harness.editor.clipFor(id: "title")?.transform.rotationX == 0)
             #expect((try await client.callTool(name: "undo")).isError == true)
         }
     }
@@ -252,7 +304,13 @@ struct MCPStaticRotationTests {
         await client.disconnect()
     }
 
-    private func expectTimelineRotation(_ expected: Double, clipId: String, client: Client) async throws {
+    private func expectTimelineRotation(
+        _ expected: Double,
+        rotationX: Double? = nil,
+        rotationY: Double? = nil,
+        clipId: String,
+        client: Client
+    ) async throws {
         let timelineResult = try await client.callTool(name: "get_timeline")
         let timeline = try json(text(timelineResult.content))
         let clip = try #require(((timeline["tracks"] as? [[String: Any]]) ?? [])
@@ -260,6 +318,12 @@ struct MCPStaticRotationTests {
             .first { ($0["id"] as? String).map { clipId.hasPrefix($0) || $0.hasPrefix(clipId) } == true })
         let transform = try #require(clip["transform"] as? [String: Any])
         #expect((transform["rotation"] as? NSNumber)?.doubleValue == expected)
+        if let rotationX {
+            #expect((transform["rotationX"] as? NSNumber)?.doubleValue == rotationX)
+        }
+        if let rotationY {
+            #expect((transform["rotationY"] as? NSNumber)?.doubleValue == rotationY)
+        }
         #expect((clip["keyframes"] as? [String: Any])?["rotation"] == nil)
     }
 

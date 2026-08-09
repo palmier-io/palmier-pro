@@ -70,6 +70,11 @@ struct MCPTranscriptionTrackTests {
                 arguments: ["maxCharacters": .int(0)]
             )
             #expect(invalidMaxCharacters.isError == true)
+            let invalidTilt = try await client.callTool(
+                name: "add_captions",
+                arguments: ["transform": .object(["rotationX": .double(20)])]
+            )
+            #expect(invalidTilt.isError == true)
         } catch {
             await server.stop()
             await client.disconnect()

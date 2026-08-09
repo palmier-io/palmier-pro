@@ -106,7 +106,7 @@ enum FrameRenderer {
         guard let image = TextFrameRenderer.image(clip: clip, frame: frame, renderSize: renderSize) else {
             return nil
         }
-        return rotatedTextImage(image, clip: clip, frame: frame, renderSize: renderSize)
+        return transformedTextImage(image, clip: clip, frame: frame, renderSize: renderSize)
     }
 
     /// Children composite at the child canvas; the nest clip's pipeline runs on the result.
@@ -338,7 +338,7 @@ enum FrameRenderer {
                 image = descriptor.render(image, effect: effect, atOffset: offset)
             }
         }
-        image = rotatedTextImage(image, clip: clip, frame: frame, renderSize: renderSize)
+        image = transformedTextImage(image, clip: clip, frame: frame, renderSize: renderSize)
         image = image.premultiplyingAlpha()
 
         if bakeOpacity, alpha < 1 {
@@ -349,21 +349,52 @@ enum FrameRenderer {
         return image
     }
 
-    private static func rotatedTextImage(
+    private static func transformedTextImage(
         _ image: CIImage,
         clip: Clip,
         frame: Int,
         renderSize: CGSize
     ) -> CIImage {
-        let rotation = CompositionBuilder.canvasRotationTransform(
-            for: clip.transformAt(frame: frame),
-            renderSize: renderSize
-        )
+        let transform = clip.transformAt(frame: frame)
+        if transform.hasTiltRotation {
+            return tiltedTextImage(image, transform: transform, renderSize: renderSize)
+        }
+
+        let rotation = CompositionBuilder.canvasRotationTransform(for: transform, renderSize: renderSize)
         guard !rotation.isIdentity else { return image }
         let ciTransform = flipY(renderSize.height)
             .concatenating(rotation)
             .concatenating(flipY(renderSize.height))
         return image.transformed(by: ciTransform)
+    }
+
+    /// Projects the raster's actual extent, so glyphs drawn off canvas can tilt back into frame.
+    private static func tiltedTextImage(
+        _ image: CIImage,
+        transform: Transform,
+        renderSize: CGSize
+    ) -> CIImage {
+        let source = image.extent.isInfinite
+            ? image.cropped(to: CGRect(origin: .zero, size: renderSize))
+            : image
+        guard !source.extent.isEmpty else { return image }
+
+        let flip = flipY(renderSize.height)
+        let corners = TextTiltGeometry.corners(
+            of: source.extent.applying(flip),
+            around: CGPoint(
+                x: transform.centerX * renderSize.width,
+                y: transform.centerY * renderSize.height
+            ),
+            transform: transform,
+            canvasSize: renderSize
+        )
+        return source.applyingFilter("CIPerspectiveTransform", parameters: [
+            "inputTopLeft": CIVector(cgPoint: corners.topLeft.applying(flip)),
+            "inputTopRight": CIVector(cgPoint: corners.topRight.applying(flip)),
+            "inputBottomRight": CIVector(cgPoint: corners.bottomRight.applying(flip)),
+            "inputBottomLeft": CIVector(cgPoint: corners.bottomLeft.applying(flip)),
+        ])
     }
 
     private static func flipY(_ height: CGFloat) -> CGAffineTransform {
