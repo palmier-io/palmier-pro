@@ -99,6 +99,12 @@ struct AgentActivityHighlightTests {
         #expect(harness.editor.agentActivity.mutatedTrackIds == [first.id, second.id, audio.id])
         harness.editor.clearAgentActivity()
 
+        _ = try await harness.runOK("manage_tracks", args: [
+            "set": [["trackId": second.id, "name": "B-roll"]],
+        ])
+        #expect(harness.editor.agentActivity.mutatedTrackIds == [second.id])
+        harness.editor.clearAgentActivity()
+
         _ = try await harness.runOK("manage_tracks", args: ["remove": [0]])
         #expect(harness.editor.agentActivity.isEmpty)
     }

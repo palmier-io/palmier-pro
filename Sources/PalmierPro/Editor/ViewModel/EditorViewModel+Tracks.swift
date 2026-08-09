@@ -33,6 +33,24 @@ extension EditorViewModel {
     }
 
     @discardableResult
+    func setTrackName(id: String, to rawName: String?) throws -> Bool {
+        let name = try TrackName.normalized(rawName)
+        return applyTrackName(id: id, name: name)
+    }
+
+    @discardableResult
+    private func applyTrackName(id: String, name: String?) -> Bool {
+        guard let index = timeline.tracks.firstIndex(where: { $0.id == id }) else { return false }
+        let previous = timeline.tracks[index].name
+        guard previous != name else { return false }
+        timeline.tracks[index].name = name
+        registerTimelineUndo(L10n.string("Rename Track")) { vm in
+            _ = vm.applyTrackName(id: id, name: previous)
+        }
+        return true
+    }
+
+    @discardableResult
     func selectAllClips(onTrack trackId: String) -> Bool {
         guard let track = timeline.tracks.first(where: { $0.id == trackId }),
               !track.clips.isEmpty else { return false }

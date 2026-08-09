@@ -24,6 +24,24 @@ struct TrackDisplayLabelTests {
         #expect(editor.timelineTrackDisplayLabel(at: 2) == "A1")
     }
 
+    @Test func nameSurvivesComputedDesignationReorder() throws {
+        let editor = makeEditor([
+            Fixtures.videoTrack(),
+            Fixtures.videoTrack(),
+        ])
+        let trackId = editor.timeline.tracks[0].id
+
+        #expect(try editor.setTrackName(id: trackId, to: "  B-roll  "))
+        #expect(editor.timelineTrackDisplayLabel(at: 0) == "V2")
+        #expect(editor.timeline.tracks[0].name == "B-roll")
+
+        editor.reorderTrackLive(id: trackId, to: 1)
+        #expect(editor.timelineTrackDisplayLabel(at: 1) == "V1")
+        #expect(editor.timeline.tracks[1].name == "B-roll")
+        #expect(throws: TrackNameValidationError.self) { try editor.setTrackName(id: trackId, to: "Bad\nName") }
+        #expect(editor.timeline.tracks[1].name == "B-roll")
+    }
+
     @Test func outOfRangeIndexReturnsEmpty() {
         let editor = makeEditor([Fixtures.videoTrack()])
         #expect(editor.timelineTrackDisplayLabel(at: 5) == "")
