@@ -48,7 +48,7 @@ import Testing
         #expect(e.timeline.tracks.flatMap(\.clips).allSatisfy { $0.mediaType != .text })
     }
 
-    @Test func timelineDropSyncsCaptionsToFileTimecodesIgnoringDropFrame() async throws {
+    @Test func timelineDropSyncsCaptionsToFileTimecodesAsOneUndoStep() async throws {
         try await withSubtitleFile(Self.srt) { url in
             await e.importFinderItemsToTimeline([url], cursor: .existingTrack(0), atFrame: 42, ripple: false)
         }
@@ -60,9 +60,11 @@ import Testing
         #expect(captions.map(\.startFrame) == [30, 90])
         #expect(captions.allSatisfy { $0.mediaType == .text && $0.captionGroupId != nil })
 
-        #expect(e.undo.undoLatest() == "Add Captions")
+        // One drop is one undo step: captions and the imported asset revert together.
+        #expect(e.undo.undoLatest() == "Add Media")
         #expect(e.timeline.tracks.flatMap(\.clips).allSatisfy { $0.mediaType != .text })
-        #expect(e.mediaAssets.count == 1)  // the asset import is a separate undo step
+        #expect(e.mediaAssets.isEmpty)
+        #expect(!undoManager.canUndo)
     }
 
     @Test func placeCaptionsReportsOfflineAssetWithoutMutating() async throws {

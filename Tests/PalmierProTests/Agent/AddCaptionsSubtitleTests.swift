@@ -54,6 +54,10 @@ struct AddCaptionsSubtitleTests {
         let combined = await h.runRaw("add_captions", args: ["subtitleMediaRef": "bad", "maxWords": 3])
         #expect(ToolHarness.textOf(combined).contains("maxWords"))
 
+        // A non-string value must fail, not fall through to transcription.
+        let nonString = await h.runRaw("add_captions", args: ["subtitleMediaRef": 123])
+        #expect(ToolHarness.textOf(nonString).contains("subtitleMediaRef"))
+
         let wrongType = await h.runRaw("add_captions", args: ["subtitleMediaRef": "vid"])
         #expect(ToolHarness.textOf(wrongType).contains("not a subtitle file"))
 

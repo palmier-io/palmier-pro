@@ -53,6 +53,23 @@ import Testing
         }
     }
 
+    @Test func treatsKeywordPrefixedIdentifiersAsCuesNotComments() throws {
+        let vtt = "WEBVTT\n\nNOTE123\n00:01.000 --> 00:02.000\nA cue, not a comment.\n"
+        let cues = try SubtitleFileParser.parse(vtt, format: .webVTT)
+        #expect(cues == [SubtitleCue(text: "A cue, not a comment.", startSeconds: 1.0, endSeconds: 2.0)])
+
+        #expect(throws: SubtitleFileParser.ParseError.missingWebVTTHeader) {
+            try SubtitleFileParser.parse("WEBVTTjunk\n\n00:01.000 --> 00:02.000\nBad header.", format: .webVTT)
+        }
+    }
+
+    @Test func rejectsCuesMissingTheirBlankLineSeparator() {
+        let srt = "1\n00:00:01,000 --> 00:00:02,000\nFirst.\n2\n00:00:03,000 --> 00:00:04,000\nSwallowed.\n"
+        #expect(throws: SubtitleFileParser.ParseError.malformedCue(line: 5)) {
+            try SubtitleFileParser.parse(srt, format: .srt)
+        }
+    }
+
     @Test func rejectsMissingHeaderEmptyFilesAndUnknownExtensions() {
         #expect(throws: SubtitleFileParser.ParseError.missingWebVTTHeader) {
             try SubtitleFileParser.parse("00:00.000 --> 00:01.000\nNo header.", format: .webVTT)

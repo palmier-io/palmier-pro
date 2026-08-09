@@ -72,7 +72,7 @@ enum SubtitleFileParser {
             }
         }
         if format == .webVTT {
-            guard blocks.first?.lines.first?.hasPrefix("WEBVTT") == true else {
+            guard let header = blocks.first?.lines.first, isKeywordLine(header, keyword: "WEBVTT") else {
                 throw ParseError.missingWebVTTHeader
             }
             blocks.removeFirst()
@@ -80,7 +80,7 @@ enum SubtitleFileParser {
 
         var cues: [SubtitleCue] = []
         for block in blocks {
-            if format == .webVTT, ["NOTE", "STYLE", "REGION"].contains(where: block.lines[0].hasPrefix) {
+            if format == .webVTT, ["NOTE", "STYLE", "REGION"].contains(where: { isKeywordLine(block.lines[0], keyword: $0) }) {
                 continue
             }
             // The timing line may be preceded by one SRT index or WebVTT cue-identifier line.
@@ -92,16 +92,25 @@ enum SubtitleFileParser {
                   end > start else {
                 throw ParseError.malformedCue(line: block.start + timingIndex + 1)
             }
-            let text = block.lines.dropFirst(timingIndex + 1)
-                .map(plainText)
-                .filter { !$0.isEmpty }
-                .joined(separator: "\n")
+            var textLines: [String] = []
+            for (offset, line) in block.lines.enumerated().dropFirst(timingIndex + 1) {
+                guard !line.contains("-->") else {
+                    throw ParseError.malformedCue(line: block.start + offset + 1)
+                }
+                let stripped = plainText(line)
+                if !stripped.isEmpty { textLines.append(stripped) }
+            }
+            let text = textLines.joined(separator: "\n")
             if !text.isEmpty {
                 cues.append(SubtitleCue(text: text, startSeconds: start, endSeconds: end))
             }
         }
         guard !cues.isEmpty else { throw ParseError.noCues }
         return cues.sorted { $0.startSeconds < $1.startSeconds }
+    }
+
+    private static func isKeywordLine(_ line: String, keyword: String) -> Bool {
+        line == keyword || line.hasPrefix(keyword + " ") || line.hasPrefix(keyword + "\t")
     }
 
     /// `HH:MM:SS.mmm` and `MM:SS.mmm` with `.` or `,` milliseconds. Trailing WebVTT cue

@@ -257,17 +257,23 @@ extension EditorViewModel {
         }
     }
 
+    /// Parses a subtitle file into caption specs sized for the current timeline.
+    func subtitleCaptionSpecs(from url: URL) async throws -> [TextClipSpec] {
+        let preparationTimeline = timeline
+        let cues = try await SubtitleFileParser.parseFile(at: url)
+        return try await CaptionSpecBuilder.build(
+            cues: cues, fps: preparationTimeline.fps,
+            canvasWidth: preparationTimeline.width, canvasHeight: preparationTimeline.height,
+            style: .caption, center: AppTheme.Caption.defaultCenter
+        )
+    }
+
     /// Imports an SRT or WebVTT file as one caption group on a new top track. One undo step.
     @discardableResult
     func importCaptions(from url: URL) async throws -> [String] {
         let owningTimelineId = activeTimelineId
         let preparationTimeline = timeline
-        let cues = try await SubtitleFileParser.parseFile(at: url)
-        let specs = try await CaptionSpecBuilder.build(
-            cues: cues, fps: preparationTimeline.fps,
-            canvasWidth: preparationTimeline.width, canvasHeight: preparationTimeline.height,
-            style: .caption, center: AppTheme.Caption.defaultCenter
-        )
+        let specs = try await subtitleCaptionSpecs(from: url)
         try Task.checkCancellation()
         guard captionPreparationIsCurrent(timelineId: owningTimelineId, snapshot: preparationTimeline) else {
             throw CaptionError.timelineChanged
@@ -393,7 +399,9 @@ extension EditorViewModel {
         return wordsByTrack.filter { $0.value > 0 }.max { $0.value < $1.value }?.key
     }
 
-    private func placeCaptionTrack(_ specs: [TextClipSpec], actionName: String) -> [String] {
+    /// Nested inside an open undo transaction this coalesces into the outer group.
+    @discardableResult
+    func placeCaptionTrack(_ specs: [TextClipSpec], actionName: String) -> [String] {
         undo.perform(actionName) {
             let before = timeline
             let ids = undo.withoutRegistration {

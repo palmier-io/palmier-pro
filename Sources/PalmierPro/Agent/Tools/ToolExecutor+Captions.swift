@@ -10,7 +10,10 @@ extension ToolExecutor {
     func addCaptions(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.addCaptionsAllowedKeys, path: "add_captions")
 
-        if let subtitleMediaRef = args.string("subtitleMediaRef") {
+        if args.keys.contains("subtitleMediaRef") {
+            guard let subtitleMediaRef = args.string("subtitleMediaRef"), !subtitleMediaRef.isEmpty else {
+                throw ToolError("add_captions: subtitleMediaRef must be a non-empty media asset id string.")
+            }
             let combined = Set(args.keys).subtracting(["subtitleMediaRef"])
             guard combined.isEmpty else {
                 throw ToolError(

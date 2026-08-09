@@ -31,9 +31,12 @@ struct SubtitlePreviewView: View {
                 return
             }
             do {
-                cues = try await SubtitleFileParser.parseFile(at: url)
+                let parsed = try await SubtitleFileParser.parseFile(at: url)
+                guard !Task.isCancelled else { return }
+                cues = parsed
                 errorMessage = nil
             } catch {
+                guard !Task.isCancelled else { return }
                 cues = []
                 errorMessage = error.localizedDescription
             }
