@@ -66,4 +66,22 @@ struct AddCaptionsSubtitleTests {
 
         #expect(h.editor.timeline.tracks.flatMap(\.clips).allSatisfy { $0.mediaType != .text })
     }
+
+    @Test func importsSubtitleBytesViaMimeType() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pp-import-subtitle-bytes-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let h = ToolHarness()
+        h.editor.projectURL = root.appendingPathComponent("Import.palmier", isDirectory: true)
+
+        let srt = "1\n00:00:01,000 --> 00:00:02,000\nFrom bytes.\n"
+        let result = try await h.runOK("import_media", args: [
+            "source": ["bytes": Data(srt.utf8).base64EncodedString(), "mimeType": "application/x-subrip"],
+        ]) as? [String: Any]
+        #expect(result?["type"] as? String == "subtitle")
+        // Receipts shorten ids to unique prefixes.
+        let mediaRef = try #require(result?["mediaRef"] as? String)
+        let asset = try #require(h.editor.mediaAssets.first { $0.id.hasPrefix(mediaRef) })
+        #expect(asset.type == .subtitle)
+    }
 }
