@@ -9,6 +9,12 @@ final class TimelineView: NSView {
     private(set) var snapOverlay: SnapIndicatorOverlay!
     private var generatingClipOverlays: [String: NSHostingView<ClipGeneratingOverlay>] = [:]
     private var clipDisplayRects: [String: NSRect] = [:]
+    private let agentActivityLayer = CALayer()
+    private let agentAddedLayer = CAShapeLayer()
+    private let agentMutatedLayer = CAShapeLayer()
+    private let agentReadLayer = CAShapeLayer()
+    private let agentRangeLayer = CAShapeLayer()
+    private var displayedAgentActivityRevision = -1
     private var derivedCacheRevision: Int = -1
     private var cachedLinkOffsets: [String: Int] = [:]
     private var cachedAngleLabels: [String: [String: String]] = [:]
@@ -25,6 +31,7 @@ final class TimelineView: NSView {
         editor.onCancelTimelineDrag = { [weak self] in self?.inputController.cancelActiveDrag() }
         wantsLayer = true
         updateAppearanceColors()
+        configureAgentActivityLayers()
         canvas.wantsLayer = true
         canvas.layerContentsRedrawPolicy = .onSetNeedsDisplay
         addSubview(canvas)
@@ -81,6 +88,36 @@ final class TimelineView: NSView {
     private func updateAppearanceColors() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             layer?.backgroundColor = Self.trackBg
+        }
+    }
+
+    private func configureAgentActivityLayers() {
+        agentActivityLayer.zPosition = 80
+        layer?.addSublayer(agentActivityLayer)
+        let styles = [
+            (agentRangeLayer, AppTheme.AgentActivity.read, AppTheme.AgentActivity.readFill,
+             AppTheme.BorderWidth.thin, Float(0), CGFloat(0), CGFloat(0)),
+            (agentReadLayer, AppTheme.AgentActivity.read, nil,
+             AppTheme.BorderWidth.medium, AppTheme.AgentActivity.readGlowOpacity,
+             AppTheme.AgentActivity.readGlowRadius, CGFloat(9)),
+            (agentAddedLayer, AppTheme.AgentActivity.added, nil,
+             AppTheme.BorderWidth.thick, AppTheme.AgentActivity.changeGlowOpacity,
+             AppTheme.AgentActivity.changeGlowRadius, CGFloat(10)),
+            (agentMutatedLayer, AppTheme.AgentActivity.mutated, nil,
+             AppTheme.BorderWidth.thick, AppTheme.AgentActivity.changeGlowOpacity,
+             AppTheme.AgentActivity.changeGlowRadius, CGFloat(10)),
+        ]
+        for (layer, color, fillColor, lineWidth, glowOpacity, glowRadius, zPosition) in styles {
+            layer.fillColor = fillColor?.cgColor
+            layer.strokeColor = color.cgColor
+            layer.lineWidth = lineWidth
+            layer.shadowColor = color.cgColor
+            layer.shadowOpacity = glowOpacity
+            layer.shadowRadius = glowRadius
+            layer.shadowOffset = .zero
+            layer.zPosition = zPosition
+            layer.opacity = 0
+            agentActivityLayer.addSublayer(layer)
         }
     }
 
@@ -255,6 +292,7 @@ final class TimelineView: NSView {
             drawRippleInsertGapBand(preview: rippleInsertPreview, geometry: geo, context: ctx)
         }
         drawClips(geometry: geo, dirtyRect: dirtyRect, context: ctx, rippleInsertPreview: rippleInsertPreview)
+        syncAgentActivityLayers()
         drawGapSelection(geometry: geo, context: ctx)
         syncGeneratingClipOverlays(geometry: geo)
 
@@ -317,6 +355,139 @@ final class TimelineView: NSView {
     func updatePlayheadLayer() { playheadOverlay.update() }
 
     // MARK: - Clip drawing with ghost support
+
+    private func syncAgentActivityLayers() {
+        let activity = editor.agentActivity
+        let viewport = visibleRect
+        guard !viewport.isEmpty else { return }
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        updateAgentActivityFrame(viewport)
+        agentAddedLayer.path = agentClipPath(for: activity.addedClipIds, viewport: viewport)
+        agentMutatedLayer.path = agentClipPath(for: activity.mutatedClipIds, viewport: viewport)
+        agentReadLayer.path = agentClipPath(for: activity.readClipIds, viewport: viewport)
+        agentRangeLayer.path = agentRangePath(for: activity.range, viewport: viewport)
+        CATransaction.commit()
+
+        guard activity.revision != displayedAgentActivityRevision else { return }
+        displayedAgentActivityRevision = activity.revision
+        let hold = activity.isRead
+            ? AppTheme.Anim.agentReadHighlightHold
+            : AppTheme.Anim.agentChangeHighlightHold
+        let duration = activity.isRead
+            ? AppTheme.Anim.agentReadHighlightDuration
+            : AppTheme.Anim.agentChangeHighlightDuration
+        let highlights = [
+            (agentAddedLayer, !activity.addedClipIds.isEmpty),
+            (agentMutatedLayer, !activity.mutatedClipIds.isEmpty),
+            (agentReadLayer, !activity.readClipIds.isEmpty),
+            (agentRangeLayer, activity.range != nil),
+        ]
+        for (layer, hasHighlight) in highlights {
+            updateAgentActivityAnimation(
+                layer,
+                hasHighlight: hasHighlight,
+                staysVisible: activity.isActive,
+                hold: hold,
+                duration: duration
+            )
+        }
+    }
+
+    private func agentClipPath(for clipIds: Set<String>, viewport: NSRect) -> CGPath? {
+        let combinedPath = CGMutablePath()
+        for clipId in clipIds {
+            guard let rect = clipDisplayRects[clipId], rect.intersects(viewport) else { continue }
+            let ringRect = rect
+                .offsetBy(dx: -viewport.minX, dy: -viewport.minY)
+                .insetBy(
+                    dx: AppTheme.BorderWidth.hairline,
+                    dy: AppTheme.BorderWidth.hairline
+                )
+            guard ringRect.width > 0, ringRect.height > 0 else { continue }
+            combinedPath.addRoundedRect(
+                in: ringRect,
+                cornerWidth: Trim.clipCornerRadius,
+                cornerHeight: Trim.clipCornerRadius
+            )
+        }
+        return combinedPath.isEmpty ? nil : combinedPath
+    }
+
+    private func agentRangePath(
+        for range: Range<Int>?,
+        viewport: NSRect
+    ) -> CGPath? {
+        guard let range else { return nil }
+        let geo = geometry
+        let minX = geo.xForFrame(range.lowerBound)
+        let maxX = geo.xForFrame(range.upperBound)
+        let y = Double(geo.rulerHeight)
+        let documentRect = NSRect(
+            x: minX,
+            y: y,
+            width: max(Double(AppTheme.BorderWidth.medium), maxX - minX),
+            height: max(0, Double(bounds.height - geo.rulerHeight))
+        )
+        let visibleRange = documentRect.intersection(viewport)
+        guard !visibleRange.isNull, !visibleRange.isEmpty else { return nil }
+        return CGPath(
+            rect: visibleRange.offsetBy(dx: -viewport.minX, dy: -viewport.minY),
+            transform: nil
+        )
+    }
+
+    private func updateAgentActivityFrame(_ viewport: NSRect) {
+        agentActivityLayer.frame = viewport
+        for layer in [agentAddedLayer, agentMutatedLayer, agentReadLayer, agentRangeLayer] {
+            layer.frame = agentActivityLayer.bounds
+        }
+        let mask = (agentActivityLayer.mask as? CAShapeLayer) ?? CAShapeLayer()
+        let rulerHeight = Double(geometry.rulerHeight)
+        mask.frame = agentActivityLayer.bounds
+        mask.fillColor = AppTheme.MediaOverlay.background.cgColor
+        mask.path = CGPath(
+            rect: NSRect(
+                x: 0,
+                y: rulerHeight,
+                width: viewport.width,
+                height: max(0, Double(viewport.height) - rulerHeight)
+            ),
+            transform: nil
+        )
+        agentActivityLayer.mask = mask
+    }
+
+    private func updateAgentActivityAnimation(
+        _ layer: CAShapeLayer,
+        hasHighlight: Bool,
+        staysVisible: Bool,
+        hold: Double,
+        duration: Double
+    ) {
+        layer.removeAnimation(forKey: "agentActivityFade")
+        guard hasHighlight else {
+            layer.opacity = 0
+            return
+        }
+        if staysVisible {
+            layer.opacity = 1
+            return
+        }
+
+        layer.opacity = 0
+        let animation = CAKeyframeAnimation(keyPath: "opacity")
+        let fadeStart = hold / duration
+        animation.values = [1, 1, 0]
+        animation.keyTimes = [0, NSNumber(value: fadeStart), 1]
+        animation.timingFunctions = [
+            CAMediaTimingFunction(name: .linear),
+            CAMediaTimingFunction(name: .easeOut),
+        ]
+        animation.duration = duration
+        layer.add(animation, forKey: "agentActivityFade")
+    }
 
     private func drawClips(
         geometry geo: TimelineGeometry,

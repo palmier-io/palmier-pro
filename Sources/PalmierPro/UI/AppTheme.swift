@@ -190,6 +190,22 @@ enum AppTheme {
         static var warningColor: Color { Color(warning) }
     }
 
+    enum AgentActivity {
+        static let added = NSColor.systemGreen
+        static let mutated = NSColor.systemOrange
+        static let read = NSColor(
+            srgbRed: 0x64 / 255.0,
+            green: 0x74 / 255.0,
+            blue: 0x8B / 255.0,
+            alpha: 1
+        )
+        static let readFill = read.withAlphaComponent(AppTheme.Opacity.faint)
+        static let changeGlowOpacity: Float = 0.8
+        static let changeGlowRadius: CGFloat = 8
+        static let readGlowOpacity: Float = 0.35
+        static let readGlowRadius: CGFloat = 4
+    }
+
     // MARK: - Text
 
     enum Text {
@@ -510,6 +526,12 @@ enum AppTheme {
         static let transition: Double = 0.2
         static let pulse: Double = 0.8
         static let slipPreviewRefresh: Duration = .milliseconds(67)
+        static let agentChangeHighlightHold: Double = 1.0
+        static let agentChangeHighlightFade: Double = 0.3
+        static let agentChangeHighlightDuration = agentChangeHighlightHold + agentChangeHighlightFade
+        static let agentReadHighlightHold: Double = 0.7
+        static let agentReadHighlightFade: Double = 0.25
+        static let agentReadHighlightDuration = agentReadHighlightHold + agentReadHighlightFade
     }
 }
 
