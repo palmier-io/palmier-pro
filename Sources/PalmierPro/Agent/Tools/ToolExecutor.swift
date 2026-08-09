@@ -136,9 +136,12 @@ final class ToolExecutor {
             )
             return result
         }
+        let activeTimelineIdBefore = editor.activeTimelineId
+        let nonAgentMutationRevisionBefore = editor.nonAgentTimelineMutationRevision
         let before = editor.timelines
         let idsBefore = currentIdUniverse(editor)
         let result: ToolResult
+        var readRevision: Int?
         Log.agent.notice(
             "tool start name=\(tool.rawValue)",
             telemetry: "Agent tool started",
@@ -146,11 +149,30 @@ final class ToolExecutor {
         )
         do {
             let resolved = try expandingIdPrefixes(in: args, editor: editor)
+            readRevision = editor.beginAgentTimelineRead(
+                timelineReadActivity(for: tool, args: resolved, editor: editor)
+            )
             result = try await run(tool, editor, resolved)
         } catch let err as ToolError {
             result = .error(err.message)
         } catch {
             result = .error(error.localizedDescription)
+        }
+        if let readRevision {
+            editor.endAgentTimelineRead(readRevision, succeeded: !result.isError)
+        }
+        let timelineChanged = editor.timelines != before
+        if !result.isError,
+           timelineChanged,
+           tool.publishesTimelineChanges,
+           editor.nonAgentTimelineMutationRevision == nonAgentMutationRevisionBefore,
+           editor.activeTimelineId == activeTimelineIdBefore,
+           let previousTimeline = before.first(where: { $0.id == activeTimelineIdBefore }) {
+            publishAgentChanges(
+                before: previousTimeline,
+                after: editor.timeline,
+                editor: editor
+            )
         }
         feedbackState.record(result, for: tool)
         let elapsed = started.duration(to: .now).seconds
@@ -158,7 +180,7 @@ final class ToolExecutor {
         let payload: Telemetry.Payload = [
             "tool": tool.rawValue,
             "durationSeconds": elapsed,
-            "timelineChanged": editor.timelines != before
+            "timelineChanged": timelineChanged
         ]
         if result.isError {
             Log.agent.warning(
@@ -179,7 +201,7 @@ final class ToolExecutor {
             projectId: editor.projectId,
             result: result,
             started: started,
-            timelineChanged: editor.timelines != before
+            timelineChanged: timelineChanged
         )
         // Shorten on pre ∪ post ids: new ids and just-removed ids both stay short.
         return await shorteningIds(in: result, editor: editor, alsoKnown: idsBefore)
