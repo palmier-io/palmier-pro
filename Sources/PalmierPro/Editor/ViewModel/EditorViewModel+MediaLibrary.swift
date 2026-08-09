@@ -674,7 +674,7 @@ extension EditorViewModel {
         }
         if case .mediaAsset(let id, _, let type) = activePreviewTab,
            id == asset.id,
-           type != .image {
+           type != .image, type != .subtitle {
             videoEngine?.previewAsset(asset)
             videoEngine?.seek(to: sourcePlayheadFrame, mode: .exact)
         }
