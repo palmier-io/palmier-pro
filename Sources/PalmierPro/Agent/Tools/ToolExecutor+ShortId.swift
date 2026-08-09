@@ -7,7 +7,7 @@ extension ToolExecutor {
     private static let scalarIdKeys: Set<String> = [
         "clipId", "sourceClipId", "referenceClipId", "targetClipId",
         "mediaRef", "startFrameMediaRef", "endFrameMediaRef",
-        "sourceVideoMediaRef", "videoSourceMediaRef", "sourceMediaRef",
+        "sourceVideoMediaRef", "videoSourceMediaRef", "sourceMediaRef", "subtitleMediaRef",
         "captionGroupId", "timelineId", "trackId", "item", "from", "reference",
         "groupId", "memberId",
     ]
