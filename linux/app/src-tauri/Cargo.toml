@@ -1,0 +1,38 @@
+[package]
+name = "palmier-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Palmier Pro Linux desktop shell"
+default-run = "palmier-app"
+
+[lib]
+name = "palmier_app"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { workspace = true }
+
+[dependencies]
+anyhow = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true }
+palmier-core = { workspace = true }
+palmier-generation = { workspace = true }
+palmier-mcp = { workspace = true }
+palmier-media = { workspace = true }
+palmier-project = { workspace = true }
+palmier-service = { workspace = true, features = ["media"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tauri = { workspace = true }
+tauri-plugin-dialog = { workspace = true }
+tauri-plugin-shell = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
+
+[lints]
+workspace = true

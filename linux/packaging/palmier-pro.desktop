@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Palmier Pro
+GenericName=Video Editor
+Comment=AI-native video editor
+Exec=palmier-pro %F
+Icon=palmier-pro
+Terminal=false
+Categories=AudioVideo;Video;AudioVideoEditing;
+MimeType=application/x-palmier-project;
+Keywords=video;editor;timeline;ffmpeg;
+StartupNotify=true

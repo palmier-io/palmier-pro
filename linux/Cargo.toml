@@ -1,0 +1,125 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/palmier-core",
+    "crates/palmier-project",
+    "crates/palmier-media",
+    "crates/palmier-mcp",
+    "crates/palmier-generation",
+    "crates/palmier-service",
+    "app/src-tauri",
+]
+default-members = [
+    "crates/palmier-core",
+    "crates/palmier-project",
+    "crates/palmier-media",
+    "crates/palmier-mcp",
+    "crates/palmier-generation",
+    "crates/palmier-service",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0"
+repository = "https://github.com/palmier-io/palmier-pro"
+
+[workspace.dependencies]
+anyhow = "1.0.98"
+axum = { version = "0.8.4", default-features = false, features = ["http1", "json", "tokio", "tower-log"] }
+base64 = "0.22.1"
+bytes = "1.10.1"
+chrono = { version = "0.4.41", default-features = false, features = ["clock", "std", "serde"] }
+cpal = "0.15.3"
+futures = "0.3.31"
+http = "1.3.1"
+image = { version = "0.25.6", default-features = false, features = ["jpeg", "png"] }
+jpeg-encoder = "0.6.1"
+keyring = { version = "3.6.2", features = ["linux-native-sync-persistent", "sync-secret-service"] }
+libc = "0.2.174"
+reqwest = { version = "0.12.22", default-features = false, features = ["json", "rustls-tls", "stream", "multipart"] }
+rmcp = { version = "0.3.0", features = ["server", "transport-streamable-http-server"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+specta = { version = "2.0.0-rc.22", features = ["serde", "serde_json", "uuid", "chrono", "export"] }
+specta-typescript = "0.0.9"
+tauri = { version = "2.6.2", features = [] }
+tauri-build = { version = "2.3.0", features = [] }
+tauri-plugin-dialog = "2.3.0"
+tauri-plugin-shell = "2.3.0"
+tempfile = "3.20.0"
+thiserror = "2.0.12"
+tokio = { version = "1.46.1", features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+tokio-stream = "0.1.17"
+tokio-util = { version = "0.7.15", features = ["rt", "io"] }
+tower = "0.5.2"
+tower-http = { version = "0.6.6", features = ["cors", "trace"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+uuid = { version = "1.17.0", features = ["serde", "v4"] }
+wgpu = { version = "25.0.2", default-features = false, features = ["wgsl", "vulkan"] }
+ffmpeg-next = { version = "8.0.0", default-features = false, features = ["format", "software-resampling", "software-scaling", "codec"] }
+
+palmier-core = { path = "crates/palmier-core" }
+palmier-project = { path = "crates/palmier-project" }
+palmier-media = { path = "crates/palmier-media" }
+palmier-mcp = { path = "crates/palmier-mcp" }
+palmier-generation = { path = "crates/palmier-generation" }
+palmier-service = { path = "crates/palmier-service" }
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "allow", priority = -1 }
+correctness = { level = "deny", priority = 1 }
+suspicious = { level = "deny", priority = 1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+too_many_lines = "allow"
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_precision_loss = "allow"
+cast_possible_wrap = "allow"
+float_cmp = "allow"
+similar_names = "allow"
+must_use_candidate = "allow"
+return_self_not_must_use = "allow"
+needless_pass_by_value = "allow"
+redundant_closure_for_method_calls = "allow"
+items_after_statements = "allow"
+unused_self = "allow"
+struct_excessive_bools = "allow"
+fn_params_excessive_bools = "allow"
+wildcard_imports = "allow"
+option_if_let_else = "allow"
+collapsible_if = "allow"
+unnecessary_sort_by = "allow"
+assigning_clones = "allow"
+manual_let_else = "allow"
+uninlined_format_args = "allow"
+doc_markdown = "allow"
+result_large_err = "allow"
+manual_clamp = "allow"
+derivable_impls = "allow"
+clone_on_copy = "allow"
+len_without_is_empty = "allow"
+should_implement_trait = "allow"
+new_without_default = "allow"
+filter_map_bool_then = "allow"
+map_unwrap_or = "allow"
+explicit_iter_loop = "allow"
+needless_borrows_for_generic_args = "allow"
+redundant_clone = "allow"
+single_match = "allow"
+match_same_arms = "allow"
+if_same_then_else = "allow"
+manual_strip = "allow"
+ptr_arg = "allow"
+type_complexity = "allow"
+large_enum_variant = "allow"
+await_holding_lock = "allow"
+await_holding_refcell_ref = "allow"

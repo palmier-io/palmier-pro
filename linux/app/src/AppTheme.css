@@ -1,0 +1,444 @@
+:root {
+  color-scheme: dark;
+
+  --color-bg-base: #090a0c;
+  --color-bg-window: #0d0e11;
+  --color-bg-surface: #131519;
+  --color-bg-raised: #191b20;
+  --color-bg-prominent: #23262d;
+  --color-bg-input: #101216;
+  --color-bg-canvas: #020303;
+  --color-bg-hover: rgb(255 255 255 / 6%);
+  --color-bg-active: rgb(255 255 255 / 10%);
+  --color-bg-selected: rgb(255 255 255 / 13%);
+  --color-bg-overlay: rgb(4 5 7 / 78%);
+  --color-bg-overlay-strong: rgb(4 5 7 / 92%);
+  --color-bg-modal: rgb(18 20 24 / 96%);
+  --color-bg-toast: rgb(28 31 37 / 96%);
+
+  --color-text-primary: rgb(255 255 255 / 96%);
+  --color-text-secondary: rgb(255 255 255 / 76%);
+  --color-text-tertiary: rgb(255 255 255 / 52%);
+  --color-text-muted: rgb(255 255 255 / 31%);
+  --color-text-inverse: #0b0c0e;
+
+  --color-border-primary: rgb(255 255 255 / 14%);
+  --color-border-subtle: rgb(255 255 255 / 9%);
+  --color-border-strong: rgb(255 255 255 / 25%);
+  --color-border-focus: rgb(245 240 229 / 72%);
+
+  --color-accent: #f5efe4;
+  --color-accent-soft: rgb(245 239 228 / 15%);
+  --color-accent-time: #efaa52;
+  --color-accent-time-soft: rgb(239 170 82 / 22%);
+  --color-accent-violet: #9d7aea;
+  --color-accent-ocean: #4ba2c7;
+  --color-accent-moss: #5c8769;
+  --color-accent-amber: #b27842;
+  --color-accent-rose: #a75c70;
+  --color-accent-slate: #66717e;
+
+  --color-status-success: #4fb85f;
+  --color-status-warning: #e09a44;
+  --color-status-error: #e54f4f;
+  --color-status-info: #5a9edf;
+  --status-error-text: #ffb8b3;
+  --status-error-background: rgb(94 25 25 / 84%);
+  --status-error-soft-background: rgb(229 79 79 / 8%);
+  --status-error-border: rgb(229 79 79 / 32%);
+  --status-warning-text: #ffd59c;
+  --status-warning-background: rgb(86 55 18 / 94%);
+
+  --color-video-clip: #76518c;
+  --color-image-clip: #a56678;
+  --color-audio-clip: #466f54;
+  --color-clip-selected: #f7f2e9;
+  --color-playhead: #e55b51;
+  --color-waveform: rgb(207 241 216 / 72%);
+
+  --gradient-window:
+    radial-gradient(circle at 52% -20%, rgb(77 69 94 / 22%), transparent 43%),
+    linear-gradient(180deg, #101116, #090a0c);
+  --gradient-home:
+    radial-gradient(circle at 78% 4%, rgb(119 81 58 / 18%), transparent 34%),
+    radial-gradient(circle at 38% 64%, rgb(53 85 69 / 15%), transparent 40%),
+    #0c0e11;
+  --gradient-glass: linear-gradient(
+    145deg,
+    rgb(255 255 255 / 8%),
+    rgb(255 255 255 / 2%)
+  );
+  --gradient-media-moss:
+    radial-gradient(circle at 70% 22%, rgb(178 202 123 / 38%), transparent 18%),
+    linear-gradient(145deg, #17261d, #55735a 48%, #121914);
+  --gradient-media-amber:
+    radial-gradient(circle at 52% 40%, rgb(245 197 111 / 44%), transparent 17%),
+    linear-gradient(135deg, #241910, #815933 53%, #17120e);
+  --gradient-media-violet:
+    radial-gradient(circle at 66% 32%, rgb(213 163 224 / 42%), transparent 20%),
+    linear-gradient(145deg, #21162a, #6e4e7d 54%, #15111b);
+  --gradient-media-slate:
+    radial-gradient(circle at 45% 50%, rgb(225 231 235 / 24%), transparent 19%),
+    linear-gradient(150deg, #121519, #59646f 51%, #101215);
+  --gradient-media-rose:
+    radial-gradient(circle at 61% 36%, rgb(250 191 180 / 38%), transparent 16%),
+    linear-gradient(145deg, #271619, #87515c 55%, #160f12);
+  --gradient-media-ocean:
+    radial-gradient(circle at 40% 42%, rgb(135 221 226 / 36%), transparent 18%),
+    linear-gradient(145deg, #101d23, #386c78 52%, #0d1519);
+  --gradient-preview-shade: linear-gradient(
+    180deg,
+    transparent 45%,
+    rgb(0 0 0 / 62%)
+  );
+  --gradient-timeline: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent calc(10% - 1px),
+    rgb(255 255 255 / 4%) calc(10% - 1px),
+    rgb(255 255 255 / 4%) 10%
+  );
+
+  --font-sans:
+    Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  --font-mono:
+    "SFMono-Regular", ui-monospace, "Cascadia Code", Consolas, monospace;
+  --font-size-micro: 8px;
+  --font-size-xxs: 9px;
+  --font-size-xs: 10px;
+  --font-size-sm: 11px;
+  --font-size-sm-md: 12px;
+  --font-size-md: 13px;
+  --font-size-md-lg: 14px;
+  --font-size-lg: 15px;
+  --font-size-xl: 18px;
+  --font-size-title: 22px;
+  --font-size-title-lg: 30px;
+  --font-size-display: 42px;
+  --font-size-hero: 52px;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --line-height-tight: 1.08;
+  --line-height-compact: 1.25;
+  --line-height-body: 1.45;
+  --tracking-tight: -0.035em;
+  --tracking-compact: -0.015em;
+  --tracking-wide: 0.12em;
+
+  --space-0: 0;
+  --space-px: 1px;
+  --space-xxs: 2px;
+  --space-xs: 4px;
+  --space-sm: 6px;
+  --space-sm-md: 8px;
+  --space-md: 10px;
+  --space-md-lg: 12px;
+  --space-lg: 14px;
+  --space-lg-xl: 16px;
+  --space-xl: 20px;
+  --space-xl-xxl: 24px;
+  --space-xxl: 28px;
+  --space-xxxl: 36px;
+  --space-section: 44px;
+  --space-hero: 64px;
+
+  --radius-none: 0;
+  --radius-xs: 3px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-md-lg: 12px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-pill: 999px;
+
+  --border-hairline: 0.5px;
+  --border-thin: 1px;
+  --border-medium: 1.5px;
+  --border-thick: 2px;
+
+  --opacity-disabled: 0.38;
+  --opacity-muted: 0.55;
+  --opacity-strong: 0.8;
+  --opacity-full: 1;
+  --opacity-hidden: 0;
+
+  --anim-hover: 120ms;
+  --anim-transition: 200ms;
+  --anim-panel: 280ms;
+  --anim-pulse: 900ms;
+  --anim-spin: 800ms;
+  --easing-standard: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 38%);
+  --shadow-md: 0 8px 24px rgb(0 0 0 / 34%);
+  --shadow-lg: 0 28px 80px rgb(0 0 0 / 56%);
+  --shadow-focus: 0 0 0 1px var(--color-border-focus);
+  --shadow-inset: inset 0 1px rgb(255 255 255 / 5%);
+
+  --app-min-width: 960px;
+  --size-0: 0;
+  --size-full: 100%;
+  --size-half: 50%;
+  --size-third: 33.333%;
+  --size-screen-height: 100dvh;
+  --size-screen-width: 100vw;
+  --size-icon-xxs: 12px;
+  --size-icon-xs: 14px;
+  --size-icon-sm: 18px;
+  --size-icon-md: 22px;
+  --size-icon-md-lg: 24px;
+  --size-icon-lg: 26px;
+  --size-icon-xl: 30px;
+  --size-control-sm: 24px;
+  --size-control: 28px;
+  --size-control-lg: 34px;
+  --size-button: 36px;
+  --size-brand: 32px;
+  --size-brand-compact: 24px;
+  --size-avatar: 26px;
+  --size-status-dot: 7px;
+  --size-spinner: 14px;
+  --size-wave-thin: 1px;
+  --icon-stroke-width: 1.6;
+  --visually-hidden-offset: -1px;
+  --space-negative-px: -1px;
+  --position-negative-half: -50%;
+  --grid-one-fr: 1fr;
+  --grid-column-full: 1 / -1;
+  --grid-row-full: 1 / -1;
+
+  --brand-leaf-width: 7px;
+  --brand-leaf-height: 21px;
+  --brand-leaf-radius: 80% 20% 70% 25%;
+  --brand-leaf-left-transform: translateX(-7px) rotate(-29deg);
+  --brand-leaf-center-transform: rotate(3deg);
+  --brand-leaf-right-transform: translateX(7px) rotate(31deg);
+  --button-hover-transform: translateY(-1px);
+  --button-primary-hover: #fffaf2;
+  --empty-state-min-height: 120px;
+
+  --home-sidebar-width: 226px;
+  --home-content-max-width: 1180px;
+  --home-header-min-height: 176px;
+  --home-card-min-width: 210px;
+  --home-card-art-height: 150px;
+  --home-recent-thumb-width: 76px;
+  --home-recent-thumb-height: 46px;
+  --home-tip-min-height: 76px;
+  --home-sidebar-background: rgb(12 14 17 / 78%);
+  --home-recent-background: rgb(20 22 27 / 72%);
+  --home-subtitle-max-width: 520px;
+  --sample-highlight: rgb(255 255 255 / 16%);
+  --sample-blur: blur(16px);
+  --sample-orb-large: 96px;
+  --sample-orb-small: 52px;
+  --sample-orb-top: -24px;
+  --sample-orb-right: -14px;
+  --sample-orb-bottom: 12px;
+  --sample-orb-left: 20px;
+  --sample-play-border: rgb(255 255 255 / 22%);
+  --sample-play-background: rgb(0 0 0 / 34%);
+  --sample-play-blur: blur(8px);
+
+  --titlebar-height: 46px;
+  --titlebar-center-width: 280px;
+  --titlebar-action-min-width: 68px;
+  --workspace-gap: 3px;
+  --workspace-padding: 3px;
+  --workspace-default-media-width: 292px;
+  --workspace-default-inspector-width: 276px;
+  --workspace-default-preview-min: 360px;
+  --workspace-default-top: minmax(290px, 57%);
+  --workspace-default-bottom: minmax(214px, 43%);
+  --workspace-media-column: minmax(300px, 31%);
+  --workspace-preview-column: minmax(360px, 1fr);
+  --workspace-inspector-column: minmax(250px, 286px);
+  --workspace-media-top: minmax(276px, 56%);
+  --workspace-media-bottom: minmax(220px, 44%);
+  --workspace-vertical-panel: minmax(210px, 25%);
+  --workspace-vertical-left-full: minmax(420px, 50%);
+  --workspace-vertical-preview: minmax(420px, 50%);
+  --workspace-vertical-top: minmax(250px, 54%);
+  --workspace-vertical-bottom: minmax(230px, 46%);
+  --workspace-hidden-column: 0fr;
+  --titlebar-background: rgb(14 15 18 / 92%);
+  --activity-dot-offset: -2px;
+
+  --panel-header-height: 34px;
+  --panel-focus-inset: -1px;
+  --panel-content-min-height: 0;
+  --panel-header-tab-height: 30px;
+  --panel-header-underline: 2px;
+
+  --media-tools-height: 42px;
+  --media-card-min-width: 104px;
+  --media-card-art-height: 72px;
+  --media-list-art-width: 64px;
+  --media-list-art-height: 42px;
+  --media-grid-columns: repeat(auto-fill, minmax(var(--media-card-min-width), 1fr));
+  --media-list-columns: 1fr;
+  --media-drop-inset: 8px;
+  --media-status-max-width: calc(100% - 12px);
+  --generation-icon-size: 36px;
+  --generation-job-height: 44px;
+  --generation-textarea-height: 94px;
+  --asset-art-icon-color: rgb(255 255 255 / 78%);
+  --asset-art-shade: linear-gradient(180deg, transparent, rgb(0 0 0 / 24%));
+  --media-empty-height: 180px;
+  --drop-overlay-background: rgb(13 15 18 / 88%);
+  --generation-kind-count: 3;
+  --form-column-count: 2;
+  --wave-low: 34%;
+  --wave-high: 86%;
+
+  --preview-frame-max-width: 82%;
+  --preview-frame-max-height: 82%;
+  --preview-frame-aspect: 16 / 9;
+  --preview-scrubber-height: 14px;
+  --preview-transport-height: 42px;
+  --preview-title-size: clamp(38px, 8vw, 104px);
+  --preview-subtitle-size: clamp(12px, 2vw, 26px);
+  --preview-safe-inset: 8%;
+  --preview-orbit-size: 48%;
+  --preview-audio-width: 64%;
+  --preview-overlay-max-width: 420px;
+  --preview-select-width: 72px;
+  --preview-stage-gradient-stop: 72%;
+  --preview-frame-shadow: 0 20px 60px rgb(0 0 0 / 58%);
+  --preview-orbit-top: -22%;
+  --preview-orbit-left: 24%;
+  --preview-orbit-border: 46px;
+  --preview-orbit-color: rgb(255 230 196 / 16%);
+  --preview-orbit-radius: 48% 52% 64% 36%;
+  --preview-orbit-blur: blur(10px);
+  --preview-orbit-transform: rotate(-18deg) scaleX(1.7);
+  --preview-grain-opacity: 0.2;
+  --preview-grain-pattern: radial-gradient(
+    circle,
+    rgb(255 255 255 / 24%) 0.6px,
+    transparent 0.7px
+  );
+  --preview-grain-size: 4px 4px;
+  --preview-text-shadow: 0 2px 16px rgb(0 0 0 / 64%);
+  --preview-safe-color: rgb(255 255 255 / 36%);
+  --preview-label-color: rgb(255 255 255 / 74%);
+  --large-waveform-height: 62px;
+
+  --inspector-label-width: 88px;
+  --inspector-input-width: 84px;
+  --inspector-media-icon-size: 38px;
+  --inspector-range-value-width: 44px;
+  --inspector-section-header-height: 32px;
+  --inspector-tab-count: 2;
+  --inspector-control-columns: 2;
+
+  --timeline-toolbar-height: 40px;
+  --timeline-ruler-height: 27px;
+  --timeline-track-header-width: 88px;
+  --timeline-video-track-height: 54px;
+  --timeline-audio-track-height: 48px;
+  --timeline-track-min-width: 720px;
+  --timeline-clip-inset: 3px;
+  --timeline-trim-width: 6px;
+  --timeline-playhead-width: 1px;
+  --timeline-playhead-head-width: 10px;
+  --timeline-playhead-head-height: 8px;
+  --timeline-zoom-width: 112px;
+  --timeline-clip-min-width: 8px;
+  --timeline-label-max-width: calc(100% - 18px);
+  --timeline-wave-count-height: 22px;
+  --ruler-label-transform: translateX(-3px);
+  --playhead-head-shape: polygon(0 0, 100% 0, 50% 100%);
+  --track-locked-overlay: rgb(7 8 10 / 18%);
+  --clip-border: rgb(0 0 0 / 52%);
+  --clip-hover-filter: brightness(1.08);
+  --clip-selection-inner: rgb(0 0 0 / 35%);
+  --clip-offline-filter: grayscale(0.8) brightness(0.65);
+  --clip-filmstrip-opacity: 0.68;
+  --clip-frame-count: 5;
+  --clip-frame-divider: rgb(255 255 255 / 8%);
+  --clip-frame-shade: linear-gradient(
+    120deg,
+    rgb(255 255 255 / 3%),
+    rgb(0 0 0 / 22%)
+  );
+  --clip-label-background: rgb(0 0 0 / 38%);
+  --trim-handle-background: rgb(255 255 255 / 72%);
+
+  --modal-small-width: 420px;
+  --modal-settings-width: 760px;
+  --modal-export-width: min(1040px, calc(100vw - 48px));
+  --modal-max-height: calc(100dvh - 64px);
+  --modal-header-height: 54px;
+  --settings-sidebar-width: 190px;
+  --export-settings-width: 55%;
+  --export-queue-width: 45%;
+  --export-destination-min-width: 104px;
+  --export-job-icon-size: 34px;
+  --toast-bottom: 24px;
+  --toast-max-width: 460px;
+  --banner-top: 54px;
+  --modal-backdrop-background: rgb(0 0 0 / 58%);
+  --settings-dialog-height: 420px;
+  --settings-help-max-width: 440px;
+  --export-dialog-height: 590px;
+  --export-destination-count: 3;
+  --export-destination-height: 84px;
+  --export-field-height: 48px;
+  --export-select-width: 130px;
+  --job-progress-label-width: 34px;
+  --job-progress-height: 3px;
+
+  --z-panel-focus: 2;
+  --z-sticky: 4;
+  --z-playhead: 6;
+  --z-drop: 12;
+  --z-banner: 40;
+  --z-modal: 50;
+  --z-toast: 60;
+
+  --flex-fill: 1 1 auto;
+  --flex-fixed: 0 0 auto;
+  --grid-minmax-zero: minmax(0, 1fr);
+  --transform-center: translate(-50%, -50%);
+  --transform-center-x: translateX(-50%);
+  --transform-sample-hover: translateY(-3px);
+  --transform-none: translateY(0);
+  --transform-playhead-head: translateX(-50%);
+  --transform-spinner-start: rotate(0deg);
+  --transform-spinner-end: rotate(360deg);
+  --blur-modal: blur(18px);
+  --blur-home: blur(28px);
+  --backdrop-saturate: saturate(120%);
+  --progress: 0%;
+  --canvas-scale: 1;
+  --canvas-opacity: 1;
+  --canvas-x: 0%;
+  --canvas-y: 0%;
+  --canvas-rotation: 0deg;
+  --timeline-left: 0%;
+  --timeline-width: 0%;
+  --timeline-content-width: 100%;
+}
+
+@keyframes palmier-spin {
+  from {
+    transform: var(--transform-spinner-start);
+  }
+  to {
+    transform: var(--transform-spinner-end);
+  }
+}
+
+@keyframes palmier-pulse {
+  0%,
+  100% {
+    opacity: var(--opacity-full);
+  }
+  50% {
+    opacity: var(--opacity-disabled);
+  }
+}

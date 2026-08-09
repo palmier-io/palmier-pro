@@ -1,0 +1,5 @@
+[env]
+PKG_CONFIG = { value = "scripts/pkgconf-wrapper.sh", relative = true, force = true }
+PKG_CONFIG_PATH = { value = ".deps/sysroot/usr/lib/x86_64-linux-gnu/pkgconfig:.deps/sysroot/usr/lib/pkgconfig:.deps/sysroot/usr/share/pkgconfig", relative = true, force = true }
+LIBCLANG_PATH = { value = ".deps/sysroot/usr/lib/llvm-21/lib", relative = true, force = true }
+BINDGEN_EXTRA_CLANG_ARGS = "-I/usr/lib/gcc/x86_64-linux-gnu/15/include -I/usr/include"

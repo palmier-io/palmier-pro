@@ -37,3 +37,12 @@ models/*/checkpoint*
 models/*/convert*.log
 
 AUDIO_SUITE_*
+
+# Linux port
+linux/target/
+linux/.deps/
+linux/app/node_modules/
+linux/app/dist/
+linux/app/src-tauri/target/
+linux/app/src/locales/*.generated.json
+**/*.rs.bk

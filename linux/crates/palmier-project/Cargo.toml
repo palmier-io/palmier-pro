@@ -1,0 +1,22 @@
+[package]
+name = "palmier-project"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+libc = { workspace = true }
+palmier-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
+
+[lints]
+workspace = true

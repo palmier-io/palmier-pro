@@ -1,0 +1,114 @@
+name: Linux
+
+on:
+  push:
+    branches: [main, linux-port]
+    paths:
+      - "linux/**"
+      - ".github/workflows/linux.yml"
+  pull_request:
+    paths:
+      - "linux/**"
+      - ".github/workflows/linux.yml"
+
+concurrency:
+  group: linux-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust workspace
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: linux
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bootstrap packages
+        run: sudo ./scripts/bootstrap-ubuntu-26.04.sh
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.1
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            linux/target
+          key: linux-cargo-${{ hashFiles('linux/Cargo.lock') }}
+          restore-keys: linux-cargo-
+
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --exclude palmier-app --all-targets -- -D clippy::correctness -D clippy::suspicious
+
+      - name: Test
+        run: |
+          export LD_LIBRARY_PATH="${PWD}/.deps/sysroot/usr/lib/x86_64-linux-gnu:${PWD}/.deps/sysroot/usr/lib/llvm-21/lib:${LD_LIBRARY_PATH:-}"
+          cargo test --workspace --exclude palmier-app
+
+      - name: Check Tauri crate
+        run: cargo check -p palmier-app
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: linux/app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: linux/app/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc -b --pretty false
+      - run: npm test
+      - run: npm run build
+
+  package:
+    name: Deb package
+    runs-on: ubuntu-26.04
+    needs: [rust, frontend]
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: linux
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bootstrap packages
+        run: sudo ./scripts/bootstrap-ubuntu-26.04.sh
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: linux/app/package-lock.json
+      - name: Install frontend deps
+        working-directory: linux/app
+        run: npm ci
+      - name: Install tauri-cli
+        run: cargo install tauri-cli --locked --version 2.6.2
+      - name: Build deb
+        run: |
+          cargo tauri build --bundles deb --config app/src-tauri/tauri.conf.json
+        working-directory: linux/app
+      - name: Upload deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: palmier-pro-deb
+          path: linux/app/src-tauri/target/release/bundle/deb/*.deb

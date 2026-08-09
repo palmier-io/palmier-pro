@@ -1,0 +1,31 @@
+[package]
+name = "palmier-media"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+playback = ["dep:cpal"]
+gpu-preview = ["dep:wgpu", "dep:bytemuck"]
+
+[dependencies]
+bytemuck = { version = "1.23.1", features = ["derive"], optional = true }
+cpal = { workspace = true, optional = true }
+ffmpeg-next = { workspace = true }
+jpeg-encoder = { workspace = true }
+libc = { workspace = true }
+palmier-core = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+uuid = { workspace = true }
+wgpu = { workspace = true, optional = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
+
+[lints]
+workspace = true

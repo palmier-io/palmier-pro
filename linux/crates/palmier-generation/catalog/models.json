@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "models": [
+    {
+      "id": "flux-schnell",
+      "kind": "image",
+      "displayName": "Flux Schnell",
+      "provider": "fal",
+      "endpoint": "fal-ai/flux/schnell",
+      "fileExtension": "png",
+      "aspectRatios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+      "maxReferences": 0,
+      "resultPath": ["images", 0, "url"]
+    },
+    {
+      "id": "sdxl",
+      "kind": "image",
+      "displayName": "SDXL",
+      "provider": "replicate",
+      "endpoint": "stability-ai/sdxl",
+      "fileExtension": "png",
+      "aspectRatios": ["1:1", "16:9", "9:16"],
+      "maxReferences": 1,
+      "resultPath": [0]
+    },
+    {
+      "id": "kling-video",
+      "kind": "video",
+      "displayName": "Kling Video",
+      "provider": "fal",
+      "endpoint": "fal-ai/kling-video/v1/standard/text-to-video",
+      "fileExtension": "mp4",
+      "aspectRatios": ["16:9", "9:16", "1:1"],
+      "durations": [5, 10],
+      "maxReferences": 1,
+      "resultPath": ["video", "url"]
+    },
+    {
+      "id": "minimax-video",
+      "kind": "video",
+      "displayName": "MiniMax Video",
+      "provider": "replicate",
+      "endpoint": "minimax/video-01",
+      "fileExtension": "mp4",
+      "aspectRatios": ["16:9", "9:16"],
+      "durations": [6],
+      "maxReferences": 1,
+      "resultPath": [0]
+    },
+    {
+      "id": "stable-audio",
+      "kind": "audio",
+      "displayName": "Stable Audio",
+      "provider": "fal",
+      "endpoint": "fal-ai/stable-audio",
+      "fileExtension": "wav",
+      "durations": [10, 30, 47],
+      "maxReferences": 0,
+      "resultPath": ["audio_file", "url"]
+    },
+    {
+      "id": "musicgen",
+      "kind": "audio",
+      "displayName": "MusicGen",
+      "provider": "replicate",
+      "endpoint": "meta/musicgen",
+      "fileExtension": "wav",
+      "durations": [8, 16, 30],
+      "maxReferences": 0,
+      "resultPath": [0]
+    },
+    {
+      "id": "topaz-upscale",
+      "kind": "upscale",
+      "displayName": "Topaz Upscale",
+      "provider": "fal",
+      "endpoint": "fal-ai/topaz/upscale/image",
+      "fileExtension": "png",
+      "maxReferences": 1,
+      "requiresSource": true,
+      "resultPath": ["image", "url"]
+    },
+    {
+      "id": "real-esrgan",
+      "kind": "upscale",
+      "displayName": "Real-ESRGAN",
+      "provider": "replicate",
+      "endpoint": "nightmareai/real-esrgan",
+      "fileExtension": "png",
+      "maxReferences": 1,
+      "requiresSource": true,
+      "resultPath": [0]
+    }
+  ]
+}
