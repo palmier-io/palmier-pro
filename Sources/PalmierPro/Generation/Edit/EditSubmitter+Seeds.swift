@@ -71,7 +71,7 @@ extension EditSubmitter {
         case .image:
             guard let model = ImageModelConfig.nanoBananaPro else { return nil }
             modelId = model.id
-        case .audio, .text, .lottie, .sequence:
+        case .audio, .text, .lottie, .sequence, .subtitle:
             return nil
         }
         var stored = GenerationInput(

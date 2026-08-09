@@ -76,6 +76,8 @@ extension ToolExecutor {
             throw ToolError("Text generation is not wired through the generate tool.")
         case .lottie:
             throw ToolError("Lottie animations aren't generated through this tool.")
+        case .subtitle:
+            throw ToolError("Subtitle files aren't generated. Import an SRT or WebVTT file with import_media.")
         }
     }
 

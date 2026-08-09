@@ -389,7 +389,12 @@ final class ToolExecutor {
 
     /// Media asset, or a synthetic stand-in when `id` names a timeline (nest insertion).
     func clipSource(_ id: String, editor: EditorViewModel, path: String) throws -> MediaAsset {
-        if let existing = editor.mediaAssets.first(where: { $0.id == id }) { return existing }
+        if let existing = editor.mediaAssets.first(where: { $0.id == id }) {
+            guard existing.type != .subtitle else {
+                throw ToolError("\(path): '\(id)' is a subtitle file and can't be placed as a clip. Use add_captions with subtitleMediaRef to place its cues as captions.")
+            }
+            return existing
+        }
         guard let child = editor.timeline(for: id) else {
             throw ToolError("\(path): media asset or timeline not found: \(id)")
         }

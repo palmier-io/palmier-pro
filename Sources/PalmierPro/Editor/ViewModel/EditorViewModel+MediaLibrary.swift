@@ -410,6 +410,18 @@ extension EditorViewModel {
                 placeable.append(asset)
             }
         }
+        // Pre-parse subtitle files so caption placement joins the drop's single undo group.
+        var captionSpecSets: [[TextClipSpec]] = []
+        for asset in placeable where asset.type == .subtitle {
+            guard let url = mediaResolver.resolveURL(for: asset.id) else { continue }
+            do {
+                captionSpecSets.append(try await subtitleCaptionSpecs(from: url))
+            } catch {
+                mediaPanelToast = MediaPanelToast(
+                    message: L10n.string("Can't add captions from \"\(asset.name)\" — \(error.localizedDescription)")
+                )
+            }
+        }
         // Revalidate after the awaits: bail if the project changed while metadata loaded.
         guard summary.assets.allSatisfy({ mediaAssetsById[$0.id] === $0 }) else { return }
 
@@ -421,6 +433,9 @@ extension EditorViewModel {
                 }
                 if !placeable.isEmpty {
                     placeDroppedAssets(placeable, cursor: cursor, atFrame: atFrame, ripple: ripple)
+                }
+                for specs in captionSpecSets {
+                    placeCaptionTrack(specs, actionName: "Add Media")
                 }
             }
         }
@@ -651,7 +666,7 @@ extension EditorViewModel {
             mediaVisualCache.generateWaveform(for: asset)
         case .image:
             mediaVisualCache.generateImageThumbnail(for: asset)
-        case .text, .lottie, .sequence:
+        case .text, .lottie, .sequence, .subtitle:
             break
         }
     }
@@ -674,7 +689,7 @@ extension EditorViewModel {
         }
         if case .mediaAsset(let id, _, let type) = activePreviewTab,
            id == asset.id,
-           type != .image {
+           type != .image, type != .subtitle {
             videoEngine?.previewAsset(asset)
             videoEngine?.seek(to: sourcePlayheadFrame, mode: .exact)
         }

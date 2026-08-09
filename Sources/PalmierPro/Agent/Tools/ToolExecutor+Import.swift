@@ -7,7 +7,7 @@ extension ToolExecutor {
 
     private static let importMediaAllowedKeys: Set<String> = ["source", "name", "folder"]
     private static let importSourceAllowedKeys: Set<String> = ["url", "path", "bytes", "matte", "mimeType"]
-    private nonisolated static let acceptedMimeTypesMessage = "Accepted: video/mp4, video/quicktime, audio/mpeg, audio/wav, audio/aac, audio/mp4, audio/aiff, audio/x-caf, audio/flac, image/png, image/jpeg, image/tiff, image/heic."
+    private nonisolated static let acceptedMimeTypesMessage = "Accepted: video/mp4, video/quicktime, audio/mpeg, audio/wav, audio/aac, audio/mp4, audio/aiff, audio/x-caf, audio/flac, image/png, image/jpeg, image/tiff, image/heic, application/x-subrip, text/vtt."
 
     private struct ImportPathStatus: Sendable {
         let exists: Bool
@@ -82,7 +82,7 @@ extension ToolExecutor {
         }
         let ext = fileURL.pathExtension.lowercased()
         guard let type = ClipType(fileExtension: ext) else {
-            throw ToolError("Unsupported file extension '.\(ext)'. Supported: mov/mp4/m4v, mp3/wav/aac/m4a/aiff/aifc/caf/flac, png/jpg/jpeg/tiff/heic, json (Lottie).")
+            throw ToolError("Unsupported file extension '.\(ext)'. Supported: mov/mp4/m4v, mp3/wav/aac/m4a/aiff/aifc/caf/flac, png/jpg/jpeg/tiff/heic, json (Lottie), srt/vtt (subtitles).")
         }
         if type == .lottie, !LottieVideoGenerator.isLottie(at: fileURL) {
             throw ToolError("Unsupported Lottie file: \(fileURL.lastPathComponent)")
@@ -325,6 +325,8 @@ extension ToolExecutor {
         case "image/tiff": return "tiff"
         case "image/heic", "image/heif": return "heic"
         case "application/json", "application/vnd.lottie+json": return "json"
+        case "application/x-subrip", "text/srt": return "srt"
+        case "text/vtt": return "vtt"
         default: return nil
         }
     }

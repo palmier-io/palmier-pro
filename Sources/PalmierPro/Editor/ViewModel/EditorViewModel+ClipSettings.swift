@@ -136,6 +136,9 @@ extension EditorViewModel {
             result.edgeRounding = source.edgeRounding
             result.edgeSoftness = source.edgeSoftness
             result.blendMode = source.blendMode
+        case .subtitle:
+            // Asset-only type; never a clip's mediaType.
+            break
         }
         return result
     }

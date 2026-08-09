@@ -182,7 +182,7 @@ final class MediaAsset: Identifiable {
             defer { releaseThumbnailPermit() }
             guard thumbnail == nil, !Task.isCancelled else { return }
             _ = await loadMetadata()
-        case .audio, .text, .sequence:
+        case .audio, .text, .sequence, .subtitle:
             break
         }
     }
@@ -238,6 +238,14 @@ final class MediaAsset: Identifiable {
             if includeThumbnail, let cg = info.thumbnail {
                 thumbnail = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
             }
+            return true
+        }
+
+        if type == .subtitle {
+            let subtitleURL = url
+            guard let cues = try? await SubtitleFileParser.parseFile(at: subtitleURL),
+                  !Task.isCancelled, url == subtitleURL else { return false }
+            duration = cues.map(\.endSeconds).max() ?? 0
             return true
         }
 

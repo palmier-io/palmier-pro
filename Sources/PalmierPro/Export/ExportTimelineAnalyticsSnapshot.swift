@@ -68,7 +68,7 @@ enum ExportTimelineAnalyticsSnapshot {
                 switch clip.mediaType {
                 case .video, .image, .lottie: visual.record(asset.provenance, frames: clip.durationFrames, fps: fps)
                 case .audio: audio.record(asset.provenance, frames: clip.durationFrames, fps: fps)
-                case .text, .sequence: break
+                case .text, .sequence, .subtitle: break
                 }
             }
 

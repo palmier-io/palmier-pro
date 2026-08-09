@@ -33,6 +33,7 @@
 "%lld of %lld credits remaining this period" = "%lld of %lld credits remaining this period";
 "%lld sections" = "%lld sections";
 "%lld selected" = "%lld selected";
+"%lld subtitle files are ready in Palmier Pro." = "%lld subtitle files are ready in Palmier Pro.";
 "%lld text clips are ready in Palmier Pro." = "%lld text clips are ready in Palmier Pro.";
 "%lld videos are ready in Palmier Pro." = "%lld videos are ready in Palmier Pro.";
 "%lldk credits" = "%lldk credits";
@@ -133,6 +134,8 @@
 "Buy more" = "Buy more";
 "Cache" = "Cache";
 "Cached — no credits used." = "Cached — no credits used.";
+"Can't add captions from \"%@\" — %@" = "Can't add captions from \"%@\" — %@";
+"Can't add captions — \"%@\" is offline." = "Can't add captions — \"%@\" is offline.";
 "Can't delete every timeline — the project needs at least one." = "Can't delete every timeline — the project needs at least one.";
 "Can't import \"%@\" — not a Lottie animation." = "Can't import \"%@\" — not a Lottie animation.";
 "Can't import \"%@\" — unsupported file type." = "Can't import \"%@\" — unsupported file type.";
@@ -322,6 +325,7 @@
 "Edit doesn't support Lottie" = "Edit doesn't support Lottie";
 "Edit doesn't support audio" = "Edit doesn't support audio";
 "Edit doesn't support sequences" = "Edit doesn't support sequences";
+"Edit doesn't support subtitles" = "Edit doesn't support subtitles";
 "Edit doesn't support text" = "Edit doesn't support text";
 "Edit model not available" = "Edit model not available";
 "Edit supports up to %llds (this is %llds)" = "Edit supports up to %llds (this is %llds)";
@@ -882,6 +886,8 @@
 "Subscribe" = "Subscribe";
 "Subscribe or add your own API key to use this model." = "Subscribe or add your own API key to use this model.";
 "Subscription" = "Subscription";
+"Subtitle" = "Subtitle";
+"Subtitle file is unavailable." = "Subtitle file is unavailable.";
 "Swap Media" = "Swap Media";
 "Swap the clip's media when generation completes. Speed, volume, trim, and transform are preserved." = "Swap the clip's media when generation completes. Speed, volume, trim, and transform are preserved.";
 "Switch Angle" = "Switch Angle";
@@ -1034,6 +1040,7 @@
 "Your audio clip is ready." = "Your audio clip is ready.";
 "Your image is ready." = "Your image is ready.";
 "Your inspector for the selected clip — transform, adjust, audio, and more." = "Your inspector for the selected clip — transform, adjust, audio, and more.";
+"Your subtitle file is ready." = "Your subtitle file is ready.";
 "Your text clip is ready." = "Your text clip is ready.";
 "Your timeline: the top half is video, the bottom half is audio. Click a clip to inspect it — we've selected one for you." = "Your timeline: the top half is video, the bottom half is audio. Click a clip to inspect it — we've selected one for you.";
 "Your timeline: the top half is video, the bottom half is audio. This is where you edit." = "Your timeline: the top half is video, the bottom half is audio. This is where you edit.";

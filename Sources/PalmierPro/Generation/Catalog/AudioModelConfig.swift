@@ -116,7 +116,7 @@ struct AudioModelConfig: Identifiable, Sendable {
         switch type {
         case .audio: inputs.contains(.audio)
         case .video: inputs.contains(.video)
-        case .image, .text, .lottie, .sequence: false
+        case .image, .text, .lottie, .sequence, .subtitle: false
         }
     }
 
