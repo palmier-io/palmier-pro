@@ -2864,6 +2864,7 @@ dependencies = [
  "axum",
  "palmier-core",
  "palmier-generation",
+ "palmier-media",
  "palmier-service",
  "reqwest 0.12.28",
  "serde",

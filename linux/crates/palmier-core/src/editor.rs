@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use crate::frames::{Frame, FrameRange, checked_add, checked_sub, merge_ranges, swift_round};
 use crate::models::{
     AnimatableProperty, Clip, ClipLocation, ClipType, Interpolation, Keyframe, KeyframeTrack,
-    KeyframeValue, MediaManifest, ProjectFile, Timeline, Track, Transform, new_id,
+    KeyframeValue, MediaManifest, ProjectFile, Timeline, Track, Transform, default_true, new_id,
 };
 use crate::overwrite::{OverwriteEngine, SplitError, split_clip_value};
 use crate::receipt::{
@@ -190,6 +190,28 @@ pub enum EditorCommand {
     UpdateClips {
         timeline_id: String,
         clips: Vec<Clip>,
+    },
+    SetClipSpeed {
+        timeline_id: String,
+        clip_ids: Vec<String>,
+        speed: f64,
+        #[serde(default = "default_true")]
+        ripple: bool,
+    },
+    SetClipFades {
+        timeline_id: String,
+        clip_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        fade_in_frames: Option<Frame>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        fade_out_frames: Option<Frame>,
+    },
+    SlipClips {
+        timeline_id: String,
+        clip_id: String,
+        delta_frames: Frame,
+        #[serde(default = "default_true")]
+        propagate_to_linked: bool,
     },
     CreateTimeline {
         timeline: Timeline,
@@ -413,6 +435,24 @@ impl EditorSession {
                 timeline_id,
                 clips,
             } => self.update_clips(&timeline_id, clips),
+            EditorCommand::SetClipSpeed {
+                timeline_id,
+                clip_ids,
+                speed,
+                ripple,
+            } => self.set_clip_speed(&timeline_id, &clip_ids, speed, ripple),
+            EditorCommand::SetClipFades {
+                timeline_id,
+                clip_id,
+                fade_in_frames,
+                fade_out_frames,
+            } => self.set_clip_fades(&timeline_id, &clip_id, fade_in_frames, fade_out_frames),
+            EditorCommand::SlipClips {
+                timeline_id,
+                clip_id,
+                delta_frames,
+                propagate_to_linked,
+            } => self.slip_clips(&timeline_id, &clip_id, delta_frames, propagate_to_linked),
             EditorCommand::CreateTimeline {
                 timeline,
                 make_active,
@@ -1762,12 +1802,228 @@ impl EditorSession {
                             ),
                         ));
                     }
-                    *clip = replacement.clone();
+                    let mut next = replacement.clone();
+                    next.clamp_keyframes_to_duration();
+                    next.clamp_fades_to_duration();
+                    *clip = next;
                     changes.updated_clip_ids.push(clip.id.clone());
                     changes.affected_track_ids.push(track.id.clone());
                 }
                 track.sort_clips();
                 validate_track_collisions(track)?;
+            }
+            validate_project(&session.project)?;
+            Ok(TransactionResult::new(changes))
+        })
+    }
+
+    pub fn set_clip_speed(
+        &mut self,
+        timeline_id: &str,
+        clip_ids: &[String],
+        speed: f64,
+        ripple: bool,
+    ) -> Result<MutationReceipt, MutationError> {
+        if clip_ids.is_empty() {
+            return self.no_op_receipt(MutationKind::SetClipSpeed, timeline_id);
+        }
+        if !speed.is_finite() || speed <= 0.0 {
+            return Err(MutationError::new(
+                MutationErrorCode::InvalidArgument,
+                "clip speed must be finite and greater than zero",
+            ));
+        }
+        ensure_unique_ids(clip_ids, "clip")?;
+        let timeline_index = self.timeline_index(timeline_id)?;
+        for clip_id in clip_ids {
+            let location = self.clip_location(timeline_index, clip_id)?;
+            let clip = &self.project.timelines[timeline_index].tracks[location.track_index].clips
+                [location.clip_index];
+            if clip.multicam_group_id.is_some() {
+                return Err(MutationError::new(
+                    MutationErrorCode::MulticamAtomicity,
+                    "can't change speed on a multicam clip",
+                ));
+            }
+            if !clip.supports_retiming() {
+                return Err(MutationError::new(
+                    MutationErrorCode::InvalidArgument,
+                    format!("clip {clip_id} does not support retiming"),
+                ));
+            }
+        }
+        let ids = clip_ids.to_vec();
+        self.transact(MutationKind::SetClipSpeed, timeline_id, move |session| {
+            let timeline_index = session.timeline_index(timeline_id)?;
+            let mut changes = MutationChanges::default();
+            for clip_id in &ids {
+                let location = session.clip_location(timeline_index, clip_id)?;
+                let track = &mut session.project.timelines[timeline_index].tracks
+                    [location.track_index];
+                let clip = &mut track.clips[location.clip_index];
+                if (clip.speed - speed).abs() < f64::EPSILON {
+                    continue;
+                }
+                let clip_id = clip.id.clone();
+                let track_id = track.id.clone();
+                let old_duration = clip.duration_frames;
+                let old_end = clip.end_frame();
+                let start_frame = clip.start_frame;
+                let new_duration = retimed_duration_frames(old_duration, clip.speed, speed)?;
+                clip.speed = speed;
+                clip.duration_frames = new_duration;
+                if old_duration > 0 {
+                    clip.rescale_keyframes(new_duration as f64 / old_duration as f64)
+                        .map_err(frame_error)?;
+                }
+                clip.clamp_keyframes_to_duration();
+                clip.clamp_fades_to_duration();
+                changes.updated_clip_ids.push(clip_id.clone());
+                changes.affected_track_ids.push(track_id);
+
+                if ripple {
+                    let ripple_delta = checked_sub(start_frame + new_duration, old_end)
+                        .map_err(frame_error)?;
+                    if ripple_delta != 0 {
+                        let chain = track.contiguous_clip_ids(old_end, &clip_id);
+                        for other in &mut track.clips {
+                            if chain.contains(&other.id) {
+                                other.start_frame =
+                                    checked_add(other.start_frame, ripple_delta)
+                                        .map_err(frame_error)?;
+                                changes.updated_clip_ids.push(other.id.clone());
+                            }
+                        }
+                    }
+                }
+                track.sort_clips();
+                validate_track_collisions(track)?;
+            }
+            validate_project(&session.project)?;
+            Ok(TransactionResult::new(changes))
+        })
+    }
+
+    pub fn set_clip_fades(
+        &mut self,
+        timeline_id: &str,
+        clip_id: &str,
+        fade_in_frames: Option<Frame>,
+        fade_out_frames: Option<Frame>,
+    ) -> Result<MutationReceipt, MutationError> {
+        if fade_in_frames.is_none() && fade_out_frames.is_none() {
+            return self.no_op_receipt(MutationKind::SetClipFades, timeline_id);
+        }
+        let timeline_index = self.timeline_index(timeline_id)?;
+        self.clip_location(timeline_index, clip_id)?;
+        if fade_in_frames.is_some_and(|value| value < 0)
+            || fade_out_frames.is_some_and(|value| value < 0)
+        {
+            return Err(MutationError::new(
+                MutationErrorCode::InvalidArgument,
+                "fade frames must be non-negative",
+            ));
+        }
+        let clip_id = clip_id.to_owned();
+        self.transact(MutationKind::SetClipFades, timeline_id, move |session| {
+            let timeline_index = session.timeline_index(timeline_id)?;
+            let location = session.clip_location(timeline_index, &clip_id)?;
+            let track =
+                &mut session.project.timelines[timeline_index].tracks[location.track_index];
+            let clip = &mut track.clips[location.clip_index];
+            if let Some(value) = fade_in_frames {
+                clip.fade_in_frames = value;
+            }
+            if let Some(value) = fade_out_frames {
+                clip.fade_out_frames = value;
+            }
+            clip.clamp_fades_to_duration();
+            Ok(TransactionResult::new(MutationChanges {
+                updated_clip_ids: vec![clip.id.clone()],
+                affected_track_ids: vec![track.id.clone()],
+                ..MutationChanges::default()
+            }))
+        })
+    }
+
+    pub fn slip_clips(
+        &mut self,
+        timeline_id: &str,
+        clip_id: &str,
+        delta_frames: Frame,
+        propagate_to_linked: bool,
+    ) -> Result<MutationReceipt, MutationError> {
+        let timeline_index = self.timeline_index(timeline_id)?;
+        let lead_location = self.clip_location(timeline_index, clip_id)?;
+        let lead = self.project.timelines[timeline_index].tracks[lead_location.track_index].clips
+            [lead_location.clip_index]
+            .clone();
+        if !is_slip_eligible(&lead) {
+            return Err(MutationError::new(
+                MutationErrorCode::InvalidArgument,
+                "clip is not eligible for slip",
+            ));
+        }
+
+        let mut targets = vec![lead.clone()];
+        if propagate_to_linked {
+            for partner_id in linked_partner_ids(&self.project.timelines[timeline_index], clip_id) {
+                if partner_id == clip_id {
+                    continue;
+                }
+                let Ok(location) = self.clip_location(timeline_index, &partner_id) else {
+                    continue;
+                };
+                let partner = &self.project.timelines[timeline_index].tracks[location.track_index]
+                    .clips[location.clip_index];
+                if is_slip_eligible(partner) {
+                    targets.push(partner.clone());
+                }
+            }
+        }
+
+        let mut delta = delta_frames;
+        for target in &targets {
+            let speed = target.speed.max(0.001);
+            let right = ((target.trim_start_frame as f64) / speed).floor() as Frame;
+            let left = ((effective_trim_end(&self.project, target) as f64) / speed).floor() as Frame;
+            delta = delta.min(right).max(-left);
+        }
+        if delta == 0 {
+            return self.no_op_receipt(MutationKind::SlipClips, timeline_id);
+        }
+
+        let applied: HashMap<String, Frame> = targets
+            .iter()
+            .map(|target| {
+                let source_delta = swift_round(delta as f64 * target.speed).unwrap_or(0);
+                let trim_end = effective_trim_end(&self.project, target);
+                let applied = source_delta.min(target.trim_start_frame).max(-trim_end);
+                (target.id.clone(), applied)
+            })
+            .collect();
+        if applied.values().all(|value| *value == 0) {
+            return self.no_op_receipt(MutationKind::SlipClips, timeline_id);
+        }
+
+        self.transact(MutationKind::SlipClips, timeline_id, move |session| {
+            let timeline_index = session.timeline_index(timeline_id)?;
+            let mut changes = MutationChanges::default();
+            for track in &mut session.project.timelines[timeline_index].tracks {
+                for clip in &mut track.clips {
+                    let Some(applied_delta) = applied.get(&clip.id).copied() else {
+                        continue;
+                    };
+                    if applied_delta == 0 {
+                        continue;
+                    }
+                    clip.trim_start_frame = checked_sub(clip.trim_start_frame, applied_delta)
+                        .map_err(frame_error)?;
+                    clip.trim_end_frame =
+                        checked_add(clip.trim_end_frame, applied_delta).map_err(frame_error)?;
+                    changes.updated_clip_ids.push(clip.id.clone());
+                    changes.affected_track_ids.push(track.id.clone());
+                }
             }
             validate_project(&session.project)?;
             Ok(TransactionResult::new(changes))
@@ -2438,6 +2694,53 @@ fn expand_link_groups(timeline: &Timeline, ids: &HashSet<String>) -> HashSet<Str
         }
     }
     result
+}
+
+fn linked_partner_ids(timeline: &Timeline, clip_id: &str) -> Vec<String> {
+    let Some(location) = timeline.clip_location(clip_id) else {
+        return Vec::new();
+    };
+    let clip = &timeline.tracks[location.track_index].clips[location.clip_index];
+    let Some(group) = &clip.link_group_id else {
+        return Vec::new();
+    };
+    link_index(timeline)
+        .get(group)
+        .cloned()
+        .unwrap_or_default()
+}
+
+fn is_slip_eligible(clip: &Clip) -> bool {
+    !matches!(clip.media_type, ClipType::Image | ClipType::Text)
+        && clip.multicam_group_id.is_none()
+}
+
+fn effective_trim_end(project: &ProjectFile, clip: &Clip) -> Frame {
+    if clip.source_clip_type == ClipType::Sequence {
+        if let Some(child) = project
+            .timelines
+            .iter()
+            .find(|timeline| timeline.id == clip.media_ref)
+        {
+            return (child.total_frames() - clip.trim_start_frame - clip.duration_frames).max(0);
+        }
+    }
+    clip.trim_end_frame.max(0)
+}
+
+fn retimed_duration_frames(
+    duration_frames: Frame,
+    speed: f64,
+    new_speed: f64,
+) -> Result<Frame, MutationError> {
+    if !new_speed.is_finite() || new_speed <= 0.0 || !speed.is_finite() || speed <= 0.0 {
+        return Err(MutationError::new(
+            MutationErrorCode::InvalidArgument,
+            "clip speed must be finite and greater than zero",
+        ));
+    }
+    let scaled = swift_round(duration_frames as f64 * speed / new_speed).map_err(frame_error)?;
+    Ok(scaled.max(1))
 }
 
 fn validate_keyframe_frame(clip: &Clip, frame: Frame) -> Result<(), MutationError> {
@@ -3184,5 +3487,46 @@ mod tests {
         assert_eq!(session.project().active_timeline_id(), Some("second"));
         session.undo().unwrap();
         assert_eq!(session.project().timelines.len(), 1);
+    }
+
+    #[test]
+    fn slip_shifts_source_window_without_moving_clip() {
+        let mut value = clip("clip", ClipType::Video, 10, 30);
+        value.trim_start_frame = 20;
+        value.trim_end_frame = 40;
+        let mut session = session(vec![track("v1", ClipType::Video, vec![value])]);
+        let receipt = session
+            .execute(EditorCommand::SlipClips {
+                timeline_id: "timeline".into(),
+                clip_id: "clip".into(),
+                delta_frames: 5,
+                propagate_to_linked: true,
+            })
+            .unwrap();
+        assert_eq!(receipt.status, MutationStatus::Applied);
+        let clip = &session.project().timelines[0].tracks[0].clips[0];
+        assert_eq!(clip.start_frame, 10);
+        assert_eq!(clip.duration_frames, 30);
+        assert_eq!(clip.trim_start_frame, 15);
+        assert_eq!(clip.trim_end_frame, 45);
+    }
+
+    #[test]
+    fn set_clip_speed_retimes_duration_and_ripples() {
+        let lead = clip("lead", ClipType::Video, 0, 60);
+        let trail = clip("trail", ClipType::Video, 60, 30);
+        let mut session = session(vec![track("v1", ClipType::Video, vec![lead, trail])]);
+        session
+            .execute(EditorCommand::SetClipSpeed {
+                timeline_id: "timeline".into(),
+                clip_ids: vec!["lead".into()],
+                speed: 2.0,
+                ripple: true,
+            })
+            .unwrap();
+        let track = &session.project().timelines[0].tracks[0];
+        assert_eq!(track.clips[0].speed, 2.0);
+        assert_eq!(track.clips[0].duration_frames, 30);
+        assert_eq!(track.clips[1].start_frame, 30);
     }
 }

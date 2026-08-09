@@ -683,6 +683,19 @@ function editorReducer(
       })
     case 'TOGGLE_TRACK_SETTING':
       if (!state.project) return state
+      if (action.setting === 'locked') {
+        return {
+          ...state,
+          project: {
+            ...state.project,
+            tracks: state.project.tracks.map((track) =>
+              track.id === action.trackId
+                ? { ...track, locked: !track.locked }
+                : track,
+            ),
+          },
+        }
+      }
       return commitProject(state, {
         ...state.project,
         tracks: state.project.tracks.map((track) =>
@@ -836,9 +849,17 @@ function editorReducer(
         Boolean(findClip(result.project, clipId)),
       )
       const created = result.receipt.createdClipIds
+      const locks = new Map(
+        (state.project?.tracks ?? []).map((track) => [track.id, track.locked]),
+      )
+      const project = cloneProject(result.project)
+      project.tracks = project.tracks.map((track) => ({
+        ...track,
+        locked: locks.get(track.id) ?? track.locked,
+      }))
       return {
         ...state,
-        project: cloneProject(result.project),
+        project,
         selectedClipIds:
           created.length > 0 ? created : selectedClipIds,
         dirty: result.dirty ?? true,
@@ -916,6 +937,10 @@ function planRemoteMutation(
     case 'DELETE_SELECTION':
       return planRemoveClips(state.project, state.selectedClipIds)
     case 'TOGGLE_TRACK_SETTING':
+      if (action.setting === 'locked') {
+        // Ephemeral session lock. Apply through the local reducer.
+        return null
+      }
       return planUpdateTrack(state.project, action.trackId, action.setting)
     case 'UPDATE_CLIP':
       return planClipPropertyEdit(state.project, action.clipId, action.patch)

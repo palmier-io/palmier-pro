@@ -4,14 +4,20 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = []
+media = ["dep:palmier-media", "dep:tempfile", "palmier-service/media"]
+
 [dependencies]
 anyhow = { workspace = true }
 axum = { workspace = true }
 palmier-core = { workspace = true }
 palmier-generation = { workspace = true }
+palmier-media = { workspace = true, optional = true }
 palmier-service = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+tempfile = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }

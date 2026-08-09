@@ -1,4 +1,6 @@
-use palmier_core::{EditorCommand, EditorSession, EditorSnapshot, MutationError, MutationReceipt};
+use palmier_core::{
+    EditorCommand, EditorSession, EditorSnapshot, MutationError, MutationReceipt,
+};
 
 #[derive(Debug, Clone)]
 pub struct EditPreview {

@@ -105,8 +105,11 @@ pub struct TimelineClip {
     pub start_frame: i64,
     pub duration_frames: i64,
     pub source_offset_frames: i64,
+    pub trim_end_frames: i64,
     pub speed: f64,
     pub volume: f64,
+    pub fade_in_frames: i64,
+    pub fade_out_frames: i64,
     pub transform: ClipTransform,
 }
 

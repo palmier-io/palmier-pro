@@ -90,6 +90,239 @@ impl EditorServiceBackend {
             .as_deref()
             .ok_or_else(|| BackendError::message("generation is unavailable"))
     }
+
+    #[cfg(feature = "media")]
+    async fn capture_frame_media(&self, args: Value) -> BackendResult<Value> {
+        use palmier_media::{
+            MediaTime, PausedFrameRequest, FrameOutput, encode_jpeg, prepare_project_render,
+        };
+        use palmier_service::ImportMode;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let map = object(&args)?;
+        let timeline_frame = integer(map, "timelineFrame")?;
+        let media_ref = string(map, "mediaRef")?;
+        let source_seconds = number(map, "sourceSeconds")?;
+        match (timeline_frame, media_ref.as_ref(), source_seconds) {
+            (Some(_), None, None) | (None, Some(_), Some(_)) => {}
+            _ => {
+                return Err(BackendError::message(
+                    "pass timelineFrame alone, or mediaRef with sourceSeconds",
+                ));
+            }
+        }
+
+        let view = self.active_view().await?;
+        let project_id = view.summary.project_id;
+        let jpeg = if let Some(frame) = timeline_frame {
+            let render = prepare_project_render(
+                &view.snapshot.project,
+                &view.snapshot.media_manifest,
+                view.summary.path.as_deref(),
+                view.summary.active_timeline_id.as_deref(),
+                None,
+            )
+            .await
+            .map_err(|error| BackendError::message(error.to_string()))?;
+            let frame_index = u64::try_from(frame.max(0))
+                .map_err(|_| BackendError::message("timelineFrame is out of range"))?;
+            let rendered = render
+                .source
+                .render_frame(frame_index)
+                .map_err(|error| BackendError::message(error.to_string()))?;
+            encode_jpeg(&rendered, 90).map_err(|error| BackendError::message(error.to_string()))?
+        } else {
+            let media_ref = media_ref.expect("validated above");
+            let entry = view
+                .snapshot
+                .media_manifest
+                .entries
+                .iter()
+                .find(|entry| entry.id == media_ref)
+                .ok_or_else(|| BackendError::message(format!("media not found: {media_ref}")))?;
+            let path = match &entry.source {
+                palmier_core::MediaSource::Project { relative_path } => view
+                    .summary
+                    .path
+                    .as_ref()
+                    .map(|root| root.join(relative_path))
+                    .ok_or_else(|| BackendError::message("project path is required"))?,
+                palmier_core::MediaSource::External { absolute_path } => {
+                    PathBuf::from(absolute_path)
+                }
+            };
+            let seconds = source_seconds.expect("validated above");
+            let decoded = self
+                .editor
+                .decode_paused_frame(PausedFrameRequest {
+                    path,
+                    stream_index: None,
+                    time: MediaTime::from_seconds(
+                        palmier_media::ExactRational::new(
+                            (seconds * 1_000_000.0).round() as i128,
+                            1_000_000,
+                        )
+                        .map_err(|error| BackendError::message(error.to_string()))?,
+                    ),
+                    max_width: 1920,
+                    max_height: 1080,
+                    allow_upscale: true,
+                    output: FrameOutput::Jpeg { quality: 90 },
+                })
+                .await
+                .map_err(service_error)?;
+            match decoded.data {
+                palmier_media::DecodedFrameData::Jpeg { bytes, .. } => bytes,
+                _ => {
+                    return Err(BackendError::message(
+                        "capture_frame expected JPEG decode output",
+                    ));
+                }
+            }
+        };
+
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|value| value.as_millis())
+            .unwrap_or(0);
+        let temp_dir = tempfile::tempdir().map_err(|error| BackendError::message(error.to_string()))?;
+        let temp_path = temp_dir.path().join(format!("capture-{stamp}.jpg"));
+        tokio::fs::write(&temp_path, &jpeg)
+            .await
+            .map_err(|error| BackendError::message(error.to_string()))?;
+        let imported = self
+            .editor
+            .import_local_files(
+                project_id,
+                [temp_path],
+                ImportMode::InstallIntoPackage,
+                None,
+            )
+            .await
+            .map_err(service_error)?;
+        let asset = imported
+            .entries
+            .into_iter()
+            .next()
+            .ok_or_else(|| BackendError::message("capture_frame did not install media"))?;
+        let name = string(map, "name")?.unwrap_or_else(|| asset.name.clone());
+        Ok(json!({
+            "mediaRef": asset.asset_id,
+            "name": name,
+            "type": "image",
+            "status": "ready",
+        }))
+    }
+
+    #[cfg(feature = "media")]
+    async fn export_project_media(&self, args: Value) -> BackendResult<Value> {
+        use palmier_media::{
+            AudioExportSettings, ExportRequest, ExportSettings, prepare_project_render,
+        };
+
+        let map = object(&args)?;
+        let mode = string(map, "mode")?.unwrap_or_else(|| "video".to_owned());
+        if mode != "video" {
+            return Err(BackendError::message(format!(
+                "Linux MCP export currently supports mode 'video', not '{mode}'"
+            )));
+        }
+        let view = self.active_view().await?;
+        let project_id = view.summary.project_id;
+        let stem = view
+            .summary
+            .path
+            .as_ref()
+            .and_then(|path| path.file_stem().map(|stem| stem.to_string_lossy().into_owned()))
+            .unwrap_or_else(|| "export".to_owned());
+        let filename = format!("{}.mp4", stem.replace(' ', "_"));
+        let destination = string(map, "outputPath")?
+            .map(PathBuf::from)
+            .unwrap_or_else(|| std::env::temp_dir().join(&filename));
+        let render = prepare_project_render(
+            &view.snapshot.project,
+            &view.snapshot.media_manifest,
+            view.summary.path.as_deref(),
+            view.summary.active_timeline_id.as_deref(),
+            None,
+        )
+        .await
+        .map_err(|error| BackendError::message(error.to_string()))?;
+        let request = ExportRequest {
+            destination: destination.clone(),
+            overwrite: true,
+            plan: render.plan.clone(),
+            media: render.media.clone(),
+            settings: ExportSettings {
+                video_bit_rate: 12_000_000,
+                video_encoder: Some("libx264".into()),
+                audio: render.has_audio.then_some(AudioExportSettings {
+                    sample_rate: 48_000,
+                    channels: 2,
+                    bit_rate: 192_000,
+                }),
+            },
+        };
+        let job_id = self
+            .editor
+            .start_export(project_id, request, render.source)
+            .await
+            .map_err(service_error)?;
+        Ok(json!({
+            "status": "started",
+            "jobId": job_id.as_uuid().to_string(),
+            "path": destination.to_string_lossy(),
+            "filename": filename,
+            "mode": mode,
+        }))
+    }
+
+    #[cfg(feature = "media")]
+    async fn manage_exports_media(&self, args: Value) -> BackendResult<Value> {
+        use palmier_media::ExportState;
+
+        let map = object(&args)?;
+        let action = required_string(map, "action")?;
+        match action.as_str() {
+            "list" => {
+                let jobs = self.editor.list_exports().await;
+                let exports = jobs
+                    .into_iter()
+                    .map(|job| {
+                        let (status, progress) = match job.state {
+                            ExportState::Queued => ("waiting".to_owned(), 0.0),
+                            ExportState::Running { progress } => {
+                                ("running".to_owned(), f64::from(progress.fraction))
+                            }
+                            ExportState::Completed { .. } => ("completed".to_owned(), 1.0),
+                            ExportState::Failed { .. } => ("failed".to_owned(), 0.0),
+                            ExportState::Cancelled => ("canceled".to_owned(), 0.0),
+                        };
+                        json!({
+                            "jobId": job.job_id.to_string(),
+                            "projectId": job.project_id.to_string(),
+                            "status": status,
+                            "progress": progress,
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                Ok(json!({ "exports": exports }))
+            }
+            "cancel" => {
+                let job_id = required_string(map, "jobId")?;
+                let uuid = Uuid::parse_str(&job_id)
+                    .map_err(|_| BackendError::message(format!("invalid jobId '{job_id}'")))?;
+                self.editor
+                    .cancel_export(uuid)
+                    .await
+                    .map_err(service_error)?;
+                Ok(json!({ "jobId": job_id, "status": "canceled" }))
+            }
+            other => Err(BackendError::message(format!(
+                "unsupported action '{other}'"
+            ))),
+        }
+    }
 }
 
 impl McpEditorBackend for EditorServiceBackend {
@@ -387,11 +620,19 @@ impl McpEditorBackend for EditorServiceBackend {
         })
     }
 
-    fn capture_frame(&self, _args: Value) -> BoxFut<'_, BackendResult<Value>> {
-        Box::pin(async {
-            Err(BackendError::message(
-                "capture_frame requires the media-enabled application backend",
-            ))
+    fn capture_frame(&self, args: Value) -> BoxFut<'_, BackendResult<Value>> {
+        Box::pin(async move {
+            #[cfg(feature = "media")]
+            {
+                self.capture_frame_media(args).await
+            }
+            #[cfg(not(feature = "media"))]
+            {
+                let _ = args;
+                Err(BackendError::message(
+                    "capture_frame requires the media-enabled application backend",
+                ))
+            }
         })
     }
 
@@ -732,9 +973,6 @@ impl McpEditorBackend for EditorServiceBackend {
                 if let Some(value) = integer(map, "trimEndFrame")? {
                     clip.trim_end_frame = value;
                 }
-                if let Some(value) = number(map, "speed")? {
-                    clip.speed = value;
-                }
                 if let Some(value) = number(map, "volumeDb")? {
                     clip.volume = 10_f64.powf(value / 20.0);
                     clip.volume_track = None;
@@ -758,12 +996,37 @@ impl McpEditorBackend for EditorServiceBackend {
                 if let Some(transform) = map.get("transform") {
                     apply_transform_patch(clip, object(transform)?)?;
                 }
+                clip.clamp_fades_to_duration();
+            }
+            let mut commands = Vec::new();
+            if let Some(speed) = number(map, "speed")? {
+                commands.push(EditorCommand::SetClipSpeed {
+                    timeline_id: timeline.id.clone(),
+                    clip_ids: ids.clone(),
+                    speed,
+                    ripple: true,
+                });
+            }
+            let has_clip_property_patch = map.keys().any(|key| {
+                !matches!(key.as_str(), "clipIds" | "speed")
+            });
+            if has_clip_property_patch {
+                commands.push(EditorCommand::UpdateClips {
+                    timeline_id: timeline.id.clone(),
+                    clips,
+                });
+            }
+            if commands.is_empty() {
+                return Ok(json!({ "status": "noOp" }));
+            }
+            if commands.len() == 1 {
+                return self.commit_value(&view, commands.remove(0)).await;
             }
             self.commit_value(
                 &view,
-                EditorCommand::UpdateClips {
+                EditorCommand::Batch {
                     timeline_id: timeline.id.clone(),
-                    clips,
+                    commands,
                 },
             )
             .await
@@ -944,19 +1207,35 @@ impl McpEditorBackend for EditorServiceBackend {
         })
     }
 
-    fn export_project(&self, _args: Value) -> BoxFut<'_, BackendResult<Value>> {
-        Box::pin(async {
-            Err(BackendError::message(
-                "export_project requires the media-enabled application backend",
-            ))
+    fn export_project(&self, args: Value) -> BoxFut<'_, BackendResult<Value>> {
+        Box::pin(async move {
+            #[cfg(feature = "media")]
+            {
+                self.export_project_media(args).await
+            }
+            #[cfg(not(feature = "media"))]
+            {
+                let _ = args;
+                Err(BackendError::message(
+                    "export_project requires the media-enabled application backend",
+                ))
+            }
         })
     }
 
-    fn manage_exports(&self, _args: Value) -> BoxFut<'_, BackendResult<Value>> {
-        Box::pin(async {
-            Err(BackendError::message(
-                "manage_exports requires the media-enabled application backend",
-            ))
+    fn manage_exports(&self, args: Value) -> BoxFut<'_, BackendResult<Value>> {
+        Box::pin(async move {
+            #[cfg(feature = "media")]
+            {
+                self.manage_exports_media(args).await
+            }
+            #[cfg(not(feature = "media"))]
+            {
+                let _ = args;
+                Err(BackendError::message(
+                    "manage_exports requires the media-enabled application backend",
+                ))
+            }
         })
     }
 

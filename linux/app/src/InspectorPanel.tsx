@@ -98,14 +98,13 @@ function RangeControl({
 }
 
 function ClipInspector({ clip }: { clip: TimelineClip }) {
-  const { state, dispatch, backend } = useEditor()
+  const { state, dispatch } = useEditor()
   const { t } = useI18n()
   const asset = findAsset(state.project, clip.assetId)
   const isAudio = clip.kind === 'audio'
   const [tab, setTab] = useState<'video' | 'audio'>(
     isAudio ? 'audio' : 'video',
   )
-  const remoteBackend = backend.kind === 'tauri'
 
   const updateClip = (patch: {
     speed?: number
@@ -268,14 +267,8 @@ function ClipInspector({ clip }: { clip: TimelineClip }) {
               max={4}
               step={0.05}
               suffix="x"
-              disabled={remoteBackend}
               onChange={(speed) => updateClip({ speed })}
             />
-            {remoteBackend ? (
-              <p className="inspector-note">
-                {t('unsupportedFeature', { feature: t('featureSpeed') })}
-              </p>
-            ) : null}
           </section>
         </>
       ) : (
@@ -302,7 +295,6 @@ function ClipInspector({ clip }: { clip: TimelineClip }) {
             max={4}
             step={0.05}
             suffix="x"
-            disabled={remoteBackend}
             onChange={(speed) => updateClip({ speed })}
           />
           <NumericControl
@@ -312,7 +304,6 @@ function ClipInspector({ clip }: { clip: TimelineClip }) {
             max={Math.max(0, clip.durationFrames)}
             step={1}
             suffix="f"
-            disabled={remoteBackend}
             onChange={(fadeInFrames) => updateClip({ fadeInFrames })}
           />
           <NumericControl
@@ -322,16 +313,8 @@ function ClipInspector({ clip }: { clip: TimelineClip }) {
             max={Math.max(0, clip.durationFrames)}
             step={1}
             suffix="f"
-            disabled={remoteBackend}
             onChange={(fadeOutFrames) => updateClip({ fadeOutFrames })}
           />
-          {remoteBackend ? (
-            <p className="inspector-note">
-              {t('unsupportedFeature', {
-                feature: `${t('featureSpeed')}, ${t('featureFades')}`,
-              })}
-            </p>
-          ) : null}
         </section>
       )}
     </div>

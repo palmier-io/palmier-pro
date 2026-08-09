@@ -163,8 +163,11 @@ fn map_clip(
         start_frame: clip.start_frame,
         duration_frames: clip.duration_frames,
         source_offset_frames: clip.trim_start_frame,
+        trim_end_frames: clip.trim_end_frame,
         speed: clip.speed,
         volume: clip.volume,
+        fade_in_frames: clip.fade_in_frames,
+        fade_out_frames: clip.fade_out_frames,
         transform: ClipTransform {
             position_x: (clip.transform.center_x - 0.5) * 100.0,
             position_y: (clip.transform.center_y - 0.5) * 100.0,

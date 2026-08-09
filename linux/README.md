@@ -20,17 +20,21 @@ The scaffold and shared service path from the Linux editor port plan are in plac
 | Generation | Fal / Replicate BYOK via Secret Service only (no plaintext app fallback), catalog, mock HTTP tests, MCP generation tools |
 | Packaging assets | Desktop entry, MIME XML, icons, CI `.deb` job |
 
-### Known gaps (not fully working or not verified)
+### Recently completed
 
-- **Clip slip** is not implemented in `palmier-core` (no Slip command).
-- **Speed, fades, and track lock** are surfaced in the inspector as unsupported on Tauri, not silently dropped.
-- **Timeline audio mixing** is not in Linux video export yet. Export fails clearly when the timeline has audio.
-- **MCP `capture_frame` / `export_project` / `manage_exports`** on `EditorServiceBackend` still return “requires media-enabled application backend”. App UI export and frame render work through Tauri commands.
+- Clip **slip** (`SlipClips`), **speed** (`SetClipSpeed`), and **fades** (`SetClipFades`) in `palmier-core`, wired through the inspector and MCP.
+- Session **track lock** in the React UI (not persisted in `.palmier`; macOS packages have no track-lock field).
+- Timeline **audio mixing** for H.264/AAC export via PCM decode + mix in `ProjectFrameSource`.
+- MCP **`capture_frame` / `export_project` / `manage_exports`** on `EditorServiceBackend` when built with `palmier-mcp` feature `media` (enabled by the Tauri app).
+
+### Remaining gaps
+
 - **Specta-generated TypeScript bindings** were skipped. Hand-written bindings live in `app/src/bindings/` (specta / tauri-specta version mismatch).
-- **wgpu / cpal** are optional media features. Preview audio playback and GPU compose are not the default verified path on every host.
-- **`.deb` install into a clean Ubuntu image** was not completed on this development host. CI defines the package job; treat local package success as unconfirmed until you run it.
+- **wgpu / cpal** remain optional. Preview audio playback and GPU compose are not the default verified path on every host.
+- Timeline **slip gesture** in the React timeline UI is not finished. The Rust command exists for MCP and future UI wiring.
+- **`.deb` install into a clean Ubuntu image** was not completed on this development host. CI defines the package job.
 - **Full plan clippy gate** (`-D warnings`) is relaxed in CI to correctness + suspicious only, and `palmier-app` is excluded from workspace tests.
-- **Manual UI e2e** (drag/drop, focus, Escape, playback, close during work) is not user-confirmed.
+- **Manual UI e2e** is not user-confirmed.
 - **macOS Swift fixture CI** exists as `Tests/PalmierProTests/LinuxFixtureCompatibilityTests.swift` but cannot run on this Linux host.
 
 ### Architecture

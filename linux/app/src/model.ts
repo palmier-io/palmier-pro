@@ -271,6 +271,27 @@ export type EditorCommand =
       width: number
       height: number
     }
+  | {
+      command: 'setClipSpeed'
+      timelineId: string
+      clipIds: string[]
+      speed: number
+      ripple?: boolean
+    }
+  | {
+      command: 'setClipFades'
+      timelineId: string
+      clipId: string
+      fadeInFrames?: number
+      fadeOutFrames?: number
+    }
+  | {
+      command: 'slipClips'
+      timelineId: string
+      clipId: string
+      deltaFrames: number
+      propagateToLinked?: boolean
+    }
   | { command: 'undo' }
   | { command: 'redo' }
 

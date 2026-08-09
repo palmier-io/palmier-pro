@@ -1,4 +1,5 @@
 mod audio;
+mod audio_decode;
 mod cache;
 mod compose;
 mod decode;
@@ -17,6 +18,7 @@ mod wgpu_preview;
 #[cfg(feature = "playback")]
 pub use audio::output::PreviewAudioPlayer;
 pub use audio::{MixedAudioBuffer, mix_mono_to_interleaved};
+pub use audio_decode::{PcmRange, decode_pcm_range};
 pub use cache::{
     AssetFingerprint, BoundedMediaCache, CacheCost, CacheInsertOutcome, CacheLimits, CacheStats,
     ThumbnailCache, ThumbnailFormat, ThumbnailKey, Waveform, WaveformCache, WaveformChannelMode,

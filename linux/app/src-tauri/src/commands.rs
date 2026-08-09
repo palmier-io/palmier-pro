@@ -7,9 +7,10 @@ use chrono::Utc;
 use palmier_core::EditorCommand;
 use palmier_generation::{FAL_API_KEY, GenerationRequest, JobState, REPLICATE_API_TOKEN};
 use palmier_media::{
-    DecodedFrameData, ExportFrameSource, ExportRequest as MediaExportRequest, ExportSettings,
-    ExportState, FrameOutput, PausedFrameRequest, PreparedProjectRender,
-    discover_codec_capabilities, encode_jpeg, prepare_project_render,
+    AudioExportSettings, DecodedFrameData, ExportFrameSource,
+    ExportRequest as MediaExportRequest, ExportSettings, ExportState, FrameOutput,
+    PausedFrameRequest, PreparedProjectRender, discover_codec_capabilities, encode_jpeg,
+    prepare_project_render,
 };
 use palmier_project::{PROJECT_FILE_EXTENSION, ProjectSnapshot};
 use palmier_service::{EditResult, ImportMode, PreviewResult, ProjectView};
@@ -333,11 +334,6 @@ pub async fn start_export(
 
     let output_size = export_size(&view, &request.resolution)?;
     let render = prepared_render(&state, &view, output_size).await?;
-    if render.has_audio {
-        return Err(AppError::message(
-            "Linux video export does not yet support timeline audio mixing",
-        ));
-    }
     let encoder = video_encoder_name(&request.codec).await?;
     let media_request = MediaExportRequest {
         destination,
@@ -347,7 +343,11 @@ pub async fn start_export(
         settings: ExportSettings {
             video_bit_rate: 12_000_000,
             video_encoder: Some(encoder),
-            audio: None,
+            audio: render.has_audio.then_some(AudioExportSettings {
+                sample_rate: 48_000,
+                channels: 2,
+                bit_rate: 192_000,
+            }),
         },
     };
     let source: Arc<dyn ExportFrameSource> = render.source.clone();

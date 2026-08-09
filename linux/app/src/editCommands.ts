@@ -179,11 +179,8 @@ export function planUpdateTrack(
   const track = project.tracks.find((candidate) => candidate.id === trackId)
   if (!track) return { kind: 'noop' }
   if (setting === 'locked') {
-    return {
-      kind: 'unsupported',
-      feature: 'trackLock',
-      message: 'unsupportedFeature:trackLock',
-    }
+    // Track lock is session UI state. It is not persisted in .palmier packages.
+    return { kind: 'noop' }
   }
   return {
     kind: 'command',
@@ -213,17 +210,30 @@ export function planClipPropertyEdit(
   if (!clip) return { kind: 'noop' }
 
   if (patch.speed !== undefined) {
+    if (!(patch.speed > 0) || !Number.isFinite(patch.speed)) {
+      return { kind: 'noop' }
+    }
     return {
-      kind: 'unsupported',
-      feature: 'speed',
-      message: 'unsupportedFeature:speed',
+      kind: 'command',
+      command: {
+        command: 'setClipSpeed',
+        timelineId: project.timelineId,
+        clipIds: [clipId],
+        speed: patch.speed,
+        ripple: true,
+      },
     }
   }
   if (patch.fadeInFrames !== undefined || patch.fadeOutFrames !== undefined) {
     return {
-      kind: 'unsupported',
-      feature: 'fades',
-      message: 'unsupportedFeature:fades',
+      kind: 'command',
+      command: {
+        command: 'setClipFades',
+        timelineId: project.timelineId,
+        clipId,
+        fadeInFrames: patch.fadeInFrames,
+        fadeOutFrames: patch.fadeOutFrames,
+      },
     }
   }
 
@@ -668,6 +678,133 @@ export function applyEditorCommand(
           revisionBefore,
           revisionAfter,
           timelineId,
+        ),
+      }
+    }
+    case 'setClipSpeed': {
+      let next = cloneProject(project)
+      for (const clipId of command.clipIds) {
+        const clip = findClip(next, clipId)
+        if (!clip || !(command.speed > 0)) continue
+        const oldDuration = clip.durationFrames
+        const newDuration = Math.max(
+          1,
+          Math.round((oldDuration * clip.speed) / command.speed),
+        )
+        const oldEnd = clip.startFrame + oldDuration
+        next = updateClip(next, clipId, (current) => ({
+          ...current,
+          speed: command.speed,
+          durationFrames: newDuration,
+        }))
+        if (command.ripple !== false) {
+          const rippleDelta = clip.startFrame + newDuration - oldEnd
+          next = {
+            ...next,
+            tracks: next.tracks.map((track) => {
+              if (!track.clips.some((candidate) => candidate.id === clipId)) {
+                return track
+              }
+              return {
+                ...track,
+                clips: track.clips.map((candidate) =>
+                  candidate.startFrame >= oldEnd && candidate.id !== clipId
+                    ? {
+                        ...candidate,
+                        startFrame: candidate.startFrame + rippleDelta,
+                      }
+                    : candidate,
+                ),
+              }
+            }),
+          }
+        }
+      }
+      const revisionAfter = revision + 1
+      return {
+        project: next,
+        revision: revisionAfter,
+        receipt: receipt(
+          'moveClips',
+          'applied',
+          revisionBefore,
+          revisionAfter,
+          timelineId,
+          { updatedClipIds: [...command.clipIds] },
+        ),
+      }
+    }
+    case 'setClipFades': {
+      const next = updateClip(project, command.clipId, (current) => {
+        const fadeIn =
+          command.fadeInFrames !== undefined
+            ? Math.max(0, Math.round(command.fadeInFrames))
+            : current.fadeInFrames
+        const fadeOut =
+          command.fadeOutFrames !== undefined
+            ? Math.max(0, Math.round(command.fadeOutFrames))
+            : current.fadeOutFrames
+        const clampedIn = Math.min(fadeIn, current.durationFrames)
+        const clampedOut = Math.min(
+          fadeOut,
+          Math.max(0, current.durationFrames - clampedIn),
+        )
+        return {
+          ...current,
+          fadeInFrames: clampedIn,
+          fadeOutFrames: clampedOut,
+        }
+      })
+      const revisionAfter = revision + 1
+      return {
+        project: next,
+        revision: revisionAfter,
+        receipt: receipt(
+          'moveClips',
+          'applied',
+          revisionBefore,
+          revisionAfter,
+          timelineId,
+          { updatedClipIds: [command.clipId] },
+        ),
+      }
+    }
+    case 'slipClips': {
+      const clip = findClip(project, command.clipId)
+      if (!clip) {
+        return {
+          project: cloneProject(project),
+          revision,
+          receipt: receipt(
+            'moveClips',
+            'noOp',
+            revisionBefore,
+            revisionBefore,
+            timelineId,
+          ),
+        }
+      }
+      const sourceDelta = Math.round(command.deltaFrames * clip.speed)
+      const applied = Math.max(
+        -clip.trimEndFrames,
+        Math.min(clip.sourceOffsetFrames, sourceDelta),
+      )
+      const next = updateClip(project, command.clipId, (current) => ({
+        ...current,
+        sourceOffsetFrames: current.sourceOffsetFrames - applied,
+        trimEndFrames: current.trimEndFrames + applied,
+      }))
+      const revisionAfter = revision + 1
+      return {
+        project: next,
+        revision: revisionAfter,
+        receipt: receipt(
+          'moveClips',
+          applied === 0 ? 'noOp' : 'applied',
+          revisionBefore,
+          applied === 0 ? revisionBefore : revisionAfter,
+          timelineId,
+          { updatedClipIds: applied === 0 ? [] : [command.clipId] },
         ),
       }
     }

@@ -19,7 +19,7 @@ base64 = { workspace = true }
 chrono = { workspace = true }
 palmier-core = { workspace = true }
 palmier-generation = { workspace = true }
-palmier-mcp = { workspace = true }
+palmier-mcp = { workspace = true, features = ["media"] }
 palmier-media = { workspace = true }
 palmier-project = { workspace = true }
 palmier-service = { workspace = true, features = ["media"] }
