@@ -150,7 +150,7 @@ final class ToolExecutor {
         do {
             let resolved = try expandingIdPrefixes(in: args, editor: editor)
             readRevision = editor.beginAgentTimelineRead(
-                try timelineReadActivity(for: tool, args: resolved, editor: editor)
+                timelineReadActivity(for: tool, args: resolved, editor: editor)
             )
             result = try await run(tool, editor, resolved)
         } catch let err as ToolError {

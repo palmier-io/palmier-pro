@@ -2,6 +2,7 @@ struct AgentActivityHighlight: Equatable {
     var readClipIds: Set<String> = []
     var addedClipIds: Set<String> = []
     var mutatedClipIds: Set<String> = []
+    var mutatedTrackIds: Set<String> = []
     var range: Range<Int>?
     var isActive = false
     var revision = 0
@@ -11,18 +12,25 @@ struct AgentActivityHighlight: Equatable {
     }
 
     var isEmpty: Bool {
-        !isRead && addedClipIds.isEmpty && mutatedClipIds.isEmpty
+        !isRead && addedClipIds.isEmpty && mutatedClipIds.isEmpty && mutatedTrackIds.isEmpty
     }
 }
 
 extension EditorViewModel {
-    func showAgentChanges(addedClipIds: Set<String>, mutatedClipIds: Set<String>) {
-        guard !addedClipIds.isEmpty || !mutatedClipIds.isEmpty else { return }
+    func showAgentChanges(
+        addedClipIds: Set<String>,
+        mutatedClipIds: Set<String>,
+        mutatedTrackIds: Set<String> = []
+    ) {
+        guard !addedClipIds.isEmpty || !mutatedClipIds.isEmpty || !mutatedTrackIds.isEmpty else {
+            return
+        }
         var activity = agentActivity.isRead
             ? AgentActivityHighlight(revision: agentActivity.revision)
             : agentActivity
         activity.addedClipIds.formUnion(addedClipIds)
         activity.mutatedClipIds.formUnion(mutatedClipIds)
+        activity.mutatedTrackIds.formUnion(mutatedTrackIds)
         activity.mutatedClipIds.subtract(activity.addedClipIds)
         activity.isActive = false
         activity.revision &+= 1
@@ -32,6 +40,7 @@ extension EditorViewModel {
 
     func beginAgentTimelineRead(_ highlight: AgentActivityHighlight?) -> Int? {
         guard var highlight, highlight.isRead else { return nil }
+        guard agentActivity.isEmpty || agentActivity.isRead else { return nil }
         agentActivityClearTask?.cancel()
         agentActivityClearTask = nil
         highlight.isActive = true

@@ -6,6 +6,7 @@ private struct AgentLocatedClip: Equatable {
 extension ToolName {
     private static let timelineChangePublishers: Set<ToolName> = [
         .setProjectSettings,
+        .manageTracks,
         .manageClipLinks,
         .addClips, .insertClips, .moveClips, .removeClips,
         .splitClips, .rippleDeleteRanges, .swapClipMedia,
@@ -37,9 +38,11 @@ extension ToolExecutor {
             guard let current = afterClips[id], current != previous else { return nil }
             return id
         })
+        let mutatedTrackIds = changedTrackIds(before: before, after: after)
         editor.showAgentChanges(
             addedClipIds: addedClipIds,
-            mutatedClipIds: mutatedClipIds
+            mutatedClipIds: mutatedClipIds,
+            mutatedTrackIds: mutatedTrackIds
         )
     }
 
@@ -52,6 +55,32 @@ extension ToolExecutor {
         }
         return result
     }
+
+    private func changedTrackIds(before: Timeline, after: Timeline) -> Set<String> {
+        let beforeTracks = Dictionary(
+            before.tracks.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let afterTracks = Dictionary(
+            after.tracks.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let survivingIds = Set(beforeTracks.keys).intersection(afterTracks.keys)
+        var changed = Set(survivingIds.filter { id in
+            guard let previous = beforeTracks[id], let current = afterTracks[id] else { return false }
+            return previous.muted != current.muted
+                || previous.hidden != current.hidden
+                || previous.syncLocked != current.syncLocked
+        })
+
+        // Ignore index shifts caused only by insertion or removal.
+        let beforeOrder = before.tracks.map(\.id).filter(survivingIds.contains)
+        let afterOrder = after.tracks.map(\.id).filter(survivingIds.contains)
+        changed.formUnion(zip(beforeOrder, afterOrder).compactMap { previous, current in
+            previous == current ? nil : current
+        })
+        return changed
+    }
 }
 
 // MARK: - Read highlights
@@ -61,7 +90,7 @@ extension ToolExecutor {
         for tool: ToolName,
         args: [String: Any],
         editor: EditorViewModel
-    ) throws -> AgentActivityHighlight? {
+    ) -> AgentActivityHighlight? {
         var readClipIds = Set<String>()
         var range: Range<Int>?
         switch tool {
@@ -69,7 +98,7 @@ extension ToolExecutor {
             if let clipId = args.string("clipId") { readClipIds.insert(clipId) }
         case .getTranscript, .getMulticam:
             if let clipId = args.string("clipId") { readClipIds.insert(clipId) }
-            range = try timelineReadWindow(args, editor: editor)
+            range = timelineReadWindow(args, editor: editor)
         case .inspectTimeline:
             let start = max(0, args.int("startFrame") ?? 0)
             if start < Int.max {
@@ -77,7 +106,7 @@ extension ToolExecutor {
                 range = clampedTimelineReadRange(start: start, end: end, editor: editor)
             }
         case .getTimeline:
-            range = try timelineReadWindow(args, editor: editor)
+            range = timelineReadWindow(args, editor: editor)
         case .captureFrame:
             if let frame = args.int("timelineFrame"), frame >= 0, frame < Int.max {
                 range = clampedTimelineReadRange(start: frame, end: frame + 1, editor: editor)
@@ -94,8 +123,14 @@ extension ToolExecutor {
     private func timelineReadWindow(
         _ args: [String: Any],
         editor: EditorViewModel
-    ) throws -> Range<Int>? {
-        guard let window = try Self.frameWindow(args) else { return nil }
+    ) -> Range<Int>? {
+        let window: Range<Int>?
+        do {
+            window = try Self.frameWindow(args)
+        } catch {
+            return nil
+        }
+        guard let window else { return nil }
         let end = window.upperBound == Int.max ? editor.timeline.totalFrames : window.upperBound
         return clampedTimelineReadRange(start: window.lowerBound, end: end, editor: editor)
     }

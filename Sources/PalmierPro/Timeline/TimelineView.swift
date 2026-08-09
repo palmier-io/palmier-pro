@@ -30,8 +30,8 @@ final class TimelineView: NSView {
         editor.mediaVisualCache.timelineView = self
         editor.onCancelTimelineDrag = { [weak self] in self?.inputController.cancelActiveDrag() }
         wantsLayer = true
-        updateAppearanceColors()
         configureAgentActivityLayers()
+        updateAppearanceColors()
         canvas.wantsLayer = true
         canvas.layerContentsRedrawPolicy = .onSetNeedsDisplay
         addSubview(canvas)
@@ -89,35 +89,48 @@ final class TimelineView: NSView {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             layer?.backgroundColor = Self.trackBg
         }
+        updateAgentActivityColors()
     }
 
     private func configureAgentActivityLayers() {
         agentActivityLayer.zPosition = 80
         layer?.addSublayer(agentActivityLayer)
         let styles = [
-            (agentRangeLayer, AppTheme.AgentActivity.read, AppTheme.AgentActivity.readFill,
-             AppTheme.BorderWidth.thin, Float(0), CGFloat(0), CGFloat(0)),
-            (agentReadLayer, AppTheme.AgentActivity.read, nil,
-             AppTheme.BorderWidth.medium, AppTheme.AgentActivity.readGlowOpacity,
+            (agentRangeLayer, CGFloat.zero, Float(0), CGFloat(0), CGFloat(0)),
+            (agentReadLayer, AppTheme.BorderWidth.medium, AppTheme.AgentActivity.readGlowOpacity,
              AppTheme.AgentActivity.readGlowRadius, CGFloat(9)),
-            (agentAddedLayer, AppTheme.AgentActivity.added, nil,
-             AppTheme.BorderWidth.thick, AppTheme.AgentActivity.changeGlowOpacity,
+            (agentAddedLayer, AppTheme.BorderWidth.thick, AppTheme.AgentActivity.changeGlowOpacity,
              AppTheme.AgentActivity.changeGlowRadius, CGFloat(10)),
-            (agentMutatedLayer, AppTheme.AgentActivity.mutated, nil,
-             AppTheme.BorderWidth.thick, AppTheme.AgentActivity.changeGlowOpacity,
+            (agentMutatedLayer, AppTheme.BorderWidth.thick, AppTheme.AgentActivity.changeGlowOpacity,
              AppTheme.AgentActivity.changeGlowRadius, CGFloat(10)),
         ]
-        for (layer, color, fillColor, lineWidth, glowOpacity, glowRadius, zPosition) in styles {
-            layer.fillColor = fillColor?.cgColor
-            layer.strokeColor = color.cgColor
+        for (layer, lineWidth, glowOpacity, glowRadius, zPosition) in styles {
             layer.lineWidth = lineWidth
-            layer.shadowColor = color.cgColor
             layer.shadowOpacity = glowOpacity
             layer.shadowRadius = glowRadius
             layer.shadowOffset = .zero
             layer.zPosition = zPosition
             layer.opacity = 0
             agentActivityLayer.addSublayer(layer)
+        }
+        for layer in [agentReadLayer, agentAddedLayer, agentMutatedLayer] {
+            layer.fillColor = nil
+        }
+    }
+
+    private func updateAgentActivityColors() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            let styles = [
+                (agentAddedLayer, AppTheme.AgentActivity.added),
+                (agentMutatedLayer, AppTheme.AgentActivity.mutated),
+                (agentReadLayer, AppTheme.AgentActivity.read),
+            ]
+            for (layer, color) in styles {
+                layer.strokeColor = color.cgColor
+                layer.shadowColor = color.cgColor
+            }
+            agentRangeLayer.fillColor = AppTheme.AgentActivity.readFill.cgColor
+            agentRangeLayer.strokeColor = nil
         }
     }
 
@@ -353,11 +366,13 @@ final class TimelineView: NSView {
     }
 
     func updatePlayheadLayer() { playheadOverlay.update() }
+    func updateAgentActivityOverlay() { syncAgentActivityLayers() }
 
     // MARK: - Clip drawing with ghost support
 
     private func syncAgentActivityLayers() {
         let activity = editor.agentActivity
+        guard !activity.isEmpty || activity.revision != displayedAgentActivityRevision else { return }
         let viewport = visibleRect
         guard !viewport.isEmpty else { return }
 
@@ -385,7 +400,7 @@ final class TimelineView: NSView {
             (agentRangeLayer, activity.range != nil),
         ]
         for (layer, hasHighlight) in highlights {
-            updateAgentActivityAnimation(
+            AgentActivityLayerSupport.updateAnimation(
                 layer,
                 hasHighlight: hasHighlight,
                 staysVisible: activity.isActive,
@@ -443,50 +458,11 @@ final class TimelineView: NSView {
         for layer in [agentAddedLayer, agentMutatedLayer, agentReadLayer, agentRangeLayer] {
             layer.frame = agentActivityLayer.bounds
         }
-        let mask = (agentActivityLayer.mask as? CAShapeLayer) ?? CAShapeLayer()
-        let rulerHeight = Double(geometry.rulerHeight)
-        mask.frame = agentActivityLayer.bounds
-        mask.fillColor = AppTheme.MediaOverlay.background.cgColor
-        mask.path = CGPath(
-            rect: NSRect(
-                x: 0,
-                y: rulerHeight,
-                width: viewport.width,
-                height: max(0, Double(viewport.height) - rulerHeight)
-            ),
-            transform: nil
+        AgentActivityLayerSupport.updateMask(
+            agentActivityLayer,
+            bounds: agentActivityLayer.bounds,
+            rulerHeight: geometry.rulerHeight
         )
-        agentActivityLayer.mask = mask
-    }
-
-    private func updateAgentActivityAnimation(
-        _ layer: CAShapeLayer,
-        hasHighlight: Bool,
-        staysVisible: Bool,
-        hold: Double,
-        duration: Double
-    ) {
-        layer.removeAnimation(forKey: "agentActivityFade")
-        guard hasHighlight else {
-            layer.opacity = 0
-            return
-        }
-        if staysVisible {
-            layer.opacity = 1
-            return
-        }
-
-        layer.opacity = 0
-        let animation = CAKeyframeAnimation(keyPath: "opacity")
-        let fadeStart = hold / duration
-        animation.values = [1, 1, 0]
-        animation.keyTimes = [0, NSNumber(value: fadeStart), 1]
-        animation.timingFunctions = [
-            CAMediaTimingFunction(name: .linear),
-            CAMediaTimingFunction(name: .easeOut),
-        ]
-        animation.duration = duration
-        layer.add(animation, forKey: "agentActivityFade")
     }
 
     private func drawClips(

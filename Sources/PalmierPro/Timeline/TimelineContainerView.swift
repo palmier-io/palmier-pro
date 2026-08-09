@@ -69,7 +69,6 @@ struct TimelineContainerView: NSViewRepresentable {
             selectedClipIds: editor.selectedClipIds,
             selectedTimelineRange: editor.selectedTimelineRange,
             pendingReplacements: editor.pendingReplacements,
-            agentActivity: editor.agentActivity,
             generatingAssetIds: Set(editor.mediaAssets.lazy.filter(\.isGenerating).map(\.id))
         )
 
@@ -78,6 +77,7 @@ struct TimelineContainerView: NSViewRepresentable {
             context.coordinator.timelineView?.needsDisplay = true
             context.coordinator.headerView?.needsDisplay = true
         }
+        context.coordinator.updateAgentActivity(editor.agentActivity)
 
         if let x = editor.timelineScrollRestoreX,
            let scrollView = context.coordinator.scrollView {
@@ -112,7 +112,6 @@ struct TimelineContainerView: NSViewRepresentable {
         let selectedClipIds: Set<String>
         let selectedTimelineRange: TimelineRangeSelection?
         let pendingReplacements: Set<String>
-        let agentActivity: AgentActivityHighlight
         let generatingAssetIds: Set<String>
     }
 
@@ -122,10 +121,18 @@ struct TimelineContainerView: NSViewRepresentable {
         var scrollView: NSScrollView?
         weak var editor: EditorViewModel?
         private var renderState: RenderState?
+        private var agentActivity = AgentActivityHighlight()
 
         func needsRender(for next: RenderState) -> Bool {
             defer { renderState = next }
             return renderState != next
+        }
+
+        @MainActor func updateAgentActivity(_ next: AgentActivityHighlight) {
+            guard agentActivity != next else { return }
+            agentActivity = next
+            timelineView?.updateAgentActivityOverlay()
+            headerView?.updateAgentActivityOverlay()
         }
 
         @MainActor @objc func scrollViewBoundsChanged(_ notification: Notification) {

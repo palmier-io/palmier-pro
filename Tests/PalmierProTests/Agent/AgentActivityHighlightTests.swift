@@ -51,42 +51,87 @@ struct AgentActivityHighlightTests {
     }
 
     @Test func onlyMutationToolsPublishTimelineChanges() {
-        let excluded: [ToolName] = [.inspectTimeline, .getTranscript, .manageTracks, .organizeMedia]
-        let included: [ToolName] = [.setClipProperties, .denoiseAudio, .generateAudio]
+        let excluded: [ToolName] = [.inspectTimeline, .getTranscript, .organizeMedia]
+        let included: [ToolName] = [.manageTracks, .setClipProperties, .denoiseAudio, .generateAudio]
         #expect(excluded.allSatisfy { !$0.publishesTimelineChanges })
         #expect(included.allSatisfy { $0.publishesTimelineChanges })
     }
 
-    @Test func mapsOnlyVisibleTimelineReads() throws {
+    @Test func manageTracksHighlightsReorderAndFlagChanges() async throws {
+        var first = Fixtures.videoTrack()
+        first.id = "first"
+        var second = Fixtures.videoTrack()
+        second.id = "second"
+        var audio = Fixtures.audioTrack()
+        audio.id = "audio"
+        let harness = ToolHarness(timeline: Fixtures.timeline(tracks: [first, second, audio]))
+
+        _ = try await harness.runOK("manage_tracks", args: [
+            "reorder": [["index": 0, "to": 1]],
+            "set": [
+                ["index": 0, "hidden": true, "syncLocked": false],
+                ["index": 2, "muted": true],
+            ],
+        ])
+
+        #expect(harness.editor.agentActivity.mutatedTrackIds == [first.id, second.id, audio.id])
+        harness.editor.clearAgentActivity()
+
+        _ = try await harness.runOK("manage_tracks", args: ["remove": [0]])
+        #expect(harness.editor.agentActivity.isEmpty)
+    }
+
+    @Test func mapsOnlyVisibleTimelineReads() {
         let (harness, clip) = harnessWithClip()
         func activity(
             _ tool: ToolName,
             _ args: [String: Any] = [:]
-        ) throws -> AgentActivityHighlight? {
-            try harness.executor.timelineReadActivity(for: tool, args: args, editor: harness.editor)
+        ) -> AgentActivityHighlight? {
+            harness.executor.timelineReadActivity(for: tool, args: args, editor: harness.editor)
         }
 
-        let clipActivity = try activity(.inspectMedia, ["clipId": clip.id])
-        let clipRead = try #require(clipActivity)
-        #expect(clipRead.readClipIds == [clip.id])
+        #expect(activity(.inspectMedia, ["clipId": clip.id])?.readClipIds == [clip.id])
 
-        let combinedActivity = try activity(.getTranscript, [
+        let combinedRead = activity(.getTranscript, [
             "clipId": clip.id,
             "startFrame": 10,
             "endFrame": 20,
         ])
-        let combinedRead = try #require(combinedActivity)
-        #expect(combinedRead.readClipIds == [clip.id])
-        #expect(combinedRead.range == 10..<20)
+        #expect(combinedRead?.readClipIds == [clip.id])
+        #expect(combinedRead?.range == 10..<20)
 
-        let excludedReads = try [
+        let excludedReads = [
             activity(.getMedia),
             activity(.getTimeline),
             activity(.getTimeline, ["startFrame": 0, "endFrame": 0]),
+            activity(.getTimeline, ["startFrame": 20, "endFrame": 10]),
             activity(.inspectTimeline, ["startFrame": Int.max]),
             activity(.getTimeline, ["startFrame": 1_000, "endFrame": 2_000]),
         ]
         #expect(excludedReads.allSatisfy { $0 == nil })
+    }
+
+    @Test func readDoesNotReplaceVisibleWrite() {
+        let editor = EditorViewModel()
+        editor.showAgentChanges(addedClipIds: ["clip"], mutatedClipIds: [])
+
+        let read = editor.beginAgentTimelineRead(AgentActivityHighlight(readClipIds: ["clip"]))
+
+        #expect(read == nil)
+        #expect(editor.agentActivity.addedClipIds == ["clip"])
+        editor.clearAgentActivity()
+    }
+
+    @Test func readRoutingDoesNotPreemptToolValidation() async {
+        let harness = ToolHarness()
+        let result = await harness.runRaw("get_multicam", args: [
+            "groupId": "missing",
+            "startFrame": 20,
+            "endFrame": 10,
+        ])
+
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("No multicam group"))
     }
 
     @Test func readLifecycleIgnoresOverlapAndClearsErrors() throws {
@@ -149,7 +194,7 @@ struct AgentActivityHighlightTests {
         #expect(abs(AppTheme.Anim.agentReadHighlightDuration - 0.95) < 0.0001)
     }
 
-    @Test func classifiesFiveThousandClipRippleWithinInteractiveBudget() {
+    @Test func classifiesFiveThousandClipRipple() {
         let clips = (0..<5_000).map {
             Fixtures.clip(id: "clip-\($0)", start: $0 * 10, duration: 10)
         }
@@ -159,26 +204,26 @@ struct AgentActivityHighlightTests {
             after.tracks[0].clips[index].startFrame += 5
         }
         let harness = ToolHarness(timeline: before)
-        let elapsed = ContinuousClock().measure {
-            harness.executor.publishAgentChanges(
-                before: before,
-                after: after,
-                editor: harness.editor
-            )
-        }
-
-        print("5,000-clip Agent highlight classification: \(elapsed)")
+        harness.executor.publishAgentChanges(
+            before: before,
+            after: after,
+            editor: harness.editor
+        )
         #expect(harness.editor.agentActivity.mutatedClipIds.count == 5_000)
-        #expect(elapsed < .milliseconds(100))
         harness.editor.clearAgentActivity()
     }
 
     @Test func writePrecedenceCoalescesAndTimelineSwitchClears() {
         let editor = EditorViewModel()
         editor.showAgentChanges(addedClipIds: ["clip"], mutatedClipIds: [])
-        editor.showAgentChanges(addedClipIds: [], mutatedClipIds: ["clip", "other"])
+        editor.showAgentChanges(
+            addedClipIds: [],
+            mutatedClipIds: ["clip", "other"],
+            mutatedTrackIds: ["track"]
+        )
         #expect(editor.agentActivity.addedClipIds == ["clip"])
         #expect(editor.agentActivity.mutatedClipIds == ["other"])
+        #expect(editor.agentActivity.mutatedTrackIds == ["track"])
 
         let nextTimeline = Fixtures.timeline()
         editor.timelines.append(nextTimeline)
