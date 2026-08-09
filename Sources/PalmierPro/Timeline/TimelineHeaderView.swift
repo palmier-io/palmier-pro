@@ -398,7 +398,10 @@ final class TimelineHeaderView: NSView {
         }
         guard let frame = labelRects[trackId]?.edit else {
             field.isHidden = true
-            window?.makeFirstResponder(nil)
+            DispatchQueue.main.async { [weak self, weak field] in
+                guard let self, let field, self.nameEditor === field else { return }
+                self.window?.makeFirstResponder(nil)
+            }
             return
         }
         field.isHidden = false
@@ -446,6 +449,7 @@ final class TimelineHeaderView: NSView {
         )
         renameItem.target = self
         renameItem.representedObject = track.id
+        renameItem.isEnabled = labelRects[track.id] != nil
         menu.addItem(renameItem)
         menu.addItem(.separator())
         let item = NSMenuItem(

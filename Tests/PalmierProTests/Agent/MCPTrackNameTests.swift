@@ -2,7 +2,6 @@ import Foundation
 import MCP
 import Testing
 @testable import PalmierPro
-
 @Suite("MCP track names")
 @MainActor
 struct MCPTrackNameTests {
@@ -55,18 +54,13 @@ struct MCPTrackNameTests {
         await server.stop()
         await client.disconnect()
     }
-
     private func setName(_ name: String, trackId: String, client: Client) async throws
         -> (content: [Tool.Content], isError: Bool?) {
         try await client.callTool(name: "manage_tracks", arguments: [
             "set": .array([.object(["trackId": .string(trackId), "name": .string(name)])]),
         ])
     }
-
-    private func timeline(_ client: Client) async throws -> [String: Any] {
-        try json(try await client.callTool(name: "get_timeline"))
-    }
-
+    private func timeline(_ client: Client) async throws -> [String: Any] { try json(try await client.callTool(name: "get_timeline")) }
     private func json(_ result: (content: [Tool.Content], isError: Bool?)) throws -> [String: Any] {
         guard case .text(let text, _, _) = result.content.first else { throw CocoaError(.coderReadCorrupt) }
         return try #require(JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
