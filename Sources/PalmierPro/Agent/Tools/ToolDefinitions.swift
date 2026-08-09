@@ -33,6 +33,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case rippleDeleteRanges = "ripple_delete_ranges"
     case swapClipMedia = "swap_clip_media"
     case setClipProperties = "set_clip_properties"
+    case copyClipSettings = "copy_clip_settings"
     case setKeyframes = "set_keyframes"
     case applyLayout = "apply_layout"
     case syncClips = "sync_clips"
@@ -544,6 +545,34 @@ enum ToolDefinitions {
             )
         ),
         AgentTool(
+            name: .copyClipSettings,
+            description: "Copy one clip's static settings to one or more clips of the same media type in a single undoable action. Use for requests such as \"make these shots look like that one,\" \"use this title style,\" or \"give these audio clips the same treatment.\"\n\nChoose exactly one target mode. targetClipIds applies to an explicit list and refuses any mismatched media type. targetTrack selects every same-type clip on one stable trackId; add range [startFrame, endFrame) to limit it to clips intersecting that part of the timeline. Track mode excludes the source and mismatched clips, returns compact matched/changed/unchanged/incompatible counts instead of clip IDs, and refuses when no compatible clips match.\n\nVideo, image, Lottie, and nested-timeline clips copy transform, crop, opacity, edge rounding/softness, blend mode, and the complete effect stack including color. Text clips copy typography/style, text animation, fill mode, position, rotation, flips, opacity, and effects; target text, word timings, and caption membership stay intact, and the box is refit to the target content. Audio clips copy volume and effects, including denoise. Settings absent from the source clear the corresponding target setting.\n\nThis does NOT copy placement, duration, trims, speed, fades, top-level keyframes, media, links, caption groups, or multicam membership. Use set_clip_properties and set_keyframes for temporal changes. Linked audio is a separate audio clip: copy it explicitly using the nested audio.id from get_timeline.",
+            inputSchema: objectSchema(
+                properties: [
+                    "sourceClipId": ["type": "string", "description": "Clip whose current static settings are copied."],
+                    "targetClipIds": [
+                        "type": "array",
+                        "items": ["type": "string"],
+                        "description": "Explicit destination clips. Every target must have the same mediaType as the source. Use this or targetTrack, not both.",
+                    ],
+                    "targetTrack": objectSchema(
+                        properties: [
+                            "trackId": ["type": "string", "description": "Stable trackId from get_timeline."],
+                            "range": [
+                                "type": "array",
+                                "items": ["type": "integer"],
+                                "minItems": 2,
+                                "maxItems": 2,
+                                "description": "Optional [startFrame, endFrame) timeline range. Only intersecting clips are considered; omit for the whole track.",
+                            ],
+                        ],
+                        required: ["trackId"]
+                    ),
+                ],
+                required: ["sourceClipId"]
+            )
+        ),
+        AgentTool(
             name: .setKeyframes,
             description: "Set animated keyframes on one property of one clip. Replaces the existing keyframe track for that property (pass an empty array to clear). Frames are CLIP-RELATIVE offsets (0 = first frame of the clip), so keyframes follow the clip when it moves. Rows are sorted by frame internally and the LAST row for any duplicate frame wins. Values must be finite numbers. Each row is `[frame, ...values, interp?]` where interp ∈ {linear, hold, smooth} (default smooth).\n\nProperties and their value layouts:\n  • volumeDb `[frame, decibels]` — −60 through +15 dB; 0 dB keeps source level and −60 dB is mute\n  • opacity `[frame, value]` — value 0.0–1.0\n  • rotation `[frame, degrees]` — clockwise degrees\n  • position `[frame, topLeftX, topLeftY]` — TOP-LEFT corner in 0–1 normalized canvas coords. NOT the center. (Default static transform centers a full-canvas clip, so top-left of the static is (0, 0); a centered half-size clip has top-left (0.25, 0.25).)\n  • scale `[frame, width, height]` — clip's normalized width and height in 0–1 canvas coords (1.0 = fills the canvas axis). NOT a scale factor.\n  • crop `[frame, top, right, bottom, left]` — side insets in 0–1 of the source media.\n\nMotion keyframes (position/scale/rotation) override the static `transform` value when active.",
             inputSchema: objectSchema(
@@ -783,7 +812,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .addTexts,
-            description: "Adds text clips as timeline layers. Omit trackIndex on every entry to create one new top video track; otherwise set trackIndex on every entry. Text boxes auto-fit their content; transform optionally sets normalized center and rotation. Use style widthScale and heightScale to stretch glyphs. Use the nested style object for typography, outline, shadow, and background. fillMode 'footage' stencils layers below through the letter shapes. Use add_captions for spoken audio captions. Unknown fields are rejected.",
+            description: "Adds text clips as timeline layers. Omit trackIndex on every entry to create one new top video track; otherwise set trackIndex on every entry. Text boxes auto-fit their content; transform optionally sets their alignment-relative horizontal anchor, vertical center, and rotation. Left-aligned text grows rightward from x, centered text grows around x, and right-aligned text grows leftward from x. Use style widthScale and heightScale to stretch glyphs. Use the nested style object for typography, outline, shadow, and background. fillMode 'footage' stencils layers below through the letter shapes. Use add_captions for spoken audio captions. Unknown fields are rejected.",
             inputSchema: objectSchema(
                 properties: [
                     "entries": [
@@ -798,7 +827,7 @@ enum ToolDefinitions {
                                 "content": ["type": "string", "description": "Text. Supports \\n."],
                                 "transform": [
                                     "type": "object",
-                                    "description": "Optional position and rotation. Set centerX and centerY together. Size always auto-fits the text.",
+                                    "description": "Optional position and rotation. Omitted x or y uses the default centered position. Size always auto-fits the text.",
                                     "properties": textTransformProperties(),
                                 ],
                             ], textStyleProperties(detailed: false), [
@@ -815,7 +844,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .updateText,
-            description: "Updates text clips or a captionGroupId. The nested style object is a partial patch: omitted values stay unchanged. Use it for typography, color, outline, shadow, and background. Use style widthScale and heightScale to stretch glyphs. fillMode 'footage' stencils layers below through the glyphs. Content and layout-affecting style changes auto-fit the box; transform can reposition or rotate it without changing its size. Static rotation uses clockwise degrees and clears rotation keyframes. Unknown fields are rejected.",
+            description: "Updates text clips or a captionGroupId. The nested style object is a partial patch: omitted values stay unchanged. Use it for typography, color, outline, shadow, and background. Use style widthScale and heightScale to stretch glyphs. fillMode 'footage' stencils layers below through the glyphs. Content and layout-affecting style changes auto-fit the box while preserving its alignment-relative x anchor. transform can reposition or rotate it without changing its size. Static rotation uses clockwise degrees and clears rotation keyframes. Unknown fields are rejected.",
             inputSchema: objectSchema(
                 properties: mergedProperties([
                     "clipIds": [
@@ -848,11 +877,8 @@ enum ToolDefinitions {
                     "trackIndex": ["type": "integer", "description": "Caption one current timeline track from get_timeline. Omit to auto-detect the dominant speech track."],
                     "transform": [
                         "type": "object",
-                        "description": "Caption box position; size is auto-fit per caption.",
-                        "properties": [
-                            "centerX": ["type": "number", "description": "0-1 horizontal center."],
-                            "centerY": ["type": "number", "description": "0-1 vertical center."],
-                        ],
+                        "description": "Caption position and rotation; size is auto-fit per caption. x uses the selected text alignment edge.",
+                        "properties": textTransformProperties(),
                     ],
                     "censorProfanity": ["type": "boolean", "description": "Mask profanity."],
                     "maxWords": ["type": "integer", "minimum": 1, "description": "Max words per caption."],
@@ -865,7 +891,7 @@ enum ToolDefinitions {
                         "type": "number",
                         "minimum": CaptionGapSettings.maximumGapRange.lowerBound,
                         "maximum": CaptionGapSettings.maximumGapRange.upperBound,
-                        "description": "Extend each caption to close a shorter gap before the next generated caption. Default 0.25 seconds; 0 disables.",
+                        "description": "Extend captions to close shorter gaps and hold the final caption for up to this duration. Default 0.5 seconds; 0 disables.",
                     ],
                 ], textStyleProperties(detailed: false), [
                     "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Caption animation preset. Omit for static captions; set only when the user asks for animation."],
@@ -1161,8 +1187,8 @@ enum ToolDefinitions {
 
     private static func textTransformProperties() -> [String: [String: Any]] {
         [
-            "centerX": ["type": "number", "description": "0-1 horizontal center."],
-            "centerY": ["type": "number", "description": "0-1 vertical center."],
+            "x": ["type": "number", "description": "Normalized horizontal anchor of the unrotated text box: the left edge for left alignment, center for center alignment, or right edge for right alignment."],
+            "y": ["type": "number", "description": "Normalized vertical center."],
             "rotation": ["type": "number", "description": "Clockwise degrees."],
         ]
     }

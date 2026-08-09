@@ -34,9 +34,14 @@ final class EditorViewModel {
     var timelines: [Timeline] {
         didSet {
             timelineRenderRevision &+= 1
+            let source = Analytics.origin?.source
+            if source != "agent", source != "mcp" {
+                nonAgentTimelineMutationRevision &+= 1
+            }
             if pendingSwapClipId != nil { cancelMediaSwap() }
         }
     }
+    @ObservationIgnored var nonAgentTimelineMutationRevision = 0
     var activeTimelineId: String
     var openTimelineIds: [String]
     @ObservationIgnored var liveViewStates: [String: TimelineViewState] = [:]
@@ -149,10 +154,15 @@ final class EditorViewModel {
     var pendingEditTransitionPlacement: PendingTransitionPlacement?
     /// Clip ids currently awaiting an AI-generated replacement.
     var pendingReplacements: Set<String> = []
+    var agentActivity = AgentActivityHighlight()
+    @ObservationIgnored var agentActivityClearTask: Task<Void, Never>?
     var cropEditingActive: Bool = false
     var chromaKeySamplingClipId: String?
     /// Two-up in/out frames shown in the viewer while a slip drag is active.
     var slipPreview: SlipPreviewState?
+    var captionPreviewConfiguration: CaptionPreviewConfiguration?
+    var captionPreviewEnabled = true
+    @ObservationIgnored var captionPreviewCenterChange: ((CGPoint) -> Void)?
     var cropAspectLock: CropAspectLock = .free
     var previewTabs: [PreviewTab] = [.timeline]
     var activePreviewTabId: String = PreviewTab.timeline.id
@@ -703,6 +713,18 @@ final class EditorViewModel {
             let top = total * ay
             return Crop(left: 0, top: top, right: 0, bottom: total - top)
         }
+    }
+
+    func displayedCropAspectRatio(for clip: Clip, preferLockedRatio: Bool = true) -> CropAspectRatio? {
+        if preferLockedRatio, let ratio = cropAspectLock.aspectRatio { return ratio }
+        guard let dimensions = sourceDimensions(for: clip) else { return nil }
+        let crop = clip.cropAt(frame: activeFrame)
+        if crop.isIdentity {
+            return CropAspectRatio(pixelWidth: dimensions.width, pixelHeight: dimensions.height)
+        }
+        guard crop.visibleWidthFraction > 0, crop.visibleHeightFraction > 0 else { return nil }
+        let sourceAspect = Double(dimensions.width) / Double(dimensions.height)
+        return CropAspectRatio(pixelAspect: sourceAspect * crop.visibleWidthFraction / crop.visibleHeightFraction)
     }
 
     func removeClipInternal(id: String) {

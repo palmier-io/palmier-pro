@@ -126,8 +126,8 @@ struct MCPStaticRotationTests {
                 "clipIds": .array([.string(original.id)]),
                 "content": .string("A much longer title"),
                 "transform": .object([
-                    "centerX": .double(0.25),
-                    "centerY": .double(0.75),
+                    "x": .double(0.25),
+                    "y": .double(0.75),
                     "rotation": .double(45),
                 ]),
             ])
@@ -160,8 +160,8 @@ struct MCPStaticRotationTests {
                     "endFrame": .int(120),
                     "content": .string("Invalid box"),
                     "transform": .object([
-                        "centerX": .double(0.5),
-                        "centerY": .double(0.5),
+                        "x": .double(0.5),
+                        "y": .double(0.5),
                         "width": .double(0.5),
                     ]),
                 ])]),

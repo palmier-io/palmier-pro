@@ -32,6 +32,15 @@ extension EditorViewModel {
         return "\(type.trackLabelPrefix)\(n)"
     }
 
+    @discardableResult
+    func selectAllClips(onTrack trackId: String) -> Bool {
+        guard let track = timeline.tracks.first(where: { $0.id == trackId }),
+              !track.clips.isEmpty else { return false }
+        selectedGap = nil
+        selectedClipIds = Set(track.clips.map(\.id))
+        return true
+    }
+
     /// Clamp `requested` so that visual (video/image) tracks always sit above every audio track.
     private func partitionedInsertionIndex(for type: ClipType, requested: Int) -> Int {
         let z = zones

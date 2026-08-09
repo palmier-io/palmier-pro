@@ -212,6 +212,7 @@ extension EditorViewModel {
                 }
             },
             fps: timeline.fps,
+            timelineEndFrame: preparationTimeline.totalFrames,
             canvasWidth: timeline.width,
             canvasHeight: timeline.height,
             style: request.style,
@@ -369,6 +370,7 @@ extension EditorViewModel {
             for await outcome in group { collected.append(outcome) }
             return collected
         }
+        try Task.checkCancellation()
 
         var results: [String: TranscriptionResult] = [:]
         var firstError: Error?

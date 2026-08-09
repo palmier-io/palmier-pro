@@ -27,11 +27,14 @@ final class TimelineHeaderView: NSView {
     var hideButtonRects: [Int: NSRect] = [:]
     var syncLockButtonRects: [Int: NSRect] = [:]
     var dragHandleRects: [Int: NSRect] = [:]
+    private let agentTrackLayer = CAShapeLayer()
+    private var displayedAgentTrackRevision = -1
 
     init(editor: EditorViewModel) {
         self.editor = editor
         super.init(frame: .zero)
         wantsLayer = true
+        configureAgentTrackLayer()
         updateAppearanceColors()
     }
 
@@ -132,6 +135,7 @@ final class TimelineHeaderView: NSView {
             ctx.setFillColor(AppTheme.Border.primary.cgColor)
             ctx.fill(NSRect(x: 0, y: handleY, width: headerWidth, height: 1))
         }
+        syncAgentTrackLayer(geometry: geo, headerWidth: headerWidth)
 
         // Thick divider between the video zone and the audio zone,
         let z = editor.zones
@@ -140,6 +144,81 @@ final class TimelineHeaderView: NSView {
             ctx.setFillColor(AppTheme.Border.divider.cgColor)
             ctx.fill(NSRect(x: 0, y: dividerY - 1, width: headerWidth, height: 2))
         }
+    }
+
+    func updateAgentActivityOverlay() {
+        syncAgentTrackLayer(
+            geometry: TimelineGeometry(editor: editor, bounds: bounds),
+            headerWidth: bounds.width
+        )
+    }
+
+    private func configureAgentTrackLayer() {
+        agentTrackLayer.fillColor = nil
+        agentTrackLayer.lineWidth = AppTheme.BorderWidth.thick
+        agentTrackLayer.shadowOpacity = AppTheme.AgentActivity.changeGlowOpacity
+        agentTrackLayer.shadowRadius = AppTheme.AgentActivity.changeGlowRadius
+        agentTrackLayer.shadowOffset = .zero
+        agentTrackLayer.zPosition = 90
+        agentTrackLayer.opacity = 0
+        layer?.addSublayer(agentTrackLayer)
+    }
+
+    private func updateAgentTrackColor() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            let color = AppTheme.AgentActivity.mutated.cgColor
+            agentTrackLayer.strokeColor = color
+            agentTrackLayer.shadowColor = color
+        }
+    }
+
+    private func syncAgentTrackLayer(geometry: TimelineGeometry, headerWidth: CGFloat) {
+        let activity = editor.agentActivity
+        guard !activity.mutatedTrackIds.isEmpty
+                || activity.revision != displayedAgentTrackRevision else { return }
+        let path = CGMutablePath()
+        for (index, track) in editor.timeline.tracks.enumerated()
+            where activity.mutatedTrackIds.contains(track.id) {
+            let rect = NSRect(
+                x: 0,
+                y: geometry.trackY(at: index),
+                width: headerWidth,
+                height: geometry.trackHeight(at: index)
+            )
+            guard rect.intersects(bounds) else { continue }
+            let ringRect = rect
+                .offsetBy(dx: -bounds.minX, dy: -bounds.minY)
+                .insetBy(
+                    dx: AppTheme.BorderWidth.hairline,
+                    dy: AppTheme.BorderWidth.hairline
+                )
+            path.addRoundedRect(
+                in: ringRect,
+                cornerWidth: AppTheme.Radius.xs,
+                cornerHeight: AppTheme.Radius.xs
+            )
+        }
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        agentTrackLayer.frame = bounds
+        agentTrackLayer.path = path.isEmpty ? nil : path
+        AgentActivityLayerSupport.updateMask(
+            agentTrackLayer,
+            bounds: agentTrackLayer.bounds,
+            rulerHeight: Layout.rulerHeight
+        )
+        CATransaction.commit()
+
+        guard activity.revision != displayedAgentTrackRevision else { return }
+        displayedAgentTrackRevision = activity.revision
+        AgentActivityLayerSupport.updateAnimation(
+            agentTrackLayer,
+            hasHighlight: !activity.mutatedTrackIds.isEmpty,
+            staysVisible: false,
+            hold: AppTheme.Anim.agentChangeHighlightHold,
+            duration: AppTheme.Anim.agentChangeHighlightDuration
+        )
     }
 
     /// Draw a toggleable SF Symbol button; returns the hit-test rect (padded).
@@ -174,12 +253,25 @@ final class TimelineHeaderView: NSView {
                 .foregroundColor: AppTheme.Text.secondary.usingColorSpace(.sRGB) ?? AppTheme.Text.secondary,
             ]
         }
+        updateAgentTrackColor()
     }
 
     // MARK: - Input handling (mute/hide/resize)
 
     private var resizeDrag: (trackIndex: Int, originalHeight: CGFloat)?
     private var reorderDrag: (id: String, before: Timeline)?
+
+    private func hitTestTrack(at point: NSPoint) -> Int? {
+        let geo = TimelineGeometry(editor: editor, bounds: bounds)
+        return editor.timeline.tracks.indices.first { index in
+            NSRect(
+                x: bounds.minX,
+                y: geo.trackY(at: index),
+                width: bounds.width,
+                height: geo.trackHeight(at: index)
+            ).contains(point)
+        }
+    }
 
     private func hitTestResizeHandle(at point: NSPoint) -> Int? {
         let geo = TimelineGeometry(editor: editor, bounds: bounds)
@@ -190,6 +282,31 @@ final class TimelineHeaderView: NSView {
             }
         }
         return nil
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let point = convert(event.locationInWindow, from: nil)
+        guard let trackIndex = hitTestTrack(at: point) else { return nil }
+        let track = editor.timeline.tracks[trackIndex]
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let item = NSMenuItem(
+            title: L10n.string("Select All Clips on Track"),
+            action: #selector(performSelectAllClipsOnTrack(_:)),
+            keyEquivalent: ""
+        )
+        item.target = self
+        item.representedObject = track.id
+        item.isEnabled = !track.clips.isEmpty
+        menu.addItem(item)
+        return menu
+    }
+
+    @objc private func performSelectAllClipsOnTrack(_ sender: NSMenuItem) {
+        guard let trackId = sender.representedObject as? String,
+              editor.selectAllClips(onTrack: trackId) else { return }
+        needsDisplay = true
+        requestCanvasRedraw?()
     }
 
     override func mouseDown(with event: NSEvent) {

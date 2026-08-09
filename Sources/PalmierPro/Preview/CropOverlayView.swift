@@ -200,15 +200,9 @@ struct CropOverlayView: View {
 
     private func lockedAspectNormalized(for clip: Clip) -> Double? {
         guard let target = editor.cropAspectLock.pixelAspect,
-              let srcAspect = sourcePixelAspect(for: clip), srcAspect > 0 else { return nil }
+              let dimensions = editor.sourceDimensions(for: clip) else { return nil }
+        let srcAspect = Double(dimensions.width) / Double(dimensions.height)
         return target / srcAspect
-    }
-
-    private func sourcePixelAspect(for clip: Clip) -> Double? {
-        guard let asset = editor.mediaAssets.first(where: { $0.id == clip.mediaRef }),
-              let sw = asset.sourceWidth, let sh = asset.sourceHeight,
-              sw > 0, sh > 0 else { return nil }
-        return Double(sw) / Double(sh)
     }
 
     // MARK: - Layout

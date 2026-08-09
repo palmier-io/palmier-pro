@@ -95,7 +95,16 @@ enum TranscriptionError: LocalizedError {
 enum Transcription {
     private static let audioExtractionGate = AsyncSemaphore(value: 2)
 
+    static func failurePreservingCancellation(
+        _ error: Error,
+        as makeFailure: (String) -> TranscriptionError
+    ) throws -> TranscriptionError {
+        try Task.checkCancellation()
+        return makeFailure(error.localizedDescription)
+    }
+
     static func transcribeVideoAudio(videoURL: URL, censorProfanity: Bool = false, preferredLocale: Locale? = nil, sourceRange: ClosedRange<Double>? = nil) async throws -> TranscriptionResult {
+        try Task.checkCancellation()
         let tempAudioURL = try await extractAudioTrack(from: videoURL, range: sourceRange)
         defer { try? FileManager.default.removeItem(at: tempAudioURL) }
         let result = try await transcribe(fileURL: tempAudioURL, censorProfanity: censorProfanity, preferredLocale: preferredLocale)
@@ -128,6 +137,7 @@ enum Transcription {
     }
 
     static func transcribe(fileURL: URL, censorProfanity: Bool = false, preferredLocale: Locale? = nil, sourceRange: ClosedRange<Double>? = nil) async throws -> TranscriptionResult {
+        try Task.checkCancellation()
         if let sourceRange {
             let tempURL = try await extractAudioTrack(from: fileURL, range: sourceRange)
             defer { try? FileManager.default.removeItem(at: tempURL) }
@@ -170,12 +180,13 @@ enum Transcription {
             do {
                 try await install.downloadAndInstall()
             } catch {
+                let failure = try failurePreservingCancellation(error, as: TranscriptionError.modelInstallFailed)
                 Log.transcription.warning(
                     "install model failed locale=\(locale.identifier) error=\(error.localizedDescription)",
                     telemetry: "Transcription model install failed",
                     data: ["locale": locale.identifier(.bcp47), "error": error.localizedDescription]
                 )
-                throw TranscriptionError.modelInstallFailed(error.localizedDescription)
+                throw failure
             }
             Log.transcription.notice(
                 "install model ok locale=\(locale.identifier)",
@@ -188,7 +199,7 @@ enum Transcription {
         do {
             audioFile = try AVAudioFile(forReading: fileURL)
         } catch {
-            throw TranscriptionError.audioExtractionFailed(error.localizedDescription)
+            throw try failurePreservingCancellation(error, as: TranscriptionError.audioExtractionFailed)
         }
 
         let analyzer = SpeechAnalyzer(modules: [transcriber])
@@ -208,22 +219,24 @@ enum Transcription {
             }
         } catch {
             resultsTask.cancel()
+            let failure = try failurePreservingCancellation(error, as: TranscriptionError.analysisFailed)
             Log.transcription.warning(
                 "analyze failed error=\(error.localizedDescription)",
                 telemetry: "Transcription analysis failed",
                 data: ["error": error.localizedDescription]
             )
-            throw TranscriptionError.analysisFailed(error.localizedDescription)
+            throw failure
         }
 
         let collected: [SpeechTranscriber.Result]
         do {
             collected = try await resultsTask.value
         } catch {
-            throw TranscriptionError.analysisFailed(error.localizedDescription)
+            throw try failurePreservingCancellation(error, as: TranscriptionError.analysisFailed)
         }
 
         let decoded = decodeResults(collected, locale: locale)
+        try Task.checkCancellation()
         Log.transcription.notice(
             "ok textChars=\(decoded.text.count) words=\(decoded.words.count) lang=\(decoded.language ?? "?")",
             telemetry: "Transcription finished",
@@ -276,6 +289,7 @@ enum Transcription {
                 try audioFile?.write(from: pcm)
             }
         } catch let error as AudioTrackReader.ReadError {
+            try Task.checkCancellation()
             throw TranscriptionError.audioExtractionFailed(error.message)
         }
 
