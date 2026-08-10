@@ -59,6 +59,18 @@ struct InspectorView: View {
             case .ai: L10n.key("AI Edit")
             }
         }
+
+        var systemImage: String {
+            switch self {
+            case .text: "text.alignleft"
+            case .textAnimate: "diamond"
+            case .video: "video"
+            case .effects: "slider.horizontal.3"
+            case .audio: "waveform"
+            case .multicam: "square.grid.2x2"
+            case .ai: "wand.and.stars"
+            }
+        }
     }
 
     @State private var preferredTab: ClipTab = .video
@@ -142,40 +154,52 @@ struct InspectorView: View {
     // MARK: - Project Metadata
 
     private var projectMetadataContent: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
-                metadataSection(title: L10n.string("Project")) {
-                    if let url = editor.projectURL {
-                        plainMetadataRow(
-                            label: L10n.string("Name"),
-                            value: url.deletingPathExtension().lastPathComponent
-                        )
-                        plainMetadataRow(
-                            label: L10n.string("Path"),
-                            value: url.path,
-                            truncate: .middle
-                        )
-                    }
-                    plainMetadataRow(label: L10n.string("Duration"), value: formatDuration(Double(editor.timeline.totalFrames) / Double(editor.timeline.fps)))
-                }
-
-                metadataSection(title: L10n.string("Settings")) {
+        VStack(spacing: AppTheme.Spacing.zero) {
+            projectInspectorHeader
+            ScrollView {
+                EditorPanelGroup(
+                    L10n.string("Canvas"),
+                    contentSpacing: AppTheme.Spacing.sm,
+                    contentInsets: EdgeInsets(
+                        top: AppTheme.Spacing.smMd,
+                        leading: AppTheme.Spacing.smMd + AppTheme.IconSize.xs + AppTheme.Spacing.sm,
+                        bottom: AppTheme.Spacing.smMd,
+                        trailing: AppTheme.Spacing.smMd
+                    )
+                ) {
                     menuMetadataRow(label: L10n.string("Resolution"), value: "\(editor.timeline.width) × \(editor.timeline.height)") { qualityMenuItems }
                     menuMetadataRow(label: L10n.string("Frame Rate"), value: "\(editor.timeline.fps) fps") { fpsMenuItems }
                     menuMetadataRow(label: L10n.string("Aspect Ratio"), value: CanvasAspectRatio.displayLabel(width: editor.timeline.width, height: editor.timeline.height)) { aspectMenuItems }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
-    private func metadataSection<Content: View>(
-        title: String,
-        @ViewBuilder content: @escaping () -> Content
-    ) -> some View {
-        EditorPanelGroup(title, contentSpacing: AppTheme.Spacing.sm) {
-            content()
+    private var projectInspectorHeader: some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            Image(systemName: "movieclapper")
+                .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
+                .accessibilityHidden(true)
+            Text(L10n.string("Project Settings"))
+                .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .lineLimit(1)
+            Spacer(minLength: AppTheme.Spacing.xs)
+            Text(verbatim: projectDuration)
+                .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.regular))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .monospacedDigit()
+                .fixedSize()
         }
+        .padding(.horizontal, AppTheme.Spacing.smMd)
+        .panelHeaderBar()
+    }
+
+    private var projectDuration: String {
+        formatDuration(Double(editor.timeline.totalFrames) / Double(editor.timeline.fps))
     }
 
     private func plainMetadataRow(
@@ -401,7 +425,9 @@ struct InspectorView: View {
 
     private func tabBar(_ tabs: [ClipTab], selectedTab: ClipTab?) -> some View {
         TitleTabBar(
-            titles: tabs.map(\.titleKey),
+            items: tabs.map {
+                TitleTabBar.Item(titleKey: $0.titleKey, systemImage: $0.systemImage)
+            },
             selected: selectedTab?.titleKey,
             tourAnchors: tabs.contains(.ai) ? [ClipTab.ai.titleKey: .aiEditTab] : [:]
         ) { title in

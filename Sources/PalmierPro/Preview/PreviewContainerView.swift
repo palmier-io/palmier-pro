@@ -610,13 +610,13 @@ struct PreviewContainerView: View {
             }
         }
         .padding(.horizontal, AppTheme.Spacing.xs)
-        .padding(.bottom, AppTheme.Spacing.xs)
+        .frame(height: Layout.panelHeaderHeight)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(isActive ? tab.underlineColor : Color.clear)
-                .frame(height: AppTheme.BorderWidth.medium)
+                .frame(height: AppTheme.BorderWidth.thin)
         }
-        .fixedSize()
+        .fixedSize(horizontal: true, vertical: false)
         .contentShape(Rectangle())
         .onTapGesture {
             editor.selectPreviewTab(id: tab.id)

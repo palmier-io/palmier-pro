@@ -149,6 +149,7 @@
 "Canceled" = "Canceled";
 "Canceling" = "Canceling";
 "Cancels %@" = "Cancels %@";
+"Canvas" = "Canvas";
 "Canvas Zoom" = "Canvas Zoom";
 "Cap characters per caption, including spaces and punctuation. A single word may exceed the limit." = "Cap characters per caption, including spaces and punctuation. A single word may exceed the limit.";
 "Cap the words shown per caption. None fits each line to the box." = "Cap the words shown per caption. None fits each line to the box.";
@@ -687,6 +688,7 @@
 "Product demos" = "Product demos";
 "Project" = "Project";
 "Project Activity" = "Project Activity";
+"Project Settings" = "Project Settings";
 "Projects Couldn’t Be Deleted" = "Projects Couldn’t Be Deleted";
 "Prompt" = "Prompt";
 "Quality" = "Quality";

@@ -9,7 +9,7 @@ enum ClipType: String, Codable, Sendable, CaseIterable {
 
     var sfSymbolName: String {
         switch self {
-        case .video: "film"
+        case .video: "video"
         case .audio: "waveform"
         case .image: "photo"
         case .text: "textformat"

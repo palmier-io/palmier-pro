@@ -15,7 +15,7 @@ enum Layout {
     static let chatColumnMax: CGFloat = 640
 
     // Headers & toolbars
-    static let panelHeaderHeight: CGFloat = 28
+    static let panelHeaderHeight: CGFloat = AppTheme.IconSize.xl
     static let toolbarHeight: CGFloat = 38
 
     static let panelGap: CGFloat = 5
