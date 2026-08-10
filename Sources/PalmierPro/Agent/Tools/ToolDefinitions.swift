@@ -877,7 +877,7 @@ enum ToolDefinitions {
                     "transform": [
                         "type": "object",
                         "description": "Caption position and rotation; size is auto-fit per caption. x uses the selected text alignment edge.",
-                        "properties": textTransformProperties(includesTilt: false),
+                        "properties": textTransformProperties(),
                     ],
                     "censorProfanity": ["type": "boolean", "description": "Mask profanity."],
                     "maxWords": ["type": "integer", "minimum": 1, "description": "Max words per caption."],
@@ -1184,17 +1184,14 @@ enum ToolDefinitions {
     static var mcpServer: [AgentTool] { all + [manageProject] }
     static var inAppAgent: [AgentTool] { all + [readSkill] }
 
-    private static func textTransformProperties(includesTilt: Bool = true) -> [String: [String: Any]] {
-        var properties: [String: [String: Any]] = [
+    private static func textTransformProperties() -> [String: [String: Any]] {
+        [
             "x": ["type": "number", "description": "Normalized horizontal anchor of the unrotated text box: the left edge for left alignment, center for center alignment, or right edge for right alignment."],
             "y": ["type": "number", "description": "Normalized vertical center."],
             "rotation": ["type": "number", "description": "Clockwise Z-axis degrees."],
+            "rotationX": ["type": "number", "minimum": Transform.tiltRotationRange.lowerBound, "maximum": Transform.tiltRotationRange.upperBound, "description": "Static X-axis perspective rotation in degrees. Positive tips the top edge away from the viewer."],
+            "rotationY": ["type": "number", "minimum": Transform.tiltRotationRange.lowerBound, "maximum": Transform.tiltRotationRange.upperBound, "description": "Static Y-axis perspective rotation in degrees. Positive brings the right edge toward the viewer."],
         ]
-        if includesTilt {
-            properties["rotationX"] = ["type": "number", "minimum": Transform.tiltRotationRange.lowerBound, "maximum": Transform.tiltRotationRange.upperBound, "description": "Static X-axis perspective rotation in degrees. Positive tips the top edge away from the viewer."]
-            properties["rotationY"] = ["type": "number", "minimum": Transform.tiltRotationRange.lowerBound, "maximum": Transform.tiltRotationRange.upperBound, "description": "Static Y-axis perspective rotation in degrees. Positive brings the right edge toward the viewer."]
-        }
-        return properties
     }
 
     private static func textStyleProperties(detailed: Bool) -> [String: [String: Any]] {

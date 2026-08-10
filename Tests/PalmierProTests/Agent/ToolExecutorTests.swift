@@ -1989,7 +1989,7 @@ struct ToolExecutorTextFolderTests {
         let captionsTool = try #require(ToolDefinitions.mcpServer.first { $0.name == .addCaptions })
         let captionsProperties = try #require(captionsTool.inputSchema["properties"] as? [String: [String: Any]])
         let captionsTransform = try #require(captionsProperties["transform"]?["properties"] as? [String: [String: Any]])
-        #expect(Set(captionsTransform.keys) == ["x", "y", "rotation"])
+        #expect(Set(captionsTransform.keys) == ["x", "y", "rotation", "rotationX", "rotationY"])
     }
 
     @Test func addTextsCreatesNewTrackWhenIndexOmitted() async throws {

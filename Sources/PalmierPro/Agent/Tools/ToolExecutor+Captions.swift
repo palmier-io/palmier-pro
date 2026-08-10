@@ -15,10 +15,6 @@ extension ToolExecutor {
         if let stylePatch { Self.applyTextStylePatch(stylePatch, to: &style) }
 
         let transform = try parseTextTransform(args["transform"], path: "add_captions.transform")
-        guard transform?.rotationX == nil,
-              transform?.rotationY == nil else {
-            throw ToolError("add_captions.transform supports x, y, and rotation; use update_text to tilt captions")
-        }
         var center = AppTheme.Caption.defaultCenter
         if let x = transform?.x { center.x = CGFloat(x) }
         if let y = transform?.y { center.y = CGFloat(y) }
@@ -73,7 +69,8 @@ extension ToolExecutor {
         let ids = try await editor.generateCaptions(for: request, applying: { mutation in
             editor.undo.perform("Generate Captions (Agent)") {
                 let ids = mutation()
-                if transform?.x != nil || transform?.rotation != nil {
+                if transform?.x != nil || transform?.rotation != nil
+                    || transform?.rotationX != nil || transform?.rotationY != nil {
                     editor.commitClipProperties(clipIds: ids, actionName: "Transform Captions (Agent)") { clip in
                         if let x = transform?.x {
                             clip.transform.centerX = Self.textCenterX(
@@ -84,6 +81,12 @@ extension ToolExecutor {
                         }
                         if let rotation = transform?.rotation {
                             clip.transform.rotation = rotation
+                        }
+                        if let rotationX = transform?.rotationX {
+                            clip.transform.rotationX = rotationX
+                        }
+                        if let rotationY = transform?.rotationY {
+                            clip.transform.rotationY = rotationY
                         }
                     }
                 }
