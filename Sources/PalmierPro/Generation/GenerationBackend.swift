@@ -103,6 +103,7 @@ struct BackendGenerationJob: Decodable, Sendable {
     let resultUrls: [String]?
     let errorMessage: String?
     let costCredits: Int?
+    let refundedCredits: Int?
     let completedAt: Double?
 }
 

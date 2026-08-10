@@ -537,6 +537,13 @@ struct PreviewContainerView: View {
                 }
                 .frame(maxWidth: 520, maxHeight: 240)
                 .fixedSize(horizontal: false, vertical: true)
+                if activeMediaAsset?.wasGenerationRefunded == true {
+                    Text(L10n.string("You were not charged for this generation"))
+                        .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                        .foregroundStyle(AppTheme.Status.successColor)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, AppTheme.Spacing.lg)
+                }
                 if let asset = activeMediaAsset, asset.pendingDownloadURL != nil {
                     Button {
                         editor.generationService.retryDownload(asset: asset, editor: editor)

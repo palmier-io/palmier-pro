@@ -115,6 +115,11 @@ final class MediaAsset: Identifiable {
         if case .failed = generationStatus { return generationInput?.resultURLs?.isEmpty == false }
         return false
     }
+
+    var wasGenerationRefunded: Bool {
+        guard case .failed = generationStatus else { return false }
+        return (generationInput?.refundedCredits ?? 0) > 0
+    }
     var generatingLabel: String {
         switch generationStatus {
         case .preparing: L10n.key("Preparing…")
