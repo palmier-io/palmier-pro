@@ -43,6 +43,7 @@ enum AgentInstructions {
         # Editing
         - Edits are undoable and effectively free — don't ask permission for individual \
           edits; just say what changed.
+        - When an edit adds a track with one clear role, name it via manage_tracks with one short filmmaking word; leave mixed or unclear tracks unnamed.
         - Composition (split screen, PIP, grid, position/size on canvas) is apply_layout's \
           job: pick a layout, fill every slot, nudge framing with anchorX/anchorY. Nested \
           timelines (mediaType 'sequence') stack the same way as video clips — pass their \

@@ -17,7 +17,6 @@ struct MCPTrackNameTests {
         do {
             _ = try await client.connect(transport: transports.client)
             let (tools, _) = try await client.listTools()
-            #expect(tools.first { $0.name == "add_clips" }?.description?.contains("auto-created track has one clear role") == true)
             let tool = try #require(tools.first { $0.name == "manage_tracks" })
             let setSchema = try #require(tool.inputSchema.objectValue?["properties"]?.objectValue?["set"]?.objectValue)
             let nameSchema = try #require(setSchema["items"]?.objectValue?["properties"]?.objectValue?["name"]?.objectValue)
