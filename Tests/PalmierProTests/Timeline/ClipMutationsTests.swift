@@ -561,15 +561,15 @@ struct ClipPropertyCommitTests {
         e.undo.attach(undoManager)
 
         e.commitClipProperties(clipIds: ["a", "b"]) {
-            $0.textAnimation = TextAnimation(preset: .wordPop)
+            $0.textAnimation = TextAnimation(preset: .wordSlide)
         }
 
-        #expect(e.timeline.tracks[0].clips.allSatisfy { $0.textAnimation?.preset == .wordPop })
+        #expect(e.timeline.tracks[0].clips.allSatisfy { $0.textAnimation?.preset == .wordSlide })
         undoManager.undo()
         #expect(e.timeline.tracks[0].clips.allSatisfy { $0.textAnimation == nil })
         #expect(undoManager.canUndo == false)
         undoManager.redo()
-        #expect(e.timeline.tracks[0].clips.allSatisfy { $0.textAnimation?.preset == .wordPop })
+        #expect(e.timeline.tracks[0].clips.allSatisfy { $0.textAnimation?.preset == .wordSlide })
         #expect(undoManager.canRedo == false)
     }
 

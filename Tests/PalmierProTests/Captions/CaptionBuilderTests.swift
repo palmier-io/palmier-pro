@@ -131,8 +131,8 @@ struct CaptionBuilderTests {
         ])
         let specs = CaptionBuilder.specs(
             for: [p], sourceClip: clip, trackIndex: 0, fps: 30,
-            style: TextStyle(), captionGroupId: "g1", animation: TextAnimation(preset: .wordPop))
-        #expect(specs[0].animation?.preset == .wordPop)
+            style: TextStyle(), captionGroupId: "g1", animation: TextAnimation(preset: .wordSlide))
+        #expect(specs[0].animation?.preset == .wordSlide)
         let words = try! #require(specs[0].words)
         #expect(words.map(\.text) == ["hi", "there"])
         #expect(words[0].startFrame == 0 && words[0].endFrame == 12)   // clip-relative
@@ -148,7 +148,7 @@ struct CaptionBuilderTests {
 
         let specs = CaptionBuilder.specs(
             for: [p], sourceClip: source, trackIndex: 0, fps: 30,
-            style: TextStyle(), captionGroupId: nil, animation: TextAnimation(preset: .wordPop))
+            style: TextStyle(), captionGroupId: nil, animation: TextAnimation(preset: .wordSlide))
 
         let words = try! #require(specs[0].words)
         #expect(words == [

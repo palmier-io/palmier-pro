@@ -27,7 +27,7 @@ struct RebuildCacheIdentityTests {
         var clip = edited.tracks[0].clips[1]
         clip.textContent = "Different words"
         clip.textStyle = TextStyle(fontSize: 200)
-        clip.textAnimation = TextAnimation(preset: .wordPop)
+        clip.textAnimation = TextAnimation(preset: .wordSlide)
         clip.transform.centerY = 0.2
         edited.tracks[0].clips[1] = clip
 

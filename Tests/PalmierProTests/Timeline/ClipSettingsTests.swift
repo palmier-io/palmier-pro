@@ -9,7 +9,7 @@ struct ClipSettingsTests {
         var source = Fixtures.clip(id: "source", mediaRef: "", mediaType: .text, start: 0, duration: 60)
         source.textContent = "Title"
         source.textStyle = TextStyle(fontName: "Avenir", fontSize: 48, isBold: true)
-        source.textAnimation = TextAnimation(preset: .wordPop)
+        source.textAnimation = TextAnimation(preset: .wordSlide)
         source.textFillMode = .footage
         source.opacity = 0.65
         source.transform.centerX = 0.2
