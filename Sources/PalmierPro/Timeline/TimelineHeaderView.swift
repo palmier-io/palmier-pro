@@ -12,7 +12,7 @@ enum TimelineHeaderSymbol {
     }
 }
 
-/// Fixed track header column drawn to the left of the scrollable timeline.
+/// Resizable track header column drawn to the left of the scrollable timeline.
 final class TimelineHeaderView: NSView {
     unowned var editor: EditorViewModel
 

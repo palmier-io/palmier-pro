@@ -12,10 +12,7 @@ extension EditorViewModel {
     var minZoomScale: Double {
         let totalFrames = timeline.totalFrames
         guard totalFrames > 0, timelineVisibleWidth > 0 else { return Zoom.min }
-        let headerWidth = Double(Layout.trackHeaderWidth)
-        let availableWidth = timelineVisibleWidth - headerWidth
-        guard availableWidth > 0 else { return Zoom.min }
-        let fitAll = availableWidth / (Double(totalFrames) * Zoom.fitAllBuffer)
+        let fitAll = timelineVisibleWidth / (Double(totalFrames) * Zoom.fitAllBuffer)
         return min(Zoom.max, max(Zoom.floor, fitAll))
     }
 
