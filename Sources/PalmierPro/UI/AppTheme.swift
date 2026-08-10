@@ -249,6 +249,7 @@ enum AppTheme {
         static let tertiary = NSColor.white.withAlphaComponent(0.62)
         static let muted = NSColor.white.withAlphaComponent(0.34)
         static let error = NSColor(red: 0xE5/255.0, green: 0x4F/255.0, blue: 0x4F/255.0, alpha: 1)
+        static let success = NSColor(red: 0x4F/255.0, green: 0xB8/255.0, blue: 0x5F/255.0, alpha: 1)
 
         static var backgroundColor: Color { Color(background) }
         static var primaryColor: Color { Color(primary) }
@@ -256,6 +257,7 @@ enum AppTheme {
         static var tertiaryColor: Color { Color(tertiary) }
         static var mutedColor: Color { Color(muted) }
         static var errorColor: Color { Color(error) }
+        static var successColor: Color { Color(success) }
 
         static let aiGradient = LinearGradient(
             stops: [

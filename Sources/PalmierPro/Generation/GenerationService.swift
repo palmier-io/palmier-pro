@@ -122,7 +122,13 @@ final class GenerationService {
                 let message = error.localizedDescription
                 Log.generation.error("upload failed model=\(genInput.model) error=\(message)")
                 for placeholder in placeholders {
-                    updateGenerationMetadata(placeholder, editor: editor, status: .failed("Upload failed: \(message)"))
+                    updateGenerationMetadata(
+                        placeholder,
+                        editor: editor,
+                        status: .failed("Upload failed: \(message)")
+                    ) { input in
+                        input.creditsCharged = false
+                    }
                 }
                 onFailure?()
             }
@@ -527,7 +533,9 @@ final class GenerationService {
                 Log.generation.error("submit failed model=\(genInput.model) error=\(message)")
             }
             for placeholder in placeholders {
-                updateGenerationMetadata(placeholder, editor: editor, status: .failed(message))
+                updateGenerationMetadata(placeholder, editor: editor, status: .failed(message)) { input in
+                    input.creditsCharged = false
+                }
             }
             onFailure?()
             return
@@ -640,6 +648,7 @@ final class GenerationService {
             for placeholder in placeholders {
                 updateGenerationMetadata(placeholder, editor: editor, status: .failed(message)) { input in
                     input.backendJobId = backendJobId
+                    input.creditsCharged = false
                 }
             }
             editor.onProjectCheckpointRequired?()
@@ -688,7 +697,13 @@ final class GenerationService {
         guard !urlStrings.isEmpty else {
             Log.generation.error("backend job succeeded with no resultUrls")
             for placeholder in placeholders {
-                updateGenerationMetadata(placeholder, editor: editor, status: .failed("No URL in response"))
+                updateGenerationMetadata(
+                    placeholder,
+                    editor: editor,
+                    status: .failed("No URL in response")
+                ) { input in
+                    input.creditsCharged = true
+                }
             }
             onFailure?()
             return
@@ -701,11 +716,18 @@ final class GenerationService {
         for (i, placeholder) in placeholders.enumerated() {
             let outputIndex = placeholder.generationInput?.outputIndex ?? i
             guard outputIndex < urlStrings.count, let remote = URL(string: urlStrings[outputIndex]) else {
-                updateGenerationMetadata(placeholder, editor: editor, status: .failed("No URL for placeholder"))
+                updateGenerationMetadata(
+                    placeholder,
+                    editor: editor,
+                    status: .failed("No URL for placeholder")
+                ) { input in
+                    input.creditsCharged = true
+                }
                 continue
             }
             updateGenerationMetadata(placeholder, editor: editor, status: .downloading) { input in
                 input.resultURLs = urlStrings
+                input.creditsCharged = true
             }
             if await downloadAndFinalize(asset: placeholder, remoteURL: remote, editor: editor) {
                 onComplete?(placeholder)

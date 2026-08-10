@@ -109,6 +109,11 @@ final class MediaAsset: Identifiable {
     var isGenerating: Bool {
         generationStatus == .preparing || generationStatus == .generating || generationStatus == .downloading || generationStatus == .rendering
     }
+    /// A failed generation that never reached a billable result: never submitted, or refunded by the backend.
+    var failedWithoutCharge: Bool {
+        guard case .failed = generationStatus else { return false }
+        return generationInput?.creditsCharged == false
+    }
     var isRecoveringGeneration: Bool {
         guard canResumeGeneration else { return false }
         if isGenerating { return true }

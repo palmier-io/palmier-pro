@@ -80,6 +80,8 @@ struct GenerationInput: Codable, Sendable, Equatable {
     var backendJobId: String?
     var outputIndex: Int?
     var resultURLs: [String]?
+    /// nil while the credit outcome is unknown; false once the job is known to leave no net charge.
+    var creditsCharged: Bool?
 }
 
 enum MediaSource: Codable, Sendable, Equatable {
