@@ -20,14 +20,7 @@ struct TitleTabBar: View {
                 tab(item)
             }
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: Layout.panelHeaderHeight)
-        .background(AppTheme.Background.raisedColor)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(AppTheme.Border.primaryColor)
-                .frame(height: AppTheme.BorderWidth.thin)
-        }
+        .panelHeaderBar()
     }
 
     @ViewBuilder
