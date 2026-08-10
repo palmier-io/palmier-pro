@@ -45,4 +45,28 @@ import Testing
         #expect(restored.generationInput?.draft == true)
         #expect(MediaAsset(entry: restored, resolvedURL: generated.url).canEnhanceDraft)
     }
+
+    @Test func refundedCreditsSurviveManifestRoundTrip() throws {
+        var input = GenerationInput(
+            prompt: "Fail", model: "flux-3", duration: 5,
+            aspectRatio: "16:9", resolution: "720p"
+        )
+        input.refundedCredits = 12
+        let generated = MediaAsset(
+            url: URL(fileURLWithPath: "/tmp/failed.mp4"),
+            type: .video,
+            name: "Failed",
+            generationInput: input
+        )
+        generated.generationStatus = .failed("Provider error")
+        let data = try JSONEncoder().encode(generated.toManifestEntry(projectURL: nil))
+        let asset = MediaAsset(
+            entry: try JSONDecoder().decode(MediaManifestEntry.self, from: data),
+            resolvedURL: generated.url
+        )
+        #expect(asset.generationInput?.refundedCredits == 12)
+        #expect(asset.wasGenerationRefunded)
+        asset.generationInput?.refundedCredits = 0
+        #expect(!asset.wasGenerationRefunded)
+    }
 }
