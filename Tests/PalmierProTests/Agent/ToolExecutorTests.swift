@@ -2624,12 +2624,12 @@ struct SetClipPropertiesTests {
 
         let result = await h.runRaw("update_text", args: [
             "clipIds": ["title"],
-            "animation": "wordPop",
+            "animation": "wordSlide",
         ])
 
         #expect(result.isError == false, "\(ToolHarness.textOf(result))")
         let animation = h.editor.timeline.tracks[0].clips[0].textAnimation
-        #expect(animation?.preset == .wordPop)
+        #expect(animation?.preset == .wordSlide)
         #expect(animation?.perWordFrames == 12)
         #expect(animation?.highlight == highlight)
     }

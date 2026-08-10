@@ -65,14 +65,6 @@ struct TextAnimationRenderTests {
         return preset == .highlightBlock ? state.bgColor?.a ?? 0 : state.color.r
     }
 
-    @Test func wordPopRevealsProgressively() {
-        let c = clip(TextAnimation(preset: .wordPop, perWordFrames: 6))
-        let early = pixels(c, frame: 5)   // only ONE has started
-        let late = pixels(c, frame: 80)   // all three in
-        #expect(brightCount(early) > 0, "first word should be visible early")
-        #expect(brightCount(late) > brightCount(early) * 2, "more words visible later (\(brightCount(early)) → \(brightCount(late)))")
-    }
-
     @Test func highlightPopColorsActiveWord() {
         let c = clip(TextAnimation(preset: .highlightPop, perWordFrames: 6, highlight: .init(r: 1, g: 0.85, b: 0, a: 1)))
         let mid = pixels(c, frame: 45)  // TWO active → some yellow

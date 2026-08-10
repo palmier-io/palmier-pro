@@ -61,7 +61,7 @@ struct TextRasterCacheTests {
     }
 
     @Test func entranceAnimationSharesOneBaseRaster() {
-        let c = clip(content: uniqueContent("Entrance"), anim: TextAnimation(preset: .fadeIn))
+        let c = clip(content: uniqueContent("Entrance"), anim: TextAnimation(preset: .popIn))
         let count = rasterCount(of: c.textContent!) {
             for frame in 0..<8 {
                 _ = TextFrameRenderer.image(clip: c, frame: frame, renderSize: size)

@@ -23,8 +23,6 @@ enum TextAnimator {
         let dur = max(1, anim.perWordFrames)
         let t = progress(rel, start: 0, dur: dur)
         switch anim.preset {
-        case .fadeIn:
-            return ClipState(opacity: Float(t))
         case .popIn:
             return ClipState(opacity: Float(t), scale: 0.6 + 0.4 * CGFloat(t))
         case .slideUp:
@@ -51,13 +49,6 @@ enum TextAnimator {
         case .wordSlide:
             let t = progress(rel, start: word.startFrame, dur: hand)
             return WordState(opacity: Float(t), dy: 0.5 * (1 - CGFloat(t)), color: activeTint(anim, word, rel, base))
-        case .wordPop:
-            let u = linear(rel, start: word.startFrame, dur: hand)
-            return WordState(opacity: Float(smoothstep(u)), scale: 0.6 + 0.4 * overshoot(u),
-                             color: activeTint(anim, word, rel, base))
-        case .wordCycle:
-            let on = activeRamp(rel, word: word, ramp: hand)
-            return WordState(opacity: Float(on), color: activeTint(anim, word, rel, base))
         case .highlightPop:
             let ramp = min(hand, 4)
             let on = heldHighlightAmount(rel, word: word, nextWord: nextWord, ramp: ramp)
@@ -115,12 +106,6 @@ enum TextAnimator {
         guard rel > start else { return 0 }
         guard rel < start + dur else { return 1 }
         return Double(rel - start) / Double(dur)
-    }
-
-    /// Back-ease that overshoots past 1 before settling — a spring/bounce on the way in.
-    private static func overshoot(_ t: Double) -> CGFloat {
-        let s = 1.70158, p = t - 1
-        return CGFloat(1 + (s + 1) * p * p * p + s * p * p)
     }
 
     /// 0 outside the active span, with the ramp shortened so fast words reach 1.

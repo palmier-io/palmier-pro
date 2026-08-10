@@ -156,8 +156,7 @@ enum CaptionSpecBuilder {
                ) {
                 captions[previousIndex].spec = resized(
                     captions[previousIndex].spec,
-                    durationFrames: duration,
-                    extendWordCycle: true
+                    durationFrames: duration
                 )
             }
         }
@@ -172,8 +171,7 @@ enum CaptionSpecBuilder {
                 if holdFrames > 0, !duration.overflow {
                     captions[lastIndex].spec = resized(
                         captions[lastIndex].spec,
-                        durationFrames: duration.partialValue,
-                        extendWordCycle: true
+                        durationFrames: duration.partialValue
                     )
                 }
             }
@@ -243,8 +241,7 @@ enum CaptionSpecBuilder {
     private static func resized(
         _ spec: EditorViewModel.TextClipSpec,
         durationFrames: Int,
-        wordOffsetFrames: Int = 0,
-        extendWordCycle: Bool = false
+        wordOffsetFrames: Int = 0
     ) -> EditorViewModel.TextClipSpec {
         var resized = spec
         resized.durationFrames = durationFrames
@@ -258,11 +255,6 @@ enum CaptionSpecBuilder {
             return end > start
                 ? WordTiming(text: word.text, startFrame: start, endFrame: end)
                 : nil
-        }
-        if extendWordCycle,
-           resized.animation?.preset == .wordCycle,
-           let lastIndex = words.indices.last {
-            words[lastIndex].endFrame = durationFrames
         }
         resized.words = words.isEmpty ? nil : words
         return resized

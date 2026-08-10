@@ -222,14 +222,11 @@ private func mediaAsset(_ id: String, hasAudio: Bool = true) -> MediaAsset {
     }
 
     @Test(arguments: [
-        TextAnimation.Preset.fadeIn,
-        .popIn,
+        TextAnimation.Preset.popIn,
         .slideUp,
         .typewriter,
         .wordReveal,
         .wordSlide,
-        .wordPop,
-        .wordCycle,
     ])
     func closesAnimatedCaptionGapWithoutOverlap(
         preset: TextAnimation.Preset
@@ -244,8 +241,8 @@ private func mediaAsset(_ id: String, hasAudio: Bool = true) -> MediaAsset {
 
         #expect(specs.map(\.durationFrames) == [27, 30])
         #expect(specs[0].startFrame + specs[0].durationFrames == specs[1].startFrame)
-        #expect(specs[0].words?.last?.endFrame == (preset == .wordCycle ? 27 : 21))
-        #expect(specs[1].words?.last?.endFrame == (preset == .wordCycle ? 30 : 21))
+        #expect(specs[0].words?.last?.endFrame == 21)
+        #expect(specs[1].words?.last?.endFrame == 21)
     }
 
     @Test func oneFrameAnimatedCaptionClosesTheFollowingGapWithoutOverlap() async throws {
@@ -255,7 +252,7 @@ private func mediaAsset(_ id: String, hasAudio: Bool = true) -> MediaAsset {
                 gapTarget(id: "two", startFrame: 27, durationFrames: 1, hasWordTiming: false),
                 gapTarget(id: "three", startFrame: 33, durationFrames: 30),
             ],
-            animation: TextAnimation(preset: .fadeIn)
+            animation: TextAnimation(preset: .popIn)
         ))
 
         #expect(specs.map(\.durationFrames) == [27, 6, 30])
