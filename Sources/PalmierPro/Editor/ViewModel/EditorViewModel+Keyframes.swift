@@ -45,7 +45,7 @@ extension EditorViewModel {
             case .crop:
                 clip.upsertKeyframe(in: \.cropTrack, frame: f, value: clip.cropAt(frame: f))
             case .volume:
-                let currentDb = clip.volumeTrack?.sample(at: f - clip.startFrame, fallback: 0) ?? 0
+                let currentDb = clip.liveVolumeKfDb(at: f) ?? VolumeScale.dbFromLinear(clip.volume)
                 clip.upsertKeyframe(in: \.volumeTrack, frame: f, value: currentDb)
             }
         }

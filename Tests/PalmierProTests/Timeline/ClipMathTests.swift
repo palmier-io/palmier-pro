@@ -135,6 +135,21 @@ struct ClipMathTests {
         #expect(abs(clip.volumeAt(frame: 5) - 0.25) < 1e-9)
     }
 
+    @Test func volumeKeyframesStoreAbsoluteDecibels() {
+        var clip = Fixtures.clip(
+            start: 0,
+            duration: 100,
+            volume: VolumeScale.linearFromDb(-12)
+        )
+        clip.volumeTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: -6),
+        ])
+
+        let expected = VolumeScale.linearFromDb(-6)
+        #expect(abs(clip.rawVolumeAt(frame: 50) - expected) < 1e-9)
+        #expect(abs(clip.volumeAt(frame: 50) - expected) < 1e-9)
+    }
+
     // MARK: - opacityAt + rawOpacityAt
 
     @Test func opacityAtReturnsStaticOpacityWithoutFade() {

@@ -16,6 +16,9 @@ struct MCPVolumeKeyframeTests {
             startFrame: 0,
             durationFrames: 60
         ).first)
+        let initialLocation = try #require(harness.editor.findClip(id: clipId))
+        harness.editor.timeline.tracks[initialLocation.trackIndex]
+            .clips[initialLocation.clipIndex].volume = VolumeScale.linearFromDb(-12)
         let undoManager = UndoManager()
         harness.editor.undo.attach(undoManager)
 
@@ -69,6 +72,8 @@ struct MCPVolumeKeyframeTests {
             #expect(abs(stored[0].value) < 0.0001)
             #expect(stored[1].value == -6)
             #expect(stored[2].value == VolumeScale.floorDb)
+            let keyframedClip = harness.editor.timeline.tracks[location.trackIndex].clips[location.clipIndex]
+            #expect(abs(keyframedClip.rawVolumeAt(frame: 0) - 1) < 0.0001)
 
             let timelineResult = try await client.callTool(name: "get_timeline")
             let timeline = try json(text(timelineResult.content))

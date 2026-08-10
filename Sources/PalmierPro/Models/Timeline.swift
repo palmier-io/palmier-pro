@@ -281,19 +281,15 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     func liveVolumeKfDb(at frame: Int) -> Double? {
         guard contains(timelineFrame: frame),
               let track = volumeTrack, track.isActive else { return nil }
-        return track.sample(at: frame - startFrame, fallback: 0)
+        return track.sample(
+            at: frame - startFrame,
+            fallback: VolumeScale.dbFromLinear(volume)
+        )
     }
 
-    /// Effective linear volume at `frame`: keyframe envelope first, fade ramp on top, static volume as outer gain.
+    /// Effective linear volume at `frame`, including the fade envelope.
     func volumeAt(frame: Int) -> Double {
-        let kfGain: Double
-        if let track = volumeTrack, track.isActive {
-            let dB = track.sample(at: keyframeOffset(forFrame: frame), fallback: 0)
-            kfGain = VolumeScale.linearFromDb(dB)
-        } else {
-            kfGain = 1.0
-        }
-        return volume * kfGain * fadeMultiplier(at: frame)
+        rawVolumeAt(frame: frame) * fadeMultiplier(at: frame)
     }
 
     var hasDenoiseEnabled: Bool {
@@ -308,13 +304,11 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     static let defaultDenoiseAmount: Double = 0.6
 
     func rawVolumeAt(frame: Int) -> Double {
-        let kfGain: Double
-        if let track = volumeTrack, track.isActive {
-            kfGain = VolumeScale.linearFromDb(track.sample(at: keyframeOffset(forFrame: frame), fallback: 0))
-        } else {
-            kfGain = 1.0
-        }
-        return volume * kfGain
+        guard let track = volumeTrack, track.isActive else { return volume }
+        let fallbackDb = VolumeScale.dbFromLinear(volume)
+        return VolumeScale.linearFromDb(
+            track.sample(at: keyframeOffset(forFrame: frame), fallback: fallbackDb)
+        )
     }
 
     /// 0…1 envelope from the fade head/tail ramps.

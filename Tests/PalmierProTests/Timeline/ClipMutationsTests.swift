@@ -300,6 +300,26 @@ struct StampKeyframeTests {
         #expect(kf?.frame == 5)
         #expect(kf?.value == 1.0)
     }
+
+    @Test func firstVolumeKeyframePreservesStaticLevel() throws {
+        let volumeDb = -6.0
+        let clip = Fixtures.clip(
+            id: "c1",
+            mediaType: .audio,
+            start: 0,
+            duration: 100,
+            volume: VolumeScale.linearFromDb(volumeDb)
+        )
+        let e = editor([Fixtures.audioTrack(clips: [clip])])
+
+        e.stampKeyframe(clipId: "c1", property: .volume, frame: 50)
+
+        let updated = try #require(e.clipFor(id: "c1"))
+        let keyframe = try #require(updated.volumeTrack?.keyframes.first)
+        #expect(keyframe.frame == 50)
+        #expect(abs(keyframe.value - volumeDb) < 1e-9)
+        #expect(abs(updated.volumeAt(frame: 50) - clip.volumeAt(frame: 50)) < 1e-9)
+    }
 }
 
 @Suite("EditorViewModel — removeClips")
