@@ -59,6 +59,18 @@ struct InspectorView: View {
             case .ai: L10n.key("AI Edit")
             }
         }
+
+        var systemImage: String {
+            switch self {
+            case .text: "text.alignleft"
+            case .textAnimate: "diamond"
+            case .video: "video"
+            case .effects: "slider.horizontal.3"
+            case .audio: "waveform"
+            case .multicam: "square.grid.2x2"
+            case .ai: "wand.and.stars"
+            }
+        }
     }
 
     @State private var preferredTab: ClipTab = .video
@@ -401,7 +413,9 @@ struct InspectorView: View {
 
     private func tabBar(_ tabs: [ClipTab], selectedTab: ClipTab?) -> some View {
         TitleTabBar(
-            titles: tabs.map(\.titleKey),
+            items: tabs.map {
+                TitleTabBar.Item(titleKey: $0.titleKey, systemImage: $0.systemImage)
+            },
             selected: selectedTab?.titleKey,
             tourAnchors: tabs.contains(.ai) ? [ClipTab.ai.titleKey: .aiEditTab] : [:]
         ) { title in
