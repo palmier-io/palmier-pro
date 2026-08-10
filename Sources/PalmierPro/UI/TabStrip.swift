@@ -10,7 +10,7 @@ struct TabStrip<Item: Identifiable, Tab: View, Trailing: View>: View where Item.
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: AppTheme.Spacing.md) {
+                HStack(spacing: AppTheme.Spacing.zero) {
                     ForEach(items) { item in
                         tab(item).id(item.id)
                     }

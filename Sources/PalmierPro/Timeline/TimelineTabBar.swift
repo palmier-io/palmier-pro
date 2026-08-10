@@ -104,14 +104,13 @@ private struct TimelineTabBarContent: View, Equatable {
             }
         }
         .padding(.horizontal, AppTheme.Spacing.xs)
-        .padding(.vertical, AppTheme.Spacing.xxs)
-        .padding(.bottom, AppTheme.Spacing.xxs)
+        .frame(height: Layout.panelHeaderHeight)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(isActive ? AppTheme.Accent.primary : Color.clear)
-                .frame(height: AppTheme.BorderWidth.medium)
+                .frame(height: AppTheme.BorderWidth.thin)
         }
-        .fixedSize()
+        .fixedSize(horizontal: true, vertical: false)
         .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
         .gesture(TapGesture(count: 2).onEnded { renamingTabId = tab.id })
         .simultaneousGesture(TapGesture().onEnded { editor.activateTimeline(tab.id) })
