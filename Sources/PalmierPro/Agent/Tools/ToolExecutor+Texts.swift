@@ -366,7 +366,9 @@ extension ToolExecutor {
     private func parseTextFillMode(_ raw: String?, path: String) throws -> TextFillMode? {
         guard let raw else { return nil }
         guard let mode = TextFillMode(rawValue: raw) else {
-            throw ToolError("\(path).fillMode: expected color or footage")
+            throw ToolError(
+                "\(path).fillMode: expected \(TextFillMode.allCases.map(\.rawValue).joined(separator: ", "))"
+            )
         }
         return mode
     }
@@ -673,7 +675,7 @@ extension ToolExecutor {
                     clip.textAnimation = a
                 }
                 if let fillMode {
-                    clip.textFillMode = fillMode == .footage ? .footage : nil
+                    clip.textFillMode = fillMode == .color ? nil : fillMode
                 }
             }
         }

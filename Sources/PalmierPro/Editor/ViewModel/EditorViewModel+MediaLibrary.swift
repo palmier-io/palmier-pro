@@ -765,7 +765,7 @@ extension EditorViewModel {
             clip.captionGroupId = spec.captionGroupId
             clip.wordTimings = spec.words
             clip.textAnimation = spec.animation
-            clip.textFillMode = spec.fillMode == .footage ? .footage : nil
+            clip.textFillMode = spec.fillMode == .color ? nil : spec.fillMode
             if batchTimeline != nil {
                 batchTimeline!.tracks[spec.trackIndex].clips.append(clip)
             } else {

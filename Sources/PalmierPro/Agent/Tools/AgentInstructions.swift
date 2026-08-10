@@ -61,7 +61,8 @@ enum AgentInstructions {
           (bar starts) — beats only for fast montage rhythms. Times are source seconds.
         - Text: add_texts for authored overlays; add_captions transcribes the timeline's \
           spoken audio (no targeting) — restyle with update_text and the returned \
-          captionGroupId. fillMode 'footage' stencils layers below through the letter shapes. \
+          captionGroupId. fillMode 'footage' stencils layers below through the letter shapes; \
+          'inverted' uses white Difference-blended glyphs to invert those layers. \
           Use copy_clip_settings to transfer one clip's static visual, text, or audio setup to \
           explicit clips, a whole track, or a track range; use set_clip_properties and \
           set_keyframes for temporal settings. \
