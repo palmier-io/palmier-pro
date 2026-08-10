@@ -56,6 +56,20 @@ struct CompositorTextLayerTests {
         return n
     }
 
+    private func visibleBounds(_ frame: CompositorRenderTests.Frame) -> CGRect? {
+        let height = frame.bytes.count / (frame.w * 4)
+        var bounds = CGRect.null
+        for y in 0..<height {
+            for x in 0..<frame.w {
+                let pixel = frame.at(x, y)
+                if pixel.r + pixel.g + pixel.b > 30 {
+                    bounds = bounds.union(CGRect(x: x, y: y, width: 1, height: 1))
+                }
+            }
+        }
+        return bounds.isNull ? nil : bounds
+    }
+
     @Test func textCompositesOverVideo() async throws {
         let tl = CompositorRenderTests.timelineWith(
             Fixtures.videoTrack(clips: [textClip("HELLO")]),                       // track 0: top
@@ -63,6 +77,79 @@ struct CompositorTextLayerTests {
         )
         let f = try await CompositorRenderTests.render(tl, frame: 15, renderSize: Self.size)
         #expect(whiteInBand(f) > 30, "white text should composite over the video: \(whiteInBand(f))")
+    }
+
+    @Test func invertedFillUsesWhiteDifferenceBlend() async throws {
+        var text = textClip("HELLO")
+        text.textFillMode = .inverted
+        var style = text.textStyle ?? TextStyle()
+        style.color = .init(r: 0.2, g: 0.4, b: 0.6, a: 1)
+        style.fontScale = 4
+        style.isBold = true
+        style.border.enabled = true
+        style.shadow.enabled = true
+        style.background.enabled = true
+        text.textStyle = style
+        text.transform = Transform(topLeft: (0.05, 0.25), width: 0.9, height: 0.5)
+
+        let background = CompositorRenderTests.timelineWith(
+            Fixtures.videoTrack(clips: [CompositorFixtures.patternClip(id: "bg")])
+        )
+        let composited = CompositorRenderTests.timelineWith(
+            Fixtures.videoTrack(clips: [text]),
+            Fixtures.videoTrack(clips: [CompositorFixtures.patternClip(id: "bg")])
+        )
+        let original = try await CompositorRenderTests.render(background, frame: 15, renderSize: Self.size)
+        let inverted = try await CompositorRenderTests.render(composited, frame: 15, renderSize: Self.size)
+        var invertedPixels = 0
+        for y in 0..<Int(Self.size.height) {
+            for x in 0..<Int(Self.size.width) {
+                let source = original.at(x, y)
+                let result = inverted.at(x, y)
+                let matchesInverse = abs(result.r - (255 - source.r)) < 30
+                    && abs(result.g - (255 - source.g)) < 30
+                    && abs(result.b - (255 - source.b)) < 30
+                if matchesInverse { invertedPixels += 1 }
+            }
+        }
+
+        #expect(invertedPixels > 100)
+        #expect(inverted.tl == original.tl)
+        #expect(inverted.tr == original.tr)
+    }
+
+    @Test func invertedFillPreservesBackgroundPaddingLayout() async throws {
+        var normal = textClip("HELLO")
+        var style = normal.textStyle ?? TextStyle()
+        style.alignment = .left
+        style.background = .init(
+            enabled: true,
+            color: .init(r: 0, g: 0, b: 0, a: 0),
+            paddingX: 80,
+            paddingY: 30
+        )
+        normal.textStyle = style
+        normal.transform = Transform(topLeft: (0.05, 0.25), width: 0.9, height: 0.5)
+        var inverted = normal
+        inverted.textFillMode = .inverted
+
+        let normalFrame = try await CompositorRenderTests.render(
+            CompositorRenderTests.timelineWith(Fixtures.videoTrack(clips: [normal])),
+            frame: 15,
+            renderSize: Self.size
+        )
+        let invertedFrame = try await CompositorRenderTests.render(
+            CompositorRenderTests.timelineWith(Fixtures.videoTrack(clips: [inverted])),
+            frame: 15,
+            renderSize: Self.size
+        )
+
+        let normalBounds = try #require(visibleBounds(normalFrame))
+        let invertedBounds = try #require(visibleBounds(invertedFrame))
+        #expect(abs(invertedBounds.minX - normalBounds.minX) <= 1)
+        #expect(abs(invertedBounds.minY - normalBounds.minY) <= 1)
+        #expect(abs(invertedBounds.width - normalBounds.width) <= 1)
+        #expect(abs(invertedBounds.height - normalBounds.height) <= 1)
     }
 
     @Test func textObeysTrackZOrder() async throws {

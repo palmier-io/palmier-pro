@@ -10,8 +10,8 @@ struct TextTab: View {
     private var clipIds: [String] { clips.map(\.id) }
     private var isBatch: Bool { clips.count > 1 }
 
-    private var isFootageFill: Bool {
-        sharedClipValue(clips) { $0.textFillMode ?? .color } == .footage
+    private var showsSolidFillControls: Bool {
+        sharedClipValue(clips) { $0.textFillMode ?? .color } == .color
     }
 
     var body: some View {
@@ -23,7 +23,7 @@ struct TextTab: View {
                     fallback: Self.defaults
                 ),
                 defaults: Self.defaults,
-                showsSolidFillControls: !isFootageFill,
+                showsSolidFillControls: showsSolidFillControls,
                 actions: styleActions,
                 afterAlignment: {
                     positionSection
@@ -48,7 +48,7 @@ struct TextTab: View {
                 ForEach(TextFillMode.allCases, id: \.self) { mode in
                     Button(L10n.string(key: mode.displayName)) {
                         editor.commitClipProperties(clipIds: clipIds) {
-                            $0.textFillMode = mode == .footage ? .footage : nil
+                            $0.textFillMode = mode == .color ? nil : mode
                         }
                     }
                 }

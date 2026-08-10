@@ -66,7 +66,12 @@ enum FrameRenderer {
                 continue
             }
 
-            let mode = layer.clip.blendMode ?? .normal
+            let mode: BlendMode
+            if case .text = layer.source, layer.clip.textFillMode == .inverted {
+                mode = .difference
+            } else {
+                mode = layer.clip.blendMode ?? .normal
+            }
             // Source-over bakes opacity into alpha; blend modes apply it as a fade of
             // the blend RESULT (Photoshop/Premiere semantics), so don't bake it there.
             let isNormal = mode.ciFilterName == nil
@@ -322,9 +327,18 @@ enum FrameRenderer {
         renderSize: CGSize,
         bakeOpacity: Bool = true
     ) -> CIImage? {
-        let clip = layer.clip
+        var clip = layer.clip
         let alpha = min(1.0, max(0.0, clip.opacityAt(frame: frame)))
         guard alpha > 0 else { return nil }
+        if clip.textFillMode == .inverted {
+            var style = clip.textStyle ?? TextStyle()
+            style.color = .init(r: 1, g: 1, b: 1, a: 1)
+            style.border.enabled = false
+            style.shadow.enabled = false
+            style.background.color.a = 0
+            style.background.outlineColor.a = 0
+            clip.textStyle = style
+        }
         guard var image = TextFrameRenderer.image(clip: clip, frame: frame, renderSize: renderSize)?
             .unpremultiplyingAlpha() else { return nil }
 
@@ -337,6 +351,16 @@ enum FrameRenderer {
                 guard let descriptor = EffectRegistry.descriptor(id: effect.type) else { continue }
                 image = descriptor.render(image, effect: effect, atOffset: offset)
             }
+        }
+        if clip.textFillMode == .inverted {
+            let zero = CIVector(x: 0, y: 0, z: 0, w: 0)
+            image = image.applyingFilter("CIColorMatrix", parameters: [
+                "inputRVector": zero,
+                "inputGVector": zero,
+                "inputBVector": zero,
+                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
+                "inputBiasVector": CIVector(x: 1, y: 1, z: 1, w: 0),
+            ])
         }
         image = transformedTextImage(image, clip: clip, frame: frame, renderSize: renderSize)
         image = image.premultiplyingAlpha()

@@ -817,7 +817,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .addTexts,
-            description: "Adds text clips as timeline layers. Omit trackIndex on every entry to create one new top video track; otherwise set trackIndex on every entry. Text boxes auto-fit their content; transform optionally sets their alignment-relative horizontal anchor, vertical center, Z rotation, and static X/Y perspective tilt. Left-aligned text grows rightward from x, centered text grows around x, and right-aligned text grows leftward from x. Use style widthScale and heightScale to stretch glyphs. Use the nested style object for typography, outline, shadow, and background. fillMode 'footage' stencils layers below through the letter shapes. Use add_captions for spoken audio captions. Unknown fields are rejected.",
+            description: "Adds text clips as timeline layers. Omit trackIndex on every entry to create one new top video track; otherwise set trackIndex on every entry. Text boxes auto-fit their content; transform optionally sets their alignment-relative horizontal anchor, vertical center, Z rotation, and static X/Y perspective tilt. Left-aligned text grows rightward from x, centered text grows around x, and right-aligned text grows leftward from x. Use style widthScale and heightScale to stretch glyphs. Use the nested style object for typography, outline, shadow, and background. fillMode 'footage' stencils layers below through the letter shapes; 'inverted' renders white glyphs with Difference blending and ignores color, outline, shadow, and background while active. Use add_captions for spoken audio captions. Unknown fields are rejected.",
             inputSchema: objectSchema(
                 properties: [
                     "entries": [
@@ -838,7 +838,7 @@ enum ToolDefinitions {
                             ], textStyleProperties(detailed: false), [
                                 "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Animation preset; off clears."],
                                 "highlightColor": ["type": "string", "description": "Active-word hex."],
-                                "fillMode": ["type": "string", "enum": ["color", "footage"], "description": "color = solid typography (default). footage = stencil layers below through the letter shapes."],
+                                "fillMode": ["type": "string", "enum": TextFillMode.allCases.map(\.rawValue), "description": "color = solid typography (default). footage = stencil layers below through the letter shapes. inverted = white Difference-blended glyphs; color, outline, shadow, and background are ignored while active."],
                             ]),
                             "required": ["startFrame", "endFrame", "content"],
                         ],
@@ -849,7 +849,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .updateText,
-            description: "Updates text clips or a captionGroupId. The nested style object is a partial patch: omitted values stay unchanged. Use it for typography, color, outline, shadow, and background. Use style widthScale and heightScale to stretch glyphs. fillMode 'footage' stencils layers below through the glyphs. Content and layout-affecting style changes auto-fit the box while preserving its alignment-relative x anchor. transform can reposition, rotate, or apply static X/Y perspective tilt without changing its size. Static Z rotation uses clockwise degrees and clears rotation keyframes. Unknown fields are rejected.",
+            description: "Updates text clips or a captionGroupId. The nested style object is a partial patch: omitted values stay unchanged. Use it for typography, color, outline, shadow, and background. Use style widthScale and heightScale to stretch glyphs. fillMode 'footage' stencils layers below through the glyphs; 'inverted' renders white glyphs with Difference blending and ignores color, outline, shadow, and background while active. Content and layout-affecting style changes auto-fit the box while preserving its alignment-relative x anchor. transform can reposition, rotate, or apply static X/Y perspective tilt without changing its size. Static Z rotation uses clockwise degrees and clears rotation keyframes. Unknown fields are rejected.",
             inputSchema: objectSchema(
                 properties: mergedProperties([
                     "clipIds": [
@@ -867,7 +867,7 @@ enum ToolDefinitions {
                 ], textStyleProperties(detailed: true), [
                     "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Animation preset; off clears."],
                     "highlightColor": ["type": "string", "description": "Active-word hex."],
-                    "fillMode": ["type": "string", "enum": ["color", "footage"], "description": "color = solid typography. footage = stencil layers below through the letter shapes."],
+                    "fillMode": ["type": "string", "enum": TextFillMode.allCases.map(\.rawValue), "description": "color = solid typography. footage = stencil layers below through the letter shapes. inverted = white Difference-blended glyphs; color, outline, shadow, and background are ignored while active."],
                 ]),
                 required: []
             )
