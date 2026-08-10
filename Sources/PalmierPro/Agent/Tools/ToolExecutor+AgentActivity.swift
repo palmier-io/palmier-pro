@@ -68,7 +68,8 @@ extension ToolExecutor {
         let survivingIds = Set(beforeTracks.keys).intersection(afterTracks.keys)
         var changed = Set(survivingIds.filter { id in
             guard let previous = beforeTracks[id], let current = afterTracks[id] else { return false }
-            return previous.muted != current.muted
+            return previous.name != current.name
+                || previous.muted != current.muted
                 || previous.hidden != current.hidden
                 || previous.syncLocked != current.syncLocked
         })

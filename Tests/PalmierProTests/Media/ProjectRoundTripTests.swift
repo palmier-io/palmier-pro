@@ -118,11 +118,13 @@ struct ProjectRoundTripTests {
     @Test func trackMutedAndHiddenFlagsSurviveRoundTrip() throws {
         var v = Fixtures.videoTrack()
         v.hidden = true
+        v.name = "B-roll"
         var a = Fixtures.audioTrack()
         a.muted = true
         let timeline = Fixtures.timeline(tracks: [v, a])
         let decoded = try roundTrip(timeline)
         #expect(decoded.tracks[0].hidden == true)
+        #expect(decoded.tracks[0].name == "B-roll")
         #expect(decoded.tracks[1].muted == true)
     }
 
@@ -142,6 +144,7 @@ struct ProjectRoundTripTests {
         #expect(track.muted == false)
         #expect(track.hidden == false)
         #expect(track.syncLocked == true)
+        #expect(track.name == nil)
     }
 
     @Test func clipMissingNewFieldsDecodesWithDefaults() throws {

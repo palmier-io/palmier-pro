@@ -401,7 +401,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .manageTracks,
-            description: "Reorders, configures, or removes tracks in one undoable action. Prefer stable trackId selectors; numeric indexes use the order at call time. Index 0 renders on top, and reorder destinations must stay within the track's video/audio zone. Arrays run reorder → set → remove. Returns receipts and the resulting track order. Tracks holding multicam clips can't be removed or sync-unlocked.",
+            description: "Reorders, names, configures, or removes tracks in one undoable action. Prefer stable trackId selectors; numeric indexes use the order at call time. Index 0 renders on top, and reorder destinations must stay within the track's video/audio zone. Arrays run reorder → set → remove. User-authored names are returned separately from generated V1/A1 labels. Returns receipts and the resulting track order. Tracks holding multicam clips can't be removed or sync-unlocked.",
             inputSchema: objectSchema(
                 properties: [
                     "reorder": [
@@ -427,6 +427,11 @@ enum ToolDefinitions {
                                 "muted": ["type": "boolean", "description": "Silence/unsilence the track's audio."],
                                 "hidden": ["type": "boolean", "description": "Exclude/include a video track in the render."],
                                 "syncLocked": ["type": "boolean", "description": "Whether ripple edits shift this track along."],
+                                "name": [
+                                    "type": "string",
+                                    "maxLength": TrackName.maximumLength,
+                                    "description": "Prefer exactly one short word with no spaces. Avoid generic suffixes: use Main, Brand, Headline, Outro, Product, Dialogue, Music, SFX, Ambience, or Foley; not Main Video, Brand Text, Outro Video, or Audio Bed. Preserve an exact user-supplied name and pass an empty string to clear it.",
+                                ],
                             ],
                         ],
                     ],

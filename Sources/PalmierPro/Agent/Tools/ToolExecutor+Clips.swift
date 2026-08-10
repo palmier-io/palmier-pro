@@ -1289,18 +1289,30 @@ extension ToolExecutor {
             reorders.append((id, to))
         }
 
-        var flagSets: [(id: String, muted: Bool?, hidden: Bool?, syncLocked: Bool?)] = []
+        var updates: [(id: String, muted: Bool?, hidden: Bool?, syncLocked: Bool?, name: String?, includesName: Bool)] = []
         for (i, raw) in (args["set"] as? [Any] ?? []).enumerated() {
             guard let entry = raw as? [String: Any] else { throw ToolError("set[\(i)] must be an object") }
             let path = "set[\(i)]"
-            try validateUnknownKeys(entry, allowed: ["trackId", "index", "muted", "hidden", "syncLocked"], path: path)
+            try validateUnknownKeys(entry, allowed: ["trackId", "index", "muted", "hidden", "syncLocked", "name"], path: path)
             let muted = entry["muted"] as? Bool
             let hidden = entry["hidden"] as? Bool
             let syncLocked = entry["syncLocked"] as? Bool
-            guard muted != nil || hidden != nil || syncLocked != nil else {
-                throw ToolError("\(path): pass at least one of muted, hidden, syncLocked")
+            let includesName = entry.keys.contains("name")
+            var name: String?
+            if includesName {
+                guard let rawName = entry["name"] as? String else {
+                    throw ToolError("\(path).name must be a string")
+                }
+                do {
+                    name = try TrackName.normalized(rawName)
+                } catch {
+                    throw ToolError("\(path).name must be one line of at most \(TrackName.maximumLength) characters")
+                }
             }
-            flagSets.append((try trackId(entry, path), muted, hidden, syncLocked))
+            guard muted != nil || hidden != nil || syncLocked != nil || includesName else {
+                throw ToolError("\(path): pass at least one of muted, hidden, syncLocked, name")
+            }
+            updates.append((try trackId(entry, path), muted, hidden, syncLocked, name, includesName))
         }
 
         var removeIds: [String] = []
@@ -1317,7 +1329,7 @@ extension ToolExecutor {
             removeIds.append(try trackId(index, path))
         }
 
-        guard !reorders.isEmpty || !flagSets.isEmpty || !removeIds.isEmpty else {
+        guard !reorders.isEmpty || !updates.isEmpty || !removeIds.isEmpty else {
             throw ToolError("Nothing to do — pass at least one of reorder, set, remove.")
         }
 
@@ -1327,7 +1339,7 @@ extension ToolExecutor {
         if removeIds.contains(where: { multicamTrackIds.contains($0) }) {
             throw ToolError("A multicam group's track can't be removed — delete the group's clips first (remove_clips) and the empty track prunes itself.")
         }
-        if flagSets.contains(where: { multicamTrackIds.contains($0.id) && $0.syncLocked == false }) {
+        if updates.contains(where: { multicamTrackIds.contains($0.id) && $0.syncLocked == false }) {
             throw ToolError("Sync lock stays on for a multicam group's tracks — unlocking would let ripples shift the group's members apart.")
         }
 
@@ -1339,7 +1351,8 @@ extension ToolExecutor {
             return ["trackId": track.id, "index": i, "label": editor.timelineTrackDisplayLabel(at: i), "type": track.type.rawValue]
         }
         var reorderResults: [(trackId: String, from: Int, to: Int)] = []
-        editor.undo.perform("Manage Tracks (Agent)") {
+        var renamedTracks: [[String: Any]] = []
+        try editor.undo.perform("Manage Tracks (Agent)") {
             if !reorders.isEmpty {
                 let before = editor.timeline
                 for r in reorders {
@@ -1350,19 +1363,35 @@ extension ToolExecutor {
                 }
                 editor.commitTrackReorder(before: before)
             }
-            for f in flagSets {
-                guard let idx = editor.timeline.tracks.firstIndex(where: { $0.id == f.id }) else { continue }
+            for update in updates {
+                guard let idx = editor.timeline.tracks.firstIndex(where: { $0.id == update.id }) else { continue }
                 let track = editor.timeline.tracks[idx]
-                if let m = f.muted, track.muted != m { editor.toggleTrackMute(trackIndex: idx) }
-                if let h = f.hidden, track.hidden != h { editor.toggleTrackHidden(trackIndex: idx) }
-                if let s = f.syncLocked, track.syncLocked != s { editor.toggleTrackSyncLock(trackIndex: idx) }
+                if let muted = update.muted, track.muted != muted { editor.toggleTrackMute(trackIndex: idx) }
+                if let hidden = update.hidden, track.hidden != hidden { editor.toggleTrackHidden(trackIndex: idx) }
+                if let syncLocked = update.syncLocked, track.syncLocked != syncLocked {
+                    editor.toggleTrackSyncLock(trackIndex: idx)
+                }
+                if update.includesName {
+                    let changed = try editor.setTrackName(id: update.id, to: update.name)
+                    renamedTracks.append([
+                        "trackId": update.id,
+                        "name": editor.timeline.tracks[idx].name ?? NSNull(),
+                        "changed": changed,
+                    ])
+                }
             }
             if !removeIds.isEmpty { editor.removeTracks(ids: removeIds) }
         }
 
         let order = editor.timeline.tracks.indices.map { i -> [String: Any] in
             let track = editor.timeline.tracks[i]
-            var entry: [String: Any] = ["trackId": track.id, "index": i, "label": editor.timelineTrackDisplayLabel(at: i), "type": track.type.rawValue]
+            var entry: [String: Any] = [
+                "trackId": track.id,
+                "index": i,
+                "label": editor.timelineTrackDisplayLabel(at: i),
+                "type": track.type.rawValue,
+            ]
+            if let name = track.name { entry["name"] = name }
             if track.muted { entry["muted"] = true }
             if track.hidden { entry["hidden"] = true }
             if !track.syncLocked { entry["syncLocked"] = false }
@@ -1372,6 +1401,7 @@ extension ToolExecutor {
         if !reorderResults.isEmpty {
             extra["reordered"] = reorderResults.map { ["trackId": $0.trackId, "from": $0.from, "to": $0.to, "changed": $0.from != $0.to] }
         }
+        if !renamedTracks.isEmpty { extra["renamed"] = renamedTracks }
         if !removedTracks.isEmpty { extra["removedTracks"] = removedTracks }
         return mutationResult(editor, since: snapshot, extra: extra)
     }

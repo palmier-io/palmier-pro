@@ -733,6 +733,7 @@
 "Removing background noise…" = "Removing background noise…";
 "Rename" = "Rename";
 "Rename Skill" = "Rename Skill";
+"Rename Track" = "Rename Track";
 "Rendering" = "Rendering";
 "Rendering…" = "Rendering…";
 "Replace clip source" = "Replace clip source";
@@ -939,6 +940,7 @@
 "Tone" = "Tone";
 "Tools" = "Tools";
 "Top / Bottom" = "Top / Bottom";
+"Track Name" = "Track Name";
 "Tracking" = "Tracking";
 "Transcribing…" = "Transcribing…";
 "Transcription failed: %@" = "Transcription failed: %@";

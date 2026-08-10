@@ -80,9 +80,28 @@ extension Timeline {
     }
 }
 
+enum TrackName {
+    static let maximumLength = 80
+
+    static func normalized(_ rawValue: String?) throws -> String? {
+        guard let rawValue else { return nil }
+        let value = rawValue.trimmingCharacters(in: .whitespaces)
+        guard rawValue.rangeOfCharacter(from: .controlCharacters.union(.newlines)) == nil,
+              value.count <= maximumLength else {
+            throw TrackNameValidationError.invalid
+        }
+        return value.isEmpty ? nil : value
+    }
+}
+
+enum TrackNameValidationError: Error, Equatable {
+    case invalid
+}
+
 struct Track: Codable, Sendable, Equatable, Identifiable {
     var id: String = UUID().uuidString
     var type: ClipType
+    var name: String?
     var muted: Bool = false
     var hidden: Bool = false
     var syncLocked: Bool = true
@@ -111,16 +130,18 @@ struct Track: Codable, Sendable, Equatable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, type, muted, hidden, syncLocked, clips, displayHeight
+        case id, type, name, muted, hidden, syncLocked, clips, displayHeight
     }
 }
 
 extension Track {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedName = try? c.decode(String.self, forKey: .name)
         self.init(
             id: (try? c.decode(String.self, forKey: .id)) ?? UUID().uuidString,
             type: try c.decode(ClipType.self, forKey: .type),
+            name: try? TrackName.normalized(decodedName),
             muted: (try? c.decode(Bool.self, forKey: .muted)) ?? false,
             hidden: (try? c.decode(Bool.self, forKey: .hidden)) ?? false,
             syncLocked: (try? c.decode(Bool.self, forKey: .syncLocked)) ?? true,

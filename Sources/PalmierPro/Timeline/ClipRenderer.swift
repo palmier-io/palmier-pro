@@ -816,25 +816,26 @@ enum ClipRenderer {
     // MARK: - Label Bar
 
     @discardableResult
-    private static func drawPill(_ text: String, textColor: NSColor, fill: NSColor, fontSize: CGFloat, at origin: NSPoint, maxWidth: CGFloat, context: CGContext) -> NSRect? {
+    static func drawPill(_ text: String, textColor: NSColor, fill: NSColor, fontSize: CGFloat, at origin: NSPoint, maxWidth: CGFloat, context: CGContext) -> NSRect? {
         let padH = AppTheme.ComponentSize.timelineBadgePadH
         let padV = AppTheme.ComponentSize.timelineBadgePadV
         guard !text.isEmpty, maxWidth > AppTheme.ComponentSize.timelineBadgeMinWidth else { return nil }
+        let style = NSMutableParagraphStyle()
+        style.lineBreakMode = .byTruncatingTail
         let str = NSAttributedString(string: text, attributes: [
             .font: NSFont.systemFont(ofSize: fontSize, weight: .semibold),
             .foregroundColor: textColor,
+            .paragraphStyle: style,
         ])
         let size = str.size()
         let rect = NSRect(x: origin.x, y: origin.y,
                           width: min(size.width + padH * 2, maxWidth), height: size.height + padV * 2)
-        context.saveGState()
         let path = CGPath(roundedRect: rect, cornerWidth: AppTheme.Radius.xs, cornerHeight: AppTheme.Radius.xs, transform: nil)
         context.setFillColor(fill.cgColor)
         context.addPath(path)
         context.fillPath()
-        context.clip(to: rect.insetBy(dx: AppTheme.Spacing.xxs, dy: 0))
-        str.draw(at: NSPoint(x: rect.minX + padH, y: rect.minY + padV))
-        context.restoreGState()
+        let inset = AppTheme.BorderWidth.hairline
+        str.draw(with: rect.insetBy(dx: padH - inset, dy: inset), options: [.usesLineFragmentOrigin])
         return rect
     }
 

@@ -1,4 +1,4 @@
-import AppKit
+import SwiftUI
 
 enum TimelineHeaderSymbol {
     static func image(
@@ -29,6 +29,11 @@ final class TimelineHeaderView: NSView {
     var dragHandleRects: [Int: NSRect] = [:]
     private let agentTrackLayer = CAShapeLayer()
     private var displayedAgentTrackRevision = -1
+    private var labelRects: [String: (hit: NSRect, edit: NSRect)] = [:]
+    private var nameEditor: NSHostingView<InlineRenameField>?
+    private var editingTrackId: String?
+    private var nameEditGeneration = 0
+    private var pendingRenameTrackId: String?
 
     init(editor: EditorViewModel) {
         self.editor = editor
@@ -42,6 +47,14 @@ final class TimelineHeaderView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     override var isFlipped: Bool { true }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil {
+            pendingRenameTrackId = nil
+            finishNameEditing()
+        }
+        super.viewWillMove(toWindow: newWindow)
+    }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
@@ -62,12 +75,14 @@ final class TimelineHeaderView: NSView {
 
         // Clip drawing below the ruler so headers don't overlap it when scrolled
         let clipTop = bounds.origin.y + Layout.rulerHeight
-        ctx.clip(to: NSRect(x: bounds.origin.x, y: clipTop, width: bounds.width, height: bounds.height))
+        let visibleHeaderRect = NSRect(x: bounds.minX, y: clipTop, width: bounds.width, height: max(0, bounds.maxY - clipTop))
+        ctx.clip(to: visibleHeaderRect)
 
         muteButtonRects.removeAll()
         hideButtonRects.removeAll()
         syncLockButtonRects.removeAll()
         dragHandleRects.removeAll()
+        labelRects.removeAll()
         let stripWidth: CGFloat = 3
         let iconSize: CGFloat = 14
         let iconConfig = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
@@ -100,15 +115,35 @@ final class TimelineHeaderView: NSView {
             )
             dragHandleRects[i] = gripRect.insetBy(dx: -4, dy: -4)
 
-            // Track label
-            let str = NSAttributedString(string: editor.timelineTrackDisplayLabel(at: i), attributes: labelAttrs)
-            let labelSize = str.size()
-            let labelY = y + (h - labelSize.height) / 2
-            str.draw(at: NSPoint(x: gripX + iconSize + 6, y: labelY))
-
             let iconY = y + (h - iconSize) / 2
-            let rightmostX = headerWidth - iconSize - 6
-            let syncX = rightmostX - iconSize - 4
+            let rightmostX = headerWidth - iconSize - AppTheme.Spacing.sm
+            let syncX = rightmostX - iconSize - AppTheme.Spacing.xs
+
+            let labelX = gripX + iconSize + AppTheme.Spacing.sm
+            let labelHeight = min(
+                max(0, h - AppTheme.Spacing.xs * 2),
+                AppTheme.EditorPanel.fieldMinHeight
+            )
+            let labelRect = NSRect(
+                x: labelX,
+                y: y + (h - labelHeight) / 2,
+                width: max(0, syncX - AppTheme.Spacing.xs - labelX),
+                height: labelHeight
+            )
+            let editRect = drawTrackLabel(
+                at: i,
+                track: track,
+                in: labelRect,
+                context: ctx,
+                drawsName: editingTrackId != track.id
+            )
+            let visibleLabelRect = labelRect.intersection(visibleHeaderRect)
+            if visibleLabelRect.height >= AppTheme.FontSize.sm + AppTheme.Spacing.xs * 2 {
+                labelRects[track.id] = (
+                    visibleLabelRect,
+                    editRect.intersection(visibleHeaderRect)
+                )
+            }
 
             syncLockButtonRects[i] = drawToggleIcon(
                 x: syncX, y: iconY, size: iconSize, config: iconConfig,
@@ -141,9 +176,10 @@ final class TimelineHeaderView: NSView {
         let z = editor.zones
         if z.videoTrackCount > 0, z.audioTrackCount > 0 {
             let dividerY = geo.trackY(at: z.firstAudioIndex)
-            ctx.setFillColor(AppTheme.Border.divider.cgColor)
+            ctx.setFillColor(AppTheme.Border.divider.withAlphaComponent(AppTheme.Opacity.medium).cgColor)
             ctx.fill(NSRect(x: 0, y: dividerY - 1, width: headerWidth, height: 2))
         }
+        updateNameEditorFrame()
     }
 
     func updateAgentActivityOverlay() {
@@ -221,6 +257,47 @@ final class TimelineHeaderView: NSView {
         )
     }
 
+    private func drawTrackLabel(
+        at trackIndex: Int,
+        track: Track,
+        in rect: NSRect,
+        context: CGContext,
+        drawsName: Bool
+    ) -> NSRect {
+        let designation = NSAttributedString(
+            string: editor.timelineTrackDisplayLabel(at: trackIndex),
+            attributes: labelAttrs
+        )
+        let designationSize = designation.size()
+        let designationRect = NSRect(
+            x: rect.minX,
+            y: rect.midY - designationSize.height / 2,
+            width: min(rect.width, designationSize.width),
+            height: designationSize.height
+        )
+        designation.draw(in: designationRect)
+
+        let nameRect = NSRect(
+            x: designationRect.maxX + AppTheme.Spacing.xs,
+            y: rect.minY,
+            width: max(0, rect.maxX - designationRect.maxX - AppTheme.Spacing.xs),
+            height: rect.height
+        )
+        if drawsName, let name = track.name {
+            let pillHeight = AppTheme.FontSize.sm + AppTheme.ComponentSize.timelineBadgePadV * 2
+            ClipRenderer.drawPill(
+                name,
+                textColor: track.type.themeForegroundColor,
+                fill: track.type.themeColor.withAlphaComponent(AppTheme.Opacity.prominent),
+                fontSize: AppTheme.FontSize.sm,
+                at: NSPoint(x: nameRect.minX, y: nameRect.midY - pillHeight / 2),
+                maxWidth: nameRect.width,
+                context: context
+            )
+        }
+        return nameRect
+    }
+
     /// Draw a toggleable SF Symbol button; returns the hit-test rect (padded).
     private func drawToggleIcon(
         x: CGFloat, y: CGFloat, size: CGFloat,
@@ -256,7 +333,82 @@ final class TimelineHeaderView: NSView {
         updateAgentTrackColor()
     }
 
-    // MARK: - Input handling (mute/hide/resize)
+    // MARK: - Track names
+
+    private func beginNameEditing(trackId: String) {
+        guard let trackIndex = editor.timeline.tracks.firstIndex(where: { $0.id == trackId }),
+              let frame = labelRects[trackId]?.edit else { return }
+        if nameEditor != nil {
+            pendingRenameTrackId = trackId
+            window?.makeFirstResponder(nil)
+            return
+        }
+        let generation = nameEditGeneration
+        let timelineId = editor.activeTimelineId
+        let field = InlineRenameField(
+            originalName: editor.timeline.tracks[trackIndex].name ?? "",
+            placeholder: editor.timelineTrackDisplayLabel(at: trackIndex),
+            font: .system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium),
+            maximumLength: TrackName.maximumLength,
+            allowsEmptyCommit: true,
+            onCommit: { [weak self] name in
+                self?.commitNameEditing(name, trackId: trackId, timelineId: timelineId, generation: generation)
+            },
+            onCancel: { [weak self] in self?.finishNameEditing(generation: generation) }
+        )
+        let host = NSHostingView(rootView: field)
+        host.frame = frame
+        host.setAccessibilityLabel(L10n.string("Track Name"))
+        nameEditor = host
+        editingTrackId = trackId
+        addSubview(host)
+        needsDisplay = true
+    }
+
+    private func commitNameEditing(_ name: String, trackId: String, timelineId: String, generation: Int) {
+        guard generation == nameEditGeneration else { return }
+        defer { finishNameEditing(generation: generation) }
+        guard editor.activeTimelineId == timelineId else { return }
+        do { _ = try editor.setTrackName(id: trackId, to: name) }
+        catch { NSSound.beep() }
+    }
+
+    private func finishNameEditing(generation: Int? = nil) {
+        guard generation == nil || generation == nameEditGeneration else { return }
+        let pendingTrackId = pendingRenameTrackId
+        pendingRenameTrackId = nil
+        nameEditGeneration &+= 1
+        nameEditor?.removeFromSuperview()
+        nameEditor = nil
+        editingTrackId = nil
+        needsDisplay = true
+        if let pendingTrackId {
+            DispatchQueue.main.async { [weak self] in self?.beginNameEditing(trackId: pendingTrackId) }
+        }
+    }
+
+    private func updateNameEditorFrame() {
+        guard let field = nameEditor, let trackId = editingTrackId else { return }
+        guard editor.timeline.tracks.contains(where: { $0.id == trackId }) else {
+            DispatchQueue.main.async { [weak self] in
+                guard self?.editingTrackId == trackId else { return }
+                self?.finishNameEditing()
+            }
+            return
+        }
+        guard let frame = labelRects[trackId]?.edit else {
+            field.isHidden = true
+            DispatchQueue.main.async { [weak self, weak field] in
+                guard let self, let field, self.nameEditor === field else { return }
+                self.window?.makeFirstResponder(nil)
+            }
+            return
+        }
+        field.isHidden = false
+        if field.frame != frame { field.frame = frame }
+    }
+
+    // MARK: - Input handling
 
     private var resizeDrag: (trackIndex: Int, originalHeight: CGFloat)?
     private var reorderDrag: (id: String, before: Timeline)?
@@ -290,6 +442,16 @@ final class TimelineHeaderView: NSView {
         let track = editor.timeline.tracks[trackIndex]
         let menu = NSMenu()
         menu.autoenablesItems = false
+        let renameItem = NSMenuItem(
+            title: L10n.string("Rename Track"),
+            action: #selector(performRenameTrack(_:)),
+            keyEquivalent: ""
+        )
+        renameItem.target = self
+        renameItem.representedObject = track.id
+        renameItem.isEnabled = labelRects[track.id] != nil
+        menu.addItem(renameItem)
+        menu.addItem(.separator())
         let item = NSMenuItem(
             title: L10n.string("Select All Clips on Track"),
             action: #selector(performSelectAllClipsOnTrack(_:)),
@@ -302,6 +464,11 @@ final class TimelineHeaderView: NSView {
         return menu
     }
 
+    @objc private func performRenameTrack(_ sender: NSMenuItem) {
+        guard let trackId = sender.representedObject as? String else { return }
+        beginNameEditing(trackId: trackId)
+    }
+
     @objc private func performSelectAllClipsOnTrack(_ sender: NSMenuItem) {
         guard let trackId = sender.representedObject as? String,
               editor.selectAllClips(onTrack: trackId) else { return }
@@ -311,6 +478,15 @@ final class TimelineHeaderView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+        if nameEditor != nil, nameEditor?.frame.contains(point) != true {
+            window?.makeFirstResponder(nil)
+        }
+
+        if event.clickCount == 2,
+           let trackId = labelRects.first(where: { $0.value.hit.contains(point) })?.key {
+            beginNameEditing(trackId: trackId)
+            return
+        }
 
         for (ti, rect) in muteButtonRects {
             if rect.contains(point) {

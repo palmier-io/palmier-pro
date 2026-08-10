@@ -1117,7 +1117,7 @@ final class TimelineView: NSView {
         let z = editor.zones
         if z.videoTrackCount > 0, z.audioTrackCount > 0 {
             let dividerY = geo.trackY(at: z.firstAudioIndex)
-            context.setFillColor(AppTheme.Border.divider.cgColor)
+            context.setFillColor(AppTheme.Border.divider.withAlphaComponent(AppTheme.Opacity.medium).cgColor)
             context.fill(NSRect(x: 0, y: dividerY - 1, width: bounds.width, height: 2))
         }
     }
@@ -1125,6 +1125,7 @@ final class TimelineView: NSView {
     // MARK: - Input forwarding
 
     override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(nil)
         inputController.mouseDown(with: event, geometry: geometry)
     }
 
