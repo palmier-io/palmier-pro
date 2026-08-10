@@ -335,7 +335,8 @@ enum FrameRenderer {
             style.color = .init(r: 1, g: 1, b: 1, a: 1)
             style.border.enabled = false
             style.shadow.enabled = false
-            style.background.enabled = false
+            style.background.color.a = 0
+            style.background.outlineColor.a = 0
             clip.textStyle = style
         }
         guard var image = TextFrameRenderer.image(clip: clip, frame: frame, renderSize: renderSize)?

@@ -56,6 +56,20 @@ struct CompositorTextLayerTests {
         return n
     }
 
+    private func visibleBounds(_ frame: CompositorRenderTests.Frame) -> CGRect? {
+        let height = frame.bytes.count / (frame.w * 4)
+        var bounds = CGRect.null
+        for y in 0..<height {
+            for x in 0..<frame.w {
+                let pixel = frame.at(x, y)
+                if pixel.r + pixel.g + pixel.b > 30 {
+                    bounds = bounds.union(CGRect(x: x, y: y, width: 1, height: 1))
+                }
+            }
+        }
+        return bounds.isNull ? nil : bounds
+    }
+
     @Test func textCompositesOverVideo() async throws {
         let tl = CompositorRenderTests.timelineWith(
             Fixtures.videoTrack(clips: [textClip("HELLO")]),                       // track 0: top
@@ -102,6 +116,40 @@ struct CompositorTextLayerTests {
         #expect(invertedPixels > 100)
         #expect(inverted.tl == original.tl)
         #expect(inverted.tr == original.tr)
+    }
+
+    @Test func invertedFillPreservesBackgroundPaddingLayout() async throws {
+        var normal = textClip("HELLO")
+        var style = normal.textStyle ?? TextStyle()
+        style.alignment = .left
+        style.background = .init(
+            enabled: true,
+            color: .init(r: 0, g: 0, b: 0, a: 0),
+            paddingX: 80,
+            paddingY: 30
+        )
+        normal.textStyle = style
+        normal.transform = Transform(topLeft: (0.05, 0.25), width: 0.9, height: 0.5)
+        var inverted = normal
+        inverted.textFillMode = .inverted
+
+        let normalFrame = try await CompositorRenderTests.render(
+            CompositorRenderTests.timelineWith(Fixtures.videoTrack(clips: [normal])),
+            frame: 15,
+            renderSize: Self.size
+        )
+        let invertedFrame = try await CompositorRenderTests.render(
+            CompositorRenderTests.timelineWith(Fixtures.videoTrack(clips: [inverted])),
+            frame: 15,
+            renderSize: Self.size
+        )
+
+        let normalBounds = try #require(visibleBounds(normalFrame))
+        let invertedBounds = try #require(visibleBounds(invertedFrame))
+        #expect(abs(invertedBounds.minX - normalBounds.minX) <= 1)
+        #expect(abs(invertedBounds.minY - normalBounds.minY) <= 1)
+        #expect(abs(invertedBounds.width - normalBounds.width) <= 1)
+        #expect(abs(invertedBounds.height - normalBounds.height) <= 1)
     }
 
     @Test func textObeysTrackZOrder() async throws {
