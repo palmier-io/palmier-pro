@@ -411,7 +411,10 @@ enum AppTheme {
         static let timelineClipDetailMinWidth: CGFloat = 32
         static let timelineClipControlsMinWidth: CGFloat = 48
         static let timelineTabRenameWidth: CGFloat = 120
-        static let timelineTrackHeaderWidth: CGFloat = 160
+        static let timelineTrackHeaderDefaultWidth: CGFloat = 160
+        static let timelineTrackHeaderMinimumWidth: CGFloat = 112
+        static let timelineTrackHeaderMaximumWidth: CGFloat = 320
+        static let timelineTrackHeaderResizeHitWidth: CGFloat = 8
         static let timelineClipLabelMinWidth: CGFloat = 56
         static let timelineBadgePadH: CGFloat = 4
         static let timelineBadgePadV: CGFloat = 1

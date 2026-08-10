@@ -25,7 +25,10 @@ enum Layout {
     static let timelineDefaultHeightFraction: CGFloat = 0.35
     static let trackHeight: CGFloat = TrackSize.defaultHeight
     static let rulerHeight: CGFloat = 24
-    static let trackHeaderWidth = AppTheme.ComponentSize.timelineTrackHeaderWidth
+    static let trackHeaderDefaultWidth = AppTheme.ComponentSize.timelineTrackHeaderDefaultWidth
+    static let trackHeaderMinimumWidth = AppTheme.ComponentSize.timelineTrackHeaderMinimumWidth
+    static let trackHeaderMaximumWidth = AppTheme.ComponentSize.timelineTrackHeaderMaximumWidth
+    static let trackHeaderResizeHitWidth = AppTheme.ComponentSize.timelineTrackHeaderResizeHitWidth
     static let dropZoneHeight: CGFloat = 60
     static let insertThreshold: CGFloat = 10
     static let dragThreshold: CGFloat = 3

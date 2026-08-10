@@ -1138,12 +1138,15 @@ final class TimelineView: NSView {
     }
 
     override func mouseMoved(with event: NSEvent) {
+        guard ownsTimelinePointer(at: event.locationInWindow) else {
+            setHoveredClipId(nil)
+            return
+        }
         inputController.mouseMoved(with: event, geometry: geometry)
     }
 
     override func mouseExited(with event: NSEvent) {
         setHoveredClipId(nil)
-        NSCursor.arrow.set()
     }
 
     override func scrollWheel(with event: NSEvent) {
