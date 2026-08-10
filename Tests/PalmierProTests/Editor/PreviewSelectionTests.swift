@@ -56,4 +56,25 @@ struct PreviewSelectionTests {
         #expect(rotatedOnlyPoint == "text")
         #expect(unrotatedOnlyPoint == nil)
     }
+
+    @Test func tiltedTextUsesProjectedHitTarget() {
+        let editor = EditorViewModel()
+        var text = Fixtures.clip(id: "text", mediaRef: "", mediaType: .text, start: 0, duration: 20)
+        text.transform = Transform(width: 0.6, height: 0.2, rotationY: 60)
+        var timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [text])])
+        timeline.width = 320
+        timeline.height = 180
+        editor.timeline = timeline
+
+        #expect(PreviewHitTester.clipID(
+            at: CGPoint(x: 160, y: 90),
+            viewSize: CGSize(width: 320, height: 180),
+            editor: editor
+        ) == "text")
+        #expect(PreviewHitTester.clipID(
+            at: CGPoint(x: 90, y: 90),
+            viewSize: CGSize(width: 320, height: 180),
+            editor: editor
+        ) == nil)
+    }
 }

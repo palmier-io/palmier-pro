@@ -43,7 +43,7 @@ struct MCPTranscriptionTrackTests {
             #expect(maxCharacters["minimum"]?.intValue == 1)
             let transform = try #require(captionProperties["transform"]?.objectValue)
             let transformProperties = try #require(transform["properties"]?.objectValue)
-            #expect(Set(transformProperties.keys) == ["x", "y", "rotation"])
+            #expect(Set(transformProperties.keys) == ["x", "y", "rotation", "rotationX", "rotationY"])
 
             let transcript = try await client.callTool(
                 name: "get_transcript",
@@ -70,6 +70,11 @@ struct MCPTranscriptionTrackTests {
                 arguments: ["maxCharacters": .int(0)]
             )
             #expect(invalidMaxCharacters.isError == true)
+            let invalidTilt = try await client.callTool(
+                name: "add_captions",
+                arguments: ["transform": .object(["rotationX": .double(90)])]
+            )
+            #expect(invalidTilt.isError == true)
         } catch {
             await server.stop()
             await client.disconnect()

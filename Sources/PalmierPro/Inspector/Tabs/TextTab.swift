@@ -27,6 +27,7 @@ struct TextTab: View {
                 actions: styleActions,
                 afterAlignment: {
                     positionSection
+                    tiltSection
                     rotationSection
                     fillModeRow
                 },
@@ -120,6 +121,44 @@ struct TextTab: View {
             }
         ) {
             InspectorPositionFields(clips: clips)
+        }
+    }
+
+    private var tiltSection: some View {
+        InspectorRow(
+            label: L10n.string("Tilt"),
+            onReset: {
+                editor.commitClipProperties(clipIds: clipIds, actionName: "Reset Text Tilt") {
+                    $0.transform.rotationX = 0
+                    $0.transform.rotationY = 0
+                }
+            }
+        ) {
+            HStack(spacing: AppTheme.Spacing.sm) {
+                tiltField("X", keyPath: \.rotationX)
+                tiltField("Y", keyPath: \.rotationY)
+            }
+            .fixedSize()
+        }
+    }
+
+    private func tiltField(_ axis: String, keyPath: WritableKeyPath<Transform, Double>) -> some View {
+        ScrubbableNumberField(
+            value: sharedClipValue(clips) { $0.transform[keyPath: keyPath] },
+            range: Transform.tiltRotationRange,
+            format: "%.0f",
+            valueSuffix: "°",
+            fieldWidth: AppTheme.EditorPanel.compactNumericFieldWidth,
+            trailingLabel: axis,
+            onChanged: { value in
+                editor.applyClipProperties(clipIds: clipIds) {
+                    $0.transform[keyPath: keyPath] = value
+                }
+            }
+        ) { value in
+            editor.commitClipProperties(clipIds: clipIds, actionName: "Change Text Tilt") {
+                $0.transform[keyPath: keyPath] = value
+            }
         }
     }
 

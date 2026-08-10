@@ -1976,7 +1976,7 @@ struct ToolExecutorTextFolderTests {
         #expect((styleProperties["heightScale"]?["maximum"] as? NSNumber)?.doubleValue == 10)
 
         let updateTransform = try #require(updateProperties["transform"]?["properties"] as? [String: [String: Any]])
-        #expect(Set(updateTransform.keys) == ["x", "y", "rotation"])
+        #expect(Set(updateTransform.keys) == ["x", "y", "rotation", "rotationX", "rotationY"])
 
         let addTool = try #require(ToolDefinitions.mcpServer.first { $0.name == .addTexts })
         let addProperties = try #require(addTool.inputSchema["properties"] as? [String: [String: Any]])
@@ -1984,12 +1984,12 @@ struct ToolExecutorTextFolderTests {
         let items = try #require(entries["items"] as? [String: Any])
         let entryProperties = try #require(items["properties"] as? [String: [String: Any]])
         let addTransform = try #require(entryProperties["transform"]?["properties"] as? [String: [String: Any]])
-        #expect(Set(addTransform.keys) == ["x", "y", "rotation"])
+        #expect(Set(addTransform.keys) == ["x", "y", "rotation", "rotationX", "rotationY"])
 
         let captionsTool = try #require(ToolDefinitions.mcpServer.first { $0.name == .addCaptions })
         let captionsProperties = try #require(captionsTool.inputSchema["properties"] as? [String: [String: Any]])
         let captionsTransform = try #require(captionsProperties["transform"]?["properties"] as? [String: [String: Any]])
-        #expect(Set(captionsTransform.keys) == ["x", "y", "rotation"])
+        #expect(Set(captionsTransform.keys) == ["x", "y", "rotation", "rotationX", "rotationY"])
     }
 
     @Test func addTextsCreatesNewTrackWhenIndexOmitted() async throws {

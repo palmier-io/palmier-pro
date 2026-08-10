@@ -24,13 +24,23 @@ struct CompositorTextLayerTests {
         return c
     }
 
-    private func backgroundTextClip(rotation: Double = 0) -> Clip {
+    private func backgroundTextClip(
+        rotation: Double = 0,
+        rotationX: Double = 0,
+        rotationY: Double = 0
+    ) -> Clip {
         var clip = textClip(" ")
         var style = clip.textStyle ?? TextStyle()
         style.color.a = 0
         style.background = .init(enabled: true, color: .init(r: 1, g: 1, b: 1, a: 1))
         clip.textStyle = style
-        clip.transform = Transform(width: 0.6, height: 0.2, rotation: rotation)
+        clip.transform = Transform(
+            width: 0.6,
+            height: 0.2,
+            rotation: rotation,
+            rotationX: rotationX,
+            rotationY: rotationY
+        )
         return clip
     }
 
@@ -73,6 +83,89 @@ struct CompositorTextLayerTests {
 
         #expect(CompositorFixtures.isWhite(frame.at(160, 30)))
         #expect(CompositorFixtures.isBlack(frame.at(80, 90)))
+    }
+
+    @Test func textUsesXTiltRotation() async throws {
+        let timeline = CompositorRenderTests.timelineWith(
+            Fixtures.videoTrack(clips: [backgroundTextClip(rotationX: 60)])
+        )
+        let frame = try await CompositorRenderTests.render(timeline, frame: 15, renderSize: Self.size)
+
+        #expect(CompositorFixtures.isWhite(frame.at(160, 90)))
+        #expect(CompositorFixtures.isBlack(frame.at(160, 75)))
+    }
+
+    @Test func textUsesYTiltRotation() async throws {
+        let timeline = CompositorRenderTests.timelineWith(
+            Fixtures.videoTrack(clips: [backgroundTextClip(rotationY: 60)])
+        )
+        let frame = try await CompositorRenderTests.render(timeline, frame: 15, renderSize: Self.size)
+
+        #expect(CompositorFixtures.isWhite(frame.at(160, 90)))
+        #expect(CompositorFixtures.isBlack(frame.at(90, 90)))
+    }
+
+    @Test func tiltedTextSamplesZRotationKeyframes() async throws {
+        var text = backgroundTextClip(rotationX: 60)
+        text.rotationTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 0),
+            Keyframe(frame: 30, value: 90),
+        ])
+        let timeline = CompositorRenderTests.timelineWith(Fixtures.videoTrack(clips: [text]))
+
+        let horizontal = try await CompositorRenderTests.render(timeline, frame: 0, renderSize: Self.size)
+        let vertical = try await CompositorRenderTests.render(timeline, frame: 30, renderSize: Self.size)
+
+        #expect(CompositorFixtures.isBlack(horizontal.at(160, 75)))
+        #expect(CompositorFixtures.isWhite(vertical.at(160, 75)))
+    }
+
+    @Test func tiltedTextMatchesProjectedClipCorners() async throws {
+        var text = backgroundTextClip(rotation: 25, rotationX: 30, rotationY: -45)
+        text.transform.centerX = 0.25
+        text.transform.centerY = 0.35
+        text.effects = [Effect.make("color.exposure", ["ev": 0.25])]
+        let timeline = CompositorRenderTests.timelineWith(Fixtures.videoTrack(clips: [text]))
+        let frame = try await CompositorRenderTests.render(timeline, frame: 15, renderSize: Self.size)
+        let rect = CGRect(x: -16, y: 45, width: 192, height: 36)
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let corners = TextTiltGeometry.corners(
+            of: rect,
+            around: center,
+            transform: text.transform,
+            canvasSize: Self.size
+        )
+
+        for corner in [corners.topLeft, corners.topRight, corners.bottomRight, corners.bottomLeft] {
+            let inside = CGPoint(
+                x: corner.x * 0.8 + center.x * 0.2,
+                y: corner.y * 0.8 + center.y * 0.2
+            )
+            #expect(CompositorFixtures.isWhite(frame.at(Int(inside.x), Int(inside.y))))
+        }
+    }
+
+    @Test func offCanvasTextCanRotateIntoTheFinalFrame() async throws {
+        var text = backgroundTextClip(rotation: -90, rotationY: 30)
+        text.transform.centerX = 0
+        let timeline = CompositorRenderTests.timelineWith(Fixtures.videoTrack(clips: [text]))
+
+        let frame = try await CompositorRenderTests.render(timeline, frame: 15, renderSize: Self.size)
+
+        #expect(CompositorFixtures.isWhite(frame.at(10, 130)))
+    }
+
+    @Test func oversizedTiltKeepsAValidProjectedQuad() {
+        let center = CGPoint(x: 160, y: 90)
+        let corners = TextTiltGeometry.corners(
+            of: CGRect(x: -1_120, y: -270, width: 2_560, height: 720),
+            around: center,
+            transform: Transform(width: 8, height: 4, rotationX: 75, rotationY: 89),
+            canvasSize: Self.size
+        )
+
+        #expect(corners.points.allSatisfy { $0.x.isFinite && $0.y.isFinite })
+        #expect(corners.contains(center))
     }
 
     @Test func textRotationSamplesKeyframes() async throws {
@@ -123,6 +216,19 @@ struct CompositorTextLayerTests {
 
         #expect(!CompositorFixtures.isBlack(frame.at(160, 30)))
         #expect(CompositorFixtures.isBlack(frame.at(80, 90)))
+    }
+
+    @Test func footageFillUsesTextTiltRotation() async throws {
+        var text = backgroundTextClip(rotationY: 60)
+        text.textFillMode = .footage
+        let timeline = CompositorRenderTests.timelineWith(
+            Fixtures.videoTrack(clips: [text]),
+            Fixtures.videoTrack(clips: [CompositorFixtures.patternClip(id: "bg")])
+        )
+        let frame = try await CompositorRenderTests.render(timeline, frame: 15, renderSize: Self.size)
+
+        #expect(!CompositorFixtures.isBlack(frame.at(160, 90)))
+        #expect(CompositorFixtures.isBlack(frame.at(90, 90)))
     }
 
     @Test func footageFillStencilsVideoThroughGlyphs() async throws {

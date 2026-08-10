@@ -83,7 +83,8 @@ extension ToolExecutor {
         let ids = try await editor.generateCaptions(for: request, applying: { mutation in
             editor.undo.perform("Generate Captions (Agent)") {
                 let ids = mutation()
-                if transform?.x != nil || transform?.rotation != nil {
+                if transform?.x != nil || transform?.rotation != nil
+                    || transform?.rotationX != nil || transform?.rotationY != nil {
                     editor.commitClipProperties(clipIds: ids, actionName: "Transform Captions (Agent)") { clip in
                         if let x = transform?.x {
                             clip.transform.centerX = Self.textCenterX(
@@ -94,6 +95,12 @@ extension ToolExecutor {
                         }
                         if let rotation = transform?.rotation {
                             clip.transform.rotation = rotation
+                        }
+                        if let rotationX = transform?.rotationX {
+                            clip.transform.rotationX = rotationX
+                        }
+                        if let rotationY = transform?.rotationY {
+                            clip.transform.rotationY = rotationY
                         }
                     }
                 }

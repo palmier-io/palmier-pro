@@ -11,37 +11,14 @@ struct TransformOverlayView: View {
             let videoRect = videoContentRect(in: geo.size)
 
             if let clip = selectedClip {
-                let frame = editor.activeFrame
-                let xform = clip.transformAt(frame: frame)
+                let xform = clip.transformAt(frame: editor.activeFrame)
                 let clipRect = clipFrame(xform, videoRect: videoRect)
-                let rotation = xform.rotation
-                let halfW = clipRect.width / 2
-                let halfH = clipRect.height / 2
 
-                let hit = rotatedHitTarget(clipRect.size, degrees: rotation)
-                Rectangle()
-                    .fill(AppTheme.MediaOverlay.primaryColor.opacity(0.001))
-                    .frame(width: hit.frame.width, height: hit.frame.height)
-                    .contentShape(hit.shape)
-                    .position(x: clipRect.midX, y: clipRect.midY)
-                    .gesture(moveGesture(clip: clip, videoRect: videoRect))
-
-                ZStack {
-                    Rectangle()
-                        .stroke(borderColor, lineWidth: AppTheme.BorderWidth.thin)
-                    ForEach(Corner.allCases, id: \.self) { corner in
-                        let off = cornerOffset(corner, halfW: halfW, halfH: halfH)
-                        Rectangle()
-                            .fill(borderColor)
-                            .frame(width: handleSize, height: handleSize)
-                            .offset(x: off.x, y: off.y)
-                            .pointerStyle(.frameResize(position: corner.resizePosition))
-                            .gesture(resizeGesture(clip: clip, corner: corner, videoRect: videoRect))
-                    }
+                if clip.mediaType == .text && xform.hasTiltRotation {
+                    tiltOverlay(clip: clip, transform: xform, clipRect: clipRect, videoRect: videoRect)
+                } else {
+                    boxOverlay(clip: clip, clipRect: clipRect, rotation: xform.rotation, videoRect: videoRect)
                 }
-                .frame(width: clipRect.width, height: clipRect.height)
-                .rotationEffect(.degrees(rotation))
-                .position(x: clipRect.midX, y: clipRect.midY)
             }
 
             if selectedClip != nil && (centerGuideX || editor.rotationSnapGuidesVisible) {
@@ -60,6 +37,73 @@ struct TransformOverlayView: View {
             }
         }
         .allowsHitTesting(selectedClip != nil)
+    }
+
+    @ViewBuilder
+    private func boxOverlay(
+        clip: Clip,
+        clipRect: CGRect,
+        rotation: Double,
+        videoRect: CGRect
+    ) -> some View {
+        let hit = rotatedHitTarget(clipRect.size, degrees: rotation)
+        Rectangle()
+            .fill(AppTheme.MediaOverlay.primaryColor.opacity(AppTheme.Opacity.hitTarget))
+            .frame(width: hit.frame.width, height: hit.frame.height)
+            .contentShape(hit.shape)
+            .position(x: clipRect.midX, y: clipRect.midY)
+            .gesture(moveGesture(clip: clip, videoRect: videoRect))
+
+        ZStack {
+            Rectangle()
+                .stroke(borderColor, lineWidth: AppTheme.BorderWidth.thin)
+            ForEach(Corner.allCases, id: \.self) { corner in
+                let off = cornerOffset(corner, halfW: clipRect.width / 2, halfH: clipRect.height / 2)
+                Rectangle()
+                    .fill(borderColor)
+                    .frame(width: handleSize, height: handleSize)
+                    .offset(x: off.x, y: off.y)
+                    .pointerStyle(.frameResize(position: corner.resizePosition))
+                    .gesture(resizeGesture(clip: clip, corner: corner, videoRect: videoRect))
+            }
+        }
+        .frame(width: clipRect.width, height: clipRect.height)
+        .rotationEffect(.degrees(rotation))
+        .position(x: clipRect.midX, y: clipRect.midY)
+    }
+
+    private func tiltOverlay(
+        clip: Clip,
+        transform: Transform,
+        clipRect: CGRect,
+        videoRect: CGRect
+    ) -> some View {
+        let corners = TextTiltGeometry.corners(
+            of: clipRect,
+            around: CGPoint(x: clipRect.midX, y: clipRect.midY),
+            transform: transform,
+            canvasSize: videoRect.size
+        )
+        let outline = Path { path in
+            path.addLines(corners.points)
+            path.closeSubpath()
+        }
+        return ZStack {
+            outline
+                .fill(AppTheme.MediaOverlay.primaryColor.opacity(AppTheme.Opacity.hitTarget))
+                .contentShape(outline)
+                .gesture(moveGesture(clip: clip, videoRect: videoRect))
+            outline.stroke(borderColor, lineWidth: AppTheme.BorderWidth.thin)
+            ForEach(Corner.allCases, id: \.self) { corner in
+                Rectangle()
+                    .fill(borderColor)
+                    .frame(width: handleSize, height: handleSize)
+                    .position(corner.point(in: corners))
+                    .pointerStyle(.frameResize(position: corner.resizePosition))
+                    .gesture(resizeGesture(clip: clip, corner: corner, videoRect: videoRect))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Gestures
@@ -301,6 +345,15 @@ struct TransformOverlayView: View {
             case .bottomRight: .bottomTrailing
             }
         }
+
+        func point(in corners: TextTiltCorners) -> CGPoint {
+            switch self {
+            case .topLeft: corners.topLeft
+            case .topRight: corners.topRight
+            case .bottomLeft: corners.bottomLeft
+            case .bottomRight: corners.bottomRight
+            }
+        }
     }
 }
 
@@ -319,7 +372,7 @@ enum TransformOverlayMath {
         moved.centerX += translation.width / videoRect.width
         moved.centerY += translation.height / videoRect.height
 
-        if start.rotation == 0 {
+        if start.rotation == 0 && !start.hasTiltRotation {
             moved.snapToCanvasEdges(threshold: Snap.thresholdPixels / Double(videoRect.width))
         }
         let guides = moved.snapCenterToCanvasCenter(
