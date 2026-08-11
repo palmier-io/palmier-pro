@@ -65,6 +65,7 @@
 "About Palmier Pro" = "About Palmier Pro";
 "Account" = "Account";
 "Account settings" = "Account settings";
+"Action Safe" = "Action Safe";
 "Activity unavailable" = "Activity unavailable";
 "Add Range to Chat" = "Add Range to Chat";
 "Add Text" = "Add Text";
@@ -150,6 +151,7 @@
 "Canceling" = "Canceling";
 "Cancels %@" = "Cancels %@";
 "Canvas" = "Canvas";
+"Canvas Guides" = "Canvas Guides";
 "Canvas Zoom" = "Canvas Zoom";
 "Cap characters per caption, including spaces and punctuation. A single word may exceed the limit." = "Cap characters per caption, including spaces and punctuation. A single word may exceed the limit.";
 "Cap the words shown per caption. None fits each line to the box." = "Cap the words shown per caption. None fits each line to the box.";
@@ -386,6 +388,7 @@
 "Font Case" = "Font Case";
 "Footage" = "Footage";
 "For" = "For";
+"Format References" = "Format References";
 "Forward" = "Forward";
 "Founder" = "Founder";
 "Frame Rate" = "Frame Rate";
@@ -426,6 +429,7 @@
 "Glow" = "Glow";
 "Go to next keyframe" = "Go to next keyframe";
 "Go to previous keyframe" = "Go to previous keyframe";
+"Grid" = "Grid";
 "Grid 2×2" = "Grid 2×2";
 "Grid 3×3" = "Grid 3×3";
 "Grid 4×4" = "Grid 4×4";
@@ -433,6 +437,7 @@
 "Hard Light" = "Hard Light";
 "Height" = "Height";
 "Help" = "Help";
+"Hide Guides" = "Hide Guides";
 "Hide Info" = "Hide Info";
 "Hide keyframe timeline" = "Hide keyframe timeline";
 "Hide reasoning" = "Hide reasoning";
@@ -678,6 +683,7 @@
 "Podcast" = "Podcast";
 "Pointer (V)" = "Pointer (V)";
 "Pop In" = "Pop In";
+"Portrait (9:16)" = "Portrait (9:16)";
 "Position" = "Position";
 "Preparing" = "Preparing";
 "Preparing…" = "Preparing…";
@@ -765,6 +771,7 @@
 "Roundness" = "Roundness";
 "Run this command once in Terminal." = "Run this command once in Terminal.";
 "Running on" = "Running on";
+"Safe Zones" = "Safe Zones";
 "Sample Key Color" = "Sample Key Color";
 "Sample Project" = "Sample Project";
 "Sample key color" = "Sample key color";
@@ -780,6 +787,7 @@
 "Save this project to view activity" = "Save this project to view activity";
 "Saves a copy of this project with all media bundled inside, so it opens on any machine." = "Saves a copy of this project with all media bundled inside, so it opens on any machine.";
 "Scale" = "Scale";
+"Scope (2.39:1)" = "Scope (2.39:1)";
 "Score my timeline" = "Score my timeline";
 "Screen" = "Screen";
 "Screenshot a frame" = "Screenshot a frame";
@@ -871,6 +879,7 @@
 "Split at Playhead" = "Split at Playhead";
 "Split at Playhead (⌘K)" = "Split at Playhead (⌘K)";
 "Spoken" = "Spoken";
+"Square (1:1)" = "Square (1:1)";
 "Start creating" = "Start creating";
 "Start creating, or explore these to get the most out of Palmier Pro." = "Start creating, or explore these to get the most out of Palmier Pro.";
 "Starts %@s into the group's clock; matched the master with %@%% confidence." = "Starts %@s into the group's clock; matched the master with %@%% confidence.";
@@ -939,6 +948,7 @@
 "Timelines" = "Timelines";
 "Tint" = "Tint";
 "Tints waveforms by speaker. Voices are matched across clips using cloud transcripts." = "Tints waveforms by speaker. Voices are matched across clips using cloud transcripts.";
+"Title Safe" = "Title Safe";
 "Toggle Agent Panel" = "Toggle Agent Panel";
 "Tone" = "Tone";
 "Tools" = "Tools";
@@ -1032,6 +1042,7 @@
 "White Balance" = "White Balance";
 "Whites" = "Whites";
 "Whole timeline · %@" = "Whole timeline · %@";
+"Wide (1.85:1)" = "Wide (1.85:1)";
 "Width" = "Width";
 "Word Reveal" = "Word Reveal";
 "Word Slide" = "Word Slide";
