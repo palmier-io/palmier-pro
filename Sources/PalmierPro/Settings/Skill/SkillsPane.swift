@@ -1,0 +1,331 @@
+import SwiftUI
+
+struct SkillsPane: View {
+    @Bindable private var store = SkillStore.shared
+    @Bindable private var catalog = SkillCatalog.shared
+    @State private var collection: SkillCollection = .installed
+    @State private var query = ""
+    @State private var presentedSkill: SkillDetailSheet.Mode?
+    @State private var working: Set<String> = []
+    @State private var skillPendingDeletion: Skill?
+
+    private enum SkillCollection: String {
+        case installed = "Installed"
+        case community = "Community"
+
+        var title: String {
+            switch self {
+            case .installed: L10n.key("Installed")
+            case .community: L10n.key("Community")
+            }
+        }
+    }
+
+    private var installedSkills: [Skill] {
+        store.skills
+            .filter { matches($0.name, $0.description) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    private var communityEntries: [SkillCatalogEntry] {
+        catalog.entries
+            .filter { matches($0.name, $0.description) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xxl) {
+            introduction
+            controls
+            ScrollView {
+                skillList
+            }
+            .scrollEdgeEffectStyle(.soft, for: .top)
+        }
+        .frame(maxWidth: AppTheme.Settings.contentMaxWidth, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .padding(.horizontal, AppTheme.Spacing.xxl)
+        .padding(.bottom, AppTheme.Spacing.xxl)
+        .onAppear {
+            Task { await store.syncSkills() }
+        }
+        .sheet(item: $presentedSkill) { mode in
+            SkillDetailSheet(mode: mode)
+        }
+        .skillDeleteConfirmation(skill: $skillPendingDeletion, onDelete: deleteSkill)
+    }
+
+    private var introduction: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+            Text(L10n.string("Install skills to give the in-app agent specialized workflows."))
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+
+            if let url = URL(string: "https://github.com/palmier-io/palmier-skills") {
+                Link(L10n.string("Browse Community Skills ↗"), destination: url)
+                    .font(.system(size: AppTheme.FontSize.sm))
+                    .foregroundStyle(AppTheme.Accent.link)
+                    .pointerStyle(.link)
+            }
+        }
+    }
+
+    private var controls: some View {
+        HStack(spacing: AppTheme.Spacing.smMd) {
+            HStack(spacing: AppTheme.Spacing.xxs) {
+                SkillCollectionButton(
+                    title: L10n.string(key: SkillCollection.installed.title),
+                    count: store.skills.count,
+                    isSelected: collection == .installed,
+                    action: { collection = .installed }
+                )
+                SkillCollectionButton(
+                    title: L10n.string(key: SkillCollection.community.title),
+                    count: catalog.entries.count,
+                    isSelected: collection == .community,
+                    action: { collection = .community }
+                )
+            }
+
+            Spacer(minLength: AppTheme.Spacing.md)
+
+            searchField
+                .frame(width: AppTheme.Settings.skillsSearchWidth)
+
+            Button(action: createSkill) {
+                Image(systemName: "plus")
+                    .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.md)
+                    .padding(AppTheme.Spacing.xs)
+                    .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.string("New skill"))
+            .help(L10n.string("New skill"))
+
+            Menu {
+                Button(L10n.string("Open Skills Folder"), systemImage: "folder") { store.openFolder() }
+                Divider()
+                Button(L10n.string("Refresh Community Skills"), systemImage: "arrow.clockwise") {
+                    Task { await store.syncSkills() }
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.md)
+                    .padding(AppTheme.Spacing.xs)
+                    .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityLabel(L10n.string("Skill actions"))
+            .help(L10n.string("Skill actions"))
+        }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.mutedColor)
+                .accessibilityHidden(true)
+
+            TextField(L10n.string("Search skills"), text: $query)
+                .textFieldStyle(.plain)
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.primaryColor)
+                .accessibilityLabel(L10n.string("Search skills"))
+
+            if !query.isEmpty {
+                Button {
+                    query = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: AppTheme.FontSize.sm))
+                        .foregroundStyle(AppTheme.Text.mutedColor)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.string("Clear search"))
+                .help(L10n.string("Clear search"))
+            }
+        }
+        .padding(.horizontal, AppTheme.Spacing.md)
+        .padding(.vertical, AppTheme.Spacing.smMd)
+        .themedSurface(AppTheme.Background.raisedColor, cornerRadius: AppTheme.Radius.sm)
+    }
+
+    private var skillList: some View {
+        VStack(spacing: AppTheme.Spacing.sm) {
+            switch collection {
+            case .installed:
+                installedList
+            case .community:
+                communityList
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var installedList: some View {
+        Group {
+            if installedSkills.isEmpty, query.isEmpty {
+                SkillEmptyState(
+                    systemName: "book.closed",
+                    title: L10n.string("No Installed Skills"),
+                    message: L10n.string("Create a skill or browse the Community collection."),
+                    actionTitle: L10n.string("New Skill"),
+                    action: createSkill
+                )
+            } else if installedSkills.isEmpty {
+                noMatchesState
+            } else {
+                ForEach(installedSkills) { skill in
+                    let state = SkillCommunityState.resolve(skill, store: store, catalog: catalog)
+                    SkillRow(
+                        name: skill.name,
+                        description: skill.description,
+                        status: state.map { L10n.string(key: $0.label) } ?? L10n.string("Local"),
+                        statusColor: state?.color ?? AppTheme.Text.tertiaryColor,
+                        actionTitle: state == .update ? L10n.string("Update") : L10n.string("Open"),
+                        primaryAction: false,
+                        working: working.contains(skill.id),
+                        summaryAction: { present(skill.id) },
+                        deleteAction: { skillPendingDeletion = skill },
+                        action: { state == .update ? update(skill) : present(skill.id) }
+                    )
+                }
+            }
+        }
+    }
+
+    private var communityList: some View {
+        Group {
+            if catalog.isLoading, catalog.entries.isEmpty {
+                HStack(spacing: AppTheme.Spacing.smMd) {
+                    ProgressView().controlSize(.small)
+                    Text(L10n.string("Loading community skills…"))
+                        .font(.system(size: AppTheme.FontSize.sm))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(AppTheme.Spacing.xlXxl)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(L10n.string("Loading community skills"))
+            } else if communityEntries.isEmpty {
+                if query.isEmpty, let error = catalog.lastError {
+                    SkillEmptyState(
+                        systemName: "exclamationmark.triangle",
+                        title: L10n.string("Community Skills Unavailable"),
+                        message: error,
+                        actionTitle: L10n.string("Try Again"),
+                        action: { Task { await store.syncSkills() } }
+                    )
+                } else if query.isEmpty {
+                    SkillEmptyState(
+                        systemName: "books.vertical",
+                        title: L10n.string("No Community Skills"),
+                        message: L10n.string("Refresh to check for available skills."),
+                        actionTitle: L10n.string("Refresh"),
+                        action: { Task { await store.syncSkills() } }
+                    )
+                } else {
+                    noMatchesState
+                }
+            } else {
+                ForEach(communityEntries) { entry in
+                    communityRow(entry)
+                }
+            }
+        }
+    }
+
+    private var noMatchesState: some View {
+        SkillEmptyState(
+            systemName: "magnifyingglass",
+            title: L10n.string("No Matching Skills"),
+            message: L10n.string("Try another search."),
+            actionTitle: L10n.string("Clear Search"),
+            action: { query = "" }
+        )
+    }
+
+    private func communityRow(_ entry: SkillCatalogEntry) -> some View {
+        let skill = store.skills.first { $0.id == entry.id }
+        let state = skill.flatMap { SkillCommunityState.resolve($0, store: store, catalog: catalog) }
+        return SkillRow(
+            name: entry.name,
+            description: entry.description,
+            status: state.map { L10n.string(key: $0.label) }
+                ?? (skill == nil ? L10n.string("Available") : L10n.string("Local")),
+            statusColor: state?.color ?? AppTheme.Text.tertiaryColor,
+            actionTitle: skill == nil
+                ? L10n.string("Install")
+                : state == .update ? L10n.string("Update") : L10n.string("Open"),
+            primaryAction: skill == nil,
+            working: working.contains(entry.id),
+            summaryAction: skill.map { installedSkill in
+                { present(installedSkill.id) }
+            },
+            deleteAction: skill.map { installedSkill in
+                { skillPendingDeletion = installedSkill }
+            },
+            action: {
+                if let skill {
+                    state == .update ? update(skill) : present(skill.id)
+                } else {
+                    install(entry)
+                }
+            }
+        )
+    }
+
+    private func matches(_ name: String, _ description: String) -> Bool {
+        let search = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !search.isEmpty else { return true }
+        return name.localizedCaseInsensitiveContains(search)
+            || description.localizedCaseInsensitiveContains(search)
+    }
+
+    private func createSkill() {
+        collection = .installed
+        query = ""
+        presentedSkill = .draft
+    }
+
+    private func install(_ entry: SkillCatalogEntry) {
+        working.insert(entry.id)
+        Task {
+            let installed = await store.install(entry)
+            working.remove(entry.id)
+            if installed {
+                collection = .installed
+                query = ""
+                present(entry.id)
+            }
+        }
+    }
+
+    private func update(_ skill: Skill) {
+        guard let entry = catalog.entry(id: skill.id) else { return }
+        working.insert(skill.id)
+        Task {
+            _ = await store.install(entry)
+            working.remove(skill.id)
+        }
+    }
+
+    private func deleteSkill(_ skill: Skill) {
+        working.insert(skill.id)
+        Task {
+            _ = await store.delete(skill)
+            working.remove(skill.id)
+        }
+    }
+
+    private func present(_ id: String) {
+        presentedSkill = .existing(id: id)
+    }
+}

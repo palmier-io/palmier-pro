@@ -3,12 +3,12 @@ import SwiftUI
 enum MentionTab: CaseIterable, Hashable {
     case all, video, image, audio
 
-    var label: String {
+    var localizedLabel: String {
         switch self {
-        case .all: "All"
-        case .video: "Video"
-        case .image: "Image"
-        case .audio: "Audio"
+        case .all: L10n.key("All")
+        case .video: L10n.key("Video")
+        case .image: L10n.key("Image")
+        case .audio: L10n.key("Audio")
         }
     }
 
@@ -21,12 +21,12 @@ enum MentionTab: CaseIterable, Hashable {
         }
     }
 
-    var emptyLabel: String {
+    var localizedEmptyLabel: String {
         switch self {
-        case .all: "No media"
-        case .video: "No video clips"
-        case .image: "No images"
-        case .audio: "No audio"
+        case .all: L10n.key("No media")
+        case .video: L10n.key("No video clips")
+        case .image: L10n.key("No images")
+        case .audio: L10n.key("No audio")
         }
     }
 }
@@ -56,7 +56,9 @@ struct MentionPopover: View {
     @ViewBuilder
     private var contentArea: some View {
         if candidates.isEmpty {
-            Text(query.isEmpty ? tab.emptyLabel : "No matches for \"\(query)\"")
+            Text(query.isEmpty
+                ? L10n.string(key: tab.localizedEmptyLabel)
+                : L10n.string("No matches for \"\(query)\""))
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.mutedColor)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -111,7 +113,7 @@ struct MentionPopover: View {
     private var tabStrip: some View {
         HStack(spacing: 0) {
             ForEach(MentionTab.allCases, id: \.self) { t in
-                Text(t.label)
+                Text(L10n.string(key: t.localizedLabel))
                     .font(.system(size: AppTheme.FontSize.xs, weight: t == tab ? .semibold : .regular))
                     .foregroundStyle(t == tab ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
                     .frame(maxWidth: .infinity)
@@ -151,7 +153,7 @@ struct MentionPopover: View {
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                     .lineLimit(1)
-                Text(asset.type.rawValue)
+                Text(asset.type.localizedTrackLabel)
                     .font(.system(size: AppTheme.FontSize.xxs))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }

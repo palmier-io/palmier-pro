@@ -2,6 +2,8 @@ import AppKit
 
 Log.bootstrap()
 Telemetry.start()
+Analytics.start()
+Analytics.capture(.appOpened)
 BundledFonts.register()
 AccountService.shared.configure()
 ModelCatalog.shared.configure()
@@ -10,7 +12,8 @@ ModelCatalog.shared.configure()
 UserDefaults.standard.set(10, forKey: "NSInitialToolTipDelay")
 
 let app = NSApplication.shared
-let delegate = AppDelegate()
+AppAppearanceStore.shared.apply()
+let delegate = AppDelegate.shared
 app.delegate = delegate
 app.mainMenu = MainMenuBuilder.buildMenu()
 app.run()

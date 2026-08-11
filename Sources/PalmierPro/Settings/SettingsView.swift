@@ -3,19 +3,23 @@ import SwiftUI
 enum SettingsTab: String, CaseIterable, Identifiable {
     case account
     case general
+    case appearance
     case models
     case agent
+    case skills
     case storage
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
-        case .account: return "Account"
-        case .general: return "General"
-        case .models: return "Models"
+        case .account: return L10n.key("Account")
+        case .general: return L10n.key("General")
+        case .appearance: return L10n.key("Appearance")
+        case .models: return L10n.key("Models")
         case .agent: return "Agent"
-        case .storage: return "Storage"
+        case .skills: return L10n.key("Skills")
+        case .storage: return L10n.key("Storage")
         }
     }
 
@@ -23,8 +27,10 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .account: return "person.circle"
         case .general: return "gearshape"
+        case .appearance: return "sun.max"
         case .models: return "square.stack.3d.up"
         case .agent: return "paperplane"
+        case .skills: return "book.closed"
         case .storage: return "internaldrive"
         }
     }
@@ -47,13 +53,18 @@ struct SettingsView: View {
     var body: some View {
         HStack(spacing: 0) {
             SettingsSidebar(selectedTab: $selectedTab, visibleTabs: visibleTabs)
-                .frame(width: 220)
+                .frame(width: AppTheme.Settings.sidebarWidth)
 
             SettingsDetail(tab: selectedTab)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.black.opacity(AppTheme.Opacity.medium))
+                .background(AppTheme.Background.baseColor.opacity(AppTheme.Opacity.medium))
         }
-        .frame(minWidth: 760, idealWidth: 980, minHeight: 480, idealHeight: 640)
+        .frame(
+            minWidth: AppTheme.Window.settingsMin.width,
+            maxWidth: .infinity,
+            minHeight: AppTheme.Window.settingsMin.height,
+            maxHeight: .infinity
+        )
         .background(.ultraThinMaterial)
         .focusEffectDisabled()
         .onAppear {
@@ -84,7 +95,7 @@ private struct SettingsSidebar: View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
             ForEach(visibleTabs) { tab in
                 SidebarRowButton(
-                    label: tab.label,
+                    label: L10n.string(key: tab.label),
                     systemImage: tab.systemImage,
                     isSelected: selectedTab == tab,
                     action: { selectedTab = tab }
@@ -101,37 +112,86 @@ private struct SettingsDetail: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(tab.label)
-                    .font(.system(size: AppTheme.FontSize.title2, weight: .light))
-                    .tracking(AppTheme.Tracking.tight)
-                    .foregroundStyle(AppTheme.Text.primaryColor)
-                Spacer()
-            }
-            .padding(.horizontal, AppTheme.Spacing.xlXxl)
-            .padding(.top, AppTheme.Spacing.xxl)
-            .padding(.bottom, AppTheme.Spacing.lgXl)
+            Text(L10n.string(key: tab.label))
+                .font(.system(size: AppTheme.FontSize.title1, weight: AppTheme.FontWeight.regular))
+                .foregroundStyle(AppTheme.Text.primaryColor)
+                .frame(
+                    maxWidth: AppTheme.Settings.contentMaxWidth,
+                    alignment: .leading
+                )
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, AppTheme.Spacing.xxl)
+                .padding(.top, AppTheme.Spacing.xxl)
+                .padding(.bottom, AppTheme.Spacing.xxl)
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
-                    switch tab {
-                    case .account:
-                        AccountPane()
-                    case .general:
-                        NotificationsPane()
-                        PrivacyPane()
-                    case .models:
-                        ModelsPane()
-                    case .agent:
-                        AgentPane()
-                    case .storage:
-                        StoragePane()
+            Group {
+                if tab == .skills {
+                    SkillsPane()
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: AppTheme.Spacing.xxl) {
+                            switch tab {
+                            case .account:
+                                AccountPane()
+                            case .general:
+                                GeneralPane()
+                            case .appearance:
+                                AppearancePane()
+                            case .models:
+                                ModelsPane()
+                            case .agent:
+                                AgentPane()
+                            case .skills:
+                                EmptyView()
+                            case .storage:
+                                StoragePane()
+                            }
+                        }
+                        .frame(maxWidth: AppTheme.Settings.contentMaxWidth, alignment: .leading)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, AppTheme.Spacing.xxl)
+                        .padding(.bottom, AppTheme.Spacing.xxl)
                     }
+                    .scrollEdgeEffectStyle(.soft, for: .top)
                 }
-                .padding(.horizontal, AppTheme.Spacing.xlXxl)
-                .padding(.bottom, AppTheme.Spacing.xlXxl)
             }
-            .scrollEdgeEffectStyle(.soft, for: .top)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+struct SettingsSection<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+            Text(verbatim: title)
+                .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.regular))
+                .foregroundStyle(AppTheme.Text.primaryColor)
+
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+                content()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, AppTheme.Spacing.lgXl)
+            .padding(.vertical, AppTheme.Spacing.mdLg)
+            .themedSurface(AppTheme.Background.prominentColor, cornerRadius: AppTheme.Radius.mdLg)
+        }
+    }
+}
+
+struct SettingsGroup<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+            Text(verbatim: title)
+                .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.regular))
+                .foregroundStyle(AppTheme.Text.primaryColor)
+            content()
         }
     }
 }
@@ -142,12 +202,12 @@ struct SettingsToggleRow: View {
     @Binding var isOn: Bool
 
     var body: some View {
-        HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
+        HStack(alignment: .center, spacing: AppTheme.Spacing.md) {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-                Text(title)
-                    .font(.system(size: AppTheme.FontSize.md))
+                Text(verbatim: title)
+                    .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.regular))
                     .foregroundStyle(AppTheme.Text.primaryColor)
-                Text(subtitle)
+                Text(verbatim: subtitle)
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .fixedSize(horizontal: false, vertical: true)
@@ -155,12 +215,14 @@ struct SettingsToggleRow: View {
 
             Spacer(minLength: AppTheme.Spacing.lg)
 
-            Toggle("", isOn: $isOn)
+            Toggle(String(), isOn: $isOn)
                 .labelsHidden()
                 .toggleStyle(.switch)
-                .controlSize(.small)
-                .padding(.top, AppTheme.Spacing.xxs)
+                .controlSize(.mini)
+                .accessibilityLabel(title)
+                .accessibilityHint(subtitle)
         }
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -172,13 +234,12 @@ final class SettingsWindowController: NSWindowController {
 
     private init() {
         let initialView = SettingsView().tint(AppTheme.Accent.primary)
-        let hosting = NSHostingController(rootView: AnyView(initialView))
+        let hosting = NSHostingController(rootView: AnyView(initialView.appLocalization()))
+        hosting.sizingOptions = .minSize
         let window = NSWindow(contentViewController: hosting)
-        window.setContentSize(NSSize(width: 980, height: 640))
-        window.minSize = NSSize(width: 760, height: 480)
-        window.title = "Settings"
-        window.setFrameAutosaveName("PalmierProSettings-v2")
-        window.appearance = NSAppearance(named: .darkAqua)
+        window.setContentSize(AppTheme.Window.settingsDefault)
+        window.minSize = AppTheme.Window.settingsMin
+        window.title = L10n.string("Settings")
         window.backgroundColor = AppTheme.Background.base.withAlphaComponent(0.4)
         window.isOpaque = false
         window.titleVisibility = .hidden
@@ -198,6 +259,7 @@ final class SettingsWindowController: NSWindowController {
             hosting?.rootView = AnyView(
                 SettingsView(initialTab: tab)
                     .id(UUID())
+                    .appLocalization()
                     .tint(AppTheme.Accent.primary)
             )
         }

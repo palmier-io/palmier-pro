@@ -7,7 +7,7 @@ extension EditorViewModel {
     func relinkAsset(id: String, to newURL: URL) {
         guard let asset = mediaAssets.first(where: { $0.id == id }) else { return }
         if let newType = ClipType(fileExtension: newURL.pathExtension.lowercased()), newType != asset.type {
-            mediaPanelToast = "Can't relink — \"\(newURL.lastPathComponent)\" is \(newType.trackLabel.lowercased()), not \(asset.type.trackLabel.lowercased())."
+            mediaPanelToast = MediaPanelToast(message: L10n.string("Can't relink \"\(newURL.lastPathComponent)\". Required media type: \(asset.type.localizedTrackLabel). Selected media type: \(newType.localizedTrackLabel)."))
             return
         }
         applyRelink(id: id, to: newURL)
@@ -33,6 +33,10 @@ extension EditorViewModel {
     private func applyRelink(id: String, to newURL: URL) {
         guard let i = mediaAssets.firstIndex(where: { $0.id == id }) else { return }
         mediaAssets[i].url = newURL
+        denoiseFailed.remove(id)
+        denoiseBaked.remove(id)
+        mediaVisualCache.invalidate(id)
+        speakerAssignments.removeValue(forKey: id)
         if let j = mediaManifest.entries.firstIndex(where: { $0.id == id }) {
             mediaManifest.entries[j].source = mediaAssets[i].toManifestEntry(projectURL: projectURL).source
         }

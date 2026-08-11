@@ -2,30 +2,22 @@
   "changelogURL": "https://github.com/palmier-io/palmier-pro/releases",
   "entries": [
     {
-      "version": "0.4.0",
-      "date": "2026-06-23",
+      "version": "0.7.3",
+      "date": "2026-08-10",
       "sections": [
         {
           "heading": "New",
           "items": [
-            "Color grading and visual effects per clip. Curves, color wheels, LUTs, grain, chroma key, and more. Start asking agent to color grade your clips.",
-            "Sync audio across multiple tracks. Useful for syncing camera footage and dedicated mic. "
-          ]
-        },
-        {
-          "heading": "Improved",
+            "SRT/WebVTTT support: Import .srt/.vtt subtitle files as caption.",
+            "Editable track names: Agent can now label tracks to better organize your project.",
+            "Copy settings: Right click a clip -> Copy -> Paste Setttings, or ask the agent to do it.",
+            "Text Tilt: New styling option for text in inspector panel.",
+            "Max Character Support for Caption"
+          ],
+          "heading": "UI",
           "items": [
-            "Export at 2K or Match Timeline resolution",
-            "Import FLAC and AIFF-C audio files",
-            "Editor panel sizes are remembered between sessions"
-          ]
-        },
-        {
-          "heading": "Fixed",
-          "items": [
-            "Fixed silent sign-in failures on macOS",
-            "Fixed clip rotation being dropped when the agent adjusts transform properties",
-            "Fixed position keyframes corrupting clip transform"
+            "Preview caption directly on the canvas when choosing a caption style.",
+            "Agent activity highlight on the timeline: When agent is working on the clips, the timeline will highlight the related clips for better visualization."
           ]
         }
       ]

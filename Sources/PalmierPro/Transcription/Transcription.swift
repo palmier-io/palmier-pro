@@ -2,18 +2,44 @@ import AVFoundation
 import Foundation
 import Speech
 
+enum TranscriptionProvider: String, CaseIterable, Sendable, Codable {
+    case local
+    case cloud
+
+    var label: String {
+        switch self {
+        case .local: L10n.key("Local")
+        case .cloud: L10n.key("Cloud")
+        }
+    }
+}
+
 struct TranscriptionWord: Sendable, Codable {
     let text: String
     let start: Double?
     let end: Double?
+    let speaker: String?
+
+    init(text: String, start: Double?, end: Double?, speaker: String? = nil) {
+        self.text = text
+        self.start = start
+        self.end = end
+        self.speaker = speaker
+    }
 }
 
-/// One natural utterance the transcriber endpointed on its own (pause/sentence
-/// boundary). `text` carries the model's punctuation and casing.
 struct TranscriptionSegment: Sendable, Codable {
     let text: String
     let start: Double
     let end: Double
+    let speaker: String?
+
+    init(text: String, start: Double, end: Double, speaker: String? = nil) {
+        self.text = text
+        self.start = start
+        self.end = end
+        self.speaker = speaker
+    }
 }
 
 struct TranscriptionResult: Sendable, Codable {
@@ -29,10 +55,15 @@ struct TranscriptionResult: Sendable, Codable {
             text: text,
             language: language,
             words: words.map {
-                TranscriptionWord(text: $0.text, start: $0.start.map { $0 + offset }, end: $0.end.map { $0 + offset })
+                TranscriptionWord(
+                    text: $0.text,
+                    start: $0.start.map { $0 + offset },
+                    end: $0.end.map { $0 + offset },
+                    speaker: $0.speaker
+                )
             },
             segments: segments.map {
-                TranscriptionSegment(text: $0.text, start: $0.start + offset, end: $0.end + offset)
+                TranscriptionSegment(text: $0.text, start: $0.start + offset, end: $0.end + offset, speaker: $0.speaker)
             }
         )
     }
@@ -62,7 +93,18 @@ enum TranscriptionError: LocalizedError {
 }
 
 enum Transcription {
+    private static let audioExtractionGate = AsyncSemaphore(value: 2)
+
+    static func failurePreservingCancellation(
+        _ error: Error,
+        as makeFailure: (String) -> TranscriptionError
+    ) throws -> TranscriptionError {
+        try Task.checkCancellation()
+        return makeFailure(error.localizedDescription)
+    }
+
     static func transcribeVideoAudio(videoURL: URL, censorProfanity: Bool = false, preferredLocale: Locale? = nil, sourceRange: ClosedRange<Double>? = nil) async throws -> TranscriptionResult {
+        try Task.checkCancellation()
         let tempAudioURL = try await extractAudioTrack(from: videoURL, range: sourceRange)
         defer { try? FileManager.default.removeItem(at: tempAudioURL) }
         let result = try await transcribe(fileURL: tempAudioURL, censorProfanity: censorProfanity, preferredLocale: preferredLocale)
@@ -80,16 +122,22 @@ enum Transcription {
 
     static func matchLocale(candidates: [Locale], supported: [Locale]) -> Locale? {
         for candidate in candidates {
-            guard let lang = candidate.language.languageCode?.identifier else { continue }
+            // Strip Unicode extension tags (e.g. -u-rg-zazzzz from en-US-u-rg-zazzzz) before
+            // matching — the Speech framework doesn't recognise composite BCP 47 tags.
+            let baseId = candidate.identifier(.bcp47).components(separatedBy: "-u-").first
+                ?? candidate.identifier
+            let base = Locale(identifier: baseId)
+            guard let lang = base.language.languageCode?.identifier else { continue }
             let sameLang = supported.filter { $0.language.languageCode?.identifier == lang }
             guard !sameLang.isEmpty else { continue }
-            let region = candidate.region?.identifier
+            let region = base.region?.identifier
             return sameLang.first { $0.region?.identifier == region } ?? sameLang.first
         }
         return nil
     }
 
     static func transcribe(fileURL: URL, censorProfanity: Bool = false, preferredLocale: Locale? = nil, sourceRange: ClosedRange<Double>? = nil) async throws -> TranscriptionResult {
+        try Task.checkCancellation()
         if let sourceRange {
             let tempURL = try await extractAudioTrack(from: fileURL, range: sourceRange)
             defer { try? FileManager.default.removeItem(at: tempURL) }
@@ -132,12 +180,13 @@ enum Transcription {
             do {
                 try await install.downloadAndInstall()
             } catch {
+                let failure = try failurePreservingCancellation(error, as: TranscriptionError.modelInstallFailed)
                 Log.transcription.warning(
                     "install model failed locale=\(locale.identifier) error=\(error.localizedDescription)",
                     telemetry: "Transcription model install failed",
                     data: ["locale": locale.identifier(.bcp47), "error": error.localizedDescription]
                 )
-                throw TranscriptionError.modelInstallFailed(error.localizedDescription)
+                throw failure
             }
             Log.transcription.notice(
                 "install model ok locale=\(locale.identifier)",
@@ -150,7 +199,7 @@ enum Transcription {
         do {
             audioFile = try AVAudioFile(forReading: fileURL)
         } catch {
-            throw TranscriptionError.audioExtractionFailed(error.localizedDescription)
+            throw try failurePreservingCancellation(error, as: TranscriptionError.audioExtractionFailed)
         }
 
         let analyzer = SpeechAnalyzer(modules: [transcriber])
@@ -170,22 +219,24 @@ enum Transcription {
             }
         } catch {
             resultsTask.cancel()
+            let failure = try failurePreservingCancellation(error, as: TranscriptionError.analysisFailed)
             Log.transcription.warning(
                 "analyze failed error=\(error.localizedDescription)",
                 telemetry: "Transcription analysis failed",
                 data: ["error": error.localizedDescription]
             )
-            throw TranscriptionError.analysisFailed(error.localizedDescription)
+            throw failure
         }
 
         let collected: [SpeechTranscriber.Result]
         do {
             collected = try await resultsTask.value
         } catch {
-            throw TranscriptionError.analysisFailed(error.localizedDescription)
+            throw try failurePreservingCancellation(error, as: TranscriptionError.analysisFailed)
         }
 
         let decoded = decodeResults(collected, locale: locale)
+        try Task.checkCancellation()
         Log.transcription.notice(
             "ok textChars=\(decoded.text.count) words=\(decoded.words.count) lang=\(decoded.language ?? "?")",
             telemetry: "Transcription finished",
@@ -200,9 +251,16 @@ enum Transcription {
     }
 
     /// Decode the asset's audio track to a PCM file with AVAssetReader
-    private static func extractAudioTrack(from videoURL: URL, range: ClosedRange<Double>? = nil) async throws -> URL {
+    static func extractAudioTrack(
+        from videoURL: URL,
+        range: ClosedRange<Double>? = nil,
+        fileExtension: String = "caf"
+    ) async throws -> URL {
         let outURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("palmier-stt-\(UUID().uuidString).caf")
+            .appendingPathComponent("palmier-stt-\(UUID().uuidString).\(fileExtension)")
+        try await audioExtractionGate.wait()
+        defer { Task { await audioExtractionGate.signal() } }
+
         Log.transcription.notice(
             "extract start video=\(videoURL.lastPathComponent)",
             telemetry: "Transcription audio extraction started",
@@ -231,6 +289,7 @@ enum Transcription {
                 try audioFile?.write(from: pcm)
             }
         } catch let error as AudioTrackReader.ReadError {
+            try Task.checkCancellation()
             throw TranscriptionError.audioExtractionFailed(error.message)
         }
 
@@ -265,7 +324,8 @@ enum Transcription {
                 segments.append(TranscriptionSegment(
                     text: segmentText,
                     start: result.range.start.seconds,
-                    end: result.range.end.seconds
+                    end: result.range.end.seconds,
+                    speaker: nil
                 ))
             }
 
@@ -276,7 +336,7 @@ enum Transcription {
                 let range = run.audioTimeRange
                 let start = range.map(\.start.seconds)
                 let end = range.map { ($0.start + $0.duration).seconds }
-                words.append(TranscriptionWord(text: trimmed, start: start, end: end))
+                words.append(TranscriptionWord(text: trimmed, start: start, end: end, speaker: nil))
             }
         }
 

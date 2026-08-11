@@ -53,6 +53,26 @@ struct ApplyClipSpeedTests {
         #expect(updated.startFrame == 100)
     }
 
+    @Test func commitClipSpeedWithoutRippleLeavesContiguousNeighborsInPlace() {
+        let c1 = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        let c2 = Fixtures.clip(id: "c2", start: 60, duration: 30)
+        let e = editor([Fixtures.videoTrack(clips: [c1, c2])])
+        e.commitClipSpeed(ids: ["c1"], newSpeed: 2.0, ripple: false)
+        let updated = e.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+        #expect(updated[0].durationFrames == 30)
+        #expect(updated[1].startFrame == 60)
+    }
+
+    @Test func commitClipSpeedRipplesContiguousNeighborsByDefault() {
+        let c1 = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        let c2 = Fixtures.clip(id: "c2", start: 60, duration: 30)
+        let e = editor([Fixtures.videoTrack(clips: [c1, c2])])
+        e.commitClipSpeed(ids: ["c1"], newSpeed: 2.0)
+        let updated = e.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+        #expect(updated[0].durationFrames == 30)
+        #expect(updated[1].startFrame == 30)
+    }
+
     @Test func applyClipSpeedRescalesKeyframesInsteadOfDroppingThem() {
         // 2x speed halves a 60-frame clip; keyframes must rescale, not get clamped away.
         var clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
@@ -104,6 +124,17 @@ struct SplitClipTests {
         #expect(e.timeline.tracks[0].clips.count == 1)
     }
 
+    @Test func splitClipDoesNotCutAnotherClipOnSameTrack() {
+        // c1 = 0..30, c2 = 30..60. Splitting c1 at frame 45 (inside c2, outside c1) must
+        // do nothing — not resolve to c2 and cut it.
+        let e = editor([Fixtures.videoTrack(clips: [
+            Fixtures.clip(id: "c1", start: 0, duration: 30),
+            Fixtures.clip(id: "c2", start: 30, duration: 30),
+        ])])
+        #expect(e.splitClip(clipId: "c1", atFrame: 45).isEmpty)
+        #expect(e.timeline.tracks[0].clips.count == 2)
+    }
+
     @Test func splitWithLinkedPartnerSplitsBothAndRegroupsRightHalves() {
         // video + audio sharing g1. After split at 30, the right halves should share a
         // *new* group id (not the original g1).
@@ -131,6 +162,36 @@ struct SplitClipTests {
         #expect(leftGroups == ["g1"])
     }
 
+    @Test func splitClipsAtMultiplePointsCutsEachAndSkipsBoundaries() {
+        let clip = Fixtures.clip(id: "c1", start: 0, duration: 90)
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        // Two real cuts plus a repeat of the first: the repeat lands on a boundary and is a no-op.
+        let rightIds = e.splitClips(at: [(0, 30), (0, 60), (0, 30)])
+        let clips = e.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+        #expect(clips.map(\.startFrame) == [0, 30, 60])
+        #expect(clips.map(\.durationFrames) == [30, 30, 30])
+        #expect(rightIds.count == 2)
+    }
+
+    @Test func splitClipKeepsSegmentInterpolationOnRightHalf() {
+        // hold opacity (0→1.0) and linear rotation (0°→20°). Splitting mid-segment must not
+        // turn the right half's opening keyframe smooth: hold stays flat, linear stays straight.
+        var clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        clip.opacityTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 1.0, interpolationOut: .hold),
+            Keyframe(frame: 30, value: 0.5),
+        ])
+        clip.rotationTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 0.0, interpolationOut: .linear),
+            Keyframe(frame: 20, value: 20.0),
+        ])
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        let rightId = e.splitClip(clipId: "c1", atFrame: 10)[0]
+        let right = e.timeline.tracks[0].clips.first { $0.id == rightId }!
+        #expect(right.opacityTrack?.sample(at: 5, fallback: 0.0) == 1.0)   // hold: still flat
+        #expect(right.rotationTrack?.sample(at: 5, fallback: 0.0) == 15.0) // linear: 10°→20° at halfway
+    }
+
     @Test func splitClipZerosOpacityFadesAcrossCut() {
         var clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
         clip.fadeInFrames = 15
@@ -149,6 +210,20 @@ struct SplitClipTests {
 @Suite("EditorViewModel — applyTimelineSettings")
 @MainActor
 struct ApplyTimelineSettingsTests {
+
+    @Test func undoRestoresExactFramesAfterFpsRounding() {
+        var clip = Fixtures.clip(id: "c1", start: 0, duration: 1_000)
+        clip.trimEndFrame = 897
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        let undo = UndoManager()
+        e.undo.attach(undo)
+        let before = e.timeline
+
+        e.applyTimelineSettings(fps: 24, width: 1280, height: 720)
+        undo.undo()
+
+        #expect(e.timeline == before)
+    }
 
     @Test func rescalesOpacityFadesByFpsRatio() {
         var clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
@@ -321,7 +396,7 @@ struct WritePositionTests {
         let e = editor([Fixtures.videoTrack(clips: [clip])])
         e.currentFrame = 0
 
-        e.commitPosition(clipId: "c1", setX: 0.4, setY: 0.4)
+        e.commitPositions(clipIds: ["c1"], setX: 0.4, setY: 0.4)
 
         let updated = e.timeline.tracks[0].clips[0]
         let kf = updated.positionTrack?.keyframes.first(where: { $0.frame == 0 })
@@ -330,6 +405,235 @@ struct WritePositionTests {
         // Bug: without the else-guard, centerX/Y become 0.6 (0.4 + width/2).
         #expect(updated.transform.centerX == 0.5)
         #expect(updated.transform.centerY == 0.5)
+    }
+
+    @Test func batchPositionUpdatesAllClips() {
+        var a = Fixtures.clip(id: "a", start: 0, duration: 60)
+        var b = Fixtures.clip(id: "b", start: 10, duration: 60)
+        a.transform.width = 0.2
+        a.transform.height = 0.2
+        b.transform.width = 0.4
+        b.transform.height = 0.4
+
+        let e = editor([Fixtures.videoTrack(clips: [a, b])])
+        e.currentFrame = 0
+
+        e.commitPositions(clipIds: ["a", "b"], setX: 0.3, setY: 0.4)
+
+        let updated = e.timeline.tracks[0].clips
+        #expect(abs(updated[0].topLeftAt(frame: 0).x - 0.3) < 0.000001)
+        #expect(abs(updated[0].topLeftAt(frame: 0).y - 0.4) < 0.000001)
+        #expect(abs(updated[1].topLeftAt(frame: 0).x - 0.3) < 0.000001)
+        #expect(abs(updated[1].topLeftAt(frame: 0).y - 0.4) < 0.000001)
+    }
+}
+
+@Suite("EditorViewModel — clip property commits")
+@MainActor
+struct ClipPropertyCommitTests {
+
+    @Test func editingMultilineTextResizesAndUndoesTheTextBoxAtomically() throws {
+        let originalContent = "Text"
+        var style = TextStyle()
+        style.shadow.enabled = false
+        let natural = TextLayout.naturalSize(
+            content: originalContent,
+            style: style,
+            maxWidth: 1_728,
+            canvasHeight: 1_080
+        )
+        var clip = Fixtures.clip(id: "text", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
+        clip.textContent = originalContent
+        clip.textStyle = style
+        clip.transform = Transform(
+            center: (0.5, 0.5),
+            width: Double(natural.width) / 1_920,
+            height: Double(natural.height) / 1_080
+        )
+        let originalTransform = clip.transform
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        let undoManager = UndoManager()
+        e.undo.attach(undoManager)
+        let multiline = "Text\nfasfasf\nfsafasff\nfasfsafsa\nfasfasfas\nfasfasffs"
+
+        e.applyTextContent(clipId: clip.id, content: multiline)
+        let resized = try #require(e.clipFor(id: clip.id))
+        #expect(resized.textContent == multiline)
+        #expect(resized.transform.height > originalTransform.height)
+        #expect(resized.transform.centerY == originalTransform.centerY)
+
+        e.commitTextContent(clipId: clip.id, content: multiline)
+        undoManager.undo()
+        let restored = try #require(e.clipFor(id: clip.id))
+        #expect(restored.textContent == originalContent)
+        #expect(restored.transform == originalTransform)
+        #expect(undoManager.canUndo == false)
+    }
+
+    @Test func scalingTextPreservesAuthoredStyleAndUndoesTheBoxAtomically() throws {
+        let content = "fasfasfasf\nsfsaf\nsfasfsaf"
+        var style = TextStyle()
+        style.tracking = 18
+        style.lineSpacing = 24
+        style.background = .init(enabled: true, paddingX: 40, paddingY: 28, cornerRadius: 20)
+        let natural = TextLayout.naturalSize(
+            content: content,
+            style: style,
+            maxWidth: 1_728,
+            canvasHeight: 1_080
+        )
+        var clip = Fixtures.clip(id: "text", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
+        clip.textContent = content
+        clip.textStyle = style
+        clip.transform = Transform(
+            center: (0.5, 0.5),
+            width: Double(natural.width) / 1_920,
+            height: Double(natural.height) / 1_080
+        )
+        let original = clip
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        let undoManager = UndoManager()
+        e.undo.attach(undoManager)
+
+        e.applyTextStyle(clipId: clip.id, fitToContent: true) { $0.fontScale = 0.25 }
+        let scaled = try #require(e.clipFor(id: clip.id))
+        let scaledStyle = try #require(scaled.textStyle)
+        #expect(scaledStyle.fontScale == 0.25)
+        #expect(scaledStyle.tracking == style.tracking)
+        #expect(scaledStyle.lineSpacing == style.lineSpacing)
+        #expect(scaledStyle.background == style.background)
+        #expect(abs(scaled.transform.width - original.transform.width * 0.25) < 0.002)
+        #expect(abs(scaled.transform.height - original.transform.height * 0.25) < 0.002)
+
+        e.commitTextStyle(clipId: clip.id, fitToContent: true) { $0.fontScale = 0.25 }
+        undoManager.undo()
+        #expect(e.clipFor(id: clip.id) == original)
+        #expect(undoManager.canUndo == false)
+    }
+
+    @Test func sampledChromaKeyUndoes() throws {
+        let clip = Fixtures.clip(id: "clip", start: 0, duration: 30)
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        let undoManager = UndoManager()
+        e.undo.attach(undoManager)
+
+        e.toggleChromaKeySampling(clipId: clip.id)
+        e.commitChromaKeySample(hue: 1.0 / 3.0, clipId: clip.id)
+
+        let effect = try #require(e.clipFor(id: clip.id)?.effects?.first)
+        #expect(effect.params["tolerance"]?.value == 0.15)
+        #expect(effect.params["softness"]?.value == 0.1)
+        undoManager.undo()
+        #expect(e.clipFor(id: clip.id)?.effects == nil)
+    }
+
+    @Test func committingScaleResetCanReadActiveTimeline() {
+        var clip = Fixtures.clip(id: "clip", start: 0, duration: 30)
+        clip.transform.width = 0.5
+        clip.transform.height = 0.5
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        let asset = MediaAsset(
+            id: clip.mediaRef,
+            url: URL(fileURLWithPath: "/tmp/media.mov"),
+            type: .video,
+            name: "media",
+            duration: 1
+        )
+        asset.sourceWidth = 1_920
+        asset.sourceHeight = 1_080
+        e.mediaAssets = [asset]
+
+        e.commitClipProperties(clipIds: [clip.id], actionName: "Reset Scale") {
+            $0.transform = e.fitTransform(for: $0)
+        }
+
+        #expect(e.clipFor(id: clip.id)?.transform.width == 1)
+        #expect(e.clipFor(id: clip.id)?.transform.height == 1)
+    }
+
+    @Test func commitClipPropertiesGroupsMultipleClipUndo() {
+        var a = Fixtures.clip(id: "a", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
+        var b = Fixtures.clip(id: "b", mediaRef: "text", mediaType: .text, start: 30, duration: 30)
+        a.textContent = "one"
+        b.textContent = "two"
+        let e = editor([Fixtures.videoTrack(clips: [a, b])])
+        let undoManager = UndoManager()
+        e.undo.attach(undoManager)
+
+        e.commitClipProperties(clipIds: ["a", "b"]) {
+            $0.textAnimation = TextAnimation(preset: .wordSlide)
+        }
+
+        #expect(e.timeline.tracks[0].clips.allSatisfy { $0.textAnimation?.preset == .wordSlide })
+        undoManager.undo()
+        #expect(e.timeline.tracks[0].clips.allSatisfy { $0.textAnimation == nil })
+        #expect(undoManager.canUndo == false)
+        undoManager.redo()
+        #expect(e.timeline.tracks[0].clips.allSatisfy { $0.textAnimation?.preset == .wordSlide })
+        #expect(undoManager.canRedo == false)
+    }
+
+    @Test func bulkClipPropertyPreviewCommitAndUndoResolveAcrossTracks() {
+        let a = Fixtures.clip(id: "a", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
+        let b = Fixtures.clip(id: "b", mediaRef: "text", mediaType: .text, start: 30, duration: 30)
+        let c = Fixtures.clip(id: "c", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
+        let e = editor([
+            Fixtures.videoTrack(clips: [a, b]),
+            Fixtures.videoTrack(clips: [c]),
+        ])
+        let undoManager = UndoManager()
+        e.undo.attach(undoManager)
+
+        let selectedIds = ["c", "missing", "a"]
+        e.applyClipProperties(clipIds: selectedIds) { $0.opacity = 0.25 }
+        e.commitClipProperties(clipIds: selectedIds) { $0.opacity = 0.25 }
+
+        #expect(e.clipFor(id: "a")?.opacity == 0.25)
+        #expect(e.clipFor(id: "b")?.opacity == 1)
+        #expect(e.clipFor(id: "c")?.opacity == 0.25)
+        undoManager.undo()
+        #expect(e.clipFor(id: "a")?.opacity == 1)
+        #expect(e.clipFor(id: "b")?.opacity == 1)
+        #expect(e.clipFor(id: "c")?.opacity == 1)
+        #expect(undoManager.canUndo == false)
+    }
+
+    @Test func bulkClipPropertyRevertRestoresMixedTextStylesAcrossTracks() {
+        var a = Fixtures.clip(id: "a", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
+        var b = Fixtures.clip(id: "b", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
+        a.textStyle = TextStyle(fontName: "Helvetica", fontSize: 48)
+        b.textStyle = TextStyle(fontName: "Avenir", fontSize: 64)
+        let e = editor([
+            Fixtures.videoTrack(clips: [a]),
+            Fixtures.videoTrack(clips: [b]),
+        ])
+
+        e.applyTextStyles(clipIds: ["a", "b"], fitToContent: true) {
+            $0.fontName = "Courier"
+        }
+        e.revertClipProperties(clipIds: ["b", "missing", "a"])
+
+        #expect(e.clipFor(id: "a") == a)
+        #expect(e.clipFor(id: "b") == b)
+    }
+
+    @Test func cancelDebouncedCommitPreventsPendingHighlightWrite() async throws {
+        var clip = Fixtures.clip(id: "caption", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
+        clip.textAnimation = TextAnimation(preset: .highlightPop, highlight: .init(r: 1, g: 0, b: 0, a: 1))
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+
+        e.debouncedCommitClipProperties(clipIds: ["caption"], key: "textHighlight", debounce: .milliseconds(5)) {
+            var animation = $0.textAnimation ?? TextAnimation()
+            animation.highlight = .init(r: 0, g: 0, b: 1, a: 1)
+            $0.textAnimation = animation
+        }
+        e.cancelDebouncedCommit(key: "textHighlight")
+        e.commitClipProperties(clipIds: ["caption"]) {
+            $0.textAnimation = nil
+        }
+
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(e.timeline.tracks[0].clips[0].textAnimation == nil)
     }
 }
 

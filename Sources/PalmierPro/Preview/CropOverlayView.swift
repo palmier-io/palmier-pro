@@ -5,7 +5,7 @@ struct CropOverlayView: View {
 
     private let handleSize: CGFloat = AppTheme.Spacing.smMd
     private let borderColor = AppTheme.Accent.timecodeColor
-    private let dimColor = Color.black.opacity(AppTheme.Opacity.strong)
+    private let dimColor = AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.strong)
     private let guideColor = AppTheme.Accent.timecodeColor.opacity(AppTheme.Opacity.medium)
 
     var body: some View {
@@ -200,15 +200,9 @@ struct CropOverlayView: View {
 
     private func lockedAspectNormalized(for clip: Clip) -> Double? {
         guard let target = editor.cropAspectLock.pixelAspect,
-              let srcAspect = sourcePixelAspect(for: clip), srcAspect > 0 else { return nil }
+              let dimensions = editor.sourceDimensions(for: clip) else { return nil }
+        let srcAspect = Double(dimensions.width) / Double(dimensions.height)
         return target / srcAspect
-    }
-
-    private func sourcePixelAspect(for clip: Clip) -> Double? {
-        guard let asset = editor.mediaAssets.first(where: { $0.id == clip.mediaRef }),
-              let sw = asset.sourceWidth, let sh = asset.sourceHeight,
-              sw > 0, sh > 0 else { return nil }
-        return Double(sw) / Double(sh)
     }
 
     // MARK: - Layout

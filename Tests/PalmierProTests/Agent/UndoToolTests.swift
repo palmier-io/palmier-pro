@@ -1,56 +1,183 @@
 import Foundation
+import MCP
 import Testing
 @testable import PalmierPro
 
 @MainActor
 @Suite("undo tool")
 struct UndoToolTests {
-    /// Returns the harness and the UndoManager (editor.undoManager is weak — the caller must
-    /// hold the manager alive for the test).
     private func harness() -> (ToolHarness, UndoManager) {
         let track = Fixtures.videoTrack(clips: [Fixtures.clip(id: "c1", start: 0, duration: 100)])
         let h = ToolHarness(timeline: Fixtures.timeline(tracks: [track]))
         let um = UndoManager()
-        h.editor.undoManager = um
+        h.editor.undo.attach(um)
         return (h, um)
     }
 
-    @Test func undoRevertsAgentRippleDelete() async throws {
+    @Test func undoRevertsOnlyTheMostRecentToolCall() async throws {
         let (h, um) = harness()
         _ = um
-        _ = await h.runRaw("ripple_delete_ranges", args: ["clipId": "c1", "ranges": [[40, 50]]])
-        #expect(h.editor.timeline.tracks[0].clips.count == 2) // the cut split c1 into two
+        _ = await h.runRaw("split_clips", args: ["trackIndex": 0, "frames": [30]])
+        #expect(h.editor.timeline.tracks[0].clips.count == 2)
+        _ = await h.runRaw("ripple_delete_ranges", args: ["trackIndex": 0, "ranges": [[40, 50]]])
 
         let result = await h.runRaw("undo")
         #expect(result.isError == false)
-        #expect(h.editor.timeline.tracks[0].clips.count == 1)
-        #expect(h.editor.timeline.tracks[0].clips[0].durationFrames == 100) // back to the original
+        // Only the ripple reverts — the split from the earlier call must survive.
+        #expect(h.editor.timeline.tracks[0].clips.count == 2)
+        #expect(h.editor.timeline.tracks[0].clips.map(\.durationFrames) == [30, 70])
     }
 
-    @Test func refusesWhenAssistantHasNotEdited() async throws {
+    @Test func addFirstImportedClipIncludesSettingsInAgentTransaction() async throws {
+        let h = ToolHarness()
+        let um = UndoManager()
+        h.editor.undo.attach(um)
+        let originalTimeline = h.editor.timeline
+        let asset = h.addAsset(type: .video)
+        asset.sourceWidth = 1280
+        asset.sourceHeight = 720
+
+        let result = await h.runRaw("add_clips", args: ["entries": [[
+            "mediaRef": asset.id,
+            "startFrame": 0,
+            "endFrame": 30,
+        ]]])
+
+        #expect(!result.isError, "\(ToolHarness.textOf(result))")
+        #expect(h.editor.timeline.tracks.flatMap(\.clips).count == 1)
+        #expect(h.editor.timeline.width == 1280)
+        #expect(h.editor.timeline.height == 720)
+        #expect(um.groupingLevel == 0)
+
+        let undo = await h.runRaw("undo")
+        #expect(!undo.isError, "\(ToolHarness.textOf(undo))")
+        #expect(h.editor.timeline == originalTimeline)
+    }
+
+    @Test func insertFirstImportedClipIncludesSettingsInAgentTransaction() async throws {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack()]))
+        let um = UndoManager()
+        h.editor.undo.attach(um)
+        let originalTimeline = h.editor.timeline
+        let asset = h.addAsset(type: .video)
+        asset.sourceWidth = 1280
+        asset.sourceHeight = 720
+
+        let result = await h.runRaw("insert_clips", args: [
+            "trackIndex": 0,
+            "atFrame": 0,
+            "entries": [["mediaRef": asset.id, "durationFrames": 30]],
+        ])
+
+        #expect(!result.isError, "\(ToolHarness.textOf(result))")
+        #expect(h.editor.timeline.tracks.flatMap(\.clips).count == 1)
+        #expect(um.groupingLevel == 0)
+
+        let undo = await h.runRaw("undo")
+        #expect(!undo.isError, "\(ToolHarness.textOf(undo))")
+        #expect(h.editor.timeline == originalTimeline)
+    }
+
+    @Test func concurrentAgentEditsRemainSeparateUndoSteps() async throws {
+        let (h, um) = harness()
+        _ = um
+
+        async let first = h.runRaw("set_clip_properties", args: ["clipIds": ["c1"], "volumeDb": -12.0])
+        async let second = h.runRaw("set_clip_properties", args: ["clipIds": ["c1"], "volumeDb": -6.0])
+        _ = await (first, second)
+
+        _ = await h.runRaw("undo")
+        #expect(h.editor.timeline.tracks[0].clips[0].volume != 1.0)
+        _ = await h.runRaw("undo")
+        #expect(h.editor.timeline.tracks[0].clips[0].volume == 1.0)
+    }
+
+    @Test func undoUsesSharedHistoryAcrossExecutors() async throws {
+        let (h, um) = harness()
+        let other = ToolExecutor(editor: h.editor)
+
+        _ = await h.runRaw("set_clip_properties", args: ["clipIds": ["c1"], "volumeDb": -12.0])
+        _ = await other.execute(
+            name: "set_clip_properties",
+            args: ["clipIds": ["c1"], "volumeDb": -6.0]
+        )
+
+        #expect(!(await h.runRaw("undo")).isError)
+        #expect(abs(h.editor.timeline.tracks[0].clips[0].volume - VolumeScale.linearFromDb(-12)) < 0.0001)
+        #expect(!(await h.runRaw("undo")).isError)
+        #expect(h.editor.timeline.tracks[0].clips[0].volume == 1.0)
+        _ = um
+    }
+
+    @Test func nativeUndoConsumesAgentTransaction() async throws {
+        let (h, um) = harness()
+        _ = await h.runRaw("set_clip_properties", args: ["clipIds": ["c1"], "volumeDb": -6.0])
+
+        um.undo()
+
+        #expect(h.editor.timeline.tracks[0].clips[0].volume == 1.0)
+        #expect(await h.runRaw("undo").isError)
+    }
+
+    @Test func reportsNothingToUndoAfterRead() async throws {
         let (h, um) = harness()
         _ = um
         _ = await h.runRaw("get_timeline") // a read is not an edit
         #expect(await h.runRaw("undo").isError == true)
     }
 
-    @Test func refusesSecondUndoWithNothingLeft() async throws {
+    @Test func undoRevertsLatestUserEdit() async throws {
         let (h, um) = harness()
         _ = um
         _ = await h.runRaw("ripple_delete_ranges", args: ["clipId": "c1", "ranges": [[40, 50]]])
-        _ = await h.runRaw("undo")
-        #expect(await h.runRaw("undo").isError == true)
-    }
-
-    @Test func refusesWhenLatestEditIsNotTheAssistants() async throws {
-        let (h, um) = harness()
-        _ = um
-        _ = await h.runRaw("ripple_delete_ranges", args: ["clipId": "c1", "ranges": [[40, 50]]])
-        // The user makes a manual edit on top of the assistant's.
+        let beforeUserEdit = h.editor.timeline
         h.editor.withTimelineSwap(actionName: "Trim Clip") {
             h.editor.timeline.tracks[0].clips[0].durationFrames = 20
         }
         let result = await h.runRaw("undo")
-        #expect(result.isError == true) // won't revert the user's edit
+        #expect(result.isError == false)
+        #expect(h.editor.timeline == beforeUserEdit)
+    }
+
+    @Test func MCPReceiptDoesNotExposeLocalizedUndoName() async throws {
+        let (h, um) = harness()
+        _ = um
+        let localizedActionName = "Déplacer le clip vers une nouvelle piste"
+        h.editor.withTimelineSwap(actionName: localizedActionName) {
+            h.editor.timeline.tracks[0].clips[0].durationFrames = 20
+        }
+
+        let server = Server(
+            name: "undo-localization-test",
+            version: "1.0.0",
+            capabilities: .init(tools: .init(listChanged: false))
+        )
+        await MCPService.registerTools(on: server, executor: ToolExecutor(editor: h.editor))
+        let transports = await InMemoryTransport.createConnectedPair()
+        let client = Client(name: "undo-localization-test", version: "1.0.0")
+
+        try await server.start(transport: transports.server)
+        do {
+            _ = try await client.connect(transport: transports.client)
+            let result = try await client.callTool(name: "undo")
+            let message = try text(result.content)
+            #expect(result.isError != true)
+            #expect(message.hasPrefix("Undid the latest action."))
+            #expect(!message.contains(localizedActionName))
+            #expect(h.editor.timeline.tracks[0].clips[0].durationFrames == 100)
+        } catch {
+            await server.stop()
+            await client.disconnect()
+            throw error
+        }
+        await server.stop()
+        await client.disconnect()
+    }
+
+    private func text(_ content: [Tool.Content]) throws -> String {
+        for item in content {
+            if case .text(let text, _, _) = item { return text }
+        }
+        throw CocoaError(.coderReadCorrupt)
     }
 }

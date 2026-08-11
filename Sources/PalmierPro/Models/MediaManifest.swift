@@ -31,6 +31,14 @@ struct MediaManifestEntry: Codable, Sendable, Equatable, Identifiable {
     var folderId: String?
     var cachedRemoteURL: String?
     var cachedRemoteURLExpiresAt: Date?
+    var generationStatus: String?
+    var importInput: MediaImportInput?
+}
+
+struct MediaImportInput: Codable, Sendable, Equatable {
+    var sourceURL: String? = nil
+    var sourcePath: String? = nil
+    var createdAt: Date? = nil
 }
 
 struct GenerationInput: Codable, Sendable, Equatable {
@@ -39,6 +47,10 @@ struct GenerationInput: Codable, Sendable, Equatable {
     var duration: Int
     var aspectRatio: String
     var resolution: String?
+    var upscaleSettings: UpscaleSettings? = nil
+    var upscaleSourceWidth: Int? = nil
+    var upscaleSourceHeight: Int? = nil
+    var upscaleSourceFPS: Double? = nil
     var quality: String?
     var imageURLs: [String]?
     /// Image-only
@@ -48,8 +60,13 @@ struct GenerationInput: Codable, Sendable, Equatable {
     var lyrics: String?
     var styleInstructions: String?
     var instrumental: Bool?
+    var targetLanguage: String?
+    var multilingual: Bool?
+    var audioInput: String?
     /// Video-only
     var generateAudio: Bool?
+    var draft: Bool?
+    var usesSourceVideo: Bool?
     var referenceImageURLs: [String]?
     var referenceVideoURLs: [String]?
     var referenceAudioURLs: [String]?
@@ -60,6 +77,10 @@ struct GenerationInput: Codable, Sendable, Equatable {
     var referenceVideoAssetIds: [String]?
     var referenceAudioAssetIds: [String]?
     var createdAt: Date?
+    var backendJobId: String?
+    var outputIndex: Int?
+    var resultURLs: [String]?
+    var refundedCredits: Int?
 }
 
 enum MediaSource: Codable, Sendable, Equatable {

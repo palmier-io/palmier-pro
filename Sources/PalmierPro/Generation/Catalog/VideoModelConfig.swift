@@ -5,16 +5,100 @@ func unsupportedValue(model displayName: String, field: String, value: String, a
 }
 
 struct VideoModelConfig: Identifiable, Sendable {
+    static let draftResolution = "720p"
+
     @MainActor
     static var allModels: [VideoModelConfig] { ModelCatalog.shared.video }
+
+    @MainActor
+    static var edit: VideoModelConfig? {
+        allModels.first(where: \.isEdit)
+    }
+
+    @MainActor
+    static var reframe: VideoModelConfig? {
+        allModels.first(where: isReframeModel)
+    }
+
+    @MainActor
+    static var firstAndLastFrame: VideoModelConfig? {
+        allModels.first { !$0.requiresSourceVideo && $0.supportsFirstFrame && $0.supportsLastFrame }
+    }
+
+    static func isReframeModel(_ model: VideoModelConfig) -> Bool {
+        guard model.supportsPrompt,
+              !model.requiresSourceVideo,
+              model.maxReferenceVideos > 0 else { return false }
+        let id = model.id.lowercased()
+        return id.contains("minimax-h3") || id.contains("hailuo-03")
+    }
+
+    static func nearestSupportedDuration(seconds: Double, in durations: [Int]) -> Int {
+        durations.min { abs(Double($0) - seconds) < abs(Double($1) - seconds) }
+            ?? max(1, Int(seconds.rounded()))
+    }
+
+    func nearestSupportedDuration(for seconds: Double) -> Int {
+        Self.nearestSupportedDuration(seconds: seconds, in: durations)
+    }
+
+    /// Smallest supported duration that fully covers `seconds`, so generated
+    /// media is never shorter than the clip span it replaces.
+    func supportedDuration(covering seconds: Double) -> Int {
+        durations.filter { Double($0) >= seconds }.min()
+            ?? durations.max()
+            ?? max(1, Int(seconds.rounded(.up)))
+    }
+
+    var preferredHighResolution: String? {
+        if let resolutions, resolutions.contains("2K") { return "2K" }
+        if let resolutions, resolutions.contains("1080p") { return "1080p" }
+        return resolutions?.first
+    }
+
+    var reframeDurationLimitLabel: String? {
+        if let maximum = maxCombinedVideoRefSeconds,
+           maximum.isFinite, maximum > 0,
+           let seconds = Int(exactly: maximum.rounded()) {
+            return Self.durationLimitLabel(seconds: seconds)
+        }
+        return durations.max().map(Self.durationLimitLabel)
+    }
+
+    func validateReframeDuration(_ duration: Double) -> String? {
+        guard duration.isFinite, duration > 0 else {
+            return "Loading video metadata…"
+        }
+        let maximum = maxCombinedVideoRefSeconds
+            ?? durations.max().map(Double.init)
+        guard let maximum, duration > maximum,
+              let limit = reframeDurationLimitLabel else { return nil }
+        return "\(displayName) supports source videos up to \(limit). Trim the clip to continue."
+    }
+
+    private static func durationLimitLabel(seconds: Int) -> String {
+        if seconds.isMultiple(of: 60) {
+            let minutes = seconds / 60
+            return minutes == 1 ? "1 minute" : "\(minutes) minutes"
+        }
+        return seconds == 1 ? "1 second" : "\(seconds) seconds"
+    }
+
+    @MainActor
+    static var lipSync: VideoModelConfig? {
+        allModels.first(where: \.isLipSync)
+    }
 
     let entry: CatalogEntry
     let caps: VideoCaps
 
     var id: String { entry.id }
     var displayName: String { entry.displayName }
+    var providerName: String? { entry.providerName }
+    var paidOnly: Bool { entry.paidOnly }
     var creditsPerSecond: [String: Double] { entry.creditsPerSecond ?? [:] }
     var audioDiscountRate: [String: Double]? { entry.audioDiscountRate }
+    var supportsPrompt: Bool { caps.supportsPrompt ?? true }
 
     var durations: [Int] { caps.durations }
     var resolutions: [String]? { caps.resolutions }
@@ -30,15 +114,52 @@ struct VideoModelConfig: Identifiable, Sendable {
     var framesAndReferencesExclusive: Bool { caps.framesAndReferencesExclusive }
     var referenceTagNoun: String { caps.referenceTagNoun }
     var requiresSourceVideo: Bool { caps.requiresSourceVideo }
+    var supportsSourceVideo: Bool { requiresSourceVideo || sourceVideoCreditsPerSecond != nil }
+    var maxSourceVideoSeconds: Double? { caps.maxSourceVideoSeconds }
     var requiresReferenceImage: Bool { caps.requiresReferenceImage }
+    var requiresReferenceAudio: Bool { caps.requiresReferenceAudio ?? false }
+    var supportsDraft: Bool { draftCreditsPerSecond != nil }
+    var draftCreditsPerSecond: Double? { caps.draftCreditsPerSecond }
+    var draftEnhanceCreditsPerSecond: Double? { caps.draftEnhanceCreditsPerSecond }
+    /// Extension models with selectable output durations bill on the output,
+    /// not the source clip.
+    var usesOutputDuration: Bool { supportsSourceVideo && !durations.isEmpty }
+    var sourceVideoCreditsPerSecond: [String: Double]? { caps.sourceVideoCreditsPerSecond }
+    var sourceVideoDraftCreditsPerSecond: Double? { caps.sourceVideoDraftCreditsPerSecond }
+    var isEdit: Bool {
+        supportsPrompt && requiresSourceVideo && !requiresReferenceImage && !requiresReferenceAudio
+    }
+    var isLipSync: Bool { !supportsPrompt && requiresSourceVideo && requiresReferenceAudio }
 
     var supportsReferences: Bool {
         maxReferenceImages > 0 || maxReferenceVideos > 0 || maxReferenceAudios > 0
     }
 
-    /// Total reference count available across types. Used by agent tool info.
-    var maxReferences: Int {
-        maxTotalReferences ?? (maxReferenceImages + maxReferenceVideos + maxReferenceAudios)
+    var sourceDurationLimitLabel: String? {
+        guard let maximum = maxSourceVideoSeconds,
+              maximum.isFinite, maximum > 0,
+              let seconds = Int(exactly: maximum.rounded()) else { return nil }
+        return Self.durationLimitLabel(seconds: seconds)
+    }
+
+    func validateSourceDuration(_ duration: Double) -> String? {
+        guard duration.isFinite, duration > 0 else {
+            return "Loading video metadata…"
+        }
+        guard let maximum = maxSourceVideoSeconds,
+              duration > maximum,
+              let limit = sourceDurationLimitLabel else { return nil }
+        return "\(displayName) supports source videos up to \(limit). Trim the clip to continue."
+    }
+
+    func billingDurationSeconds(
+        sourceVideoDuration: Double,
+        sourceAudioDuration: Double?
+    ) -> Int? {
+        let seconds = isLipSync ? sourceAudioDuration : sourceVideoDuration
+        guard let seconds, seconds.isFinite, seconds > 0,
+              let rounded = Int(exactly: seconds.rounded()) else { return nil }
+        return max(1, rounded)
     }
 
     func audioDiscount(for resolution: String?) -> Double? {
@@ -67,6 +188,7 @@ struct VideoModelConfig: Identifiable, Sendable {
 struct VideoGenerationParams: Encodable, Sendable {
     let prompt: String
     let duration: Int
+    let sourceVideoDuration: Double?
     let aspectRatio: String
     let resolution: String?
     let sourceVideoURL: String?
@@ -76,17 +198,20 @@ struct VideoGenerationParams: Encodable, Sendable {
     let referenceVideoURLs: [String]
     let referenceAudioURLs: [String]
     let generateAudio: Bool
+    let draft: Bool?
 
     init(
         prompt: String, duration: Int, aspectRatio: String, resolution: String?,
+        sourceVideoDuration: Double? = nil,
         sourceVideoURL: String? = nil,
         startFrameURL: String? = nil, endFrameURL: String? = nil,
         referenceImageURLs: [String] = [],
         referenceVideoURLs: [String] = [],
         referenceAudioURLs: [String] = [],
-        generateAudio: Bool = true
+        generateAudio: Bool = true,
+        draft: Bool? = nil
     ) {
-        self.prompt = prompt; self.duration = duration
+        self.prompt = prompt; self.duration = duration; self.sourceVideoDuration = sourceVideoDuration
         self.aspectRatio = aspectRatio; self.resolution = resolution
         self.sourceVideoURL = sourceVideoURL
         self.startFrameURL = startFrameURL; self.endFrameURL = endFrameURL
@@ -94,16 +219,13 @@ struct VideoGenerationParams: Encodable, Sendable {
         self.referenceVideoURLs = referenceVideoURLs
         self.referenceAudioURLs = referenceAudioURLs
         self.generateAudio = generateAudio
-    }
-
-    var hasAnyReferences: Bool {
-        !referenceImageURLs.isEmpty || !referenceVideoURLs.isEmpty || !referenceAudioURLs.isEmpty
+        self.draft = draft
     }
 
     enum CodingKeys: String, CodingKey {
-        case kind, prompt, duration, aspectRatio, resolution, sourceVideoURL
+        case kind, prompt, duration, sourceVideoDuration, aspectRatio, resolution, sourceVideoURL
         case startFrameURL, endFrameURL, referenceImageURLs, referenceVideoURLs
-        case referenceAudioURLs, generateAudio
+        case referenceAudioURLs, generateAudio, draft
     }
 
     func encode(to encoder: Encoder) throws {
@@ -111,6 +233,7 @@ struct VideoGenerationParams: Encodable, Sendable {
         try c.encode("video", forKey: .kind)
         try c.encode(prompt, forKey: .prompt)
         try c.encode(duration, forKey: .duration)
+        try c.encodeIfPresent(sourceVideoDuration, forKey: .sourceVideoDuration)
         try c.encode(aspectRatio, forKey: .aspectRatio)
         try c.encodeIfPresent(resolution, forKey: .resolution)
         try c.encodeIfPresent(sourceVideoURL, forKey: .sourceVideoURL)
@@ -120,5 +243,6 @@ struct VideoGenerationParams: Encodable, Sendable {
         if !referenceVideoURLs.isEmpty { try c.encode(referenceVideoURLs, forKey: .referenceVideoURLs) }
         if !referenceAudioURLs.isEmpty { try c.encode(referenceAudioURLs, forKey: .referenceAudioURLs) }
         try c.encode(generateAudio, forKey: .generateAudio)
+        try c.encodeIfPresent(draft, forKey: .draft)
     }
 }

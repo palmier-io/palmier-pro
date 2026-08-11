@@ -4,48 +4,67 @@ import AppKit
 extension TimelineView {
     func aiEditSubmenu(for clipId: String) -> NSMenu? {
         let actions = editor.aiEditActions(clipId: clipId)
-        guard !actions.isEmpty else { return nil }
+        let audioTransforms = editor.aiAudioTransformKinds(clipId: clipId)
+        guard !actions.isEmpty || !audioTransforms.isEmpty else { return nil }
         let submenu = NSMenu()
         submenu.autoenablesItems = false
         let aiAllowed = editor.aiEditAllowed
-        for action in actions {
+        let isPaid = AccountService.shared.isPaid
+        let mediaType = editor.clipFor(id: clipId)?.mediaType ?? .video
+        let enhanceActions = actions.filter { $0.group(for: mediaType) == .enhance }
+        let audioActions = actions.filter { $0.group(for: mediaType) == .audio }
+        let addAction: (EditAction) -> Void = { action in
+            let paidBlocked = action.requiresPaidPlan && !isPaid
             switch action {
-            case .upscale:
-                let models = editor.aiEditUpscaleModels(clipId: clipId)
-                guard !models.isEmpty else { continue }
-                let upscaleItem = NSMenuItem(title: "Upscale", action: nil, keyEquivalent: "")
-                let modelsMenu = NSMenu()
-                modelsMenu.autoenablesItems = false
-                for model in models {
-                    let item = NSMenuItem(title: model.displayName, action: #selector(performAIEditUpscale(_:)), keyEquivalent: "")
-                    item.target = self
-                    item.representedObject = ["clipId": clipId, "modelId": model.id]
-                    item.isEnabled = aiAllowed
-                    modelsMenu.addItem(item)
-                }
-                upscaleItem.submenu = modelsMenu
-                submenu.addItem(upscaleItem)
-            case .edit:
-                let item = NSMenuItem(title: "Edit…", action: #selector(performAIEditEdit(_:)), keyEquivalent: "")
+            case .enhanceDraft:
+                let item = NSMenuItem(
+                    title: L10n.string("FLUX Enhance"),
+                    action: #selector(self.performAIEnhanceDraft(_:)),
+                    keyEquivalent: ""
+                )
                 item.target = self
                 item.representedObject = clipId
                 item.isEnabled = aiAllowed
                 submenu.addItem(item)
+            case .upscale:
+                let upscaleItem = NSMenuItem(title: paidBlocked ? L10n.string("Upscale… (Paid)") : L10n.string("Upscale…"), action: #selector(self.performAIEditUpscale(_:)), keyEquivalent: "")
+                upscaleItem.target = self
+                upscaleItem.representedObject = clipId
+                upscaleItem.isEnabled = aiAllowed && !paidBlocked
+                submenu.addItem(upscaleItem)
+            case .reframe:
+                let item = NSMenuItem(title: paidBlocked ? L10n.string("Reframe… (Paid)") : L10n.string("Reframe…"), action: #selector(self.performAIEditReframe(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = clipId
+                item.isEnabled = aiAllowed && !paidBlocked
+                submenu.addItem(item)
+            case .lipSync:
+                let item = NSMenuItem(title: paidBlocked ? L10n.string("Lip Sync… (Paid)") : L10n.string("Lip Sync…"), action: #selector(self.performAIEditLipSync(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = clipId
+                item.isEnabled = aiAllowed && !paidBlocked
+                submenu.addItem(item)
+            case .edit:
+                let item = NSMenuItem(title: paidBlocked ? L10n.string("Edit… (Paid)") : L10n.string("Edit…"), action: #selector(self.performAIEditEdit(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = clipId
+                item.isEnabled = aiAllowed && !paidBlocked
+                submenu.addItem(item)
             case .generateMusic, .generateSFX:
                 let kind: VideoToAudioEditKind = action == .generateMusic ? .music : .sfx
-                let item = NSMenuItem(title: "\(kind.title)…", action: #selector(performAIEditVideoAudio(_:)), keyEquivalent: "")
+                let item = NSMenuItem(title: L10n.string(key: kind.menuTitle), action: #selector(self.performAIEditVideoAudio(_:)), keyEquivalent: "")
                 item.target = self
                 item.representedObject = ["clipId": clipId, "kind": action == .generateMusic ? "music" : "sfx"]
                 item.isEnabled = aiAllowed
                 submenu.addItem(item)
             case .rerun:
-                let item = NSMenuItem(title: "Rerun", action: #selector(performAIEditRerun(_:)), keyEquivalent: "")
+                let item = NSMenuItem(title: L10n.string("Rerun"), action: #selector(self.performAIEditRerun(_:)), keyEquivalent: "")
                 item.target = self
                 item.representedObject = clipId
                 item.isEnabled = aiAllowed
                 submenu.addItem(item)
             case .createVideo:
-                let createItem = NSMenuItem(title: "Create Video", action: nil, keyEquivalent: "")
+                let createItem = NSMenuItem(title: L10n.string("Create Video"), action: nil, keyEquivalent: "")
                 let createMenu = NSMenu()
                 createMenu.autoenablesItems = false
                 let mk: (String, Bool) -> NSMenuItem = { title, asReference in
@@ -55,11 +74,39 @@ extension TimelineView {
                     item.isEnabled = aiAllowed
                     return item
                 }
-                createMenu.addItem(mk("Set as first frame", false))
-                createMenu.addItem(mk("Set as reference", true))
+                createMenu.addItem(mk(L10n.string("Set as first frame"), false))
+                createMenu.addItem(mk(L10n.string("Set as reference"), true))
                 createItem.submenu = createMenu
                 submenu.addItem(createItem)
             }
+        }
+
+        if !enhanceActions.isEmpty {
+            submenu.addItem(.sectionHeader(title: L10n.string("AI Enhance")))
+            enhanceActions.forEach(addAction)
+        }
+        if !audioActions.isEmpty || !audioTransforms.isEmpty {
+            if !submenu.items.isEmpty { submenu.addItem(.separator()) }
+            submenu.addItem(.sectionHeader(title: L10n.string("AI Audio")))
+            audioActions.filter { $0 == .rerun }.forEach(addAction)
+            for kind in audioTransforms {
+                let paidBlocked = kind.model?.paidOnly == true && !isPaid
+                let localizedTitle = L10n.string(key: kind.menuTitle)
+                let title = paidBlocked ? L10n.string("\(localizedTitle) (Paid)") : localizedTitle
+                let item = NSMenuItem(
+                    title: title,
+                    action: #selector(performAIEditAudioTransform(_:)),
+                    keyEquivalent: ""
+                )
+                item.target = self
+                item.representedObject = [
+                    "clipId": clipId,
+                    "kind": kind == .cleanup ? "cleanup" : "dubbing",
+                ]
+                item.isEnabled = aiAllowed && !paidBlocked
+                submenu.addItem(item)
+            }
+            audioActions.filter { $0 != .rerun }.forEach(addAction)
         }
         return submenu.items.isEmpty ? nil : submenu
     }
@@ -69,17 +116,31 @@ extension TimelineView {
         editor.beginAIEdit(clipId: clipId)
     }
 
+    @objc private func performAIEnhanceDraft(_ sender: Any?) {
+        guard let clipId = (sender as? NSMenuItem)?.representedObject as? String,
+              let clip = editor.clipFor(id: clipId),
+              let asset = editor.mediaAssets.first(where: { $0.id == clip.mediaRef }) else { return }
+        editor.generationService.enhanceDraft(asset: asset, editor: editor)
+    }
+
+    @objc private func performAIEditReframe(_ sender: Any?) {
+        guard let clipId = (sender as? NSMenuItem)?.representedObject as? String else { return }
+        editor.beginAIReframe(clipId: clipId)
+    }
+
+    @objc private func performAIEditLipSync(_ sender: Any?) {
+        guard let clipId = (sender as? NSMenuItem)?.representedObject as? String else { return }
+        editor.beginAILipSync(clipId: clipId)
+    }
+
     @objc private func performAIEditRerun(_ sender: Any?) {
         guard let clipId = (sender as? NSMenuItem)?.representedObject as? String else { return }
         editor.beginAIRerun(clipId: clipId)
     }
 
     @objc private func performAIEditUpscale(_ sender: Any?) {
-        guard let info = (sender as? NSMenuItem)?.representedObject as? [String: Any],
-              let clipId = info["clipId"] as? String,
-              let modelId = info["modelId"] as? String,
-              let model = UpscaleModelConfig.allModels.first(where: { $0.id == modelId }) else { return }
-        editor.runAIUpscale(clipId: clipId, model: model)
+        guard let clipId = (sender as? NSMenuItem)?.representedObject as? String else { return }
+        editor.beginAIUpscale(clipId: clipId)
     }
 
     @objc private func performAIEditVideoAudio(_ sender: Any?) {
@@ -87,6 +148,24 @@ extension TimelineView {
               let clipId = info["clipId"] as? String,
               let kind = info["kind"] as? String else { return }
         editor.beginAIVideoAudio(clipId: clipId, kind: kind == "music" ? .music : .sfx)
+    }
+
+    @objc private func performAIEditAudioTransform(_ sender: Any?) {
+        guard let info = (sender as? NSMenuItem)?.representedObject as? [String: Any],
+              let clipId = info["clipId"] as? String,
+              let kind = info["kind"] as? String else { return }
+        editor.beginAIAudioTransform(
+            clipId: clipId,
+            kind: kind == "cleanup" ? .cleanup : .dubbing
+        )
+    }
+
+    @objc func performCreateAITransition(_ sender: Any?) {
+        guard let info = (sender as? NSMenuItem)?.representedObject as? [String: Any],
+              let trackIndex = info["trackIndex"] as? Int,
+              let start = info["start"] as? Int,
+              let end = info["end"] as? Int else { return }
+        editor.beginAITransition(gap: GapSelection(trackIndex: trackIndex, range: FrameRange(start: start, end: end)))
     }
 
     @objc private func performAIEditCreateVideo(_ sender: Any?) {

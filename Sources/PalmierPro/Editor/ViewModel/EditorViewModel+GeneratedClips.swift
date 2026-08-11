@@ -28,16 +28,16 @@ extension EditorViewModel {
         let durationFrames = max(1, secondsToFrame(seconds: spanSeconds, fps: timeline.fps))
 
         let before = timeline
-        undoManager?.disableUndoRegistration()
-        let trackIdx = resolveOrCreateAudioTrack(startFrame: startFrame, duration: durationFrames)
-        let ids = placeClip(
-            asset: asset,
-            trackIndex: trackIdx,
-            startFrame: startFrame,
-            durationFrames: durationFrames,
-            addLinkedAudio: false
-        )
-        undoManager?.enableUndoRegistration()
+        let ids = undo.withoutRegistration {
+            let trackIdx = resolveOrCreateAudioTrack(startFrame: startFrame, duration: durationFrames)
+            return placeClip(
+                asset: asset,
+                trackIndex: trackIdx,
+                startFrame: startFrame,
+                durationFrames: durationFrames,
+                addLinkedAudio: false
+            )
+        }
         guard let clipId = ids.first else {
             timeline = before
             return nil
@@ -47,23 +47,34 @@ extension EditorViewModel {
         return clipId
     }
 
+    // Patch all timelines with placeholders for this asset.
     func finalizeGeneratingClip(placeholderId: String, asset: MediaAsset) {
-        guard let loc = findClipLocationByMediaRef(placeholderId) else { return }
-        let realFrames = max(1, secondsToFrame(seconds: asset.duration, fps: timeline.fps))
-        undoManager?.disableUndoRegistration()
-        timeline.tracks[loc.trackIndex].clips[loc.clipIndex].durationFrames = realFrames
-        timeline.tracks[loc.trackIndex].clips[loc.clipIndex].trimStartFrame = 0
-        timeline.tracks[loc.trackIndex].clips[loc.clipIndex].trimEndFrame = 0
-        undoManager?.enableUndoRegistration()
-        notifyTimelineChanged()
+        patchGeneratingClips(placeholderId: placeholderId) { clip, fps in
+            clip.durationFrames = max(1, secondsToFrame(seconds: asset.duration, fps: fps))
+            clip.trimStartFrame = 0
+            clip.trimEndFrame = 0
+        }
     }
 
-    private func findClipLocationByMediaRef(_ mediaRef: String) -> ClipLocation? {
-        for ti in timeline.tracks.indices {
-            if let ci = timeline.tracks[ti].clips.firstIndex(where: { $0.mediaRef == mediaRef }) {
-                return ClipLocation(trackIndex: ti, clipIndex: ci)
+    func patchGeneratingClips(placeholderId: String, _ patch: (inout Clip, Int) -> Void) {
+        var touched: Set<String> = []
+        undo.withoutRegistration {
+            for i in timelines.indices {
+                let fps = timelines[i].fps
+                for ti in timelines[i].tracks.indices {
+                    for ci in timelines[i].tracks[ti].clips.indices
+                    where timelines[i].tracks[ti].clips[ci].mediaRef == placeholderId {
+                        patch(&timelines[i].tracks[ti].clips[ci], fps)
+                        touched.insert(timelines[i].id)
+                    }
+                }
             }
         }
-        return nil
+        guard !touched.isEmpty else { return }
+        // Rebuild when a touched timeline is visible from the active one, including through nests.
+        if touched.contains(activeTimelineId)
+            || timeline.reachableTimelines(resolve: timeline(for:)).contains(where: { touched.contains($0.id) }) {
+            notifyTimelineChanged()
+        }
     }
 }

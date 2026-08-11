@@ -1,36 +1,44 @@
 import SwiftUI
 
 extension MediaTab {
-    @ViewBuilder
     var searchIndexStatus: some View {
-        let search = editor.searchIndex
+        MediaSearchIndexStatus(search: editor.searchIndex, mediaAssets: editor.mediaAssets)
+    }
+}
+
+private struct MediaSearchIndexStatus: View {
+    let search: SearchIndexCoordinator
+    let mediaAssets: [MediaAsset]
+
+    @ViewBuilder
+    var body: some View {
         let model = VisualModelLoader.shared
         switch model.state {
         case .notInstalled where model.enabled && hasIndexableAssets:
-            statusButton(icon: "sparkle.magnifyingglass", label: "Smart search") {
+            statusButton(icon: "sparkle.magnifyingglass", label: L10n.string("Smart search")) {
                 model.download()
             }
-            .help("Downloads a \(modelSizeLabel) on-device model so you can search media visually.")
+            .help(L10n.string("Downloads a \(modelSizeLabel) on-device model so you can search media visually."))
         case .downloading(let fraction):
-            statusIndicator("Downloading \(Int(fraction * 100))%",
-                            help: "Downloading the on-device model that powers visual search.",
+            statusIndicator(L10n.string("Downloading \(Int(fraction * 100))%"),
+                            help: L10n.string("Downloading the on-device model that powers visual search."),
                             progress: fraction)
         case .preparing:
-            statusIndicator("Preparing…", help: "Getting the search model ready.")
+            statusIndicator(L10n.string("Preparing…"), help: L10n.string("Getting the search model ready."))
         case .ready where search.indexingActive:
-            statusIndicator("Indexing \(min(search.batchCompleted + 1, search.batchTotal))/\(search.batchTotal)",
-                            help: "Analyzing media so you can search it.",
+            statusIndicator(L10n.string("Indexing \(min(search.batchCompleted + 1, search.batchTotal))/\(search.batchTotal)"),
+                            help: L10n.string("Analyzing media so you can search it."),
                             progress: search.indexingProgress)
         case .failed where model.enabled:
-            statusButton(icon: "exclamationmark.triangle", label: "Retry") { model.download() }
-                .help("Visual search model download failed. Check your connection and try again.")
+            statusButton(icon: "exclamationmark.triangle", label: L10n.string("Retry")) { model.download() }
+                .help(L10n.string("Visual search model download failed. Check your connection and try again."))
         default:
             EmptyView()
         }
     }
 
     private var hasIndexableAssets: Bool {
-        editor.mediaAssets.contains { $0.type == .video || $0.type == .image }
+        mediaAssets.contains { $0.type == .video || $0.type == .image }
     }
 
     private var modelSizeLabel: String {

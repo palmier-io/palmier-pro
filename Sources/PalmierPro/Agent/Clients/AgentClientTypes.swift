@@ -1,22 +1,185 @@
 import Foundation
 
-// MARK: - Shared value types
+extension Notification.Name {
+    static let agentAPIKeyChanged = Notification.Name("agentAPIKeyChanged")
+}
 
-enum AnthropicModel: String, CaseIterable, Sendable {
-    case sonnet46 = "claude-sonnet-4-6"
-    case opus48 = "claude-opus-4-8"
-    case haiku45 = "claude-haiku-4-5-20251001"
+enum AgentProvider: String, CaseIterable, Sendable {
+    case anthropic
+    case openAI
 
     var displayName: String {
         switch self {
-        case .sonnet46: "Sonnet 4.6"
-        case .opus48: "Opus 4.8"
-        case .haiku45: "Haiku 4.5"
+        case .anthropic: "Anthropic"
+        case .openAI: "OpenAI"
+        }
+    }
+
+    private var credentialStorage: (account: String, environment: String) {
+        switch self {
+        case .anthropic: ("anthropic-api-key", "ANTHROPIC_API_KEY")
+        case .openAI: ("openai-api-key", "OPENAI_API_KEY")
+        }
+    }
+
+    fileprivate var storedAPIKey: String {
+        #if DEBUG
+        let environmentValue = ProcessInfo.processInfo.environment[credentialStorage.environment]?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !environmentValue.isEmpty { return environmentValue }
+        #endif
+        return KeychainStore.load(account: credentialStorage.account) ?? ""
+    }
+
+    @concurrent
+    func loadAPIKey() async -> String {
+        storedAPIKey
+    }
+
+    @concurrent
+    func setAPIKey(_ key: String?) async {
+        if let key {
+            KeychainStore.save(key, account: credentialStorage.account)
+        } else {
+            KeychainStore.delete(account: credentialStorage.account)
+        }
+        NotificationCenter.default.post(name: .agentAPIKeyChanged, object: rawValue)
+    }
+}
+
+enum AgentReasoningEffort: String, CaseIterable, Sendable {
+    case none
+    case minimal
+    case low
+    case medium
+    case high
+    case xHigh = "xhigh"
+    case max
+
+    var labelKey: String {
+        switch self {
+        case .none: L10n.key("None")
+        case .minimal: L10n.key("Minimal")
+        case .low: L10n.key("Low")
+        case .medium: L10n.key("Medium")
+        case .high: L10n.key("High")
+        case .xHigh: L10n.key("X High")
+        case .max: L10n.key("Max")
         }
     }
 }
 
-enum AnthropicStopReason: String, Sendable {
+enum AgentModel: String, CaseIterable, Codable, Sendable {
+    case sonnet5 = "claude-sonnet-5"
+    case opus5 = "claude-opus-5"
+    case fable5 = "claude-fable-5"
+    case luna = "gpt-5.6-luna"
+    case terra = "gpt-5.6-terra"
+    case sol = "gpt-5.6-sol"
+
+    static let defaultModel: AgentModel = .terra
+
+    var displayName: String {
+        switch self {
+        case .sonnet5: "Sonnet 5"
+        case .opus5: "Opus 5"
+        case .fable5: "Fable 5"
+        case .luna: "GPT-5.6 Luna"
+        case .terra: "GPT-5.6 Terra"
+        case .sol: "GPT-5.6 Sol"
+        }
+    }
+
+    var provider: AgentProvider {
+        switch self {
+        case .sonnet5, .opus5, .fable5: .anthropic
+        case .luna, .terra, .sol: .openAI
+        }
+    }
+
+    var maxOutputTokens: Int { 64_000 }
+
+    var requiresPaidHostedPlan: Bool {
+        self == .fable5 || self == .sol
+    }
+
+    static func persisted(_ rawValue: String) -> AgentModel? {
+        rawValue == "claude-opus-4-8" ? .opus5 : AgentModel(rawValue: rawValue)
+    }
+
+    var supportedReasoningEfforts: [AgentReasoningEffort] {
+        switch provider {
+        case .anthropic:
+            [.low, .medium, .high, .xHigh, .max]
+        case .openAI:
+            AgentReasoningEffort.allCases
+        }
+    }
+
+}
+
+struct AgentRunSettings: Equatable, Sendable {
+    let model: AgentModel
+    let reasoningEffort: AgentReasoningEffort
+}
+
+enum AgentReasoningPreferences {
+    static func effort(for model: AgentModel, defaults: UserDefaults) -> AgentReasoningEffort {
+        guard let rawValue = defaults.string(forKey: key("effort", model: model)),
+              let effort = AgentReasoningEffort(rawValue: rawValue),
+              model.supportedReasoningEfforts.contains(effort)
+        else { return .medium }
+        return effort
+    }
+
+    static func set(_ effort: AgentReasoningEffort, for model: AgentModel, defaults: UserDefaults) {
+        defaults.set(effort.rawValue, forKey: key("effort", model: model))
+    }
+
+    private static func key(_ setting: String, model: AgentModel) -> String {
+        "agentReasoning.\(setting).\(model.rawValue)"
+    }
+}
+
+enum AgentRoute: Equatable, Sendable {
+    case direct
+    case hosted
+    case unavailable
+}
+
+enum AgentRouting {
+    static func route(
+        model: AgentModel,
+        credentials: AgentCredentialSnapshot,
+        hasHostedCredits: Bool,
+        hasPaidPlan: Bool
+    ) -> AgentRoute {
+        if !credentials[model.provider].isEmpty { return .direct }
+        if model.requiresPaidHostedPlan && !hasPaidPlan { return .unavailable }
+        return hasHostedCredits ? .hosted : .unavailable
+    }
+}
+
+struct AgentCredentialSnapshot: Equatable, Sendable {
+    private let apiKeys: [AgentProvider: String]
+
+    init(_ apiKeys: [AgentProvider: String] = [:]) {
+        self.apiKeys = apiKeys
+    }
+
+    subscript(provider: AgentProvider) -> String {
+        apiKeys[provider, default: ""]
+    }
+
+    @concurrent
+    static func loadFromKeychain() async -> AgentCredentialSnapshot {
+        AgentCredentialSnapshot(Dictionary(uniqueKeysWithValues: AgentProvider.allCases.map {
+            ($0, $0.storedAPIKey)
+        }))
+    }
+}
+
+enum AgentStopReason: String, Sendable {
     case endTurn = "end_turn"
     case toolUse = "tool_use"
     case maxTokens = "max_tokens"
@@ -26,169 +189,155 @@ enum AnthropicStopReason: String, Sendable {
     case other
 }
 
-struct AnthropicMessage: @unchecked Sendable {
+struct AgentRequestMessage: Sendable {
     enum Role: String, Sendable { case user, assistant }
     let role: Role
-    let content: [[String: Any]]
+    let content: [AgentRequestBlock]
 }
 
-struct AnthropicToolSchema: @unchecked Sendable {
+enum AgentRequestBlock: Sendable {
+    case content(AgentContentBlock)
+    case image(base64: String, mediaType: String)
+}
+
+struct AgentToolSchema: @unchecked Sendable {
     let name: String
     let description: String
     let inputSchema: [String: Any]
 }
 
-enum AnthropicStreamEvent: Sendable {
-    case textDelta(String)
-    case toolUseComplete(id: String, name: String, inputJSON: String)
-    case messageStop(stopReason: AnthropicStopReason)
-}
+struct AgentRequestContext: Equatable, Sendable {
+    let conversationID: UUID
+    let traceID: UUID
+    let spanID: UUID
+    let inputMessageID: UUID
+    let outputMessageID: UUID
+    let projectID: String?
 
-enum AnthropicClientError: LocalizedError {
-    case missingAPIKey
-    case httpError(status: Int, body: String)
-    case streamError(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .missingAPIKey: "No Anthropic API key is set."
-        case .httpError(let status, let body): "Anthropic API error (\(status)): \(body.prefix(500))"
-        case .streamError(let msg): "Stream error: \(msg)"
+    func apply(to request: inout URLRequest, telemetryEnabled: Bool) {
+        request.setValue(conversationID.uuidString.lowercased(), forHTTPHeaderField: "X-Palmier-Conversation-Id")
+        request.setValue(traceID.uuidString.lowercased(), forHTTPHeaderField: "X-Palmier-Trace-Id")
+        request.setValue(spanID.uuidString.lowercased(), forHTTPHeaderField: "X-Palmier-Span-Id")
+        request.setValue(inputMessageID.uuidString.lowercased(), forHTTPHeaderField: "X-Palmier-Input-Message-Id")
+        request.setValue(outputMessageID.uuidString.lowercased(), forHTTPHeaderField: "X-Palmier-Output-Message-Id")
+        if let projectID, !projectID.isEmpty {
+            request.setValue(projectID, forHTTPHeaderField: "X-Palmier-Project-Id")
         }
+        request.setValue(telemetryEnabled ? "1" : "0", forHTTPHeaderField: "X-Palmier-Agent-Telemetry")
     }
 }
 
-// MARK: - Client protocol
+enum AgentStreamEvent: Equatable, Sendable {
+    case thinkingDelta(String)
+    case thinkingSignature(String)
+    case redactedThinking(String)
+    case reasoningSummaryDelta(String)
+    case reasoningComplete(itemID: String?, summary: String, encryptedContent: String)
+    case textDelta(String)
+    case toolUseComplete(id: String, name: String, inputJSON: String)
+    case messageStop(stopReason: AgentStopReason)
+}
+
+enum AgentClientTransportError: LocalizedError {
+    case missingAPIKey(AgentProvider)
+    case httpError(provider: AgentProvider, status: Int, body: String)
+    case streamError(provider: AgentProvider, message: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .missingAPIKey(let provider):
+            "No \(provider.displayName) API key is set."
+        case .httpError(let provider, let status, let body):
+            "\(provider.displayName) API error (\(status)): \(body.prefix(500))"
+        case .streamError(let provider, let message):
+            "\(provider.displayName) stream error: \(message)"
+        }
+    }
+}
 
 protocol AgentClient: Sendable {
     func stream(
         system: String,
-        tools: [AnthropicToolSchema],
-        messages: [AnthropicMessage]
-    ) -> AsyncThrowingStream<AnthropicStreamEvent, Error>
+        tools: [AgentToolSchema],
+        messages: [AgentRequestMessage],
+        context: AgentRequestContext
+    ) -> AsyncThrowingStream<AgentStreamEvent, Error>
 }
 
-// MARK: - Usage logging
-
-enum AgentUsageLog {
-    static func record(_ usage: [String: Any]) {
-        #if DEBUG
-        let input = usage["input_tokens"] as? Int ?? 0
-        let cacheWrite = usage["cache_creation_input_tokens"] as? Int ?? 0
-        let cacheRead = usage["cache_read_input_tokens"] as? Int ?? 0
-        let billed = input + cacheWrite + cacheRead
-        let readPct = billed > 0 ? Int((Double(cacheRead) / Double(billed)) * 100) : 0
-        print("[agent cache] input=\(input) cacheWrite=\(cacheWrite) cacheRead=\(cacheRead) (\(readPct)% read)")
-        #endif
-    }
-}
-
-// MARK: - Shared SSE parser
-
-enum AnthropicSSE {
-    static func parse(
-        bytes: URLSession.AsyncBytes,
-        continuation: AsyncThrowingStream<AnthropicStreamEvent, Error>.Continuation
-    ) async throws {
-        var pendingTools: [Int: (id: String, name: String, json: String)] = [:]
-        for try await line in bytes.lines {
-            try Task.checkCancellation()
-            guard line.hasPrefix("data:"),
-                  let data = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces).data(using: .utf8),
-                  let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let type = event["type"] as? String else { continue }
-
-            switch type {
-            case "message_start":
-                if let message = event["message"] as? [String: Any],
-                   let usage = message["usage"] as? [String: Any] {
-                    AgentUsageLog.record(usage)
-                }
-
-            case "content_block_start":
-                if let index = event["index"] as? Int,
-                   let block = event["content_block"] as? [String: Any],
-                   block["type"] as? String == "tool_use",
-                   let id = block["id"] as? String,
-                   let name = block["name"] as? String {
-                    pendingTools[index] = (id, name, "")
-                }
-
-            case "content_block_delta":
-                guard let index = event["index"] as? Int,
-                      let delta = event["delta"] as? [String: Any],
-                      let deltaType = delta["type"] as? String else { break }
-                if deltaType == "text_delta", let text = delta["text"] as? String, !text.isEmpty {
-                    continuation.yield(.textDelta(text))
-                } else if deltaType == "input_json_delta",
-                          let partial = delta["partial_json"] as? String,
-                          var acc = pendingTools[index] {
-                    acc.json += partial
-                    pendingTools[index] = acc
-                }
-
-            case "content_block_stop":
-                if let index = event["index"] as? Int, let acc = pendingTools.removeValue(forKey: index) {
-                    let json = acc.json.isEmpty ? "{}" : acc.json
-                    continuation.yield(.toolUseComplete(id: acc.id, name: acc.name, inputJSON: json))
-                }
-
-            case "message_delta":
-                if let delta = event["delta"] as? [String: Any],
-                   let raw = delta["stop_reason"] as? String {
-                    continuation.yield(.messageStop(stopReason: AnthropicStopReason(rawValue: raw) ?? .other))
-                }
-
-            case "error":
-                if let err = event["error"] as? [String: Any],
-                   let msg = err["message"] as? String {
-                    continuation.finish(throwing: AnthropicClientError.streamError(msg))
-                }
-
-            default: break
+func makeAgentStream(
+    _ operation: @escaping @Sendable (
+        AsyncThrowingStream<AgentStreamEvent, Error>.Continuation
+    ) async throws -> Void
+) -> AsyncThrowingStream<AgentStreamEvent, Error> {
+    AsyncThrowingStream { continuation in
+        let task = Task {
+            do {
+                try await operation(continuation)
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
             }
         }
+        continuation.onTermination = { _ in task.cancel() }
     }
 }
 
-// MARK: - Request body builder
+enum AgentHTTP {
+    static let streamIdleTimeout: TimeInterval = 600
 
-enum AnthropicRequestBody {
-    static func build(
-        model: AnthropicModel,
-        maxTokens: Int,
+    static func bytes(
+        for request: URLRequest,
+        makeError: (Int, String) -> any Error
+    ) async throws -> URLSession.AsyncBytes {
+        var request = request
+        request.timeoutInterval = streamIdleTimeout
+        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        guard let response = response as? HTTPURLResponse, response.statusCode >= 400 else {
+            return bytes
+        }
+        var body = ""
+        for try await line in bytes.lines { body += line + "\n" }
+        throw makeError(response.statusCode, body)
+    }
+}
+
+extension AgentRunSettings {
+    func requestBody(
         system: String,
-        tools: [AnthropicToolSchema],
-        messages: [AnthropicMessage]
+        tools: [AgentToolSchema],
+        messages: [AgentRequestMessage]
     ) -> [String: Any] {
-        var toolBlocks: [[String: Any]] = tools.map {
-            ["name": $0.name, "description": $0.description, "input_schema": $0.inputSchema]
+        switch model.provider {
+        case .anthropic:
+            AnthropicRequestBody.build(
+                model: model,
+                reasoningEffort: reasoningEffort,
+                system: system,
+                tools: tools,
+                messages: messages
+            )
+        case .openAI:
+            OpenAIRequestBody.build(
+                model: model,
+                reasoningEffort: reasoningEffort,
+                system: system,
+                tools: tools,
+                messages: messages
+            )
         }
-        // Prompt-cache boundary covers system + tools.
-        if var last = toolBlocks.popLast() {
-            last["cache_control"] = ["type": "ephemeral"]
-            toolBlocks.append(last)
+    }
+}
+
+extension AgentProvider {
+    func parseSSE(
+        bytes: URLSession.AsyncBytes,
+        continuation: AsyncThrowingStream<AgentStreamEvent, Error>.Continuation
+    ) async throws {
+        switch self {
+        case .anthropic:
+            try await AnthropicSSE.parse(bytes: bytes, continuation: continuation)
+        case .openAI:
+            try await OpenAISSE.parse(bytes: bytes, continuation: continuation)
         }
-        // Prompt-cache the conversation prefix
-        var messageBlocks: [[String: Any]] = messages.map {
-            ["role": $0.role.rawValue, "content": $0.content]
-        }
-        if var lastMsg = messageBlocks.popLast(),
-           var content = lastMsg["content"] as? [[String: Any]],
-           var lastBlock = content.popLast() {
-            lastBlock["cache_control"] = ["type": "ephemeral"]
-            content.append(lastBlock)
-            lastMsg["content"] = content
-            messageBlocks.append(lastMsg)
-        }
-        var body: [String: Any] = [
-            "model": model.rawValue,
-            "max_tokens": maxTokens,
-            "stream": true,
-            "system": [["type": "text", "text": system, "cache_control": ["type": "ephemeral"]]],
-            "messages": messageBlocks,
-        ]
-        if !toolBlocks.isEmpty { body["tools"] = toolBlocks }
-        return body
     }
 }

@@ -12,10 +12,7 @@ extension EditorViewModel {
     var minZoomScale: Double {
         let totalFrames = timeline.totalFrames
         guard totalFrames > 0, timelineVisibleWidth > 0 else { return Zoom.min }
-        let headerWidth = Double(Layout.trackHeaderWidth)
-        let availableWidth = timelineVisibleWidth - headerWidth
-        guard availableWidth > 0 else { return Zoom.min }
-        let fitAll = availableWidth / (Double(totalFrames) * Zoom.fitAllBuffer)
+        let fitAll = timelineVisibleWidth / (Double(totalFrames) * Zoom.fitAllBuffer)
         return min(Zoom.max, max(Zoom.floor, fitAll))
     }
 
@@ -30,6 +27,7 @@ extension EditorViewModel {
     }
 
     func selectMediaAsset(_ asset: MediaAsset, atSourceFrame frame: Int = 0) {
+        selectedTimelineIds.removeAll()
         openPreviewTab(for: asset, atSourceFrame: frame)
         syncSelectionToActiveTab()
         showMediaPanelMediaTab()
@@ -101,10 +99,12 @@ extension EditorViewModel {
         switch activePreviewTab {
         case .timeline:
             selectedMediaAssetIds.removeAll()
+            pruneMediaPanelSelectionAnchor()
         case .mediaAsset(let id, _, _):
             selectedClipIds.removeAll()
             selectedFolderIds.removeAll()
             selectedMediaAssetIds = [id]
+            mediaPanelSelectionAnchor = id
         }
     }
 

@@ -2,7 +2,7 @@ import AVFoundation
 import CoreImage
 
 /// Composites a frame from a CompositorInstruction's layers with Core Image:
-/// per-layer crop → effects → transform → opacity, stacked bottom→top.
+/// per-layer crop → effects → corner mask → transform → opacity, stacked bottom→top.
 enum FrameRenderer {
 
     static func render(
@@ -15,19 +15,217 @@ enum FrameRenderer {
         let renderRect = CGRect(origin: .zero, size: instruction.renderSize)
         let frame = Int((compositionTime.seconds * Double(instruction.fps)).rounded())
 
-        var accum = CIImage(color: .black).cropped(to: renderRect)
-        for layer in instruction.layers {
-            guard let buffer = sourceFrame(layer.trackID) else { continue }
-            if let image = composedLayer(layer, buffer: buffer, frame: frame,
-                                         renderSize: instruction.renderSize) {
-                accum = image.composited(over: accum)
-            }
-        }
-        context.render(accum, to: output, bounds: renderRect, colorSpace: nil)
-        tag709(output)
+        let base = CIImage(color: .black).cropped(to: renderRect)
+        let accum = composite(
+            layers: instruction.layers, over: base, frame: frame,
+            renderSize: instruction.renderSize, sourceFrame: sourceFrame, gateByClipRange: false
+        )
+        let tagSource = colorTagSource(
+            layers: instruction.layers,
+            frame: frame,
+            sourceFrame: sourceFrame,
+            gateByClipRange: false
+        )
+        let outputColorSpace = tagSource.flatMap(colorSpace(for:)) ?? fallbackVideoColorSpace
+        context.render(accum, to: output, bounds: renderRect, colorSpace: outputColorSpace)
+        tagOutput(output, source: tagSource, colorSpace: outputColorSpace)
     }
 
-    /// Tag output Rec. 709 at the buffer level so downstream reads our bytes correctly.
+    /// Bottom→top layer stack; `gateByClipRange` skips group children outside `frame`.
+    private static func composite(
+        layers: [LayerPlan],
+        over background: CIImage,
+        frame: Int,
+        renderSize: CGSize,
+        sourceFrame: (CMPersistentTrackID) -> CVPixelBuffer?,
+        gateByClipRange: Bool
+    ) -> CIImage {
+        var accum = background
+        for layer in layers {
+            if gateByClipRange, !layer.clip.contains(timelineFrame: frame) { continue }
+
+            if case .text = layer.source, layer.clip.textFillMode == .footage {
+                let opacity = min(1.0, max(0.0, layer.clip.opacityAt(frame: frame)))
+                if opacity > 0, let matte = textStencilMatte(layer, frame: frame, renderSize: renderSize) {
+                    let original = accum
+                    let black = CIImage(color: .black).cropped(to: accum.extent)
+                    let stenciled = accum.applyingFilter("CIBlendWithMask", parameters: [
+                        kCIInputBackgroundImageKey: black,
+                        kCIInputMaskImageKey: matte,
+                    ]).cropped(to: accum.extent)
+                    if opacity < 1 {
+                        let f = CIFilter(name: "CIDissolveTransition")
+                        f?.setValue(original, forKey: kCIInputImageKey)
+                        f?.setValue(stenciled, forKey: "inputTargetImage")
+                        f?.setValue(opacity, forKey: "inputTime")
+                        accum = (f?.outputImage ?? stenciled).cropped(to: original.extent)
+                    } else {
+                        accum = stenciled
+                    }
+                }
+                continue
+            }
+
+            let mode: BlendMode
+            if case .text = layer.source, layer.clip.textFillMode == .inverted {
+                mode = .difference
+            } else {
+                mode = layer.clip.blendMode ?? .normal
+            }
+            // Source-over bakes opacity into alpha; blend modes apply it as a fade of
+            // the blend RESULT (Photoshop/Premiere semantics), so don't bake it there.
+            let isNormal = mode.ciFilterName == nil
+            let image: CIImage?
+            switch layer.source {
+            case .track(let id):
+                guard let buffer = sourceFrame(id) else { continue }
+                image = composedLayer(layer, buffer: buffer, frame: frame,
+                                      renderSize: renderSize, bakeOpacity: isNormal)
+            case .text:
+                image = composedTextLayer(layer, frame: frame, renderSize: renderSize,
+                                          bakeOpacity: isNormal)
+            case .group(let children, let canvas):
+                image = composedGroupLayer(layer, children: children, canvas: canvas, frame: frame,
+                                           renderSize: renderSize, sourceFrame: sourceFrame, bakeOpacity: isNormal)
+            }
+            guard let image else { continue }
+            if isNormal {
+                accum = image.composited(over: accum)
+            } else {
+                let opacity = min(1.0, max(0.0, layer.clip.opacityAt(frame: frame)))
+                accum = blend(image, over: accum, filter: mode.ciFilterName!, opacity: opacity)
+            }
+        }
+        return accum
+    }
+
+    private static func textStencilMatte(
+        _ layer: LayerPlan,
+        frame: Int,
+        renderSize: CGSize
+    ) -> CIImage? {
+        var clip = layer.clip
+        var style = clip.textStyle ?? TextStyle()
+        style.color = .init(r: 1, g: 1, b: 1, a: 1)
+        clip.textStyle = style
+        guard let image = TextFrameRenderer.image(clip: clip, frame: frame, renderSize: renderSize) else {
+            return nil
+        }
+        return transformedTextImage(image, clip: clip, frame: frame, renderSize: renderSize)
+    }
+
+    /// Children composite at the child canvas; the nest clip's pipeline runs on the result.
+    private static func composedGroupLayer(
+        _ layer: LayerPlan,
+        children: [LayerPlan],
+        canvas: CGSize,
+        frame: Int,
+        renderSize: CGSize,
+        sourceFrame: (CMPersistentTrackID) -> CVPixelBuffer?,
+        bakeOpacity: Bool
+    ) -> CIImage? {
+        let alpha = min(1.0, max(0.0, layer.clip.opacityAt(frame: frame)))
+        guard alpha > 0, canvas.width > 0, canvas.height > 0 else { return nil }
+        let canvasRect = CGRect(origin: .zero, size: canvas)
+        let base = CIImage(color: .black).cropped(to: canvasRect)
+        let intermediate = composite(
+            layers: children, over: base, frame: frame,
+            renderSize: canvas, sourceFrame: sourceFrame, gateByClipRange: true
+        )
+        return applyClipPipeline(
+            image: intermediate, srcHeight: canvas.height, layer: layer, frame: frame,
+            renderSize: renderSize, alpha: alpha, bakeOpacity: bakeOpacity
+        )
+    }
+
+    /// Blend `image` over `background`, then fade the blend to background by `opacity`.
+    private static func blend(_ image: CIImage, over background: CIImage, filter name: String, opacity: Double) -> CIImage {
+        // Ensure blend covers entire frame; avoid black borders.
+        let blended = image.applyingFilter(name, parameters: [kCIInputBackgroundImageKey: background])
+            .composited(over: background)
+        guard opacity < 1 else { return blended }
+        let f = CIFilter(name: "CIDissolveTransition")
+        f?.setValue(background, forKey: kCIInputImageKey)
+        f?.setValue(blended, forKey: "inputTargetImage")
+        f?.setValue(opacity, forKey: "inputTime")
+        return (f?.outputImage ?? blended).cropped(to: background.extent)
+    }
+
+    private static func tagOutput(
+        _ output: CVPixelBuffer,
+        source: CVPixelBuffer?,
+        colorSpace: CGColorSpace
+    ) {
+        if let source {
+            copyColorTags(from: source, to: output)
+        } else {
+            tag709(output)
+        }
+        CVBufferSetAttachment(output, kCVImageBufferCGColorSpaceKey, colorSpace, .shouldPropagate)
+    }
+
+    private static func colorTagSource(
+        layers: [LayerPlan],
+        frame: Int,
+        sourceFrame: (CMPersistentTrackID) -> CVPixelBuffer?,
+        gateByClipRange: Bool
+    ) -> CVPixelBuffer? {
+        for layer in layers.reversed() {
+            if gateByClipRange, !layer.clip.contains(timelineFrame: frame) { continue }
+            guard layer.clip.opacityAt(frame: frame) > 0 else { continue }
+            switch layer.source {
+            case .track(let id):
+                if let buffer = sourceFrame(id) { return buffer }
+            case .text:
+                continue
+            case .group(let children, _):
+                if let buffer = colorTagSource(
+                    layers: children,
+                    frame: frame,
+                    sourceFrame: sourceFrame,
+                    gateByClipRange: true
+                ) {
+                    return buffer
+                }
+            }
+        }
+        return nil
+    }
+
+    private static func copyColorTags(from source: CVPixelBuffer, to output: CVPixelBuffer) {
+        let keys: [CFString] = [
+            kCVImageBufferICCProfileKey,
+            kCVImageBufferCGColorSpaceKey,
+            kCVImageBufferColorPrimariesKey,
+            kCVImageBufferTransferFunctionKey,
+            kCVImageBufferGammaLevelKey,
+            kCVImageBufferYCbCrMatrixKey,
+            kCVImageBufferMasteringDisplayColorVolumeKey,
+            kCVImageBufferContentLightLevelInfoKey,
+        ]
+        for key in keys {
+            if let value = CVBufferCopyAttachment(source, key, nil) {
+                CVBufferSetAttachment(output, key, value, .shouldPropagate)
+            } else {
+                CVBufferRemoveAttachment(output, key)
+            }
+        }
+    }
+
+    private static let fallbackVideoColorSpace =
+        CGColorSpace(name: CGColorSpace.itur_709) ?? CGColorSpaceCreateDeviceRGB()
+
+    private static func colorSpace(for buffer: CVPixelBuffer) -> CGColorSpace? {
+        if let attachments = CVBufferCopyAttachments(buffer, .shouldPropagate),
+           let unmanaged = CVImageBufferCreateColorSpaceFromAttachments(attachments) {
+            return unmanaged.takeRetainedValue()
+        }
+        guard let attachment = CVBufferCopyAttachment(buffer, kCVImageBufferCGColorSpaceKey, nil) else {
+            return nil
+        }
+        return (attachment as! CGColorSpace)
+    }
+
     private static func tag709(_ buffer: CVPixelBuffer) {
         CVBufferSetAttachment(buffer, kCVImageBufferColorPrimariesKey,
                               kCVImageBufferColorPrimaries_ITU_R_709_2, .shouldPropagate)
@@ -41,17 +239,36 @@ enum FrameRenderer {
         _ layer: LayerPlan,
         buffer: CVPixelBuffer,
         frame: Int,
-        renderSize: CGSize
+        renderSize: CGSize,
+        bakeOpacity: Bool = true
     ) -> CIImage? {
-        let clip = layer.clip
-        let alpha = min(1.0, max(0.0, clip.opacityAt(frame: frame)))
+        let alpha = min(1.0, max(0.0, layer.clip.opacityAt(frame: frame)))
         guard alpha > 0 else { return nil }
 
-        // CI (color management off) treats pixels as unpremultiplied; sources are
-        // premultiplied, so undo it or the composite double-darkens edges.
-        var image = CIImage(cvPixelBuffer: buffer, options: [.colorSpace: NSNull()])
+        // Undo premultiplied alpha to avoid dark edges.
+        let image = CIImage(
+            cvPixelBuffer: buffer,
+            options: [.colorSpace: colorSpace(for: buffer) ?? fallbackVideoColorSpace]
+        )
             .unpremultiplyingAlpha()
-        let srcHeight = CGFloat(CVPixelBufferGetHeight(buffer))
+        return applyClipPipeline(
+            image: image, srcHeight: CGFloat(CVPixelBufferGetHeight(buffer)), layer: layer,
+            frame: frame, renderSize: renderSize, alpha: alpha, bakeOpacity: bakeOpacity
+        )
+    }
+
+    /// Crop → effects → corner mask → transform → opacity, sampled from `layer.clip` at `frame`.
+    private static func applyClipPipeline(
+        image input: CIImage,
+        srcHeight: CGFloat,
+        layer: LayerPlan,
+        frame: Int,
+        renderSize: CGSize,
+        alpha: Double,
+        bakeOpacity: Bool
+    ) -> CIImage? {
+        let clip = layer.clip
+        var image = input
 
         let crop = clip.cropAt(frame: frame)
         if !crop.isIdentity {
@@ -79,23 +296,129 @@ enum FrameRenderer {
             }
         }
 
-        // transformAt drops the flip flags, so use the static transform unless animated.
-        let t = clip.hasTransformAnimation ? clip.transformAt(frame: frame) : clip.transform
+        image = EdgeRoundingKernel.apply(
+            image,
+            edgeRounding: clip.edgeRounding,
+            edgeSoftness: clip.edgeSoftness
+        )
+
+        let t = clip.transformAt(frame: frame)
         let av = layer.preferredTransform.concatenating(
             CompositionBuilder.affineTransform(for: t, natSize: layer.natSize, renderSize: renderSize)
         )
         // Conjugate the AV top-left-origin mapping into CI's bottom-left space.
         let ci = flipY(srcHeight).concatenating(av).concatenating(flipY(renderSize.height))
         image = image.transformed(by: ci)
+        image = image.premultiplyingAlpha()
 
-        if alpha < 1 {
-            // Alpha only — CIColorMatrix re-premultiplies by the result's alpha, so
-            // scaling RGB too would double the fade.
+        if bakeOpacity, alpha < 1 {
+            // Fade alpha only; scaling RGB would double-fade
             image = image.applyingFilter("CIColorMatrix", parameters: [
                 "inputAVector": CIVector(x: 0, y: 0, z: 0, w: alpha),
             ])
         }
         return image
+    }
+
+    /// Text renders in place; effects run before rotation and opacity, matching visual clips.
+    private static func composedTextLayer(
+        _ layer: LayerPlan,
+        frame: Int,
+        renderSize: CGSize,
+        bakeOpacity: Bool = true
+    ) -> CIImage? {
+        var clip = layer.clip
+        let alpha = min(1.0, max(0.0, clip.opacityAt(frame: frame)))
+        guard alpha > 0 else { return nil }
+        if clip.textFillMode == .inverted {
+            var style = clip.textStyle ?? TextStyle()
+            style.color = .init(r: 1, g: 1, b: 1, a: 1)
+            style.border.enabled = false
+            style.shadow.enabled = false
+            style.background.color.a = 0
+            style.background.outlineColor.a = 0
+            clip.textStyle = style
+        }
+        guard var image = TextFrameRenderer.image(clip: clip, frame: frame, renderSize: renderSize)?
+            .unpremultiplyingAlpha() else { return nil }
+
+        if let effects = clip.effects, !effects.isEmpty {
+            // Effects expect the full frame; a filter may map transparent pixels to visible ones.
+            let renderRect = CGRect(origin: .zero, size: renderSize)
+            image = image.composited(over: CIImage(color: .clear).cropped(to: renderRect))
+            let offset = frame - clip.startFrame
+            for effect in effects where effect.enabled {
+                guard let descriptor = EffectRegistry.descriptor(id: effect.type) else { continue }
+                image = descriptor.render(image, effect: effect, atOffset: offset)
+            }
+        }
+        if clip.textFillMode == .inverted {
+            let zero = CIVector(x: 0, y: 0, z: 0, w: 0)
+            image = image.applyingFilter("CIColorMatrix", parameters: [
+                "inputRVector": zero,
+                "inputGVector": zero,
+                "inputBVector": zero,
+                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
+                "inputBiasVector": CIVector(x: 1, y: 1, z: 1, w: 0),
+            ])
+        }
+        image = transformedTextImage(image, clip: clip, frame: frame, renderSize: renderSize)
+        image = image.premultiplyingAlpha()
+
+        if bakeOpacity, alpha < 1 {
+            image = image.applyingFilter("CIColorMatrix", parameters: [
+                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: alpha),
+            ])
+        }
+        return image
+    }
+
+    private static func transformedTextImage(
+        _ image: CIImage,
+        clip: Clip,
+        frame: Int,
+        renderSize: CGSize
+    ) -> CIImage {
+        let transform = clip.transformAt(frame: frame)
+        if transform.hasTiltRotation {
+            return tiltedTextImage(image, transform: transform, renderSize: renderSize)
+        }
+
+        let rotation = CompositionBuilder.canvasRotationTransform(for: transform, renderSize: renderSize)
+        guard !rotation.isIdentity else { return image }
+        let ciTransform = flipY(renderSize.height)
+            .concatenating(rotation)
+            .concatenating(flipY(renderSize.height))
+        return image.transformed(by: ciTransform)
+    }
+
+    /// Projects the raster's actual extent, so glyphs drawn off canvas can tilt back into frame.
+    private static func tiltedTextImage(
+        _ image: CIImage,
+        transform: Transform,
+        renderSize: CGSize
+    ) -> CIImage {
+        let source = image.extent.isInfinite
+            ? image.cropped(to: CGRect(origin: .zero, size: renderSize))
+            : image
+        guard !source.extent.isEmpty else { return image }
+
+        let flip = flipY(renderSize.height)
+        let corners = TextTiltGeometry.corners(
+            of: source.extent.applying(flip),
+            around: CGPoint(
+                x: transform.centerX * renderSize.width,
+                y: transform.centerY * renderSize.height
+            ),
+            transform: transform,
+            canvasSize: renderSize
+        )
+        return source.applyingFilter("CIPerspectiveTransform", parameters: [
+            "inputTopLeft": CIVector(cgPoint: corners.topLeft.applying(flip)),
+            "inputTopRight": CIVector(cgPoint: corners.topRight.applying(flip)),
+            "inputBottomRight": CIVector(cgPoint: corners.bottomRight.applying(flip)),
+            "inputBottomLeft": CIVector(cgPoint: corners.bottomLeft.applying(flip)),
+        ])
     }
 
     private static func flipY(_ height: CGFloat) -> CGAffineTransform {

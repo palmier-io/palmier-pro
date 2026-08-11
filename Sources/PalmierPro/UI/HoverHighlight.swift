@@ -1,19 +1,11 @@
 import SwiftUI
 
-/// Adds a subtle rounded-rect background that appears on hover and expands the
-/// hit area to the framed rect (via `contentShape`). Use on small icon buttons
-/// so users can see what's clickable and land on it without aiming at a tiny
-/// glyph.
-///
-/// Apply after the frame has been set on the label:
-///
-///     Image(systemName: "xmark")
-///         .frame(width: 24, height: 24)
-///         .hoverHighlight()
 struct HoverHighlight: ViewModifier {
     var cornerRadius: CGFloat = AppTheme.Radius.sm
     var isActive: Bool = false
+    var activeFill: Color?
 
+    @Environment(\.isEnabled) private var isEnabled
     @State private var isHovered = false
 
     func body(content: Content) -> some View {
@@ -23,16 +15,18 @@ struct HoverHighlight: ViewModifier {
                     .fill(fill)
             )
             .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .onHover { isHovered = $0 }
+            .onHover { isHovered = isEnabled && $0 }
             .animation(.easeOut(duration: AppTheme.Anim.hover), value: isHovered)
             .animation(.easeOut(duration: AppTheme.Anim.hover), value: isActive)
     }
 
     private var fill: Color {
-        switch (isActive, isHovered) {
-        case (true, true): Color.white.opacity(AppTheme.Opacity.muted)
-        case (true, false): Color.white.opacity(AppTheme.Opacity.soft)
-        case (false, true): Color.white.opacity(AppTheme.Opacity.faint)
+        guard isEnabled else { return .clear }
+        if isActive, let activeFill { return activeFill }
+        return switch (isActive, isHovered) {
+        case (true, true): AppTheme.Interaction.fill(AppTheme.Opacity.muted)
+        case (true, false): AppTheme.Interaction.fill(AppTheme.Opacity.soft)
+        case (false, true): AppTheme.Interaction.fill(AppTheme.Opacity.faint)
         case (false, false): .clear
         }
     }
@@ -41,8 +35,22 @@ struct HoverHighlight: ViewModifier {
 extension View {
     func hoverHighlight(
         cornerRadius: CGFloat = AppTheme.Radius.sm,
-        isActive: Bool = false
+        isActive: Bool = false,
+        activeFill: Color? = nil
     ) -> some View {
-        modifier(HoverHighlight(cornerRadius: cornerRadius, isActive: isActive))
+        modifier(HoverHighlight(cornerRadius: cornerRadius, isActive: isActive, activeFill: activeFill))
+    }
+
+    func themedSurface(
+        _ fill: Color,
+        cornerRadius: CGFloat,
+        border: Color = AppTheme.Border.subtleColor,
+        borderWidth: CGFloat = AppTheme.BorderWidth.thin
+    ) -> some View {
+        background(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).fill(fill))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(border, lineWidth: borderWidth)
+            )
     }
 }

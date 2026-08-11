@@ -5,48 +5,96 @@ extension EditorViewModel {
     struct CaptionRequest {
         var sourceClipIds: [String] = []
         var autoDetect: Bool = false
-        var style: TextStyle = TextStyle()
+        var style: TextStyle = .caption
         var center: CGPoint = AppTheme.Caption.defaultCenter
         var textCase: CaptionCase = .auto
         var censorProfanity: Bool = false
         var locale: Locale? = nil
+        var maxWords: Int? = nil
+        var maxCharacters: Int? = nil
+        var gapSettings: CaptionGapSettings = .default
+        var provider: TranscriptionProvider = .local
+        /// Animation applied to every generated caption clip (timed from the transcript).
+        var animation: TextAnimation = TextAnimation()
     }
 
     enum CaptionCase: String, CaseIterable, Sendable {
         case auto, upper, lower
 
         var label: String {
-            switch self {
-            case .auto: "Auto"
-            case .upper: "UPPERCASE"
-            case .lower: "lowercase"
-            }
+            self == .auto ? "Auto" : fontCase.label
         }
 
         func apply(_ s: String) -> String {
+            fontCase.apply(to: s)
+        }
+
+        private var fontCase: TextStyle.FontCase {
             switch self {
-            case .auto: s
-            case .upper: s.uppercased()
-            case .lower: s.lowercased()
+            case .auto: .mixed
+            case .upper: .uppercase
+            case .lower: .lowercase
             }
         }
     }
 
-    func captionLineFits(_ line: String, style: TextStyle) -> Bool {
-        let size = TextLayout.naturalSize(
-            content: line, style: style, maxWidth: .greatestFiniteMagnitude, canvasHeight: CGFloat(timeline.height)
-        )
-        return size.width <= CGFloat(timeline.width) * AppTheme.ComponentSize.captionPreviewMaxTextWidthRatio
-    }
-
     enum CaptionError: LocalizedError {
-        case noSource
+        case noSource, timelineChanged
 
         var errorDescription: String? {
             switch self {
             case .noSource: "No audio clips to caption."
+            case .timelineChanged: "The timeline changed while captions were being prepared. Try again."
             }
         }
+    }
+
+    /// Returns text clip ids in the clip's caption group, or the clip's id if none.
+    func captionGroupTextClipIds(for clipId: String) -> [String] {
+        guard let clip = clipFor(id: clipId), let group = clip.captionGroupId else { return [clipId] }
+        let ids = captionGroupTextClipIds(groupId: group)
+        return ids.isEmpty ? [clipId] : ids
+    }
+
+    /// Text clip ids in a caption group, in timeline order. Empty if the group has no text clips.
+    func captionGroupTextClipIds(groupId: String) -> [String] {
+        timeline.tracks.flatMap(\.clips)
+            .filter { $0.captionGroupId == groupId && $0.mediaType == .text }.map(\.id)
+    }
+
+    /// For each clip id, returns all text clip ids in its caption group, or just the id itself if no group.
+    /// Fast for large selections (O(timeline) instead of O(selection × timeline)).
+    func captionGroupTextClipIds(expanding clipIds: [String]) -> [String] {
+        let requested = Set(clipIds)
+        var groupByRequestedId: [String: String] = [:]
+        for track in timeline.tracks {
+            for clip in track.clips where requested.contains(clip.id) {
+                if let group = clip.captionGroupId { groupByRequestedId[clip.id] = group }
+            }
+        }
+        let groups = Set(groupByRequestedId.values)
+
+        var seen = Set<String>()
+        var result: [String] = []
+        var groupsWithText = Set<String>()
+        for track in timeline.tracks {
+            for clip in track.clips {
+                let included: Bool
+                if let group = clip.captionGroupId, groups.contains(group) {
+                    included = clip.mediaType == .text
+                    if included { groupsWithText.insert(group) }
+                } else {
+                    included = requested.contains(clip.id)
+                }
+                if included, seen.insert(clip.id).inserted { result.append(clip.id) }
+            }
+        }
+
+        for id in clipIds where !seen.contains(id) {
+            if let group = groupByRequestedId[id], groupsWithText.contains(group) { continue }
+            if seen.insert(id).inserted { result.append(id) }
+        }
+        return result
     }
 
     func captionCanTranscribe(_ clip: Clip) -> Bool {
@@ -61,27 +109,64 @@ extension EditorViewModel {
     }
 
     func captionTargets(ids: [String]) -> [Clip] {
-        let pool: [Clip] = ids.isEmpty
-            ? timeline.tracks.flatMap(\.clips)
-            : ids.compactMap { findClip(id: $0).map { timeline.tracks[$0.trackIndex].clips[$0.clipIndex] } }
-        return captionTargets(in: pool)
+        let clips = timeline.tracks.flatMap(\.clips)
+        let pool: [Clip]
+        if ids.isEmpty {
+            pool = clips
+        } else {
+            let selectedIds = Set(ids)
+            pool = clips.filter { selectedIds.contains($0.id) }
+        }
+        return captionTargets(
+            in: pool,
+            linkGroupsWithAudio: linkGroupsWithAudio(in: pool),
+            allowAnyMulticamMic: !ids.isEmpty
+        )
+    }
+
+    /// Targets for a clip scope explicitly named by an agent tool. Like any explicit selection,
+    /// this may choose any multicam mic; it additionally rejects a linked video when its
+    /// audio-side clip exists elsewhere on the timeline.
+    func transcriptionTargets(clipIds: [String]) -> [Clip] {
+        let clips = timeline.tracks.flatMap(\.clips)
+        let selectedIds = Set(clipIds)
+        let pool = clips.filter { selectedIds.contains($0.id) }
+        return captionTargets(
+            in: pool,
+            linkGroupsWithAudio: linkGroupsWithAudio(in: clips),
+            allowAnyMulticamMic: true
+        )
     }
 
     func captionTargets(trackIds: Set<String>) -> [Clip] {
         guard !trackIds.isEmpty else { return [] }
-        let audioGroups = Set(timeline.tracks.flatMap(\.clips).filter { $0.mediaType == .audio }.compactMap(\.linkGroupId))
+        let clips = timeline.tracks.flatMap(\.clips)
         let pool = timeline.tracks
             .filter { trackIds.contains($0.id) }
             .flatMap(\.clips)
-            .filter { !($0.mediaType == .video && $0.linkGroupId.map(audioGroups.contains) == true) }
-        return captionTargets(in: pool)
+        return captionTargets(
+            in: pool,
+            linkGroupsWithAudio: linkGroupsWithAudio(in: clips),
+            allowAnyMulticamMic: true
+        )
     }
 
-    private func captionTargets(in pool: [Clip]) -> [Clip] {
-        let linkGroupsWithAudio = Set(pool.filter { $0.mediaType == .audio }.compactMap(\.linkGroupId))
+    private func linkGroupsWithAudio(in clips: [Clip]) -> Set<String> {
+        Set(clips.filter { $0.mediaType == .audio }.compactMap(\.linkGroupId))
+    }
+
+    private func captionTargets(
+        in pool: [Clip],
+        linkGroupsWithAudio: Set<String>,
+        allowAnyMulticamMic: Bool
+    ) -> [Clip] {
         return pool
             .filter { clip in
                 guard captionCanTranscribe(clip) else { return false }
+                if let group = multicamGroup(of: clip) {
+                    return clip.mediaType == .audio
+                        && (allowAnyMulticamMic || clip.mediaRef == group.master?.mediaRef)
+                }
                 guard clip.mediaType == .video, let groupId = clip.linkGroupId else { return true }
                 return !linkGroupsWithAudio.contains(groupId)
             }
@@ -95,149 +180,242 @@ extension EditorViewModel {
     }
 
     @discardableResult
-    func generateCaptions(for request: CaptionRequest) async throws -> [String] {
-        let candidates = request.autoDetect ? captionTargets(ids: []) : captionTargets(ids: request.sourceClipIds)
-        guard !candidates.isEmpty else { throw CaptionError.noSource }
-
-        var targets = candidates.compactMap { c in
-            findClip(id: c.id).map {
-                CaptionTarget(id: c.id, trackId: timeline.tracks[$0.trackIndex].id, clip: timeline.tracks[$0.trackIndex].clips[$0.clipIndex])
-            }
-        }
+    func generateCaptions(
+        for request: CaptionRequest,
+        applying mutation: (@MainActor (@MainActor () -> [String]) async throws -> [String])? = nil
+    ) async throws -> [String] {
+        let owningTimelineId = activeTimelineId
+        var targets = resolvedCaptionTargets(for: request)
+        guard !targets.isEmpty else { throw CaptionError.noSource }
         let results = try await transcribe(targets, request: request)
+
+        guard timeline(for: owningTimelineId) != nil else { return [] }
+        if activeTimelineId != owningTimelineId { activateTimeline(owningTimelineId) }
+        targets = resolvedCaptionTargets(for: request)
+        guard !targets.isEmpty else { throw CaptionError.noSource }
+
+        let preparationTimeline = timeline
 
         if request.autoDetect {
             guard let winner = dominantSpeechTrack(targets, results) else { return [] }
             targets = targets.filter { $0.trackId == winner }
         }
 
-        let specs = captionSpecs(targets, results: results, request: request)
+        let animation: TextAnimation? = request.animation.isActive ? request.animation : nil
+        let input = CaptionSpecBuilder.Input(
+            targets: targets.compactMap { target in
+                results[target.clip.mediaRef].map {
+                    CaptionSpecBuilder.Target(
+                        clip: target.clip,
+                        result: $0
+                    )
+                }
+            },
+            fps: timeline.fps,
+            timelineEndFrame: preparationTimeline.totalFrames,
+            canvasWidth: timeline.width,
+            canvasHeight: timeline.height,
+            style: request.style,
+            center: request.center,
+            textCase: request.textCase,
+            maxWords: request.maxWords,
+            maxCharacters: request.maxCharacters,
+            gapSettings: request.gapSettings,
+            animation: animation
+        )
+        let specs = try await CaptionSpecBuilder.build(input)
+        try Task.checkCancellation()
+        guard captionPreparationIsCurrent(
+            timelineId: owningTimelineId,
+            snapshot: preparationTimeline
+        ) else {
+            throw CaptionError.timelineChanged
+        }
         guard !specs.isEmpty else { return [] }
-        return placeCaptionTrack(specs)
+        if let mutation {
+            return try await mutation { self.placeCaptionTrack(specs, actionName: "Generate Captions") }
+        }
+        return placeCaptionTrack(specs, actionName: "Generate Captions")
+    }
+
+    /// Places each subtitle asset's cues as one caption group on a new top track
+    func placeCaptions(fromSubtitleAssets assets: [MediaAsset]) async {
+        for asset in assets where asset.type == .subtitle {
+            guard let url = mediaResolver.resolveURL(for: asset.id) else {
+                mediaPanelToast = MediaPanelToast(message: L10n.string("Can't add captions — \"\(asset.name)\" is offline."))
+                continue
+            }
+            do {
+                try await importCaptions(from: url)
+            } catch is CancellationError {
+                return
+            } catch {
+                mediaPanelToast = MediaPanelToast(
+                    message: L10n.string("Can't add captions from \"\(asset.name)\" — \(error.localizedDescription)")
+                )
+            }
+        }
+    }
+
+    /// Parses a subtitle file into caption specs sized for the current timeline.
+    func subtitleCaptionSpecs(from url: URL) async throws -> [TextClipSpec] {
+        let preparationTimeline = timeline
+        let cues = try await SubtitleFileParser.parseFile(at: url)
+        return try await CaptionSpecBuilder.build(
+            cues: cues, fps: preparationTimeline.fps,
+            canvasWidth: preparationTimeline.width, canvasHeight: preparationTimeline.height,
+            style: .caption, center: AppTheme.Caption.defaultCenter
+        )
+    }
+
+    /// Imports an SRT or WebVTT file as one caption group on a new top track. One undo step.
+    @discardableResult
+    func importCaptions(from url: URL) async throws -> [String] {
+        let owningTimelineId = activeTimelineId
+        let preparationTimeline = timeline
+        let specs = try await subtitleCaptionSpecs(from: url)
+        try Task.checkCancellation()
+        guard captionPreparationIsCurrent(timelineId: owningTimelineId, snapshot: preparationTimeline) else {
+            throw CaptionError.timelineChanged
+        }
+        return placeCaptionTrack(specs, actionName: "Add Captions")
+    }
+
+    // Estimate the cost of cloud transcription given the request. 0 if hit cache.
+    func captionCloudCreditCost(for request: CaptionRequest) async -> Int {
+        guard request.provider == .cloud else { return 0 }
+        let targets = resolvedCaptionTargets(for: request)
+        guard !targets.isEmpty else { return 0 }
+        let targetClips = targets.map(\.clip)
+        let language = CloudTranscription.languageIdentifier(request.locale)
+        var seen: Set<String> = []
+        var totalCost = 0
+        for t in targets where seen.insert(t.clip.mediaRef).inserted {
+            guard let url = mediaResolver.resolveURL(for: t.clip.mediaRef) else { continue }
+            let range = CaptionTranscriptMapper.sourceUnion(for: t.clip.mediaRef, clips: targetClips, fps: timeline.fps)
+            if await TranscriptCache.shared.hasCachedCloudTranscript(for: url, range: range, language: language) {
+                continue
+            }
+            let seconds: Double
+            if let range {
+                seconds = max(0, range.upperBound - range.lowerBound)
+            } else if let asset = mediaAssets.first(where: { $0.id == t.clip.mediaRef }) {
+                seconds = max(0, asset.duration)
+            } else {
+                seconds = 0
+            }
+            totalCost += CostEstimator.estimatedTranscriptionCost(durationSeconds: seconds) ?? 0
+        }
+        return totalCost
+    }
+
+    private func resolvedCaptionTargets(for request: CaptionRequest) -> [CaptionTarget] {
+        let candidates = request.autoDetect ? captionTargets(ids: []) : captionTargets(ids: request.sourceClipIds)
+        return candidates.compactMap { c in
+            findClip(id: c.id).map {
+                CaptionTarget(id: c.id, trackId: timeline.tracks[$0.trackIndex].id, clip: timeline.tracks[$0.trackIndex].clips[$0.clipIndex])
+            }
+        }
+    }
+
+    func captionPreparationIsCurrent(
+        timelineId: String,
+        snapshot: Timeline
+    ) -> Bool {
+        activeTimelineId == timelineId && timeline == snapshot
+    }
+
+    private struct TranscribeJob {
+        let mediaRef: String
+        let url: URL
+        let range: ClosedRange<Double>?
+        let isVideo: Bool
     }
 
     private func transcribe(_ targets: [CaptionTarget], request: CaptionRequest) async throws -> [String: TranscriptionResult] {
+        let targetClips = targets.map(\.clip)
+        var seen: Set<String> = []
+        let jobs: [TranscribeJob] = targets.compactMap { t in
+            guard seen.insert(t.clip.mediaRef).inserted else { return nil }
+            guard let url = mediaResolver.resolveURL(for: t.clip.mediaRef) else { return nil }
+            let range = CaptionTranscriptMapper.sourceUnion(for: t.clip.mediaRef, clips: targetClips, fps: timeline.fps)
+            return TranscribeJob(mediaRef: t.clip.mediaRef, url: url, range: range, isVideo: captionUsesVideoAudioExtraction(for: t.clip))
+        }
+        let projectId = projectId
+
+        let outcomes = await withTaskGroup(of: (String, Result<TranscriptionResult, Error>).self) { group in
+            for job in jobs {
+                group.addTask {
+                    do {
+                        let result: TranscriptionResult
+                        switch request.provider {
+                        case .local:
+                            if request.censorProfanity || request.locale != nil {
+                                // option variants produce different transcripts — bypass the cache
+                                result = job.isVideo
+                                    ? try await Transcription.transcribeVideoAudio(videoURL: job.url, censorProfanity: request.censorProfanity, preferredLocale: request.locale, sourceRange: job.range)
+                                    : try await Transcription.transcribe(fileURL: job.url, censorProfanity: request.censorProfanity, preferredLocale: request.locale, sourceRange: job.range)
+                            } else {
+                                result = try await TranscriptCache.shared.transcript(for: job.url, isVideo: job.isVideo, range: job.range)
+                            }
+                        case .cloud:
+                            result = try await CloudTranscription.transcribe(
+                                fileURL: job.url,
+                                range: job.range,
+                                preferredLocale: request.locale,
+                                projectId: projectId
+                            )
+                        }
+                        return (job.mediaRef, .success(result))
+                    } catch {
+                        return (job.mediaRef, .failure(error))
+                    }
+                }
+            }
+            var collected: [(String, Result<TranscriptionResult, Error>)] = []
+            for await outcome in group { collected.append(outcome) }
+            return collected
+        }
+        try Task.checkCancellation()
+
         var results: [String: TranscriptionResult] = [:]
         var firstError: Error?
-        for t in targets where results[t.clip.mediaRef] == nil {
-            do {
-                guard let url = mediaResolver.resolveURL(for: t.clip.mediaRef) else { continue }
-                let range = visibleSourceUnion(for: t.clip.mediaRef, in: targets)
-                let isVideo = captionUsesVideoAudioExtraction(for: t.clip)
-                if request.censorProfanity || request.locale != nil {
-                    // option variants produce different transcripts — bypass the cache
-                    results[t.clip.mediaRef] = isVideo
-                        ? try await Transcription.transcribeVideoAudio(videoURL: url, censorProfanity: request.censorProfanity, preferredLocale: request.locale, sourceRange: range)
-                        : try await Transcription.transcribe(fileURL: url, censorProfanity: request.censorProfanity, preferredLocale: request.locale, sourceRange: range)
-                } else {
-                    results[t.clip.mediaRef] = try await TranscriptCache.shared.transcript(for: url, isVideo: isVideo, range: range)
-                }
-            } catch {
-                firstError = firstError ?? error
+        for (mediaRef, outcome) in outcomes {
+            switch outcome {
+            case .success(let result): results[mediaRef] = result
+            case .failure(let error): firstError = firstError ?? error
             }
         }
         if results.isEmpty, let firstError { throw firstError }
         return results
     }
 
-    private func visibleSourceUnion(for mediaRef: String, in targets: [CaptionTarget]) -> ClosedRange<Double>? {
-        let fps = Double(timeline.fps)
-        let spans = targets.filter { $0.clip.mediaRef == mediaRef }.map { visibleSource($0.clip) }
-        guard fps > 0, let lo = spans.map(\.start).min(), let hi = spans.map(\.end).max(), hi > lo else { return nil }
-        let pad = 1.0
-        return max(lo / fps - pad, 0)...(hi / fps + pad)
-    }
-
     private func dominantSpeechTrack(_ targets: [CaptionTarget], _ results: [String: TranscriptionResult]) -> String? {
         var wordsByTrack: [String: Int] = [:]
         for t in targets {
             guard let result = results[t.clip.mediaRef] else { continue }
-            wordsByTrack[t.trackId, default: 0] += spokenWordCount(in: t.clip, result)
+            wordsByTrack[t.trackId, default: 0] += CaptionTranscriptMapper.spokenWordCount(in: t.clip, result: result, fps: timeline.fps)
         }
         return wordsByTrack.filter { $0.value > 0 }.max { $0.value < $1.value }?.key
     }
 
-    private func captionSpecs(_ targets: [CaptionTarget], results: [String: TranscriptionResult], request: CaptionRequest) -> [TextClipSpec] {
-        let fps = timeline.fps
-        let groupId = UUID().uuidString
-        let transformFor = captionTransform(style: request.style, center: request.center)
-
-        var phrasesByClip: [String: [CaptionBuilder.Phrase]] = [:]
-        for (ref, result) in results {
-            let clips = targets.filter { $0.clip.mediaRef == ref }
-            guard !clips.isEmpty else { continue }
-            let phrases = result.segments.flatMap {
-                CaptionBuilder.phrases(for: $0, fits: { captionLineFits($0, style: request.style) }, minDuration: AppTheme.Caption.minDisplayDuration)
+    /// Nested inside an open undo transaction this coalesces into the outer group.
+    @discardableResult
+    func placeCaptionTrack(_ specs: [TextClipSpec], actionName: String) -> [String] {
+        undo.perform(actionName) {
+            let before = timeline
+            let ids = undo.withoutRegistration {
+                timeline.tracks.insert(Track(type: .video), at: 0)
+                return placeTextClips(specs, clearExistingRegions: false, refreshVisuals: false)
             }
-            for p in phrases {
-                guard let owner = bestClip(for: p, among: clips) else { continue }
-                phrasesByClip[owner.id, default: []].append(p)
+            guard !ids.isEmpty else {
+                timeline = before
+                videoEngine?.refreshVisuals()
+                return []
             }
+            registerTimelineSwap(undoState: before, redoState: timeline, actionName: actionName)
+            notifyTimelineChanged(refreshVisuals: false)
+            return ids
         }
-
-        return targets.flatMap { t -> [TextClipSpec] in
-            guard let phrases = phrasesByClip[t.id] else { return [] }
-            let cased = phrases.map { CaptionBuilder.Phrase(text: request.textCase.apply($0.text), start: $0.start, end: $0.end) }
-            return CaptionBuilder.specs(for: cased, sourceClip: t.clip, trackIndex: 0, fps: fps, style: request.style, captionGroupId: groupId, transformFor: transformFor)
-        }
-    }
-
-    // The clip with the most overlap owns the phrase
-    private func bestClip(for p: CaptionBuilder.Phrase, among clips: [CaptionTarget]) -> CaptionTarget? {
-        let ps = p.start * Double(timeline.fps), pe = p.end * Double(timeline.fps)
-        func overlap(_ c: Clip) -> Double {
-            let v = visibleSource(c)
-            return max(0, min(pe, v.end) - max(ps, v.start))
-        }
-        guard let best = clips.max(by: { overlap($0.clip) < overlap($1.clip) }) else { return nil }
-        let o = overlap(best.clip)
-        return o > 0 && o >= (pe - ps) / 2 ? best : nil
-    }
-
-    private func spokenWordCount(in clip: Clip, _ result: TranscriptionResult) -> Int {
-        let v = visibleSource(clip)
-        let fps = Double(timeline.fps)
-        return result.words.reduce(0) { count, w in
-            guard let s = w.start, let e = w.end else { return count }
-            let mid = (s + e) / 2 * fps
-            return v.start <= mid && mid < v.end ? count + 1 : count
-        }
-    }
-
-    private func visibleSource(_ c: Clip) -> (start: Double, end: Double) {
-        let s = Double(c.trimStartFrame)
-        return (s, s + Double(c.durationFrames) * max(c.speed, 0.0001))
-    }
-
-    private func captionTransform(style: TextStyle, center: CGPoint) -> (String) -> Transform? {
-        let canvasW = Double(timeline.width), canvasH = Double(timeline.height)
-        return { text in
-            let natural = TextLayout.naturalSize(
-                content: text, style: style, maxWidth: CGFloat(canvasW) * AppTheme.ComponentSize.captionPreviewMaxTextWidthRatio, canvasHeight: CGFloat(canvasH)
-            )
-            return Transform(
-                center: (Double(center.x), Double(center.y)),
-                width: Double(natural.width) / canvasW,
-                height: Double(natural.height) / canvasH
-            )
-        }
-    }
-
-    private func placeCaptionTrack(_ specs: [TextClipSpec]) -> [String] {
-        undoManager?.beginUndoGrouping()
-        defer { undoManager?.endUndoGrouping() }
-        let before = timeline
-        undoManager?.disableUndoRegistration()
-        timeline.tracks.insert(Track(type: .video), at: 0)
-        let ids = placeTextClips(specs)
-        undoManager?.enableUndoRegistration()
-        guard !ids.isEmpty else {
-            timeline = before
-            videoEngine?.syncTextLayers()
-            return []
-        }
-        registerTimelineSwap(undoState: before, redoState: timeline, actionName: "Generate Captions")
-        notifyTimelineChanged()
-        return ids
     }
 }

@@ -74,7 +74,7 @@ struct AgentInputBox<LeadingTools: View>: View {
                 .strokeBorder(
                     isDropTargeted ? AppTheme.Accent.primary.opacity(AppTheme.Opacity.strong)
                         : focused ? AppTheme.Accent.primary.opacity(AppTheme.Opacity.medium)
-                        : Color.white.opacity(AppTheme.Opacity.hint),
+                        : AppTheme.Interaction.fill(AppTheme.Opacity.hint),
                     lineWidth: (focused || isDropTargeted) ? AppTheme.BorderWidth.thin : AppTheme.BorderWidth.hairline
                 )
                 .allowsHitTesting(false)
@@ -99,7 +99,11 @@ struct AgentInputBox<LeadingTools: View>: View {
                 .onChange(of: draft) { old, new in
                     updateMentionQuery(from: new)
                     if !old.isEmpty && new.isEmpty {
+                        let wasFocused = focused
                         textEditorID = UUID()
+                        if wasFocused {
+                            Task { @MainActor in focused = true }
+                        }
                     }
                 }
                 .onPasteCommand(of: [.fileURL, .image, .png, .jpeg, .tiff], perform: handlePaste)
@@ -112,7 +116,7 @@ struct AgentInputBox<LeadingTools: View>: View {
                 }
 
             if draft.isEmpty {
-                Text("Ask, or type @ to reference media")
+                Text(L10n.string("Ask, or type @ to reference media"))
                     .font(.body)
                     .foregroundStyle(AppTheme.Text.mutedColor)
                     .padding(.horizontal, AppTheme.Spacing.lgXl)
@@ -123,20 +127,15 @@ struct AgentInputBox<LeadingTools: View>: View {
     }
 
     private var bottomBar: some View {
-        VStack(spacing: 0) {
-            Rectangle()
-                .fill(Color.white.opacity(AppTheme.Opacity.hint))
-                .frame(height: AppTheme.BorderWidth.hairline)
-            HStack(spacing: AppTheme.Spacing.md) {
-                leadingTools
-                Spacer(minLength: 0)
-                GlassEffectContainer(spacing: AppTheme.Spacing.xs) {
-                    sendStopButton
-                }
+        HStack(spacing: AppTheme.Spacing.md) {
+            leadingTools
+            Spacer(minLength: 0)
+            GlassEffectContainer(spacing: AppTheme.Spacing.xs) {
+                sendStopButton
             }
-            .padding(.horizontal, AppTheme.Spacing.sm)
-            .padding(.vertical, AppTheme.Spacing.sm)
         }
+        .padding(.horizontal, AppTheme.Spacing.sm)
+        .padding(.vertical, AppTheme.Spacing.sm)
     }
 
     @ViewBuilder
@@ -152,7 +151,7 @@ struct AgentInputBox<LeadingTools: View>: View {
             .controlSize(.regular)
             .tint(AppTheme.Text.secondaryColor)
             .glassEffectID("sendStop", in: sendStopNamespace)
-            .help("Stop")
+            .help(L10n.string("Stop"))
             .transition(.scale.combined(with: .opacity))
         } else {
             Button(action: onSend) {
@@ -278,9 +277,11 @@ struct AgentInputBox<LeadingTools: View>: View {
             return
         }
         for (type, ext) in [(NSPasteboard.PasteboardType.png, "png"), (.tiff, "tiff")] {
-            if let data = pb.data(forType: type),
-               let asset = editor.importPastedImageData(data, fileExtension: ext) {
-                editor.agentService.attachMention(for: asset)
+            if let data = pb.data(forType: type) {
+                Task { @MainActor in
+                    guard let asset = await editor.importPastedImageData(data, fileExtension: ext) else { return }
+                    editor.agentService.attachMention(for: asset)
+                }
                 return
             }
         }

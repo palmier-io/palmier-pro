@@ -6,14 +6,12 @@ struct AssetThumbnailView: View {
 
     @Environment(EditorViewModel.self) var editor
     @State private var isRenaming = false
-    @FocusState private var isRenameFieldFocused: Bool
-    @State private var renameDraft = ""
     @State private var isHovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
             ZStack {
-                Rectangle().fill(Color.black)
+                Rectangle().fill(AppTheme.MediaOverlay.backgroundColor)
                 thumbnailContent
             }
             .aspectRatio(16.0 / 9.0, contentMode: .fit)
@@ -37,16 +35,16 @@ struct AssetThumbnailView: View {
 
             ZStack(alignment: .leading) {
                 if isRenaming {
-                    TextField("Name", text: $renameDraft)
-                        .font(.system(size: AppTheme.FontSize.xs))
-                        .textFieldStyle(.plain)
-                        .lineLimit(1)
-                        .focused($isRenameFieldFocused)
-                        .onSubmit { commitRename() }
-                        .onChange(of: isRenameFieldFocused) { _, focused in
-                            if !focused { commitRename() }
-                        }
-                        .onExitCommand { isRenaming = false }
+                    InlineRenameField(
+                        originalName: asset.name,
+                        placeholder: L10n.string("Name"),
+                        font: .system(size: AppTheme.FontSize.xs),
+                        onCommit: { name in
+                            editor.renameMediaAsset(id: asset.id, name: name)
+                            isRenaming = false
+                        },
+                        onCancel: { isRenaming = false }
+                    )
                 } else {
                     Text(asset.name)
                         .font(.system(size: AppTheme.FontSize.xs))
@@ -60,7 +58,7 @@ struct AssetThumbnailView: View {
             .padding(.vertical, AppTheme.Spacing.xxs)
             .background(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .fill(isRenaming ? Color.white.opacity(AppTheme.Opacity.faint) : .clear)
+                    .fill(isRenaming ? AppTheme.Interaction.fill(AppTheme.Opacity.faint) : .clear)
             )
         }
         .frame(maxWidth: .infinity)
@@ -71,6 +69,10 @@ struct AssetThumbnailView: View {
         .contextMenu { contextMenuItems }
         .opacity(isSwapDimmed ? AppTheme.Opacity.muted : 1)
         .allowsHitTesting(!isSwapDimmed)
+        .task(id: "\(asset.id)|\(asset.url.path)|\(asset.generationStatus.serialized)|\(isMissing)") {
+            guard case .none = asset.generationStatus, !isMissing else { return }
+            await asset.loadLibraryThumbnail()
+        }
     }
 
     @ViewBuilder
@@ -82,17 +84,19 @@ struct AssetThumbnailView: View {
         }
         if ids.count == 1, ids.first == asset.id {
             if isMissing {
-                Button("Relink…") { relinkFile() }
+                Button(L10n.string("Relink…")) { relinkFile() }
                 Divider()
             }
-            Button("Rename") { beginRename() }
+            Button(L10n.string("Rename")) { beginRename() }
             AIEditMenu(asset: asset)
             Divider()
         }
-        Button("Reveal in Finder") { revealInFinder(ids: ids) }
-        Button("Copy Path") { copyPaths(ids: ids) }
+        Button(L10n.string("Reveal in Finder")) { revealInFinder(ids: ids) }
+        Button(L10n.string("Copy Path")) { copyPaths(ids: ids) }
         Divider()
-        Button("Delete", role: .destructive) { deleteAssets(ids: ids) }
+        Button(L10n.string("Delete"), role: .destructive) {
+            editor.deleteMediaPanelItems(targeting: asset.id)
+        }
     }
 
     private var contextTargetIds: [String] {
@@ -109,7 +113,7 @@ struct AssetThumbnailView: View {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        panel.message = "Choose the source file for \"\(asset.name)\""
+        panel.message = L10n.string("Choose the source file for \"\(asset.name)\"")
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             editor.relinkAsset(id: asset.id, to: url)
@@ -134,11 +138,6 @@ struct AssetThumbnailView: View {
         pb.setString(paths.joined(separator: "\n"), forType: .string)
     }
 
-    private func deleteAssets(ids: [String]) {
-        editor.selectedMediaAssetIds = Set(ids)
-        editor.deleteSelectedMediaAssets()
-    }
-
     private var thumbnailContent: some View {
         Group {
             if asset.isGenerating {
@@ -147,7 +146,7 @@ struct AssetThumbnailView: View {
                         Color.clear
                             .overlay { Image(nsImage: image).resizable().scaledToFill().blur(radius: 12) }
                             .clipped()
-                        Color.black.opacity(AppTheme.Opacity.strong)
+                        AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.strong)
                     }
                     GeneratingOverlay(label: asset.generatingLabel)
                 }
@@ -163,7 +162,7 @@ struct AssetThumbnailView: View {
             } else {
                 Image(systemName: asset.type.sfSymbolName)
                     .font(.system(size: AppTheme.FontSize.xl))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .foregroundStyle(AppTheme.MediaOverlay.tertiaryColor)
             }
         }
     }
@@ -193,7 +192,7 @@ struct AssetThumbnailView: View {
     @ViewBuilder
     private var durationOverlay: some View {
         if showsDurationBadge {
-            durationBadge.padding(AppTheme.Spacing.xs)
+            durationBadge
         }
     }
 
@@ -203,35 +202,35 @@ struct AssetThumbnailView: View {
             Button { editor.agentService.attachMention(for: asset) } label: {
                 Image(systemName: "bubble.left")
                     .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(AppTheme.MediaOverlay.primaryColor)
                     .frame(width: AppTheme.IconSize.smMd, height: AppTheme.IconSize.smMd)
             }
             .buttonStyle(.plain)
-            .background(.black.opacity(AppTheme.Opacity.strong), in: .circle)
-            .overlay(Circle().strokeBorder(Color.white.opacity(AppTheme.Opacity.muted), lineWidth: AppTheme.BorderWidth.hairline))
+            .background(AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.strong), in: .circle)
+            .overlay(Circle().strokeBorder(
+                AppTheme.MediaOverlay.primaryColor.opacity(AppTheme.Opacity.muted),
+                lineWidth: AppTheme.BorderWidth.hairline
+            ))
             .padding(AppTheme.Spacing.xs)
             .transition(.opacity)
-            .help("Add to chat")
+            .help(L10n.string("Add to chat"))
         }
     }
 
     private var sourceBadge: some View {
-        Text("AI")
+        Text(verbatim: "AI")
             .font(.system(size: AppTheme.FontSize.xxs, weight: .semibold))
-            .foregroundStyle(AppTheme.aiGradient)
+            .foregroundStyle(AppTheme.MediaOverlay.aiGradient)
             .padding(.horizontal, AppTheme.Spacing.sm)
             .padding(.vertical, AppTheme.Spacing.xxs)
-            .background(Color.black.opacity(AppTheme.Opacity.prominent), in: .capsule)
+            .background(AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.prominent), in: .capsule)
     }
 
     private var durationBadge: some View {
-        Text(formatDuration(asset.duration))
-            .font(.system(size: AppTheme.FontSize.xxs, weight: .medium))
-            .foregroundStyle(.white)
+        Text(verbatim: formatMediaTileDuration(asset.duration))
+            .font(.system(size: AppTheme.FontSize.micro, weight: .medium))
             .monospacedDigit()
-            .padding(.horizontal, AppTheme.Spacing.sm)
-            .padding(.vertical, AppTheme.Spacing.xxs)
-            .background(.ultraThinMaterial, in: .capsule)
+            .tileBadge()
     }
 
     private func failedThumbnail(error: String) -> some View {
@@ -239,12 +238,12 @@ struct AssetThumbnailView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: AppTheme.FontSize.mdLg))
                 .foregroundStyle(.red.opacity(AppTheme.Opacity.prominent))
-            Text("Failed")
+            Text(L10n.string("Failed"))
                 .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
-                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .foregroundStyle(AppTheme.MediaOverlay.secondaryColor)
             Text(error)
                 .font(.system(size: AppTheme.FontSize.xxs))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .foregroundStyle(AppTheme.MediaOverlay.tertiaryColor)
                 .multilineTextAlignment(.center)
                 .lineLimit(3)
                 .truncationMode(.tail)
@@ -257,19 +256,12 @@ struct AssetThumbnailView: View {
         VStack(spacing: AppTheme.Spacing.xxs) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: AppTheme.FontSize.mdLg))
-                .foregroundStyle(AppTheme.Status.errorColor)
-            Text("Media Offline")
+                .foregroundStyle(AppTheme.MediaOverlay.errorColor)
+            Text(L10n.string("Media Offline"))
                 .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
-                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .foregroundStyle(AppTheme.MediaOverlay.secondaryColor)
         }
-        .help("Palmier couldn't load this source file. It may be missing, on an ejected drive, or unreadable.")
-    }
-
-    private func formatDuration(_ seconds: Double) -> String {
-        let total = Int(seconds)
-        let m = total / 60
-        let s = total % 60
-        return String(format: "%02d:%02d", m, s)
+        .help(L10n.string("Palmier couldn't load this source file. It may be missing, on an ejected drive, or unreadable."))
     }
 
     private var isSelected: Bool {
@@ -320,18 +312,7 @@ struct AssetThumbnailView: View {
     }
 
     private func beginRename() {
-        renameDraft = asset.name
         isRenaming = true
-        isRenameFieldFocused = true
-    }
-
-    private func commitRename() {
-        guard isRenaming else { return }
-        let trimmed = renameDraft.trimmingCharacters(in: .whitespaces)
-        if !trimmed.isEmpty && trimmed != asset.name {
-            editor.renameMediaAsset(id: asset.id, name: trimmed)
-        }
-        isRenaming = false
     }
 
     private func handleTap() {
@@ -340,17 +321,7 @@ struct AssetThumbnailView: View {
             return
         }
 
-        let shiftHeld = NSEvent.modifierFlags.contains(.shift)
-
-        if shiftHeld {
-            if editor.selectedMediaAssetIds.contains(asset.id) {
-                editor.selectedMediaAssetIds.remove(asset.id)
-            } else {
-                editor.selectedMediaAssetIds.insert(asset.id)
-            }
-            editor.openPreviewTab(for: asset)   // tab follows, but keep multi-selection intact
-        } else {
-            editor.selectMediaAsset(asset)
-        }
+        let mode = MediaPanelSelectionMode(modifierFlags: NSEvent.modifierFlags)
+        editor.selectMediaPanelItem(asset.id, mode: mode)
     }
 }

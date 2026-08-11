@@ -10,7 +10,8 @@ struct VideoGenerationSubmission {
     let folderId: String?
     let buildParams: ([String]) -> BackendGenerationParams
     let snapshotRefs: (@Sendable (inout GenerationInput, [String]) -> Void)?
-    let preprocessRef: (@Sendable (Int, MediaAsset) async throws -> URL?)?
+    let preprocessRef: (@Sendable (Int, MediaAsset, URL) async throws -> URL?)?
+    let preprocessSourceVideo: (@Sendable (URL) async throws -> URL?)?
 
     @MainActor
     @discardableResult
@@ -32,6 +33,7 @@ struct VideoGenerationSubmission {
             buildParams: buildParams,
             snapshotRefs: snapshotRefs,
             preprocessRef: preprocessRef,
+            preprocessSourceVideo: preprocessSourceVideo,
             fileExtension: "mp4",
             projectURL: projectURL,
             editor: editor,
@@ -52,32 +54,75 @@ struct VideoGenerationSubmission {
         generateAudio: Bool
     ) -> VideoGenerationSubmission {
         var genInput = baseInput
-        if model.requiresSourceVideo {
+        let outputName = name ?? (model.supportsPrompt ? nil : model.displayName)
+        if model.requiresSourceVideo || inputAssets.sourceVideo != nil {
+            let sourceCount = inputAssets.sourceVideo == nil ? 0 : 1
+            let imageRefCount = inputAssets.imageRefs.count
+            let videoRefCount = inputAssets.videoRefs.count
+            let audioRefCount = inputAssets.audioRefs.count
             let references = inputAssets.editReferences
-            genInput.imageURLAssetIds = assetIds(references)
+            let sourceVideoDuration = trimmedSourceOverride?.hasTrim == true
+                ? trimmedSourceOverride?.durationSeconds
+                : inputAssets.sourceVideo?.resolvedDuration
+            genInput.imageURLAssetIds = assetIds(inputAssets.sourceVideo.map { [$0] } ?? [])
+            genInput.referenceImageAssetIds = assetIds(inputAssets.imageRefs)
+            genInput.referenceVideoAssetIds = assetIds(inputAssets.videoRefs)
+            genInput.referenceAudioAssetIds = assetIds(inputAssets.audioRefs)
+            let maxSourceVideoResolution = model.caps.maxSourceVideoResolution
+            let requiredSourceVideoEncoding = model.caps.requiredSourceVideoEncoding
+            let preprocessSourceVideo: (@Sendable (URL) async throws -> URL?)?
+            if maxSourceVideoResolution != nil || requiredSourceVideoEncoding != nil {
+                preprocessSourceVideo = { @Sendable url in
+                    try await VideoPreprocessor.transcodeIfNeeded(
+                        url: url,
+                        maxResolution: maxSourceVideoResolution,
+                        requiredEncoding: requiredSourceVideoEncoding
+                    )
+                }
+            } else {
+                preprocessSourceVideo = nil
+            }
+            let snapshotRefs = videoInputSnapshotter(
+                frameCount: sourceCount,
+                imageRefCount: imageRefCount,
+                videoRefCount: videoRefCount,
+                audioRefCount: audioRefCount
+            )
 
             return VideoGenerationSubmission(
                 genInput: genInput,
                 placeholderDuration: placeholderDuration,
                 references: references,
                 trimmedSourceOverride: trimmedSourceOverride,
-                name: name,
+                name: outputName,
                 folderId: folderId,
                 buildParams: { uploaded in
-                    .video(VideoGenerationParams(
+                    let urls = videoInputURLs(
+                        uploaded: uploaded,
+                        frameCount: sourceCount,
+                        imageRefCount: imageRefCount,
+                        videoRefCount: videoRefCount,
+                        audioRefCount: audioRefCount
+                    )
+                    return .video(VideoGenerationParams(
                         prompt: genInput.prompt,
                         duration: genInput.duration,
                         aspectRatio: genInput.aspectRatio,
                         resolution: genInput.resolution,
-                        sourceVideoURL: uploaded.first,
+                        sourceVideoDuration: sourceVideoDuration,
+                        sourceVideoURL: urls.frames.first,
                         startFrameURL: nil,
                         endFrameURL: nil,
-                        referenceImageURLs: Array(uploaded.dropFirst()),
-                        generateAudio: generateAudio
+                        referenceImageURLs: urls.imageRefs,
+                        referenceVideoURLs: urls.videoRefs,
+                        referenceAudioURLs: urls.audioRefs,
+                        generateAudio: generateAudio,
+                        draft: genInput.draft
                     ))
                 },
-                snapshotRefs: nil,
-                preprocessRef: nil
+                snapshotRefs: snapshotRefs,
+                preprocessRef: nil,
+                preprocessSourceVideo: preprocessSourceVideo
             )
         }
 
@@ -97,13 +142,14 @@ struct VideoGenerationSubmission {
             videoRefCount: videoRefCount,
             audioRefCount: audioRefCount
         )
-        let preprocessRef: (@Sendable (Int, MediaAsset) async throws -> URL?)?
+        let preprocessRef: (@Sendable (Int, MediaAsset, URL) async throws -> URL?)?
         if inputAssets.videoRefs.isEmpty {
             preprocessRef = nil
         } else {
-            preprocessRef = { _, asset in
+            // currentURL may already be a trimmed extract; downscale must chain onto it.
+            preprocessRef = { _, asset, currentURL in
                 guard asset.type == .video else { return nil }
-                return try await VideoCompressor.compressIfNeeded(url: asset.url)
+                return try await VideoPreprocessor.downscaleIfNeeded(url: currentURL)
             }
         }
 
@@ -112,7 +158,7 @@ struct VideoGenerationSubmission {
             placeholderDuration: placeholderDuration,
             references: references,
             trimmedSourceOverride: trimmedSourceOverride,
-            name: name,
+            name: outputName,
             folderId: folderId,
             buildParams: { uploaded in
                 let params = videoInputURLs(
@@ -126,12 +172,14 @@ struct VideoGenerationSubmission {
                     duration: genInput.duration,
                     aspectRatio: genInput.aspectRatio,
                     resolution: genInput.resolution,
-                    generateAudio: generateAudio
+                    generateAudio: generateAudio,
+                    draft: genInput.draft
                 )
                 return .video(params)
             },
             snapshotRefs: snapshotRefs,
-            preprocessRef: preprocessRef
+            preprocessRef: preprocessRef,
+            preprocessSourceVideo: nil
         )
     }
 
@@ -154,7 +202,7 @@ struct VideoGenerationSubmission {
 
         @MainActor
         var editReferences: [MediaAsset] {
-            (sourceVideo.map { [$0] } ?? []) + imageRefs
+            (sourceVideo.map { [$0] } ?? []) + allRefs
         }
 
         @MainActor
@@ -163,37 +211,48 @@ struct VideoGenerationSubmission {
         }
 
         @MainActor
-        func validate(for model: VideoModelConfig) -> String? {
-            if model.requiresSourceVideo {
-                return validateEditReferences(for: model)
+        func validate(
+            for model: VideoModelConfig,
+            trimmedSource: TrimmedSource? = nil
+        ) -> String? {
+            if model.requiresSourceVideo || sourceVideo != nil {
+                return validateEditReferences(for: model, trimmedSource: trimmedSource)
             }
-            return validateTextToVideoReferences(for: model)
+            return validateTextToVideoReferences(for: model, trimmedSource: trimmedSource)
         }
 
         @MainActor
-        private func validateEditReferences(for model: VideoModelConfig) -> String? {
+        private func validateEditReferences(
+            for model: VideoModelConfig,
+            trimmedSource: TrimmedSource?
+        ) -> String? {
             guard let sourceVideo else {
                 return "Model '\(model.id)' requires a source video."
             }
             guard sourceVideo.type == .video else {
                 return "sourceVideoMediaRef must reference a video asset"
             }
-            if !frames.isEmpty || !videoRefs.isEmpty || !audioRefs.isEmpty {
-                return "\(model.displayName) only accepts a source video and image references"
+            if !frames.isEmpty {
+                return "\(model.displayName) does not accept frame references"
             }
-            if !model.supportsReferences, !imageRefs.isEmpty {
-                return "\(model.displayName) does not accept image references"
+            if model.requiresReferenceImage && imageRefs.isEmpty {
+                return "\(model.displayName) requires an image reference"
             }
-            if imageRefs.count > model.maxReferenceImages {
-                return "\(model.displayName) accepts at most \(model.maxReferenceImages) image reference(s)"
+            if model.requiresReferenceAudio && audioRefs.isEmpty {
+                return "\(model.displayName) requires an audio reference"
             }
-            return validateTypes([
-                (imageRefs, .image, "referenceImageMediaRefs")
-            ])
+            return validateReferences(
+                for: model,
+                includingFrames: false,
+                trimmedSource: trimmedSource
+            )
         }
 
         @MainActor
-        private func validateTextToVideoReferences(for model: VideoModelConfig) -> String? {
+        private func validateTextToVideoReferences(
+            for model: VideoModelConfig,
+            trimmedSource: TrimmedSource?
+        ) -> String? {
             if sourceVideo != nil {
                 return "\(model.displayName) does not accept a source video"
             }
@@ -209,32 +268,73 @@ struct VideoGenerationSubmission {
             if model.framesAndReferencesExclusive, !frames.isEmpty, !allRefs.isEmpty {
                 return "\(model.displayName) uses frames OR references, not both. Clear one side."
             }
+            return validateReferences(
+                for: model,
+                includingFrames: true,
+                trimmedSource: trimmedSource
+            )
+        }
+
+        @MainActor
+        private func validateReferences(
+            for model: VideoModelConfig,
+            includingFrames: Bool,
+            trimmedSource: TrimmedSource?
+        ) -> String? {
+            let referenceLabel = sourceVideo != nil ? "reference(s)" : "references"
             if imageRefs.count > model.maxReferenceImages {
-                return "\(model.displayName) accepts at most \(model.maxReferenceImages) image references"
+                return "\(model.displayName) accepts at most \(model.maxReferenceImages) image \(referenceLabel)"
             }
             if videoRefs.count > model.maxReferenceVideos {
-                return "\(model.displayName) accepts at most \(model.maxReferenceVideos) video references"
+                return "\(model.displayName) accepts at most \(model.maxReferenceVideos) video \(referenceLabel)"
             }
             if audioRefs.count > model.maxReferenceAudios {
-                return "\(model.displayName) accepts at most \(model.maxReferenceAudios) audio references"
+                return "\(model.displayName) accepts at most \(model.maxReferenceAudios) audio \(referenceLabel)"
             }
             if let totalCap = model.maxTotalReferences, totalRefCount > totalCap {
                 return "\(model.displayName) accepts at most \(totalCap) references total"
             }
-            if let cap = model.maxCombinedVideoRefSeconds,
-               videoRefs.reduce(0, { $0 + $1.duration }) > cap {
-                return "Combined video reference duration exceeds \(Int(cap))s"
+            let uploadOrder = includingFrames ? textToVideoReferences : editReferences
+            if let cap = model.maxCombinedVideoRefSeconds {
+                let combined = videoRefs.reduce(0.0) {
+                    $0 + referenceDuration($1, trimmedSource: trimmedSource, uploadOrder: uploadOrder)
+                }
+                if combined > cap {
+                    return "Combined video reference duration exceeds \(Int(cap))s"
+                }
             }
-            if let cap = model.maxCombinedAudioRefSeconds,
-               audioRefs.reduce(0, { $0 + $1.duration }) > cap {
-                return "Combined audio reference duration exceeds \(Int(cap))s"
+            if let cap = model.maxCombinedAudioRefSeconds {
+                let combined = audioRefs.reduce(0.0) {
+                    $0 + referenceDuration($1, trimmedSource: trimmedSource, uploadOrder: uploadOrder)
+                }
+                if combined > cap {
+                    return "Combined audio reference duration exceeds \(Int(cap))s"
+                }
             }
-            return validateTypes([
-                (frames, .image, "frame references"),
+            var groups: [([MediaAsset], ClipType, String)] = [
                 (imageRefs, .image, "referenceImageMediaRefs"),
                 (videoRefs, .video, "referenceVideoMediaRefs"),
                 (audioRefs, .audio, "referenceAudioMediaRefs")
-            ])
+            ]
+            if includingFrames {
+                groups.insert((frames, .image, "frame references"), at: 0)
+            }
+            return validateTypes(groups)
+        }
+
+        /// GenerationService rewrites the first uploaded reference whose URL matches the trim.
+        @MainActor
+        private func referenceDuration(
+            _ asset: MediaAsset,
+            trimmedSource: TrimmedSource?,
+            uploadOrder: [MediaAsset]
+        ) -> Double {
+            guard let trim = trimmedSource, trim.hasTrim,
+                  trim.sourceURL == asset.url,
+                  uploadOrder.first(where: { $0.url == trim.sourceURL })?.id == asset.id else {
+                return asset.duration
+            }
+            return trim.durationSeconds
         }
 
         @MainActor
@@ -266,7 +366,8 @@ struct VideoGenerationSubmission {
             duration: Int,
             aspectRatio: String,
             resolution: String?,
-            generateAudio: Bool
+            generateAudio: Bool,
+            draft: Bool?
         ) -> VideoGenerationParams {
             VideoGenerationParams(
                 prompt: prompt,
@@ -279,7 +380,8 @@ struct VideoGenerationSubmission {
                 referenceImageURLs: imageRefs,
                 referenceVideoURLs: videoRefs,
                 referenceAudioURLs: audioRefs,
-                generateAudio: generateAudio
+                generateAudio: generateAudio,
+                draft: draft
             )
         }
     }

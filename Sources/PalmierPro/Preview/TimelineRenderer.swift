@@ -14,6 +14,8 @@ enum TimelineRenderer {
     static func render(
         timeline: Timeline,
         resolver: MediaResolver,
+        resolveTimeline: @escaping @Sendable (String) -> Timeline? = { _ in nil },
+        missingMediaRefs: Set<String> = [],
         startFrame: Int,
         frameCount: Int,
         shortSide: Int? = nil,
@@ -25,10 +27,13 @@ enum TimelineRenderer {
 
         let canvas = CGSize(width: timeline.width, height: timeline.height)
         let renderSize = Self.renderSize(canvas: canvas, shortSide: shortSide)
+        let mediaURLs = resolver.expectedURLMap()
 
         let result = try await CompositionBuilder.build(
             timeline: timeline,
-            resolveURL: { resolver.resolveURL(for: $0) },
+            resolveURL: { mediaURLs[$0] },
+            resolveTimeline: resolveTimeline,
+            missingMediaRefs: missingMediaRefs,
             renderSize: renderSize
         )
 
@@ -43,18 +48,7 @@ enum TimelineRenderer {
             }
         }
 
-        // Bake text clips in via the animation tool, same as ExportService.
-        let (parent, videoLayer) = TextLayerController.buildForExport(
-            timeline: timeline,
-            fps: timeline.fps,
-            renderSize: renderSize
-        )
-        let mutableVC = result.videoComposition.mutableCopy() as! AVMutableVideoComposition
-        mutableVC.animationTool = AVVideoCompositionCoreAnimationTool(
-            postProcessingAsVideoLayer: videoLayer,
-            in: parent
-        )
-        session.videoComposition = mutableVC
+        session.videoComposition = result.videoComposition
 
         let timescale = CMTimeScale(timeline.fps)
         session.timeRange = CMTimeRange(

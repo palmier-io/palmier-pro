@@ -3,13 +3,31 @@ import SwiftUI
 
 enum AppTheme {
 
+    private static func adaptive(light: NSColor, dark: NSColor) -> NSColor {
+        NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+        }
+    }
+
     // MARK: - Backgrounds
 
     enum Background {
-        static let base = NSColor(red: 10/255, green: 10/255, blue: 10/255, alpha: 1)
-        static let surface = NSColor(red: 22/255, green: 22/255, blue: 22/255, alpha: 1)
-        static let raised = NSColor(red: 30/255, green: 30/255, blue: 30/255, alpha: 1)
-        static let prominent = NSColor(red: 44/255, green: 44/255, blue: 44/255, alpha: 1)
+        static let base = AppTheme.adaptive(
+            light: NSColor(red: 0.88, green: 0.88, blue: 0.88, alpha: 1),
+            dark: NSColor(red: 10/255, green: 10/255, blue: 10/255, alpha: 1)
+        )
+        static let surface = AppTheme.adaptive(
+            light: NSColor(red: 0.93, green: 0.93, blue: 0.93, alpha: 1),
+            dark: NSColor(red: 22/255, green: 22/255, blue: 22/255, alpha: 1)
+        )
+        static let raised = AppTheme.adaptive(
+            light: NSColor(red: 0.96, green: 0.96, blue: 0.96, alpha: 1),
+            dark: NSColor(red: 30/255, green: 30/255, blue: 30/255, alpha: 1)
+        )
+        static let prominent = AppTheme.adaptive(
+            light: NSColor(red: 0.975, green: 0.975, blue: 0.975, alpha: 1),
+            dark: NSColor(red: 44/255, green: 44/255, blue: 44/255, alpha: 1)
+        )
 
         /// Alias — empty media slot is a raised plate.
         static let placeholder = raised
@@ -20,17 +38,30 @@ enum AppTheme {
         static var prominentColor: Color { Color(prominent) }
         static var previewCanvasColor: Color { .black }
         static var placeholderColor: Color { Color(placeholder) }
+        static var clearColor: Color { .clear }
     }
 
     // MARK: - Borders
 
     enum Border {
-        static let primary = NSColor.white.withAlphaComponent(0.16)
-        static let subtle = NSColor.white.withAlphaComponent(0.12)
-        static let divider = NSColor.white.withAlphaComponent(0.44)
+        static let primary = AppTheme.adaptive(
+            light: NSColor.black.withAlphaComponent(0.24),
+            dark: NSColor.white.withAlphaComponent(0.16)
+        )
+        static let subtle = AppTheme.adaptive(
+            light: NSColor.black.withAlphaComponent(0.18),
+            dark: NSColor.white.withAlphaComponent(0.12)
+        )
+        static let divider = AppTheme.adaptive(
+            light: NSColor.black.withAlphaComponent(0.44),
+            dark: NSColor.white.withAlphaComponent(0.44)
+        )
+        static let timelineClip = AppTheme.adaptive(light: .white, dark: .black)
+        static let timelineClipSelected = AppTheme.adaptive(light: .black, dark: .white)
 
         static var primaryColor: Color { Color(primary) }
         static var subtleColor: Color { Color(subtle) }
+        static var dividerColor: Color { Color(divider) }
     }
 
     // MARK: - Border widths
@@ -45,11 +76,19 @@ enum AppTheme {
     // MARK: - Accent
 
     enum Accent {
-        static let timecodeNSColor = NSColor(red: 0.95, green: 0.6, blue: 0.2, alpha: 1)
+        static let timecodeNSColor = AppTheme.adaptive(
+            light: NSColor(red: 0.58, green: 0.29, blue: 0.02, alpha: 1),
+            dark: NSColor(red: 0.95, green: 0.6, blue: 0.2, alpha: 1)
+        )
         static let timecodeColor = Color(timecodeNSColor)
 
-        /// Warm off-white
-        static let primary = Color(red: 0.961, green: 0.937, blue: 0.894)
+        static let primaryNSColor = AppTheme.adaptive(
+            light: NSColor(red: 0.18, green: 0.16, blue: 0.13, alpha: 1),
+            dark: NSColor(red: 0.961, green: 0.937, blue: 0.894, alpha: 1)
+        )
+        static let primary = Color(primaryNSColor)
+
+        static let link = Color(nsColor: .linkColor)
 
         /// Vibrant highlight used by the onboarding tour spotlight.
         static let spotlight = Color(red: 1.0, green: 0.27, blue: 0.27)
@@ -62,6 +101,10 @@ enum AppTheme {
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
+    }
+
+    enum Update {
+        static let accent = Accent.timecodeColor
     }
 
     // MARK: - Adjust sliders
@@ -78,6 +121,20 @@ enum AppTheme {
         static let lumaGradient = [Color(white: 0.05), Color(white: 0.95)]
     }
 
+    enum AudioMeter {
+        static let panelWidth: CGFloat = 32
+        static let barWidth: CGFloat = 8
+        static let refreshInterval: Double = 1.0 / 30.0
+        static let rulerStepDb: Float = 6
+        static let rulerMajorStepDb: Float = 12
+        static let yellowThresholdDb: Float = -20
+        static let redThresholdDb: Float = -6
+
+        static let greenSegment = Color(red: 0.08, green: 0.78, blue: 0.22)
+        static let yellowSegment = Color(red: 0.98, green: 0.84, blue: 0.10)
+        static let redSegment = Color(red: 0.90, green: 0.24, blue: 0.20)
+    }
+
     // MARK: - Color wheels
 
     enum Wheels {
@@ -92,58 +149,82 @@ enum AppTheme {
         static let pointDiameter: CGFloat = 9
         /// Invisible grab target around each point — much larger than the dot so it's easy to hit.
         static let pointHitDiameter: CGFloat = 30
-        static let lumaColor = Color(red: 1, green: 1, blue: 1)
+        static var lumaColor: Color { AppTheme.Text.primaryColor }
         static let redColor = Color(red: 1, green: 0.22, blue: 0.18)
         static let greenColor = Color(red: 0.32, green: 0.82, blue: 0.36)
         static let blueColor = Color(red: 0.32, green: 0.56, blue: 1)
     }
 
-    /// Monochrome silver shimmer
-    static let aiGradient = LinearGradient(
-        stops: [
-            .init(color: Color(white: 1.00), location: 0.00),
-            .init(color: Color(white: 0.78), location: 0.45),
-            .init(color: Color(white: 0.60), location: 0.55),
-            .init(color: Color(white: 1.00), location: 1.00),
-        ],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
-
-    static let aiGradientDark = LinearGradient(
-        stops: [
-            .init(color: Color(white: 0.11), location: 0.00),
-            .init(color: Color(white: 0.06), location: 1.00),
-        ],
-        startPoint: .top,
-        endPoint: .bottom
-    )
-
-    // MARK: - Glass
-
-    enum Glass {
-        static let primaryTint = Accent.primary.opacity(0.05)
+    static var aiGradient: LinearGradient {
+        LinearGradient(
+            stops: [
+                .init(color: Text.primaryColor, location: 0.00),
+                .init(color: Text.secondaryColor, location: 0.45),
+                .init(color: Text.tertiaryColor, location: 0.55),
+                .init(color: Text.primaryColor, location: 1.00),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
 
     // MARK: - Status
 
     enum Status {
-        static let error = NSColor(red: 0xE5/255.0, green: 0x4F/255.0, blue: 0x4F/255.0, alpha: 1)
+        static let error = AppTheme.adaptive(
+            light: NSColor(red: 0.70, green: 0.14, blue: 0.09, alpha: 1),
+            dark: NSColor(red: 0xE5/255.0, green: 0x4F/255.0, blue: 0x4F/255.0, alpha: 1)
+        )
 
         static var errorColor: Color { Color(error) }
 
-        static let success = NSColor(red: 0x4F/255.0, green: 0xB8/255.0, blue: 0x5F/255.0, alpha: 1)
+        static let success = AppTheme.adaptive(
+            light: NSColor(red: 0.09, green: 0.45, blue: 0.28, alpha: 1),
+            dark: NSColor(red: 0x4F/255.0, green: 0xB8/255.0, blue: 0x5F/255.0, alpha: 1)
+        )
 
         static var successColor: Color { Color(success) }
+
+        static let warning = NSColor.systemOrange
+
+        static var warningColor: Color { Color(warning) }
+    }
+
+    enum AgentActivity {
+        static let added = NSColor.systemGreen
+        static let mutated = NSColor.systemOrange
+        static let read = NSColor(
+            srgbRed: 0x64 / 255.0,
+            green: 0x74 / 255.0,
+            blue: 0x8B / 255.0,
+            alpha: 1
+        )
+        static let readFill = read.withAlphaComponent(AppTheme.Opacity.faint)
+        static let changeGlowOpacity: Float = 0.8
+        static let changeGlowRadius: CGFloat = 8
+        static let readGlowOpacity: Float = 0.35
+        static let readGlowRadius: CGFloat = 4
     }
 
     // MARK: - Text
 
     enum Text {
-        static let primary = NSColor.white.withAlphaComponent(1.0)
-        static let secondary = NSColor.white.withAlphaComponent(0.80)
-        static let tertiary = NSColor.white.withAlphaComponent(0.62)
-        static let muted = NSColor.white.withAlphaComponent(0.34)
+        static let primary = AppTheme.adaptive(
+            light: NSColor.black.withAlphaComponent(0.94),
+            dark: NSColor.white
+        )
+        static let secondary = AppTheme.adaptive(
+            light: NSColor.black.withAlphaComponent(0.78),
+            dark: NSColor.white.withAlphaComponent(0.80)
+        )
+        static let tertiary = AppTheme.adaptive(
+            light: NSColor.black.withAlphaComponent(0.64),
+            dark: NSColor.white.withAlphaComponent(0.62)
+        )
+        static let muted = AppTheme.adaptive(
+            light: NSColor.black.withAlphaComponent(0.44),
+            dark: NSColor.white.withAlphaComponent(0.34)
+        )
 
         static var primaryColor: Color { Color(primary) }
         static var secondaryColor: Color { Color(secondary) }
@@ -151,10 +232,48 @@ enum AppTheme {
         static var mutedColor: Color { Color(muted) }
     }
 
+    // MARK: - Interaction fills
+
+    enum Interaction {
+        static func fill(_ opacity: Double) -> Color {
+            AppTheme.Text.primaryColor.opacity(opacity)
+        }
+    }
+
+    // MARK: - Media overlays
+
+    enum MediaOverlay {
+        static let background = NSColor.black
+        static let primary = NSColor.white
+        static let secondary = NSColor.white.withAlphaComponent(0.80)
+        static let tertiary = NSColor.white.withAlphaComponent(0.62)
+        static let muted = NSColor.white.withAlphaComponent(0.34)
+        static let error = NSColor(red: 0xE5/255.0, green: 0x4F/255.0, blue: 0x4F/255.0, alpha: 1)
+
+        static var backgroundColor: Color { Color(background) }
+        static var primaryColor: Color { Color(primary) }
+        static var secondaryColor: Color { Color(secondary) }
+        static var tertiaryColor: Color { Color(tertiary) }
+        static var mutedColor: Color { Color(muted) }
+        static var errorColor: Color { Color(error) }
+
+        static let aiGradient = LinearGradient(
+            stops: [
+                .init(color: Color(white: 1.00), location: 0.00),
+                .init(color: Color(white: 0.78), location: 0.45),
+                .init(color: Color(white: 0.60), location: 0.55),
+                .init(color: Color(white: 1.00), location: 1.00),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
     // MARK: - Opacity
 
     enum Opacity {
         static let opaque: Double = 1
+        static let hitTarget: Double = 0.001
         static let subtle: Double = 0.04
         static let hint: Double = 0.06
         static let faint: Double = 0.08
@@ -163,17 +282,41 @@ enum AppTheme {
         static let moderate: Double = 0.25
         static let medium: Double = 0.35
         static let strong: Double = 0.55
+        static let high: Double = 0.70
         static let prominent: Double = 0.80
     }
 
     // MARK: - Track type colors
 
     enum TrackColor {
-        static let video = NSColor(red: 0x00/255.0, green: 0x91/255.0, blue: 0xC2/255.0, alpha: 1)
-        static let audio = NSColor(red: 0x58/255.0, green: 0xA8/255.0, blue: 0x22/255.0, alpha: 1)
-        static let image = NSColor(red: 0xB7/255.0, green: 0x2D/255.0, blue: 0xD2/255.0, alpha: 1)
-        static let text = NSColor(red: 0xB7/255.0, green: 0x2D/255.0, blue: 0xD2/255.0, alpha: 1)
-        static let lottie = NSColor(red: 0xE0/255.0, green: 0xA8/255.0, blue: 0x00/255.0, alpha: 1)
+        static var video: NSColor { TimelineClipColorPalette.shared.color(for: .video) }
+        static var audio: NSColor { TimelineClipColorPalette.shared.color(for: .audio) }
+        static var image: NSColor { TimelineClipColorPalette.shared.color(for: .image) }
+        static var text: NSColor { TimelineClipColorPalette.shared.color(for: .text) }
+        static var lottie: NSColor { TimelineClipColorPalette.shared.color(for: .animation) }
+        static var sequence: NSColor { TimelineClipColorPalette.shared.color(for: .sequence) }
+        static let multicam = NSColor.systemRed
+
+        static func readableForeground(on background: NSColor) -> NSColor {
+            guard let background = background.usingColorSpace(.sRGB) else { return .white }
+            let luminance = relativeLuminance(
+                red: background.redComponent,
+                green: background.greenComponent,
+                blue: background.blueComponent
+            )
+            let blackContrast = (luminance + 0.05) / 0.05
+            let whiteContrast = 1.05 / (luminance + 0.05)
+            return blackContrast >= whiteContrast ? .black : .white
+        }
+
+        private static func relativeLuminance(red: CGFloat, green: CGFloat, blue: CGFloat) -> CGFloat {
+            func linear(_ component: CGFloat) -> CGFloat {
+                component <= 0.04045
+                    ? component / 12.92
+                    : pow((component + 0.055) / 1.055, 2.4)
+            }
+            return linear(red) * 0.2126 + linear(green) * 0.7152 + linear(blue) * 0.0722
+        }
     }
 
     // MARK: - Corner radii
@@ -195,6 +338,7 @@ enum AppTheme {
     // MARK: - Spacing
 
     enum Spacing {
+        static let zero: CGFloat = 0
         static let xxs: CGFloat = 2
         static let xs: CGFloat = 4
         static let sm: CGFloat = 6
@@ -258,36 +402,85 @@ enum AppTheme {
     }
 
     enum ComponentSize {
-        static let captionPreviewMaxHeight: CGFloat = 150
         static let captionPreviewMaxTextWidthRatio: CGFloat = 0.9
         static let toolImagePreviewMaxHeight: CGFloat = 50
         static let projectCardWidth: CGFloat = 150
         static let projectCardHeight: CGFloat = 120
+        static let projectSearchWidth: CGFloat = 260
+        static let timelineClipBorderMinWidth: CGFloat = 8
+        static let timelineClipDetailMinWidth: CGFloat = 32
+        static let timelineClipControlsMinWidth: CGFloat = 48
+        static let timelineTabRenameWidth: CGFloat = 120
+        static let timelineTrackHeaderDefaultWidth: CGFloat = 160
+        static let timelineTrackHeaderMinimumWidth: CGFloat = 112
+        static let timelineTrackHeaderMaximumWidth: CGFloat = 320
+        static let timelineTrackHeaderResizeHitWidth: CGFloat = 8
+        static let timelineClipLabelMinWidth: CGFloat = 56
+        static let timelineBadgePadH: CGFloat = 4
+        static let timelineBadgePadV: CGFloat = 1
+        static let timelineBadgeMinWidth: CGFloat = 16
+        static let timelineDotSize: CGFloat = 5
         static let updateOverlayWidth: CGFloat = 640
     }
 
+    enum Onboarding {
+        static let cardWidth: CGFloat = 520
+        static let cardHeight: CGFloat = 420
+        static let welcomeHeroHeight: CGFloat = 240
+    }
+
+    enum Settings {
+        static let sidebarWidth: CGFloat = 220
+        static let contentMaxWidth: CGFloat = 640
+        static let creditInputWidth: CGFloat = 56
+        static let skillsSearchWidth: CGFloat = 260
+        static let skillRowIconFrame: CGFloat = 42
+        static let skillStatusWidth: CGFloat = 124
+        static let skillActionWidth: CGFloat = 112
+        static let skillDetailWidth: CGFloat = 720
+        static let skillDetailMinHeight: CGFloat = 600
+        static let skillToastWidth: CGFloat = 380
+        static let skillMenuWidth: CGFloat = 168
+        static let skillToastDuration: Duration = .seconds(5)
+    }
+
+    enum EditorPanel {
+        static let defaultWidth: CGFloat = 340
+        static let minimumWidth: CGFloat = 300
+        static let labelColumnWidth: CGFloat = 88
+        static let rowMinHeight: CGFloat = 22
+        static let groupHeaderHeight: CGFloat = 28
+        static let fieldMinHeight: CGFloat = 22
+        static let numericFieldWidth: CGFloat = 56
+        static let compactNumericFieldWidth: CGFloat = 36
+        static let fontMenuWidth: CGFloat = 160
+        static let textEditorMinHeight: CGFloat = 96
+    }
+
     enum Window {
-        static let homeDefault = NSSize(width: 1200, height: 1200)
+        static let homeDefault = NSSize(width: 1200, height: 800)
         static let homeMin = NSSize(width: 760, height: 480)
-        static let projectDefault = NSSize(width: 1600, height: 1000)
-        static let projectMin = NSSize(width: 960, height: 600)
+        static let projectMin = NSSize(
+            width: 960 + GenerationPanel.minimumWidthAdjustment,
+            height: 600
+        )
+        static let projectTitlebarLeadingWidth: CGFloat = 132
         static let projectTitlebarTrailingWidth: CGFloat = 280
+        static let settingsDefault = NSSize(width: 1200, height: 800)
+        static let settingsMin = NSSize(width: 860, height: 640)
     }
 
     enum Caption {
         static let defaultFontSize: Double = 48
-        static let minFontSize: Double = 12
-        static let maxFontSize: Double = 300
-        static let minPosition: Double = 0
-        static let maxPosition: Double = 1
         static let centerSnapValue: CGFloat = 0.5
         static let centerSnapThreshold: Double = 0.02
         static let defaultCenterY: CGFloat = 0.9
         static let defaultCenter = CGPoint(x: centerSnapValue, y: defaultCenterY)
-        static let minDisplayDuration: Double = 0.7
     }
 
     enum GenerationPanel {
+        static let typeTabWidth: CGFloat = IconSize.xl + Spacing.lg
+        static let minimumWidthAdjustment: CGFloat = typeTabWidth + Spacing.xxl
         static let mediaAreaMinHeight: CGFloat = 120
         static let loadingHeight: CGFloat = 180
         static let promptMinHeight: CGFloat = 40
@@ -297,7 +490,23 @@ enum AppTheme {
 
     enum MediaPanel {
         static let tabRailWidth: CGFloat = IconSize.lg + Spacing.sm * 2
-        static let contextRowHeight: CGFloat = IconSize.md
+        static let contextRowHeight: CGFloat = IconSize.smMd
+    }
+
+    enum Export {
+        static let sheetWidth: CGFloat = 600
+        static let sheetHeight: CGFloat = 600
+        static let logPaneWidth: CGFloat = 420
+        static let queueTimestampWidth: CGFloat = 56
+        static let activityDotSize: CGFloat = 6
+        static let queueProgressBarWidth: CGFloat = 96
+        static let queueProgressWidth: CGFloat = 32
+        static let sheetWidthWithLog: CGFloat = sheetWidth + logPaneWidth + BorderWidth.hairline
+    }
+
+    enum Matte {
+        static let sheetWidth: CGFloat = 280
+        static let controlWidth: CGFloat = 116
     }
 
     // MARK: - Shadows
@@ -320,6 +529,14 @@ enum AppTheme {
     enum Anim {
         static let hover: Double = 0.15
         static let transition: Double = 0.2
+        static let pulse: Double = 0.8
+        static let slipPreviewRefresh: Duration = .milliseconds(67)
+        static let agentChangeHighlightHold: Double = 1.0
+        static let agentChangeHighlightFade: Double = 0.3
+        static let agentChangeHighlightDuration = agentChangeHighlightHold + agentChangeHighlightFade
+        static let agentReadHighlightHold: Double = 0.7
+        static let agentReadHighlightFade: Double = 0.25
+        static let agentReadHighlightDuration = agentReadHighlightHold + agentReadHighlightFade
     }
 }
 
@@ -333,9 +550,13 @@ extension View {
     func panelHeaderBar() -> some View {
         frame(maxWidth: .infinity)
             .frame(height: Layout.panelHeaderHeight)
-            .background(AppTheme.Background.raisedColor)
-            .overlay(alignment: .bottom) {
-                Rectangle().fill(AppTheme.Border.primaryColor).frame(height: AppTheme.BorderWidth.thin)
+            .background {
+                ZStack(alignment: .bottom) {
+                    AppTheme.Background.raisedColor
+                    Rectangle()
+                        .fill(AppTheme.Border.primaryColor)
+                        .frame(height: AppTheme.BorderWidth.thin)
+                }
             }
     }
 }
@@ -350,6 +571,12 @@ extension ClipType {
         case .image: AppTheme.TrackColor.image
         case .text: AppTheme.TrackColor.text
         case .lottie: AppTheme.TrackColor.lottie
+        case .sequence: AppTheme.TrackColor.sequence
+        case .subtitle: AppTheme.TrackColor.text
         }
+    }
+
+    var themeForegroundColor: NSColor {
+        AppTheme.TrackColor.readableForeground(on: themeColor)
     }
 }

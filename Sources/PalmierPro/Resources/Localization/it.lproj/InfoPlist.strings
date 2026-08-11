@@ -1,0 +1,4 @@
+/* Text displayed by macOS for Palmier Pro project packages. */
+
+"CFBundleTypeName" = "Progetto Palmier";
+"UTTypeDescription" = "Progetto Palmier";

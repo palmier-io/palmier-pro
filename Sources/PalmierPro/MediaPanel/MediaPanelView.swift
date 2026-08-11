@@ -1,18 +1,24 @@
 import SwiftUI
 
-/// Left-dock panel that hosts the Media and Captions tabs.
 struct MediaPanelView: View {
     @Environment(EditorViewModel.self) private var editor
     @State private var panelTab: PanelTab = .media
     @State private var hoveredTab: PanelTab?
 
     enum PanelTab: String, CaseIterable {
-        case media = "Media", captions = "Captions", music = "Music"
+        case media = "Media", captions = "Captions", audio = "Audio"
+        var title: String {
+            switch self {
+            case .media: L10n.key("Media")
+            case .captions: L10n.key("Captions")
+            case .audio: L10n.key("Audio")
+            }
+        }
         var icon: String {
             switch self {
             case .media: "folder"
             case .captions: "captions.bubble"
-            case .music: "music.note"
+            case .audio: "waveform"
             }
         }
     }
@@ -26,22 +32,19 @@ struct MediaPanelView: View {
                 switch panelTab {
                 case .media: MediaTab()
                 case .captions: CaptionTab()
-                case .music: MusicTab()
+                case .audio: AudioPanelTab()
                 }
             }
             .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .clipped()
             .zIndex(0)
         }
-        .overlay(alignment: .trailing) {
-            Rectangle().fill(AppTheme.Border.primaryColor).frame(width: AppTheme.BorderWidth.hairline)
-        }
         .onChange(of: editor.mediaPanelShowMediaTabTick) { _, _ in
             withAnimation(.easeInOut(duration: AppTheme.Anim.transition)) { panelTab = .media }
         }
         .overlay(alignment: .topLeading) {
             if let hoveredTab {
-                hoverLabel(hoveredTab.rawValue)
+                hoverLabel(L10n.string(key: hoveredTab.title))
                     .id(hoveredTab)
                     .offset(
                         x: AppTheme.MediaPanel.tabRailWidth + AppTheme.Spacing.xs,
@@ -104,7 +107,7 @@ struct MediaPanelView: View {
                 hoveredTab = hovering ? tab : (hoveredTab == tab ? nil : hoveredTab)
             }
         }
-        .accessibilityLabel(tab.rawValue)
+        .accessibilityLabel(L10n.string(key: tab.title))
         .zIndex(hovered ? 1 : 0)
     }
 

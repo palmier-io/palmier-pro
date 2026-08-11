@@ -11,7 +11,7 @@ struct GeneratingOverlay: View {
         var barHeight: CGFloat { self == .preview ? 4 : 3 }
     }
 
-    var label: String = "Generating…"
+    var label: String = L10n.key("Generating…")
     var size: Size = .thumbnail
 
     @State private var progress: CGFloat = 0
@@ -36,9 +36,9 @@ struct GeneratingOverlay: View {
 
     private var content: some View {
         VStack(spacing: size.spacing) {
-            Text(label)
+            Text(L10n.string(key: label))
                 .font(.system(size: size.fontSize, weight: .semibold))
-                .foregroundStyle(AppTheme.aiGradient)
+                .foregroundStyle(AppTheme.MediaOverlay.aiGradient)
             progressBar
         }
     }
@@ -47,9 +47,9 @@ struct GeneratingOverlay: View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color.white.opacity(AppTheme.Opacity.muted))
+                    .fill(AppTheme.MediaOverlay.primaryColor.opacity(AppTheme.Opacity.muted))
                 Capsule()
-                    .fill(Color.white.opacity(AppTheme.Opacity.strong))
+                    .fill(AppTheme.MediaOverlay.primaryColor.opacity(AppTheme.Opacity.strong))
                     .frame(width: geo.size.width * progress)
             }
         }
@@ -72,7 +72,7 @@ private struct ShimmerModifier: ViewModifier {
                         LinearGradient(
                             stops: [
                                 .init(color: .clear, location: 0),
-                                .init(color: .white.opacity(0.42), location: 0.48),
+                                .init(color: AppTheme.MediaOverlay.primaryColor.opacity(0.42), location: 0.48),
                                 .init(color: .clear, location: 1),
                             ],
                             startPoint: .top,

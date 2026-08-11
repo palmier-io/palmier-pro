@@ -17,18 +17,13 @@ private func twoDigit(_ value: Int) -> String {
     return "0\(value)"
 }
 
-func frameToSeconds(frame: Int, fps: Int) -> Double {
-    guard fps > 0 else { return 0 }
-    return Double(frame) / Double(fps)
-}
-
 func secondsToFrame(seconds: Double, fps: Int) -> Int {
     Int(seconds * Double(fps))
 }
 
 extension Double {
     func rounded(toPlaces places: Int) -> Double {
-        let factor = pow(10.0, Double(places))
+        let factor = Foundation.pow(10.0, Double(places))
         return (self * factor).rounded() / factor
     }
 }

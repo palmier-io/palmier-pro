@@ -1,6 +1,17 @@
 import AppKit
+import ClerkKit
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    static let shared = AppDelegate()
+
+    private var isTerminating = false
+    private var restartRequested = false
+
+    private override init() {
+        super.init()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Activate the app (required when launched from CLI, not a .app bundle)
         NSApp.setActivationPolicy(.regular)
@@ -10,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = Updater.shared
 
         HomeWindowController.shared.showWindow(nil)
+        SkillStore.shared.startSkillSync()
         Task.detached(priority: .utility) {
             Project.ensureStorageDirectory()
         }
@@ -17,6 +29,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppNotifications.configure()
 
         AppState.shared.startMCPService()
+
+        // Pre-warm NSOpenPanel to avoid main thread blocking during cold start.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard let self, !self.isTerminating else { return }
+            _ = NSOpenPanel()
+        }
     }
 
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
@@ -30,9 +49,91 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if isTerminating { return .terminateLater }
+        isTerminating = true
+        let projects = AppState.shared.openProjects
+        let shouldRestart = restartRequested
+
+        Task { @MainActor in
+            do {
+                for project in projects {
+                    try await project.saveBeforeClosing()
+                }
+                if shouldRestart {
+                    try await Self.scheduleRelaunch(
+                        applicationURL: Bundle.main.bundleURL,
+                        processID: ProcessInfo.processInfo.processIdentifier
+                    )
+                }
+                await SkillStore.shared.prepareForTermination()
+                if !MLXRuntime.beginTermination() {
+                    await MLXRuntime.waitUntilIdle()
+                }
+                sender.reply(toApplicationShouldTerminate: true)
+            } catch {
+                projects.forEach { $0.editorViewModel.projectPackageCoordinator.cancelClosing() }
+                restartRequested = false
+                isTerminating = false
+                sender.presentError(error)
+                sender.reply(toApplicationShouldTerminate: false)
+            }
+        }
+        return .terminateLater
+    }
+
+    func restart() {
+        guard !isTerminating else { return }
+        restartRequested = true
+        NSApp.terminate(nil)
+    }
+
+    @concurrent
+    private static func scheduleRelaunch(applicationURL: URL, processID: Int32) async throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = [
+            "-c",
+            "while kill -0 \"$1\" 2>/dev/null; do sleep 0.1; done; exec /usr/bin/open -n \"$2\"",
+            "palmier-restart",
+            String(processID),
+            applicationURL.path,
+        ]
+        try process.run()
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            Task { @MainActor in
+                do {
+                    let handled = try await Clerk.shared.handle(url)
+                    Log.account.notice(
+                        "auth callback \(handled ? "handled" : "ignored") url=\(Self.safeURLDescription(url))",
+                        telemetry: "Auth callback received",
+                        data: ["handled": handled, "url": Self.safeURLDescription(url)]
+                    )
+                } catch {
+                    Log.account.warning(
+                        "auth callback failed url=\(Self.safeURLDescription(url)) error=\(Log.detail(error))",
+                        telemetry: "Auth callback failed",
+                        data: ["error": error.localizedDescription, "url": Self.safeURLDescription(url)]
+                    )
+                }
+            }
+        }
+    }
+
+    private static func safeURLDescription(_ url: URL) -> String {
+        var components = URLComponents()
+        components.scheme = url.scheme
+        components.host = url.host
+        components.path = url.path
+        return components.string ?? url.scheme ?? "unknown"
+    }
+
     @MainActor
     @objc func newProject(_ sender: Any?) {
-        AppState.shared.createNewProject()
+        AppState.shared.createProjectInteractively()
     }
 
     @MainActor

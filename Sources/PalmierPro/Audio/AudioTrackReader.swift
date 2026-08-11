@@ -5,14 +5,32 @@ import Foundation
 enum AudioTrackReader {
     enum ReadError: Error {
         case noAudioTrack(String)
-        case readFailed(String)
+        case readFailed(String, underlying: NSError? = nil)
 
         var message: String {
             switch self {
             case .noAudioTrack(let name): "No audio track in \(name)"
-            case .readFailed(let reason): reason
+            case .readFailed(let reason, _): reason
             }
         }
+    }
+
+    /// Whole-range mono Float32 decode at `sampleRate`
+    static func readMonoFloats(from url: URL, sampleRate: Double, range: ClosedRange<Double>? = nil) async throws -> [Float] {
+        var samples: [Float] = []
+        try await read(from: url, outputSettings: [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVSampleRateKey: sampleRate,
+            AVNumberOfChannelsKey: 1,
+            AVLinearPCMBitDepthKey: 32,
+            AVLinearPCMIsFloatKey: true,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsNonInterleaved: true,
+        ], range: range) { buffer in
+            guard let data = buffer.floatChannelData else { return }
+            samples.append(contentsOf: UnsafeBufferPointer(start: data[0], count: Int(buffer.frameLength)))
+        }
+        return samples
     }
 
     /// Decode `url`'s first audio track with `outputSettings` (and optional `range`),
@@ -30,7 +48,7 @@ enum AudioTrackReader {
 
         let reader: AVAssetReader
         do { reader = try AVAssetReader(asset: asset) } catch {
-            throw ReadError.readFailed(error.localizedDescription)
+            throw ReadError.readFailed(error.localizedDescription, underlying: error as NSError)
         }
 
         let output = AVAssetReaderTrackOutput(track: track, outputSettings: outputSettings)
@@ -46,7 +64,11 @@ enum AudioTrackReader {
         }
 
         guard reader.startReading() else {
-            throw ReadError.readFailed(reader.error?.localizedDescription ?? "Reader could not start")
+            let error = reader.error
+            throw ReadError.readFailed(
+                error?.localizedDescription ?? "Reader could not start",
+                underlying: error as NSError?
+            )
         }
 
         while let sample = output.copyNextSampleBuffer() {
@@ -63,7 +85,8 @@ enum AudioTrackReader {
         }
 
         if reader.status == .failed {
-            throw ReadError.readFailed(reader.error?.localizedDescription ?? "Read failed")
+            let error = reader.error
+            throw ReadError.readFailed(error?.localizedDescription ?? "Read failed", underlying: error as NSError?)
         }
     }
 }

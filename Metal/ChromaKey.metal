@@ -21,7 +21,8 @@ extern "C" float4 chromaKey(coreimage::sample_t s, float keyHue, float tolerance
     hd = min(hd, 1.0 - hd);                                  // circular hue distance, 0…0.5
     float inner = tolerance * 0.25;                          // tolerance 1 ≈ ±90° band
     float key = (1.0 - smoothstep(inner, inner + softness * 0.3 + 0.02, hd))
-              * smoothstep(0.12, 0.32, sat);                 // near key hue AND saturated
+              * smoothstep(0.12, 0.32, sat)                  // near key hue AND saturated
+              * smoothstep(0.04, 0.12, dd);
     float y = dot(rgb, float3(0.2126, 0.7152, 0.0722));
     rgb = mix(rgb, float3(y), spill * key);                  // kill spill on the edges
     return float4(rgb, s.a * (1.0 - key));

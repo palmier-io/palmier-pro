@@ -12,9 +12,9 @@ enum AccountTier: String, Decodable, Sendable {
 
     var planLabel: String {
         switch self {
-        case .none: return "Free"
-        case .pro: return "Pro plan"
-        case .max: return "Max plan"
+        case .none: return L10n.key("Free")
+        case .pro: return L10n.key("Pro plan")
+        case .max: return L10n.key("Max plan")
         }
     }
 
@@ -103,6 +103,7 @@ final class AccountService {
     private(set) var account: AccountResponse?
     private(set) var availablePlans: [AvailablePlan] = []
     private(set) var lastError: String?
+    private(set) var isSigningIn: Bool = false
     private(set) var isBuyingCredits: Bool = false
     private(set) var authState: AuthState<String> = .loading
 
@@ -207,6 +208,7 @@ final class AccountService {
 
         let user = Clerk.shared.user
         Telemetry.setUser(id: user?.id)
+        Analytics.identifyUser(id: user?.id)
         let name = [user?.firstName, user?.lastName]
             .compactMap { $0 }
             .joined(separator: " ")
@@ -285,12 +287,17 @@ final class AccountService {
                 receiveValue: { [weak self] response in
                     self?.account = response
                     self?.lastError = nil
+                    Analytics.identifyUser(
+                        id: Clerk.shared.user?.id,
+                        properties: ["tier": response.user.tier.rawValue]
+                    )
                 }
             )
     }
 
     private func clearAccount() {
         Telemetry.setUser(id: nil)
+        Analytics.resetUser()
         accountSubscription?.cancel()
         accountSubscription = nil
         buyCreditsTask?.cancel()
@@ -301,8 +308,19 @@ final class AccountService {
 
     func signInWithGoogle() async {
         guard !isMisconfigured else { return }
+        guard !isSigningIn else {
+            lastError = "Sign-in is already in progress."
+            Log.account.notice(
+                "sign in ignored provider=google reason=in_progress",
+                telemetry: "Sign in ignored",
+                data: ["provider": "google", "reason": "in_progress"]
+            )
+            return
+        }
+        isSigningIn = true
         lastError = nil
         Log.account.notice("sign in requested provider=google", telemetry: "Sign in requested", data: ["provider": "google"])
+        defer { isSigningIn = false }
         do {
             _ = try await Clerk.shared.auth.signInWithOAuth(provider: .google)
         } catch {
@@ -426,9 +444,9 @@ final class AccountService {
 
 extension AccountService {
     var displayPrimaryText: String {
-        if !isSignedIn { return "Signed out" }
+        if !isSignedIn { return L10n.string("Signed out") }
         let user = account?.user
-        return user?.displayName ?? user?.email ?? "Signed in"
+        return user?.displayName ?? user?.email ?? L10n.string("Signed in")
     }
 
     var displaySecondaryText: String? {

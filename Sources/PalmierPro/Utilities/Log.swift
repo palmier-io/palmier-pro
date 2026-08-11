@@ -55,7 +55,13 @@ struct CategoryLog {
         self.category = category
     }
 
-    func debug(_ m: String) { logger.debug("\(m, privacy: .public)") }
+    func debug(_ message: @autoclosure () -> String) {
+        #if DEBUG
+        let value = message()
+        mirror("DEBUG", value)
+        logger.debug("\(value, privacy: .public)")
+        #endif
+    }
     func info(_ m: String) { logger.info("\(m, privacy: .public)") }
     func notice(_ m: String, telemetry: String? = nil, data: Telemetry.Payload? = nil) {
         mirror("NOTICE", m)
@@ -81,7 +87,9 @@ struct CategoryLog {
     }
 
     private func mirror(_ level: String, _ msg: String) {
+        #if DEBUG
         FileHandle.standardError.write(Data("[\(category)] \(level): \(msg)\n".utf8))
+        #endif
     }
 }
 

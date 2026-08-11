@@ -38,6 +38,7 @@ struct ImageModelConfig: Identifiable, Sendable {
 
     var id: String { entry.id }
     var displayName: String { entry.displayName }
+    var paidOnly: Bool { entry.paidOnly }
     var creditsPerImage: [String: Double] { entry.creditsPerImage ?? [:] }
 
     var resolutions: [String]? { caps.resolutions }
@@ -87,5 +88,29 @@ struct ImageModelConfig: Identifiable, Sendable {
         default:          tier = "\(longEdge)p"
         }
         return tier.isEmpty ? orientation : "\(orientation) \(tier)"
+    }
+
+    /// Human-readable label for image aspect/image-size API enum values.
+    static func aspectRatioDisplayLabel(_ id: String) -> String {
+        guard !id.contains(":") else { return id }
+        var parts = id.split(separator: "_").map(String.init)
+        guard !parts.isEmpty else { return id }
+
+        if parts.count >= 2,
+           let width = Int(parts[parts.count - 2]),
+           let height = Int(parts[parts.count - 1]) {
+            parts.removeLast(2)
+            parts.append("\(width):\(height)")
+        }
+
+        return parts.map(aspectRatioDisplayToken).joined(separator: " ")
+    }
+
+    private static func aspectRatioDisplayToken(_ token: String) -> String {
+        let lower = token.lowercased()
+        return switch lower {
+        case "hd", "uhd", "1k", "2k", "4k", "8k": lower.uppercased()
+        default: lower.capitalized
+        }
     }
 }

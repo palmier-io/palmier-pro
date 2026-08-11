@@ -15,6 +15,8 @@
 <a href="https://x.com/Palmier_io"><img src="https://img.shields.io/badge/Follow-%40Palmier__io-000000?style=flat&logo=x&logoColor=white" alt="Suivre sur X" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Rejoindre Discord" /></a>
 <a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
+<br />
+<a href="https://trendshift.io/repositories/41342?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-41342" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/41342" alt="palmier-io%2Fpalmier-pro | Trendshift" width="250" height="55"/></a>
 
 <p>
   <a href="../../README.md">English</a> ·
@@ -30,7 +32,8 @@
   <a href="README.it.md">Italiano</a> ·
   <a href="README.pt-BR.md">Português (Brasil)</a> ·
   <strong>Français</strong> ·
-  <a href="README.ru.md">Русский</a>
+  <a href="README.ru.md">Русский</a> ·
+  <a href="README.tr.md">Türkçe</a>
 </p>
 
 </div>
@@ -114,16 +117,6 @@ Voir [CONTRIBUTING.md](../../CONTRIBUTING.md).
 - **Twitter / X :** Suivez **[@Palmier_io](https://x.com/Palmier_io)** pour les mises à jour et annonces.
 - **Instagram :** Suivez [@palmier.io](https://www.instagram.com/palmier.io).
 - **Feedback et support :** Créez une [GitHub Issue](https://github.com/palmier-io/palmier-pro/issues) ou envoyez-nous un email à founders@palmier.io.
-
-## Star History
-
-<a href="https://www.star-history.com/?type=date&repos=palmier-io%2Fpalmier-pro">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=palmier-io/palmier-pro&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=palmier-io/palmier-pro&type=date&legend=top-left" />
-   <img alt="Graphique Star History" src="https://api.star-history.com/chart?repos=palmier-io/palmier-pro&type=date&legend=top-left" />
- </picture>
-</a>
 
 ## Licence
 

@@ -11,13 +11,13 @@ struct InspectorPositionFields: View {
         let xShared = sharedClipValue(clips) { $0.topLeftAt(frame: frame).x }
         let yShared = sharedClipValue(clips) { $0.topLeftAt(frame: frame).y }
 
-        HStack(spacing: 4) {
+        HStack(spacing: AppTheme.Spacing.sm) {
             ScrubbableNumberField(
                 value: xShared,
                 range: -10...10,
                 displayMultiplier: canvasW,
                 format: "%.0f",
-                fieldWidth: 36,
+                fieldWidth: AppTheme.EditorPanel.compactNumericFieldWidth,
                 trailingLabel: "X",
                 onChanged: { newX in apply(setX: newX, setY: nil) }
             ) { newX in commit(setX: newX, setY: nil) }
@@ -27,7 +27,7 @@ struct InspectorPositionFields: View {
                 range: -10...10,
                 displayMultiplier: canvasH,
                 format: "%.0f",
-                fieldWidth: 36,
+                fieldWidth: AppTheme.EditorPanel.compactNumericFieldWidth,
                 trailingLabel: "Y",
                 onChanged: { newY in apply(setX: nil, setY: newY) }
             ) { newY in commit(setX: nil, setY: newY) }
@@ -36,13 +36,10 @@ struct InspectorPositionFields: View {
     }
 
     private func apply(setX: Double?, setY: Double?) {
-        for c in clips { editor.applyPosition(clipId: c.id, setX: setX, setY: setY) }
+        editor.applyPositions(clipIds: clips.map(\.id), setX: setX, setY: setY)
     }
 
     private func commit(setX: Double?, setY: Double?) {
-        editor.undoManager?.beginUndoGrouping()
-        for c in clips { editor.commitPosition(clipId: c.id, setX: setX, setY: setY) }
-        editor.undoManager?.endUndoGrouping()
-        editor.undoManager?.setActionName("Change Position")
+        editor.commitPositions(clipIds: clips.map(\.id), setX: setX, setY: setY)
     }
 }

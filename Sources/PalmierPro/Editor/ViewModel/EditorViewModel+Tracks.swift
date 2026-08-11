@@ -32,12 +32,39 @@ extension EditorViewModel {
         return "\(type.trackLabelPrefix)\(n)"
     }
 
+    @discardableResult
+    func setTrackName(id: String, to rawName: String?) throws -> Bool {
+        let name = try TrackName.normalized(rawName)
+        return applyTrackName(id: id, name: name)
+    }
+
+    @discardableResult
+    private func applyTrackName(id: String, name: String?) -> Bool {
+        guard let index = timeline.tracks.firstIndex(where: { $0.id == id }) else { return false }
+        let previous = timeline.tracks[index].name
+        guard previous != name else { return false }
+        timeline.tracks[index].name = name
+        registerTimelineUndo(L10n.string("Rename Track")) { vm in
+            _ = vm.applyTrackName(id: id, name: previous)
+        }
+        return true
+    }
+
+    @discardableResult
+    func selectAllClips(onTrack trackId: String) -> Bool {
+        guard let track = timeline.tracks.first(where: { $0.id == trackId }),
+              !track.clips.isEmpty else { return false }
+        selectedGap = nil
+        selectedClipIds = Set(track.clips.map(\.id))
+        return true
+    }
+
     /// Clamp `requested` so that visual (video/image) tracks always sit above every audio track.
     private func partitionedInsertionIndex(for type: ClipType, requested: Int) -> Int {
         let z = zones
         let bounded = max(0, min(requested, z.trackCount))
         switch type {
-        case .video, .image, .text, .lottie:
+        case .video, .image, .text, .lottie, .sequence, .subtitle:
             // Visual tracks must come at or before the first audio track.
             return min(bounded, z.firstAudioIndex)
         case .audio:
@@ -48,6 +75,27 @@ extension EditorViewModel {
 
     func removeTrack(id: String) {
         removeTracks(ids: [id])
+    }
+
+    // MARK: - Reorder
+    /// Instantly move the track with `id` to `targetIndex`, clamped to its track type zone. No undo.
+    func reorderTrackLive(id: String, to targetIndex: Int) {
+        guard let from = timeline.tracks.firstIndex(where: { $0.id == id }) else { return }
+        let z = zones
+        let isAudio = timeline.tracks[from].type == .audio
+        let lower = isAudio ? z.firstAudioIndex : 0
+        let upper = isAudio ? z.trackCount - 1 : z.firstAudioIndex - 1
+        let dest = max(lower, min(upper, targetIndex))
+        guard dest != from else { return }
+        let track = timeline.tracks.remove(at: from)
+        timeline.tracks.insert(track, at: dest)
+    }
+
+    /// Register a single undo step for a completed live reorder.
+    func commitTrackReorder(before: Timeline) {
+        guard before != timeline else { return }
+        registerTimelineSwap(undoState: before, redoState: timeline, actionName: "Reorder Track")
+        notifyTimelineChanged()
     }
 
     func removeTracks(ids: [String]) {
@@ -73,6 +121,14 @@ extension EditorViewModel {
     }
 
     func toggleTrackSyncLock(trackIndex: Int) {
+        if timeline.tracks.indices.contains(trackIndex),
+           timeline.tracks[trackIndex].syncLocked,
+           let clip = timeline.tracks[trackIndex].clips.first(where: { $0.multicamGroupId != nil }),
+           let group = multicamGroup(of: clip) {
+            mediaPanelToast = MediaPanelToast(message: L10n.string("Can't unlock sync on a multicam track — \"\(group.name)\" stays aligned through it."))
+            NSSound.beep()
+            return
+        }
         toggleTrackFlag(trackIndex: trackIndex, keyPath: \.syncLocked, onName: "Sync Lock Track", offName: "Unlock Track Sync")
     }
 
@@ -85,12 +141,14 @@ extension EditorViewModel {
         offName: String
     ) {
         guard timeline.tracks.indices.contains(trackIndex) else { return }
+        let trackId = timeline.tracks[trackIndex].id
         let was = timeline.tracks[trackIndex][keyPath: keyPath]
         timeline.tracks[trackIndex][keyPath: keyPath].toggle()
-        undoManager?.registerUndo(withTarget: self) { vm in
-            vm.timeline.tracks[trackIndex][keyPath: keyPath] = was
+        let actionName = was ? offName : onName
+        registerTimelineUndo(actionName) { vm in
+            guard let i = vm.timeline.tracks.firstIndex(where: { $0.id == trackId }) else { return }
+            vm.timeline.tracks[i][keyPath: keyPath] = was
         }
-        undoManager?.setActionName(was ? offName : onName)
         notifyTimelineChanged()
     }
 
@@ -98,11 +156,12 @@ extension EditorViewModel {
 
     func setTrackHeight(trackIndex: Int, height: CGFloat) {
         guard timeline.tracks.indices.contains(trackIndex) else { return }
+        let trackId = timeline.tracks[trackIndex].id
         let prev = timeline.tracks[trackIndex].displayHeight
         timeline.tracks[trackIndex].displayHeight = max(TrackSize.minHeight, min(TrackSize.maxHeight, height))
-        undoManager?.registerUndo(withTarget: self) { vm in
-            vm.setTrackHeight(trackIndex: trackIndex, height: prev)
+        registerTimelineUndo("Resize Track") { vm in
+            guard let i = vm.timeline.tracks.firstIndex(where: { $0.id == trackId }) else { return }
+            vm.setTrackHeight(trackIndex: i, height: prev)
         }
-        undoManager?.setActionName("Resize Track")
     }
 }

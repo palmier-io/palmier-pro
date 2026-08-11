@@ -124,8 +124,7 @@ struct AgentMentionTests {
 
         let entries = AgentMentionContext.mentionEntries(
             editor.agentService.mentions,
-            editor: editor,
-            inlined: AgentMentionContext.InlinedMentions()
+            editor: editor
         )
 
         #expect(entries.count == 1)
@@ -165,8 +164,7 @@ struct AgentMentionTests {
 
         let entries = AgentMentionContext.mentionEntries(
             editor.agentService.mentions,
-            editor: editor,
-            inlined: AgentMentionContext.InlinedMentions()
+            editor: editor
         )
         let kinds = entries.compactMap { $0["kind"] as? String }
         #expect(kinds == ["mediaAsset", "timelineClip", "timelineRange"])

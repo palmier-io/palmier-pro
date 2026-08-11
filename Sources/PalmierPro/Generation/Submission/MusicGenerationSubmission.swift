@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 /// Generates music from music tab and places it on the timeline
@@ -16,9 +17,9 @@ struct MusicGenerationSubmission {
 
         var label: String {
             switch self {
-            case .exporting: "Exporting..."
-            case .uploading: "Uploading…"
-            case .generating: "Generating..."
+            case .exporting: L10n.key("Exporting…")
+            case .uploading: L10n.key("Uploading…")
+            case .generating: L10n.key("Generating…")
             }
         }
     }
@@ -37,10 +38,13 @@ struct MusicGenerationSubmission {
             let mp4 = try await TimelineRenderer.render(
                 timeline: editor.timeline,
                 resolver: editor.mediaResolver,
+                resolveTimeline: editor.timelineResolver(),
+                missingMediaRefs: editor.missingMediaRefs,
                 startFrame: source.startFrame,
                 frameCount: source.frameCount,
-                shortSide: 360,
-                includeAudio: false
+                shortSide: 240,
+                includeAudio: false,
+                preset: AVAssetExportPresetLowQuality
             )
             defer { try? FileManager.default.removeItem(at: mp4) }
             onPhase(.uploading)
@@ -67,6 +71,9 @@ struct MusicGenerationSubmission {
             duration: durationSeconds,
             aspectRatio: ""
         )
+        genInput.audioInput = mode == .textToMusic
+            ? AudioModelConfig.Input.text.rawValue
+            : AudioModelConfig.Input.video.rawValue
         genInput.createdAt = Date()
 
         onPhase(.generating)

@@ -9,9 +9,16 @@ struct TourStep: Equatable {
         case spotlight(TourTarget)
         case outro
     }
+    enum Prepare: Equatable {
+        case none
+        case selectAIEditClip
+        case revealInspectorOverview
+        case revealAIEditTab
+    }
     let kind: Kind
     let title: String
     let instruction: String
+    var prepare: Prepare = .none
 }
 
 enum TourTarget: Equatable {
@@ -27,21 +34,23 @@ enum TourTarget: Equatable {
     }
 }
 
-/// Pinpointable controls. Add a case + its `hostPanel`, then tag the view with
-/// `.tourAnchor(_:)`. `timelineRuler` is derived (the AppKit ruler has no SwiftUI view).
+/// Pinpointable controls. Add a case + its `hostPanel`, then tag the view with `.tourAnchor(_:)`.
 enum TourAnchorID: Hashable {
     case importButton
     case generateButton
     case generation
     case smartSearch
     case screenshotButton
-    case timelineRuler
+    case skillsButton
+    case aiEditTab
+    case aiEditPanel
 
     var hostPanel: EditorViewModel.FocusedPanel {
         switch self {
         case .importButton, .generateButton, .generation, .smartSearch: return .media
         case .screenshotButton: return .preview
-        case .timelineRuler: return .timeline
+        case .skillsButton: return .agent
+        case .aiEditTab, .aiEditPanel: return .inspector
         }
     }
 }
@@ -100,13 +109,15 @@ final class TourController {
     func end() {
         stepIndex = nil
         targetFrame = nil
+        editor?.inspectorClipTabRequest = nil
     }
 
     /// Ensure a spotlight step's host panel is visible
     private func applyStep(_ index: Int) {
         guard let editor, steps.indices.contains(index) else { return }
         editor.maximizedPanel = nil
-        if case .spotlight(let target) = steps[index].kind {
+        let step = steps[index]
+        if case .spotlight(let target) = step.kind {
             switch target.hostPanel {
             case .media: editor.mediaPanelVisible = true
             case .agent: editor.agentPanelVisible = true
@@ -117,44 +128,100 @@ final class TourController {
         } else {
             editor.showGenerationPanel = false
         }
+        applyPrepare(step.prepare, to: editor)
         stepIndex = index
+    }
+
+    private func applyPrepare(_ prepare: TourStep.Prepare, to editor: EditorViewModel) {
+        switch prepare {
+        case .none:
+            editor.inspectorClipTabRequest = nil
+        case .selectAIEditClip:
+            editor.inspectorPanelVisible = true
+            selectAIEditClip(in: editor)
+            editor.inspectorClipTabRequest = nil
+        case .revealInspectorOverview:
+            editor.inspectorPanelVisible = true
+            selectAIEditClip(in: editor)
+            editor.inspectorClipTabRequest = .video
+        case .revealAIEditTab:
+            editor.inspectorPanelVisible = true
+            selectAIEditClip(in: editor)
+            editor.inspectorClipTabRequest = .ai
+        }
+    }
+
+    private func selectAIEditClip(in editor: EditorViewModel) {
+        guard let clipId = Self.firstAIEditVisualClipId(in: editor) else { return }
+        // Replace selection so a prior multi-select cannot hide AI Edit.
+        editor.selectedGap = nil
+        editor.selectedTimelineRange = nil
+        editor.selectedClipIds = editor.expandToLinkGroup([clipId])
     }
 
     // MARK: - Step list
 
     private static func makeSteps(editor: EditorViewModel) -> [TourStep] {
+        let hasAIEditClip = firstAIEditVisualClipId(in: editor) != nil
+
         var steps: [TourStep] = [
-            TourStep(kind: .intro, title: "Tutorial",
-                     instruction: "Let's take a quick tour of the workspace and what you can do."),
-            TourStep(kind: .spotlight(.panel(.media)), title: "Media panel",
-                     instruction: "This is where all your footage and assets live."),
-            TourStep(kind: .spotlight(.element(.importButton)), title: "Import footage",
-                     instruction: "Import your footage here, or drag and drop, or copy-paste, into the media panel."),
-            TourStep(kind: .spotlight(.element(.generateButton)), title: "Generate",
-                     instruction: "Click Generate to open the generation panel."),
-            TourStep(kind: .spotlight(.element(.generation)), title: "Generation panel",
-                     instruction: "Generate video, image, or audio with different models and settings. Drag assets from the media panel above into the reference frame."),
+            TourStep(kind: .intro, title: L10n.string("Tutorial"),
+                     instruction: L10n.string("Let's take a quick tour of the workspace and what you can do.")),
+            TourStep(kind: .spotlight(.panel(.media)), title: L10n.string("Media panel"),
+                     instruction: L10n.string("This is where all your footage and assets live.")),
+            TourStep(kind: .spotlight(.element(.importButton)), title: L10n.string("Import footage"),
+                     instruction: L10n.string("Import your footage here, or drag and drop, or copy-paste, into the media panel.")),
+            TourStep(kind: .spotlight(.element(.generateButton)), title: L10n.string("Generate"),
+                     instruction: L10n.string("Click Generate to open the generation panel.")),
+            TourStep(kind: .spotlight(.element(.generation)), title: L10n.string("Generation panel"),
+                     instruction: L10n.string("Generate video, image, or audio with different models and settings. Drag assets from the media panel above into the reference frame.")),
         ]
-        // Only shown when the "Smart search" button is present (model not yet installed).
         if smartSearchAvailable(editor: editor) {
-            steps.append(TourStep(kind: .spotlight(.element(.smartSearch)), title: "Smart search",
-                                  instruction: "Download a local model to index your media, so you or your agent can search any clips by describing them. The model runs on-device and nothing leaves your Mac."))
+            steps.append(TourStep(kind: .spotlight(.element(.smartSearch)), title: L10n.string("Smart search"),
+                                  instruction: L10n.string("Download a local model to index your media, so you or your agent can search any clips by describing them. The model runs on-device and nothing leaves your Mac.")))
         }
         steps += [
-            TourStep(kind: .spotlight(.panel(.preview)), title: "Preview",
-                     instruction: "This is your preview panel to play a selected media or the whole timeline."),
-            TourStep(kind: .spotlight(.element(.screenshotButton)), title: "Screenshot a frame",
-                     instruction: "Take a screenshot of the preview and use it as a reference for generation. Particularly useful for creating AI transitions."),
-            TourStep(kind: .spotlight(.panel(.inspector)), title: "Inspector",
-                     instruction: "This is your inspector panel. Select a clip from the timeline to edit it."),
-            TourStep(kind: .spotlight(.panel(.timeline)), title: "Timeline",
-                     instruction: "Your timeline: the top half is video, the bottom half is audio. This is where you edit. Right-click a clip for some cool AI features such as upscale, edit, or generate music."),
-            TourStep(kind: .spotlight(.element(.timelineRuler)), title: "Select a range",
-                     instruction: "This is the timeline ruler. Shift+drag on the ruler to select a range to render. You can pick any slot to AI edit or generate music that fits that range."),
-            TourStep(kind: .spotlight(.panel(.agent)), title: "AI agent",
-                     instruction: "Chat with your agent! It can generate content, edit clips, organize your assets, and much more. Start by signing in, or bring your own Anthropic API key."),
-            TourStep(kind: .outro, title: "You're all set",
-                     instruction: "Start creating, or explore these to get the most out of Palmier Pro."),
+            TourStep(kind: .spotlight(.panel(.preview)), title: L10n.string("Preview"),
+                     instruction: L10n.string("This is your preview panel to play a selected media or the whole timeline.")),
+            TourStep(kind: .spotlight(.element(.screenshotButton)), title: L10n.string("Screenshot a frame"),
+                     instruction: L10n.string("Take a screenshot of the preview and use it as a reference for generation. Particularly useful for creating AI transitions.")),
+            TourStep(
+                kind: .spotlight(.panel(.timeline)),
+                title: L10n.string("Timeline"),
+                instruction: hasAIEditClip
+                    ? L10n.string("Your timeline: the top half is video, the bottom half is audio. Click a clip to inspect it — we've selected one for you.")
+                    : L10n.string("Your timeline: the top half is video, the bottom half is audio. This is where you edit."),
+                prepare: hasAIEditClip ? .selectAIEditClip : .none
+            ),
+        ]
+        if hasAIEditClip {
+            steps += [
+                TourStep(
+                    kind: .spotlight(.panel(.inspector)),
+                    title: L10n.string("Inspector"),
+                    instruction: L10n.string("Your inspector for the selected clip — transform, adjust, audio, and more."),
+                    prepare: .revealInspectorOverview
+                ),
+                TourStep(
+                    kind: .spotlight(.element(.aiEditPanel)),
+                    title: L10n.string("AI Edit"),
+                    instruction: L10n.string("Open the AI Edit tab to upscale, prompt-edit, create video from a frame, or generate music, SFX, cleanup, and dubbing from the clip."),
+                    prepare: .revealAIEditTab
+                ),
+            ]
+        } else {
+            steps.append(
+                TourStep(kind: .spotlight(.panel(.inspector)), title: L10n.string("Inspector"),
+                         instruction: L10n.string("Your inspector for the selected clip — transform, adjust, audio, and more."))
+            )
+        }
+        steps += [
+            TourStep(kind: .spotlight(.panel(.agent)), title: L10n.string("AI agent"),
+                     instruction: L10n.string("Chat with your agent! It can generate content, edit clips, organize your assets, and much more. Start by signing in, or bring your own Anthropic API key.")),
+            TourStep(kind: .spotlight(.element(.skillsButton)), title: L10n.string("Skills"),
+                     instruction: L10n.string("Open Skills to browse community playbooks, create your own, or add them to other agents.")),
+            TourStep(kind: .outro, title: L10n.string("You're all set"),
+                     instruction: L10n.string("Start creating, or explore these to get the most out of Palmier Pro.")),
         ]
         return steps
     }
@@ -164,5 +231,17 @@ final class TourController {
         let model = VisualModelLoader.shared
         guard case .notInstalled = model.state, model.enabled else { return false }
         return editor.mediaAssets.contains { $0.type == .video || $0.type == .image }
+    }
+
+    private static func firstAIEditVisualClipId(in editor: EditorViewModel) -> String? {
+        guard !AccountService.shared.isMisconfigured else { return nil }
+        for track in editor.timeline.tracks {
+            for clip in track.clips where clip.mediaType.isVisual && clip.mediaType != .text {
+                if editor.mediaAssetsById[clip.mediaRef] != nil {
+                    return clip.id
+                }
+            }
+        }
+        return nil
     }
 }

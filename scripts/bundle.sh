@@ -4,20 +4,39 @@ set -euo pipefail
 # Usage:
 #   scripts/bundle.sh [release|debug]           # ad-hoc signed dev build
 #   scripts/bundle.sh debug --fast              # fastest: skip dSYM + deep sign, just env+build
+#   scripts/bundle.sh debug --speech             # include bundled speech and MLX
+#   scripts/bundle.sh debug --telemetry          # include production telemetry
+#   scripts/bundle.sh debug --all                # include all optional traits
 #   scripts/bundle.sh release --sign            # build + Developer ID codesign
 #   scripts/bundle.sh release --dist            # build + sign + notarize + staple + DMG
 
 CONFIG="release"
 MODE="dev"
+ENABLE_ALL_TRAITS=false
+INCLUDE_BUNDLED_SPEECH=false
+INCLUDE_PRODUCTION_TELEMETRY=false
 for arg in "$@"; do
   case "$arg" in
     release|debug) CONFIG="$arg" ;;
     --fast)        MODE="fast" ;;
     --sign)        MODE="sign" ;;
     --dist)        MODE="dist" ;;
+    --speech)      INCLUDE_BUNDLED_SPEECH=true ;;
+    --telemetry)   INCLUDE_PRODUCTION_TELEMETRY=true ;;
+    --all)
+      ENABLE_ALL_TRAITS=true
+      INCLUDE_BUNDLED_SPEECH=true
+      INCLUDE_PRODUCTION_TELEMETRY=true
+      ;;
     *) echo "unknown arg: $arg" >&2; exit 1 ;;
   esac
 done
+
+if [ "$CONFIG" = "release" ]; then
+  ENABLE_ALL_TRAITS=true
+  INCLUDE_BUNDLED_SPEECH=true
+  INCLUDE_PRODUCTION_TELEMETRY=true
+fi
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -36,6 +55,8 @@ fi
 SIGNING_IDENTITY="${SIGNING_IDENTITY:-Developer ID Application: Palmier, Inc. (MMFLRC7562)}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-palmier-notary}"
 SENTRY_DSN="${SENTRY_DSN:-}"
+POSTHOG_PROJECT_TOKEN="${POSTHOG_PROJECT_TOKEN:-}"
+POSTHOG_HOST="${POSTHOG_HOST:-https://us.i.posthog.com}"
 PROVISION_PROFILE="${PROVISION_PROFILE:-$ROOT/scripts/Palmier_Pro_Developer_ID.provisionprofile}"
 ENTITLEMENTS="$ROOT/scripts/PalmierPro.entitlements"
 KEYCHAIN_ACCESS_GROUP="${KEYCHAIN_ACCESS_GROUP:-MMFLRC7562.io.palmier.pro}"
@@ -44,9 +65,30 @@ APP="$ROOT/.build/PalmierPro.app"
 ZIP="$ROOT/.build/PalmierPro.zip"
 DMG="$ROOT/.build/PalmierPro.dmg"
 
-echo "==> Building ($CONFIG)"
-swift build -c "$CONFIG"
-BIN="$(swift build -c "$CONFIG" --show-bin-path)/PalmierPro"
+BUILD_ARGS=(-c "$CONFIG")
+if $ENABLE_ALL_TRAITS; then
+  TRAITS="all"
+  BUILD_ARGS+=(--enable-all-traits)
+else
+  TRAITS=""
+  if $INCLUDE_BUNDLED_SPEECH; then
+    TRAITS="BundledSpeech"
+  fi
+  if $INCLUDE_PRODUCTION_TELEMETRY; then
+    if [ -n "$TRAITS" ]; then
+      TRAITS="$TRAITS,ProductionTelemetry"
+    else
+      TRAITS="ProductionTelemetry"
+    fi
+  fi
+  if [ -n "$TRAITS" ]; then
+    BUILD_ARGS+=(--traits "$TRAITS")
+  fi
+fi
+
+echo "==> Building ($CONFIG, traits: ${TRAITS:-none})"
+swift build "${BUILD_ARGS[@]}"
+BIN="$(swift build "${BUILD_ARGS[@]}" --show-bin-path)/PalmierPro"
 SPARKLE_FW="$ROOT/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
 
 echo "==> Assembling $APP"
@@ -61,6 +103,16 @@ if [ -n "$SENTRY_DSN" ]; then
   /usr/libexec/PlistBuddy -c "Add :SentryDSN string $SENTRY_DSN" "$APP/Contents/Info.plist"
 else
   echo "==> SENTRY_DSN not set — telemetry will be a no-op in this build"
+fi
+
+if [ -n "$POSTHOG_PROJECT_TOKEN" ]; then
+  echo "==> Injecting PostHog analytics config into Info.plist"
+  /usr/libexec/PlistBuddy -c "Delete :PostHogProjectToken" "$APP/Contents/Info.plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c "Add :PostHogProjectToken string $POSTHOG_PROJECT_TOKEN" "$APP/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Delete :PostHogHost" "$APP/Contents/Info.plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c "Add :PostHogHost string $POSTHOG_HOST" "$APP/Contents/Info.plist"
+else
+  echo "==> POSTHOG_PROJECT_TOKEN not set — product analytics will be a no-op in this build"
 fi
 
 inject_plist() {
@@ -88,19 +140,49 @@ else
   echo "!! missing Fonts/ in SwiftPM resource bundle at $RES_BUNDLE" >&2
   exit 1
 fi
-if [ -f "$RES_BUNDLE/palmier-pro.mcpb" ]; then
-  cp "$RES_BUNDLE/palmier-pro.mcpb" "$APP/Contents/Resources/"
-else
-  echo "!! missing palmier-pro.mcpb in SwiftPM resource bundle at $RES_BUNDLE" >&2
-  exit 1
+
+# Ensure the shipped Claude Desktop connector is always up to date with mcpb/ sources.
+MCPB_SRC="$ROOT/mcpb"
+MCPB_CHECKED_IN="$ROOT/Sources/PalmierPro/Resources/MCPB/palmier-pro.mcpb"
+MCPB_FRESH="$(mktemp -d)/palmier-pro.mcpb"
+(cd "$MCPB_SRC" && zip -q -X -r "$MCPB_FRESH" manifest.json icon.png server/index.js server/package.json)
+if ! unzip -p "$MCPB_CHECKED_IN" server/index.js 2>/dev/null | diff -q - <(unzip -p "$MCPB_FRESH" server/index.js) >/dev/null 2>&1 \
+  || ! unzip -p "$MCPB_CHECKED_IN" manifest.json 2>/dev/null | diff -q - <(unzip -p "$MCPB_FRESH" manifest.json) >/dev/null 2>&1; then
+  echo "==> refreshing checked-in palmier-pro.mcpb from mcpb/ sources"
+  cp "$MCPB_FRESH" "$MCPB_CHECKED_IN"
 fi
+cp "$MCPB_FRESH" "$APP/Contents/Resources/palmier-pro.mcpb"
+rm -rf "$(dirname "$MCPB_FRESH")"
 if [ -d "$RES_BUNDLE/Images" ]; then
   cp -R "$RES_BUNDLE/Images" "$APP/Contents/Resources/"
+fi
+# .lproj folders must live at the bundle root for macOS to resolve them.
+LOCALIZATION_COUNT=0
+for locale_dir in "$RES_BUNDLE"/*.lproj; do
+  [ -d "$locale_dir" ] || continue
+  for strings_file in Localizable.strings InfoPlist.strings; do
+    if [ ! -f "$locale_dir/$strings_file" ]; then
+      echo "!! missing $strings_file in $locale_dir" >&2
+      exit 1
+    fi
+  done
+  cp -R "$locale_dir" "$APP/Contents/Resources/"
+  LOCALIZATION_COUNT=$((LOCALIZATION_COUNT + 1))
+done
+if [ "$LOCALIZATION_COUNT" -eq 0 ]; then
+  echo "!! no compiled localizations in SwiftPM resource bundle at $RES_BUNDLE" >&2
+  exit 1
 fi
 if [ -d "$RES_BUNDLE/Changelog" ]; then
   cp -R "$RES_BUNDLE/Changelog" "$APP/Contents/Resources/"
 else
   echo "!! missing Changelog/ in SwiftPM resource bundle at $RES_BUNDLE" >&2
+  exit 1
+fi
+if [ -d "$RES_BUNDLE/Models" ]; then
+  cp -R "$RES_BUNDLE/Models" "$APP/Contents/Resources/"
+else
+  echo "!! missing Models/ in SwiftPM resource bundle at $RES_BUNDLE" >&2
   exit 1
 fi
 
@@ -110,13 +192,28 @@ if ! ls "$RES_BUNDLE"/*.metallib >/dev/null 2>&1; then
 fi
 cp "$RES_BUNDLE"/*.metallib "$APP/Contents/Resources/"
 
+if $INCLUDE_BUNDLED_SPEECH; then
+  MLX_METALLIB="$ROOT/.build/$CONFIG/mlx.metallib"
+  if [ ! -f "$MLX_METALLIB" ]; then
+    echo "==> Building MLX metallib ($CONFIG)"
+    BUILD_DIR="$ROOT/.build" "$ROOT/.build/checkouts/speech-swift/scripts/build_mlx_metallib.sh" "$CONFIG"
+  fi
+  if [ ! -f "$MLX_METALLIB" ]; then
+    echo "!! missing $MLX_METALLIB — on-device speech features (VAD, speaker ID) would die silently" >&2
+    exit 1
+  fi
+  mkdir -p "$APP/Contents/Resources/mlx-swift_Cmlx.bundle"
+  cp "$MLX_METALLIB" "$APP/Contents/Resources/mlx-swift_Cmlx.bundle/default.metallib"
+fi
+
 install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/PalmierPro"
 touch "$APP"
 
 if [ "$MODE" = "fast" ]; then
   echo "==> Codesigning main app with $SIGNING_IDENTITY (no timestamp, no helpers)"
   codesign --force --sign "$SIGNING_IDENTITY" "$APP"
-  echo "==> Done: $APP (fast mode — stable identity, no dSYM, no nested re-sign)"
+  codesign --verify --deep --strict --verbose=2 "$APP"
+  echo "==> Done: $APP (fast mode — stable identity, no dSYM)"
   exit 0
 fi
 

@@ -24,28 +24,31 @@ final class MCPService {
     private(set) var isRunning: Bool = false
 
     @ObservationIgnored
-    private let toolExecutor: ToolExecutor
+    private let projectProvider: () -> VideoProject?
     @ObservationIgnored
     private var httpServer: MCPHTTPServer?
 
-    init(editorProvider: @escaping () -> EditorViewModel?) {
-        self.toolExecutor = ToolExecutor(editorProvider: editorProvider)
+    init(projectProvider: @escaping () -> VideoProject?) {
+        self.projectProvider = projectProvider
     }
 
     func start() {
-        let httpServer = MCPHTTPServer(port: Self.port) { [weak self] in
+        let httpServer = MCPHTTPServer(port: Self.port) { [self] in
+            let toolExecutor = await makeSessionToolExecutor()
             let server = Server(
                 name: "palmier-pro",
                 version: "1.0.0",
-                instructions: AgentInstructions.serverInstructions,
+                instructions: AgentInstructions.serverInstructions + AgentInstructions.projectNavigation,
                 capabilities: .init(
                     resources: .init(subscribe: false, listChanged: false),
-                    tools: .init(listChanged: false)
+                    tools: .init(listChanged: true)
                 )
             )
-            await self?.registerTools(on: server)
-            await self?.registerResources(on: server)
-            return server
+            await Self.registerTools(on: server, executor: toolExecutor)
+            await Self.registerResources(on: server)
+            return MCPServerInstance(server: server) { clientInfo in
+                await toolExecutor.setMCPClientInfo(MCPClientInfo(clientInfo))
+            }
         }
         self.httpServer = httpServer
         Task { @MainActor [weak self] in
@@ -60,6 +63,10 @@ final class MCPService {
         }
     }
 
+    func makeSessionToolExecutor() -> ToolExecutor {
+        ToolExecutor(projectProvider: projectProvider)
+    }
+
     func stop() {
         if let server = httpServer {
             Task { await server.stop() }
@@ -69,8 +76,8 @@ final class MCPService {
         Log.mcp.notice("http server stopped")
     }
 
-    private func registerTools(on server: Server) async {
-        let tools: [Tool] = ToolDefinitions.all.map { def in
+    nonisolated static func registerTools(on server: Server, executor: ToolExecutor) async {
+        let tools: [Tool] = ToolDefinitions.mcpServer.map { def in
             Tool(name: def.name.rawValue, description: def.description, inputSchema: def.mcpSchemaValue)
         }
 
@@ -78,22 +85,19 @@ final class MCPService {
             .init(tools: tools)
         }
 
-        await server.withMethodHandler(CallTool.self) { [weak self] params in
-            guard let self else {
-                return ToolResult.error("Editor not available").toMCPResult()
-            }
-            return await self.dispatchCall(params)
+        await server.withMethodHandler(CallTool.self) { params in
+            await dispatchCall(params, executor: executor)
         }
     }
 
-    // Convert args inside the actor so the non-Sendable dict never crosses the hop.
-    private func dispatchCall(_ params: CallTool.Parameters) async -> CallTool.Result {
+    // Convert args on the main actor so the non-Sendable dict never crosses the hop.
+    private static func dispatchCall(_ params: CallTool.Parameters, executor: ToolExecutor) async -> CallTool.Result {
         let args = ToolArgsBridge.argsFromMCP(params.arguments ?? [:])
-        let result = await toolExecutor.execute(name: params.name, args: args)
+        let result = await executor.execute(name: params.name, args: args, source: "mcp")
         return result.toMCPResult()
     }
 
-    private func registerResources(on server: Server) async {
+    private nonisolated static func registerResources(on server: Server) async {
         let resources = [
             Resource(
                 name: "Video Models",

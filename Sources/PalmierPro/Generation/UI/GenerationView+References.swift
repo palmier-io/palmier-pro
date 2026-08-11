@@ -1,0 +1,422 @@
+import SwiftUI
+
+// Reference strips, drop zones, and the ref-pool bookkeeping behind them.
+extension GenerationView {
+
+    var allRefs: [MediaAsset] { refImages + refVideos + refAudios }
+    var totalRefCount: Int { allRefs.count }
+
+    var isRefCapReached: Bool {
+        if selectedType == .video,
+           let total = videoModel.maxTotalReferences, totalRefCount >= total { return true }
+        return !activeReferenceTypes.isEmpty && activeReferenceTypes.allSatisfy {
+            refCount(for: $0) >= refCap(for: $0)
+        }
+    }
+
+    private var activeReferenceTypes: [ClipType] {
+        let supported = [ClipType.image, .video, .audio].filter { refCap(for: $0) > 0 }
+        guard selectedType == .audio, audioModel.referenceImagesAndAudiosExclusive else {
+            return supported
+        }
+        if !refImages.isEmpty { return [.image] }
+        if !refAudios.isEmpty { return [.audio] }
+        return supported
+    }
+
+    var showsRefSections: Bool {
+        switch selectedType {
+        case .video:
+            guard videoModel.supportsReferences, !usesSourceVideoInput else { return false }
+            return !videoModel.framesAndReferencesExclusive
+                || videoInputMode == .references
+        case .audio:
+            return audioModel.supportsReferences && !audioUsesSource
+        case .image, .upscale:
+            return false
+        }
+    }
+
+    var showsFrameStrip: Bool {
+        guard selectedType == .video, videoModel.supportsFirstFrame else { return false }
+        if usesSourceVideoInput { return false }
+        if videoModel.framesAndReferencesExclusive {
+            return videoInputMode == .frames
+        }
+        return true
+    }
+
+    var showsVideoInputModePicker: Bool {
+        selectedType == .video && availableVideoInputModes.count > 1
+    }
+
+    var availableVideoInputModes: [VideoInputMode] {
+        guard selectedType == .video else { return [] }
+        var modes: [VideoInputMode] = [.frames]
+        if videoModel.framesAndReferencesExclusive && videoModel.supportsReferences {
+            modes.append(.references)
+        }
+        if videoModel.supportsSourceVideo && !videoModel.requiresSourceVideo {
+            modes.append(.sourceVideo)
+        }
+        return modes
+    }
+
+    private var refGridColumns: [GridItem] {
+        [GridItem(.adaptive(minimum: AppTheme.GenerationPanel.referenceTileWidth), spacing: AppTheme.Spacing.xs)]
+    }
+
+    // MARK: - Video frame references
+
+    var videoFrameStrip: some View {
+        HStack(spacing: AppTheme.Spacing.xs) {
+            FrameSlot(label: L10n.string("First Frame"), asset: firstFrame, isTargeted: $firstFrameTargeted,
+                      onDrop: { firstFrame = $0 }, onClear: { firstFrame = nil }, onError: flashDropError)
+            if videoModel.supportsLastFrame {
+                FrameSlot(label: L10n.string("Last Frame"), asset: lastFrame, isTargeted: $lastFrameTargeted,
+                          onDrop: { lastFrame = $0 }, onClear: { lastFrame = nil }, onError: flashDropError)
+            }
+        }
+    }
+
+    // MARK: - Video input mode picker
+
+    var videoInputModePicker: some View {
+        Menu {
+            ForEach(availableVideoInputModes, id: \.self) { mode in
+                Button {
+                    videoInputMode = mode
+                    switch mode {
+                    case .frames:
+                        resetRefPools()
+                        sourceVideo = nil
+                    case .references:
+                        firstFrame = nil
+                        lastFrame = nil
+                        sourceVideo = nil
+                    case .sourceVideo:
+                        firstFrame = nil
+                        lastFrame = nil
+                        resetRefPools()
+                    }
+                } label: {
+                    if videoInputMode == mode {
+                        Label(L10n.string(key: mode.title), systemImage: "checkmark")
+                    } else {
+                        Text(L10n.string(key: mode.title))
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: AppTheme.Spacing.xs) {
+                Text(L10n.string(key: videoInputMode.title))
+                    .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: AppTheme.FontSize.micro, weight: .semibold))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+            }
+            .padding(.horizontal, AppTheme.Spacing.xs)
+            .padding(.vertical, AppTheme.Spacing.xxs)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .hoverHighlight()
+    }
+
+    // MARK: - Reference strip
+
+    var referenceSections: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+            HStack(spacing: AppTheme.Spacing.xs) {
+                Text(L10n.string("References"))
+                    .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                Text(verbatim: refCounterLabel)
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .monospacedDigit()
+                    .foregroundStyle(AppTheme.Text.mutedColor)
+            }
+
+            LazyVGrid(
+                columns: refGridColumns,
+                alignment: .leading,
+                spacing: AppTheme.Spacing.xs
+            ) {
+                ForEach(allRefCardItems, id: \.asset.id) { item in
+                    RefCard(asset: item.asset, tag: item.tag) {
+                        removeRef(item.type, byId: item.asset.id)
+                    }
+                }
+                if !isRefCapReached {
+                    RefDropZone(
+                        isTargeted: $refsTargeted,
+                        accepting: Set(activeReferenceTypes),
+                        iconName: "plus"
+                    ) { asset in
+                        addRefAsset(asset)
+                    }
+                }
+            }
+        }
+    }
+
+    private var allRefCardItems: [(asset: MediaAsset, tag: String?, type: ClipType)] {
+        ClipType.allCases.flatMap { type -> [(asset: MediaAsset, tag: String?, type: ClipType)] in
+            let assets: [MediaAsset]
+            switch type {
+            case .image: assets = refImages
+            case .video: assets = refVideos
+            case .audio: assets = refAudios
+            case .text, .lottie, .sequence, .subtitle: assets = []
+            }
+            let noun = tagNoun(for: type)
+            return assets.enumerated().map {
+                let tag = selectedType == .audio && type == .image
+                    ? nil : "@\(noun)\($0 + 1)"
+                return (asset: $1, tag: tag, type: type)
+            }
+        }
+    }
+
+    func refCap(for type: ClipType) -> Int {
+        if selectedType == .audio {
+            switch type {
+            case .image: return audioModel.maxReferenceImages
+            case .audio: return audioModel.maxReferenceAudios
+            case .video, .text, .lottie, .sequence, .subtitle: return 0
+            }
+        }
+        return switch type {
+        case .image: videoModel.maxReferenceImages
+        case .video: videoModel.maxReferenceVideos
+        case .audio: videoModel.maxReferenceAudios
+        case .text, .lottie, .sequence, .subtitle: 0
+        }
+    }
+
+    func refCount(for type: ClipType) -> Int {
+        switch type {
+        case .image: refImages.count
+        case .video: refVideos.count
+        case .audio: refAudios.count
+        case .text, .lottie, .sequence, .subtitle: 0
+        }
+    }
+
+    /// Tag noun used in `@Image1` / `@Video1` / `@Audio1` / `@Element1` labels.
+    func tagNoun(for type: ClipType) -> String {
+        switch type {
+        case .image: selectedType == .video ? videoModel.referenceTagNoun : "Image"
+        case .video: "Video"
+        case .audio: "Audio"
+        case .text: "Text"
+        case .lottie: "Lottie"
+        case .sequence: "Sequence"
+        case .subtitle: "Subtitle"
+        }
+    }
+
+    private func addRefAsset(_ asset: MediaAsset) {
+        let inflight = editor.mediaAssets.filter(\.isGenerating).count
+        Log.generation.notice("addRefAsset id=\(asset.id.prefix(8)) type=\(asset.type.rawValue) existing=\(refImages.count)+\(refVideos.count)+\(refAudios.count) inflightGen=\(inflight)")
+        if allRefs.contains(where: { $0.id == asset.id }) {
+            flashDropError("\(asset.name) is already a reference")
+            return
+        }
+        if selectedType == .audio {
+            var selection = audioInputAssets(for: audioModel)
+            switch asset.type {
+            case .image: selection.imageRefs.append(asset)
+            case .audio: selection.audioRefs.append(asset)
+            case .video, .text, .lottie, .sequence, .subtitle:
+                flashDropError("\(audioModel.displayName) only accepts image or audio references.")
+                return
+            }
+            if let err = selection.validate(for: audioModel) {
+                flashDropError(err)
+                return
+            }
+        } else {
+            var selection = videoInputAssets(for: videoModel)
+            switch asset.type {
+            case .image: selection.imageRefs.append(asset)
+            case .video: selection.videoRefs.append(asset)
+            case .audio: selection.audioRefs.append(asset)
+            case .text, .lottie, .sequence, .subtitle:
+                let supported = activeReferenceTypes.map(\.rawValue).joined(separator: " and ")
+                flashDropError("\(videoModel.displayName) only accepts \(supported) references.")
+                return
+            }
+            let trim = pendingTrimmedSource(for: videoModel, inputAssets: selection)
+            if let err = selection.validate(for: videoModel, trimmedSource: trim) {
+                flashDropError(err)
+                return
+            }
+        }
+        switch asset.type {
+        case .image: refImages.append(asset)
+        case .video: refVideos.append(asset)
+        case .audio: refAudios.append(asset)
+        case .text, .lottie, .sequence, .subtitle: break
+        }
+    }
+
+    func flashDropError(_ message: String) {
+        dropErrorTask?.cancel()
+        dropError = message
+        dropErrorTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            if !Task.isCancelled { dropError = nil }
+        }
+    }
+
+    private func removeRef(_ type: ClipType, byId id: MediaAsset.ID) {
+        switch type {
+        case .image: refImages.removeAll { $0.id == id }
+        case .video: refVideos.removeAll { $0.id == id }
+        case .audio: refAudios.removeAll { $0.id == id }
+        case .text, .lottie, .sequence, .subtitle: break
+        }
+    }
+
+    func resetRefPools() {
+        refImages.removeAll()
+        refVideos.removeAll()
+        refAudios.removeAll()
+    }
+
+    func clearReferences() {
+        firstFrame = nil
+        lastFrame = nil
+        imageReferences.removeAll()
+        resetRefPools()
+        sourceVideo = nil
+        audioSource = nil
+        upscaleSource = nil
+    }
+
+    private var refCounterLabel: String {
+        let total = totalRefCount
+        if selectedType == .video, let cap = videoModel.maxTotalReferences {
+            let shortLabel: (ClipType) -> String = { switch $0 { case .image: "img"; case .video: "vid"; case .audio: "aud"; case .text: "txt"; case .lottie: "lot"; case .sequence: "seq"; case .subtitle: "sub" } }
+            let parts = activeReferenceTypes
+                .map { "\(refCount(for: $0)) \(shortLabel($0))" }
+            return "\(total)/\(cap) · \(parts.joined(separator: " · "))"
+        }
+        let singleCap = activeReferenceTypes.map(refCap).max() ?? 0
+        return "\(total)/\(singleCap)"
+    }
+
+    // MARK: - Image references
+
+    var imageReferenceStrip: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+            Text(L10n.string("References"))
+                .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+
+            LazyVGrid(
+                columns: refGridColumns,
+                alignment: .leading,
+                spacing: AppTheme.Spacing.xs
+            ) {
+                ForEach(imageReferences) { asset in
+                    RefCard(asset: asset) {
+                        imageReferences.removeAll { $0.id == asset.id }
+                    }
+                }
+                RefDropZone(
+                    isTargeted: $imageRefTargeted,
+                    accepting: Set(ClipType.allCases),
+                    iconName: "photo.badge.plus"
+                ) { asset in
+                    if asset.type != .image {
+                        flashDropError("Drop image here.")
+                    } else if imageReferences.contains(where: { $0.id == asset.id }) {
+                        flashDropError("\(asset.name) is already a reference")
+                    } else {
+                        imageReferences.append(asset)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Edit (video-to-video) strip
+
+    var editVideoStrip: some View {
+        HStack(spacing: AppTheme.Spacing.xs) {
+            FrameSlot(
+                label: L10n.string("Source Video"),
+                asset: sourceVideo,
+                isTargeted: $sourceVideoTargeted,
+                accepting: [.video],
+                iconName: "video.badge.plus",
+                onDrop: { sourceVideo = $0 },
+                onClear: { sourceVideo = nil },
+                onError: flashDropError
+            )
+            if videoModel.maxReferenceImages > 0 {
+                FrameSlot(
+                    label: L10n.string("Reference Image"),
+                    asset: imageReferences.first,
+                    isTargeted: $motionReferenceTargeted,
+                    accepting: [.image],
+                    iconName: "photo.badge.plus",
+                    onDrop: { imageReferences = [$0] },
+                    onClear: { imageReferences.removeAll() },
+                    onError: flashDropError
+                )
+            }
+            if videoModel.maxReferenceAudios > 0 {
+                FrameSlot(
+                    label: L10n.string("Replacement Audio"),
+                    asset: refAudios.first,
+                    isTargeted: $refsTargeted,
+                    accepting: [.audio],
+                    iconName: "waveform",
+                    onDrop: { refAudios = [$0] },
+                    onClear: { refAudios.removeAll() },
+                    onError: flashDropError
+                )
+            }
+        }
+    }
+
+    var audioSourceStrip: some View {
+        FrameSlot(
+            label: audioSourceLabel,
+            asset: audioSource,
+            isTargeted: $audioSourceTargeted,
+            accepting: audioSourceTypes,
+            iconName: audioSourceTypes == [.video] ? "video.badge.plus" : "waveform",
+            onDrop: { audioSource = $0 },
+            onClear: { audioSource = nil },
+            onError: flashDropError
+        )
+    }
+
+    var upscaleSourceStrip: some View {
+        FrameSlot(
+            label: L10n.string("Source Media"),
+            asset: upscaleSource,
+            isTargeted: $upscaleSourceTargeted,
+            accepting: [.video, .image],
+            iconName: "arrow.up.right.square",
+            onDrop: { upscaleSource = $0 },
+            onClear: { upscaleSource = nil },
+            onError: flashDropError
+        )
+    }
+
+    private var audioSourceTypes: Set<ClipType> {
+        Set([ClipType.audio, .video].filter { audioModel.acceptsSource($0) })
+    }
+
+    private var audioSourceLabel: String {
+        if audioSourceTypes == [.audio] { return L10n.string("Source Audio") }
+        if audioSourceTypes == [.video] { return L10n.string("Source Video") }
+        return L10n.string("Source Media")
+    }
+}

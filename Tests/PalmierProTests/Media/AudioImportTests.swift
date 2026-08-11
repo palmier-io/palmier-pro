@@ -33,7 +33,7 @@ struct AudioImportTests {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         try Data().write(to: root.appendingPathComponent("voice.aifc"))
 
-        let summary = await e.importFinderItems([root], into: nil)
+        let summary = try await e.importFinderItems([root], into: nil)
 
         #expect(summary.assetCount == 1)
         let imported = try #require(e.mediaAssets.first { $0.name == "voice" })

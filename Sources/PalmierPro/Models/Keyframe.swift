@@ -37,6 +37,21 @@ struct KeyframeTrack<Value: Codable & Sendable & Equatable>: Codable, Sendable, 
     }
 }
 
+extension KeyframeTrack where Value: KeyframeInterpolatable {
+    func rebased(by offset: Int, fallback: Value) -> KeyframeTrack? {
+        guard isActive else { return nil }
+        let boundary = sample(at: offset, fallback: fallback)
+        var kfs = keyframes
+            .filter { $0.frame >= offset }
+            .map { Keyframe(frame: $0.frame - offset, value: $0.value, interpolationOut: $0.interpolationOut) }
+        if kfs.first?.frame != 0 {
+            let interp = keyframes.last { $0.frame < offset }?.interpolationOut ?? .smooth
+            kfs.insert(Keyframe(frame: 0, value: boundary, interpolationOut: interp), at: 0)
+        }
+        return kfs.isEmpty ? nil : KeyframeTrack(keyframes: kfs)
+    }
+}
+
 @inlinable func smoothstep(_ t: Double) -> Double { t * t * (3 - 2 * t) }
 
 protocol KeyframeInterpolatable {
@@ -126,19 +141,6 @@ extension Clip {
         }
     }
 
-    /// Union of every animatable property's kf frames as absolute timeline frames.
-    var allKeyframeFrames: [Int] {
-        var s = Set<Int>()
-        let absStart = startFrame
-        for kf in opacityTrack?.keyframes ?? [] { s.insert(kf.frame + absStart) }
-        for kf in positionTrack?.keyframes ?? [] { s.insert(kf.frame + absStart) }
-        for kf in scaleTrack?.keyframes ?? [] { s.insert(kf.frame + absStart) }
-        for kf in rotationTrack?.keyframes ?? [] { s.insert(kf.frame + absStart) }
-        for kf in cropTrack?.keyframes ?? [] { s.insert(kf.frame + absStart) }
-        for kf in volumeTrack?.keyframes ?? [] { s.insert(kf.frame + absStart) }
-        return s.sorted()
-    }
-
     mutating func upsertKeyframe<V>(
         in keyPath: WritableKeyPath<Clip, KeyframeTrack<V>?>,
         frame: Int,
@@ -171,17 +173,6 @@ extension Clip {
         case .volume:
             volumeTrack?.remove(at: o)
             if volumeTrack?.keyframes.isEmpty == true { volumeTrack = nil }
-        }
-    }
-
-    mutating func clearKeyframes(for property: AnimatableProperty) {
-        switch property {
-        case .opacity:  opacityTrack = nil
-        case .position: positionTrack = nil
-        case .scale:    scaleTrack = nil
-        case .rotation: rotationTrack = nil
-        case .crop:     cropTrack = nil
-        case .volume:   volumeTrack = nil
         }
     }
 
