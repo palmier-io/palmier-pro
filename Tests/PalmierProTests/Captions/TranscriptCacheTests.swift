@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Testing
 @testable import PalmierPro
@@ -44,5 +45,98 @@ struct TranscriptCacheTests {
         #expect(decoded.segments.count == full.segments.count)
         #expect(decoded.words.count == full.words.count)
         #expect(decoded.words[0].start == full.words[0].start)
+    }
+
+    @Test func cachedTranscriptFindsLocaleKeyedCloudFull() async throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cloud-lang-\(UUID().uuidString).wav")
+        try Data("audio".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        let size = try #require(attributes[.size] as? NSNumber).int64Value
+        let mtime = try #require(attributes[.modificationDate] as? Date)
+        let base = "\(url.path)|\(mtime.timeIntervalSince1970)|\(size)"
+        func cacheURL(prefix: String) -> URL {
+            let key = SHA256.hash(data: Data("\(prefix)|\(base)".utf8))
+                .map { String(format: "%02x", $0) }.joined().prefix(32)
+            return TranscriptCache.directory.appendingPathComponent("\(key).json")
+        }
+        let legacyURL = cacheURL(prefix: "cloud|en|full")
+        let lookupURL = cacheURL(prefix: "cloud|any|full")
+        defer {
+            try? FileManager.default.removeItem(at: legacyURL)
+            try? FileManager.default.removeItem(at: lookupURL)
+        }
+        try FileManager.default.createDirectory(at: TranscriptCache.directory, withIntermediateDirectories: true)
+        try JSONEncoder().encode(full).write(to: legacyURL)
+
+        let cached = await TranscriptCache.shared.cachedTranscript(for: url)
+        #expect(cached?.text == full.text)
+        #expect(cached?.language == full.language)
+    }
+
+    @Test func cachedTranscriptFindsRangedCloudResult() async throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cloud-range-\(UUID().uuidString).wav")
+        try Data("audio".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        await TranscriptCache.shared.storeCloudTranscript(
+            full,
+            for: url,
+            range: 4...12,
+            language: "en"
+        )
+        let cached = await TranscriptCache.shared.cachedTranscript(for: url)
+        #expect(cached?.text == full.text)
+    }
+
+    @Test func rangedCloudResultDoesNotReplaceFullLookup() async throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cloud-full-range-\(UUID().uuidString).wav")
+        try Data("audio".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let partial = TranscriptionResult(
+            text: "How are you.",
+            language: "en-US",
+            words: Array(full.words[2...4]),
+            segments: [full.segments[1]]
+        )
+
+        await TranscriptCache.shared.storeCloudTranscript(
+            full, for: url, range: nil, language: "en"
+        )
+        await TranscriptCache.shared.storeCloudTranscript(
+            partial, for: url, range: 4...6, language: "en"
+        )
+        let cached = await TranscriptCache.shared.cachedTranscript(for: url)
+        #expect(cached?.text == full.text)
+    }
+
+    @Test func storeCloudTranscriptPostsDidStoreNotification() async throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cloud-notify-\(UUID().uuidString).wav")
+        try Data("audio".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let expectedPath = url.path
+        await confirmation("transcriptCacheDidStore") { confirm in
+            let token = NotificationCenter.default.addObserver(
+                forName: .transcriptCacheDidStore,
+                object: nil,
+                queue: nil
+            ) { notification in
+                guard let stored = notification.object as? URL, stored.path == expectedPath else { return }
+                confirm()
+            }
+            defer { NotificationCenter.default.removeObserver(token) }
+            await TranscriptCache.shared.storeCloudTranscript(
+                full,
+                for: url,
+                range: nil,
+                language: "en"
+            )
+        }
     }
 }
