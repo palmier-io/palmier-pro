@@ -508,7 +508,7 @@ extension InspectorView {
             .buttonStyle(.plain)
             .help(path ?? L10n.string("Choose a .cube LUT file"))
         }
-        .frame(height: KeyframesMetrics.rowHeight)
+        .frame(height: AppTheme.EditorPanel.fieldMinHeight)
     }
 
     private func lutIntensityRow(clips: [Clip]) -> some View {
@@ -528,7 +528,7 @@ extension InspectorView {
                 onChanged: { setLUTIntensity($0 / 100, clips: clips, commit: false) }
             ) { setLUTIntensity($0 / 100, clips: clips, commit: true) }
         }
-        .frame(height: KeyframesMetrics.rowHeight)
+        .frame(height: AppTheme.EditorPanel.fieldMinHeight)
     }
 
     private func lutPath(in clips: [Clip]) -> String? {
@@ -606,7 +606,7 @@ extension InspectorView {
                     onChanged: { setControlParam(control, label: label, value: $0, clips: clips, commit: false) }
                 ) { setControlParam(control, label: label, value: $0, clips: clips, commit: true) }
             }
-            .frame(height: KeyframesMetrics.rowHeight)
+            .frame(height: AppTheme.EditorPanel.fieldMinHeight)
         }
     }
 

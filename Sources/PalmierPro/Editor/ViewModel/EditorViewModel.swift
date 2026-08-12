@@ -224,12 +224,6 @@ final class EditorViewModel {
         didSet { UserDefaults.standard.set(inspectorPanelVisible, forKey: "inspectorPanelVisible") }
     }
 
-    var keyframesPanelVisible: Bool = {
-        UserDefaults.standard.object(forKey: "keyframesPanelVisible") as? Bool ?? false
-    }() {
-        didSet { UserDefaults.standard.set(keyframesPanelVisible, forKey: "keyframesPanelVisible") }
-    }
-
     var markDeadAir: Bool = {
         UserDefaults.standard.object(forKey: "markDeadAir") as? Bool ?? true
     }() {

@@ -77,7 +77,7 @@
 "Add credits to use Cloud." = "Add credits to use Cloud.";
 "Add emoji" = "Add emoji";
 "Add generated audio to an audio track at this clip's start." = "Add generated audio to an audio track at this clip's start.";
-"Add keyframe at playhead" = "Add keyframe at playhead";
+"Add keyframe" = "Add keyframe";
 "Add models…" = "Add models…";
 "Add nonempty name and description fields to the skill frontmatter." = "Add nonempty name and description fields to the skill frontmatter.";
 "Add source media." = "Add source media.";
@@ -130,6 +130,7 @@
 "Blur" = "Blur";
 "Bold" = "Bold";
 "Both" = "Both";
+"Bottom" = "Bottom";
 "Browse Community Skills ↗" = "Browse Community Skills ↗";
 "Buy" = "Buy";
 "Buy $%lld" = "Buy $%lld";
@@ -274,6 +275,7 @@
 "Delete Skill" = "Delete Skill";
 "Delete Timeline" = "Delete Timeline";
 "Delete from history" = "Delete from history";
+"Delete keyframe" = "Delete keyframe";
 "Delete skill?" = "Delete skill?";
 "Delete “%@”" = "Delete “%@”";
 "Delete “%@”?" = "Delete “%@”?";
@@ -448,7 +450,7 @@
 "Help" = "Help";
 "Hide Guides" = "Hide Guides";
 "Hide Info" = "Hide Info";
-"Hide keyframe timeline" = "Hide keyframe timeline";
+"Hide clip keyframes" = "Hide clip keyframes";
 "Hide reasoning" = "Hide reasoning";
 "High" = "High";
 "Highlight" = "Highlight";
@@ -475,6 +477,7 @@
 "Indexes imported media for on-device search." = "Indexes imported media for on-device search.";
 "Indexing %lld/%lld" = "Indexing %lld/%lld";
 "Input" = "Input";
+"Insets" = "Insets";
 "Inspector" = "Inspector";
 "Inspector Panel" = "Inspector Panel";
 "Instagram" = "Instagram";
@@ -510,6 +513,7 @@
 "Large" = "Large";
 "Last Frame" = "Last Frame";
 "Layout" = "Layout";
+"Left" = "Left";
 "Length of the generated music. It's placed at the playhead, or at the marked range start." = "Length of the generated music. It's placed at the playhead, or at the marked range start.";
 "Let Agent create captions for you. Choose a predefined task, or ask Agent in the chat." = "Let Agent create captions for you. Choose a predefined task, or ask Agent in the chat.";
 "Let Agent generate music for you. Choose a starter, or ask Agent in the chat." = "Let Agent generate music for you. Choose a starter, or ask Agent in the chat.";
@@ -747,7 +751,6 @@
 "Remove from Queue" = "Remove from Queue";
 "Remove from Recents" = "Remove from Recents";
 "Remove horizontal flip" = "Remove horizontal flip";
-"Remove keyframe at playhead" = "Remove keyframe at playhead";
 "Remove model" = "Remove model";
 "Remove vertical flip" = "Remove vertical flip";
 "Removes background noise from this audio using an on-device model." = "Removes background noise from this audio using an on-device model.";
@@ -775,6 +778,7 @@
 "Retry" = "Retry";
 "Retry Download" = "Retry Download";
 "Reveal in Finder" = "Reveal in Finder";
+"Right" = "Right";
 "Ripple Delete" = "Ripple Delete";
 "Ripple Delete Gap" = "Ripple Delete Gap";
 "Ripple Insert" = "Ripple Insert";
@@ -816,7 +820,6 @@
 "Select Forward on All Tracks" = "Select Forward on All Tracks";
 "Select Forward on Track" = "Select Forward on Track";
 "Select Range" = "Select Range";
-"Select a single clip to enable" = "Select a single clip to enable";
 "Select compatible clips and paste settings again." = "Select compatible clips and paste settings again.";
 "Select media files or folders to import" = "Select media files or folders to import";
 "Selected" = "Selected";
@@ -844,8 +847,8 @@
 "Short-form and social" = "Short-form and social";
 "Shortcuts" = "Shortcuts";
 "Show Info" = "Show Info";
+"Show clip keyframes" = "Show clip keyframes";
 "Show in Finder" = "Show in Finder";
-"Show keyframe timeline" = "Show keyframe timeline";
 "Show notifications" = "Show notifications";
 "Show reasoning" = "Show reasoning";
 "Side by Side" = "Side by Side";
@@ -965,6 +968,7 @@
 "Toggle Agent Panel" = "Toggle Agent Panel";
 "Tone" = "Tone";
 "Tools" = "Tools";
+"Top" = "Top";
 "Top / Bottom" = "Top / Bottom";
 "Track Name" = "Track Name";
 "Tracking" = "Tracking";
@@ -1010,6 +1014,8 @@
 "Upscale source media" = "Upscale source media";
 "Upscale…" = "Upscale…";
 "Upscale… (Paid)" = "Upscale… (Paid)";
+"Use Freeform" = "Use Freeform";
+"Use Freeform to edit individual crop insets." = "Use Freeform to edit individual crop insets.";
 "Use an aspect ratio with two positive numbers, such as 3:2." = "Use an aspect ratio with two positive numbers, such as 3:2.";
 "Use as first frame or reference" = "Use as first frame or reference";
 "Use for non-English or mixed-language audio." = "Use for non-English or mixed-language audio.";
