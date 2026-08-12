@@ -5,10 +5,12 @@ import Testing
 @MainActor
 private final class SkillToolHarness {
     let editor = EditorViewModel()
+    let directory: URL
     let store: SkillStore
     let executor: ToolExecutor
 
     init(directory: URL) {
+        self.directory = directory
         let store = SkillStore(directory: directory)
         self.store = store
         executor = ToolExecutor(editor: editor, skillStore: store)
@@ -88,6 +90,35 @@ struct SkillToolTests {
         }
     }
 
+    @Test func removingLocalSkillSuppressesMatchingCatalogID() async throws {
+        try await withHarness { harness in
+            let created = await harness.run("manage_skills", args: [
+                "action": "create",
+                "name": "Catalog Collision",
+                "description": "Exercise a colliding catalog identifier.",
+                "instructions": "Follow the workflow.",
+            ])
+            #expect(!created.isError)
+
+            let removed = await harness.run("manage_skills", args: [
+                "action": "remove",
+                "id": "catalog-collision",
+            ])
+            #expect(!removed.isError)
+
+            let ledger = try #require(await persistedLedger(in: harness.directory))
+            #expect(ledger.suppressed.contains("catalog-collision"))
+            #expect(
+                !SkillStore.shouldAutomaticallyInstall(
+                    localSHA: nil,
+                    installedSHA: ledger.installed["catalog-collision"],
+                    catalogSHA: "catalog",
+                    isSuppressed: ledger.suppressed.contains("catalog-collision")
+                )
+            )
+        }
+    }
+
     @Test func rejectsInvalidUpdatesAndMCPCalls() async throws {
         try await withHarness { harness in
             let invalidUpdate = await harness.run("manage_skills", args: [
@@ -134,6 +165,14 @@ struct SkillToolTests {
     private func resultText(_ result: ToolResult) -> String {
         guard case .text(let text) = result.content.first else { return "" }
         return text
+    }
+
+    @concurrent
+    private func persistedLedger(in directory: URL) async -> SkillLedger? {
+        guard let data = try? Data(contentsOf: directory.appendingPathComponent(".installed.json")) else {
+            return nil
+        }
+        return SkillStore.decodeLedger(data)
     }
 
     @concurrent

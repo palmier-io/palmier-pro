@@ -460,11 +460,10 @@ final class SkillStore {
             try await Self.performFileOperation {
                 try FileManager.default.removeItem(at: skill.path.deletingLastPathComponent())
             }
-            if ledger.installed.removeValue(forKey: skill.id) != nil {
-                ledger.suppressed.insert(skill.id)
-                try await Self.persistLedger(ledger, directory: storageDirectory)
-                self.ledger = ledger
-            }
+            ledger.installed.removeValue(forKey: skill.id)
+            ledger.suppressed.insert(skill.id)
+            try await Self.persistLedger(ledger, directory: storageDirectory)
+            self.ledger = ledger
             await reloadInBackground()
             return true
         } ?? false
