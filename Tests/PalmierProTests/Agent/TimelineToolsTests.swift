@@ -66,7 +66,7 @@ struct TimelineToolsTests {
         #expect(ids == [visual.id, audio.id])
     }
 
-    @Test func captionReceiptSnapshotIncludesOnlyRequestedGroup() {
+    @Test func mutationReceiptSnapshotIncludesChangedCaptionSiblings() {
         var first = Fixtures.clip(id: "first", mediaType: .text, start: 0, duration: 30)
         var second = Fixtures.clip(id: "second", mediaType: .text, start: 30, duration: 30)
         var unrelated = Fixtures.clip(id: "unrelated", mediaType: .text, start: 60, duration: 30)
@@ -77,7 +77,7 @@ struct TimelineToolsTests {
             Fixtures.videoTrack(clips: [first, second, unrelated]),
         ]))
 
-        let tracks = ToolExecutor.focusedRawTracks(h.editor, captionGroupIds: ["requested"])
+        let tracks = ToolExecutor.focusedRawTracks(h.editor, clipIds: [first.id])
         let ids = Set(tracks.flatMap { track in
             (track["clips"] as? [[String: Any]])?.compactMap { $0["id"] as? String } ?? []
         })

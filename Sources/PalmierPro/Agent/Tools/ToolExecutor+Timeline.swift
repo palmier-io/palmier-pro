@@ -50,10 +50,14 @@ extension ToolExecutor {
         captionGroupIds: Set<String> = []
     ) -> [[String: Any]] {
         var linkGroupIds = Set<String>()
+        var includedCaptionGroupIds = captionGroupIds
         for track in editor.timeline.tracks {
             for clip in track.clips where clipIds.contains(clip.id) {
                 if let linkGroupId = clip.linkGroupId {
                     linkGroupIds.insert(linkGroupId)
+                }
+                if let captionGroupId = clip.captionGroupId {
+                    includedCaptionGroupIds.insert(captionGroupId)
                 }
             }
         }
@@ -61,7 +65,7 @@ extension ToolExecutor {
         return editor.timeline.tracks.map { track in
             let clips = track.clips.filter { clip in
                 clipIds.contains(clip.id)
-                    || clip.captionGroupId.map(captionGroupIds.contains) == true
+                    || clip.captionGroupId.map(includedCaptionGroupIds.contains) == true
                     || clip.linkGroupId.map(linkGroupIds.contains) == true
             }
             return [
