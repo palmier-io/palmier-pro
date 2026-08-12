@@ -258,6 +258,7 @@ enum Analytics {
     private static var allowedCapturePropertyKeys: Set<String> {
         Set([
             "active_day",
+            "acquisition_source",
             "caption_clip_count",
             "caption_group_count",
             "clip_count",
@@ -277,6 +278,7 @@ enum Analytics {
             "model",
             "output_count",
             "project_id",
+            "previous_editors",
             "resolution",
             "roles",
             "session_id",

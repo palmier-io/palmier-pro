@@ -1,7 +1,7 @@
 import Foundation
 
 enum OnboardingStep: Int {
-    case welcome, profile, account
+    case welcome, discovery, profile, account
 }
 
 enum OnboardingSampleState: Equatable {
@@ -17,15 +17,31 @@ struct OnboardingOption: Identifiable {
 }
 
 enum OnboardingQuestion: String, CaseIterable, Identifiable {
-    case roles, videoTypes, interests
+    case roles, videoTypes, interests, acquisitionSource, previousEditors
+
     var id: String { rawValue }
+
+    static let profileQuestions: [OnboardingQuestion] = [.roles, .videoTypes, .interests]
+    static let discoveryQuestions: [OnboardingQuestion] = [.acquisitionSource, .previousEditors]
+
     var titleKey: String {
         switch self {
         case .videoTypes: L10n.key("What do you make?")
         case .roles: L10n.key("What best describes your role?")
         case .interests: L10n.key("What interests you most about Palmier Pro?")
+        case .acquisitionSource: L10n.key("How did you find Palmier Pro?")
+        case .previousEditors: L10n.key("Which editors did you use before?")
         }
     }
+
+    var allowsMultipleSelection: Bool {
+        self != .acquisitionSource
+    }
+
+    var exclusiveOptionIDs: Set<String> {
+        self == .previousEditors ? ["none"] : []
+    }
+
     var options: [OnboardingOption] {
         switch self {
         case .videoTypes: [
@@ -55,6 +71,27 @@ enum OnboardingQuestion: String, CaseIterable, Identifiable {
             .init(id: "agent_editing", labelKey: L10n.key("Agentic editing")),
             .init(id: "external_agents", labelKey: L10n.key("Integration with your own agent")),
             .init(id: "video_automation", labelKey: L10n.key("Video automation")),
+        ]
+        case .acquisitionSource: [
+            .init(id: "google", labelKey: L10n.key("Google")),
+            .init(id: "github", labelKey: L10n.key("GitHub")),
+            .init(id: "x", labelKey: L10n.key("X")),
+            .init(id: "instagram", labelKey: L10n.key("Instagram")),
+            .init(id: "youtube", labelKey: L10n.key("YouTube")),
+            .init(id: "hacker_news", labelKey: L10n.key("Hacker News")),
+            .init(id: "word_of_mouth", labelKey: L10n.key("Friend or colleague")),
+            .other,
+        ]
+        case .previousEditors: [
+            .init(id: "premiere_pro", labelKey: L10n.key("Adobe Premiere Pro")),
+            .init(id: "davinci_resolve", labelKey: L10n.key("DaVinci Resolve")),
+            .init(id: "final_cut_pro", labelKey: L10n.key("Final Cut Pro")),
+            .init(id: "capcut", labelKey: L10n.key("CapCut")),
+            .init(id: "instagram_edits", labelKey: L10n.key("Instagram Edits")),
+            .init(id: "imovie", labelKey: L10n.key("iMovie")),
+            .init(id: "descript", labelKey: L10n.key("Descript")),
+            .init(id: "none", labelKey: L10n.key("None")),
+            .other,
         ]
         }
     }
