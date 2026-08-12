@@ -70,6 +70,7 @@ struct ParsedTextStylePatch {
     let outline: ParsedTextOutlinePatch?
     let shadow: ParsedTextShadowPatch?
     let background: ParsedTextBackgroundPatch?
+    let blur: Double?
 
     var hasAnyField: Bool {
         fontName != nil || fontSize != nil || widthScale != nil || heightScale != nil
@@ -77,7 +78,7 @@ struct ParsedTextStylePatch {
             || isUnderlined != nil || isStruckThrough != nil || isOverlined != nil
             || tracking != nil || lineSpacing != nil || fontCase != nil
             || color != nil || alignment != nil || outline?.hasAnyField == true
-            || shadow?.hasAnyField == true || background?.hasAnyField == true
+            || shadow?.hasAnyField == true || background?.hasAnyField == true || blur != nil
     }
 
     var affectsLayout: Bool {
@@ -138,7 +139,7 @@ extension ToolExecutor {
                 "fontName", "fontSize", "widthScale", "heightScale",
                 "bold", "italic", "underline", "strikethrough", "overline",
                 "tracking", "lineSpacing", "fontCase",
-                "color", "alignment", "outline", "shadow", "background",
+                "color", "alignment", "outline", "shadow", "background", "blur",
             ],
             path: path
         )
@@ -164,7 +165,8 @@ extension ToolExecutor {
             alignment: try parseTextAlignment(args, path: path),
             outline: outline,
             shadow: shadow,
-            background: background
+            background: background,
+            blur: try optionalNumber(args, key: "blur", path: path, range: 0...100)
         )
     }
 
@@ -321,6 +323,7 @@ extension ToolExecutor {
         if let f = patch.fontCase { style.fontCase = f }
         if let c = patch.color { style.color = c }
         if let a = patch.alignment { style.alignment = a }
+        if let b = patch.blur { style.blur = b }
         if let outline = patch.outline {
             if let e = outline.enabled { style.border.enabled = e }
             if let c = outline.color { style.border.color = c }

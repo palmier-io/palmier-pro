@@ -1974,6 +1974,7 @@ struct ToolExecutorTextFolderTests {
         #expect((styleProperties["widthScale"]?["maximum"] as? NSNumber)?.doubleValue == 10)
         #expect((styleProperties["heightScale"]?["minimum"] as? NSNumber)?.doubleValue == 0.1)
         #expect((styleProperties["heightScale"]?["maximum"] as? NSNumber)?.doubleValue == 10)
+        #expect((styleProperties["blur"]?["maximum"] as? NSNumber)?.doubleValue == 100)
 
         let updateTransform = try #require(updateProperties["transform"]?["properties"] as? [String: [String: Any]])
         #expect(Set(updateTransform.keys) == ["x", "y", "rotation", "rotationX", "rotationY"])
@@ -1983,11 +1984,15 @@ struct ToolExecutorTextFolderTests {
         let entries = try #require(addProperties["entries"])
         let items = try #require(entries["items"] as? [String: Any])
         let entryProperties = try #require(items["properties"] as? [String: [String: Any]])
+        let addStyle = try #require(entryProperties["style"]?["properties"] as? [String: [String: Any]])
+        #expect(addStyle["blur"] != nil)
         let addTransform = try #require(entryProperties["transform"]?["properties"] as? [String: [String: Any]])
         #expect(Set(addTransform.keys) == ["x", "y", "rotation", "rotationX", "rotationY"])
 
         let captionsTool = try #require(ToolDefinitions.mcpServer.first { $0.name == .addCaptions })
         let captionsProperties = try #require(captionsTool.inputSchema["properties"] as? [String: [String: Any]])
+        let captionsStyle = try #require(captionsProperties["style"]?["properties"] as? [String: [String: Any]])
+        #expect(captionsStyle["blur"] != nil)
         let captionsTransform = try #require(captionsProperties["transform"]?["properties"] as? [String: [String: Any]])
         #expect(Set(captionsTransform.keys) == ["x", "y", "rotation", "rotationX", "rotationY"])
     }

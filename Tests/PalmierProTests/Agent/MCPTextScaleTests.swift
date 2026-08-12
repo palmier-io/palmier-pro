@@ -42,18 +42,22 @@ struct MCPTextScaleTests {
             #expect(style["widthScale"]?.objectValue?["maximum"]?.intValue == 10)
             #expect(style["heightScale"]?.objectValue?["minimum"]?.doubleValue == 0.1)
             #expect(style["heightScale"]?.objectValue?["maximum"]?.intValue == 10)
+            #expect(style["blur"]?.objectValue?["minimum"]?.intValue == 0)
+            #expect(style["blur"]?.objectValue?["maximum"]?.intValue == 100)
 
             let update = try await client.callTool(name: "update_text", arguments: [
                 "clipIds": .array([.string(clip.id)]),
                 "style": .object([
                     "widthScale": .double(1.5),
                     "heightScale": .double(0.75),
+                    "blur": .double(24),
                 ]),
             ])
             #expect(update.isError != true)
             let updatedStyle = try await textStyle(client: client, clipId: clip.id)
             #expect((updatedStyle["widthScale"] as? NSNumber)?.doubleValue == 1.5)
             #expect((updatedStyle["heightScale"] as? NSNumber)?.doubleValue == 0.75)
+            #expect((updatedStyle["blur"] as? NSNumber)?.doubleValue == 24)
 
             let invalid = try await client.callTool(name: "update_text", arguments: [
                 "clipIds": .array([.string(clip.id)]),
@@ -62,12 +66,18 @@ struct MCPTextScaleTests {
             #expect(invalid.isError == true)
             let afterInvalid = try await textStyle(client: client, clipId: clip.id)
             #expect((afterInvalid["widthScale"] as? NSNumber)?.doubleValue == 1.5)
+            let invalidBlur = try await client.callTool(name: "update_text", arguments: [
+                "clipIds": .array([.string(clip.id)]),
+                "style": .object(["blur": .double(101)]),
+            ])
+            #expect(invalidBlur.isError == true)
 
             let undo = try await client.callTool(name: "undo")
             #expect(undo.isError != true)
             let restoredStyle = try await textStyle(client: client, clipId: clip.id)
             #expect((restoredStyle["widthScale"] as? NSNumber)?.doubleValue == 0.85)
             #expect((restoredStyle["heightScale"] as? NSNumber)?.doubleValue == 1.1)
+            #expect(restoredStyle["blur"] == nil)
         } catch {
             await server.stop()
             await client.disconnect()

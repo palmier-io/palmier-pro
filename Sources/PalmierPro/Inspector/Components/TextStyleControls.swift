@@ -116,6 +116,13 @@ struct TextStyleControls<AfterAlignment: View, AfterColor: View>: View {
                     )
                 }
                 afterColor()
+                numberRow(
+                    label: L10n.string("Blur"),
+                    range: 0...100,
+                    format: "%.0f",
+                    suffix: " px",
+                    keyPath: \.blur
+                )
             }
             if showsSolidFillControls {
                 outlineGroup

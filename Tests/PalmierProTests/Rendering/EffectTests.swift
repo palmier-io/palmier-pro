@@ -8,6 +8,16 @@ import UniformTypeIdentifiers
 
 @Suite("Effects — model")
 struct EffectModelTests {
+    private func pixel(_ image: CIImage, at point: CGPoint) -> [Float] {
+        let context = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()])
+        var pixel = [Float](repeating: 0, count: 4)
+        context.render(
+            image, toBitmap: &pixel, rowBytes: MemoryLayout<Float>.size * 4,
+            bounds: CGRect(origin: point, size: CGSize(width: 1, height: 1)),
+            format: .RGBAf, colorSpace: nil
+        )
+        return pixel
+    }
 
     @Test func clipEffectsRoundTripThroughCodable() throws {
         var clip = Fixtures.clip(id: "c1", mediaRef: "m", start: 0, duration: 30)
@@ -111,21 +121,55 @@ struct EffectModelTests {
             effect: descriptor.makeEffect(),
             atOffset: 0
         )
-        let context = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()])
-        var pixel = [Float](repeating: 0, count: 4)
-        context.render(
-            output,
-            toBitmap: &pixel,
-            rowBytes: MemoryLayout<Float>.size * 4,
-            bounds: output.extent,
-            format: .RGBAf,
-            colorSpace: nil
-        )
+        let pixel = pixel(output, at: output.extent.origin)
 
         #expect(abs(Double(pixel[0]) - 0.8) < 0.001)
         #expect(abs(Double(pixel[1]) - 0.6) < 0.001)
         #expect(abs(Double(pixel[2]) - 0.25) < 0.001)
         #expect(abs(Double(pixel[3]) - 1) < 0.001)
+    }
+
+    @Test func gaussianBlurScalesForGeneratedLayersWithoutChangingMediaDefault() throws {
+        let descriptor = try #require(EffectRegistry.descriptor(id: "blur.gaussian"))
+        let effect = Effect.make("blur.gaussian", ["radius": 4])
+        let canvas = CIImage(color: .clear).cropped(
+            to: CGRect(x: 0, y: 0, width: 100, height: 100)
+        )
+        let square = CIImage(color: .white).cropped(
+            to: CGRect(x: 40, y: 40, width: 20, height: 20)
+        )
+        let input = square.composited(over: canvas)
+        let defaultOutput = descriptor.render(input, effect: effect, atOffset: 0)
+        let unitOutput = descriptor.render(input, effect: effect, atOffset: 0, spatialScale: 1)
+        let doubledOutput = descriptor.render(input, effect: effect, atOffset: 0, spatialScale: 2)
+        func alpha(_ image: CIImage) -> Double {
+            Double(pixel(image, at: CGPoint(x: 30, y: 50))[3])
+        }
+
+        #expect(abs(alpha(defaultOutput) - alpha(unitOutput)) < 0.0001)
+        #expect(alpha(doubledOutput) > alpha(unitOutput) + 0.01)
+    }
+
+    @Test @MainActor func inspectColorEffectStackUsesTheRendererAlphaContract() {
+        let canvas = CIImage(color: .clear).cropped(
+            to: CGRect(x: 0, y: 0, width: 100, height: 100)
+        )
+        let square = CIImage(color: CIColor(red: 1, green: 0, blue: 0)).cropped(
+            to: CGRect(x: 40, y: 40, width: 20, height: 20)
+        )
+        var clip = Fixtures.clip(id: "transparent", start: 0, duration: 30)
+        clip.effects = [Effect.make("blur.gaussian", ["radius": 8])]
+        let output = ToolExecutor.applyingEffects(
+            square.composited(over: canvas),
+            clip: clip,
+            atOffset: 0
+        )
+        let pixel = pixel(output, at: CGPoint(x: 35, y: 50))
+
+        #expect(pixel[3] > 0.01 && pixel[3] < 0.99)
+        #expect(abs(pixel[0] - pixel[3]) < 0.01)
+        #expect(abs(pixel[1]) < 0.01)
+        #expect(abs(pixel[2]) < 0.01)
     }
 }
 

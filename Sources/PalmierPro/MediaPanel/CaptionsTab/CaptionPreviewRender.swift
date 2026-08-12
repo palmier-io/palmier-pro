@@ -28,9 +28,15 @@ enum CaptionPreviewRender {
     static func cgImage(clip: Clip, frame: Int, size: CGSize, scale: CGFloat) -> CGImage? {
         let px = CGSize(width: size.width * scale, height: size.height * scale)
         guard px.width >= 1, px.height >= 1,
-              let ci = TextFrameRenderer.image(clip: clip, frame: frame, renderSize: px),
+              let raster = TextFrameRenderer.image(clip: clip, frame: frame, renderSize: px),
               let cg = ciContext.createCGImage(
-                ci, from: CGRect(origin: .zero, size: px),
+                FrameRenderer.applyTextEffects(
+                    raster.unpremultiplyingAlpha(),
+                    clip: clip,
+                    frame: frame,
+                    renderSize: px
+                ).premultiplyingAlpha(),
+                from: CGRect(origin: .zero, size: px),
                 format: .RGBA8, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!)
         else { return nil }
         return cg
