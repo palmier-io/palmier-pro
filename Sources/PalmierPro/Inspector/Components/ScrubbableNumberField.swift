@@ -10,6 +10,7 @@ struct ScrubbableNumberField: View {
     /// Display units changed per pixel of horizontal drag.
     var dragSensitivity: Double = 1
     var fieldWidth: CGFloat = AppTheme.EditorPanel.numericFieldWidth
+    var fieldHeight: CGFloat = AppTheme.EditorPanel.fieldMinHeight
     var valueFontSize: CGFloat = AppTheme.FontSize.sm
     var dragValueAdjustment: (Double) -> Double = { $0 }
     var trailingLabel: String? = nil
@@ -78,7 +79,10 @@ struct ScrubbableNumberField: View {
             .frame(width: fieldWidth, alignment: .trailing)
             .padding(.horizontal, AppTheme.Spacing.sm)
             .padding(.vertical, AppTheme.Spacing.xxs)
-            .editorValueField(active: isEditing || isDragging)
+            .editorValueField(
+                active: isEditing || isDragging,
+                minHeight: fieldHeight
+            )
             .overlay(scrubOverlay)
         }
         .fixedSize(horizontal: true, vertical: false)

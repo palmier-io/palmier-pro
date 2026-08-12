@@ -4,6 +4,7 @@ struct KeyframePropertyValueFields: View {
     struct Style {
         let scalarWidth: CGFloat
         let positionWidth: CGFloat
+        let fieldHeight: CGFloat
         let valueFontSize: CGFloat
         let positionLabelFontSize: CGFloat
         let positionSpacing: CGFloat
@@ -12,6 +13,7 @@ struct KeyframePropertyValueFields: View {
         static let inspector = Style(
             scalarWidth: AppTheme.EditorPanel.numericFieldWidth,
             positionWidth: AppTheme.EditorPanel.compactNumericFieldWidth,
+            fieldHeight: AppTheme.EditorPanel.fieldMinHeight,
             valueFontSize: AppTheme.FontSize.sm,
             positionLabelFontSize: AppTheme.FontSize.xs,
             positionSpacing: AppTheme.Spacing.sm,
@@ -20,6 +22,7 @@ struct KeyframePropertyValueFields: View {
         static let timeline = Style(
             scalarWidth: AppTheme.ComponentSize.timelineKeyframeValueFieldWidth,
             positionWidth: AppTheme.ComponentSize.timelineKeyframeValueFieldWidth,
+            fieldHeight: AppTheme.ComponentSize.timelineKeyframeValueFieldHeight,
             valueFontSize: AppTheme.FontSize.micro,
             positionLabelFontSize: AppTheme.FontSize.xxs,
             positionSpacing: AppTheme.Spacing.xs,
@@ -92,6 +95,7 @@ struct KeyframePropertyValueFields: View {
             displayMultiplier: multiplier,
             format: "%.0f",
             fieldWidth: style.positionWidth,
+            fieldHeight: style.fieldHeight,
             valueFontSize: style.valueFontSize,
             trailingLabel: label,
             trailingLabelFontSize: style.positionLabelFontSize,
@@ -120,7 +124,10 @@ struct KeyframePropertyValueFields: View {
                 .frame(width: style.scalarWidth, alignment: .trailing)
                 .padding(.horizontal, AppTheme.Spacing.sm)
                 .padding(.vertical, AppTheme.Spacing.xxs)
-                .editorValueField(active: detailPresented)
+                .editorValueField(
+                    active: detailPresented,
+                    minHeight: style.fieldHeight
+                )
         }
         .buttonStyle(.plain)
         .popover(isPresented: $detailPresented, arrowEdge: .trailing) {
@@ -170,6 +177,7 @@ struct KeyframePropertyValueFields: View {
                 format: "%.0f",
                 valueSuffix: "%",
                 fieldWidth: style.scalarWidth,
+                fieldHeight: style.fieldHeight,
                 valueFontSize: style.valueFontSize,
                 onChanged: { writeCrop($0, edge: edge, commit: false) },
                 onInteractionStart: beginInteraction,
@@ -191,6 +199,7 @@ struct KeyframePropertyValueFields: View {
             valueSuffix: config.suffix,
             dragSensitivity: config.sensitivity,
             fieldWidth: style.scalarWidth,
+            fieldHeight: style.fieldHeight,
             valueFontSize: style.valueFontSize,
             dragValueAdjustment: adjustedScalarValue,
             displayTextOverride: scalarDisplayText,
