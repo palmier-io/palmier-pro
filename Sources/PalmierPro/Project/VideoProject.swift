@@ -496,8 +496,6 @@ class VideoProject: NSDocument {
 
         window.standardWindowButton(.documentIconButton)?.isHidden = true
 
-        AppState.shared.showEditor(for: self)
-
         editorViewModel.searchIndex.projectOpened()
         editorViewModel.updateTelemetryContext()
         Telemetry.breadcrumb(
