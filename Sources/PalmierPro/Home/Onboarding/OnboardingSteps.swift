@@ -27,13 +27,15 @@ struct OnboardingWelcomeStep: View {
     }
 }
 
-struct OnboardingProfileStep: View {
+struct OnboardingQuestionnaireStep: View {
     @Bindable var onboarding: OnboardingStore
+    let title: String
+    let questions: [OnboardingQuestion]
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
-            OnboardingTitle(L10n.string("Tell us about your work"))
-            ForEach(OnboardingQuestion.allCases) { question in
+            OnboardingTitle(title)
+            ForEach(questions) { question in
                 Spacer(minLength: AppTheme.Spacing.md)
                 section(question)
             }
@@ -49,6 +51,7 @@ struct OnboardingProfileStep: View {
                 .foregroundStyle(AppTheme.Text.primaryColor)
             OnboardingFlowLayout(spacing: AppTheme.Spacing.smMd) {
                 ForEach(question.options) { option in
+                    let isSelected = selection.contains(option.id)
                     Button {
                         onboarding.toggle(option, for: question)
                     } label: {
@@ -57,8 +60,9 @@ struct OnboardingProfileStep: View {
                             .lineLimit(1)
                     }
                     .buttonStyle(.capsule(
-                        selection.contains(option.id) ? .prominent : .secondary,
-                        size: .small
+                        isSelected ? .prominent : .secondary,
+                        size: .small,
+                        fill: isSelected ? nil : AnyShapeStyle(AppTheme.Onboarding.secondaryButtonFill)
                     ))
                     .frame(maxWidth: .infinity)
                 }

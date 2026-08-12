@@ -92,6 +92,7 @@
 "Added to %@" = "Added to %@";
 "Adjust" = "Adjust";
 "Adjust Range" = "Adjust Range";
+"Adobe Premiere Pro" = "Adobe Premiere Pro";
 "Ads and branded content" = "Ads and branded content";
 "Agent Mode" = "Agent Mode";
 "Agent Panel" = "Agent Panel";
@@ -155,6 +156,7 @@
 "Canvas Zoom" = "Canvas Zoom";
 "Cap characters per caption, including spaces and punctuation. A single word may exceed the limit." = "Cap characters per caption, including spaces and punctuation. A single word may exceed the limit.";
 "Cap the words shown per caption. None fits each line to the box." = "Cap the words shown per caption. None fits each line to the box.";
+"CapCut" = "CapCut";
 "Captions" = "Captions";
 "Captions will look like this" = "Captions will look like this";
 "Capture Frame to Media" = "Capture Frame to Media";
@@ -254,6 +256,7 @@
 "Custom…" = "Custom…";
 "Cut" = "Cut";
 "Cut to the beat" = "Cut to the beat";
+"DaVinci Resolve" = "DaVinci Resolve";
 "Dark" = "Dark";
 "Dark appearance" = "Dark appearance";
 "Darken" = "Darken";
@@ -286,6 +289,7 @@
 "Describe the sound" = "Describe the sound";
 "Describe the sound (minimum %lld characters)" = "Describe the sound (minimum %lld characters)";
 "Describe the video" = "Describe the video";
+"Descript" = "Descript";
 "Description" = "Description";
 "Deselect & Reset Tool" = "Deselect & Reset Tool";
 "Designer" = "Designer";
@@ -374,6 +378,7 @@
 "Fill prompt" = "Fill prompt";
 "Film Grain" = "Film Grain";
 "Filmmaker" = "Filmmaker";
+"Final Cut Pro" = "Final Cut Pro";
 "First Frame" = "First Frame";
 "First-time sign-ups only" = "First-time sign-ups only";
 "First/Last" = "First/Last";
@@ -394,6 +399,7 @@
 "Frame Rate" = "Frame Rate";
 "Free" = "Free";
 "Freeform" = "Freeform";
+"Friend or colleague" = "Friend or colleague";
 "Full Frame" = "Full Frame";
 "Full Screen" = "Full Screen";
 "Full changelog" = "Full changelog";
@@ -426,14 +432,17 @@
 "Get OpenAI API key" = "Get OpenAI API key";
 "Get a notification when a generation finishes." = "Get a notification when a generation finishes.";
 "Getting the search model ready." = "Getting the search model ready.";
+"GitHub" = "GitHub";
 "Glow" = "Glow";
 "Go to next keyframe" = "Go to next keyframe";
 "Go to previous keyframe" = "Go to previous keyframe";
+"Google" = "Google";
 "Grid" = "Grid";
 "Grid 2×2" = "Grid 2×2";
 "Grid 3×3" = "Grid 3×3";
 "Grid 4×4" = "Grid 4×4";
 "Grouped" = "Grouped";
+"Hacker News" = "Hacker News";
 "Hard Light" = "Hard Light";
 "Height" = "Height";
 "Help" = "Help";
@@ -447,6 +456,7 @@
 "Highlights" = "Highlights";
 "Hobbyist" = "Hobbyist";
 "Hold" = "Hold";
+"How did you find Palmier Pro?" = "How did you find Palmier Pro?";
 "Hue" = "Hue";
 "Hue Curves" = "Hue Curves";
 "Identify Speakers" = "Identify Speakers";
@@ -467,6 +477,8 @@
 "Input" = "Input";
 "Inspector" = "Inspector";
 "Inspector Panel" = "Inspector Panel";
+"Instagram" = "Instagram";
+"Instagram Edits" = "Instagram Edits";
 "Install" = "Install";
 "Install in Claude Desktop" = "Install in Claude Desktop";
 "Install in Cursor" = "Install in Cursor";
@@ -699,6 +711,7 @@
 "Prompt" = "Prompt";
 "Quality" = "Quality";
 "Queued" = "Queued";
+"Quick questions" = "Quick questions";
 "Quit Palmier Pro" = "Quit Palmier Pro";
 "Radius" = "Radius";
 "Range" = "Range";
@@ -1039,6 +1052,7 @@
 "What do you make?" = "What do you make?";
 "What interests you most about Palmier Pro?" = "What interests you most about Palmier Pro?";
 "What's New in v%@" = "What's New in v%@";
+"Which editors did you use before?" = "Which editors did you use before?";
 "White Balance" = "White Balance";
 "Whites" = "Whites";
 "Whole timeline · %@" = "Whole timeline · %@";
@@ -1048,6 +1062,7 @@
 "Word Slide" = "Word Slide";
 "Working on %@" = "Working on %@";
 "Workspace layout" = "Workspace layout";
+"X" = "X";
 "X High" = "X High";
 "You were not charged for this generation" = "You were not charged for this generation";
 "You're all set" = "You're all set";
@@ -1072,6 +1087,7 @@
 "drift-corrected" = "drift-corrected";
 "error" = "error";
 "group moved right to fit" = "group moved right to fit";
+"iMovie" = "iMovie";
 "lowercase" = "lowercase";
 "or add your own Anthropic key" = "or add your own Anthropic key";
 "or add your own OpenAI key" = "or add your own OpenAI key";

@@ -7,7 +7,7 @@ final class OnboardingStore {
     static let completionKey = "hasSeenWelcome"
     static let shared = OnboardingStore()
 
-    private static let surveyVersion = 1
+    private static let surveyVersion = 2
 
     private(set) var step = OnboardingStep.welcome
     private(set) var isComplete: Bool
@@ -31,8 +31,8 @@ final class OnboardingStore {
         move(by: -1)
     }
 
-    /// Reports the survey once, no matter how often the user steps back into the profile step.
-    func submitProfile() {
+    /// Reports the survey once, no matter how often the user steps back.
+    func submitSurvey() {
         if !didCaptureSurvey {
             didCaptureSurvey = true
             Analytics.capture(.onboardingCompleted, properties: [
@@ -40,6 +40,8 @@ final class OnboardingStore {
                 "roles": selection(for: .roles).sorted(),
                 "video_types": selection(for: .videoTypes).sorted(),
                 "interests": selection(for: .interests).sorted(),
+                "acquisition_source": selection(for: .acquisitionSource).sorted().first ?? "not_provided",
+                "previous_editors": selection(for: .previousEditors).sorted(),
             ])
         }
         advance()
@@ -63,8 +65,22 @@ final class OnboardingStore {
 
     func toggle(_ option: OnboardingOption, for question: OnboardingQuestion) {
         var selection = selection(for: question)
-        if !selection.insert(option.id).inserted {
+
+        if !question.allowsMultipleSelection {
+            selections[question] = selection.contains(option.id) ? [] : [option.id]
+            return
+        }
+
+        if question.exclusiveOptionIDs.contains(option.id) {
+            selections[question] = selection == [option.id] ? [] : [option.id]
+            return
+        }
+
+        selection.subtract(question.exclusiveOptionIDs)
+        if selection.contains(option.id) {
             selection.remove(option.id)
+        } else {
+            selection.insert(option.id)
         }
         selections[question] = selection
     }

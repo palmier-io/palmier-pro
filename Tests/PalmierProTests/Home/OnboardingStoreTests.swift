@@ -24,11 +24,22 @@ struct OnboardingStoreTests {
         }
     }
 
-    @Test func profileAdvancesDirectlyToAccount() throws {
+    @Test func discoveryAdvancesToProfile() throws {
         try withDefaults { defaults in
             let store = OnboardingStore(defaults: defaults)
             store.advance()
             store.advance()
+
+            #expect(store.step == .profile)
+        }
+    }
+
+    @Test func submittingSurveyAdvancesToAccount() throws {
+        try withDefaults { defaults in
+            let store = OnboardingStore(defaults: defaults)
+            store.advance()
+            store.advance()
+            store.submitSurvey()
 
             #expect(store.step == .account)
         }
@@ -41,6 +52,7 @@ struct OnboardingStoreTests {
 
             #expect(store.step == .welcome)
 
+            store.advance()
             store.advance()
             store.advance()
             store.advance()
@@ -69,6 +81,35 @@ struct OnboardingStoreTests {
             store.toggle(.other, for: .videoTypes)
 
             #expect(store.selection(for: .videoTypes).isEmpty)
+        }
+    }
+
+    @Test func acquisitionSourceIsSingleSelect() throws {
+        try withDefaults { defaults in
+            let store = OnboardingStore(defaults: defaults)
+            let google = try #require(OnboardingQuestion.acquisitionSource.options.first { $0.id == "google" })
+            let github = try #require(OnboardingQuestion.acquisitionSource.options.first { $0.id == "github" })
+
+            store.toggle(google, for: .acquisitionSource)
+            store.toggle(github, for: .acquisitionSource)
+
+            #expect(store.selection(for: .acquisitionSource) == ["github"])
+        }
+    }
+
+    @Test func noPreviousEditorIsExclusive() throws {
+        try withDefaults { defaults in
+            let store = OnboardingStore(defaults: defaults)
+            let premiere = try #require(OnboardingQuestion.previousEditors.options.first { $0.id == "premiere_pro" })
+            let none = try #require(OnboardingQuestion.previousEditors.options.first { $0.id == "none" })
+            let capcut = try #require(OnboardingQuestion.previousEditors.options.first { $0.id == "capcut" })
+
+            store.toggle(premiere, for: .previousEditors)
+            store.toggle(none, for: .previousEditors)
+            #expect(store.selection(for: .previousEditors) == ["none"])
+
+            store.toggle(capcut, for: .previousEditors)
+            #expect(store.selection(for: .previousEditors) == ["capcut"])
         }
     }
 

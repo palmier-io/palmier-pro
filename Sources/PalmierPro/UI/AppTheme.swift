@@ -427,6 +427,9 @@ enum AppTheme {
         static let cardWidth: CGFloat = 520
         static let cardHeight: CGFloat = 420
         static let welcomeHeroHeight: CGFloat = 240
+        static var secondaryButtonFill: Color {
+            AppTheme.Accent.primary.opacity(AppTheme.Opacity.muted)
+        }
     }
 
     enum Settings {
