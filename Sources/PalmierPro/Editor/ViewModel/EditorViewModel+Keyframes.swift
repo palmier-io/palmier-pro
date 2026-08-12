@@ -5,6 +5,11 @@ struct KeyframeLaneNavigationTarget: Equatable {
     let frame: Int
 }
 
+struct KeyframeNavigationCacheKey: Hashable {
+    let trackId: String
+    let property: AnimatableProperty
+}
+
 extension EditorViewModel {
 
     // MARK: - Read
@@ -41,24 +46,82 @@ extension EditorViewModel {
         }
     }
 
-    func keyframeLaneNavigationTarget(
+    func keyframeLaneNavigationTargets(
         trackId: String,
         property: AnimatableProperty,
-        from frame: Int,
-        forward: Bool
-    ) -> KeyframeLaneNavigationTarget? {
-        guard let track = timeline.tracks.first(where: { $0.id == trackId }) else { return nil }
-        var result: KeyframeLaneNavigationTarget?
+        around frame: Int
+    ) -> (previous: KeyframeLaneNavigationTarget?, next: KeyframeLaneNavigationTarget?) {
+        let targets = cachedKeyframeLaneNavigationTargets(
+            trackId: trackId,
+            property: property
+        )
+        let previousIndex = firstNavigationIndex(
+            in: targets,
+            frame: frame,
+            strictlyAfter: false
+        ) - 1
+        let nextIndex = firstNavigationIndex(
+            in: targets,
+            frame: frame,
+            strictlyAfter: true
+        )
+        return (
+            targets.indices.contains(previousIndex) ? targets[previousIndex] : nil,
+            targets.indices.contains(nextIndex) ? targets[nextIndex] : nil
+        )
+    }
+
+    private func cachedKeyframeLaneNavigationTargets(
+        trackId: String,
+        property: AnimatableProperty
+    ) -> [KeyframeLaneNavigationTarget] {
+        if keyframeNavigationCacheTimelineId != activeTimelineId
+            || keyframeNavigationCacheRevision != timelineRenderRevision {
+            keyframeNavigationCacheTimelineId = activeTimelineId
+            keyframeNavigationCacheRevision = timelineRenderRevision
+            keyframeNavigationCache.removeAll(keepingCapacity: true)
+        }
+        let key = KeyframeNavigationCacheKey(trackId: trackId, property: property)
+        if let cached = keyframeNavigationCache[key] {
+            return cached
+        }
+        guard let track = timeline.tracks.first(where: { $0.id == trackId }) else {
+            return []
+        }
+        var targets: [KeyframeLaneNavigationTarget] = []
         for clip in track.clips where clip.supportsKeyframes(for: property) {
-            for candidate in clip.keyframeFrames(for: property) {
-                guard (forward ? candidate > frame : candidate < frame) else { continue }
-                if let current = result {
-                    guard (forward ? candidate < current.frame : candidate > current.frame) else { continue }
-                }
-                result = KeyframeLaneNavigationTarget(clipId: clip.id, frame: candidate)
+            targets += clip.keyframeFrames(for: property).map {
+                KeyframeLaneNavigationTarget(clipId: clip.id, frame: $0)
             }
         }
-        return result
+        targets.sort {
+            $0.frame == $1.frame
+                ? $0.clipId < $1.clipId
+                : $0.frame < $1.frame
+        }
+        keyframeNavigationCache[key] = targets
+        return targets
+    }
+
+    private func firstNavigationIndex(
+        in targets: [KeyframeLaneNavigationTarget],
+        frame: Int,
+        strictlyAfter: Bool
+    ) -> Int {
+        var lower = 0
+        var upper = targets.count
+        while lower < upper {
+            let middle = (lower + upper) / 2
+            let advances = strictlyAfter
+                ? targets[middle].frame <= frame
+                : targets[middle].frame < frame
+            if advances {
+                lower = middle + 1
+            } else {
+                upper = middle
+            }
+        }
+        return lower
     }
 
     func toggleKeyframe(clipId: String, property: AnimatableProperty, at frame: Int) {

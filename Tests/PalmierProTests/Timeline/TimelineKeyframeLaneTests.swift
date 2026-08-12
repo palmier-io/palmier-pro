@@ -127,18 +127,23 @@ struct TimelineKeyframeLaneTests {
             Fixtures.videoTrack(id: "visual", clips: [first, second]),
         ])
 
-        #expect(editor.keyframeLaneNavigationTarget(
+        var navigation = editor.keyframeLaneNavigationTargets(
             trackId: "visual",
             property: .opacity,
-            from: 25,
-            forward: false
-        ) == KeyframeLaneNavigationTarget(clipId: "first", frame: 5))
-        #expect(editor.keyframeLaneNavigationTarget(
+            around: 25
+        )
+        #expect(navigation.previous == KeyframeLaneNavigationTarget(clipId: "first", frame: 5))
+        #expect(navigation.next == KeyframeLaneNavigationTarget(clipId: "second", frame: 40))
+
+        editor.commitClipProperty(clipId: "second") {
+            $0.upsertKeyframe(in: \.opacityTrack, frame: 35, value: 0.7)
+        }
+        navigation = editor.keyframeLaneNavigationTargets(
             trackId: "visual",
             property: .opacity,
-            from: 25,
-            forward: true
-        ) == KeyframeLaneNavigationTarget(clipId: "second", frame: 40))
+            around: 25
+        )
+        #expect(navigation.next == KeyframeLaneNavigationTarget(clipId: "second", frame: 35))
     }
 
     @MainActor

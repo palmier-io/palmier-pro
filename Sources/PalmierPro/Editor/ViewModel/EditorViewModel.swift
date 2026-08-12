@@ -135,6 +135,11 @@ final class EditorViewModel {
     var timelineVisibleWidth: Double = 0
     var timelineRenderRevision: Int = 0
     @ObservationIgnored private var clipLocationIndexCache: (revision: Int, timelineId: String, index: [String: ClipLocation])?
+    @ObservationIgnored var keyframeNavigationCache: [
+        KeyframeNavigationCacheKey: [KeyframeLaneNavigationTarget]
+    ] = [:]
+    @ObservationIgnored var keyframeNavigationCacheTimelineId: String?
+    @ObservationIgnored var keyframeNavigationCacheRevision = -1
     /// Live horizontal scroll of the timeline panel, mirrored from AppKit for view-state stash.
     @ObservationIgnored var timelineScrollOffsetX: Double = 0
     var timelineScrollRestoreX: Double?

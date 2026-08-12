@@ -9,15 +9,6 @@ struct TimelineKeyframeLaneHeaderControl: View {
         editor.keyframeLaneTarget(trackId: trackId, property: property)
     }
 
-    private func navigationTarget(forward: Bool) -> KeyframeLaneNavigationTarget? {
-        editor.keyframeLaneNavigationTarget(
-            trackId: trackId,
-            property: property,
-            from: editor.activeFrame,
-            forward: forward
-        )
-    }
-
     var body: some View {
         let clip = target
         HStack(spacing: AppTheme.Spacing.xxs) {
@@ -49,11 +40,16 @@ struct TimelineKeyframeLaneHeaderControl: View {
 
     private func keyframeControls(for clip: Clip?) -> some View {
         let frame = editor.activeFrame
+        let navigation = editor.keyframeLaneNavigationTargets(
+            trackId: trackId,
+            property: property,
+            around: frame
+        )
         let onKeyframe = clip.map {
             editor.hasKeyframe(clipId: $0.id, property: property, at: frame)
         } ?? false
         return KeyframeControlStrip(
-            previousAction: navigationTarget(forward: false).map { destination in
+            previousAction: navigation.previous.map { destination in
                 { navigate(to: destination) }
             },
             keyframeAction: clip.map { clip in
@@ -65,7 +61,7 @@ struct TimelineKeyframeLaneHeaderControl: View {
                     )
                 }
             },
-            nextAction: navigationTarget(forward: true).map { destination in
+            nextAction: navigation.next.map { destination in
                 { navigate(to: destination) }
             },
             isOnKeyframe: onKeyframe,
