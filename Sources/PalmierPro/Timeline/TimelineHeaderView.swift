@@ -372,6 +372,8 @@ final class TimelineHeaderView: NSView {
                 host.bottomPassthroughHeight = laneIndex == properties.count - 1
                     ? TrackSize.resizeHandleZone
                     : 0
+                host.leadingPassthroughWidth =
+                    AppTheme.ComponentSize.timelineKeyframeResizeHandleWidth
                 host.isHidden = !host.frame.intersects(visibleRows)
             }
         }
@@ -713,9 +715,11 @@ private final class TimelineLaneHeaderHostingView:
     NSHostingView<TimelineKeyframeLaneHeaderControl>
 {
     var bottomPassthroughHeight: CGFloat = 0
+    var leadingPassthroughWidth: CGFloat = 0
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         if bottomPassthroughHeight > 0,
+           point.x <= frame.minX + leadingPassthroughWidth,
            point.y >= frame.maxY - bottomPassthroughHeight {
             return nil
         }
