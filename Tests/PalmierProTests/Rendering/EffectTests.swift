@@ -207,6 +207,37 @@ struct EffectModelTests {
         #expect(abs(pixel[1]) < 0.01)
         #expect(abs(pixel[2]) < 0.01)
     }
+
+    @Test @MainActor func inspectColorEffectStackUsesTheRendererAlphaContract() {
+        let canvas = CIImage(color: .clear).cropped(
+            to: CGRect(x: 0, y: 0, width: 100, height: 100)
+        )
+        let square = CIImage(color: CIColor(red: 1, green: 0, blue: 0)).cropped(
+            to: CGRect(x: 40, y: 40, width: 20, height: 20)
+        )
+        var clip = Fixtures.clip(id: "transparent", start: 0, duration: 30)
+        clip.effects = [Effect.make("blur.gaussian", ["radius": 8])]
+        let output = ToolExecutor.applyingEffects(
+            square.composited(over: canvas),
+            clip: clip,
+            atOffset: 0
+        )
+        let context = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()])
+        var pixel = [Float](repeating: 0, count: 4)
+        context.render(
+            output,
+            toBitmap: &pixel,
+            rowBytes: MemoryLayout<Float>.size * 4,
+            bounds: CGRect(x: 35, y: 50, width: 1, height: 1),
+            format: .RGBAf,
+            colorSpace: nil
+        )
+
+        #expect(pixel[3] > 0.01 && pixel[3] < 0.99)
+        #expect(abs(pixel[0] - pixel[3]) < 0.01)
+        #expect(abs(pixel[1]) < 0.01)
+        #expect(abs(pixel[2]) < 0.01)
+    }
 }
 
 @Suite("Effects — rendering")
