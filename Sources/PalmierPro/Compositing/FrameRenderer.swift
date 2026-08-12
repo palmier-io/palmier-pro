@@ -46,12 +46,20 @@ enum FrameRenderer {
 
             if case .text = layer.source, layer.clip.textFillMode == .footage {
                 let opacity = min(1.0, max(0.0, layer.clip.opacityAt(frame: frame)))
-                if opacity > 0, let matte = textStencilMatte(layer, frame: frame, renderSize: renderSize) {
+                if opacity > 0, let mask = textStencilMask(layer, frame: frame, renderSize: renderSize) {
                     let original = accum
-                    let black = CIImage(color: .black).cropped(to: accum.extent)
+                    let color = (layer.clip.textStyle ?? TextStyle()).color
+                    let matte = CIImage(color: CIColor(
+                        red: CGFloat(color.r),
+                        green: CGFloat(color.g),
+                        blue: CGFloat(color.b),
+                        alpha: CGFloat(color.a)
+                    ))
+                    .cropped(to: accum.extent)
+                    .composited(over: accum)
                     let stencil = accum.applyingFilter("CIBlendWithMask", parameters: [
-                        kCIInputBackgroundImageKey: black,
-                        kCIInputMaskImageKey: matte,
+                        kCIInputBackgroundImageKey: matte,
+                        kCIInputMaskImageKey: mask,
                     ]).cropped(to: accum.extent)
                     let stenciled = applyTextEffects(
                         stencil,
@@ -105,7 +113,7 @@ enum FrameRenderer {
         return accum
     }
 
-    private static func textStencilMatte(
+    private static func textStencilMask(
         _ layer: LayerPlan,
         frame: Int,
         renderSize: CGSize

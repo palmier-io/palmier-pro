@@ -334,7 +334,7 @@ struct CompositorTextLayerTests {
 
     @Test func footageFillUsesTextRotation() async throws {
         var text = backgroundTextClip(rotation: 90)
-        text.textFillMode = .footage
+        text.setTextFillMode(.footage)
         let timeline = CompositorRenderTests.timelineWith(
             Fixtures.videoTrack(clips: [text]),
             Fixtures.videoTrack(clips: [CompositorFixtures.patternClip(id: "bg")])
@@ -347,7 +347,7 @@ struct CompositorTextLayerTests {
 
     @Test func footageFillUsesTextTiltRotation() async throws {
         var text = backgroundTextClip(rotationY: 60)
-        text.textFillMode = .footage
+        text.setTextFillMode(.footage)
         let timeline = CompositorRenderTests.timelineWith(
             Fixtures.videoTrack(clips: [text]),
             Fixtures.videoTrack(clips: [CompositorFixtures.patternClip(id: "bg")])
@@ -370,6 +370,16 @@ struct CompositorTextLayerTests {
         #expect(patternPixels > 80, "footage should show through glyphs: \(patternPixels)")
     }
 
+    @Test func footageFillUsesTextColorForTheMatte() async throws {
+        let frame = try await renderFootageFill(
+            opacity: 1,
+            matteColor: .init(r: 0, g: 1, b: 0, a: 1)
+        )
+
+        #expect(CompositorFixtures.isGreen(frame.tl), "outside glyphs should use the text color: \(frame.tl)")
+        #expect(patternPixelsInTextBand(frame) > 80)
+    }
+
     @Test func footageFillOpacityCrossfadesStencil() async throws {
         let opaque = try await renderFootageFill(opacity: 1)
         let mid = try await renderFootageFill(opacity: 0.5)
@@ -382,14 +392,18 @@ struct CompositorTextLayerTests {
                 "corner red should sit between stenciled and full: \(mid.tl) vs \(opaque.tl)/\(clear.tl)")
     }
 
-    private func renderFootageFill(opacity: Double) async throws -> CompositorRenderTests.Frame {
+    private func renderFootageFill(
+        opacity: Double,
+        matteColor: TextStyle.RGBA = .init(r: 0, g: 0, b: 0, a: 1)
+    ) async throws -> CompositorRenderTests.Frame {
         var text = textClip("HELLO")
-        text.textFillMode = .footage
         text.opacity = opacity
         var style = text.textStyle ?? TextStyle()
         style.fontScale = 4
         style.isBold = true
+        style.color = matteColor
         text.textStyle = style
+        text.setTextFillMode(.footage, footageMatteColor: matteColor)
         text.transform = Transform(topLeft: (0.05, 0.25), width: 0.9, height: 0.5)
 
         let tl = CompositorRenderTests.timelineWith(

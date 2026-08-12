@@ -475,9 +475,14 @@ extension ToolExecutor {
             }
             let durationFrames = endFrame - startFrame
 
+            let stylePatch = try parseTextStylePatch(entry, path: path)
+            let fillMode = try parseTextFillMode(entry.string("fillMode"), path: path)
             var style = TextStyle()
-            if let patch = try parseTextStylePatch(entry, path: path) {
-                Self.applyTextStylePatch(patch, to: &style)
+            if let stylePatch {
+                Self.applyTextStylePatch(stylePatch, to: &style)
+            }
+            if fillMode == .footage, stylePatch?.color == nil {
+                style.color = TextFillMode.defaultFootageMatteColor
             }
 
             let transform = makeAddTextTransform(
@@ -494,7 +499,7 @@ extension ToolExecutor {
                 style: style,
                 transform: transform,
                 animation: try parseTextAnimation(preset: entry.string("animation"), highlightColor: entry.string("highlightColor"), path: path),
-                fillMode: try parseTextFillMode(entry.string("fillMode"), path: path)
+                fillMode: fillMode
             ))
         }
 
@@ -678,7 +683,7 @@ extension ToolExecutor {
                     clip.textAnimation = a
                 }
                 if let fillMode {
-                    clip.textFillMode = fillMode == .color ? nil : fillMode
+                    clip.setTextFillMode(fillMode, footageMatteColor: textStylePatch?.color)
                 }
             }
         }
