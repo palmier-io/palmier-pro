@@ -415,6 +415,7 @@ enum AppTheme {
         static let timelineTrackHeaderMinimumWidth: CGFloat = 112
         static let timelineTrackHeaderMaximumWidth: CGFloat = 320
         static let timelineTrackHeaderResizeHitWidth: CGFloat = 8
+        static let timelineTrackHeaderColorStripWidth: CGFloat = 3
         static let timelineTrackHeaderReorderLeadingInset: CGFloat = 9
         static let timelineKeyframeTrackHeaderMinimumWidth: CGFloat = 220
         static let timelineKeyframeValueFieldWidth: CGFloat = 36

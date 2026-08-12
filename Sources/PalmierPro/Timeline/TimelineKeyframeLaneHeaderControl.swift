@@ -30,10 +30,15 @@ struct TimelineKeyframeLaneHeaderControl: View {
         .padding(.trailing, AppTheme.Spacing.sm)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(AppTheme.Background.baseColor)
-        .overlay(alignment: .top) {
+        .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(AppTheme.Border.subtleColor)
                 .frame(height: AppTheme.BorderWidth.thin)
+        }
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(AppTheme.Accent.timecodeColor)
+                .frame(width: AppTheme.ComponentSize.timelineTrackHeaderColorStripWidth)
         }
         .environment(editor)
     }

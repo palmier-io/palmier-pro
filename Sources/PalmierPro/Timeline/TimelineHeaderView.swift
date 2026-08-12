@@ -41,7 +41,7 @@ final class TimelineHeaderView: NSView {
         let property: AnimatableProperty
     }
     private var laneHeaderViews: [
-        LaneHeaderKey: NSHostingView<TimelineKeyframeLaneHeaderControl>
+        LaneHeaderKey: TimelineLaneHeaderHostingView
     ] = [:]
     private let rulerCoverView = TimelineHeaderRulerCoverView()
     private var geometry: TimelineGeometry {
@@ -107,7 +107,7 @@ final class TimelineHeaderView: NSView {
         keyframeLaneButtonRects.removeAll()
         dragHandleRects.removeAll()
         labelRects.removeAll()
-        let stripWidth: CGFloat = 3
+        let stripWidth = AppTheme.ComponentSize.timelineTrackHeaderColorStripWidth
         let iconSize: CGFloat = 14
         let iconConfig = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
         let headerWidth = bounds.width
@@ -349,7 +349,7 @@ final class TimelineHeaderView: NSView {
                 let key = LaneHeaderKey(trackId: track.id, property: property)
                 desired.insert(key)
                 if laneHeaderViews[key] == nil {
-                    let host = NSHostingView(rootView: TimelineKeyframeLaneHeaderControl(
+                    let host = TimelineLaneHeaderHostingView(rootView: TimelineKeyframeLaneHeaderControl(
                         editor: editor,
                         trackId: track.id,
                         property: property
@@ -367,8 +367,10 @@ final class TimelineHeaderView: NSView {
                     y: laneY,
                     width: bounds.width,
                     height: AppTheme.ComponentSize.timelineKeyframeLaneHeight
-                        - (laneIndex == properties.count - 1 ? TrackSize.resizeHandleZone : 0)
                 )
+                host.bottomPassthroughHeight = laneIndex == properties.count - 1
+                    ? TrackSize.resizeHandleZone
+                    : 0
                 host.isHidden = !host.frame.intersects(visibleRows)
             }
         }
@@ -700,6 +702,20 @@ final class TimelineHeaderView: NSView {
             options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect],
             owner: self
         ))
+    }
+}
+
+private final class TimelineLaneHeaderHostingView:
+    NSHostingView<TimelineKeyframeLaneHeaderControl>
+{
+    var bottomPassthroughHeight: CGFloat = 0
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        if bottomPassthroughHeight > 0,
+           point.y >= frame.maxY - bottomPassthroughHeight {
+            return nil
+        }
+        return super.hitTest(point)
     }
 }
 
