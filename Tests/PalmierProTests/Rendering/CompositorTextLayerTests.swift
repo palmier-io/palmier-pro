@@ -101,6 +101,24 @@ struct CompositorTextLayerTests {
         #expect(blurredFrame.at(64, 90).r < sharpFrame.at(64, 90).r)
     }
 
+    @Test func genericGaussianEffectDoesNotCreateASecondTextBlurSource() async throws {
+        let sharp = backgroundTextClip()
+        var effectBlurred = sharp
+        effectBlurred.effects = [Effect.make("blur.gaussian", ["radius": 60])]
+        let sharpFrame = try await CompositorRenderTests.render(
+            CompositorRenderTests.timelineWith(Fixtures.videoTrack(clips: [sharp])),
+            frame: 15,
+            renderSize: Self.size
+        )
+        let effectFrame = try await CompositorRenderTests.render(
+            CompositorRenderTests.timelineWith(Fixtures.videoTrack(clips: [effectBlurred])),
+            frame: 15,
+            renderSize: Self.size
+        )
+
+        #expect(effectFrame.bytes == sharpFrame.bytes)
+    }
+
     @Test func invertedFillUsesWhiteDifferenceBlend() async throws {
         var text = textClip("HELLO")
         text.textFillMode = .inverted

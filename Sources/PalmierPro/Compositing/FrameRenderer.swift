@@ -377,7 +377,7 @@ enum FrameRenderer {
         renderSize: CGSize
     ) -> CIImage {
         let styleBlur = clip.textStyle?.blur ?? 0
-        let effects = clip.effects ?? []
+        let effects = (clip.effects ?? []).filter { $0.type != "blur.gaussian" }
         guard styleBlur > 0 || !effects.isEmpty else { return input }
         let renderRect = CGRect(origin: .zero, size: renderSize)
         var image = input.composited(over: CIImage(color: .clear).cropped(to: renderRect))
