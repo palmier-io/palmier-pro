@@ -75,6 +75,7 @@ struct TimelineKeyframeLaneHeaderControl: View {
     }
 
     private func navigate(to destination: KeyframeLaneNavigationTarget) {
+        editor.selectedGap = nil
         editor.selectedClipIds = [destination.clipId]
         editor.seekToFrame(destination.frame)
     }
