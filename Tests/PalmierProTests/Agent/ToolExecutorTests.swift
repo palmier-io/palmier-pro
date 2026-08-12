@@ -2571,6 +2571,33 @@ struct SetClipPropertiesTests {
         #expect(group?["textPreview"] as? String == "word0 … word2")
     }
 
+    @Test func updateTextSingleCaptionReceiptPreservesDeviantStyle() async {
+        var clips: [Clip] = []
+        for i in 0..<3 {
+            var clip = Fixtures.clip(id: "cap-\(i)", mediaRef: "text", mediaType: .text, start: i * 30, duration: 30)
+            clip.captionGroupId = "g1"
+            clip.textContent = "word\(i)"
+            clip.textStyle = TextStyle()
+            clips.append(clip)
+        }
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: clips)]))
+
+        let result = await h.runRaw("update_text", args: [
+            "clipIds": ["cap-1"],
+            "style": ["color": "#FF0000"],
+        ])
+
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let json = (try? JSONSerialization.jsonObject(with: Data(ToolHarness.textOf(result).utf8))) as? [String: Any]
+        let receipt = (json?["clips"] as? [[String: Any]])?.first
+        let color = (receipt?["textStyle"] as? [String: Any])?["color"] as? [String: Any]
+        #expect(receipt?["id"] as? String == "cap-1")
+        #expect(receipt?["captionGroupId"] as? String == "g1")
+        #expect(color?["r"] == nil)
+        #expect((color?["g"] as? NSNumber)?.doubleValue == 0)
+        #expect((color?["b"] as? NSNumber)?.doubleValue == 0)
+    }
+
     @Test func updateTextCaptionGroupAcceptsRichTextStyleFields() async {
         var a = Fixtures.clip(id: "cap-a", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
         var b = Fixtures.clip(id: "cap-b", mediaRef: "text", mediaType: .text, start: 30, duration: 30)

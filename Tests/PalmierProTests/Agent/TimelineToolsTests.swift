@@ -45,6 +45,46 @@ struct TimelineToolsTests {
         #expect(result?["window"] == nil)
     }
 
+    @Test func mutationReceiptSnapshotExcludesUnrelatedClips() {
+        var visual = Fixtures.clip(id: "visual", start: 0, duration: 30)
+        var audio = Fixtures.clip(id: "audio", mediaType: .audio, start: 0, duration: 30)
+        visual.linkGroupId = "linked"
+        audio.linkGroupId = "linked"
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [
+                visual,
+                Fixtures.clip(id: "unrelated", start: 60, duration: 30),
+            ]),
+            Fixtures.audioTrack(clips: [audio]),
+        ]))
+
+        let tracks = ToolExecutor.focusedRawTracks(h.editor, clipIds: [visual.id])
+        let ids = Set(tracks.flatMap { track in
+            (track["clips"] as? [[String: Any]])?.compactMap { $0["id"] as? String } ?? []
+        })
+
+        #expect(ids == [visual.id, audio.id])
+    }
+
+    @Test func mutationReceiptSnapshotIncludesChangedCaptionSiblings() {
+        var first = Fixtures.clip(id: "first", mediaType: .text, start: 0, duration: 30)
+        var second = Fixtures.clip(id: "second", mediaType: .text, start: 30, duration: 30)
+        var unrelated = Fixtures.clip(id: "unrelated", mediaType: .text, start: 60, duration: 30)
+        first.captionGroupId = "requested"
+        second.captionGroupId = "requested"
+        unrelated.captionGroupId = "other"
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [first, second, unrelated]),
+        ]))
+
+        let tracks = ToolExecutor.focusedRawTracks(h.editor, clipIds: [first.id])
+        let ids = Set(tracks.flatMap { track in
+            (track["clips"] as? [[String: Any]])?.compactMap { $0["id"] as? String } ?? []
+        })
+
+        #expect(ids == [first.id, second.id])
+    }
+
     @Test func createTimelineSwitchesAndInheritsSettings() async throws {
         let h = ToolHarness()
         h.editor.timeline.fps = 60

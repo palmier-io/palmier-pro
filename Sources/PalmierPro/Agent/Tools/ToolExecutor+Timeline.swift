@@ -44,6 +44,42 @@ extension ToolExecutor {
         try? JSONSerialization.jsonObject(with: JSONEncoder().encode(timeline)) as? [String: Any]
     }
 
+    static func focusedRawTracks(
+        _ editor: EditorViewModel,
+        clipIds: Set<String> = [],
+        captionGroupIds: Set<String> = []
+    ) -> [[String: Any]] {
+        var linkGroupIds = Set<String>()
+        var includedCaptionGroupIds = captionGroupIds
+        for track in editor.timeline.tracks {
+            for clip in track.clips where clipIds.contains(clip.id) {
+                if let linkGroupId = clip.linkGroupId {
+                    linkGroupIds.insert(linkGroupId)
+                }
+                if let captionGroupId = clip.captionGroupId {
+                    includedCaptionGroupIds.insert(captionGroupId)
+                }
+            }
+        }
+
+        return editor.timeline.tracks.map { track in
+            let clips = track.clips.filter { clip in
+                clipIds.contains(clip.id)
+                    || clip.captionGroupId.map(includedCaptionGroupIds.contains) == true
+                    || clip.linkGroupId.map(linkGroupIds.contains) == true
+            }
+            return [
+                "id": track.id,
+                "type": track.type.rawValue,
+                "clips": clips.compactMap(Self.rawClipDict),
+            ]
+        }
+    }
+
+    private static func rawClipDict(_ clip: Clip) -> [String: Any]? {
+        try? JSONSerialization.jsonObject(with: JSONEncoder().encode(clip)) as? [String: Any]
+    }
+
     func timelineEntries(_ editor: EditorViewModel, detailed: Bool = false) -> [[String: Any]] {
         editor.timelines.map { t in
             var e: [String: Any] = ["timelineId": t.id, "name": t.name]

@@ -122,7 +122,7 @@ extension ToolExecutor {
         guard !collapsedGids.isEmpty else { return [] }
         changed = changed.filter { gidByMember[$0].map { !collapsedGids.contains($0) } ?? true }
 
-        guard let rawTracks = Self.rawTimelineDict(editor.timeline)?["tracks"] as? [[String: Any]] else { return [] }
+        let rawTracks = Self.focusedRawTracks(editor, captionGroupIds: collapsedGids)
         var out: [[String: Any]] = []
         for track in Self.compactTracks(rawTracks, editor: editor, window: nil, captionDetail: false) {
             for var group in track["captionGroups"] as? [[String: Any]] ?? [] {
@@ -136,8 +136,8 @@ extension ToolExecutor {
 
     /// Returns clips in get_timeline shape with track index, folding audio and captions.
     private func readShapedClips(_ editor: EditorViewModel, ids: Set<String>) -> [[String: Any]] {
-        guard !ids.isEmpty,
-              let rawTracks = Self.rawTimelineDict(editor.timeline)?["tracks"] as? [[String: Any]] else { return [] }
+        guard !ids.isEmpty else { return [] }
+        let rawTracks = Self.focusedRawTracks(editor, clipIds: ids)
         let tracks = Self.compactTracks(rawTracks, editor: editor, window: nil, captionDetail: true)
 
         var byId: [String: [String: Any]] = [:]
