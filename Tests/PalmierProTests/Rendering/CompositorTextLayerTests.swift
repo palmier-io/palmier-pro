@@ -79,6 +79,28 @@ struct CompositorTextLayerTests {
         #expect(whiteInBand(f) > 30, "white text should composite over the video: \(whiteInBand(f))")
     }
 
+    @Test func gaussianBlurSoftensTheCompleteTextLayer() async throws {
+        let sharp = backgroundTextClip()
+        var blurred = sharp
+        blurred.textStyle?.blur = 60
+        let sharpFrame = try await CompositorRenderTests.render(
+            CompositorRenderTests.timelineWith(Fixtures.videoTrack(clips: [sharp])),
+            frame: 15,
+            renderSize: Self.size
+        )
+        let blurredFrame = try await CompositorRenderTests.render(
+            CompositorRenderTests.timelineWith(Fixtures.videoTrack(clips: [blurred])),
+            frame: 15,
+            renderSize: Self.size
+        )
+        let sharpOutside = sharpFrame.at(60, 90)
+        let blurredOutside = blurredFrame.at(60, 90)
+
+        #expect(CompositorFixtures.isBlack(sharpOutside))
+        #expect(blurredOutside.r + blurredOutside.g + blurredOutside.b > 30)
+        #expect(blurredFrame.at(64, 90).r < sharpFrame.at(64, 90).r)
+    }
+
     @Test func invertedFillUsesWhiteDifferenceBlend() async throws {
         var text = textClip("HELLO")
         text.textFillMode = .inverted
@@ -342,13 +364,34 @@ struct CompositorTextLayerTests {
                 "corner red should sit between stenciled and full: \(mid.tl) vs \(opaque.tl)/\(clear.tl)")
     }
 
-    private func renderFootageFill(opacity: Double) async throws -> CompositorRenderTests.Frame {
+    @Test func footageFillAppliesGaussianBlurToTheStenciledLayer() async throws {
+        let sharp = try await renderFootageFill(opacity: 1)
+        let blurred = try await renderFootageFill(
+            opacity: 1,
+            blur: 60
+        )
+        var changedPixels = 0
+        for index in stride(from: 0, to: sharp.bytes.count, by: 4) {
+            let delta = abs(Int(sharp.bytes[index]) - Int(blurred.bytes[index]))
+                + abs(Int(sharp.bytes[index + 1]) - Int(blurred.bytes[index + 1]))
+                + abs(Int(sharp.bytes[index + 2]) - Int(blurred.bytes[index + 2]))
+            if delta > 20 { changedPixels += 1 }
+        }
+
+        #expect(changedPixels > 100)
+    }
+
+    private func renderFootageFill(
+        opacity: Double,
+        blur: Double = 0
+    ) async throws -> CompositorRenderTests.Frame {
         var text = textClip("HELLO")
         text.textFillMode = .footage
         text.opacity = opacity
         var style = text.textStyle ?? TextStyle()
         style.fontScale = 4
         style.isBold = true
+        style.blur = blur
         text.textStyle = style
         text.transform = Transform(topLeft: (0.05, 0.25), width: 0.9, height: 0.5)
 

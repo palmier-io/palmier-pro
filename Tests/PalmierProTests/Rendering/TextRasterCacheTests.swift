@@ -60,6 +60,16 @@ struct TextRasterCacheTests {
         #expect(count == 1, "expected one raster for static frames and whole-pixel moves, got \(count)")
     }
 
+    @Test func layerBlurReusesTheTextRaster() {
+        var c = clip(content: uniqueContent("Blur"))
+        let count = rasterCount(of: c.textContent!) {
+            _ = TextFrameRenderer.image(clip: c, frame: 0, renderSize: size)
+            c.textStyle?.blur = 40
+            _ = TextFrameRenderer.image(clip: c, frame: 0, renderSize: size)
+        }
+        #expect(count == 1)
+    }
+
     @Test func entranceAnimationSharesOneBaseRaster() {
         let c = clip(content: uniqueContent("Entrance"), anim: TextAnimation(preset: .popIn))
         let count = rasterCount(of: c.textContent!) {
