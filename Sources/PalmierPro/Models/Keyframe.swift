@@ -35,6 +35,30 @@ struct KeyframeTrack<Value: Codable & Sendable & Equatable>: Codable, Sendable, 
         kf.frame = newFrame
         upsert(kf)
     }
+
+    func frames(in range: ClosedRange<Int>) -> [Int] {
+        var lower = 0
+        var upper = keyframes.count
+        while lower < upper {
+            let middle = (lower + upper) / 2
+            if keyframes[middle].frame < range.lowerBound {
+                lower = middle + 1
+            } else {
+                upper = middle
+            }
+        }
+        let start = lower
+        upper = keyframes.count
+        while lower < upper {
+            let middle = (lower + upper) / 2
+            if keyframes[middle].frame <= range.upperBound {
+                lower = middle + 1
+            } else {
+                upper = middle
+            }
+        }
+        return keyframes[start..<lower].map(\.frame)
+    }
 }
 
 extension KeyframeTrack where Value: KeyframeInterpolatable {
@@ -102,11 +126,49 @@ enum AnimatableProperty: String, CaseIterable, Sendable {
         case .volume:   "Volume"
         }
     }
+
+    static let visualLaneOrder: [AnimatableProperty] = [
+        .position, .scale, .rotation, .opacity, .crop,
+    ]
+
+    static func lanes(for track: Track) -> [AnimatableProperty] {
+        let order: [AnimatableProperty] = track.type == .audio ? [.volume] : visualLaneOrder
+        return order.filter { property in
+            track.clips.contains { $0.supportsKeyframes(for: property) }
+        }
+    }
 }
 
 // MARK: - Clip keyframe helpers
 
 extension Clip {
+    func supportsKeyframes(for property: AnimatableProperty) -> Bool {
+        switch property {
+        case .volume:
+            return mediaType == .audio
+        case .position, .rotation, .opacity:
+            return mediaType.isVisual
+        case .scale, .crop:
+            switch mediaType {
+            case .video, .image, .lottie, .sequence:
+                return true
+            case .audio, .text, .subtitle:
+                return false
+            }
+        }
+    }
+
+    func hasActiveKeyframes(for property: AnimatableProperty) -> Bool {
+        switch property {
+        case .opacity: opacityTrack?.isActive == true
+        case .position: positionTrack?.isActive == true
+        case .scale: scaleTrack?.isActive == true
+        case .rotation: rotationTrack?.isActive == true
+        case .crop: cropTrack?.isActive == true
+        case .volume: volumeTrack?.isActive == true
+        }
+    }
+
     func contains(timelineFrame frame: Int) -> Bool {
         frame >= startFrame && frame < endFrame
     }
@@ -127,6 +189,23 @@ extension Clip {
         case .volume:   offsets = volumeTrack?.keyframes.map(\.frame) ?? []
         }
         return offsets.map(toAbs)
+    }
+
+    func keyframeFrames(
+        for property: AnimatableProperty,
+        intersecting timelineRange: ClosedRange<Int>
+    ) -> [Int] {
+        let offsets = (timelineRange.lowerBound - startFrame)...(timelineRange.upperBound - startFrame)
+        let frames: [Int]
+        switch property {
+        case .opacity: frames = opacityTrack?.frames(in: offsets) ?? []
+        case .position: frames = positionTrack?.frames(in: offsets) ?? []
+        case .scale: frames = scaleTrack?.frames(in: offsets) ?? []
+        case .rotation: frames = rotationTrack?.frames(in: offsets) ?? []
+        case .crop: frames = cropTrack?.frames(in: offsets) ?? []
+        case .volume: frames = volumeTrack?.frames(in: offsets) ?? []
+        }
+        return frames.map(toAbs)
     }
 
     func interpolation(for property: AnimatableProperty, atFrame frame: Int) -> Interpolation? {

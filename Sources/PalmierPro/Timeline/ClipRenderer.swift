@@ -87,6 +87,7 @@ enum ClipRenderer {
         linkOffset: Int? = nil,
         multicamAngleLabel: String? = nil,
         fps: Int,
+        showsKeyframeAutomation: Bool = true,
         isMissing: Bool = false,
         isGenerating: Bool = false
     ) {
@@ -141,7 +142,7 @@ enum ClipRenderer {
         }
 
         let showsFadeControls = showsFadeControls(isSelected: isSelected, isHovered: isHovered, in: rect)
-        let volumeKeyframesVisible = showsVolumeKeyframes(
+        let volumeKeyframesVisible = showsKeyframeAutomation && showsVolumeKeyframes(
             isSelected: isSelected,
             isHovered: isHovered,
             in: rect
@@ -208,7 +209,7 @@ enum ClipRenderer {
             drawOffsetBadge(frames: linkOffset, in: rect, context: context)
         }
 
-        if showDetailChrome {
+        if showDetailChrome, showsKeyframeAutomation {
             drawKeyframeMarkers(clip: clip, in: rect, context: context)
         }
 
@@ -230,6 +231,7 @@ enum ClipRenderer {
         for kf in clip.opacityTrack?.keyframes ?? [] { frameSet.insert(kf.frame + absStart) }
         for kf in clip.positionTrack?.keyframes ?? [] { frameSet.insert(kf.frame + absStart) }
         for kf in clip.scaleTrack?.keyframes ?? [] { frameSet.insert(kf.frame + absStart) }
+        for kf in clip.rotationTrack?.keyframes ?? [] { frameSet.insert(kf.frame + absStart) }
         for kf in clip.cropTrack?.keyframes ?? [] { frameSet.insert(kf.frame + absStart) }
         let frames = frameSet.sorted()
         guard !frames.isEmpty, clip.durationFrames > 0 else { return }

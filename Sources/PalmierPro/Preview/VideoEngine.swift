@@ -419,7 +419,7 @@ final class VideoEngine {
         if editor.isPlaying { player.play() }
     }
 
-    func refreshVisuals() {
+    func refreshVisuals(seekMode: PreviewSeekMode = .exact) {
         visualRefreshGeneration &+= 1
         guard let editor, editor.activePreviewTab == .timeline,
               let currentItem = player.currentItem,
@@ -444,9 +444,7 @@ final class VideoEngine {
         case .meterPlayback:
             scrubAudioEngine.meterPlayback(at: player.currentTime())
         case .seekToActiveFrame:
-            guard let time = playerTime(forPreviewFrame: editor.activeFrame) else { return }
-            cancelInteractiveSeek()
-            performSeek(time: time, tolerance: .zero)
+            seek(to: editor.activeFrame, mode: seekMode)
         case .none:
             break
         }

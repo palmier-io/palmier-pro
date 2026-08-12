@@ -1,5 +1,10 @@
 import AppKit
 
+struct KeyframeLaneNavigationTarget: Equatable {
+    let clipId: String
+    let frame: Int
+}
+
 extension EditorViewModel {
 
     // MARK: - Read
@@ -22,6 +27,46 @@ extension EditorViewModel {
 
     func interpolation(clipId: String, property: AnimatableProperty, atFrame frame: Int) -> Interpolation? {
         clipFor(id: clipId)?.interpolation(for: property, atFrame: frame)
+    }
+
+    func keyframeLaneTarget(
+        trackId: String,
+        property: AnimatableProperty,
+        at frame: Int? = nil
+    ) -> Clip? {
+        let targetFrame = frame ?? activeFrame
+        guard let track = timeline.tracks.first(where: { $0.id == trackId }) else { return nil }
+        return track.clips.first {
+            $0.contains(timelineFrame: targetFrame) && $0.supportsKeyframes(for: property)
+        }
+    }
+
+    func keyframeLaneNavigationTarget(
+        trackId: String,
+        property: AnimatableProperty,
+        from frame: Int,
+        forward: Bool
+    ) -> KeyframeLaneNavigationTarget? {
+        guard let track = timeline.tracks.first(where: { $0.id == trackId }) else { return nil }
+        var result: KeyframeLaneNavigationTarget?
+        for clip in track.clips where clip.supportsKeyframes(for: property) {
+            for candidate in clip.keyframeFrames(for: property) {
+                guard (forward ? candidate > frame : candidate < frame) else { continue }
+                if let current = result {
+                    guard (forward ? candidate < current.frame : candidate > current.frame) else { continue }
+                }
+                result = KeyframeLaneNavigationTarget(clipId: clip.id, frame: candidate)
+            }
+        }
+        return result
+    }
+
+    func toggleKeyframe(clipId: String, property: AnimatableProperty, at frame: Int) {
+        if hasKeyframe(clipId: clipId, property: property, at: frame) {
+            removeKeyframe(clipId: clipId, property: property, at: frame)
+        } else {
+            stampKeyframe(clipId: clipId, property: property, frame: frame)
+        }
     }
 
     // MARK: - Stamp / remove / clear
@@ -63,7 +108,9 @@ extension EditorViewModel {
 
     /// Live move during a drag — pair with `commitMoveKeyframe` on release for a single undo entry.
     func applyMoveKeyframe(clipId: String, property: AnimatableProperty, fromFrame: Int, toFrame: Int) {
-        applyClipProperty(clipId: clipId) { $0.moveKeyframe(for: property, from: fromFrame, to: toFrame) }
+        applyClipProperty(clipId: clipId, seekMode: .interactiveScrub) {
+            $0.moveKeyframe(for: property, from: fromFrame, to: toFrame)
+        }
     }
 
     /// Closes the drag started by `applyMoveKeyframe` calls.
@@ -84,6 +131,7 @@ extension EditorViewModel {
     private func writeOpacity(into clip: inout Clip, value: Double) {
         let frame = activeFrame
         if clip.opacityTrack?.isActive == true {
+            guard clip.contains(timelineFrame: frame) else { return }
             clip.upsertKeyframe(in: \.opacityTrack, frame: frame, value: value)
         } else {
             clip.opacity = value
@@ -102,6 +150,7 @@ extension EditorViewModel {
 
     private func writeRotation(into clip: inout Clip, valueDeg: Double) {
         if clip.rotationTrack?.isActive == true {
+            guard clip.contains(timelineFrame: activeFrame) else { return }
             clip.upsertKeyframe(in: \.rotationTrack, frame: activeFrame, value: valueDeg)
         } else {
             clip.transform.rotation = valueDeg
@@ -117,7 +166,8 @@ extension EditorViewModel {
     }
 
     private func writeVolume(into clip: inout Clip, valueDb: Double) {
-        if clip.liveVolumeKfDb(at: activeFrame) != nil {
+        if clip.volumeTrack?.isActive == true {
+            guard clip.contains(timelineFrame: activeFrame) else { return }
             clip.upsertKeyframe(in: \.volumeTrack, frame: activeFrame, value: valueDb)
         } else {
             clip.volume = VolumeScale.linearFromDb(valueDb)
@@ -159,6 +209,7 @@ extension EditorViewModel {
         let newY = setY ?? tl.y
         let sz = clip.sizeAt(frame: frame)
         if clip.positionTrack?.isActive == true {
+            guard clip.contains(timelineFrame: frame) else { return }
             clip.upsertKeyframe(in: \.positionTrack, frame: frame, value: AnimPair(a: newX, b: newY))
         } else {
             clip.transform.centerX = newX + sz.width / 2
@@ -181,6 +232,7 @@ extension EditorViewModel {
         let w = newScale
         let h = newScale / aspect
         if clip.scaleTrack?.isActive == true {
+            guard clip.contains(timelineFrame: activeFrame) else { return }
             clip.upsertKeyframe(in: \.scaleTrack, frame: activeFrame, value: AnimPair(a: w, b: h))
         } else {
             clip.transform.width = w
@@ -201,20 +253,26 @@ extension EditorViewModel {
     private func writeTransform(into clip: inout Clip, newTransform: Transform) {
         let frame = activeFrame
         if clip.positionTrack?.isActive == true {
-            let tl = newTransform.topLeft
-            clip.upsertKeyframe(in: \.positionTrack, frame: frame, value: AnimPair(a: tl.x, b: tl.y))
+            if clip.contains(timelineFrame: frame) {
+                let tl = newTransform.topLeft
+                clip.upsertKeyframe(in: \.positionTrack, frame: frame, value: AnimPair(a: tl.x, b: tl.y))
+            }
         } else {
             clip.transform.centerX = newTransform.centerX
             clip.transform.centerY = newTransform.centerY
         }
         if clip.scaleTrack?.isActive == true {
-            clip.upsertKeyframe(in: \.scaleTrack, frame: frame, value: AnimPair(a: newTransform.width, b: newTransform.height))
+            if clip.contains(timelineFrame: frame) {
+                clip.upsertKeyframe(in: \.scaleTrack, frame: frame, value: AnimPair(a: newTransform.width, b: newTransform.height))
+            }
         } else {
             clip.transform.width = newTransform.width
             clip.transform.height = newTransform.height
         }
         if clip.rotationTrack?.isActive == true {
-            clip.upsertKeyframe(in: \.rotationTrack, frame: frame, value: newTransform.rotation)
+            if clip.contains(timelineFrame: frame) {
+                clip.upsertKeyframe(in: \.rotationTrack, frame: frame, value: newTransform.rotation)
+            }
         } else {
             clip.transform.rotation = newTransform.rotation
         }
@@ -232,6 +290,7 @@ extension EditorViewModel {
 
     private func writeCrop(into clip: inout Clip, newCrop: Crop) {
         if clip.cropTrack?.isActive == true {
+            guard clip.contains(timelineFrame: activeFrame) else { return }
             clip.upsertKeyframe(in: \.cropTrack, frame: activeFrame, value: newCrop)
         } else {
             clip.crop = newCrop
