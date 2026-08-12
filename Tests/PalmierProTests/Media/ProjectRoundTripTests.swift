@@ -240,6 +240,7 @@ struct ProjectRoundTripTests {
         #expect(style.heightScale == 1.0)
         #expect(style.tracking == 0)
         #expect(style.lineSpacing == 0)
+        #expect(style.blur == 0)
         #expect(style.fontCase == .mixed)
         #expect(!style.isUnderlined && !style.isStruckThrough && !style.isOverlined)
     }
@@ -273,6 +274,7 @@ struct ProjectRoundTripTests {
         var style = TextStyle()
         style.widthScale = 1.4
         style.heightScale = 0.75
+        style.blur = 24
         style.tracking = 8
         style.lineSpacing = 18
         style.fontCase = .uppercase

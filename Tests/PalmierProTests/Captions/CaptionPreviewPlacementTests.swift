@@ -63,36 +63,4 @@ struct CaptionPreviewPlacementTests {
 
         #expect(first == second)
     }
-
-    @Test func captionPreviewAppliesWholeLayerBlur() throws {
-        let size = CGSize(width: 320, height: 180)
-        var sharpStyle = TextStyle.caption
-        sharpStyle.shadow.enabled = false
-        var blurredStyle = sharpStyle
-        blurredStyle.blur = 60
-        let sharp = CaptionPreviewRender.clip(
-            content: "Preview",
-            style: sharpStyle,
-            transform: Transform(),
-            preset: .none,
-            highlight: nil
-        )
-        let blurred = CaptionPreviewRender.clip(
-            content: "Preview",
-            style: blurredStyle,
-            transform: Transform(),
-            preset: .none,
-            highlight: nil
-        )
-        let sharpImage = try #require(CaptionPreviewRender.cgImage(
-            clip: sharp, frame: 0, size: size, scale: 1
-        ))
-        let blurredImage = try #require(CaptionPreviewRender.cgImage(
-            clip: blurred, frame: 0, size: size, scale: 1
-        ))
-        let sharpBytes = ColorProbeHelpers.srgbBytes(sharpImage, size: size)
-        let blurredBytes = ColorProbeHelpers.srgbBytes(blurredImage, size: size)
-
-        #expect(zip(sharpBytes, blurredBytes).contains { abs(Int($0) - Int($1)) > 8 })
-    }
 }

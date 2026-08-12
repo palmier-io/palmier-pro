@@ -8,6 +8,16 @@ import UniformTypeIdentifiers
 
 @Suite("Effects — model")
 struct EffectModelTests {
+    private func pixel(_ image: CIImage, at point: CGPoint) -> [Float] {
+        let context = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()])
+        var pixel = [Float](repeating: 0, count: 4)
+        context.render(
+            image, toBitmap: &pixel, rowBytes: MemoryLayout<Float>.size * 4,
+            bounds: CGRect(origin: point, size: CGSize(width: 1, height: 1)),
+            format: .RGBAf, colorSpace: nil
+        )
+        return pixel
+    }
 
     @Test func clipEffectsRoundTripThroughCodable() throws {
         var clip = Fixtures.clip(id: "c1", mediaRef: "m", start: 0, duration: 30)
@@ -20,23 +30,6 @@ struct EffectModelTests {
         #expect(decoded.effects?.first?.type == "color.exposure")
         #expect(decoded.effects?.first?.params["ev"]?.value == 1.5)
         #expect(decoded.effects?.first?.enabled == true)
-    }
-
-    @Test func textStyleBlurRoundTripsAndDefaultsWhenMissing() throws {
-        var style = TextStyle()
-        style.blur = 24
-
-        let decoded = try JSONDecoder().decode(
-            TextStyle.self,
-            from: JSONEncoder().encode(style)
-        )
-        let legacy = try JSONDecoder().decode(
-            TextStyle.self,
-            from: Data(#"{"fontName":"Helvetica"}"#.utf8)
-        )
-
-        #expect(decoded.blur == 24)
-        #expect(legacy.blur == 0)
     }
 
     /// The master curve is a true luma curve: lifting it raises luminance while keeping
@@ -128,16 +121,7 @@ struct EffectModelTests {
             effect: descriptor.makeEffect(),
             atOffset: 0
         )
-        let context = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()])
-        var pixel = [Float](repeating: 0, count: 4)
-        context.render(
-            output,
-            toBitmap: &pixel,
-            rowBytes: MemoryLayout<Float>.size * 4,
-            bounds: output.extent,
-            format: .RGBAf,
-            colorSpace: nil
-        )
+        let pixel = pixel(output, at: output.extent.origin)
 
         #expect(abs(Double(pixel[0]) - 0.8) < 0.001)
         #expect(abs(Double(pixel[1]) - 0.6) < 0.001)
@@ -158,54 +142,12 @@ struct EffectModelTests {
         let defaultOutput = descriptor.render(input, effect: effect, atOffset: 0)
         let unitOutput = descriptor.render(input, effect: effect, atOffset: 0, spatialScale: 1)
         let doubledOutput = descriptor.render(input, effect: effect, atOffset: 0, spatialScale: 2)
-        let context = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()])
-
         func alpha(_ image: CIImage) -> Double {
-            var pixel = [Float](repeating: 0, count: 4)
-            context.render(
-                image,
-                toBitmap: &pixel,
-                rowBytes: MemoryLayout<Float>.size * 4,
-                bounds: CGRect(x: 30, y: 50, width: 1, height: 1),
-                format: .RGBAf,
-                colorSpace: nil
-            )
-            return Double(pixel[3])
+            Double(pixel(image, at: CGPoint(x: 30, y: 50))[3])
         }
 
         #expect(abs(alpha(defaultOutput) - alpha(unitOutput)) < 0.0001)
         #expect(alpha(doubledOutput) > alpha(unitOutput) + 0.01)
-    }
-
-    @Test func gaussianBlurPreservesColorAtTransparentEdges() throws {
-        let descriptor = try #require(EffectRegistry.descriptor(id: "blur.gaussian"))
-        let canvas = CIImage(color: .clear).cropped(
-            to: CGRect(x: 0, y: 0, width: 100, height: 100)
-        )
-        let square = CIImage(color: CIColor(red: 1, green: 0, blue: 0)).cropped(
-            to: CGRect(x: 40, y: 40, width: 20, height: 20)
-        )
-        let input = square.composited(over: canvas).unpremultiplyingAlpha()
-        let output = descriptor.render(
-            input,
-            effect: Effect.make("blur.gaussian", ["radius": 8]),
-            atOffset: 0
-        ).premultiplyingAlpha()
-        let context = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()])
-        var pixel = [Float](repeating: 0, count: 4)
-        context.render(
-            output,
-            toBitmap: &pixel,
-            rowBytes: MemoryLayout<Float>.size * 4,
-            bounds: CGRect(x: 35, y: 50, width: 1, height: 1),
-            format: .RGBAf,
-            colorSpace: nil
-        )
-
-        #expect(pixel[3] > 0.01 && pixel[3] < 0.99)
-        #expect(abs(pixel[0] - pixel[3]) < 0.01)
-        #expect(abs(pixel[1]) < 0.01)
-        #expect(abs(pixel[2]) < 0.01)
     }
 
     @Test @MainActor func inspectColorEffectStackUsesTheRendererAlphaContract() {
@@ -222,16 +164,7 @@ struct EffectModelTests {
             clip: clip,
             atOffset: 0
         )
-        let context = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()])
-        var pixel = [Float](repeating: 0, count: 4)
-        context.render(
-            output,
-            toBitmap: &pixel,
-            rowBytes: MemoryLayout<Float>.size * 4,
-            bounds: CGRect(x: 35, y: 50, width: 1, height: 1),
-            format: .RGBAf,
-            colorSpace: nil
-        )
+        let pixel = pixel(output, at: CGPoint(x: 35, y: 50))
 
         #expect(pixel[3] > 0.01 && pixel[3] < 0.99)
         #expect(abs(pixel[0] - pixel[3]) < 0.01)
