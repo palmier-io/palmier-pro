@@ -386,12 +386,12 @@ struct SkillDetailSheet: View {
         editingTitle = false
         guard !name.isEmpty else { return }
         if isDraft {
-            draft = SkillFrontmatter.replacingName(draft, name: name)
+            draft = SkillFrontmatter.replacingFields(draft, name: name)
             return
         }
         guard let skill else { return }
         if editing {
-            draft = SkillFrontmatter.replacingName(draft, name: name)
+            draft = SkillFrontmatter.replacingFields(draft, name: name)
             return
         }
         guard name != skill.name else { return }
