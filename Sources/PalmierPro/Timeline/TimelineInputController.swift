@@ -20,6 +20,11 @@ final class TimelineInputController {
         case end
     }
 
+    struct KeyframeLaneHit {
+        let clipId: String
+        let frame: Int
+    }
+
     enum TrimEdge: Equatable {
         case left
         case right
@@ -144,6 +149,46 @@ final class TimelineInputController {
             } else {
                 beginPlayheadScrub(at: frame)
             }
+            return
+        }
+
+        if case .keyframeLane(let trackIndex, let property) = geometry.rowLocation(atY: point.y) {
+            editor.selectedGap = nil
+            snapState = SnapEngine.SnapState()
+            snapIndicatorX = nil
+            if let hit = keyframeLaneHit(
+                at: point,
+                trackIndex: trackIndex,
+                property: property,
+                geometry: geometry
+            ) {
+                if editor.isPlaying {
+                    editor.pause()
+                }
+                editor.seekToFrame(hit.frame)
+                editor.selectedClipIds = [hit.clipId]
+                dragState = .keyframe(DragState.KeyframeDrag(
+                    clipId: hit.clipId,
+                    trackIndex: trackIndex,
+                    property: property,
+                    originalFrame: hit.frame,
+                    grabFrame: geometry.frameAt(x: point.x),
+                    currentFrame: hit.frame
+                ))
+                NSCursor.closedHand.set()
+            } else {
+                let frame = geometry.frameAt(x: point.x)
+                editor.seekToFrame(frame)
+                if let clip = editor.keyframeLaneTarget(
+                    trackId: editor.timeline.tracks[trackIndex].id,
+                    property: property,
+                    at: frame
+                ) {
+                    editor.selectedClipIds = [clip.id]
+                }
+                dragState = .idle
+            }
+            view.needsDisplay = true
             return
         }
 
@@ -463,6 +508,13 @@ final class TimelineInputController {
             dragState = .slip(drag)
             return
 
+        case .keyframe(let drag):
+            dragState = .keyframe(applyKeyframeDrag(
+                drag,
+                cursorFrame: frame,
+                geometry: geometry
+            ))
+
         case .audioVolumeKf(let drag):
             dragState = .audioVolumeKf(applyVolumeKfDrag(drag, cursorFrame: frame, cursorY: point.y, geometry: geometry))
 
@@ -639,6 +691,14 @@ final class TimelineInputController {
                 )
             }
 
+        case .keyframe(let drag):
+            if drag.currentFrame != drag.originalFrame {
+                editor.currentFrame = drag.currentFrame
+                editor.commitMoveKeyframe(clipId: drag.clipId)
+            } else {
+                editor.revertClipProperty(clipId: drag.clipId)
+            }
+
         case .audioVolumeKf(let drag):
             if drag.currentFrame != drag.originalFrame || drag.currentDb != drag.originalDb {
                 editor.commitMoveVolumeKeyframe(clipId: drag.clipId)
@@ -669,6 +729,7 @@ final class TimelineInputController {
         }
 
         dragState = .idle
+        snapState = SnapEngine.SnapState()
         snapIndicatorX = nil
         if let finalDirtyRect {
             view.setNeedsDisplay(finalDirtyRect)
@@ -677,13 +738,18 @@ final class TimelineInputController {
         }
     }
 
-    /// Escape during an in-progress slip drag: drop the preview and the pending
-    /// drag so the eventual mouse-up commits nothing. Only slip is cancellable;
-    /// other drags have no uncommitted live mutation to unwind here.
     func cancelActiveDrag() {
-        guard case .slip = dragState else { return }
-        editor.slipPreview = nil
+        switch dragState {
+        case .slip:
+            editor.slipPreview = nil
+        case .keyframe(let drag):
+            editor.currentFrame = drag.originalFrame
+            editor.revertClipProperty(clipId: drag.clipId)
+        default:
+            return
+        }
         dragState = .idle
+        snapState = SnapEngine.SnapState()
         snapIndicatorX = nil
         stopPlayheadAutoScroll()
         view.needsDisplay = true
@@ -706,6 +772,23 @@ final class TimelineInputController {
             }
             razorPreviewFrame = nil
             razorSnapState = SnapEngine.SnapState()
+            return
+        }
+
+        if case .keyframeLane(let trackIndex, let property) = geometry.rowLocation(atY: point.y) {
+            view.setHoveredClipId(nil)
+            razorPreviewFrame = nil
+            razorSnapState = SnapEngine.SnapState()
+            if keyframeLaneHit(
+                at: point,
+                trackIndex: trackIndex,
+                property: property,
+                geometry: geometry
+            ) != nil {
+                NSCursor.openHand.set()
+            } else {
+                NSCursor.pointingHand.set()
+            }
             return
         }
 
@@ -869,7 +952,116 @@ final class TimelineInputController {
         return NSCursor(image: image, hotSpot: NSPoint(x: size.width / 2, y: size.height / 2))
     }
 
+    func keyframeLaneHit(
+        at point: NSPoint,
+        trackIndex: Int,
+        property: AnimatableProperty,
+        geometry: TimelineGeometry
+    ) -> KeyframeLaneHit? {
+        guard editor.timeline.tracks.indices.contains(trackIndex),
+              let laneRect = geometry.laneRect(trackIndex: trackIndex, property: property),
+              laneRect.contains(point) else { return nil }
+        let track = editor.timeline.tracks[trackIndex]
+        let hitHalf = AppTheme.ComponentSize.timelineKeyframeHitSize / 2
+        var best: (hit: KeyframeLaneHit, distance: CGFloat, selected: Bool)?
+        for clip in track.clips where clip.supportsKeyframes(for: property) {
+            for frame in clip.keyframeFrames(for: property) {
+                let distance = abs(CGFloat(geometry.xForFrame(frame)) - point.x)
+                guard distance <= hitHalf else { continue }
+                let selected = editor.selectedClipIds.contains(clip.id)
+                if let current = best,
+                   current.distance < distance
+                    || (current.distance == distance && current.selected && !selected) {
+                    continue
+                }
+                best = (KeyframeLaneHit(clipId: clip.id, frame: frame), distance, selected)
+            }
+        }
+        return best?.hit
+    }
+
+    private func draggedClip(id: String, trackIndex: Int) -> Clip? {
+        guard editor.timeline.tracks.indices.contains(trackIndex) else { return nil }
+        return editor.timeline.tracks[trackIndex].clips.first { $0.id == id }
+    }
+
+    private func keyframeDragBounds(
+        in clip: Clip,
+        property: AnimatableProperty,
+        currentFrame: Int
+    ) -> (lower: Int, upper: Int) {
+        var bounds = (
+            lower: clip.startFrame,
+            upper: max(clip.startFrame, clip.endFrame - 1)
+        )
+        for frame in clip.keyframeFrames(for: property) where frame != currentFrame {
+            if frame < currentFrame {
+                bounds.lower = max(bounds.lower, frame + 1)
+            } else {
+                bounds.upper = min(bounds.upper, frame - 1)
+            }
+        }
+        return bounds
+    }
+
+    private func applyKeyframeDrag(
+        _ source: DragState.KeyframeDrag,
+        cursorFrame: Int,
+        geometry: TimelineGeometry
+    ) -> DragState.KeyframeDrag {
+        var drag = source
+        guard let clip = draggedClip(id: drag.clipId, trackIndex: drag.trackIndex) else { return drag }
+        let maximumFrame = max(clip.startFrame, clip.endFrame - 1)
+
+        let proposed = drag.originalFrame + (cursorFrame - drag.grabFrame)
+        guard proposed != drag.currentFrame else { return drag }
+        var targets = [
+            SnapEngine.SnapTarget(frame: clip.startFrame, kind: .clipEdge),
+            SnapEngine.SnapTarget(frame: maximumFrame, kind: .clipEdge),
+        ]
+        for property in AnimatableProperty.allCases where property != drag.property {
+            targets += clip.keyframeFrames(for: property).map {
+                SnapEngine.SnapTarget(frame: $0, kind: .clipEdge)
+            }
+        }
+        let candidate: Int
+        if let snap = SnapEngine.findSnap(
+            position: proposed,
+            targets: targets,
+            state: &snapState,
+            baseThreshold: Snap.thresholdPixels,
+            pixelsPerFrame: geometry.pixelsPerFrame
+        ) {
+            candidate = snap.frame
+            snapIndicatorX = snap.x
+        } else {
+            candidate = proposed
+            snapIndicatorX = nil
+        }
+
+        let bounds = keyframeDragBounds(
+            in: clip,
+            property: drag.property,
+            currentFrame: drag.currentFrame
+        )
+        let next = max(bounds.lower, min(bounds.upper, candidate))
+        if next != candidate {
+            snapIndicatorX = nil
+        }
+        guard next != drag.currentFrame else { return drag }
+        editor.playheadState.timelineFrame = next
+        editor.applyMoveKeyframe(
+            clipId: drag.clipId,
+            property: drag.property,
+            fromFrame: drag.currentFrame,
+            toFrame: next
+        )
+        drag.currentFrame = next
+        return drag
+    }
+
     func audioVolumeKfHit(at point: NSPoint, clip: Clip, clipRect: NSRect) -> Int? {
+        guard baseClipKeyframeAutomationVisible(for: clip) else { return nil }
         guard ClipRenderer.showsVolumeKeyframes(
             isSelected: editor.selectedClipIds.contains(clip.id),
             isHovered: view.hoveredClipId == clip.id,
@@ -905,25 +1097,13 @@ final class TimelineInputController {
         geometry: TimelineGeometry
     ) -> DragState.AudioVolumeKfDrag {
         var drag = drag
-        guard editor.timeline.tracks.indices.contains(drag.trackIndex),
-              let clip = editor.timeline.tracks[drag.trackIndex].clips.first(where: { $0.id == drag.clipId }) else {
-            return drag
-        }
+        guard let clip = draggedClip(id: drag.clipId, trackIndex: drag.trackIndex) else { return drag }
         let clipRect = geometry.clipRect(for: clip, trackIndex: drag.trackIndex)
         let body = ClipRenderer.clipBodyRect(in: clipRect)
 
-        let curOffset = drag.currentFrame - clip.startFrame
-        var leftBound = 0
-        var rightBound = clip.durationFrames
-        for kf in clip.volumeTrack?.keyframes ?? [] where kf.frame != curOffset {
-            if kf.frame < curOffset {
-                leftBound = max(leftBound, kf.frame + 1)
-            } else {
-                rightBound = min(rightBound, kf.frame - 1)
-            }
-        }
+        let bounds = keyframeDragBounds(in: clip, property: .volume, currentFrame: drag.currentFrame)
         let proposed = drag.originalFrame + (cursorFrame - drag.grabFrame)
-        let newFrame = max(clip.startFrame + leftBound, min(clip.startFrame + rightBound, proposed))
+        let newFrame = max(bounds.lower, min(bounds.upper, proposed))
         let newDb = max(VolumeScale.floorDb, min(VolumeScale.ceilingDb, ClipRenderer.db(forY: cursorY, in: body)))
 
         guard newFrame != drag.currentFrame || newDb != drag.currentDb else { return drag }
@@ -942,10 +1122,7 @@ final class TimelineInputController {
         cursorFrame: Int
     ) -> DragState.FadeKneeDrag {
         var drag = drag
-        guard editor.timeline.tracks.indices.contains(drag.trackIndex),
-              let clip = editor.timeline.tracks[drag.trackIndex].clips.first(where: { $0.id == drag.clipId }) else {
-            return drag
-        }
+        guard let clip = draggedClip(id: drag.clipId, trackIndex: drag.trackIndex) else { return drag }
         let delta = cursorFrame - drag.grabFrame
         let proposed = drag.edge == .left
             ? drag.originalFrames + delta
@@ -963,13 +1140,17 @@ final class TimelineInputController {
 
     /// Returns true if a kf was added.
     private func addVolumeKeyframeOnClick(at point: NSPoint, clip: Clip, clipRect: NSRect) -> Bool {
+        guard baseClipKeyframeAutomationVisible(for: clip) else { return false }
         guard ClipRenderer.supportsPrecisionControls(in: clipRect) else { return false }
         guard clip.durationFrames > 0 else { return false }
         let body = ClipRenderer.clipBodyRect(in: clipRect)
         guard body.contains(point) else { return false }
         let pxPerFrame = clipRect.width / CGFloat(clip.durationFrames)
         let xInClip = point.x - clipRect.minX
-        let offset = max(0, min(clip.durationFrames, Int((xInClip / pxPerFrame).rounded())))
+        let offset = max(
+            0,
+            min(max(0, clip.durationFrames - 1), Int((xInClip / pxPerFrame).rounded()))
+        )
         let absFrame = clip.startFrame + offset
         let dB = max(VolumeScale.floorDb, min(VolumeScale.ceilingDb, ClipRenderer.db(forY: point.y, in: body)))
         editor.commitClipProperty(clipId: clip.id, actionName: "Add Keyframe") { c in
@@ -977,6 +1158,13 @@ final class TimelineInputController {
         }
         view.needsDisplay = true
         return true
+    }
+
+    private func baseClipKeyframeAutomationVisible(for clip: Clip) -> Bool {
+        guard let location = editor.findClip(id: clip.id),
+              editor.timeline.tracks.indices.contains(location.trackIndex) else { return false }
+        let trackId = editor.timeline.tracks[location.trackIndex].id
+        return !view.keyframeLaneState.isExpanded(trackId: trackId)
     }
 
     // MARK: - Zoom & pan

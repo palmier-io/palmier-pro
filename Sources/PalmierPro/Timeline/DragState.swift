@@ -7,10 +7,20 @@ enum DragState {
     case trimLeft(TrimDrag)
     case trimRight(TrimDrag)
     case slip(SlipDrag)
+    case keyframe(KeyframeDrag)
     case audioVolumeKf(AudioVolumeKfDrag)
     case fadeKnee(FadeKneeDrag)
     case marquee(MarqueeDrag)
     case timelineRange(TimelineRangeDrag)
+
+    struct KeyframeDrag {
+        let clipId: String
+        let trackIndex: Int
+        let property: AnimatableProperty
+        let originalFrame: Int
+        let grabFrame: Int
+        var currentFrame: Int
+    }
 
     struct AudioVolumeKfDrag {
         let clipId: String

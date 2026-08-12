@@ -18,8 +18,9 @@ struct TimelineContainerView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let container = NSView()
         let headerWidth = Layout.trackHeaderDefaultWidth
+        let keyframeLaneState = TimelineKeyframeLaneState()
 
-        let headerView = TimelineHeaderView(editor: editor)
+        let headerView = TimelineHeaderView(editor: editor, keyframeLaneState: keyframeLaneState)
         headerView.frame = NSRect(x: 0, y: 0, width: headerWidth, height: 0)
         headerView.autoresizingMask = [.height]
         container.addSubview(headerView)
@@ -32,7 +33,7 @@ struct TimelineContainerView: NSViewRepresentable {
         scrollView.horizontalScroller?.controlSize = .mini
         scrollView.verticalScroller?.controlSize = .mini
 
-        let timelineView = TimelineView(editor: editor)
+        let timelineView = TimelineView(editor: editor, keyframeLaneState: keyframeLaneState)
         timelineView.autoresizingMask = []
         scrollView.documentView = timelineView
         headerView.requestCanvasRedraw = { [weak timelineView] in timelineView?.needsDisplay = true }
@@ -45,6 +46,7 @@ struct TimelineContainerView: NSViewRepresentable {
             headerView: headerView,
             scrollView: scrollView,
             timelineView: timelineView,
+            keyframeLaneState: keyframeLaneState,
             headerWidth: headerWidth
         )
         resizeHandle.frame = NSRect(
@@ -60,6 +62,20 @@ struct TimelineContainerView: NSViewRepresentable {
         context.coordinator.timelineView = timelineView
         context.coordinator.scrollView = scrollView
         context.coordinator.editor = editor
+        context.coordinator.keyframeLaneState = keyframeLaneState
+        keyframeLaneState.onChange = {
+            [weak headerView, weak timelineView, weak resizeHandle, weak keyframeLaneState] in
+            if keyframeLaneState?.expandedTrackIds.isEmpty == false {
+                resizeHandle?.ensureMinimumWidth(
+                    AppTheme.ComponentSize.timelineKeyframeTrackHeaderMinimumWidth
+                )
+            }
+            timelineView?.inputController.cancelActiveDrag()
+            timelineView?.updateContentSize()
+            timelineView?.needsDisplay = true
+            headerView?.needsLayout = true
+            headerView?.needsDisplay = true
+        }
 
         scrollView.contentView.postsBoundsChangedNotifications = true
         scrollView.contentView.postsFrameChangedNotifications = true
@@ -81,24 +97,33 @@ struct TimelineContainerView: NSViewRepresentable {
             name: .timelineClipColorsDidChange,
             object: nil
         )
-
         return container
     }
 
     func updateNSView(_ container: NSView, context: Context) {
+        context.coordinator.keyframeLaneState?.update(
+            timelineId: editor.activeTimelineId,
+            revision: editor.timelineRenderRevision,
+            tracks: editor.timeline.tracks
+        )
         let renderState = RenderState(
             revision: editor.timelineRenderRevision,
             zoomScale: editor.zoomScale,
+            keyframeLaneRevision: context.coordinator.keyframeLaneState?.revision ?? 0,
             selectedClipIds: editor.selectedClipIds,
             selectedTimelineRange: editor.selectedTimelineRange,
             pendingReplacements: editor.pendingReplacements,
             generatingAssetIds: Set(editor.mediaAssets.lazy.filter(\.isGenerating).map(\.id))
         )
 
-        if context.coordinator.needsRender(for: renderState) {
+        let changes = context.coordinator.renderChanges(for: renderState)
+        if changes.needsRender {
             context.coordinator.timelineView?.updateContentSize()
             context.coordinator.timelineView?.needsDisplay = true
             context.coordinator.headerView?.needsDisplay = true
+        }
+        if changes.needsHeaderStructure {
+            context.coordinator.headerView?.needsLayout = true
         }
         context.coordinator.updateAgentActivity(editor.agentActivity)
 
@@ -132,6 +157,7 @@ struct TimelineContainerView: NSViewRepresentable {
     struct RenderState: Equatable {
         let revision: Int
         let zoomScale: Double
+        let keyframeLaneRevision: Int
         let selectedClipIds: Set<String>
         let selectedTimelineRange: TimelineRangeSelection?
         let pendingReplacements: Set<String>
@@ -143,12 +169,20 @@ struct TimelineContainerView: NSViewRepresentable {
         var timelineView: TimelineView?
         var scrollView: NSScrollView?
         weak var editor: EditorViewModel?
+        var keyframeLaneState: TimelineKeyframeLaneState?
         private var renderState: RenderState?
         private var agentActivity = AgentActivityHighlight()
 
-        func needsRender(for next: RenderState) -> Bool {
+        func renderChanges(
+            for next: RenderState
+        ) -> (needsRender: Bool, needsHeaderStructure: Bool) {
+            let previous = renderState
             defer { renderState = next }
-            return renderState != next
+            return (
+                previous != next,
+                previous?.revision != next.revision
+                    || previous?.keyframeLaneRevision != next.keyframeLaneRevision
+            )
         }
 
         @MainActor func updateAgentActivity(_ next: AgentActivityHighlight) {
@@ -166,6 +200,7 @@ struct TimelineContainerView: NSViewRepresentable {
             }
             if let scrollY = scrollView?.contentView.bounds.origin.y {
                 headerView?.setBoundsOrigin(NSPoint(x: 0, y: scrollY))
+                headerView?.needsLayout = true
                 headerView?.needsDisplay = true
             }
         }
@@ -173,6 +208,7 @@ struct TimelineContainerView: NSViewRepresentable {
         @MainActor @objc func clipViewFrameChanged(_ notification: Notification) {
             timelineView?.updateContentSize()
             timelineView?.updatePlayheadLayer()
+            headerView?.needsLayout = true
         }
 
         @MainActor @objc func timelineClipColorsDidChange(_ notification: Notification) {
@@ -194,6 +230,7 @@ private final class TimelineHeaderResizeHandleView: NSView {
     private weak var headerView: TimelineHeaderView?
     private weak var scrollView: NSScrollView?
     private weak var timelineView: TimelineView?
+    private weak var keyframeLaneState: TimelineKeyframeLaneState?
     private var headerWidth: CGFloat
     private var dragStart: (x: CGFloat, width: CGFloat)?
 
@@ -201,11 +238,13 @@ private final class TimelineHeaderResizeHandleView: NSView {
         headerView: TimelineHeaderView,
         scrollView: NSScrollView,
         timelineView: TimelineView,
+        keyframeLaneState: TimelineKeyframeLaneState,
         headerWidth: CGFloat
     ) {
         self.headerView = headerView
         self.scrollView = scrollView
         self.timelineView = timelineView
+        self.keyframeLaneState = keyframeLaneState
         self.headerWidth = headerWidth
         super.init(frame: .zero)
     }
@@ -262,9 +301,12 @@ private final class TimelineHeaderResizeHandleView: NSView {
               let headerView,
               let scrollView,
               let timelineView else { return }
+        let minimumWidth = keyframeLaneState?.expandedTrackIds.isEmpty == false
+            ? AppTheme.ComponentSize.timelineKeyframeTrackHeaderMinimumWidth
+            : Layout.trackHeaderMinimumWidth
         let width = min(
             Layout.trackHeaderMaximumWidth,
-            max(Layout.trackHeaderMinimumWidth, requestedWidth)
+            max(minimumWidth, requestedWidth)
         )
         guard width != headerWidth else { return }
         headerWidth = width
@@ -276,9 +318,15 @@ private final class TimelineHeaderResizeHandleView: NSView {
             height: scrollView.frame.height
         )
         frame.origin.x = width
+        headerView.needsLayout = true
         headerView.needsDisplay = true
         timelineView.updateContentSize()
         timelineView.needsDisplay = true
+    }
+
+    func ensureMinimumWidth(_ minimumWidth: CGFloat) {
+        guard headerWidth < minimumWidth else { return }
+        resizeHeader(to: minimumWidth)
     }
 
     private func clipHasPriority(at windowPoint: NSPoint) -> Bool {
