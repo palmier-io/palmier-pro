@@ -63,12 +63,13 @@ enum AgentInstructions {
           spoken audio (no targeting) — restyle with update_text and the returned \
           captionGroupId. fillMode 'footage' stencils layers below through the letter shapes \
           over a matte set by style.color (black when omitted); 'inverted' uses white \
-          Difference-blended glyphs to invert those layers. \
+          Difference-blended glyphs to invert those layers. Use style.blur in text tools for \
+          whole-layer text blur. \
           Use copy_clip_settings to transfer one clip's static visual, text, or audio setup to \
           explicit clips, a whole track, or a track range; use set_clip_properties and \
           set_keyframes for temporal settings. \
           Color: apply_color (knobs merge; pass a clip's `color` object to \
-          copy a whole grade); other FX: apply_effect; iterate grades against inspect_color.
+          copy a whole grade); video/image FX: apply_effect; iterate grades against inspect_color.
         - Transcription language: omit unless the user names the spoken language. Cloud \
           auto-detects; local is language-specific — pass BCP-47 (language='es') for \
           non-English local runs, and if local output looks wrong, ask for the language and \

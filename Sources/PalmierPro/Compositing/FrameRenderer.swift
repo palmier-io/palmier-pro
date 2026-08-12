@@ -57,10 +57,16 @@ enum FrameRenderer {
                     ))
                     .cropped(to: accum.extent)
                     .composited(over: accum)
-                    let stenciled = accum.applyingFilter("CIBlendWithMask", parameters: [
+                    let stencil = accum.applyingFilter("CIBlendWithMask", parameters: [
                         kCIInputBackgroundImageKey: matte,
                         kCIInputMaskImageKey: mask,
                     ]).cropped(to: accum.extent)
+                    let stenciled = applyTextEffects(
+                        stencil,
+                        clip: layer.clip,
+                        frame: frame,
+                        renderSize: renderSize
+                    )
                     if opacity < 1 {
                         let f = CIFilter(name: "CIDissolveTransition")
                         f?.setValue(original, forKey: kCIInputImageKey)
@@ -350,16 +356,7 @@ enum FrameRenderer {
         guard var image = TextFrameRenderer.image(clip: clip, frame: frame, renderSize: renderSize)?
             .unpremultiplyingAlpha() else { return nil }
 
-        if let effects = clip.effects, !effects.isEmpty {
-            // Effects expect the full frame; a filter may map transparent pixels to visible ones.
-            let renderRect = CGRect(origin: .zero, size: renderSize)
-            image = image.composited(over: CIImage(color: .clear).cropped(to: renderRect))
-            let offset = frame - clip.startFrame
-            for effect in effects where effect.enabled {
-                guard let descriptor = EffectRegistry.descriptor(id: effect.type) else { continue }
-                image = descriptor.render(image, effect: effect, atOffset: offset)
-            }
-        }
+        image = applyTextEffects(image, clip: clip, frame: frame, renderSize: renderSize)
         if clip.textFillMode == .inverted {
             let zero = CIVector(x: 0, y: 0, z: 0, w: 0)
             image = image.applyingFilter("CIColorMatrix", parameters: [
@@ -377,6 +374,40 @@ enum FrameRenderer {
             image = image.applyingFilter("CIColorMatrix", parameters: [
                 "inputAVector": CIVector(x: 0, y: 0, z: 0, w: alpha),
             ])
+        }
+        return image
+    }
+
+    static func applyTextEffects(
+        _ input: CIImage,
+        clip: Clip,
+        frame: Int,
+        renderSize: CGSize
+    ) -> CIImage {
+        let styleBlur = clip.textStyle?.blur ?? 0
+        let effects = (clip.effects ?? []).filter { $0.type != "blur.gaussian" }
+        guard styleBlur > 0 || !effects.isEmpty else { return input }
+        let renderRect = CGRect(origin: .zero, size: renderSize)
+        var image = input.composited(over: CIImage(color: .clear).cropped(to: renderRect))
+        let offset = frame - clip.startFrame
+        let spatialScale = Double(renderSize.height / TextLayout.referenceCanvasHeight)
+        if styleBlur.isFinite,
+           let descriptor = EffectRegistry.descriptor(id: "blur.gaussian") {
+            image = descriptor.render(
+                image,
+                effect: Effect.make("blur.gaussian", ["radius": styleBlur]),
+                atOffset: offset,
+                spatialScale: spatialScale
+            )
+        }
+        for effect in effects where effect.enabled {
+            guard let descriptor = EffectRegistry.descriptor(id: effect.type) else { continue }
+            image = descriptor.render(
+                image,
+                effect: effect,
+                atOffset: offset,
+                spatialScale: spatialScale
+            )
         }
         return image
     }
