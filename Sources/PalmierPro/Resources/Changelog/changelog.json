@@ -2,22 +2,15 @@
   "changelogURL": "https://github.com/palmier-io/palmier-pro/releases",
   "entries": [
     {
-      "version": "0.7.3",
-      "date": "2026-08-10",
+      "version": "0.7.4",
+      "date": "2026-08-11",
       "sections": [
         {
           "heading": "New",
           "items": [
-            "SRT/WebVTTT support: Import .srt/.vtt subtitle files as caption.",
-            "Editable track names: Agent can now label tracks to better organize your project.",
-            "Copy settings: Right click a clip -> Copy -> Paste Setttings, or ask the agent to do it.",
-            "Text Tilt: New styling option for text in inspector panel.",
-            "Max Character Support for Caption"
-          ],
-          "heading": "UI",
-          "items": [
-            "Preview caption directly on the canvas when choosing a caption style.",
-            "Agent activity highlight on the timeline: When agent is working on the clips, the timeline will highlight the related clips for better visualization."
+            "Agent can create and reuse skills: Once you have a satisfied edit, ask agent to save it as a skill for future use.",
+            "New text style controls: Trendy Instagram inverted filled text; blur on text; color on stencil text",
+            "Canvas guide: Add a guide overlay to the canvas (grid, safe zones, format references)"
           ]
         }
       ]
