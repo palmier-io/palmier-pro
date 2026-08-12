@@ -110,19 +110,7 @@ struct TextTab: View {
                 }
             }
         ) {
-            ScrubbableNumberField(
-                value: sharedClipValue(clips) { $0.opacity },
-                range: 0...1,
-                displayMultiplier: 100,
-                format: "%.0f",
-                valueSuffix: "%",
-                fieldWidth: AppTheme.EditorPanel.numericFieldWidth,
-                onChanged: { newVal in
-                    editor.applyClipProperties(clipIds: clipIds) { $0.opacity = newVal }
-                }
-            ) { newVal in
-                editor.commitClipProperties(clipIds: clipIds) { $0.opacity = newVal }
-            }
+            InspectorKeyframePropertyControl(clips: clips, property: .opacity)
         }
     }
 
@@ -138,7 +126,7 @@ struct TextTab: View {
                 }
             }
         ) {
-            InspectorPositionFields(clips: clips)
+            InspectorKeyframePropertyControl(clips: clips, property: .position)
         }
     }
 
@@ -190,7 +178,7 @@ struct TextTab: View {
                 }
             }
         ) {
-            InspectorRotationField(clips: clips)
+            InspectorKeyframePropertyControl(clips: clips, property: .rotation)
         }
     }
 

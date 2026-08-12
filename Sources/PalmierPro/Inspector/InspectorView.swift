@@ -442,50 +442,6 @@ struct InspectorView: View {
         speedSection(clips: (clips + audioClips).filter(\.supportsRetiming))
     }
 
-    func keyframesToggleButton(enabled: Bool) -> some View {
-        let on = editor.keyframesPanelVisible
-        return Button {
-            editor.keyframesPanelVisible.toggle()
-        } label: {
-            HStack(spacing: AppTheme.Spacing.xs) {
-                Image(systemName: on ? "diamond.fill" : "diamond")
-                    .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
-                Text(L10n.string("Keyframes"))
-                    .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
-            }
-            .foregroundStyle(on ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
-            .padding(.horizontal, AppTheme.Spacing.sm)
-            .padding(.vertical, AppTheme.Spacing.xs)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(!enabled)
-        .opacity(enabled ? AppTheme.Opacity.opaque : AppTheme.Opacity.medium)
-        .help(enabled
-            ? (on ? L10n.string("Hide keyframe timeline") : L10n.string("Show keyframe timeline"))
-            : L10n.string("Select a single clip to enable"))
-    }
-
-    func keyframesSplitContent<Controls: View>(
-        clip: Clip,
-        @ViewBuilder controls: @escaping () -> Controls
-    ) -> some View {
-        HStack(alignment: .top, spacing: AppTheme.Spacing.zero) {
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-                Color.clear.frame(height: KeyframesMetrics.headerHeight)
-                controls()
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.trailing, AppTheme.Spacing.sm)
-
-            Divider()
-
-            KeyframesPanel(clip: clip)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, AppTheme.Spacing.sm)
-        }
-    }
-
     @ViewBuilder
     func speedSection(clips: [Clip]) -> some View {
         if !clips.isEmpty {
@@ -530,7 +486,6 @@ struct InspectorView: View {
 
     @ViewBuilder
     private func transformSection(clips: [Clip]) -> some View {
-        let single = clips.count == 1 ? clips.first : nil
         EditorPanelGroup(
             L10n.string("Transform"),
             isExpanded: $transformExpanded,
@@ -547,20 +502,9 @@ struct InspectorView: View {
                     clip.fadeInInterpolation = .linear
                     clip.fadeOutInterpolation = .linear
                 }
-            },
-            headerAccessory: {
-                if transformExpanded {
-                    keyframesToggleButton(enabled: single != nil)
-                }
             }
         ) {
-            if let clip = single, editor.keyframesPanelVisible {
-                keyframesSplitContent(clip: clip) {
-                    transformRows(clips: clips, spacing: AppTheme.Spacing.md)
-                }
-            } else {
-                transformRows(clips: clips, spacing: AppTheme.Spacing.smMd)
-            }
+            transformRows(clips: clips, spacing: AppTheme.Spacing.smMd)
         }
     }
 
@@ -569,7 +513,7 @@ struct InspectorView: View {
         return VStack(alignment: .leading, spacing: spacing) {
             animatableRow(
                 label: L10n.string("Position"),
-                clipId: single?.id,
+                clips: clips,
                 property: .position,
                 onReset: {
                     commitPropertiesToClips(clips, actionName: "Reset Position") { clip in
@@ -578,12 +522,10 @@ struct InspectorView: View {
                         clip.positionTrack = nil
                     }
                 }
-            ) {
-                InspectorPositionFields(clips: clips)
-            }
+            )
             animatableRow(
                 label: L10n.string("Scale"),
-                clipId: single?.id,
+                clips: clips,
                 property: .scale,
                 onReset: {
                     commitPropertiesToClips(clips, actionName: "Reset Scale") { clip in
@@ -593,12 +535,10 @@ struct InspectorView: View {
                         clip.scaleTrack = nil
                     }
                 }
-            ) {
-                scaleScrubField(clips: clips)
-            }
+            )
             animatableRow(
                 label: L10n.string("Rotation"),
-                clipId: single?.id,
+                clips: clips,
                 property: .rotation,
                 onReset: {
                     commitPropertiesToClips(clips, actionName: "Reset Rotation") { clip in
@@ -606,12 +546,10 @@ struct InspectorView: View {
                         clip.rotationTrack = nil
                     }
                 }
-            ) {
-                InspectorRotationField(clips: clips)
-            }
+            )
             animatableRow(
                 label: L10n.string("Opacity"),
-                clipId: single?.id,
+                clips: clips,
                 property: .opacity,
                 onReset: {
                     commitPropertiesToClips(clips, actionName: "Reset Opacity") { clip in
@@ -619,9 +557,7 @@ struct InspectorView: View {
                         clip.opacityTrack = nil
                     }
                 }
-            ) {
-                opacityScrubField(clips: clips)
-            }
+            )
             cropRow(single: single)
             flipRow(clips: clips)
             blendRow(clips: clips)
@@ -642,124 +578,6 @@ struct InspectorView: View {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
                 edgeSoftnessRow(clips: clips)
                 edgeRoundingRow(clips: clips)
-            }
-        }
-    }
-
-    /// Property row with an optional keyframe stamp button after the value field.
-    @ViewBuilder
-    func animatableRow<Fields: View>(
-        label: String,
-        clipId: String?,
-        property: AnimatableProperty,
-        onReset: @escaping () -> Void,
-        @ViewBuilder fields: @escaping () -> Fields
-    ) -> some View {
-        propertyRow(label: label, onReset: onReset) {
-            HStack(spacing: AppTheme.Spacing.sm) {
-                fields()
-                if let clipId {
-                    keyframeControls(clipId: clipId, property: property)
-                } else {
-                    keyframeControlsPlaceholder
-                }
-            }
-        }
-        .frame(height: KeyframesMetrics.rowHeight)
-    }
-
-    private func keyframeControls(clipId: String, property: AnimatableProperty) -> some View {
-        let frame = editor.activeFrame
-        let inRange = editor.clipFor(id: clipId)?.contains(timelineFrame: frame) ?? false
-        let onKeyframe = editor.hasKeyframe(clipId: clipId, property: property, at: frame)
-        let prev = editor.previousKeyframeFrame(clipId: clipId, property: property, before: frame)
-        let next = editor.nextKeyframeFrame(clipId: clipId, property: property, after: frame)
-        return HStack(spacing: AppTheme.Spacing.zero) {
-            keyframeNavButton(systemName: "chevron.left", help: L10n.string("Go to previous keyframe"), enabled: prev != nil) {
-                if let f = prev { editor.seekToFrame(f) }
-            }
-            Button {
-                if onKeyframe {
-                    editor.removeKeyframe(clipId: clipId, property: property, at: frame)
-                } else {
-                    editor.stampKeyframe(clipId: clipId, property: property, frame: frame)
-                }
-            } label: {
-                Image(systemName: onKeyframe ? "diamond.fill" : "diamond")
-                    .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
-                    .foregroundStyle(onKeyframe ? AppTheme.Accent.timecodeColor : AppTheme.Text.tertiaryColor)
-                    .frame(width: KeyframesMetrics.stampButtonWidth, height: AppTheme.EditorPanel.fieldMinHeight)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(!inRange)
-            .opacity(inRange ? 1 : 0.4)
-            .help(!inRange ? L10n.string("Move playhead inside the clip")
-                  : onKeyframe ? L10n.string("Remove keyframe at playhead")
-                  : L10n.string("Add keyframe at playhead"))
-            keyframeNavButton(systemName: "chevron.right", help: L10n.string("Go to next keyframe"), enabled: next != nil) {
-                if let f = next { editor.seekToFrame(f) }
-            }
-        }
-    }
-
-    private var keyframeControlsPlaceholder: some View {
-        Color.clear.frame(width: KeyframesMetrics.controlsColumnWidth)
-    }
-
-    private func keyframeNavButton(
-        systemName: String,
-        help: String,
-        enabled: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: AppTheme.FontSize.xxs, weight: .semibold))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .frame(width: KeyframesMetrics.navButtonWidth, height: AppTheme.EditorPanel.fieldMinHeight)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(!enabled)
-        .opacity(enabled ? 1 : 0.3)
-        .help(L10n.string(key: help))
-    }
-
-    @ViewBuilder
-    private func scaleScrubField(clips: [Clip]) -> some View {
-        ScrubbableNumberField(
-            value: sharedClipValue(clips) { $0.sizeAt(frame: editor.activeFrame).width },
-            range: 0.01...(.infinity),
-            displayMultiplier: 100,
-            format: "%.0f",
-            valueSuffix: "%",
-            fieldWidth: AppTheme.EditorPanel.numericFieldWidth,
-            onChanged: { newVal in
-                for c in clips { editor.applyScale(clipId: c.id, newScale: newVal) }
-            }
-        ) { newVal in
-            editor.undo.perform("Change Scale") {
-                for c in clips { editor.commitScale(clipId: c.id, newScale: newVal) }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func opacityScrubField(clips: [Clip]) -> some View {
-        ScrubbableNumberField(
-            value: sharedClipValue(clips) { $0.rawOpacityAt(frame: editor.activeFrame) },
-            range: 0...1,
-            displayMultiplier: 100,
-            format: "%.0f",
-            valueSuffix: "%",
-            fieldWidth: AppTheme.EditorPanel.numericFieldWidth,
-            onChanged: { newVal in
-                for c in clips { editor.applyOpacity(clipId: c.id, value: newVal) }
-            }
-        ) { newVal in
-            editor.undo.perform("Change Opacity") {
-                for c in clips { editor.commitOpacity(clipId: c.id, value: newVal) }
             }
         }
     }
@@ -794,7 +612,7 @@ struct InspectorView: View {
                 }
             }
         }
-        .frame(height: KeyframesMetrics.rowHeight)
+        .frame(height: AppTheme.EditorPanel.fieldMinHeight)
     }
 
     private func edgeRoundingRow(clips: [Clip]) -> some View {
@@ -827,7 +645,7 @@ struct InspectorView: View {
                 }
             }
         }
-        .frame(height: KeyframesMetrics.rowHeight)
+        .frame(height: AppTheme.EditorPanel.fieldMinHeight)
     }
 
     // MARK: - Section helpers
@@ -849,11 +667,22 @@ struct InspectorView: View {
             if reservesKeyframeControls {
                 HStack(spacing: AppTheme.Spacing.sm) {
                     trailing()
-                    keyframeControlsPlaceholder
+                    Color.clear.frame(width: KeyframeControlStrip.width)
                 }
             } else {
                 trailing()
             }
+        }
+    }
+
+    func animatableRow(
+        label: String,
+        clips: [Clip],
+        property: AnimatableProperty,
+        onReset: @escaping () -> Void
+    ) -> some View {
+        propertyRow(label: label, onReset: onReset) {
+            InspectorKeyframePropertyControl(clips: clips, property: property)
         }
     }
 
@@ -884,7 +713,7 @@ struct InspectorView: View {
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
         }
-        .frame(height: KeyframesMetrics.rowHeight)
+        .frame(height: AppTheme.EditorPanel.fieldMinHeight)
     }
 
     @ViewBuilder
@@ -924,7 +753,7 @@ struct InspectorView: View {
                 }
             }
         }
-        .frame(height: KeyframesMetrics.rowHeight)
+        .frame(height: AppTheme.EditorPanel.fieldMinHeight)
     }
 
     private func iconToggleButton(
@@ -986,14 +815,13 @@ struct InspectorView: View {
                 } else {
                     cropMenu(single: single)
                 }
-                if let clipId = single?.id {
-                    keyframeControls(clipId: clipId, property: .crop)
-                } else {
-                    keyframeControlsPlaceholder
-                }
+                InspectorKeyframeControls(
+                    clipId: single?.id,
+                    property: .crop
+                )
             }
         }
-        .frame(height: KeyframesMetrics.rowHeight)
+        .frame(height: AppTheme.EditorPanel.fieldMinHeight)
         .opacity(disabled ? 0.4 : 1)
     }
 
