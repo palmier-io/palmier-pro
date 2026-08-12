@@ -70,6 +70,60 @@ struct MCPTextFillModeTests {
             #expect((try await client.callTool(name: "undo")).isError != true)
             #expect(harness.editor.clipFor(id: added.id) == nil)
 
+            let addFootage = try await client.callTool(name: "add_texts", arguments: [
+                "entries": .array([.object([
+                    "startFrame": .int(0),
+                    "endFrame": .int(60),
+                    "content": .string("Stencil me"),
+                    "fillMode": .string("footage"),
+                ])]),
+            ])
+            #expect(addFootage.isError != true)
+            let addedFootage = try #require(
+                harness.editor.timeline.tracks.flatMap(\.clips).first {
+                    $0.textContent == "Stencil me"
+                }
+            )
+            #expect(addedFootage.textFillMode == .footage)
+            #expect(addedFootage.textStyle?.color == TextFillMode.defaultFootageMatteColor)
+            #expect((try await client.callTool(name: "undo")).isError != true)
+
+            let addColoredFootage = try await client.callTool(name: "add_texts", arguments: [
+                "entries": .array([.object([
+                    "startFrame": .int(0),
+                    "endFrame": .int(60),
+                    "content": .string("Green stencil"),
+                    "fillMode": .string("footage"),
+                    "style": .object(["color": .string("#00FF00")]),
+                ])]),
+            ])
+            #expect(addColoredFootage.isError != true)
+            let addedColoredFootage = try #require(
+                harness.editor.timeline.tracks.flatMap(\.clips).first {
+                    $0.textContent == "Green stencil"
+                }
+            )
+            #expect(addedColoredFootage.textFillMode == .footage)
+            #expect(
+                addedColoredFootage.textStyle?.color
+                    == TextStyle.RGBA(r: 0, g: 1, b: 0, a: 1)
+            )
+            #expect((try await client.callTool(name: "undo")).isError != true)
+
+            let footageUpdate = try await client.callTool(name: "update_text", arguments: [
+                "clipIds": .array([.string(original.id)]),
+                "fillMode": .string("footage"),
+            ])
+            #expect(footageUpdate.isError != true)
+            #expect(harness.editor.clipFor(id: original.id)?.textFillMode == .footage)
+            #expect(
+                harness.editor.clipFor(id: original.id)?.textStyle?.color
+                    == TextFillMode.defaultFootageMatteColor
+            )
+            let footageReadback = try await timelineClip(client: client, clipId: original.id)
+            #expect(footageReadback["textFillMode"] as? String == "footage")
+            #expect((try await client.callTool(name: "undo")).isError != true)
+
             let update = try await client.callTool(name: "update_text", arguments: [
                 "clipIds": .array([.string(original.id)]),
                 "fillMode": .string("inverted"),

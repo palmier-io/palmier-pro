@@ -27,6 +27,7 @@ struct TextStyleControls<AfterAlignment: View, AfterColor: View>: View {
     let selection: TextStyleSelection
     let defaults: TextStyle
     let styleExpanded: Binding<Bool>?
+    let showsColorControl: Bool
     let showsSolidFillControls: Bool
     let actions: TextStyleEditingActions
     @ViewBuilder let afterAlignment: () -> AfterAlignment
@@ -41,6 +42,7 @@ struct TextStyleControls<AfterAlignment: View, AfterColor: View>: View {
         defaults: TextStyle,
         styleExpanded: Binding<Bool>? = nil,
         groupsExpandedByDefault: Bool = true,
+        showsColorControl: Bool = true,
         showsSolidFillControls: Bool = true,
         actions: TextStyleEditingActions,
         @ViewBuilder afterAlignment: @escaping () -> AfterAlignment,
@@ -49,6 +51,7 @@ struct TextStyleControls<AfterAlignment: View, AfterColor: View>: View {
         self.selection = selection
         self.defaults = defaults
         self.styleExpanded = styleExpanded
+        self.showsColorControl = showsColorControl
         self.showsSolidFillControls = showsSolidFillControls
         self.actions = actions
         self.afterAlignment = afterAlignment
@@ -108,7 +111,7 @@ struct TextStyleControls<AfterAlignment: View, AfterColor: View>: View {
                 fontCaseRow
                 alignmentRow
                 afterAlignment()
-                if showsSolidFillControls {
+                if showsColorControl {
                     colorRow(
                         label: L10n.string("Color"),
                         debounceKey: "textColor",

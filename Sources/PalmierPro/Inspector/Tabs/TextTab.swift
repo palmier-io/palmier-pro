@@ -10,8 +10,25 @@ struct TextTab: View {
     private var clipIds: [String] { clips.map(\.id) }
     private var isBatch: Bool { clips.count > 1 }
 
+    private var fillMode: TextFillMode? {
+        sharedClipValue(clips) { $0.textFillMode ?? .color }
+    }
+
+    private var styleDefaults: TextStyle {
+        var defaults = Self.defaults
+        if fillMode == .footage {
+            defaults.color = TextFillMode.defaultFootageMatteColor
+        }
+        return defaults
+    }
+
+    private var showsColorControl: Bool {
+        guard let fillMode else { return false }
+        return fillMode != .inverted
+    }
+
     private var showsSolidFillControls: Bool {
-        sharedClipValue(clips) { $0.textFillMode ?? .color } == .color
+        fillMode == .color
     }
 
     var body: some View {
@@ -19,10 +36,11 @@ struct TextTab: View {
             contentField
             TextStyleControls(
                 selection: TextStyleSelection(
-                    styles: clips.map { $0.textStyle ?? Self.defaults },
-                    fallback: Self.defaults
+                    styles: clips.map { $0.textStyle ?? styleDefaults },
+                    fallback: styleDefaults
                 ),
-                defaults: Self.defaults,
+                defaults: styleDefaults,
+                showsColorControl: showsColorControl,
                 showsSolidFillControls: showsSolidFillControls,
                 actions: styleActions,
                 afterAlignment: {
@@ -41,14 +59,14 @@ struct TextTab: View {
         return InspectorRow(
             label: L10n.string("Fill"),
             onReset: {
-                editor.commitClipProperties(clipIds: clipIds) { $0.textFillMode = nil }
+                editor.commitClipProperties(clipIds: clipIds) { $0.setTextFillMode(.color) }
             }
         ) {
             Menu {
                 ForEach(TextFillMode.allCases, id: \.self) { mode in
                     Button(L10n.string(key: mode.displayName)) {
                         editor.commitClipProperties(clipIds: clipIds) {
-                            $0.textFillMode = mode == .color ? nil : mode
+                            $0.setTextFillMode(mode)
                         }
                     }
                 }
