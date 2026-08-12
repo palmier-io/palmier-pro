@@ -457,13 +457,13 @@ final class SkillStore {
     func delete(_ skill: Skill) async -> Bool {
         await serializeMutation("delete skill \(skill.id)") { [self] in
             guard var ledger else { return false }
-            try await Self.performFileOperation {
-                try FileManager.default.removeItem(at: skill.path.deletingLastPathComponent())
-            }
             ledger.installed.removeValue(forKey: skill.id)
             ledger.suppressed.insert(skill.id)
             try await Self.persistLedger(ledger, directory: storageDirectory)
             self.ledger = ledger
+            try await Self.performFileOperation {
+                try FileManager.default.removeItem(at: skill.path.deletingLastPathComponent())
+            }
             await reloadInBackground()
             return true
         } ?? false

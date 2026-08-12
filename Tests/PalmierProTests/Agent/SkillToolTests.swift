@@ -119,6 +119,28 @@ struct SkillToolTests {
         }
     }
 
+    @Test func ledgerWriteFailureLeavesSkillIntact() async throws {
+        try await withHarness { harness in
+            let created = await harness.run("manage_skills", args: [
+                "action": "create",
+                "name": "Protected Skill",
+                "description": "Remain intact when suppression cannot be saved.",
+                "instructions": "Follow the workflow.",
+            ])
+            #expect(!created.isError)
+            try await blockLedgerWrites(in: harness.directory)
+
+            let removed = await harness.run("manage_skills", args: [
+                "action": "remove",
+                "id": "protected-skill",
+            ])
+
+            #expect(removed.isError)
+            #expect(harness.store.skills.contains { $0.id == "protected-skill" })
+            #expect(await skillFileExists(id: "protected-skill", in: harness.directory))
+        }
+    }
+
     @Test func rejectsInvalidUpdatesAndMCPCalls() async throws {
         try await withHarness { harness in
             let invalidUpdate = await harness.run("manage_skills", args: [
@@ -173,6 +195,21 @@ struct SkillToolTests {
             return nil
         }
         return SkillStore.decodeLedger(data)
+    }
+
+    @concurrent
+    private func blockLedgerWrites(in directory: URL) async throws {
+        try FileManager.default.createDirectory(
+            at: directory.appendingPathComponent(".installed.json", isDirectory: true),
+            withIntermediateDirectories: false
+        )
+    }
+
+    @concurrent
+    private func skillFileExists(id: String, in directory: URL) async -> Bool {
+        FileManager.default.fileExists(
+            atPath: directory.appendingPathComponent(id).appendingPathComponent("SKILL.md").path
+        )
     }
 
     @concurrent
