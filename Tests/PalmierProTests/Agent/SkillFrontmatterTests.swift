@@ -14,12 +14,32 @@ struct SkillFrontmatterTests {
         #expect(SkillFrontmatter.requiredFields(emptyDescription) == nil)
     }
 
-    @Test func replacingNameKeepsTheDraftInstructions() {
+    @Test func replacingOnlyNameKeepsTheDraftInstructions() {
         let draft = "---\nname: New skill\ndescription: Edit clips.\n---\n\n## Workflow\n1. First step."
 
-        let updated = SkillFrontmatter.replacingName(draft, name: "Editing")
+        let updated = SkillFrontmatter.replacingFields(draft, name: "Editing")
 
         #expect(updated == "---\nname: Editing\ndescription: Edit clips.\n---\n\n## Workflow\n1. First step.")
+    }
+
+    @Test func replacingFieldsPreservesUnchangedFrontmatter() {
+        let draft = "---\nname: Editing\ndescription: Edit clips.\nsource: local\n---\n\nOld instructions"
+
+        let updated = SkillFrontmatter.replacingFields(
+            draft,
+            description: "Tighten interview edits.",
+            instructions: "## Workflow\nRemove pauses."
+        )
+
+        #expect(
+            updated
+                == "---\nname: Editing\ndescription: Tighten interview edits.\nsource: local\n---\n\n## Workflow\nRemove pauses."
+        )
+    }
+
+    @Test func suggestedSkillIDIsStableAndFilesystemSafe() {
+        #expect(SkillStore.suggestedID(for: "  Interview Cleanup & Pacing  ") == "interview-cleanup-pacing")
+        #expect(SkillStore.suggestedID(for: "///") == "new-skill")
     }
 
     @Test @MainActor func newSkillTemplateIsValidBeforeItIsSaved() {

@@ -17,6 +17,7 @@ final class ToolExecutor {
     private(set) var mcpSessionActivation = Analytics.SessionActivation()
     private let analyticsSessionID = UUID().uuidString
     let exportQueue: ExportQueue
+    let skillStore: SkillStore
 
     var editor: EditorViewModel? {
         frontmostProjectProvider == nil ? inAppEditor : sessionProject?.editorViewModel
@@ -31,18 +32,27 @@ final class ToolExecutor {
 
     var frontmostProject: VideoProject? { frontmostProjectProvider?() }
 
-    init(editor: EditorViewModel, exportQueue: ExportQueue = .shared) {
+    init(
+        editor: EditorViewModel,
+        exportQueue: ExportQueue = .shared,
+        skillStore: SkillStore = .shared
+    ) {
         self.inAppEditor = editor
         self.frontmostProjectProvider = nil
         self.exportQueue = exportQueue
+        self.skillStore = skillStore
     }
 
-    init(projectProvider: @escaping () -> VideoProject?, exportQueue: ExportQueue = .shared) {
+    init(
+        projectProvider: @escaping () -> VideoProject?,
+        exportQueue: ExportQueue = .shared
+    ) {
         let project = projectProvider()
         self.inAppEditor = nil
         self.frontmostProjectProvider = projectProvider
         self.boundProject = project
         self.exportQueue = exportQueue
+        self.skillStore = .shared
     }
 
     func bindProject(_ project: VideoProject?) {
@@ -81,7 +91,9 @@ final class ToolExecutor {
     ) async -> ToolResult {
         let args = Self.droppingAutofilledBlanks(from: args)
         let started = ContinuousClock.now
-        guard let tool = ToolName(rawValue: name) else {
+        guard let tool = ToolName(rawValue: name),
+              origin.source != "mcp"
+                || ToolDefinitions.mcpServer.contains(where: { $0.name == tool }) else {
             let result = ToolResult.error("Unknown tool: \(name)")
             captureToolAnalytics(
                 toolName: name,
@@ -351,6 +363,7 @@ final class ToolExecutor {
         case .createTimeline:     return try createTimeline(editor, args)
         case .setActiveTimeline:  return try setActiveTimeline(editor, args)
         case .readSkill:     return readSkill(args)
+        case .manageSkills:  return try await manageSkills(args)
         case .manageProject:
             return await manageProject(args)
         }
@@ -360,13 +373,13 @@ final class ToolExecutor {
         guard let id = args.string("id") else {
             return .error("read_skill requires an 'id'.")
         }
-        guard let body = SkillStore.shared.body(for: id) else {
+        guard let body = skillStore.body(for: id) else {
             return .error("Unknown skill: \(id)")
         }
         Analytics.captureSkillRead(
             skillID: id,
-            skillSHA: SkillStore.shared.contentSHA(for: id),
-            skillOrigin: SkillStore.shared.origin(for: id).rawValue
+            skillSHA: skillStore.contentSHA(for: id),
+            skillOrigin: skillStore.origin(for: id).rawValue
         )
         return .ok(body)
     }

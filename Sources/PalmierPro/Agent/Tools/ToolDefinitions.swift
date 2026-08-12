@@ -71,6 +71,7 @@ enum ToolName: String, CaseIterable, Sendable {
     // Meta
     case sendFeedback = "send_feedback"
     case readSkill = "read_skill"
+    case manageSkills = "manage_skills"
 }
 
 struct AgentTool: @unchecked Sendable {
@@ -1162,6 +1163,41 @@ enum ToolDefinitions {
         )
     )
 
+    /// In-app assistant only
+    static let manageSkills = AgentTool(
+        name: .manageSkills,
+        description: "Create, update, or permanently remove reusable skills for the in-app assistant. Set `action` to: `create` with name, description, and complete Markdown instructions; `update` with an exact skill id and at least one field to replace; or `remove` with an exact skill id. Updates are partial patches, but `instructions`, when present, replaces the complete Markdown body, so call read_skill first when preserving existing instructions. Use remove only when the user explicitly asks to delete that skill. The app generates and returns a stable id for created skills.",
+        inputSchema: objectSchema(
+            properties: [
+                "action": [
+                    "type": "string",
+                    "enum": ["create", "update", "remove"],
+                    "description": "Skill operation.",
+                ],
+                "id": [
+                    "type": "string",
+                    "description": "Update/remove only. Exact skill id listed under # Skills.",
+                ],
+                "name": [
+                    "type": "string",
+                    "maxLength": Skill.Limits.maximumNameLength,
+                    "description": "Create/update. Concise skill display name on one line.",
+                ],
+                "description": [
+                    "type": "string",
+                    "maxLength": Skill.Limits.maximumDescriptionLength,
+                    "description": "Create/update. One-line trigger description explaining when the assistant should use the skill.",
+                ],
+                "instructions": [
+                    "type": "string",
+                    "maxLength": Skill.Limits.maximumInstructionsLength,
+                    "description": "Create/update. Complete replacement Markdown instructions without YAML frontmatter.",
+                ],
+            ],
+            required: ["action"]
+        )
+    )
+
     /// MCP server only
     static let manageProject = AgentTool(
         name: .manageProject,
@@ -1188,7 +1224,7 @@ enum ToolDefinitions {
     )
 
     static var mcpServer: [AgentTool] { all + [manageProject] }
-    static var inAppAgent: [AgentTool] { all + [readSkill] }
+    static var inAppAgent: [AgentTool] { all + [readSkill, manageSkills] }
 
     private static func textTransformProperties() -> [String: [String: Any]] {
         [

@@ -2,6 +2,12 @@ import Foundation
 
 /// A skill is a folder under `~/.palmier/skills/<id>/` with a `SKILL.md` file
 struct Skill: Identifiable, Sendable {
+    enum Limits {
+        static let maximumNameLength = 120
+        static let maximumDescriptionLength = 500
+        static let maximumInstructionsLength = 50_000
+    }
+
     let id: String  // folder name
     let name: String
     let description: String
@@ -9,6 +15,17 @@ struct Skill: Identifiable, Sendable {
 }
 
 enum SkillFrontmatter {
+    static func contents(name: String, description: String, instructions: String) -> String {
+        """
+        ---
+        name: \(name)
+        description: \(description)
+        ---
+
+        \(instructions)
+        """
+    }
+
     /// Splits a SKILL.md into its frontmatter fields and body
     static func parse(_ text: String) -> (fields: [String: String], body: String) {
         var fields: [String: String] = [:]
@@ -43,25 +60,40 @@ enum SkillFrontmatter {
         return (name, description, parsed.body)
     }
 
-    static func replacingName(_ text: String, name: String) -> String {
-        let lines = text.components(separatedBy: "\n")
-        guard lines.first?.trimmingCharacters(in: .whitespaces) == "---" else {
-            return "---\nname: \(name)\n---\n\n" + text
+    static func replacingFields(
+        _ text: String,
+        name: String? = nil,
+        description: String? = nil,
+        instructions: String? = nil
+    ) -> String {
+        var lines = text.components(separatedBy: "\n")
+        guard lines.first?.trimmingCharacters(in: .whitespaces) == "---",
+              var closingIndex = lines.indices.dropFirst().first(where: {
+                  lines[$0].trimmingCharacters(in: .whitespaces) == "---"
+              }) else {
+            let parsed = parse(text)
+            return contents(
+                name: name ?? parsed.fields["name"] ?? "New skill",
+                description: description ?? parsed.fields["description"] ?? "Describe when to use this skill.",
+                instructions: instructions ?? parsed.body
+            )
         }
-        var front: [String] = []
-        var replaced = false
-        var i = 1
-        while i < lines.count, lines[i].trimmingCharacters(in: .whitespaces) != "---" {
-            if let colon = lines[i].firstIndex(of: ":"),
-               lines[i][..<colon].trimmingCharacters(in: .whitespaces) == "name" {
-                front.append("name: \(name)"); replaced = true
+
+        func replace(_ key: String, with value: String) {
+            if let index = (1..<closingIndex).first(where: { index in
+                guard let colon = lines[index].firstIndex(of: ":") else { return false }
+                return lines[index][..<colon].trimmingCharacters(in: .whitespaces) == key
+            }) {
+                lines[index] = "\(key): \(value)"
             } else {
-                front.append(lines[i])
+                lines.insert("\(key): \(value)", at: closingIndex)
+                closingIndex += 1
             }
-            i += 1
         }
-        if !replaced { front.insert("name: \(name)", at: 0) }
-        let rest = i < lines.count ? lines[i...].joined(separator: "\n") : "---"
-        return "---\n" + front.joined(separator: "\n") + "\n" + rest
+
+        if let name { replace("name", with: name) }
+        if let description { replace("description", with: description) }
+        guard let instructions else { return lines.joined(separator: "\n") }
+        return lines[...closingIndex].joined(separator: "\n") + "\n\n" + instructions
     }
 }
