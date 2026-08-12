@@ -7,11 +7,16 @@ struct TimelineGeometryTests {
 
     // Three tracks of 50 each. baseY = rulerHeight (24) + dropZoneHeight (60) = 84.
     // cumulativeY = [84, 134, 184]; track bottoms = [134, 184, 234]. All assertions below derive from this.
-    private func geometry(pxPerFrame: Double = 4, header: Double = 0) -> TimelineGeometry {
+    private func geometry(
+        pxPerFrame: Double = 4,
+        header: Double = 0,
+        lanes: [[AnimatableProperty]] = []
+    ) -> TimelineGeometry {
         TimelineGeometry(
             pixelsPerFrame: pxPerFrame,
             headerWidth: header,
-            trackHeights: [50, 50, 50]
+            trackHeights: [50, 50, 50],
+            laneProperties: lanes
         )
     }
 
@@ -46,6 +51,30 @@ struct TimelineGeometryTests {
     @Test func trackYOutOfBoundsReturnsRulerHeight() {
         let g = geometry()
         #expect(g.trackY(at: 99) == Layout.rulerHeight)
+    }
+
+    @Test func expandedLanesShiftFollowingTracksAndContentBottom() {
+        let laneHeight = AppTheme.ComponentSize.timelineKeyframeLaneHeight
+        let g = geometry(lanes: [[.position, .opacity], [], [.volume]])
+
+        #expect(g.trackY(at: 0) == 84)
+        #expect(g.trackY(at: 1) == 134 + laneHeight * 2)
+        #expect(g.trackY(at: 2) == 184 + laneHeight * 2)
+        #expect(g.contentBottom == 234 + laneHeight * 3)
+    }
+
+    @Test func rowLocationDistinguishesTrackAndPropertyLanes() {
+        let g = geometry(lanes: [[.position, .opacity], [], []])
+        let firstLaneY = g.trackY(at: 0) + g.trackHeight(at: 0)
+
+        #expect(g.rowLocation(atY: Double(g.trackY(at: 0) + 10)) == .track(0))
+        #expect(g.rowLocation(atY: Double(firstLaneY + 2)) == .keyframeLane(
+            trackIndex: 0,
+            property: .position
+        ))
+        #expect(g.rowLocation(
+            atY: Double(firstLaneY + AppTheme.ComponentSize.timelineKeyframeLaneHeight + 2)
+        ) == .keyframeLane(trackIndex: 0, property: .opacity))
     }
 
     // MARK: - Clip rect
@@ -95,6 +124,12 @@ struct TimelineGeometryTests {
         // Track 0 body is [84, 134). Outside the boundary zones — y=100 should land in body.
         #expect(g.dropTargetAt(y: 100) == .existingTrack(0))
         #expect(g.dropTargetAt(y: 200) == .existingTrack(2))
+    }
+
+    @Test func dropTargetOnExpandedLaneTargetsOwningTrack() {
+        let g = geometry(lanes: [[.position, .opacity], [], []])
+        let y = g.trackY(at: 0) + g.trackHeight(at: 0) + 2
+        #expect(g.dropTargetAt(y: Double(y)) == .existingTrack(0))
     }
 
     @Test func dropTargetBelowLastTrackIsNewTrackAtCount() {
