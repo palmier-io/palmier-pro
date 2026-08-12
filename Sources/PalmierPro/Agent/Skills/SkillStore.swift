@@ -457,12 +457,23 @@ final class SkillStore {
     func delete(_ skill: Skill) async -> Bool {
         await serializeMutation("delete skill \(skill.id)") { [self] in
             guard var ledger else { return false }
+            let originalLedger = ledger
             ledger.installed.removeValue(forKey: skill.id)
             ledger.suppressed.insert(skill.id)
             try await Self.persistLedger(ledger, directory: storageDirectory)
             self.ledger = ledger
-            try await Self.performFileOperation {
-                try FileManager.default.removeItem(at: skill.path.deletingLastPathComponent())
+            do {
+                try await Self.performFileOperation {
+                    try FileManager.default.removeItem(at: skill.path.deletingLastPathComponent())
+                }
+            } catch let removalError {
+                do {
+                    try await Self.persistLedger(originalLedger, directory: storageDirectory)
+                    self.ledger = originalLedger
+                } catch {
+                    Log.agent.error("restore skill ledger failed: \(error.localizedDescription)")
+                }
+                throw removalError
             }
             await reloadInBackground()
             return true
