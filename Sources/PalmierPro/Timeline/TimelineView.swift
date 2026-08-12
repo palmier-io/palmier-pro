@@ -1197,7 +1197,12 @@ final class TimelineView: NSView {
                     context.setLineWidth(
                         selected ? AppTheme.BorderWidth.medium : AppTheme.BorderWidth.hairline
                     )
-                    context.stroke(segment)
+                    context.beginPath()
+                    context.move(to: CGPoint(x: segment.minX, y: segment.minY))
+                    context.addLine(to: CGPoint(x: segment.minX, y: segment.maxY))
+                    context.move(to: CGPoint(x: segment.maxX, y: segment.minY))
+                    context.addLine(to: CGPoint(x: segment.maxX, y: segment.maxY))
+                    context.strokePath()
                     guard eligible else { continue }
                     for frame in clip.keyframeFrames(
                         for: property,

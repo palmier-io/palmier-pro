@@ -178,7 +178,8 @@ final class TimelineHeaderView: NSView {
                 let expanded = keyframeLaneState.isExpanded(trackId: track.id)
                 keyframeLaneButtonRects[i] = drawToggleIcon(
                     x: keyframeX, y: iconY, size: iconSize, config: iconConfig,
-                    active: expanded, onSymbol: "diamond.fill", offSymbol: "diamond"
+                    active: expanded, onSymbol: "diamond.fill", offSymbol: "diamond",
+                    activeTint: AppTheme.Accent.timecodeNSColor
                 )
             }
             if track.type == .audio {
@@ -392,10 +393,13 @@ final class TimelineHeaderView: NSView {
     private func drawToggleIcon(
         x: CGFloat, y: CGFloat, size: CGFloat,
         config: NSImage.SymbolConfiguration,
-        active: Bool, onSymbol: String, offSymbol: String
+        active: Bool, onSymbol: String, offSymbol: String,
+        activeTint: NSColor = AppTheme.Text.secondary
     ) -> NSRect {
         let rect = NSRect(x: x, y: y, width: size, height: size)
-        let tint = active ? AppTheme.Text.secondary : AppTheme.Text.secondary.withAlphaComponent(0.3)
+        let tint = active
+            ? activeTint
+            : AppTheme.Text.secondary.withAlphaComponent(0.3)
         drawSymbol(active ? onSymbol : offSymbol, in: rect, tint: tint, config: config)
         return rect.insetBy(dx: -4, dy: -4)
     }
