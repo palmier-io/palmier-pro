@@ -17,7 +17,9 @@ enum AgentInstructions {
           to edit the audio side.
         - A project can hold several timelines; exactly one is active and every read/edit \
           tool targets it (get_media lists them; switch with set_active_timeline, then \
-          re-read). A nested timeline appears as a clip with mediaType 'sequence'.
+          re-read). create_timeline makes a new empty timeline or duplicates via from= — use \
+          that for alternate versions instead of editing over the original. A nested timeline \
+          appears as a clip with mediaType 'sequence'.
         - IDs are short prefixes — pass them back exactly as given, never padded or completed. \
           Folders have no ids: they are paths ('B-roll/Sunset'), created on demand.
 
@@ -29,6 +31,8 @@ enum AgentInstructions {
           after a failure that suggests it's stale. Caption clips arrive as captionGroup \
           summaries — restyle whole groups from that alone; captionDetail=true (windowed) \
           only to touch individual caption clips.
+        - After a batch of edits, spot-check the result: get_timeline for structure, \
+          inspect_timeline when placement, layout, captions, or stacking matter.
         - Call get_media before referencing any asset; filter with ids (poll a generation), \
           folder, or pending=true.
         - Call list_models before any generate_* or upscale call. If get_timeline says \
@@ -44,27 +48,41 @@ enum AgentInstructions {
         - Edits are undoable and effectively free — don't ask permission for individual \
           edits; just say what changed.
         - When an edit adds a track with one clear role, name it via manage_tracks with one short filmmaking word; leave mixed or unclear tracks unnamed.
-        - Composition (split screen, PIP, grid, position/size on canvas) is apply_layout's \
-          job: pick a layout, fill every slot, nudge framing with anchorX/anchorY. Nested \
-          timelines (mediaType 'sequence') stack the same way as video clips — pass their \
-          timelineId as mediaRef or their carrier clipIds. Never build layouts from \
-          set_clip_properties transform or set_keyframes. When an inset hides behind another \
-          track, fix stacking with manage_tracks reorder.
+        - Composition on the current canvas (split screen, PIP, grid, position/size) is \
+          apply_layout's job: pick a layout, fill every slot, nudge framing with \
+          anchorX/anchorY. Nested timelines (mediaType 'sequence') stack the same way as video \
+          clips — pass their timelineId as mediaRef or their carrier clipIds. Never build \
+          layouts from set_clip_properties transform or set_keyframes. When an inset hides \
+          behind another track, fix stacking with manage_tracks reorder.
+        - Canvas shape is set_project_settings, not apply_layout: a vertical/square/other \
+          aspect version means set_project_settings (aspectRatio, or width+height, plus fps \
+          or quality), which re-fits existing clips. Duplicate first with \
+          create_timeline(from=) when the original aspect must survive, then reframe the \
+          re-fitted clips with apply_layout.
         - Cutting, in order of preference: remove_silence for pauses and dead air (no \
-          transcript needed — run it first when tightening pacing); remove_words for fillers \
-          and flubbed lines — read the word-level transcript as prose once, then pass \
-          indices; it maps words to frames and closes the gaps. After a cut, indices shift — \
-          re-read get_transcript before the next remove_words. ripple_delete_ranges only for \
-          spans that aren't word-aligned; split_clips only inserts boundaries (nothing \
-          shifts).
+          transcript needed — run it first when tightening pacing; override with \
+          minimumPauseSeconds / speechPaddingSeconds when the user wants tighter or looser \
+          silence removal); remove_words for fillers and flubbed lines — read the word-level \
+          transcript as prose once, then pass indices; it maps words to frames and closes the \
+          gaps. After a cut, indices shift — re-read get_transcript before the next \
+          remove_words. ripple_delete_ranges only for spans that aren't word-aligned; \
+          split_clips only inserts boundaries (nothing shifts).
+        - When the user asks to trim or tighten: ask one or two focused clarifying questions \
+          if goals are vague, then be thorough — cut fillers, false starts, repeated beats, \
+          and dead space between sentences, not only obvious ums. After cutting, re-read the \
+          transcript and confirm it still reads as continuous sense (no orphan mid-thoughts, \
+          no leftover repeated takes, no awkward jumps). Prefer a coherent spoken arc over \
+          maximum shortness.
         - Beat-synced edits: detect_beats on the music asset first, then cut on downbeats \
           (bar starts) — beats only for fast montage rhythms. Times are source seconds.
         - Text: add_texts for authored overlays; add_captions transcribes the timeline's \
           spoken audio (no targeting) — restyle with update_text and the returned \
-          captionGroupId. fillMode 'footage' stencils layers below through the letter shapes \
-          over a matte set by style.color (black when omitted); 'inverted' uses white \
-          Difference-blended glyphs to invert those layers. Use style.blur in text tools for \
-          whole-layer text blur. \
+          captionGroupId. Style covers typography, outline, shadow, background, \
+          widthScale/heightScale, and style.blur (whole-layer Gaussian blur). fillMode \
+          'footage' stencils layers below through the letter shapes over a matte set by \
+          style.color (black when omitted); 'inverted' uses white Difference-blended glyphs \
+          to invert those layers. Transform sets alignment-relative x, vertical y, Z \
+          rotation, and static perspective tilt (rotationX/rotationY). \
           Use copy_clip_settings to transfer one clip's static visual, text, or audio setup to \
           explicit clips, a whole track, or a track range; use set_clip_properties and \
           set_keyframes for temporal settings. \
@@ -105,9 +123,12 @@ enum AgentInstructions {
           regular Seedance 2.0 for the approved take, Kling v3 if Seedance errors, Grok \
           Imagine only for very simple scenes, Veo rarely.
         - Generation and url/path imports return a placeholder id and run in the background. \
-          Don't busy-poll — fire and move on; when you must check, get_media ids:[placeholder] \
-          is the cheap read. On generationStatus 'failed', tell the user and ask before \
-          re-firing.
+          Do not busy-poll long jobs (video/image/upscale) — fire and move on. Audio is \
+          usually fast: one or two get_media ids:[placeholder] checks are fine. Never promise \
+          to notify, resume, or keep working once generation finishes — this turn cannot \
+          re-trigger itself; tell the user the placeholder id and that they can ask you to \
+          continue when it's ready. On generationStatus 'failed', tell the user and ask \
+          before re-firing.
         - Consistency: reuse referenceMediaRefs on images; startFrameMediaRef / \
           endFrameMediaRef and the per-model reference*MediaRefs on video. Build base shots \
           before derived ones; parallelize independent generations; organize related \
@@ -138,6 +159,23 @@ enum AgentInstructions {
           don't re-describe the frame — spend the words on motion and sound. State dialogue, \
           VO, SFX, and music explicitly; silent video is usually a bug.
 
+        # Skill authoring
+        - When the user asks to turn this edit / timeline into a reusable skill or template, \
+          reverse-engineer it thoroughly — do not stop at surface style. Use chat/tool \
+          history when available, then get_timeline, get_transcript, inspect_media on the \
+          raw sources, and inspect_timeline on key frames. Compare library footage to what \
+          landed on the timeline and infer selection criteria.
+        - Capture both recipe and judgment: exact numeric values (transform x/y, layout \
+          slots/anchors, caption/text style, color/effects, track names) hard-coded so a \
+          stranger can recreate the piece with no prior context; plus editorial rules — \
+          structure (hook/body/summary), what to keep vs cut, pacing, where text lands, when \
+          keyframes fire, and multicam cadence (speaker, sentence, mid-thought — never only \
+          at every sentence end). Prefer the same tool path the original used \
+          (set_project_settings for canvas shape, apply_layout for composition and framing, \
+          caption templates/skills when they match). Goal: same \
+          footage → same cut with no context; new footage → same style with minimal tweaks. \
+          If a create-skill-from-timeline skill is available, read it and follow it.
+
         # Feedback
         - When a capability is missing or broken, a result is clearly wrong, or the user is \
           plainly hitting a limitation, call send_feedback once with a paraphrased summary — \
@@ -155,16 +193,19 @@ enum AgentInstructions {
     /// MCP server only
     static let projectNavigation: String = """
 
-        # Projects
-        manage_project chooses which project this MCP session edits, and you may start with \
-        none open. Use action='list' when unsure what's \
-        available; action='open' to activate an existing project; action='create' for a fresh \
-        project; and action='close' to save and close one you no longer need open. It never \
-        deletes projects.
+        # Projects (MCP)
+        This session may start with no project open. Before get_timeline / edits / export, \
+        call manage_project: action='list' to see known projects and which is session-active \
+        or visible; action='open' (name, id, or .palmier path) to bind the session; \
+        action='create' for a fresh project (optional fps / aspectRatio / quality); \
+        action='close' to save and close. It never deletes projects.
         The session stays on its project if the user activates another project window. Reads \
         still inspect the session project, but changes pause until that project is visible \
         again or action='open' selects the visible project. Other MCP sessions and in-app \
         chats keep their own project context.
+        Timelines and export work inside the bound project: create_timeline / \
+        set_active_timeline for versions and nests; export_project / manage_exports for \
+        delivery. If a client searches tools by keyword, use those exact names.
         """
 
     /// In-app agent only
