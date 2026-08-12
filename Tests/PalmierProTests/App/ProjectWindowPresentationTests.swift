@@ -21,15 +21,7 @@ struct ProjectWindowPresentationTests {
 
     @Test func activationKeepsHomeVisibleUntilEditorIsPresented() {
         _ = NSApplication.shared
-        let project = VideoProject()
-        let editorWindow = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 320, height: 180),
-            styleMask: [.titled],
-            backing: .buffered,
-            defer: false
-        )
-        let controller = NSWindowController(window: editorWindow)
-        project.addWindowController(controller)
+        let (project, editorWindow) = makeProjectWindow()
         HomeWindowController.shared.showWindow(nil)
         defer { cleanUp(project) }
 
@@ -42,6 +34,32 @@ struct ProjectWindowPresentationTests {
 
         #expect(editorWindow.isVisible)
         #expect(HomeWindowController.shared.window?.isVisible == false)
+    }
+
+    @Test func keyProjectWindowHidesHomeForDocumentControllerPresentation() {
+        _ = NSApplication.shared
+        let (project, editorWindow) = makeProjectWindow()
+        HomeWindowController.shared.showWindow(nil)
+        editorWindow.orderFront(nil)
+        defer { cleanUp(project) }
+
+        AppState.shared.projectWindowDidBecomeKey(project)
+
+        #expect(AppState.shared.activeProject === project)
+        #expect(editorWindow.isVisible)
+        #expect(HomeWindowController.shared.window?.isVisible == false)
+    }
+
+    private func makeProjectWindow() -> (VideoProject, NSWindow) {
+        let project = VideoProject()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 180),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        project.addWindowController(NSWindowController(window: window))
+        return (project, window)
     }
 
     private func cleanUp(_ project: VideoProject) {

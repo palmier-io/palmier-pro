@@ -488,7 +488,7 @@ class VideoProject: NSDocument {
         let controller = EditorWindowController(editorViewModel: editorViewModel, window: window)
         controller.onBecameKey = { [weak self] in
             guard let self else { return }
-            AppState.shared.activateProject(self)
+            AppState.shared.projectWindowDidBecomeKey(self)
         }
         window.delegate = controller
         controller.installKeyMonitor()

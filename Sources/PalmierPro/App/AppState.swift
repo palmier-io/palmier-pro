@@ -99,7 +99,7 @@ final class AppState {
     func showEditor(for project: VideoProject) {
         activateProject(project)
         project.showWindows()
-        HomeWindowController.shared.window?.orderOut(nil)
+        hideHomeIfEditorIsVisible(for: project)
     }
 
     func activateProject(_ project: VideoProject) {
@@ -108,6 +108,16 @@ final class AppState {
             project.editorViewModel.refreshProjectId()
             recordProjectActive(project)
         }
+    }
+
+    func projectWindowDidBecomeKey(_ project: VideoProject) {
+        activateProject(project)
+        hideHomeIfEditorIsVisible(for: project)
+    }
+
+    private func hideHomeIfEditorIsVisible(for project: VideoProject) {
+        guard project.windowControllers.contains(where: { $0.window?.isVisible == true }) else { return }
+        HomeWindowController.shared.window?.orderOut(nil)
     }
 
     // Save and close project; switch to next open or show Home. Throws (without closing) if the save fails.
