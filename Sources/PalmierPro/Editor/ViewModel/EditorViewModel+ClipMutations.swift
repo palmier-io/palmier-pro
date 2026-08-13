@@ -170,6 +170,13 @@ extension EditorViewModel {
         (left.scaleTrack,    right.scaleTrack)    = splitKeyframeTrack(clip.scaleTrack,    at: splitOffset, fallback: AnimPair(a: 1, b: 1))
         (left.rotationTrack, right.rotationTrack) = splitKeyframeTrack(clip.rotationTrack, at: splitOffset, fallback: 0)
         (left.cropTrack,     right.cropTrack)     = splitKeyframeTrack(clip.cropTrack,     at: splitOffset, fallback: clip.crop)
+        let blurTracks = splitKeyframeTrack(
+            clip.blurKeyframeTrack,
+            at: splitOffset,
+            fallback: clip.staticBlurRadius
+        )
+        left.setBlurKeyframeTrack(blurTracks.left)
+        right.setBlurKeyframeTrack(blurTracks.right)
         left.clampFadesToDuration()
         right.clampFadesToDuration()
         return (left, right)
@@ -477,8 +484,10 @@ extension EditorViewModel {
         let canvasH = Double(timeline.height)
         applyClipProperties(clipIds: clipIds, rebuild: true) { clip in
             var style = clip.textStyle ?? TextStyle()
+            let blur = style.blur
             modify(&style)
             clip.textStyle = style
+            if style.blur != blur { clip.setBlurKeyframeTrack(nil) }
             if fitToContent {
                 _ = self.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
             }
@@ -503,8 +512,10 @@ extension EditorViewModel {
         let canvasH = Double(timeline.height)
         commitClipProperties(clipIds: clipIds) { clip in
             var style = clip.textStyle ?? TextStyle()
+            let blur = style.blur
             modify(&style)
             clip.textStyle = style
+            if style.blur != blur { clip.setBlurKeyframeTrack(nil) }
             if fitToContent {
                 _ = self.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
             }

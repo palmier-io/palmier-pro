@@ -233,6 +233,7 @@ enum ClipRenderer {
         for kf in clip.scaleTrack?.keyframes ?? [] { frameSet.insert(kf.frame + absStart) }
         for kf in clip.rotationTrack?.keyframes ?? [] { frameSet.insert(kf.frame + absStart) }
         for kf in clip.cropTrack?.keyframes ?? [] { frameSet.insert(kf.frame + absStart) }
+        for kf in clip.blurKeyframeTrack?.keyframes ?? [] { frameSet.insert(kf.frame + absStart) }
         let frames = frameSet.sorted()
         guard !frames.isEmpty, clip.durationFrames > 0 else { return }
         let pxPerFrame = rect.width / CGFloat(clip.durationFrames)

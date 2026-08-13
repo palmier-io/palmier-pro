@@ -101,6 +101,21 @@ struct CompositorTextLayerTests {
         #expect(blurredFrame.at(64, 90).r < sharpFrame.at(64, 90).r)
     }
 
+    @Test func gaussianBlurKeyframesAnimateTheCompleteTextLayer() async throws {
+        var animated = backgroundTextClip()
+        animated.setBlurKeyframeTrack(KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 0, interpolationOut: .linear),
+            Keyframe(frame: 30, value: 60, interpolationOut: .linear),
+        ]))
+        let timeline = CompositorRenderTests.timelineWith(Fixtures.videoTrack(clips: [animated]))
+        let sharpFrame = try await CompositorRenderTests.render(timeline, frame: 0, renderSize: Self.size)
+        let blurredFrame = try await CompositorRenderTests.render(timeline, frame: 30, renderSize: Self.size)
+
+        #expect(CompositorFixtures.isBlack(sharpFrame.at(60, 90)))
+        let blurredOutside = blurredFrame.at(60, 90)
+        #expect(blurredOutside.r + blurredOutside.g + blurredOutside.b > 30)
+    }
+
     @Test func genericGaussianEffectDoesNotCreateASecondTextBlurSource() async throws {
         let sharp = backgroundTextClip()
         var effectBlurred = sharp

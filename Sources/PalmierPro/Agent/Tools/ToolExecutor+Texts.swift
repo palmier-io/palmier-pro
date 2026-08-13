@@ -612,6 +612,12 @@ extension ToolExecutor {
                 notes.append("Static rotation cleared existing rotation keyframes on: \(cleared.joined(separator: ", ")).")
             }
         }
+        if textStylePatch?.blur != nil {
+            let cleared = clipIds.filter { editor.clipFor(id: $0)?.blurKeyframeTrack != nil }
+            if !cleared.isEmpty {
+                notes.append("Static blur cleared existing blur keyframes on: \(cleared.joined(separator: ", ")).")
+            }
+        }
 
         var beforeClips: [String: Clip] = [:]
         for id in clipIds {
@@ -640,6 +646,9 @@ extension ToolExecutor {
                     var style = clip.textStyle ?? TextStyle()
                     Self.applyTextStylePatch(textStylePatch, to: &style)
                     clip.textStyle = style
+                    if textStylePatch.blur != nil {
+                        clip.setBlurKeyframeTrack(nil)
+                    }
                 }
                 if shouldFitToContent {
                     _ = editor.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)

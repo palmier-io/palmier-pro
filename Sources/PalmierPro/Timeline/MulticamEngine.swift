@@ -281,6 +281,7 @@ private extension Clip {
 
     var hasKeyframes: Bool {
         opacityTrack != nil || positionTrack != nil || scaleTrack != nil
-            || rotationTrack != nil || cropTrack != nil || volumeTrack != nil
+            || rotationTrack != nil || cropTrack != nil || blurKeyframeTrack != nil
+            || volumeTrack != nil
     }
 }

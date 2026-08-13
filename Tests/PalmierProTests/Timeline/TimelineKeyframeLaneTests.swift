@@ -23,6 +23,7 @@ struct TimelineKeyframeLaneTests {
         #expect(text.supportsKeyframes(for: .position))
         #expect(text.supportsKeyframes(for: .rotation))
         #expect(text.supportsKeyframes(for: .opacity))
+        #expect(text.supportsKeyframes(for: .blur))
         #expect(text.supportsKeyframes(for: .scale))
         #expect(!text.supportsKeyframes(for: .crop))
         #expect(!text.supportsKeyframes(for: .volume))
@@ -35,7 +36,7 @@ struct TimelineKeyframeLaneTests {
         ])
 
         #expect(AnimatableProperty.lanes(for: track) == [
-            .position, .scale, .rotation, .opacity, .crop,
+            .position, .scale, .rotation, .opacity, .blur, .crop,
         ])
     }
 
@@ -48,7 +49,7 @@ struct TimelineKeyframeLaneTests {
         ])
 
         #expect(AnimatableProperty.lanes(for: textTrack) == [
-            .position, .scale, .rotation, .opacity,
+            .position, .scale, .rotation, .opacity, .blur,
         ])
         #expect(AnimatableProperty.lanes(for: audioTrack) == [.volume])
     }

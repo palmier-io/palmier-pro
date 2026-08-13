@@ -942,7 +942,9 @@ extension ToolExecutor {
 
     // MARK: set_keyframes
 
-    private static let keyframePropertyNames: Set<String> = ["volumeDb", "opacity", "rotation", "position", "scale", "crop"]
+    private static let keyframePropertyNames: Set<String> = [
+        "volumeDb", "opacity", "rotation", "position", "scale", "crop", "blur",
+    ]
 
     func setKeyframes(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         let input: SetKeyframesInput = try decodeToolArgs(args, path: "set_keyframes")
@@ -952,8 +954,11 @@ extension ToolExecutor {
         guard Self.keyframePropertyNames.contains(input.property) else {
             throw ToolError("Unknown property '\(input.property)'. Expected one of: \(Self.keyframePropertyNames.sorted().joined(separator: ", "))")
         }
-        guard editor.findClip(id: input.clipId) != nil else {
+        guard let targetClip = editor.clipFor(id: input.clipId) else {
             throw ToolError("Clip not found: \(input.clipId)")
+        }
+        if input.property == "blur", !targetClip.supportsKeyframes(for: .blur) {
+            throw ToolError("Clip \(input.clipId) does not support blur keyframes.")
         }
 
         let applyKeyframes: () -> Void
@@ -992,6 +997,13 @@ extension ToolExecutor {
             let kfs = try Self.parseCropKeyframes(rows, path: "keyframes")
             applyKeyframes = {
                 editor.commitClipProperty(clipId: input.clipId) { $0.cropTrack = kfs.keyframes.isEmpty ? nil : kfs }
+            }
+        case "blur":
+            let kfs = try Self.parseScalarKeyframes(rows, path: "keyframes", range: 0...100)
+            applyKeyframes = {
+                editor.commitClipProperty(clipId: input.clipId) {
+                    $0.setBlurKeyframeTrack(kfs)
+                }
             }
         default:
             throw ToolError("Unknown property '\(input.property)'")

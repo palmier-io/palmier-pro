@@ -395,6 +395,7 @@ extension Clip {
         rotationTrack = clampedKeyframeTrack(rotationTrack)
         cropTrack = clampedKeyframeTrack(cropTrack)
         volumeTrack = clampedKeyframeTrack(volumeTrack)
+        setBlurKeyframeTrack(clampedKeyframeTrack(blurKeyframeTrack))
     }
 
     mutating func rescaleKeyframes(by scale: Double) {
@@ -404,6 +405,7 @@ extension Clip {
         rotationTrack = rescaledKeyframeTrack(rotationTrack, by: scale)
         cropTrack = rescaledKeyframeTrack(cropTrack, by: scale)
         volumeTrack = rescaledKeyframeTrack(volumeTrack, by: scale)
+        setBlurKeyframeTrack(rescaledKeyframeTrack(blurKeyframeTrack, by: scale))
     }
 
     private func clampedKeyframeTrack<V: Codable & Sendable & Equatable>(

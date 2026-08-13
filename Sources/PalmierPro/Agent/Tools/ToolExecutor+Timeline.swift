@@ -347,7 +347,10 @@ extension ToolExecutor {
         out = strippingDefaults(out, clipDefaults)
         if let id = out["id"] as? String, let grade = grades[id] { out["color"] = grade }
         if let fx = out["effects"] as? [[String: Any]] {
-            let cleaned = compactEffects(fx)
+            let isText = out["mediaType"] as? String == ClipType.text.rawValue
+            let cleaned = compactEffects(fx).filter {
+                !isText || $0["type"] as? String != Effect.gaussianBlurType
+            }
             if cleaned.isEmpty { out.removeValue(forKey: "effects") } else { out["effects"] = cleaned }
         }
         let start = intValue(out["startFrame"])
@@ -512,6 +515,27 @@ extension ToolExecutor {
                 row.append(contentsOf: exposedValues)
                 if let interp = kf["interpolationOut"] as? String, interp != "smooth" {
                     row.append(interp)
+                }
+                return row
+            }
+        }
+        if let effects = clip["effects"] as? [[String: Any]],
+           let blurEffect = effects.first(where: {
+               $0["type"] as? String == Effect.gaussianBlurType
+           }),
+           let params = blurEffect["params"] as? [String: Any],
+           let radius = params[Effect.gaussianBlurRadiusKey] as? [String: Any],
+           let track = radius["track"] as? [String: Any],
+           let blurKeyframes = track["keyframes"] as? [[String: Any]],
+           !blurKeyframes.isEmpty {
+            keyframes["blur"] = blurKeyframes.map { keyframe -> [Any] in
+                var row: [Any] = [
+                    keyframe["frame"] ?? 0,
+                    (keyframe["value"] as? NSNumber)?.doubleValue ?? 0,
+                ]
+                if let interpolation = keyframe["interpolationOut"] as? String,
+                   interpolation != "smooth" {
+                    row.append(interpolation)
                 }
                 return row
             }
