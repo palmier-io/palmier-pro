@@ -340,7 +340,12 @@ extension EditorViewModel {
         }
     }
 
-    func applyClipProperty(clipId: String, rebuild: Bool = false, _ modify: (inout Clip) -> Void) {
+    func applyClipProperty(
+        clipId: String,
+        rebuild: Bool = false,
+        seekMode: PreviewSeekMode = .exact,
+        _ modify: (inout Clip) -> Void
+    ) {
         guard let loc = findClip(id: clipId) else { return }
         var clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
         if dragBefore[clipId] == nil {
@@ -349,13 +354,13 @@ extension EditorViewModel {
         modify(&clip)
         timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = clip
         if clip.mediaType == .text {
-            videoEngine?.refreshVisuals()
+            videoEngine?.refreshVisuals(seekMode: seekMode)
             return
         }
         if rebuild {
             notifyTimelineChangedDebounced()
         } else {
-            videoEngine?.refreshVisuals()
+            videoEngine?.refreshVisuals(seekMode: seekMode)
         }
     }
 

@@ -16,40 +16,23 @@ extension InspectorView {
     }
 
     private func levelsSection(audios: [Clip]) -> some View {
-        let single = audios.count == 1 ? audios.first : nil
         return EditorPanelGroup(
             L10n.string("Levels"),
-            isExpanded: $audioLevelsExpanded,
-            headerAccessory: {
-                if audioLevelsExpanded {
-                    keyframesToggleButton(enabled: single != nil)
-                }
-            }
+            isExpanded: $audioLevelsExpanded
         ) {
-            if let clip = single, editor.keyframesPanelVisible {
-                keyframesSplitContent(clip: clip) {
-                    VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-                        volumeRow(audios: audios)
-                        fadeRow(label: L10n.string("Fade In"), clips: audios, edge: .left)
-                        fadeRow(label: L10n.string("Fade Out"), clips: audios, edge: .right)
-                    }
-                }
-            } else {
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
-                    volumeRow(audios: audios)
-                    fadeRow(label: L10n.string("Fade In"), clips: audios, edge: .left)
-                    fadeRow(label: L10n.string("Fade Out"), clips: audios, edge: .right)
-                }
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+                volumeRow(audios: audios)
+                fadeRow(label: L10n.string("Fade In"), clips: audios, edge: .left)
+                fadeRow(label: L10n.string("Fade Out"), clips: audios, edge: .right)
             }
         }
     }
 
     @ViewBuilder
     private func volumeRow(audios: [Clip]) -> some View {
-        let single = audios.count == 1 ? audios.first : nil
         animatableRow(
             label: L10n.string("Volume"),
-            clipId: single?.id,
+            clips: audios,
             property: .volume,
             onReset: {
                 commitPropertiesToClips(audios, actionName: "Reset Volume") { clip in
@@ -57,26 +40,7 @@ extension InspectorView {
                     clip.volumeTrack = nil
                 }
             }
-        ) {
-            ScrubbableNumberField(
-                value: sharedClipValue(audios) { clip in
-                    clip.liveVolumeKfDb(at: editor.activeFrame) ?? VolumeScale.dbFromLinear(clip.volume)
-                },
-                range: VolumeScale.floorDb...VolumeScale.ceilingDb,
-                format: "%.1f",
-                valueSuffix: " dB",
-                dragSensitivity: 0.3,
-                fieldWidth: AppTheme.EditorPanel.numericFieldWidth,
-                displayTextOverride: { db in db <= VolumeScale.floorDb ? "-∞ dB" : nil },
-                onChanged: { db in
-                    for c in audios { editor.applyVolume(clipId: c.id, valueDb: db) }
-                }
-            ) { db in
-                commitToClips(audios, actionName: "Change Volume") { c in
-                    editor.commitVolume(clipId: c.id, valueDb: db)
-                }
-            }
-        }
+        )
     }
 
     @ViewBuilder
@@ -187,6 +151,6 @@ extension InspectorView {
                 }
             }
         }
-        .frame(height: KeyframesMetrics.rowHeight)
+        .frame(height: AppTheme.EditorPanel.fieldMinHeight)
     }
 }

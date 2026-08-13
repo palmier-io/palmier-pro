@@ -15,6 +15,7 @@ enum TimelineHeaderSymbol {
 /// Resizable track header column drawn to the left of the scrollable timeline.
 final class TimelineHeaderView: NSView {
     unowned var editor: EditorViewModel
+    let keyframeLaneState: TimelineKeyframeLaneState
 
     var requestCanvasRedraw: (() -> Void)?
 
@@ -26,6 +27,7 @@ final class TimelineHeaderView: NSView {
     var muteButtonRects: [Int: NSRect] = [:]
     var hideButtonRects: [Int: NSRect] = [:]
     var syncLockButtonRects: [Int: NSRect] = [:]
+    var keyframeLaneButtonRects: [Int: NSRect] = [:]
     var dragHandleRects: [Int: NSRect] = [:]
     private let agentTrackLayer = CAShapeLayer()
     private var displayedAgentTrackRevision = -1
@@ -34,13 +36,26 @@ final class TimelineHeaderView: NSView {
     private var editingTrackId: String?
     private var nameEditGeneration = 0
     private var pendingRenameTrackId: String?
+    private struct LaneHeaderKey: Hashable {
+        let trackId: String
+        let property: AnimatableProperty
+    }
+    private var laneHeaderViews: [
+        LaneHeaderKey: TimelineLaneHeaderHostingView
+    ] = [:]
+    private let rulerCoverView = TimelineHeaderRulerCoverView()
+    private var geometry: TimelineGeometry {
+        TimelineGeometry(editor: editor, bounds: bounds, laneState: keyframeLaneState)
+    }
 
-    init(editor: EditorViewModel) {
+    init(editor: EditorViewModel, keyframeLaneState: TimelineKeyframeLaneState) {
         self.editor = editor
+        self.keyframeLaneState = keyframeLaneState
         super.init(frame: .zero)
         wantsLayer = true
         configureAgentTrackLayer()
         updateAppearanceColors()
+        addSubview(rulerCoverView)
     }
 
     @available(*, unavailable)
@@ -59,7 +74,15 @@ final class TimelineHeaderView: NSView {
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         updateAppearanceColors()
+        rulerCoverView.needsDisplay = true
         needsDisplay = true
+    }
+
+    override func layout() {
+        super.layout()
+        syncLaneHeaderViews(geometry: geometry)
+        layoutRulerCoverView()
+        updateNameEditorFrame()
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -81,14 +104,15 @@ final class TimelineHeaderView: NSView {
         muteButtonRects.removeAll()
         hideButtonRects.removeAll()
         syncLockButtonRects.removeAll()
+        keyframeLaneButtonRects.removeAll()
         dragHandleRects.removeAll()
         labelRects.removeAll()
-        let stripWidth: CGFloat = 3
+        let stripWidth = AppTheme.ComponentSize.timelineTrackHeaderColorStripWidth
         let iconSize: CGFloat = 14
         let iconConfig = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
         let headerWidth = bounds.width
 
-        let geo = TimelineGeometry(editor: editor, bounds: bounds)
+        let geo = geometry
 
         for (i, track) in editor.timeline.tracks.enumerated() {
             let y = geo.trackY(at: i)
@@ -105,7 +129,7 @@ final class TimelineHeaderView: NSView {
             ctx.fill(NSRect(x: 0, y: y, width: stripWidth, height: h))
 
             // Drag handle (reorder grip)
-            let gripX = stripWidth + 6
+            let gripX = AppTheme.ComponentSize.timelineTrackHeaderReorderLeadingInset
             let gripRect = NSRect(x: gripX, y: y + (h - iconSize) / 2, width: iconSize, height: iconSize)
             drawSymbol(
                 "line.3.horizontal",
@@ -118,6 +142,7 @@ final class TimelineHeaderView: NSView {
             let iconY = y + (h - iconSize) / 2
             let rightmostX = headerWidth - iconSize - AppTheme.Spacing.sm
             let syncX = rightmostX - iconSize - AppTheme.Spacing.xs
+            let keyframeX = syncX - iconSize - AppTheme.Spacing.xs
 
             let labelX = gripX + iconSize + AppTheme.Spacing.sm
             let labelHeight = min(
@@ -127,7 +152,7 @@ final class TimelineHeaderView: NSView {
             let labelRect = NSRect(
                 x: labelX,
                 y: y + (h - labelHeight) / 2,
-                width: max(0, syncX - AppTheme.Spacing.xs - labelX),
+                width: max(0, keyframeX - AppTheme.Spacing.xs - labelX),
                 height: labelHeight
             )
             let editRect = drawTrackLabel(
@@ -149,6 +174,14 @@ final class TimelineHeaderView: NSView {
                 x: syncX, y: iconY, size: iconSize, config: iconConfig,
                 active: track.syncLocked, onSymbol: "link", offSymbol: "personalhotspot.slash"
             )
+            if !AnimatableProperty.lanes(for: track).isEmpty {
+                let expanded = keyframeLaneState.isExpanded(trackId: track.id)
+                keyframeLaneButtonRects[i] = drawToggleIcon(
+                    x: keyframeX, y: iconY, size: iconSize, config: iconConfig,
+                    active: expanded, onSymbol: "diamond.fill", offSymbol: "diamond",
+                    activeTint: AppTheme.Accent.timecodeNSColor
+                )
+            }
             if track.type == .audio {
                 muteButtonRects[i] = drawToggleIcon(
                     x: rightmostX, y: iconY, size: iconSize, config: iconConfig,
@@ -169,6 +202,15 @@ final class TimelineHeaderView: NSView {
             let handleY = y + h - 1
             ctx.setFillColor(AppTheme.Border.primary.cgColor)
             ctx.fill(NSRect(x: 0, y: handleY, width: headerWidth, height: 1))
+            if !geo.laneProperties[i].isEmpty {
+                let blockBottom = geo.trackBlockBottom(at: i) - AppTheme.BorderWidth.thin
+                ctx.fill(NSRect(
+                    x: 0,
+                    y: blockBottom,
+                    width: headerWidth,
+                    height: AppTheme.BorderWidth.thin
+                ))
+            }
         }
         syncAgentTrackLayer(geometry: geo, headerWidth: headerWidth)
 
@@ -179,14 +221,10 @@ final class TimelineHeaderView: NSView {
             ctx.setFillColor(AppTheme.Border.divider.withAlphaComponent(AppTheme.Opacity.medium).cgColor)
             ctx.fill(NSRect(x: 0, y: dividerY - 1, width: headerWidth, height: 2))
         }
-        updateNameEditorFrame()
     }
 
     func updateAgentActivityOverlay() {
-        syncAgentTrackLayer(
-            geometry: TimelineGeometry(editor: editor, bounds: bounds),
-            headerWidth: bounds.width
-        )
+        syncAgentTrackLayer(geometry: geometry, headerWidth: bounds.width)
     }
 
     private func configureAgentTrackLayer() {
@@ -298,14 +336,72 @@ final class TimelineHeaderView: NSView {
         return nameRect
     }
 
+    private func syncLaneHeaderViews(geometry: TimelineGeometry) {
+        var desired: Set<LaneHeaderKey> = []
+        let visibleRows = NSRect(
+            x: bounds.minX,
+            y: bounds.minY + Layout.rulerHeight,
+            width: bounds.width,
+            height: max(0, bounds.height - Layout.rulerHeight)
+        )
+        for (trackIndex, track) in editor.timeline.tracks.enumerated() {
+            let properties = geometry.laneProperties[trackIndex]
+            for (laneIndex, property) in properties.enumerated() {
+                let key = LaneHeaderKey(trackId: track.id, property: property)
+                desired.insert(key)
+                if laneHeaderViews[key] == nil {
+                    let host = TimelineLaneHeaderHostingView(rootView: TimelineKeyframeLaneHeaderControl(
+                        editor: editor,
+                        trackId: track.id,
+                        property: property
+                    ))
+                    host.setAccessibilityLabel(L10n.string("Keyframes"))
+                    laneHeaderViews[key] = host
+                    addSubview(host, positioned: .below, relativeTo: rulerCoverView)
+                }
+                guard let host = laneHeaderViews[key],
+                      let laneY = geometry.laneY(trackIndex: trackIndex, property: property) else {
+                    continue
+                }
+                host.frame = NSRect(
+                    x: bounds.minX,
+                    y: laneY,
+                    width: bounds.width,
+                    height: AppTheme.ComponentSize.timelineKeyframeLaneHeight
+                )
+                host.bottomPassthroughHeight = laneIndex == properties.count - 1
+                    ? TrackSize.resizeHandleZone
+                    : 0
+                host.leadingPassthroughWidth =
+                    AppTheme.ComponentSize.timelineKeyframeResizeHandleWidth
+                host.isHidden = !host.frame.intersects(visibleRows)
+            }
+        }
+        for key in laneHeaderViews.keys.filter({ !desired.contains($0) }) {
+            laneHeaderViews.removeValue(forKey: key)?.removeFromSuperview()
+        }
+    }
+
+    private func layoutRulerCoverView() {
+        rulerCoverView.frame = NSRect(
+            x: bounds.minX,
+            y: bounds.minY,
+            width: bounds.width,
+            height: Layout.rulerHeight
+        )
+    }
+
     /// Draw a toggleable SF Symbol button; returns the hit-test rect (padded).
     private func drawToggleIcon(
         x: CGFloat, y: CGFloat, size: CGFloat,
         config: NSImage.SymbolConfiguration,
-        active: Bool, onSymbol: String, offSymbol: String
+        active: Bool, onSymbol: String, offSymbol: String,
+        activeTint: NSColor = AppTheme.Text.secondary
     ) -> NSRect {
         let rect = NSRect(x: x, y: y, width: size, height: size)
-        let tint = active ? AppTheme.Text.secondary : AppTheme.Text.secondary.withAlphaComponent(0.3)
+        let tint = active
+            ? activeTint
+            : AppTheme.Text.secondary.withAlphaComponent(0.3)
         drawSymbol(active ? onSymbol : offSymbol, in: rect, tint: tint, config: config)
         return rect.insetBy(dx: -4, dy: -4)
     }
@@ -361,7 +457,7 @@ final class TimelineHeaderView: NSView {
         host.setAccessibilityLabel(L10n.string("Track Name"))
         nameEditor = host
         editingTrackId = trackId
-        addSubview(host)
+        addSubview(host, positioned: .below, relativeTo: rulerCoverView)
         needsDisplay = true
     }
 
@@ -414,7 +510,7 @@ final class TimelineHeaderView: NSView {
     private var reorderDrag: (id: String, before: Timeline)?
 
     private func hitTestTrack(at point: NSPoint) -> Int? {
-        let geo = TimelineGeometry(editor: editor, bounds: bounds)
+        let geo = geometry
         return editor.timeline.tracks.indices.first { index in
             NSRect(
                 x: bounds.minX,
@@ -426,9 +522,9 @@ final class TimelineHeaderView: NSView {
     }
 
     private func hitTestResizeHandle(at point: NSPoint) -> Int? {
-        let geo = TimelineGeometry(editor: editor, bounds: bounds)
+        let geo = geometry
         for i in editor.timeline.tracks.indices {
-            let trackBottom = geo.trackY(at: i) + geo.trackHeight(at: i)
+            let trackBottom = geo.trackBlockBottom(at: i)
             if abs(point.y - trackBottom) <= TrackSize.resizeHandleZone {
                 return i
             }
@@ -509,6 +605,12 @@ final class TimelineHeaderView: NSView {
                 return
             }
         }
+        for (ti, rect) in keyframeLaneButtonRects {
+            if rect.contains(point), editor.timeline.tracks.indices.contains(ti) {
+                keyframeLaneState.toggle(trackId: editor.timeline.tracks[ti].id)
+                return
+            }
+        }
 
         for (ti, rect) in dragHandleRects {
             if rect.contains(point) {
@@ -527,20 +629,27 @@ final class TimelineHeaderView: NSView {
         let point = convert(event.locationInWindow, from: nil)
 
         if let drag = reorderDrag {
-            let geo = TimelineGeometry(editor: editor, bounds: bounds)
+            let geo = geometry
             editor.reorderTrackLive(id: drag.id, to: geo.trackAt(y: Double(point.y)))
             NSCursor.closedHand.set()
+            needsLayout = true
             needsDisplay = true
             requestCanvasRedraw?()
             return
         }
 
         guard let drag = resizeDrag else { return }
-        let geo = TimelineGeometry(editor: editor, bounds: bounds)
+        let geo = geometry
         let trackTop = geo.trackY(at: drag.trackIndex)
-        let newHeight = max(TrackSize.minHeight, min(TrackSize.maxHeight, point.y - trackTop))
+        let lanesHeight = CGFloat(geo.laneProperties[drag.trackIndex].count)
+            * AppTheme.ComponentSize.timelineKeyframeLaneHeight
+        let newHeight = max(
+            TrackSize.minHeight,
+            min(TrackSize.maxHeight, point.y - trackTop - lanesHeight)
+        )
         if editor.timeline.tracks[drag.trackIndex].displayHeight != newHeight {
             editor.timeline.tracks[drag.trackIndex].displayHeight = newHeight
+            needsLayout = true
             needsDisplay = true
         }
     }
@@ -565,13 +674,30 @@ final class TimelineHeaderView: NSView {
 
     override func mouseMoved(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        if dragHandleRects.values.contains(where: { $0.contains(point) }) {
+        if let trackIndex = keyframeLaneButtonRects.first(where: {
+            $0.value.contains(point)
+        })?.key,
+           editor.timeline.tracks.indices.contains(trackIndex) {
+            let trackId = editor.timeline.tracks[trackIndex].id
+            updateToolTip(keyframeLaneState.isExpanded(trackId: trackId)
+                ? L10n.string("Hide clip keyframes")
+                : L10n.string("Show clip keyframes"))
+            NSCursor.pointingHand.set()
+        } else if dragHandleRects.values.contains(where: { $0.contains(point) }) {
+            updateToolTip(nil)
             NSCursor.openHand.set()
         } else if hitTestResizeHandle(at: point) != nil {
+            updateToolTip(nil)
             NSCursor.resizeUpDown.set()
         } else {
+            updateToolTip(nil)
             NSCursor.arrow.set()
         }
+    }
+
+    private func updateToolTip(_ value: String?) {
+        guard toolTip != value else { return }
+        toolTip = value
     }
 
     override func updateTrackingAreas() {
@@ -582,5 +708,37 @@ final class TimelineHeaderView: NSView {
             options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect],
             owner: self
         ))
+    }
+}
+
+private final class TimelineLaneHeaderHostingView:
+    NSHostingView<TimelineKeyframeLaneHeaderControl>
+{
+    var bottomPassthroughHeight: CGFloat = 0
+    var leadingPassthroughWidth: CGFloat = 0
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        if bottomPassthroughHeight > 0,
+           point.x <= frame.minX + leadingPassthroughWidth,
+           point.y >= frame.maxY - bottomPassthroughHeight {
+            return nil
+        }
+        return super.hitTest(point)
+    }
+}
+
+private final class TimelineHeaderRulerCoverView: NSView {
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        AppTheme.Background.surface.setFill()
+        bounds.fill()
+        AppTheme.Border.primary.setFill()
+        NSRect(
+            x: bounds.minX,
+            y: bounds.maxY - AppTheme.BorderWidth.thin,
+            width: bounds.width,
+            height: AppTheme.BorderWidth.thin
+        ).fill()
     }
 }

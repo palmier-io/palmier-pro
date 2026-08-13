@@ -10,11 +10,16 @@ struct ScrubbableNumberField: View {
     /// Display units changed per pixel of horizontal drag.
     var dragSensitivity: Double = 1
     var fieldWidth: CGFloat = AppTheme.EditorPanel.numericFieldWidth
+    var fieldHeight: CGFloat = AppTheme.EditorPanel.fieldMinHeight
+    var valueFontSize: CGFloat = AppTheme.FontSize.sm
     var dragValueAdjustment: (Double) -> Double = { $0 }
     var trailingLabel: String? = nil
+    var trailingLabelFontSize: CGFloat = AppTheme.FontSize.xs
     var displayTextOverride: ((Double) -> String?)? = nil
     var onDraggingValue: ((Double) -> Void)? = nil
     var onChanged: ((Double) -> Void)? = nil
+    var onInteractionStart: (() -> Void)? = nil
+    var onInteractionEnd: (() -> Void)? = nil
     let onCommit: (Double) -> Void
 
     @State private var isEditing = false
@@ -24,6 +29,7 @@ struct ScrubbableNumberField: View {
     @State private var isDragging = false
     @State private var dragStartValue: Double = 0
     @State private var liveValue: Double = 0
+    @State private var interactionActive = false
 
     private var isMixed: Bool { value == nil && !isDragging }
     private var sourceValue: Double { isDragging ? liveValue : (value ?? liveValue) }
@@ -42,7 +48,7 @@ struct ScrubbableNumberField: View {
         HStack(spacing: AppTheme.Spacing.xs) {
             if let trailingLabel {
                 Text(trailingLabel)
-                    .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
+                    .font(.system(size: trailingLabelFontSize, weight: AppTheme.FontWeight.medium))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .fixedSize()
             }
@@ -52,7 +58,7 @@ struct ScrubbableNumberField: View {
                     TextField(String(), text: $editText)
                         .textFieldStyle(.plain)
                         .multilineTextAlignment(.trailing)
-                        .font(.system(size: AppTheme.FontSize.sm, weight: .medium).monospacedDigit())
+                        .font(.system(size: valueFontSize, weight: .medium).monospacedDigit())
                         .foregroundStyle(AppTheme.Text.primaryColor)
                         .focused($editFocused)
                         .onAppear { editFocused = true }
@@ -60,10 +66,11 @@ struct ScrubbableNumberField: View {
                         .onExitCommand {
                             isEditing = false
                             editFocused = false
+                            endInteraction()
                         }
                 } else {
                     Text(displayText)
-                        .font(.system(size: AppTheme.FontSize.sm, weight: .medium).monospacedDigit())
+                        .font(.system(size: valueFontSize, weight: .medium).monospacedDigit())
                         .foregroundStyle(isMixed ? AppTheme.Text.tertiaryColor : ScrubbableTheme.accent)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                         .lineLimit(1)
@@ -72,7 +79,10 @@ struct ScrubbableNumberField: View {
             .frame(width: fieldWidth, alignment: .trailing)
             .padding(.horizontal, AppTheme.Spacing.sm)
             .padding(.vertical, AppTheme.Spacing.xxs)
-            .editorValueField(active: isEditing || isDragging)
+            .editorValueField(
+                active: isEditing || isDragging,
+                minHeight: fieldHeight
+            )
             .overlay(scrubOverlay)
         }
         .fixedSize(horizontal: true, vertical: false)
@@ -84,7 +94,15 @@ struct ScrubbableNumberField: View {
             if !focused && isEditing {
                 commitEdit()
                 isEditing = false
+                endInteraction()
             }
+        }
+        .onDisappear {
+            if isDragging {
+                onCommit(liveValue)
+                isDragging = false
+            }
+            endInteraction()
         }
     }
 
@@ -96,6 +114,7 @@ struct ScrubbableNumberField: View {
             ScrubMouseArea(
                 canScrub: !isMixed,
                 onDragStart: {
+                    beginInteraction()
                     dragStartValue = value ?? liveValue
                     isDragging = true
                 },
@@ -116,9 +135,11 @@ struct ScrubbableNumberField: View {
                     if isDragging {
                         onCommit(liveValue)
                         isDragging = false
+                        endInteraction()
                     }
                 },
                 onClick: {
+                    beginInteraction()
                     editText = editingText
                     isEditing = true
                 }
@@ -135,6 +156,18 @@ struct ScrubbableNumberField: View {
         ) else { return }
         liveValue = raw
         onCommit(raw)
+    }
+
+    private func beginInteraction() {
+        guard !interactionActive else { return }
+        interactionActive = true
+        onInteractionStart?()
+    }
+
+    private func endInteraction() {
+        guard interactionActive else { return }
+        interactionActive = false
+        onInteractionEnd?()
     }
 
     nonisolated static func committedValue(

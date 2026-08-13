@@ -363,7 +363,7 @@ extension Clip {
         captionGroupId = remap(captionGroupId)
     }
 
-    /// Drops kfs past `durationFrames`. Call after any mutation that shrinks the clip.
+    /// Normalizes the boundary keyframe and drops keyframes beyond the clip.
     mutating func clampKeyframesToDuration() {
         opacityTrack = clampedKeyframeTrack(opacityTrack)
         positionTrack = clampedKeyframeTrack(positionTrack)
@@ -388,7 +388,9 @@ extension Clip {
         guard var track else { return nil }
         var normalized = KeyframeTrack<V>()
         for kf in track.keyframes where kf.frame >= 0 && kf.frame <= durationFrames {
-            normalized.upsert(kf)
+            var next = kf
+            next.frame = min(next.frame, max(0, durationFrames - 1))
+            normalized.upsert(next)
         }
         track.keyframes = normalized.keyframes
         return track.keyframes.isEmpty ? nil : track
@@ -403,7 +405,10 @@ extension Clip {
         var normalized = KeyframeTrack<V>()
         for kf in existing.keyframes {
             var next = kf
-            next.frame = Int((Double(kf.frame) * scale).rounded())
+            next.frame = min(
+                max(0, durationFrames - 1),
+                Int((Double(kf.frame) * scale).rounded())
+            )
             normalized.upsert(next)
         }
         return normalized.keyframes.isEmpty ? nil : normalized
@@ -657,6 +662,8 @@ struct Transform: Codable, Sendable, Equatable, Hashable {
 
 /// Per-clip crop as edge insets in normalized (0–1) source coordinates.
 struct Crop: Codable, Sendable, Equatable {
+    static let minimumVisibleFraction = 0.05
+
     var left: Double = 0
     var top: Double = 0
     var right: Double = 0
@@ -665,6 +672,40 @@ struct Crop: Codable, Sendable, Equatable {
     var isIdentity: Bool { left == 0 && top == 0 && right == 0 && bottom == 0 }
     var visibleWidthFraction: Double { max(0, 1 - left - right) }
     var visibleHeightFraction: Double { max(0, 1 - top - bottom) }
+
+    mutating func setInset(_ value: Double, edge: Edge) {
+        guard value.isFinite else { return }
+        let inset = min(max(0, value), maximumInset(for: edge))
+        switch edge {
+        case .left: left = inset
+        case .top: top = inset
+        case .right: right = inset
+        case .bottom: bottom = inset
+        }
+    }
+
+    func inset(for edge: Edge) -> Double {
+        switch edge {
+        case .left: left
+        case .top: top
+        case .right: right
+        case .bottom: bottom
+        }
+    }
+
+    func maximumInset(for edge: Edge) -> Double {
+        let maximum = switch edge {
+        case .left: 1 - Self.minimumVisibleFraction - right
+        case .top: 1 - Self.minimumVisibleFraction - bottom
+        case .right: 1 - Self.minimumVisibleFraction - left
+        case .bottom: 1 - Self.minimumVisibleFraction - top
+        }
+        return min(1, max(0, maximum))
+    }
+
+    enum Edge: Sendable {
+        case left, top, right, bottom
+    }
 }
 
 struct CropAspectRatio: Hashable, Sendable {

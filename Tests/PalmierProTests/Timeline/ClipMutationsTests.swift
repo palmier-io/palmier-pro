@@ -79,17 +79,17 @@ struct ApplyClipSpeedTests {
         clip.opacityTrack = KeyframeTrack(keyframes: [
             Keyframe(frame: 0, value: 1.0),
             Keyframe(frame: 30, value: 0.5),
-            Keyframe(frame: 60, value: 0.0),
+            Keyframe(frame: 59, value: 0.0),
         ])
-        clip.scaleTrack = KeyframeTrack(keyframes: [Keyframe(frame: 60, value: AnimPair(a: 2.0, b: 2.0))])
+        clip.scaleTrack = KeyframeTrack(keyframes: [Keyframe(frame: 59, value: AnimPair(a: 2.0, b: 2.0))])
         let e = editor([Fixtures.videoTrack(clips: [clip])])
 
         e.applyClipSpeed(clipId: "c1", newSpeed: 2.0)
         let updated = e.timeline.tracks[0].clips[0]
 
         #expect(updated.durationFrames == 30)
-        #expect(updated.opacityTrack?.keyframes.map(\.frame) == [0, 15, 30])
-        #expect(updated.scaleTrack?.keyframes.map(\.frame) == [30])
+        #expect(updated.opacityTrack?.keyframes.map(\.frame) == [0, 15, 29])
+        #expect(updated.scaleTrack?.keyframes.map(\.frame) == [29])
     }
 }
 

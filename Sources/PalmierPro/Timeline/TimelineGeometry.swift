@@ -5,45 +5,74 @@ enum TrackDropTarget: Equatable, Hashable {
     case newTrackAt(Int) // insert new track before this index
 }
 
+enum TimelineRowLocation: Equatable {
+    case track(Int)
+    case keyframeLane(trackIndex: Int, property: AnimatableProperty)
+}
+
 /// Pure layout math for the timeline. Used by both TimelineView (drawing)
 /// and TimelineInputController (hit testing).
 struct TimelineGeometry {
     let pixelsPerFrame: Double
     let headerWidth: Double
-    let rulerHeight: CGFloat
-    let trackCount: Int
+    var rulerHeight: CGFloat { Layout.rulerHeight }
+    var trackCount: Int { trackHeights.count }
     let trackHeights: [CGFloat]
+    let laneProperties: [[AnimatableProperty]]
     let bounds: NSRect
 
     /// Precomputed cumulative Y offsets for each track (avoids O(n) per lookup).
     private let cumulativeY: [CGFloat]
+    private let blockBottoms: [CGFloat]
 
     @MainActor
-    init(editor: EditorViewModel, bounds: NSRect, headerWidth: Double = 0) {
+    init(
+        editor: EditorViewModel,
+        bounds: NSRect,
+        headerWidth: Double = 0,
+        laneState: TimelineKeyframeLaneState? = nil
+    ) {
+        let laneProperties = editor.timeline.tracks.map { track in
+            laneState?.isExpanded(trackId: track.id) == true
+                ? AnimatableProperty.lanes(for: track)
+                : []
+        }
         self.init(
             pixelsPerFrame: editor.zoomScale,
             headerWidth: headerWidth,
             trackHeights: editor.timeline.tracks.map(\.displayHeight),
+            laneProperties: laneProperties,
             bounds: bounds
         )
     }
 
-    init(pixelsPerFrame: Double, headerWidth: Double = 0, trackHeights: [CGFloat], bounds: NSRect = .zero) {
+    init(
+        pixelsPerFrame: Double,
+        headerWidth: Double = 0,
+        trackHeights: [CGFloat],
+        laneProperties: [[AnimatableProperty]] = [],
+        bounds: NSRect = .zero
+    ) {
         self.pixelsPerFrame = pixelsPerFrame
         self.headerWidth = headerWidth
-        self.rulerHeight = Layout.rulerHeight
-        self.trackCount = trackHeights.count
         self.trackHeights = trackHeights
+        self.laneProperties = trackHeights.indices.map { index in
+            laneProperties.indices.contains(index) ? laneProperties[index] : []
+        }
         self.bounds = bounds
 
         var cumY: [CGFloat] = []
+        var bottoms: [CGFloat] = []
         cumY.reserveCapacity(trackHeights.count)
-        var y = rulerHeight + Layout.dropZoneHeight
-        for h in trackHeights {
+        bottoms.reserveCapacity(trackHeights.count)
+        var y = Layout.rulerHeight + Layout.dropZoneHeight
+        for (index, h) in trackHeights.enumerated() {
             cumY.append(y)
-            y += h
+            y += h + CGFloat(self.laneProperties[index].count) * AppTheme.ComponentSize.timelineKeyframeLaneHeight
+            bottoms.append(y)
         }
         self.cumulativeY = cumY
+        self.blockBottoms = bottoms
     }
 
     func trackHeight(at index: Int) -> CGFloat {
@@ -52,6 +81,34 @@ struct TimelineGeometry {
 
     func trackY(at index: Int) -> CGFloat {
         cumulativeY.indices.contains(index) ? cumulativeY[index] : rulerHeight
+    }
+
+    func trackBlockBottom(at index: Int) -> CGFloat {
+        blockBottoms.indices.contains(index)
+            ? blockBottoms[index]
+            : trackY(at: index) + trackHeight(at: index)
+    }
+
+    var contentBottom: CGFloat {
+        blockBottoms.last ?? rulerHeight + Layout.dropZoneHeight
+    }
+
+    func laneY(trackIndex: Int, property: AnimatableProperty) -> CGFloat? {
+        guard laneProperties.indices.contains(trackIndex),
+              let laneIndex = laneProperties[trackIndex].firstIndex(of: property) else { return nil }
+        return trackY(at: trackIndex)
+            + trackHeight(at: trackIndex)
+            + CGFloat(laneIndex) * AppTheme.ComponentSize.timelineKeyframeLaneHeight
+    }
+
+    func laneRect(trackIndex: Int, property: AnimatableProperty) -> NSRect? {
+        guard let y = laneY(trackIndex: trackIndex, property: property) else { return nil }
+        return NSRect(
+            x: 0,
+            y: y,
+            width: bounds.width,
+            height: AppTheme.ComponentSize.timelineKeyframeLaneHeight
+        )
     }
 
     func clipRect(for clip: Clip, trackIndex: Int) -> NSRect {
@@ -73,10 +130,25 @@ struct TimelineGeometry {
     }
 
     func trackAt(y: Double) -> Int {
-        for i in cumulativeY.indices {
-            if y < Double(cumulativeY[i]) + Double(trackHeights[i]) { return i }
+        blockBottoms.firstIndex { y < Double($0) } ?? max(0, trackCount - 1)
+    }
+
+    func rowLocation(atY y: Double) -> TimelineRowLocation? {
+        guard let trackIndex = cumulativeY.indices.first(where: {
+            y >= Double(cumulativeY[$0]) && y < Double(blockBottoms[$0])
+        }) else { return nil }
+        let laneStart = cumulativeY[trackIndex] + trackHeights[trackIndex]
+        if y < Double(laneStart) {
+            return .track(trackIndex)
         }
-        return max(0, trackCount - 1)
+        let laneIndex = Int((CGFloat(y) - laneStart) / AppTheme.ComponentSize.timelineKeyframeLaneHeight)
+        guard laneProperties[trackIndex].indices.contains(laneIndex) else {
+            return .track(trackIndex)
+        }
+        return .keyframeLane(
+            trackIndex: trackIndex,
+            property: laneProperties[trackIndex][laneIndex]
+        )
     }
 
     func dropTargetAt(y: Double) -> TrackDropTarget {
@@ -90,7 +162,7 @@ struct TimelineGeometry {
         // Check between-track boundaries
         let threshold = Double(Layout.insertThreshold)
         for i in 0..<(trackCount - 1) {
-            let bottomOfTrack = Double(cumulativeY[i]) + Double(trackHeights[i])
+            let bottomOfTrack = Double(blockBottoms[i])
             let topOfNext = Double(cumulativeY[i + 1])
             // The boundary region: threshold above the gap to threshold below
             if y >= bottomOfTrack - threshold && y <= topOfNext + threshold {
@@ -99,16 +171,12 @@ struct TimelineGeometry {
         }
 
         // Bottom drop zone: past the last track
-        let lastTrackBottom = Double(cumulativeY[trackCount - 1]) + Double(trackHeights[trackCount - 1])
+        let lastTrackBottom = Double(blockBottoms[trackCount - 1])
         if y >= lastTrackBottom {
             return .newTrackAt(trackCount)
         }
 
-        // On an existing track
-        for i in cumulativeY.indices {
-            if y < Double(cumulativeY[i]) + Double(trackHeights[i]) { return .existingTrack(i) }
-        }
-        return .existingTrack(max(0, trackCount - 1))
+        return .existingTrack(trackAt(y: y))
     }
 
     func insertionLineY(for target: TrackDropTarget) -> CGFloat? {
@@ -121,7 +189,7 @@ struct TimelineGeometry {
             } else if index == 0 {
                 return cumulativeY[0]
             } else if index >= trackCount {
-                return cumulativeY[trackCount - 1] + trackHeights[trackCount - 1]
+                return blockBottoms[trackCount - 1]
             } else {
                 return cumulativeY[index]
             }
