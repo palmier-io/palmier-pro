@@ -101,6 +101,19 @@ struct EffectModelTests {
         #expect(abs(param.resolved(at: 20, default: 0) - 2.0) < 0.001)
     }
 
+    @Test func blurEditsPreserveDisabledState() {
+        var clip = Fixtures.clip(start: 0, duration: 30)
+        var blur = Effect.make(Effect.gaussianBlurType, [Effect.gaussianBlurRadiusKey: 8])
+        blur.enabled = false
+        clip.effects = [blur]
+
+        clip.setStaticBlurRadius(16)
+        #expect(clip.effects?.first?.enabled == false)
+
+        clip.setBlurKeyframeTrack(KeyframeTrack(keyframes: [Keyframe(frame: 0, value: 16)]))
+        #expect(clip.effects?.first?.enabled == false)
+    }
+
     @Test func registryDescriptorsHaveUniqueIdsAndValidDefaults() {
         var seen = Set<String>()
         for descriptor in EffectRegistry.all {

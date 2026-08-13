@@ -35,10 +35,13 @@ extension Clip {
         }
 
         var stack = effects ?? []
+        let enabled = stack.first { $0.type == Effect.gaussianBlurType }?.enabled ?? true
         stack.removeAll { $0.type == Effect.gaussianBlurType }
         if radius > 0 {
+            var effect = Effect.make(Effect.gaussianBlurType, [Effect.gaussianBlurRadiusKey: radius])
+            effect.enabled = enabled
             stack.insert(
-                Effect.make(Effect.gaussianBlurType, [Effect.gaussianBlurRadiusKey: radius]),
+                effect,
                 at: EffectRegistry.insertIndex(stack, for: Effect.gaussianBlurType)
             )
         }
