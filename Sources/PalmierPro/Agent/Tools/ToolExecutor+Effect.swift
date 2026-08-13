@@ -44,6 +44,8 @@ extension ToolExecutor {
                 throw ToolError("Clip \(id) is a \(clip.mediaType.rawValue) clip; apply_effect needs a video or image clip.")
             }
         }
+        let clearsBlur = adds.contains { $0.type == Effect.gaussianBlurType && $0.params?[Effect.gaussianBlurRadiusKey] != nil }
+        let clearedBlurIds = clearsBlur ? input.clipIds.filter { editor.clipFor(id: $0)?.blurKeyframeTrack != nil } : []
 
         let snapshot = timelineSnapshot(editor)
         let actionName = input.clipIds.count == 1 ? "Apply Effect (Agent)" : "Apply Effect ×\(input.clipIds.count) (Agent)"
@@ -67,6 +69,7 @@ extension ToolExecutor {
                 clip.effects = stack.isEmpty ? nil : stack
             }
         }
-        return mutationResult(editor, since: snapshot, touched: input.clipIds)
+        let notes = clearedBlurIds.isEmpty ? [] : ["Static blur cleared existing blur keyframes on: \(clearedBlurIds.joined(separator: ", "))."]
+        return mutationResult(editor, since: snapshot, touched: input.clipIds, notes: notes)
     }
 }

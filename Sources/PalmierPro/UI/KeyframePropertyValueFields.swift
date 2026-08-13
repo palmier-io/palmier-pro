@@ -44,7 +44,7 @@ struct KeyframePropertyValueFields: View {
             switch property {
             case .position:
                 positionFields
-            case .opacity, .rotation, .scale, .volume:
+            case .opacity, .rotation, .scale, .blur, .volume:
                 scalarField
             case .crop:
                 cropControl
@@ -236,6 +236,8 @@ struct KeyframePropertyValueFields: View {
             clip.rotationAt(frame: editor.activeFrame)
         case .scale:
             clip.sizeAt(frame: editor.activeFrame).width
+        case .blur:
+            clip.blurRadius(at: editor.activeFrame)
         case .volume:
             clip.liveVolumeKfDb(at: editor.activeFrame)
                 ?? VolumeScale.dbFromLinear(clip.volume)
@@ -252,6 +254,8 @@ struct KeyframePropertyValueFields: View {
             (-3600...3600, 1, "%.0f", "°", 1, "Change Rotation")
         case .scale:
             (0.01...(.infinity), 100, "%.0f", "%", 1, "Change Scale")
+        case .blur:
+            (0...100, 1, "%.0f", " px", 1, "Change Blur")
         case .volume:
             (
                 VolumeScale.floorDb...VolumeScale.ceilingDb,
@@ -275,7 +279,7 @@ struct KeyframePropertyValueFields: View {
             } else {
                 editor.applyRotation(clipIds: clipIds, valueDeg: value)
             }
-        case .opacity, .scale, .volume:
+        case .opacity, .scale, .blur, .volume:
             if commit {
                 editor.undo.perform(actionName) {
                     clipIds.forEach { setScalar(value, for: $0, commit: true) }
@@ -294,6 +298,8 @@ struct KeyframePropertyValueFields: View {
         case (.opacity, true): editor.commitOpacity(clipId: clipId, value: value)
         case (.scale, false): editor.applyScale(clipId: clipId, newScale: value)
         case (.scale, true): editor.commitScale(clipId: clipId, newScale: value)
+        case (.blur, false): editor.applyBlur(clipIds: [clipId], radius: value)
+        case (.blur, true): editor.commitBlur(clipIds: [clipId], radius: value)
         case (.volume, false): editor.applyVolume(clipId: clipId, valueDb: value)
         case (.volume, true): editor.commitVolume(clipId: clipId, valueDb: value)
         case (.position, _), (.rotation, _), (.crop, _): break

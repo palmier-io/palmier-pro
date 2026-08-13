@@ -384,18 +384,21 @@ enum FrameRenderer {
         frame: Int,
         renderSize: CGSize
     ) -> CIImage {
-        let styleBlur = clip.textStyle?.blur ?? 0
-        let effects = (clip.effects ?? []).filter { $0.type != "blur.gaussian" }
-        guard styleBlur > 0 || !effects.isEmpty else { return input }
+        let blurRadius = clip.blurRadius(at: frame)
+        let effects = (clip.effects ?? []).filter { $0.type != Effect.gaussianBlurType }
+        guard blurRadius > 0 || !effects.isEmpty else { return input }
         let renderRect = CGRect(origin: .zero, size: renderSize)
         var image = input.composited(over: CIImage(color: .clear).cropped(to: renderRect))
         let offset = frame - clip.startFrame
         let spatialScale = Double(renderSize.height / TextLayout.referenceCanvasHeight)
-        if styleBlur.isFinite,
-           let descriptor = EffectRegistry.descriptor(id: "blur.gaussian") {
+        if blurRadius.isFinite,
+           let descriptor = EffectRegistry.descriptor(id: Effect.gaussianBlurType) {
             image = descriptor.render(
                 image,
-                effect: Effect.make("blur.gaussian", ["radius": styleBlur]),
+                effect: Effect.make(
+                    Effect.gaussianBlurType,
+                    [Effect.gaussianBlurRadiusKey: blurRadius]
+                ),
                 atOffset: offset,
                 spatialScale: spatialScale
             )

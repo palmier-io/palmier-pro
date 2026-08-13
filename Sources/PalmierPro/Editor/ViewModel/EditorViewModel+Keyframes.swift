@@ -152,6 +152,8 @@ extension EditorViewModel {
                 clip.upsertKeyframe(in: \.rotationTrack, frame: f, value: clip.rotationAt(frame: f))
             case .crop:
                 clip.upsertKeyframe(in: \.cropTrack, frame: f, value: clip.cropAt(frame: f))
+            case .blur:
+                clip.upsertBlurKeyframe(frame: f, value: clip.blurRadius(at: f))
             case .volume:
                 let currentDb = clip.volumeTrack?.sample(at: f - clip.startFrame, fallback: 0) ?? 0
                 clip.upsertKeyframe(in: \.volumeTrack, frame: f, value: currentDb)
@@ -198,6 +200,26 @@ extension EditorViewModel {
             clip.upsertKeyframe(in: \.opacityTrack, frame: frame, value: value)
         } else {
             clip.opacity = value
+        }
+    }
+
+    func applyBlur(clipIds: [String], radius: Double) {
+        applyClipProperties(clipIds: clipIds) { self.writeBlur(into: &$0, radius: radius) }
+    }
+
+    func commitBlur(clipIds: [String], radius: Double) {
+        commitClipProperties(clipIds: clipIds, actionName: "Change Blur") {
+            self.writeBlur(into: &$0, radius: radius)
+        }
+    }
+
+    private func writeBlur(into clip: inout Clip, radius: Double) {
+        let frame = activeFrame
+        if clip.blurKeyframeTrack?.isActive == true {
+            guard clip.contains(timelineFrame: frame) else { return }
+            clip.upsertBlurKeyframe(frame: frame, value: radius)
+        } else {
+            clip.setStaticBlurRadius(radius)
         }
     }
 
