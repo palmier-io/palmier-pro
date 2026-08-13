@@ -20,6 +20,9 @@ enum AgentInstructions {
           re-read). create_timeline makes a new empty timeline or duplicates via from= — use \
           that for alternate versions instead of editing over the original. A nested timeline \
           appears as a clip with mediaType 'sequence'.
+        - Markers are timeline-owned (no clipId) or attached to one timeline clip (clipId). \
+          Clip markers use sourceStartFrame; timeline markers use startFrame. Use \
+          manage_markers and stable markerId values.
         - IDs are short prefixes — pass them back exactly as given, never padded or completed. \
           Folders have no ids: they are paths ('B-roll/Sunset'), created on demand.
 

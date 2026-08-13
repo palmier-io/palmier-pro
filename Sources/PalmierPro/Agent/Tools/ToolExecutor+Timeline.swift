@@ -14,6 +14,16 @@ extension ToolExecutor {
         if let tracks = dict["tracks"] as? [[String: Any]] {
             dict["tracks"] = Self.compactTracks(tracks, editor: editor, window: window, captionDetail: captionDetail)
         }
+        let markers = editor.displayedTimelineMarkers().filter { marker in
+            window.map(marker.intersects) ?? true
+        }
+        if markers.isEmpty {
+            dict.removeValue(forKey: "markers")
+        } else {
+            dict["markers"] = markers.map {
+                Self.timelineMarkerDict($0, source: editor.timelineMarker(id: $0.id))
+            }
+        }
         dict["totalFrames"] = editor.timeline.totalFrames
         dict["durationSeconds"] = Double(editor.timeline.totalFrames) / Double(max(editor.timeline.fps, 1))
         if let window {
@@ -78,6 +88,24 @@ extension ToolExecutor {
 
     private static func rawClipDict(_ clip: Clip) -> [String: Any]? {
         try? JSONSerialization.jsonObject(with: JSONEncoder().encode(clip)) as? [String: Any]
+    }
+
+    static func timelineMarkerDict(_ marker: TimelineMarker, source: TimelineMarker? = nil) -> [String: Any] {
+        var result: [String: Any] = [
+            "markerId": marker.id,
+            "name": marker.name,
+            "startFrame": marker.startFrame,
+            "endFrame": marker.endFrame,
+            "durationFrames": marker.durationFrames,
+            "color": marker.color.hexString,
+            "comment": marker.comment,
+        ]
+        if let clipId = marker.clipId {
+            result["clipId"] = clipId
+            result["sourceStartFrame"] = source?.startFrame ?? marker.startFrame
+            result["sourceDurationFrames"] = source?.durationFrames ?? marker.durationFrames
+        }
+        return result
     }
 
     func timelineEntries(_ editor: EditorViewModel, detailed: Bool = false) -> [[String: Any]] {
