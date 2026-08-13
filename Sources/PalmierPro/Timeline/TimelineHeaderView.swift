@@ -23,12 +23,15 @@ final class TimelineHeaderView: NSView {
     private static let labelFont = NSFont.systemFont(ofSize: AppTheme.FontSize.sm, weight: .medium)
     private var labelAttrs: [NSAttributedString.Key: Any] = [:]
 
-    /// Rects for mute/hide/sync-lock buttons, indexed by track. Used for hit testing.
+    /// Track-header button hit areas indexed by track.
     var muteButtonRects: [Int: NSRect] = [:]
     var hideButtonRects: [Int: NSRect] = [:]
     var syncLockButtonRects: [Int: NSRect] = [:]
-    var keyframeLaneButtonRects: [Int: NSRect] = [:]
+    var keyframeButtonRects: [Int: NSRect] = [:]
     var dragHandleRects: [Int: NSRect] = [:]
+    private var audioTracksOnKeyframe: Set<String> = []
+    private var audioKeyframeStateFrame: Int?
+    private var audioKeyframeStateRevision: Int?
     private let agentTrackLayer = CAShapeLayer()
     private var displayedAgentTrackRevision = -1
     private var labelRects: [String: (hit: NSRect, edit: NSRect)] = [:]
@@ -104,7 +107,7 @@ final class TimelineHeaderView: NSView {
         muteButtonRects.removeAll()
         hideButtonRects.removeAll()
         syncLockButtonRects.removeAll()
-        keyframeLaneButtonRects.removeAll()
+        keyframeButtonRects.removeAll()
         dragHandleRects.removeAll()
         labelRects.removeAll()
         let stripWidth = AppTheme.ComponentSize.timelineTrackHeaderColorStripWidth
@@ -174,9 +177,17 @@ final class TimelineHeaderView: NSView {
                 x: syncX, y: iconY, size: iconSize, config: iconConfig,
                 active: track.syncLocked, onSymbol: "link", offSymbol: "personalhotspot.slash"
             )
-            if !AnimatableProperty.lanes(for: track).isEmpty {
+            if track.type == .audio,
+               track.clips.contains(where: { $0.supportsKeyframes(for: .volume) }) {
+                keyframeButtonRects[i] = drawToggleIcon(
+                    x: keyframeX, y: iconY, size: iconSize, config: iconConfig,
+                    active: audioTracksOnKeyframe.contains(track.id),
+                    onSymbol: "diamond.fill", offSymbol: "diamond",
+                    activeTint: AppTheme.Accent.timecodeNSColor
+                )
+            } else if !AnimatableProperty.lanes(for: track).isEmpty {
                 let expanded = keyframeLaneState.isExpanded(trackId: track.id)
-                keyframeLaneButtonRects[i] = drawToggleIcon(
+                keyframeButtonRects[i] = drawToggleIcon(
                     x: keyframeX, y: iconY, size: iconSize, config: iconConfig,
                     active: expanded, onSymbol: "diamond.fill", offSymbol: "diamond",
                     activeTint: AppTheme.Accent.timecodeNSColor
@@ -605,9 +616,14 @@ final class TimelineHeaderView: NSView {
                 return
             }
         }
-        for (ti, rect) in keyframeLaneButtonRects {
+        for (ti, rect) in keyframeButtonRects {
             if rect.contains(point), editor.timeline.tracks.indices.contains(ti) {
-                keyframeLaneState.toggle(trackId: editor.timeline.tracks[ti].id)
+                let track = editor.timeline.tracks[ti]
+                if track.type == .audio {
+                    toggleVolumeKeyframe(on: track)
+                } else {
+                    keyframeLaneState.toggle(trackId: track.id)
+                }
                 return
             }
         }
@@ -623,6 +639,50 @@ final class TimelineHeaderView: NSView {
         if let ti = hitTestResizeHandle(at: point) {
             resizeDrag = (ti, editor.timeline.tracks[ti].displayHeight)
         }
+    }
+
+    func updateAudioKeyframeButtonStates(at frame: Int, revision: Int) {
+        guard audioKeyframeStateFrame != frame
+            || audioKeyframeStateRevision != revision else { return }
+        audioKeyframeStateFrame = frame
+        audioKeyframeStateRevision = revision
+
+        let next = Set(editor.timeline.tracks.compactMap { track -> String? in
+            guard track.type == .audio,
+                  let clip = editor.keyframeLaneTarget(
+                      trackId: track.id,
+                      property: .volume,
+                      at: frame
+                  ),
+                  editor.hasKeyframe(
+                      clipId: clip.id,
+                      property: .volume,
+                      at: frame
+                  ) else {
+                return nil
+            }
+            return track.id
+        })
+        guard next != audioTracksOnKeyframe else { return }
+        audioTracksOnKeyframe = next
+        needsDisplay = true
+    }
+
+    private func toggleVolumeKeyframe(on track: Track) {
+        let frame = editor.activeFrame
+        guard let clip = editor.keyframeLaneTarget(
+            trackId: track.id,
+            property: .volume,
+            at: frame
+        ) else { return }
+        editor.selectedGap = nil
+        editor.selectedClipIds = [clip.id]
+        editor.toggleKeyframe(clipId: clip.id, property: .volume, at: frame)
+        updateAudioKeyframeButtonStates(
+            at: frame,
+            revision: editor.timelineRenderRevision
+        )
+        requestCanvasRedraw?()
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -674,15 +734,36 @@ final class TimelineHeaderView: NSView {
 
     override func mouseMoved(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        if let trackIndex = keyframeLaneButtonRects.first(where: {
+        if let trackIndex = keyframeButtonRects.first(where: {
             $0.value.contains(point)
         })?.key,
            editor.timeline.tracks.indices.contains(trackIndex) {
-            let trackId = editor.timeline.tracks[trackIndex].id
-            updateToolTip(keyframeLaneState.isExpanded(trackId: trackId)
-                ? L10n.string("Hide clip keyframes")
-                : L10n.string("Show clip keyframes"))
-            NSCursor.pointingHand.set()
+            let track = editor.timeline.tracks[trackIndex]
+            if track.type == .audio {
+                let target = editor.keyframeLaneTarget(
+                    trackId: track.id,
+                    property: .volume
+                )
+                if let target {
+                    let onKeyframe = editor.hasKeyframe(
+                        clipId: target.id,
+                        property: .volume,
+                        at: editor.activeFrame
+                    )
+                    updateToolTip(onKeyframe
+                        ? L10n.string("Delete keyframe")
+                        : L10n.string("Add keyframe"))
+                    NSCursor.pointingHand.set()
+                } else {
+                    updateToolTip(L10n.string("Move playhead inside the clip"))
+                    NSCursor.arrow.set()
+                }
+            } else {
+                updateToolTip(keyframeLaneState.isExpanded(trackId: track.id)
+                    ? L10n.string("Hide clip keyframes")
+                    : L10n.string("Show clip keyframes"))
+                NSCursor.pointingHand.set()
+            }
         } else if dragHandleRects.values.contains(where: { $0.contains(point) }) {
             updateToolTip(nil)
             NSCursor.openHand.set()

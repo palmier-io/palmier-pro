@@ -39,10 +39,7 @@ struct TimelineKeyframeLaneTests {
         ])
     }
 
-    @Test func textOnlyAndAudioTracksExposeTheirOwnLaneSets() {
-        let textTrack = Fixtures.videoTrack(clips: [
-            Fixtures.clip(mediaType: .text, start: 0, duration: 30),
-        ])
+    @Test func audioTrackDoesNotExposeVolumeLane() {
         let audioTrack = Fixtures.audioTrack(clips: [
             Fixtures.clip(mediaType: .audio, start: 0, duration: 30),
         ])
@@ -50,7 +47,7 @@ struct TimelineKeyframeLaneTests {
         #expect(AnimatableProperty.lanes(for: textTrack) == [
             .position, .scale, .rotation, .opacity,
         ])
-        #expect(AnimatableProperty.lanes(for: audioTrack) == [.volume])
+        #expect(AnimatableProperty.lanes(for: audioTrack).isEmpty)
     }
 
     @Test func cropInsetsPreserveMinimumVisibleArea() {
@@ -94,6 +91,52 @@ struct TimelineKeyframeLaneTests {
         clip.rescaleKeyframes(by: 0.4)
 
         #expect(clip.opacityTrack?.keyframes.map(\.frame) == [3])
+    }
+
+    @MainActor
+    @Test func togglingFirstVolumeKeyframePreservesStaticClipLevel() throws {
+        var audio = Fixtures.clip(id: "audio", mediaType: .audio, start: 10, duration: 30)
+        audio.volume = VolumeScale.linearFromDb(-8)
+        let editor = EditorViewModel()
+        editor.timeline = Fixtures.timeline(tracks: [
+            Fixtures.audioTrack(clips: [audio]),
+        ])
+
+        editor.toggleKeyframe(
+            clipId: audio.id,
+            property: .volume,
+            at: 15
+        )
+
+        let keyframe = try #require(editor.clipFor(id: audio.id)?.volumeTrack?.keyframes.first)
+        #expect(keyframe.frame == 5)
+        #expect(abs(keyframe.value - VolumeScale.dbFromLinear(audio.volume)) < 1e-12)
+    }
+
+    @MainActor
+    @Test func togglingExistingVolumeKeyframeRemovesIt() {
+        var audio = Fixtures.clip(id: "audio", mediaType: .audio, start: 10, duration: 30)
+        audio.volumeTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 5, value: -8, interpolationOut: .linear),
+        ])
+        let editor = EditorViewModel()
+        editor.timeline = Fixtures.timeline(tracks: [
+            Fixtures.audioTrack(clips: [audio]),
+        ])
+        let undo = UndoManager()
+        editor.undo.attach(undo)
+        undo.removeAllActions()
+
+        editor.toggleKeyframe(
+            clipId: audio.id,
+            property: .volume,
+            at: 15
+        )
+
+        #expect(editor.clipFor(id: audio.id)?.volumeTrack == nil)
+        #expect(undo.canUndo)
+        undo.undo()
+        #expect(editor.clipFor(id: audio.id)?.volumeTrack == audio.volumeTrack)
     }
 
     @MainActor

@@ -153,7 +153,11 @@ extension EditorViewModel {
             case .crop:
                 clip.upsertKeyframe(in: \.cropTrack, frame: f, value: clip.cropAt(frame: f))
             case .volume:
-                let currentDb = clip.volumeTrack?.sample(at: f - clip.startFrame, fallback: 0) ?? 0
+                let staticDb = VolumeScale.dbFromLinear(clip.volume)
+                let currentDb = clip.volumeTrack?.sample(
+                    at: f - clip.startFrame,
+                    fallback: staticDb
+                ) ?? staticDb
                 clip.upsertKeyframe(in: \.volumeTrack, frame: f, value: currentDb)
             }
         }

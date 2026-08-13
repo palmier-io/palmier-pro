@@ -21,6 +21,10 @@ struct TimelineContainerView: NSViewRepresentable {
         let keyframeLaneState = TimelineKeyframeLaneState()
 
         let headerView = TimelineHeaderView(editor: editor, keyframeLaneState: keyframeLaneState)
+        headerView.updateAudioKeyframeButtonStates(
+            at: editor.activeFrame,
+            revision: editor.timelineRenderRevision
+        )
         headerView.frame = NSRect(x: 0, y: 0, width: headerWidth, height: 0)
         headerView.autoresizingMask = [.height]
         container.addSubview(headerView)
@@ -101,6 +105,10 @@ struct TimelineContainerView: NSViewRepresentable {
     }
 
     func updateNSView(_ container: NSView, context: Context) {
+        context.coordinator.headerView?.updateAudioKeyframeButtonStates(
+            at: editor.activeFrame,
+            revision: editor.timelineRenderRevision
+        )
         context.coordinator.keyframeLaneState?.update(
             timelineId: editor.activeTimelineId,
             revision: editor.timelineRenderRevision,
