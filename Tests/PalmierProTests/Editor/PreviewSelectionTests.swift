@@ -11,11 +11,13 @@ struct PreviewSelectionTests {
             Fixtures.videoTrack(clips: [Fixtures.clip(id: "clip", start: 0, duration: 20)]),
         ])
         editor.selectedGap = GapSelection(trackIndex: 0, range: FrameRange(start: 50, end: 100))
+        editor.selectedTimelineMarkerIds = ["marker"]
 
         editor.selectPreviewClip("clip")
 
         #expect(editor.selectedClipIds == ["clip"])
         #expect(editor.selectedGap == nil)
+        #expect(editor.selectedTimelineMarkerIds.isEmpty)
     }
 
     @Test func selectingSelectedClipPreservesMultiSelection() {
@@ -27,10 +29,12 @@ struct PreviewSelectionTests {
             ]),
         ])
         editor.selectedClipIds = ["first", "second"]
+        editor.selectedTimelineMarkerIds = ["marker"]
 
         editor.selectPreviewClip("first")
 
         #expect(editor.selectedClipIds == ["first", "second"])
+        #expect(editor.selectedTimelineMarkerIds.isEmpty)
     }
 
     @Test func rotatedTextUsesRotatedHitTarget() {
