@@ -733,7 +733,6 @@ final class EditorViewModel {
         for i in timeline.tracks.indices {
             timeline.tracks[i].clips.removeAll { $0.id == id }
         }
-        timeline.markers.removeAll { $0.clipId == id }
         pendingReplacements.remove(id)
     }
 

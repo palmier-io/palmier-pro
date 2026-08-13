@@ -5,11 +5,7 @@ struct MarkerEditorPopover: View {
     let fps: Int
     let onPreview: (TimelineMarker) -> Void
     let onDismiss: () -> Void
-    @State private var name: String
-    @State private var comment: String
-    @State private var startFrame: Int
-    @State private var durationFrames: Int
-    @State private var color: TextStyle.RGBA
+    @State private var draft: TimelineMarker
     init(
         marker: TimelineMarker,
         fps: Int,
@@ -20,24 +16,20 @@ struct MarkerEditorPopover: View {
         self.fps = fps
         self.onPreview = onPreview
         self.onDismiss = onDismiss
-        _name = State(initialValue: marker.name)
-        _comment = State(initialValue: marker.comment)
-        _startFrame = State(initialValue: marker.startFrame)
-        _durationFrames = State(initialValue: marker.durationFrames)
-        _color = State(initialValue: marker.color)
+        _draft = State(initialValue: marker)
     }
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
             Grid(alignment: .topLeading, horizontalSpacing: AppTheme.Spacing.sm, verticalSpacing: AppTheme.Spacing.md) {
                 GridRow {
                     fieldLabel(L10n.string("Time"))
-                    timeField($startFrame, isDuration: false)
+                    timeField(\.startFrame)
                     fieldLabel(L10n.string("Duration"))
-                    timeField($durationFrames, isDuration: true)
+                    timeField(\.durationFrames)
                 }
                 GridRow {
                     fieldLabel(L10n.string("Name"))
-                    TextField(L10n.string("Marker name"), text: $name)
+                    TextField(L10n.string("Marker name"), text: $draft.name)
                         .textFieldStyle(.plain)
                         .padding(.horizontal, AppTheme.Spacing.sm)
                         .editorValueField(fill: AppTheme.Background.raisedColor)
@@ -45,7 +37,7 @@ struct MarkerEditorPopover: View {
                 }
                 GridRow {
                     fieldLabel(L10n.string("Notes"))
-                    TextField(String(), text: $comment, axis: .vertical)
+                    TextField(String(), text: $draft.comment, axis: .vertical)
                         .textFieldStyle(.plain)
                         .font(.system(size: AppTheme.FontSize.sm))
                         .lineLimit(3, reservesSpace: true)
@@ -62,13 +54,13 @@ struct MarkerEditorPopover: View {
                     HStack(spacing: AppTheme.Spacing.xxs) {
                         ForEach(Array(AppTheme.TimelineMarker.presetColors.enumerated()), id: \.offset) { _, preset in
                             Button {
-                                color = preset
-                                preview { $0.color = preset }
+                                draft.color = preset
+                                onPreview(draft)
                             } label: {
                                 ZStack {
                                     RoundedRectangle(cornerRadius: AppTheme.Radius.xs)
                                         .stroke(
-                                            color == preset ? AppTheme.Text.primaryColor : .clear,
+                                            draft.color == preset ? AppTheme.Text.primaryColor : .clear,
                                             lineWidth: AppTheme.BorderWidth.medium
                                         )
                                     TimelineMarkerShape()
@@ -107,16 +99,13 @@ struct MarkerEditorPopover: View {
             .fixedSize(horizontal: true, vertical: false)
             .frame(height: AppTheme.EditorPanel.fieldMinHeight)
     }
-    private func timeField(_ value: Binding<Int>, isDuration: Bool) -> some View {
+    private func timeField(_ keyPath: WritableKeyPath<TimelineMarker, Int>) -> some View {
         let update: (Double) -> Void = {
-            let next = Int($0)
-            value.wrappedValue = next
-            preview {
-                if isDuration { $0.durationFrames = next } else { $0.startFrame = next }
-            }
+            draft[keyPath: keyPath] = Int($0)
+            onPreview(draft)
         }
         return ScrubbableNumberField(
-            value: Double(value.wrappedValue),
+            value: Double(draft[keyPath: keyPath]),
             range: 0...Double(Int32.max),
             dragSensitivity: 1,
             fieldWidth: AppTheme.TimelineMarker.timeFieldWidth,
@@ -128,25 +117,10 @@ struct MarkerEditorPopover: View {
             onCommit: update
         )
     }
-    private func preview(_ change: (inout TimelineMarker) -> Void) {
-        var preview = marker
-        preview.startFrame = startFrame
-        preview.durationFrames = durationFrames
-        preview.color = color
-        change(&preview)
-        onPreview(preview)
-    }
     private func apply() {
         do {
             _ = try editor.changeTimelineMarkers(
-                updates: [TimelineMarkerUpdateRequest(
-                    id: marker.id,
-                    name: name,
-                    startFrame: startFrame,
-                    durationFrames: durationFrames,
-                    color: color,
-                    comment: comment
-                )],
+                updates: [draft],
                 actionName: "Edit Marker"
             )
             editor.selectedTimelineMarkerIds = []

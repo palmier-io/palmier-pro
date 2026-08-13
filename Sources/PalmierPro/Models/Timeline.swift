@@ -33,7 +33,7 @@ struct Timeline: Codable, Sendable, Equatable, Identifiable {
     }
 
     var displayFrames: Int {
-        markers.filter { $0.clipId == nil }.reduce(totalFrames) { result, marker in
+        markers.reduce(totalFrames) { result, marker in
             max(result, marker.startFrame + max(1, marker.durationFrames))
         }
     }

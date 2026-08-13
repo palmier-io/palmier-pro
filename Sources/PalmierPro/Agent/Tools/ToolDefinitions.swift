@@ -127,14 +127,13 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .manageMarkers,
-            description: "Creates, updates, or deletes one persistent marker. Omit clipId for a timeline marker or set it for one timeline clip instance. Clip marker frames are source frames in the project frame-rate timebase; timeline marker frames are sequence time. A zero duration marks one frame; a positive duration is half-open.",
+            description: "Creates, updates, or deletes one persistent timeline marker. A zero duration marks one frame; a positive duration is half-open.",
             inputSchema: objectSchema(
                 properties: [
                     "action": ["type": "string", "enum": ["create", "update", "delete"]],
                     "markerId": ["type": "string", "description": "Required for update/delete. From get_timeline."],
-                    "clipId": ["type": "string", "description": "Create only. Omit for a timeline marker."],
                     "name": ["type": "string"],
-                    "startFrame": ["type": "integer", "description": "Timeline frame, or source frame for a clip marker."],
+                    "startFrame": ["type": "integer", "description": "Timeline frame."],
                     "durationFrames": ["type": "integer", "description": "0 for a point; positive for a range."],
                     "color": ["type": "string", "description": "#RGB, #RRGGBB, or #RRGGBBAA."],
                     "comment": ["type": "string"],

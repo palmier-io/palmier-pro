@@ -153,7 +153,6 @@ private extension EditorViewModel {
                     clone.linkGroupId = nil
                 }
                 timeline.tracks[ti].clips.append(clone)
-                timeline.copyMarkers(from: p.source.id, to: clone.id)
                 newIds.append(clone.id)
             }
 

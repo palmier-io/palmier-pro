@@ -28,8 +28,7 @@ struct MCPMarkerTests {
             #expect(tools.contains { $0.name == "manage_markers" })
             let create = try json(try await client.callTool(name: "manage_markers", arguments: [
                 "action": .string("create"),
-                "clipId": .string(clip.id),
-                "name": .string("Instance note"),
+                "name": .string("Timeline note"),
                 "startFrame": .int(20),
                 "durationFrames": .int(10),
                 "color": .string("#FF9500"),
@@ -41,11 +40,10 @@ struct MCPMarkerTests {
                 "endFrame": .int(25),
             ]))
             let markers = try #require(timeline["markers"] as? [[String: Any]])
-            let marker = try #require(markers.first { $0["clipId"] as? String == clip.id })
-            #expect(marker["name"] as? String == "Instance note")
+            let marker = try #require(markers.first)
+            #expect(marker["name"] as? String == "Timeline note")
             #expect(marker["endFrame"] as? Int == 30)
             #expect(marker["color"] as? String == "#FF9500FF")
-            #expect(marker["sourceStartFrame"] as? Int == 20)
             _ = try json(try await client.callTool(name: "manage_markers", arguments: [
                 "action": .string("update"),
                 "markerId": .string(markerId),

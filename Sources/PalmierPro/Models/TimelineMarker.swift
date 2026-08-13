@@ -6,7 +6,6 @@ struct TimelineMarker: Codable, Sendable, Equatable, Hashable, Identifiable {
     static let defaultColor = TextStyle.RGBA(r: 0, g: 0.478, b: 1, a: 1)
 
     var id: String = UUID().uuidString
-    var clipId: String?
     var name: String
     var startFrame: Int
     var durationFrames: Int = 0
@@ -33,25 +32,4 @@ enum TimelineMarkerValidationError: Error, Equatable {
     case invalidName
     case invalidComment
     case invalidRange
-}
-
-extension Timeline {
-    mutating func copyMarkers(from sourceClipId: String, to clipId: String) {
-        markers += markers.filter { $0.clipId == sourceClipId }.map {
-            var copy = $0
-            copy.id = UUID().uuidString
-            copy.clipId = clipId
-            return copy
-        }
-    }
-}
-
-extension Clip {
-    func markerSourceFrame(at timelineFrame: Int) -> Int {
-        trimStartFrame + Int((Double(timelineFrame - startFrame) * speed).rounded())
-    }
-
-    func markerTimelineFrame(at sourceFrame: Int) -> Int {
-        startFrame + Int((Double(sourceFrame - trimStartFrame) / speed).rounded())
-    }
 }

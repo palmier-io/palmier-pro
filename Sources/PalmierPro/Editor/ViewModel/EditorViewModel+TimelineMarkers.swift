@@ -1,12 +1,4 @@
 import Foundation
-struct TimelineMarkerUpdateRequest {
-    var id: String
-    var name: String?
-    var startFrame: Int?
-    var durationFrames: Int?
-    var color: TextStyle.RGBA?
-    var comment: String?
-}
 struct TimelineMarkerChangeReceipt {
     var created: [TimelineMarker]
     var updated: [TimelineMarker]
@@ -18,47 +10,15 @@ extension EditorViewModel {
     }
 
     func displayedTimelineMarkers(preview: TimelineMarker? = nil) -> [TimelineMarker] {
-        var markers = timeline.markers
-        if let preview, let index = markers.firstIndex(where: { $0.id == preview.id }) {
-            markers[index] = preview
-        }
-        var displayed: [TimelineMarker] = []
-        for marker in markers {
-            guard let clipId = marker.clipId else { displayed.append(marker); continue }
-            guard let clip = clipFor(id: clipId), let copy = projected(marker, on: clip) else { continue }
-            displayed.append(copy)
-        }
-        return displayed.sorted { ($0.startFrame, $0.id) < ($1.startFrame, $1.id) }
+        timeline.markers
+            .map { $0.id == preview?.id ? preview ?? $0 : $0 }
+            .sorted { ($0.startFrame, $0.id) < ($1.startFrame, $1.id) }
     }
-    func timelineMarkerSnapFrames(
-        excludingClipIds: Set<String> = [],
-        excludingMarkerIds: Set<String> = []
-    ) -> [Int] {
-        var frames = Set<Int>()
-        for marker in displayedTimelineMarkers()
-        where !excludingMarkerIds.contains(marker.id)
-            && (marker.clipId.map({ !excludingClipIds.contains($0) }) ?? true) {
-            frames.insert(marker.startFrame)
-            if marker.isRange { frames.insert(marker.endFrame) }
-        }
-        return frames.sorted()
-    }
-    private func projected(_ marker: TimelineMarker, on clip: Clip) -> TimelineMarker? {
-        let sourceStart = clip.trimStartFrame
-        let sourceEnd = sourceStart + clip.sourceFramesConsumed
-        var copy = marker
-        if marker.isRange {
-            let start = max(sourceStart, marker.startFrame)
-            let end = min(sourceEnd, marker.endFrame)
-            guard start < end else { return nil }
-            copy.startFrame = clip.markerTimelineFrame(at: start)
-            let timelineEnd = clip.markerTimelineFrame(at: end)
-            copy.durationFrames = max(1, timelineEnd - copy.startFrame)
-        } else {
-            guard marker.startFrame >= sourceStart, marker.startFrame < sourceEnd else { return nil }
-            copy.startFrame = clip.markerTimelineFrame(at: marker.startFrame)
-        }
-        return copy
+    func timelineMarkerSnapFrames(excludingMarkerIds: Set<String> = []) -> [Int] {
+        let frames = displayedTimelineMarkers()
+            .filter { !excludingMarkerIds.contains($0.id) }
+            .flatMap { $0.isRange ? [$0.startFrame, $0.endFrame] : [$0.startFrame] }
+        return Set(frames).sorted()
     }
 
     @discardableResult
@@ -68,23 +28,10 @@ extension EditorViewModel {
             return nil
         }
         let range = validSelectedTimelineRange
-        let selected = timeline.tracks.flatMap(\.clips).filter { selectedClipIds.contains($0.id) }
-        let selectedAtPlayhead = selected.filter {
-            $0.contains(timelineFrame: activeFrame)
-        }
-        let sourceClip = Set(selectedAtPlayhead.map(\.mediaRef)).count == 1
-            ? selectedAtPlayhead.first(where: { $0.mediaType != .audio }) ?? selectedAtPlayhead.first
-            : nil
-        guard selected.isEmpty || sourceClip != nil else {
-            refuseWithToast(L10n.string("Move the playhead over the selected clip to add a marker."))
-            return nil
-        }
-        let sourceFrame = sourceClip.map { $0.markerSourceFrame(at: activeFrame) }
         let marker = TimelineMarker(
-            clipId: sourceClip?.id,
             name: L10n.string("Marker"),
-            startFrame: sourceFrame ?? range?.startFrame ?? activeFrame,
-            durationFrames: sourceClip == nil ? range.map { $0.endFrame - $0.startFrame } ?? 0 : 0
+            startFrame: range?.startFrame ?? activeFrame,
+            durationFrames: range.map { $0.endFrame - $0.startFrame } ?? 0
         )
         do {
             let created = try changeTimelineMarkers(
@@ -106,7 +53,7 @@ extension EditorViewModel {
     @discardableResult
     func changeTimelineMarkers(
         creates: [TimelineMarker] = [],
-        updates: [TimelineMarkerUpdateRequest] = [],
+        updates: [TimelineMarker] = [],
         deleteIds: [String] = [],
         actionName: String
     ) throws -> TimelineMarkerChangeReceipt {
@@ -119,14 +66,13 @@ extension EditorViewModel {
         }
 
         var updated: [TimelineMarker] = []
-        for request in updates {
-            guard !deleteSet.contains(request.id) else {
+        for marker in try updates.map(validatedTimelineMarker) {
+            guard !deleteSet.contains(marker.id) else {
                 throw TimelineMarkerValidationError.invalidRange
             }
-            guard let index = next.firstIndex(where: { $0.id == request.id }) else {
+            guard let index = next.firstIndex(where: { $0.id == marker.id }) else {
                 throw TimelineMarkerValidationError.invalidRange
             }
-            let marker = try applying(request, to: next[index])
             if marker != next[index] { next[index] = marker; updated.append(marker) }
         }
 
@@ -156,16 +102,6 @@ extension EditorViewModel {
         }
     }
 
-    private func applying(_ request: TimelineMarkerUpdateRequest, to original: TimelineMarker) throws -> TimelineMarker {
-        var marker = original
-        if let name = request.name { marker.name = name }
-        if let startFrame = request.startFrame { marker.startFrame = startFrame }
-        if let durationFrames = request.durationFrames { marker.durationFrames = durationFrames }
-        if let color = request.color { marker.color = color }
-        if let comment = request.comment { marker.comment = comment }
-        return try validatedTimelineMarker(marker)
-    }
-
     private func validatedTimelineMarker(_ marker: TimelineMarker) throws -> TimelineMarker {
         let name = marker.name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty,
@@ -179,8 +115,7 @@ extension EditorViewModel {
         let end = marker.startFrame.addingReportingOverflow(marker.durationFrames)
         let components = [marker.color.r, marker.color.g, marker.color.b, marker.color.a]
         guard marker.startFrame >= 0, marker.durationFrames >= 0, !end.overflow,
-              components.allSatisfy({ $0.isFinite && (0...1).contains($0) }),
-              marker.clipId.map({ clipFor(id: $0) != nil }) ?? true else {
+              components.allSatisfy({ $0.isFinite && (0...1).contains($0) }) else {
             throw TimelineMarkerValidationError.invalidRange
         }
         var marker = marker

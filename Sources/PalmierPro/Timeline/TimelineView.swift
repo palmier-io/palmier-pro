@@ -315,25 +315,9 @@ final class TimelineView: NSView, NSPopoverDelegate {
         }
         drawClips(geometry: geo, dirtyRect: dirtyRect, context: ctx, rippleInsertPreview: rippleInsertPreview)
         var displayedMarkers = editor.displayedTimelineMarkers(preview: markerEditorPreview)
-        if let rippleInsertPreview {
-            for index in displayedMarkers.indices {
-                guard let clipId = displayedMarkers[index].clipId,
-                      let delta = rippleInsertPreview.shiftDeltasByClipId[clipId] else { continue }
-                displayedMarkers[index].startFrame += delta
-            }
-        }
-        if case .moveClip(let drag) = inputController.dragState {
-            let draggedIds = Set(drag.all.map(\.clipId))
-            for index in displayedMarkers.indices
-            where displayedMarkers[index].clipId.map(draggedIds.contains) == true {
-                displayedMarkers[index].startFrame += drag.deltaFrames
-            }
-        }
         if case .timelineMarker(let drag) = inputController.dragState,
-           let index = displayedMarkers.firstIndex(where: {
-               $0.id == drag.original.id && $0.clipId == drag.original.clipId
-           }) {
-            displayedMarkers[index] = drag.displayedValue
+           let index = displayedMarkers.firstIndex(where: { $0.id == drag.original.id }) {
+            displayedMarkers[index] = drag.value
         }
         syncAgentActivityLayers()
         drawGapSelection(geometry: geo, context: ctx)
@@ -398,7 +382,6 @@ final class TimelineView: NSView, NSPopoverDelegate {
             selectedIds: editor.selectedTimelineMarkerIds,
             geometry: geo,
             rulerMinY: scrollOffset.y,
-            clipRect: { clipDisplayRects[$0] },
             context: ctx
         )
     }
@@ -410,14 +393,9 @@ final class TimelineView: NSView, NSPopoverDelegate {
         guard let marker = editor.timelineMarker(id: id),
               let displayed = editor.displayedTimelineMarkers().first(where: { $0.id == id }) else { return }
         let rulerY = enclosingScrollView?.contentView.bounds.origin.y ?? 0
-        guard let anchor = TimelineMarkerRenderer.anchorRect(
-            for: displayed, geometry: geometry, rulerMinY: rulerY,
-            clipRect: { id in
-                guard let location = editor.findClip(id: id) else { return nil }
-                let clip = editor.timeline.tracks[location.trackIndex].clips[location.clipIndex]
-                return geometry.clipRect(for: clip, trackIndex: location.trackIndex)
-            }
-        ) else { return }
+        let anchor = TimelineMarkerRenderer.anchorRect(
+            for: displayed, geometry: geometry, rulerMinY: rulerY
+        )
         dismissMarkerEditor()
         let popover = NSPopover()
         popover.behavior = .transient

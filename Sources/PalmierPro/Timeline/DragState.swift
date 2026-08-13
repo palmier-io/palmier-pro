@@ -118,10 +118,8 @@ enum DragState {
 
     struct TimelineMarkerDrag {
         let original: TimelineMarker
-        let displayed: TimelineMarker
         let adjustsDuration: Bool
         let grabFrame: Int
         var value: TimelineMarker
-        var displayedValue: TimelineMarker
     }
 }

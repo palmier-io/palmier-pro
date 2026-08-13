@@ -3,14 +3,13 @@ import Foundation
 private struct ManageMarkersInput: DecodableToolArgs {
     let action: String
     let markerId: String?
-    let clipId: String?
     let name: String?
     let startFrame: Int?
     let durationFrames: Int?
     let color: String?
     let comment: String?
     static let allowedKeys: Set<String> = [
-        "action", "markerId", "clipId", "name", "startFrame", "durationFrames", "color", "comment",
+        "action", "markerId", "name", "startFrame", "durationFrames", "color", "comment",
     ]
     var hasPatch: Bool {
         name != nil || startFrame != nil || durationFrames != nil || color != nil || comment != nil
@@ -28,7 +27,7 @@ extension ToolExecutor {
                     throw ToolError("create requires name and startFrame.")
                 }
                 let marker = TimelineMarker(
-                    clipId: input.clipId, name: name, startFrame: start,
+                    name: name, startFrame: start,
                     durationFrames: input.durationFrames ?? 0,
                     color: try parseColorHex(input.color, path: "color") ?? TimelineMarker.defaultColor,
                     comment: input.comment ?? ""
@@ -40,14 +39,16 @@ extension ToolExecutor {
                 guard let id = input.markerId, input.hasPatch else {
                     throw ToolError("update requires markerId and at least one field to change.")
                 }
-                let update = TimelineMarkerUpdateRequest(
-                    id: id, name: input.name, startFrame: input.startFrame,
-                    durationFrames: input.durationFrames,
-                    color: try parseColorHex(input.color, path: "color"),
-                    comment: input.comment
-                )
+                guard var marker = editor.timelineMarker(id: id) else {
+                    throw ToolError("Unknown markerId '\(id)'.")
+                }
+                if let value = input.name { marker.name = value }
+                if let value = input.startFrame { marker.startFrame = value }
+                if let value = input.durationFrames { marker.durationFrames = value }
+                if let value = try parseColorHex(input.color, path: "color") { marker.color = value }
+                if let value = input.comment { marker.comment = value }
                 receipt = try editor.changeTimelineMarkers(
-                    updates: [update], actionName: "Change Marker (Agent)"
+                    updates: [marker], actionName: "Change Marker (Agent)"
                 )
             case "delete":
                 guard let id = input.markerId else { throw ToolError("delete requires markerId.") }

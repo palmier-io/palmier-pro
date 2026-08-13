@@ -32,57 +32,43 @@ struct TimelineMarkerShape: Shape {
 }
 
 enum TimelineMarkerRenderer {
-    typealias ClipRect = (String) -> NSRect?
     private typealias Lane = (minY: CGFloat, height: CGFloat)
 
     static func draw(
         _ markers: [TimelineMarker], selectedIds: Set<String>, geometry: TimelineGeometry,
-        rulerMinY: CGFloat, clipRect: ClipRect, context: CGContext
+        rulerMinY: CGFloat, context: CGContext
     ) {
+        let lane = (rulerMinY, geometry.rulerHeight)
         for marker in markers {
-            guard let lane = lane(for: marker, geometry: geometry, rulerMinY: rulerMinY, clipRect: clipRect) else { continue }
             draw(marker, selected: selectedIds.contains(marker.id), geometry: geometry, lane: lane, context: context)
         }
     }
 
     static func marker(
         at point: NSPoint, markers: [TimelineMarker], geometry: TimelineGeometry,
-        rulerMinY: CGFloat, clipRect: ClipRect
+        rulerMinY: CGFloat
     ) -> TimelineMarker? {
-        markers.reversed().first {
-            guard let lane = lane(for: $0, geometry: geometry, rulerMinY: rulerMinY, clipRect: clipRect) else { return false }
+        let lane = (rulerMinY, geometry.rulerHeight)
+        return markers.reversed().first {
             return endpointRects(for: $0, geometry: geometry, lane: lane).contains { $0.contains(point) }
         }
     }
 
     static func markerIds(
         intersecting selection: NSRect, markers: [TimelineMarker], geometry: TimelineGeometry,
-        rulerMinY: CGFloat, clipRect: ClipRect
+        rulerMinY: CGFloat
     ) -> Set<String> {
-        Set(markers.compactMap {
-            guard let lane = lane(for: $0, geometry: geometry, rulerMinY: rulerMinY, clipRect: clipRect) else { return nil }
+        let lane = (rulerMinY, geometry.rulerHeight)
+        return Set(markers.compactMap {
             return endpointRects(for: $0, geometry: geometry, lane: lane)
                 .contains { $0.intersects(selection) } ? $0.id : nil
         })
     }
 
     static func anchorRect(
-        for marker: TimelineMarker, geometry: TimelineGeometry, rulerMinY: CGFloat,
-        clipRect: ClipRect
-    ) -> NSRect? {
-        guard let lane = lane(
-            for: marker, geometry: geometry, rulerMinY: rulerMinY, clipRect: clipRect
-        ) else { return nil }
-        return flagRect(for: marker, geometry: geometry, lane: lane)
-    }
-
-    private static func lane(
-        for marker: TimelineMarker, geometry: TimelineGeometry,
-        rulerMinY: CGFloat, clipRect: ClipRect
-    ) -> Lane? {
-        guard let clipId = marker.clipId else { return (rulerMinY, geometry.rulerHeight) }
-        guard let rect = clipRect(clipId) else { return nil }
-        return (rect.maxY - AppTheme.TimelineMarker.flagHeight, AppTheme.TimelineMarker.flagHeight)
+        for marker: TimelineMarker, geometry: TimelineGeometry, rulerMinY: CGFloat
+    ) -> NSRect {
+        flagRect(for: marker, geometry: geometry, lane: (rulerMinY, geometry.rulerHeight))
     }
 
     private static func draw(

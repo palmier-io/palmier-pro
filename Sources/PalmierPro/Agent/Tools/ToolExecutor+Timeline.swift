@@ -20,9 +20,7 @@ extension ToolExecutor {
         if markers.isEmpty {
             dict.removeValue(forKey: "markers")
         } else {
-            dict["markers"] = markers.map {
-                Self.timelineMarkerDict($0, source: editor.timelineMarker(id: $0.id))
-            }
+            dict["markers"] = markers.map(Self.timelineMarkerDict)
         }
         dict["totalFrames"] = editor.timeline.totalFrames
         dict["durationSeconds"] = Double(editor.timeline.totalFrames) / Double(max(editor.timeline.fps, 1))
@@ -90,8 +88,8 @@ extension ToolExecutor {
         try? JSONSerialization.jsonObject(with: JSONEncoder().encode(clip)) as? [String: Any]
     }
 
-    static func timelineMarkerDict(_ marker: TimelineMarker, source: TimelineMarker? = nil) -> [String: Any] {
-        var result: [String: Any] = [
+    static func timelineMarkerDict(_ marker: TimelineMarker) -> [String: Any] {
+        [
             "markerId": marker.id,
             "name": marker.name,
             "startFrame": marker.startFrame,
@@ -100,12 +98,6 @@ extension ToolExecutor {
             "color": marker.color.hexString,
             "comment": marker.comment,
         ]
-        if let clipId = marker.clipId {
-            result["clipId"] = clipId
-            result["sourceStartFrame"] = source?.startFrame ?? marker.startFrame
-            result["sourceDurationFrames"] = source?.durationFrames ?? marker.durationFrames
-        }
-        return result
     }
 
     func timelineEntries(_ editor: EditorViewModel, detailed: Bool = false) -> [[String: Any]] {
