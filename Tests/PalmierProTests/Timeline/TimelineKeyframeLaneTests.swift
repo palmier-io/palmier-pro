@@ -39,7 +39,10 @@ struct TimelineKeyframeLaneTests {
         ])
     }
 
-    @Test func audioTrackDoesNotExposeVolumeLane() {
+    @Test func textOnlyAndAudioTracksExposeTheirOwnLaneSets() {
+        let textTrack = Fixtures.videoTrack(clips: [
+            Fixtures.clip(mediaType: .text, start: 0, duration: 30),
+        ])
         let audioTrack = Fixtures.audioTrack(clips: [
             Fixtures.clip(mediaType: .audio, start: 0, duration: 30),
         ])
