@@ -110,7 +110,11 @@ struct TextTab: View {
                 }
             }
         ) {
-            InspectorKeyframePropertyControl(clips: clips, property: .opacity)
+            KeyframePropertyValueFields(
+                clips: clips,
+                property: .opacity,
+                style: .inspector
+            )
         }
     }
 
@@ -126,7 +130,11 @@ struct TextTab: View {
                 }
             }
         ) {
-            InspectorKeyframePropertyControl(clips: clips, property: .position)
+            KeyframePropertyValueFields(
+                clips: clips,
+                property: .position,
+                style: .inspector
+            )
         }
     }
 
@@ -178,7 +186,11 @@ struct TextTab: View {
                 }
             }
         ) {
-            InspectorKeyframePropertyControl(clips: clips, property: .rotation)
+            KeyframePropertyValueFields(
+                clips: clips,
+                property: .rotation,
+                style: .inspector
+            )
         }
     }
 
