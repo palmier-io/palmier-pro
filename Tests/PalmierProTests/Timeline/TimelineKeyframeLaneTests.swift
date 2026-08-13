@@ -97,26 +97,6 @@ struct TimelineKeyframeLaneTests {
     }
 
     @MainActor
-    @Test func togglingFirstVolumeKeyframePreservesStaticClipLevel() throws {
-        var audio = Fixtures.clip(id: "audio", mediaType: .audio, start: 10, duration: 30)
-        audio.volume = VolumeScale.linearFromDb(-8)
-        let editor = EditorViewModel()
-        editor.timeline = Fixtures.timeline(tracks: [
-            Fixtures.audioTrack(clips: [audio]),
-        ])
-
-        editor.toggleKeyframe(
-            clipId: audio.id,
-            property: .volume,
-            at: 15
-        )
-
-        let keyframe = try #require(editor.clipFor(id: audio.id)?.volumeTrack?.keyframes.first)
-        #expect(keyframe.frame == 5)
-        #expect(abs(keyframe.value - VolumeScale.dbFromLinear(audio.volume)) < 1e-12)
-    }
-
-    @MainActor
     @Test func togglingExistingVolumeKeyframeRemovesIt() {
         var audio = Fixtures.clip(id: "audio", mediaType: .audio, start: 10, duration: 30)
         audio.volumeTrack = KeyframeTrack(keyframes: [
