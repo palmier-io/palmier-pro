@@ -212,6 +212,11 @@ extension TextStyle.RGBA {
         Color(.sRGB, red: r, green: g, blue: b, opacity: a)
     }
 
+    var hexString: String {
+        let bytes = [r, g, b, a].map { Int((min(max($0, 0), 1) * 255).rounded()) }
+        return String(format: "#%02X%02X%02X%02X", bytes[0], bytes[1], bytes[2], bytes[3])
+    }
+
     init(_ color: Color) {
         let ns = NSColor(color).usingColorSpace(.sRGB) ?? .black
         self.init(

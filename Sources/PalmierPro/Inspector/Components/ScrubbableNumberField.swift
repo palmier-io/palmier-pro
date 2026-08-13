@@ -11,11 +11,13 @@ struct ScrubbableNumberField: View {
     var dragSensitivity: Double = 1
     var fieldWidth: CGFloat = AppTheme.EditorPanel.numericFieldWidth
     var fieldHeight: CGFloat = AppTheme.EditorPanel.fieldMinHeight
+    var fieldFill: Color = AppTheme.Background.baseColor
     var valueFontSize: CGFloat = AppTheme.FontSize.sm
     var dragValueAdjustment: (Double) -> Double = { $0 }
     var trailingLabel: String? = nil
     var trailingLabelFontSize: CGFloat = AppTheme.FontSize.xs
     var displayTextOverride: ((Double) -> String?)? = nil
+    var parseTextOverride: ((String) -> Double?)? = nil
     var onDraggingValue: ((Double) -> Void)? = nil
     var onChanged: ((Double) -> Void)? = nil
     var onInteractionStart: (() -> Void)? = nil
@@ -41,7 +43,8 @@ struct ScrubbableNumberField: View {
         return String(format: format, displayValue) + valueSuffix
     }
     private var editingText: String {
-        isMixed ? "" : String(format: format, displayValue)
+        if isMixed { return "" }
+        return displayTextOverride?(sourceValue) ?? String(format: format, displayValue)
     }
 
     var body: some View {
@@ -81,7 +84,8 @@ struct ScrubbableNumberField: View {
             .padding(.vertical, AppTheme.Spacing.xxs)
             .editorValueField(
                 active: isEditing || isDragging,
-                minHeight: fieldHeight
+                minHeight: fieldHeight,
+                fill: fieldFill
             )
             .overlay(scrubOverlay)
         }
@@ -148,14 +152,13 @@ struct ScrubbableNumberField: View {
     }
 
     private func commitEdit() {
-        guard let raw = Self.committedValue(
-            from: editText,
-            suffix: valueSuffix,
-            displayMultiplier: displayMultiplier,
-            range: range
-        ) else { return }
-        liveValue = raw
-        onCommit(raw)
+        let parsed = parseTextOverride?(editText) ?? Self.committedValue(
+            from: editText, suffix: valueSuffix,
+            displayMultiplier: displayMultiplier, range: range
+        )
+        guard let raw = parsed else { return }
+        liveValue = raw.clamped(to: range)
+        onCommit(liveValue)
     }
 
     private func beginInteraction() {
