@@ -290,7 +290,64 @@ extension EditorViewModel {
         }
     }
 
+    func applyTextSize(clipId: String, value: Double) {
+        applyClipProperty(clipId: clipId) { self.writeTextSize(into: &$0, value: value) }
+    }
+
+    func commitTextSize(clipId: String, value: Double) {
+        commitClipProperty(clipId: clipId, actionName: "Change Text Size") {
+            self.writeTextSize(into: &$0, value: value)
+        }
+    }
+
+    func resetTextSize(clipIds: [String], defaultSize: Double) {
+        commitClipProperties(clipIds: clipIds, actionName: "Reset Text Size") { clip in
+            guard clip.mediaType == .text else { return }
+            clip.scaleTrack = nil
+            self.writeTextSize(into: &clip, value: defaultSize)
+        }
+    }
+
+    private func writeTextSize(into clip: inout Clip, value: Double) {
+        guard clip.mediaType == .text, value.isFinite, value > 0 else { return }
+        var style = clip.textStyle ?? TextStyle()
+        if clip.scaleTrack?.isActive == true {
+            guard style.fontSize.isFinite, style.fontSize > 0 else { return }
+            writeScale(into: &clip, newScale: value / style.fontSize)
+        } else {
+            let staticScale = style.fontScale.isFinite && style.fontScale > 0
+                ? style.fontScale
+                : TextStyle().fontScale
+            style.fontSize = value / staticScale
+            clip.textStyle = style
+            _ = fitTextClipToContentIfNeeded(
+                &clip,
+                canvasW: Double(timeline.width),
+                canvasH: Double(timeline.height)
+            )
+        }
+    }
+
     private func writeScale(into clip: inout Clip, newScale: Double) {
+        guard newScale.isFinite, newScale > 0 else { return }
+        if clip.mediaType == .text {
+            guard clip.scaleTrack?.isActive == true,
+                  clip.contains(timelineFrame: activeFrame) else { return }
+            let baseScale = clip.textStyle?.fontScale ?? TextStyle().fontScale
+            guard baseScale.isFinite, baseScale > 0,
+                  clip.transform.width.isFinite, clip.transform.width > 0,
+                  clip.transform.height.isFinite, clip.transform.height > 0 else { return }
+            let ratio = newScale / baseScale
+            clip.upsertKeyframe(
+                in: \.scaleTrack,
+                frame: activeFrame,
+                value: AnimPair(
+                    a: clip.transform.width * ratio,
+                    b: clip.transform.height * ratio
+                )
+            )
+            return
+        }
         let aspect = mediaCanvasAspect(for: clip) ?? 1.0
         let w = newScale
         let h = newScale / aspect

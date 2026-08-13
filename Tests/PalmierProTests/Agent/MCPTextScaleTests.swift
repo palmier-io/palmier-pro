@@ -72,8 +72,27 @@ struct MCPTextScaleTests {
             ])
             #expect(invalidBlur.isError == true)
 
-            let undo = try await client.callTool(name: "undo")
-            #expect(undo.isError != true)
+            let animated = try await client.callTool(name: "set_keyframes", arguments: [
+                "clipId": .string(clip.id),
+                "property": .string("scale"),
+                "keyframes": .array([
+                    .array([.int(0), .double(1), .double(1)]),
+                    .array([.int(45), .double(2), .double(2), .string("linear")]),
+                ]),
+            ])
+            #expect(animated.isError != true)
+            let animatedClip = try await timelineClip(client: client, clipId: clip.id)
+            #expect(
+                ((animatedClip["keyframes"] as? [String: Any])?["scale"] as? [[Any]])?.count == 2
+            )
+
+            let undoScale = try await client.callTool(name: "undo")
+            #expect(undoScale.isError != true)
+            let afterScaleUndo = try await timelineClip(client: client, clipId: clip.id)
+            #expect((afterScaleUndo["keyframes"] as? [String: Any])?["scale"] == nil)
+
+            let undoStyle = try await client.callTool(name: "undo")
+            #expect(undoStyle.isError != true)
             let restoredStyle = try await textStyle(client: client, clipId: clip.id)
             #expect((restoredStyle["widthScale"] as? NSNumber)?.doubleValue == 0.85)
             #expect((restoredStyle["heightScale"] as? NSNumber)?.doubleValue == 1.1)
@@ -88,12 +107,16 @@ struct MCPTextScaleTests {
     }
 
     private func textStyle(client: Client, clipId: String) async throws -> [String: Any] {
+        let clip = try await timelineClip(client: client, clipId: clipId)
+        return try #require(clip["textStyle"] as? [String: Any])
+    }
+
+    private func timelineClip(client: Client, clipId: String) async throws -> [String: Any] {
         let result = try await client.callTool(name: "get_timeline")
         let payload = try json(text(result.content))
         let tracks = try #require(payload["tracks"] as? [[String: Any]])
         let clips = tracks.flatMap { $0["clips"] as? [[String: Any]] ?? [] }
-        let clip = try #require(clips.first { $0["id"] as? String == clipId })
-        return try #require(clip["textStyle"] as? [String: Any])
+        return try #require(clips.first { $0["id"] as? String == clipId })
     }
 
     private func json(_ text: String) throws -> [String: Any] {

@@ -148,7 +148,14 @@ extension Clip {
             return mediaType == .audio
         case .position, .rotation, .opacity:
             return mediaType.isVisual
-        case .scale, .crop:
+        case .scale:
+            switch mediaType {
+            case .video, .image, .lottie, .sequence, .text:
+                return true
+            case .audio, .subtitle:
+                return false
+            }
+        case .crop:
             switch mediaType {
             case .video, .image, .lottie, .sequence:
                 return true

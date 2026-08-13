@@ -255,6 +255,30 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         return (s.a, s.b)
     }
 
+    func textScaleAt(frame: Int) -> Double {
+        let baseScale = textStyle?.fontScale ?? TextStyle().fontScale
+        guard mediaType == .text else { return baseScale }
+        guard baseScale.isFinite, baseScale > 0,
+              transform.width.isFinite, transform.width > 0,
+              transform.height.isFinite, transform.height > 0 else {
+            return TextStyle().fontScale
+        }
+        let size = sizeAt(frame: frame)
+        let widthRatio = size.width / transform.width
+        let heightRatio = size.height / transform.height
+        guard widthRatio.isFinite, widthRatio > 0,
+              heightRatio.isFinite, heightRatio > 0 else {
+            return baseScale
+        }
+        return baseScale * min(widthRatio, heightRatio)
+    }
+
+    func textStyleAt(frame: Int) -> TextStyle {
+        var style = textStyle ?? TextStyle()
+        style.fontScale = textScaleAt(frame: frame)
+        return style
+    }
+
     /// Resolve the full Transform at `frame`
     func transformAt(frame: Int) -> Transform {
         let tl = topLeftAt(frame: frame)

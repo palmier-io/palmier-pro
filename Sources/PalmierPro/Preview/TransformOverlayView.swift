@@ -142,14 +142,18 @@ struct TransformOverlayView: View {
                 if resizeStart == nil {
                     resizeStart = clip.transformAt(frame: editor.activeFrame)
                     resizeStartFontScale = clip.mediaType == .text
-                        ? (clip.textStyle ?? TextStyle()).fontScale
+                        ? clip.textScaleAt(frame: editor.activeFrame)
                         : nil
                 }
                 guard let start = resizeStart else { return }
 
                 if let startScale = resizeStartFontScale {
                     let newScale = textScale(from: value.translation, corner: corner, start: start, startScale: startScale, videoRect: videoRect)
-                    editor.applyTextStyle(clipId: clip.id, fitToContent: true) { $0.fontScale = newScale }
+                    if clip.scaleTrack?.isActive == true {
+                        editor.applyScale(clipId: clip.id, newScale: newScale)
+                    } else {
+                        editor.applyTextStyle(clipId: clip.id, fitToContent: true) { $0.fontScale = newScale }
+                    }
                 } else {
                     let resized = resizedTransform(start, corner: corner, by: value.translation, in: videoRect, mediaCanvasAspect: mediaCanvasAspect, rotated: start.rotation != 0)
                     editor.applyTransform(clipId: clip.id, newTransform: resized)
@@ -163,7 +167,11 @@ struct TransformOverlayView: View {
 
                 if let startScale {
                     let newScale = textScale(from: value.translation, corner: corner, start: start, startScale: startScale, videoRect: videoRect)
-                    editor.commitTextStyle(clipId: clip.id, fitToContent: true) { $0.fontScale = newScale }
+                    if clip.scaleTrack?.isActive == true {
+                        editor.commitScale(clipId: clip.id, newScale: newScale)
+                    } else {
+                        editor.commitTextStyle(clipId: clip.id, fitToContent: true) { $0.fontScale = newScale }
+                    }
                 } else {
                     let resized = resizedTransform(start, corner: corner, by: value.translation, in: videoRect, mediaCanvasAspect: mediaCanvasAspect, rotated: start.rotation != 0)
                     editor.commitTransform(clipId: clip.id, newTransform: resized, actionName: "Change Scale")
