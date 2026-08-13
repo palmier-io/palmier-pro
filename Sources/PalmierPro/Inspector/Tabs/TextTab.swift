@@ -42,6 +42,7 @@ struct TextTab: View {
                 defaults: styleDefaults,
                 showsColorControl: showsColorControl,
                 showsSolidFillControls: showsSolidFillControls,
+                keyframeClips: clips,
                 actions: styleActions,
                 afterAlignment: {
                     positionSection

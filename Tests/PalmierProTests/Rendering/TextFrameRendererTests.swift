@@ -353,6 +353,21 @@ struct TextFrameRendererTests {
         #expect(abs(wideTrackingDelta - originalTrackingDelta) <= 2)
     }
 
+    @Test func scaleTrackScalesTextGlyphs() throws {
+        let size = CGSize(width: 640, height: 360)
+        var clip = textClip(content: "Scale", style: TextStyle(fontSize: 160),
+                            transform: Transform(width: 0.35, height: 0.35))
+        clip.scaleTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: AnimPair(a: 0.35, b: 0.35), interpolationOut: .linear),
+            Keyframe(frame: 30, value: AnimPair(a: 0.7, b: 0.7)),
+        ])
+        func width(at frame: Int) throws -> CGFloat {
+            let image = try #require(TextFrameRenderer.image(clip: clip, frame: frame, renderSize: size))
+            return try #require(alphaBounds(rawPixels(image, size: size), size: size)).width
+        }
+        #expect(try width(at: 30) > width(at: 0) * 1.7)
+    }
+
     @Test func fontScalePreservesCompleteTextLayoutProportions() {
         let content = "fasfasfasf\nsfsaf\nsfasfsaf"
         var style = TextStyle()

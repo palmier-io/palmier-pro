@@ -18,7 +18,7 @@ enum TextFrameRenderer {
 
     static func image(clip: Clip, frame: Int, renderSize: CGSize) -> CIImage? {
         guard renderSize.width >= 1, renderSize.height >= 1 else { return nil }
-        var style = (clip.textStyle ?? TextStyle()).scaledVisualStyle
+        var style = clip.textStyleAt(frame: frame).scaledVisualStyle
         style.blur = 0
         let content = style.displayText(clip.textContent ?? "")
         guard !content.isEmpty else { return nil }

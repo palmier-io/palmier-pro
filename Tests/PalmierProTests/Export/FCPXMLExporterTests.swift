@@ -840,11 +840,18 @@ struct FCPXMLExporterTests {
         style.widthScale = 1.5
         style.heightScale = 0.75
         text.textStyle = style
+        text.transform = Transform(width: 0.2, height: 0.1)
+        text.scaleTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: AnimPair(a: 0.2, b: 0.1), interpolationOut: .linear),
+            Keyframe(frame: 30, value: AnimPair(a: 0.4, b: 0.2), interpolationOut: .linear),
+        ])
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [text])])
 
         let xml = try await export(timeline, resolver: resolver, tmpDir: tmpDir)
 
-        #expect(xml.contains("<adjust-transform scale=\"1.5 0.75\" anchor=\"0 0\" position=\"0 0\"/>"))
+        #expect(xml.contains("<param name=\"scale\" value=\"1.5 0.75\">"))
+        #expect(xml.contains("<keyframe time=\"0s\" curve=\"linear\" value=\"1.5 0.75\"/>"))
+        #expect(xml.contains("<keyframe time=\"1s\" curve=\"linear\" value=\"3 1.5\"/>"))
     }
 
     @Test func titleFontSizeDoesNotScaleWithSequenceHeight() async throws {
