@@ -134,6 +134,7 @@ extension EditorViewModel {
 
         timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = left
         timeline.tracks[loc.trackIndex].clips.append(right)
+        timeline.copyMarkers(from: clip.id, to: right.id)
         sortClips(trackIndex: loc.trackIndex)
 
         registerTimelineUndo("Split Clip") { vm in
@@ -257,6 +258,8 @@ extension EditorViewModel {
     func withTimelineSwap(actionName: String, refreshVisuals: Bool = true, _ work: () -> Void) {
         let before = timeline
         undo.withoutRegistration(work)
+        let liveClipIds = Set(timeline.tracks.flatMap(\.clips).map(\.id))
+        timeline.markers.removeAll { $0.clipId.map { !liveClipIds.contains($0) } ?? false }
         let after = timeline
         guard before != after else { return }
         guard undo.isRegistrationEnabled else { return }

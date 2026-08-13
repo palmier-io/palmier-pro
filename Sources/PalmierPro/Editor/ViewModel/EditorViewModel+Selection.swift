@@ -30,6 +30,7 @@ extension EditorViewModel {
         selectedClipIds = expandToLinkGroup(ids)
         selectedGap = nil
         selectedTimelineRange = nil
+        selectedTimelineMarkerIds = []
     }
 
     private func forwardSelectionAnchorId() -> String? {

@@ -76,6 +76,7 @@ extension EditorViewModel {
                 return c
             })
         }
+        child.markers = timeline.markers.filter { $0.clipId.map(ids.contains) == true }
         child.regenerateIds()
 
         undo.perform("Nest Clips") {

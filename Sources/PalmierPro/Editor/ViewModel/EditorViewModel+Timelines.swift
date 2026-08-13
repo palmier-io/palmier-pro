@@ -94,6 +94,7 @@ extension EditorViewModel {
         selectedClipIds = []
         selectedGap = nil
         selectedTimelineRange = nil
+        selectedTimelineMarkerIds = []
         pendingSwapClipId = nil
         pendingSwapTargetClipIds = []
         clearAgentActivity()
@@ -264,11 +265,18 @@ extension Timeline {
     /// Fresh track/clip/group ids for a duplicated timeline so ids stay unique project-wide.
     mutating func regenerateIds() {
         var groups: [String: String] = [:]
+        var clipIds: [String: String] = [:]
         for ti in tracks.indices {
             tracks[ti].id = UUID().uuidString
             for ci in tracks[ti].clips.indices {
+                let oldId = tracks[ti].clips[ci].id
                 tracks[ti].clips[ci].freshenIds(groups: &groups)
+                clipIds[oldId] = tracks[ti].clips[ci].id
             }
+        }
+        for i in markers.indices {
+            markers[i].id = UUID().uuidString
+            if let clipId = markers[i].clipId { markers[i].clipId = clipIds[clipId] }
         }
     }
 }
