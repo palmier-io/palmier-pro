@@ -168,7 +168,7 @@ struct TimelineKeyframeLaneTests {
     }
 
     @MainActor
-    @Test func sizeWriteUpdatesTextScaleTrackWithoutChangingStaticStyle() {
+    @Test func sizeWriteAndRefitPreserveTextScaleAnimation() throws {
         var text = Fixtures.clip(id: "text", mediaType: .text, start: 0, duration: 30)
         text.transform = Transform(width: 0.2, height: 0.1)
         text.textStyle = TextStyle()
@@ -183,11 +183,13 @@ struct TimelineKeyframeLaneTests {
 
         editor.applyTextSize(clipId: text.id, value: 144)
 
-        let result = editor.clipFor(id: text.id)
-        let keyframe = result?.scaleTrack?.keyframes.first { $0.frame == 10 }
-        #expect(abs((keyframe?.value.a ?? 0) - 0.3) < 0.000_001)
-        #expect(abs((keyframe?.value.b ?? 0) - 0.15) < 0.000_001)
-        #expect(abs((result?.textStyleAt(frame: 10).scaledVisualStyle.fontSize ?? 0) - 144) < 0.000_001)
+        var result = try #require(editor.clipFor(id: text.id))
+        let keyframe = try #require(result.scaleTrack?.keyframes.first { $0.frame == 10 })
+        #expect(abs(keyframe.value.a - 0.3) < 0.000_001)
+        #expect(abs(keyframe.value.b - 0.15) < 0.000_001)
+        result.textContent = "Scale across a wider line"
+        #expect(editor.fitTextClipToContentIfNeeded(&result, canvasW: 1_920, canvasH: 1_080))
+        #expect(abs(result.textStyleAt(frame: 10).scaledVisualStyle.fontSize - 144) < 0.000_001)
     }
 
     @MainActor

@@ -331,31 +331,21 @@ extension EditorViewModel {
     private func writeScale(into clip: inout Clip, newScale: Double) {
         guard newScale.isFinite, newScale > 0 else { return }
         if clip.mediaType == .text {
-            if clip.scaleTrack?.isActive == true {
-                guard clip.contains(timelineFrame: activeFrame) else { return }
-                let baseScale = clip.textStyle?.fontScale ?? TextStyle().fontScale
-                guard baseScale.isFinite, baseScale > 0,
-                      clip.transform.width.isFinite, clip.transform.width > 0,
-                      clip.transform.height.isFinite, clip.transform.height > 0 else { return }
-                let ratio = newScale / baseScale
-                clip.upsertKeyframe(
-                    in: \.scaleTrack,
-                    frame: activeFrame,
-                    value: AnimPair(
-                        a: clip.transform.width * ratio,
-                        b: clip.transform.height * ratio
-                    )
+            guard clip.scaleTrack?.isActive == true,
+                  clip.contains(timelineFrame: activeFrame) else { return }
+            let baseScale = clip.textStyle?.fontScale ?? TextStyle().fontScale
+            guard baseScale.isFinite, baseScale > 0,
+                  clip.transform.width.isFinite, clip.transform.width > 0,
+                  clip.transform.height.isFinite, clip.transform.height > 0 else { return }
+            let ratio = newScale / baseScale
+            clip.upsertKeyframe(
+                in: \.scaleTrack,
+                frame: activeFrame,
+                value: AnimPair(
+                    a: clip.transform.width * ratio,
+                    b: clip.transform.height * ratio
                 )
-            } else {
-                var style = clip.textStyle ?? TextStyle()
-                style.fontScale = newScale
-                clip.textStyle = style
-                _ = fitTextClipToContentIfNeeded(
-                    &clip,
-                    canvasW: Double(timeline.width),
-                    canvasH: Double(timeline.height)
-                )
-            }
+            )
             return
         }
         let aspect = mediaCanvasAspect(for: clip) ?? 1.0
