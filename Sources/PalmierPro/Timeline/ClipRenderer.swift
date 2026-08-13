@@ -532,7 +532,7 @@ enum ClipRenderer {
         let half = volumeKeyframeSize / 2
 
         if showsVolumeKeyframes {
-            context.setFillColor(lineColor)
+            context.setFillColor(AppTheme.Accent.timecodeNSColor.cgColor)
             context.setStrokeColor(AppTheme.MediaOverlay.background.withAlphaComponent(0.5).cgColor)
             context.setLineWidth(0.5)
 

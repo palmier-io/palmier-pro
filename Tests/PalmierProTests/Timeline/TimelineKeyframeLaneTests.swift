@@ -51,7 +51,7 @@ struct TimelineKeyframeLaneTests {
         #expect(AnimatableProperty.lanes(for: textTrack) == [
             .position, .scale, .rotation, .opacity, .blur,
         ])
-        #expect(AnimatableProperty.lanes(for: audioTrack) == [.volume])
+        #expect(AnimatableProperty.lanes(for: audioTrack).isEmpty)
     }
 
     @Test func cropInsetsPreserveMinimumVisibleArea() {
@@ -95,6 +95,32 @@ struct TimelineKeyframeLaneTests {
         clip.rescaleKeyframes(by: 0.4)
 
         #expect(clip.opacityTrack?.keyframes.map(\.frame) == [3])
+    }
+
+    @MainActor
+    @Test func togglingExistingVolumeKeyframeRemovesIt() {
+        var audio = Fixtures.clip(id: "audio", mediaType: .audio, start: 10, duration: 30)
+        audio.volumeTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 5, value: -8, interpolationOut: .linear),
+        ])
+        let editor = EditorViewModel()
+        editor.timeline = Fixtures.timeline(tracks: [
+            Fixtures.audioTrack(clips: [audio]),
+        ])
+        let undo = UndoManager()
+        editor.undo.attach(undo)
+        undo.removeAllActions()
+
+        editor.toggleKeyframe(
+            clipId: audio.id,
+            property: .volume,
+            at: 15
+        )
+
+        #expect(editor.clipFor(id: audio.id)?.volumeTrack == nil)
+        #expect(undo.canUndo)
+        undo.undo()
+        #expect(editor.clipFor(id: audio.id)?.volumeTrack == audio.volumeTrack)
     }
 
     @MainActor

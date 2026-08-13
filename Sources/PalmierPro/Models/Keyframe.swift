@@ -133,8 +133,8 @@ enum AnimatableProperty: String, CaseIterable, Sendable {
     ]
 
     static func lanes(for track: Track) -> [AnimatableProperty] {
-        let order: [AnimatableProperty] = track.type == .audio ? [.volume] : visualLaneOrder
-        return order.filter { property in
+        guard track.type != .audio else { return [] }
+        return visualLaneOrder.filter { property in
             track.clips.contains { $0.supportsKeyframes(for: property) }
         }
     }
