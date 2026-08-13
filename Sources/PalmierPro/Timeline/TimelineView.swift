@@ -418,12 +418,13 @@ final class TimelineView: NSView, NSPopoverDelegate {
 
     private func dismissMarkerEditor() {
         markerEditorPreview = nil
-        markerPopover?.performClose(nil)
-        markerPopover = nil
+        markerPopover?.close()
         needsDisplay = true
     }
 
     func popoverDidClose(_ notification: Notification) {
+        guard let closed = notification.object as? NSPopover,
+              closed === markerPopover else { return }
         markerEditorPreview = nil
         markerPopover = nil
         needsDisplay = true

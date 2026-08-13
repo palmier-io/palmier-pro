@@ -29,7 +29,7 @@ extension EditorViewModel {
         }
         let range = validSelectedTimelineRange
         let marker = TimelineMarker(
-            name: L10n.string("Marker"),
+            name: nextMarkerName(),
             startFrame: range?.startFrame ?? activeFrame,
             durationFrames: range.map { $0.endFrame - $0.startFrame } ?? 0
         )
@@ -48,6 +48,13 @@ extension EditorViewModel {
             refuseWithToast(L10n.string("Couldn't add marker."))
             return nil
         }
+    }
+
+    private func nextMarkerName() -> String {
+        let names = Set(timeline.markers.map(\.name))
+        var number = 1
+        while names.contains(L10n.string("Marker \(number)")) { number += 1 }
+        return L10n.string("Marker \(number)")
     }
 
     @discardableResult

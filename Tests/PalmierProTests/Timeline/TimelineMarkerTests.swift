@@ -51,11 +51,15 @@ struct TimelineMarkerTests {
             excludingMarkerIds: [created.id]
         ).isEmpty)
     }
-    @Test func selectedClipStillCreatesTimelineMarkerAtPlayhead() {
+    @Test func defaultMarkerNamesUseNextNumber() {
         let editor = EditorViewModel()
         editor.selectedClipIds = ["clip"]
         editor.currentFrame = 10
-        #expect(editor.addTimelineMarkerAtSelection()?.startFrame == 10)
+        let first = editor.addTimelineMarkerAtSelection()
+        editor.currentFrame = 11
+        let second = editor.addTimelineMarkerAtSelection()
+        #expect((first?.startFrame, first?.name) == (10, L10n.string("Marker 1")))
+        #expect(second?.name == L10n.string("Marker 2"))
     }
     @Test func marqueeCrossingRulerSelectsMarkers() {
         let geometry = TimelineGeometry(pixelsPerFrame: 1, trackHeights: [50])

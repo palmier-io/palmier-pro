@@ -6,6 +6,7 @@ struct MarkerEditorPopover: View {
     let onPreview: (TimelineMarker) -> Void
     let onDismiss: () -> Void
     @State private var draft: TimelineMarker
+    @FocusState private var notesFocused: Bool
     init(
         marker: TimelineMarker,
         fps: Int,
@@ -39,6 +40,7 @@ struct MarkerEditorPopover: View {
                     fieldLabel(L10n.string("Notes"))
                     TextField(String(), text: $draft.comment, axis: .vertical)
                         .textFieldStyle(.plain)
+                        .focused($notesFocused)
                         .font(.system(size: AppTheme.FontSize.sm))
                         .lineLimit(3, reservesSpace: true)
                         .frame(height: AppTheme.TimelineMarker.notesHeight)
@@ -85,11 +87,12 @@ struct MarkerEditorPopover: View {
                 Spacer()
                 Button(L10n.string("Done")) { apply() }
                     .buttonStyle(.capsule(.prominent, size: .small))
-                    .keyboardShortcut(.defaultAction)
+                    .keyboardShortcut(.return, modifiers: .command)
             }
         }
         .padding(AppTheme.Spacing.md)
         .frame(width: AppTheme.TimelineMarker.editorWidth)
+        .task { notesFocused = true }
     }
     private func fieldLabel(_ label: String) -> some View {
         Text(label)

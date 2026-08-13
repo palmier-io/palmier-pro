@@ -242,7 +242,6 @@
 "Couldn't align %lld clips." = "Couldn't align %lld clips.";
 "Couldn't change marker." = "Couldn't change marker.";
 "Couldn't delete marker." = "Couldn't delete marker.";
-"Couldn't delete markers." = "Couldn't delete markers.";
 "Couldn't switch angle." = "Couldn't switch angle.";
 "Couldn’t move %@ to the Trash." = "Couldn’t move %@ to the Trash.";
 "Count" = "Count";
@@ -568,7 +567,7 @@
 "Mark Range Start" = "Mark Range Start";
 "Mark Silence" = "Mark Silence";
 "Mark Speakers" = "Mark Speakers";
-"Marker" = "Marker";
+"Marker %lld" = "Marker %lld";
 "Marker name" = "Marker name";
 "Marketer" = "Marketer";
 "Master Audio Meter" = "Master Audio Meter";
@@ -606,7 +605,6 @@
 "Motion Blur" = "Motion Blur";
 "Move Clip to New Track" = "Move Clip to New Track";
 "Move playhead inside the clip" = "Move playhead inside the clip";
-"Move the playhead over the selected clip to add a marker." = "Move the playhead over the selected clip to add a marker.";
 "Move to Folder" = "Move to Folder";
 "Multicam" = "Multicam";
 "Multilingual" = "Multilingual";
@@ -755,7 +753,6 @@
 "Remove" = "Remove";
 "Remove %@" = "Remove %@";
 "Remove API key" = "Remove API key";
-"Remove All" = "Remove All";
 "Remove Dead Air" = "Remove Dead Air";
 "Remove Marker" = "Remove Marker";
 "Remove background sound and keep speech" = "Remove background sound and keep speech";
