@@ -1260,6 +1260,54 @@ final class TimelineView: NSView {
         inputController.magnify(with: event)
     }
 
+    private func keyframeContextMenu(
+        clipId: String,
+        property: AnimatableProperty,
+        frame: Int
+    ) -> NSMenu {
+        let menu = NSMenu()
+        let current = editor.interpolation(
+            clipId: clipId,
+            property: property,
+            atFrame: frame
+        ) ?? .smooth
+        let interpolationItems: [(Interpolation, String)] = [
+            (.linear, L10n.string("Linear")),
+            (.smooth, L10n.string("Smooth")),
+            (.hold, L10n.string("Hold")),
+        ]
+        for (interpolation, title) in interpolationItems {
+            let item = NSMenuItem(
+                title: title,
+                action: #selector(performSetKeyframeInterpolation(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.state = current == interpolation ? .on : .off
+            item.representedObject = [
+                "clipId": clipId,
+                "property": property.rawValue,
+                "frame": frame,
+                "interpolation": interpolation.rawValue,
+            ] as [String: Any]
+            menu.addItem(item)
+        }
+        menu.addItem(.separator())
+        let delete = NSMenuItem(
+            title: L10n.string("Delete Keyframe"),
+            action: #selector(performDeleteKeyframe(_:)),
+            keyEquivalent: ""
+        )
+        delete.target = self
+        delete.representedObject = [
+            "clipId": clipId,
+            "property": property.rawValue,
+            "frame": frame,
+        ] as [String: Any]
+        menu.addItem(delete)
+        return menu
+    }
+
     override func menu(for event: NSEvent) -> NSMenu? {
         let point = convert(event.locationInWindow, from: nil)
         if case .keyframeLane(let trackIndex, let property) = geometry.rowLocation(atY: point.y) {
@@ -1269,47 +1317,11 @@ final class TimelineView: NSView {
                 property: property,
                 geometry: geometry
             ) else { return nil }
-            let menu = NSMenu()
-            let current = editor.interpolation(
+            return keyframeContextMenu(
                 clipId: hit.clipId,
                 property: property,
-                atFrame: hit.frame
-            ) ?? .smooth
-            let interpolationItems: [(Interpolation, String)] = [
-                (.linear, L10n.string("Linear")),
-                (.smooth, L10n.string("Smooth")),
-                (.hold, L10n.string("Hold")),
-            ]
-            for (interpolation, title) in interpolationItems {
-                let item = NSMenuItem(
-                    title: title,
-                    action: #selector(performSetLaneKeyframeInterpolation(_:)),
-                    keyEquivalent: ""
-                )
-                item.target = self
-                item.state = current == interpolation ? .on : .off
-                item.representedObject = [
-                    "clipId": hit.clipId,
-                    "property": property.rawValue,
-                    "frame": hit.frame,
-                    "interpolation": interpolation.rawValue,
-                ] as [String: Any]
-                menu.addItem(item)
-            }
-            menu.addItem(.separator())
-            let delete = NSMenuItem(
-                title: L10n.string("Delete Keyframe"),
-                action: #selector(performDeleteLaneKeyframe(_:)),
-                keyEquivalent: ""
+                frame: hit.frame
             )
-            delete.target = self
-            delete.representedObject = [
-                "clipId": hit.clipId,
-                "property": property.rawValue,
-                "frame": hit.frame,
-            ] as [String: Any]
-            menu.addItem(delete)
-            return menu
         }
         let trackIndex = geometry.trackAt(y: point.y)
         let clickFrame = max(0, geometry.frameAt(x: point.x))
@@ -1342,24 +1354,11 @@ final class TimelineView: NSView {
         // kf menu before clip menu.
         if clip.mediaType == .audio,
            let kfFrame = inputController.audioVolumeKfHit(at: point, clip: clip, clipRect: clipRect) {
-            let menu = NSMenu()
-            let current = editor.interpolation(clipId: clip.id, property: .volume, atFrame: kfFrame) ?? .smooth
-            let mk: (String, Interpolation) -> NSMenuItem = { title, interp in
-                let item = NSMenuItem(title: title, action: #selector(self.performSetVolumeKfInterpolation(_:)), keyEquivalent: "")
-                item.target = self
-                item.state = current == interp ? .on : .off
-                item.representedObject = ["clipId": clip.id, "frame": kfFrame, "interp": interp.rawValue] as [String: Any]
-                return item
-            }
-            menu.addItem(mk("Linear", .linear))
-            menu.addItem(mk("Smooth", .smooth))
-            menu.addItem(mk("Hold", .hold))
-            menu.addItem(.separator())
-            let del = NSMenuItem(title: L10n.string("Delete Keyframe"), action: #selector(performDeleteVolumeKf(_:)), keyEquivalent: "")
-            del.target = self
-            del.representedObject = ["clipId": clip.id, "frame": kfFrame] as [String: Any]
-            menu.addItem(del)
-            return menu
+            return keyframeContextMenu(
+                clipId: clip.id,
+                property: .volume,
+                frame: kfFrame
+            )
         }
 
         if clip.mediaType == .audio, editor.markDeadAir,
@@ -1748,18 +1747,7 @@ final class TimelineView: NSView {
         editor.activateTimeline(timelineId)
     }
 
-    @objc private func performSetVolumeKfInterpolation(_ sender: Any?) {
-        guard let item = sender as? NSMenuItem,
-              let info = item.representedObject as? [String: Any],
-              let clipId = info["clipId"] as? String,
-              let frame = info["frame"] as? Int,
-              let raw = info["interp"] as? String,
-              let interp = Interpolation(rawValue: raw) else { return }
-        editor.setInterpolation(clipId: clipId, property: .volume, frame: frame, interpolation: interp)
-        needsDisplay = true
-    }
-
-    @objc private func performSetLaneKeyframeInterpolation(_ sender: Any?) {
+    @objc private func performSetKeyframeInterpolation(_ sender: Any?) {
         guard let item = sender as? NSMenuItem,
               let info = item.representedObject as? [String: Any],
               let clipId = info["clipId"] as? String,
@@ -1788,16 +1776,7 @@ final class TimelineView: NSView {
         needsDisplay = true
     }
 
-    @objc private func performDeleteVolumeKf(_ sender: Any?) {
-        guard let item = sender as? NSMenuItem,
-              let info = item.representedObject as? [String: Any],
-              let clipId = info["clipId"] as? String,
-              let frame = info["frame"] as? Int else { return }
-        editor.removeKeyframe(clipId: clipId, property: .volume, at: frame)
-        needsDisplay = true
-    }
-
-    @objc private func performDeleteLaneKeyframe(_ sender: Any?) {
+    @objc private func performDeleteKeyframe(_ sender: Any?) {
         guard let item = sender as? NSMenuItem,
               let info = item.representedObject as? [String: Any],
               let clipId = info["clipId"] as? String,
