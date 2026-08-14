@@ -2,15 +2,15 @@
   "changelogURL": "https://github.com/palmier-io/palmier-pro/releases",
   "entries": [
     {
-      "version": "0.7.4",
-      "date": "2026-08-11",
+      "version": "0.7.5",
+      "date": "2026-08-14",
       "sections": [
         {
           "heading": "New",
           "items": [
-            "Agent can create and reuse skills: Once you have a satisfied edit, ask agent to save it as a skill for future use.",
-            "New text style controls: Trendy Instagram inverted filled text; blur on text; color on stencil text",
-            "Canvas guide: Add a guide overlay to the canvas (grid, safe zones, format references)"
+            "New keyframe UI: Keyframe edit has moved to the timeline editor! Expand the keyframe editor from the track header, and start editing keyframes directly below the clips.",
+            "Timeline markers: You can now leave markers and comments and agent will see them automatically. Use M to add one at playhead, option+drag to split the marker to a range.",
+            "Blur and text keyframes: We have more keyframe controls on videos and text."
           ]
         }
       ]
