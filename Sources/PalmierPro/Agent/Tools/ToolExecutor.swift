@@ -362,6 +362,7 @@ final class ToolExecutor {
         case .setProjectSettings: return try setProjectSettings(editor, args)
         case .createTimeline:     return try createTimeline(editor, args)
         case .setActiveTimeline:  return try setActiveTimeline(editor, args)
+        case .manageMarkers:      return try manageMarkers(editor, args)
         case .readSkill:     return readSkill(args)
         case .manageSkills:  return try await manageSkills(args)
         case .manageProject:

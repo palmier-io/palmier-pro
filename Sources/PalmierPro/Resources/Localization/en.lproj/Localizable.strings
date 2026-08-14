@@ -67,6 +67,7 @@
 "Account settings" = "Account settings";
 "Action Safe" = "Action Safe";
 "Activity unavailable" = "Activity unavailable";
+"Add Marker (M)" = "Add Marker (M)";
 "Add Range to Chat" = "Add Range to Chat";
 "Add Text" = "Add Text";
 "Add an Anthropic API key or credits to use this model." = "Add an Anthropic API key or credits to use this model.";
@@ -173,6 +174,7 @@
 "Chat history" = "Chat history";
 "Chat with your agent! It can generate content, edit clips, organize your assets, and much more. Start by signing in, or bring your own Anthropic API key." = "Chat with your agent! It can generate content, edit clips, organize your assets, and much more. Start by signing in, or bring your own Anthropic API key.";
 "Check for Updates…" = "Check for Updates…";
+"Check the marker name, position, and duration." = "Check the marker name, position, and duration.";
 "Choose a .cube LUT file" = "Choose a .cube LUT file";
 "Choose a crop aspect" = "Choose a crop aspect";
 "Choose animation clip color" = "Choose animation clip color";
@@ -236,7 +238,10 @@
 "Could not install the on-device speech model: %@" = "Could not install the on-device speech model: %@";
 "Could not parse transcription result." = "Could not parse transcription result.";
 "Couldn't Prepare Media" = "Couldn't Prepare Media";
+"Couldn't add marker." = "Couldn't add marker.";
 "Couldn't align %lld clips." = "Couldn't align %lld clips.";
+"Couldn't change marker." = "Couldn't change marker.";
+"Couldn't delete marker." = "Couldn't delete marker.";
 "Couldn't switch angle." = "Couldn't switch angle.";
 "Couldn’t move %@ to the Trash." = "Couldn’t move %@ to the Trash.";
 "Count" = "Count";
@@ -562,6 +567,8 @@
 "Mark Range Start" = "Mark Range Start";
 "Mark Silence" = "Mark Silence";
 "Mark Speakers" = "Mark Speakers";
+"Marker %lld" = "Marker %lld";
+"Marker name" = "Marker name";
 "Marketer" = "Marketer";
 "Master Audio Meter" = "Master Audio Meter";
 "Master — defines the group's clock and transcript." = "Master — defines the group's clock and transcript.";
@@ -646,6 +653,7 @@
 "Normal" = "Normal";
 "Not selected" = "Not selected";
 "Not synced — unusable as an angle." = "Not synced — unusable as an angle.";
+"Notes" = "Notes";
 "Notifications" = "Notifications";
 "OK" = "OK";
 "Off" = "Off";
@@ -746,6 +754,7 @@
 "Remove %@" = "Remove %@";
 "Remove API key" = "Remove API key";
 "Remove Dead Air" = "Remove Dead Air";
+"Remove Marker" = "Remove Marker";
 "Remove background sound and keep speech" = "Remove background sound and keep speech";
 "Remove filler words" = "Remove filler words";
 "Remove from Queue" = "Remove from Queue";
@@ -822,6 +831,7 @@
 "Select Range" = "Select Range";
 "Select compatible clips and paste settings again." = "Select compatible clips and paste settings again.";
 "Select media files or folders to import" = "Select media files or folders to import";
+"Select the timeline to add a marker." = "Select the timeline to add a marker.";
 "Selected" = "Selected";
 "Selected Clips · %lld" = "Selected Clips · %lld";
 "Selection Tool" = "Selection Tool";
@@ -957,6 +967,7 @@
 "Threshold" = "Threshold";
 "Thumbnail Size" = "Thumbnail Size";
 "Tilt" = "Tilt";
+"Time" = "Time";
 "Timecode" = "Timecode";
 "Timeline" = "Timeline";
 "Timeline Format" = "Timeline Format";

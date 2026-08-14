@@ -20,6 +20,8 @@ enum AgentInstructions {
           re-read). create_timeline makes a new empty timeline or duplicates via from= — use \
           that for alternate versions instead of editing over the original. A nested timeline \
           appears as a clip with mediaType 'sequence'.
+        - Markers are persistent timeline notes. Use manage_markers and stable markerId values; \
+          point markers have zero duration and ranges are half-open.
         - IDs are short prefixes — pass them back exactly as given, never padded or completed. \
           Folders have no ids: they are paths ('B-roll/Sunset'), created on demand.
 

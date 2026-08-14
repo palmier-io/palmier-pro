@@ -8,7 +8,7 @@ enum SnapEngine {
     struct SnapTarget {
         let frame: Int
         let kind: Kind
-        enum Kind { case playhead, clipEdge, beat }
+        enum Kind { case playhead, clipEdge, beat, marker }
     }
 
     struct SnapResult {
@@ -33,6 +33,7 @@ enum SnapEngine {
         playheadFrame: Int = 0,
         excludeClipIds: Set<String> = [],
         includePlayhead: Bool = false,
+        markerFrames: [Int] = [],
         beatFrames: ((Clip) -> [Int])? = nil,
         includeExcludedClipBeats: Bool = false
     ) -> [SnapTarget] {
@@ -40,6 +41,7 @@ enum SnapEngine {
         if includePlayhead {
             targets.append(SnapTarget(frame: playheadFrame, kind: .playhead))
         }
+        targets += markerFrames.map { SnapTarget(frame: $0, kind: .marker) }
         for track in tracks {
             for clip in track.clips {
                 let excluded = excludeClipIds.contains(clip.id)
@@ -90,7 +92,7 @@ enum SnapEngine {
             for target in targets {
                 let threshold: Double = switch target.kind {
                 case .playhead: baseFrameThreshold * Snap.playheadMultiplier
-                case .clipEdge, .beat: baseFrameThreshold
+                case .clipEdge, .beat, .marker: baseFrameThreshold
                 }
                 let dist = abs(Double(probePos - target.frame))
                 if dist <= threshold, dist < (best?.distance ?? .infinity) {

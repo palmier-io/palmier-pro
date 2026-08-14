@@ -110,6 +110,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         case 51: // Delete/Backspace
             if handlesMediaPanelCommands, !editorViewModel.mediaPanelSelectedKeys().isEmpty {
                 editorViewModel.deleteMediaPanelItems()
+            } else if !editorViewModel.selectedTimelineMarkerIds.isEmpty {
+                editorViewModel.deleteSelectedTimelineMarker()
             } else if shift {
                 if editorViewModel.selectedGap != nil {
                     editorViewModel.rippleDeleteSelectedGap()
@@ -120,6 +122,13 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
                 editorViewModel.deleteSelectedClips()
             }
             return true
+
+        case 46: // M key
+            if mods.intersection([.command, .option, .control]).isEmpty {
+                _ = editorViewModel.addTimelineMarkerAtSelection()
+                return true
+            }
+            return false
 
         case 8: // C key
             if !cmd {
@@ -205,6 +214,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             editorViewModel.slipPreview = nil
             editorViewModel.selectedClipIds.removeAll()
             editorViewModel.clearTimelineRange()
+            editorViewModel.selectedTimelineMarkerIds = []
             editorViewModel.toolMode = .pointer
             return true
 

@@ -22,6 +22,7 @@ struct Timeline: Codable, Sendable, Equatable, Identifiable {
     var settingsConfigured: Bool = false
     var folderId: String?
     var tracks: [Track] = []
+    var markers: [TimelineMarker] = []
 
     var totalFrames: Int {
         var maxFrame = 0
@@ -29,6 +30,12 @@ struct Timeline: Codable, Sendable, Equatable, Identifiable {
             maxFrame = max(maxFrame, track.endFrame)
         }
         return maxFrame
+    }
+
+    var displayFrames: Int {
+        markers.reduce(totalFrames) { result, marker in
+            max(result, marker.startFrame + max(1, marker.durationFrames))
+        }
     }
 
     var hasAudioClips: Bool {
@@ -60,7 +67,7 @@ struct Timeline: Codable, Sendable, Equatable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, fps, width, height, settingsConfigured, folderId, tracks
+        case id, name, fps, width, height, settingsConfigured, folderId, tracks, markers
     }
 }
 
@@ -75,7 +82,8 @@ extension Timeline {
             height: try c.decode(Int.self, forKey: .height),
             settingsConfigured: (try? c.decode(Bool.self, forKey: .settingsConfigured)) ?? false,
             folderId: try? c.decode(String.self, forKey: .folderId),
-            tracks: try c.decode([Track].self, forKey: .tracks)
+            tracks: try c.decode([Track].self, forKey: .tracks),
+            markers: (try? c.decode([TimelineMarker].self, forKey: .markers)) ?? []
         )
     }
 }

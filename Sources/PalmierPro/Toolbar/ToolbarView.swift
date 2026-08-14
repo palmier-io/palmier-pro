@@ -38,6 +38,7 @@ struct ToolbarView: View {
             // Add content
             HStack(spacing: AppTheme.Spacing.md) {
                 textGlyphButton("T", help: L10n.string("Add Text"), action: { _ = editor.addTextClip() })
+                markerButton
             }
 
             Spacer()
@@ -69,6 +70,21 @@ struct ToolbarView: View {
         }
         .padding(.horizontal, AppTheme.Spacing.md)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var markerButton: some View {
+        Button { _ = editor.addTimelineMarkerAtSelection() } label: {
+            TimelineMarkerShape()
+                .fill(AppTheme.Text.secondaryColor)
+                .frame(
+                    width: AppTheme.TimelineMarker.flagWidth,
+                    height: AppTheme.TimelineMarker.flagHeight
+                )
+                .frame(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.mdLg)
+                .hoverHighlight()
+        }
+        .buttonStyle(.plain)
+        .help(L10n.string("Add Marker (M)"))
     }
 
     private func toolbarButton(_ systemName: String, help: String, action: @escaping () -> Void) -> some View {

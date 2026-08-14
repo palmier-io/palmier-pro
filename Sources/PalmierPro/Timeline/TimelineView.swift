@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// AppKit drawing view; input is delegated to TimelineInputController.
-final class TimelineView: NSView {
+final class TimelineView: NSView, NSPopoverDelegate {
     unowned var editor: EditorViewModel
     let keyframeLaneState: TimelineKeyframeLaneState
     private(set) var inputController: TimelineInputController!
@@ -21,6 +21,8 @@ final class TimelineView: NSView {
     private var cachedAngleLabels: [String: [String: String]] = [:]
     private(set) var hoveredClipId: String?
     private let canvas = TimelineCanvasView()
+    private var markerPopover: NSPopover?
+    private var markerEditorPreview: TimelineMarker?
 
     // MARK: - Init
 
@@ -31,6 +33,7 @@ final class TimelineView: NSView {
         self.inputController = TimelineInputController(editor: editor, view: self)
         editor.mediaVisualCache.timelineView = self
         editor.onCancelTimelineDrag = { [weak self] in self?.inputController.cancelActiveDrag() }
+        editor.onPresentTimelineMarkerEditor = { [weak self] in self?.presentMarkerEditor(id: $0) }
         wantsLayer = true
         configureAgentActivityLayers()
         updateAppearanceColors()
@@ -185,7 +188,7 @@ final class TimelineView: NSView {
                     editor.timelineVisibleWidth = newVisibleWidth
                     let minZoom = editor.minZoomScale
                     if isFirstLayout {
-                        editor.zoomScale = editor.timeline.totalFrames == 0
+                        editor.zoomScale = editor.timeline.displayFrames == 0
                             ? Defaults.pixelsPerFrame
                             : minZoom
                     } else if editor.zoomScale < minZoom {
@@ -195,7 +198,7 @@ final class TimelineView: NSView {
             }
         }
 
-        let totalFrames = editor.timeline.totalFrames
+        let totalFrames = editor.timeline.displayFrames
         let contentWidth = editor.zoomScale * Double(totalFrames) + visibleSize.width * 0.5
         let geo = geometry
         let contentHeight: CGFloat
@@ -311,6 +314,11 @@ final class TimelineView: NSView {
             drawRippleInsertGapBand(preview: rippleInsertPreview, geometry: geo, context: ctx)
         }
         drawClips(geometry: geo, dirtyRect: dirtyRect, context: ctx, rippleInsertPreview: rippleInsertPreview)
+        var displayedMarkers = editor.displayedTimelineMarkers(preview: markerEditorPreview)
+        if case .timelineMarker(let drag) = inputController.dragState,
+           let index = displayedMarkers.firstIndex(where: { $0.id == drag.original.id }) {
+            displayedMarkers[index] = drag.value
+        }
         syncAgentActivityLayers()
         drawGapSelection(geometry: geo, context: ctx)
         syncGeneratingClipOverlays(geometry: geo)
@@ -369,10 +377,58 @@ final class TimelineView: NSView {
         )
         drawTimelineRangeSelectionRulerFill(geometry: geo, scrollOffset: scrollOffset, context: ctx)
         drawTimelineRangeSelectionEdges(geometry: geo, scrollOffset: scrollOffset, context: ctx)
+        TimelineMarkerRenderer.draw(
+            displayedMarkers,
+            selectedIds: editor.selectedTimelineMarkerIds,
+            geometry: geo,
+            rulerMinY: scrollOffset.y,
+            context: ctx
+        )
     }
 
     func updatePlayheadLayer() { playheadOverlay.update() }
     func updateAgentActivityOverlay() { syncAgentActivityLayers() }
+
+    func presentMarkerEditor(id: String) {
+        guard let marker = editor.timelineMarker(id: id),
+              let displayed = editor.displayedTimelineMarkers().first(where: { $0.id == id }) else { return }
+        let rulerY = enclosingScrollView?.contentView.bounds.origin.y ?? 0
+        let anchor = TimelineMarkerRenderer.anchorRect(
+            for: displayed, geometry: geometry, rulerMinY: rulerY
+        )
+        dismissMarkerEditor()
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.delegate = self
+        popover.contentViewController = NSHostingController(rootView:
+            MarkerEditorPopover(
+                marker: marker,
+                fps: editor.timeline.fps,
+                onPreview: { [weak self] marker in
+                    self?.markerEditorPreview = marker
+                    self?.needsDisplay = true
+                },
+                onDismiss: { [weak self] in self?.dismissMarkerEditor() }
+            )
+            .environment(editor)
+        )
+        markerPopover = popover
+        popover.show(relativeTo: anchor, of: self, preferredEdge: .minY)
+    }
+
+    private func dismissMarkerEditor() {
+        markerEditorPreview = nil
+        markerPopover?.close()
+        needsDisplay = true
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        guard let closed = notification.object as? NSPopover,
+              closed === markerPopover else { return }
+        markerEditorPreview = nil
+        markerPopover = nil
+        needsDisplay = true
+    }
 
     // MARK: - Clip drawing with ghost support
 
@@ -1898,6 +1954,7 @@ final class TimelineView: NSView {
             .reduce(0) { $0 + editor.clipDurationFrames(for: $1, segment: externalDragSegments[$1.id]) }
         let targets = SnapEngine.collectTargets(
             tracks: editor.timeline.tracks,
+            markerFrames: editor.timelineMarkerSnapFrames(),
             beatFrames: editor.beatSnapFrames(for:)
         )
         if let snap = SnapEngine.findSnap(

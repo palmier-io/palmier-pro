@@ -884,10 +884,7 @@ enum ClipRenderer {
             .font: NSFont.systemFont(ofSize: AppTheme.FontSize.xs, weight: .medium),
             .foregroundColor: clip.sourceClipType.themeForegroundColor,
         ]
-        let attributed = NSMutableAttributedString(string: text, attributes: baseAttrs)
-        if clip.linkGroupId != nil {
-            attributed.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: NSRange(location: 0, length: (name as NSString).length))
-        }
+        let attributed = NSAttributedString(string: text, attributes: baseAttrs)
         let size = attributed.size()
         let inset = AppTheme.Spacing.sm
         let origin = NSPoint(

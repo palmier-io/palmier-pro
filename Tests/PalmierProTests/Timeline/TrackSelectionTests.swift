@@ -16,6 +16,7 @@ struct TrackSelectionTests {
             ]),
         ])
         editor.selectedClipIds = ["audio"]
+        editor.selectedTimelineMarkerIds = ["marker"]
         editor.selectedGap = GapSelection(
             trackIndex: 1,
             range: FrameRange(start: 60, end: 90)
@@ -24,6 +25,7 @@ struct TrackSelectionTests {
         #expect(editor.selectAllClips(onTrack: "target"))
         #expect(editor.selectedClipIds == ["video", "title"])
         #expect(editor.selectedGap == nil)
+        #expect(editor.selectedTimelineMarkerIds.isEmpty)
     }
 
     @Test func unavailableTrackPreservesSelection() {

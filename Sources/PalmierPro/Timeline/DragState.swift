@@ -12,6 +12,7 @@ enum DragState {
     case fadeKnee(FadeKneeDrag)
     case marquee(MarqueeDrag)
     case timelineRange(TimelineRangeDrag)
+    case timelineMarker(TimelineMarkerDrag)
 
     struct KeyframeDrag {
         let clipId: String
@@ -108,9 +109,17 @@ enum DragState {
         let origin: NSPoint
         var current: NSRect = .zero
         var baseSelection: Set<String> = []
+        var baseMarkerSelection: Set<String> = []
     }
 
     struct TimelineRangeDrag {
         let anchorFrame: Int
+    }
+
+    struct TimelineMarkerDrag {
+        let original: TimelineMarker
+        let adjustsDuration: Bool
+        let grabFrame: Int
+        var value: TimelineMarker
     }
 }
