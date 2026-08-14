@@ -301,6 +301,28 @@ struct CompositionBuildAudioTrackTests {
         #expect(audioMappings.first.flatMap(clipIds) == ["a1", "a2"])
     }
 
+    @Test func mutedAudioTrackIsExcludedFromComposition() async throws {
+        let audioURL = try makeSilentWav(durationSeconds: 1)
+        defer { try? FileManager.default.removeItem(at: audioURL) }
+
+        let clip = Fixtures.clip(
+            id: "muted", mediaRef: "audio", mediaType: .audio,
+            start: 0, duration: 24
+        )
+        var track = Fixtures.audioTrack(clips: [clip])
+        track.muted = true
+        let timeline = Fixtures.timeline(fps: 24, tracks: [track])
+
+        let result = try await CompositionBuilder.build(
+            timeline: timeline,
+            resolveURL: { _ in audioURL },
+            renderSize: CGSize(width: 320, height: 180)
+        )
+
+        #expect(result.trackMappings.allSatisfy { $0.isVideo })
+        #expect(try await result.composition.loadTracks(withMediaType: .audio).isEmpty)
+    }
+
     @Test func unityAudioClipResetsVolumeAfterMutedClipOnSharedCompositionTrack() async throws {
         let audioURL = try makeSilentWav(durationSeconds: 3)
         defer { try? FileManager.default.removeItem(at: audioURL) }

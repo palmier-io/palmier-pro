@@ -65,6 +65,7 @@ enum CompositionBuilder {
                 .filter { $0.mediaType != .text }
             guard !sortedClips.isEmpty else { continue }
             if track.type == .audio {
+                guard !track.muted else { continue }
                 try await insertAudioLane(clips: sortedClips, parentTrackIndex: trackIdx, nest: nil, depth: 0, ctx: ctx)
             } else {
                 try await insertVideoLane(clips: sortedClips, parentTrackIndex: trackIdx, nestCarrier: nil, depth: 0, ctx: ctx)
