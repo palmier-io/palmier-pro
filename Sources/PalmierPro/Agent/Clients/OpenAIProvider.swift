@@ -10,13 +10,31 @@ enum OpenAIRequestBody {
     ) -> [String: Any] {
         precondition(model.provider == .openAI)
         precondition(model.supportedReasoningEfforts.contains(reasoningEffort))
+        return buildOpenAIFormat(
+            modelID: model.rawValue,
+            maxOutputTokens: model.maxOutputTokens,
+            reasoningEffort: reasoningEffort,
+            system: system,
+            tools: tools,
+            messages: messages
+        )
+    }
+
+    static func buildOpenAIFormat(
+        modelID: String,
+        maxOutputTokens: Int,
+        reasoningEffort: AgentReasoningEffort = .medium,
+        system: String,
+        tools: [AgentToolSchema],
+        messages: [AgentRequestMessage]
+    ) -> [String: Any] {
         var body: [String: Any] = [
-            "model": model.rawValue,
+            "model": modelID,
             "store": false,
             "stream": true,
-            "max_output_tokens": model.maxOutputTokens,
+            "max_output_tokens": maxOutputTokens,
             "instructions": system,
-            "input": inputItems(messages: messages, model: model),
+            "input": inputItems(messages: messages, modelID: modelID),
             "reasoning": ["summary": "auto", "effort": reasoningEffort.rawValue],
         ]
         if !tools.isEmpty {
@@ -33,7 +51,7 @@ enum OpenAIRequestBody {
         return body
     }
 
-    private static func inputItems(messages: [AgentRequestMessage], model: AgentModel) -> [[String: Any]] {
+    private static func inputItems(messages: [AgentRequestMessage], modelID: String) -> [[String: Any]] {
         var items: [[String: Any]] = []
         for message in messages {
             var content: [[String: Any]] = []
@@ -56,8 +74,8 @@ enum OpenAIRequestBody {
                     switch block {
                     case .thinking, .redactedThinking:
                         continue
-                    case .openAIReasoning(let summary, let encryptedContent, let itemID, let reasoningModel):
-                        guard reasoningModel == model, !encryptedContent.isEmpty else { continue }
+                    case .openAIReasoning(let summary, let encryptedContent, let itemID, _):
+                        guard !encryptedContent.isEmpty else { continue }
                         flushMessage()
                         var item: [String: Any] = [
                             "type": "reasoning",

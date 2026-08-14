@@ -141,7 +141,7 @@ enum ImageVideoGenerator {
             guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
                 throw ImageVideoError.imageLoadFailed
             }
-            context.draw(cgImage, in: fullRect)
+            context.draw(cgImage, in: aspectFitRect(for: cgImage, in: fullRect))
         }
         return buffer
     }
@@ -203,6 +203,24 @@ enum ImageVideoGenerator {
         } catch {
             guard fm.fileExists(atPath: outputURL.path) else { throw error }
         }
+    }
+
+    private static func aspectFitRect(for cgImage: CGImage, in targetRect: CGRect) -> CGRect {
+        let imageWidth = CGFloat(cgImage.width)
+        let imageHeight = CGFloat(cgImage.height)
+        guard imageWidth > 0, imageHeight > 0 else { return targetRect }
+        let targetAspect = targetRect.width / targetRect.height
+        let imageAspect = imageWidth / imageHeight
+        if abs(targetAspect - imageAspect) < 0.001 { return targetRect }
+        let scale = min(targetRect.width / imageWidth, targetRect.height / imageHeight)
+        let drawWidth = imageWidth * scale
+        let drawHeight = imageHeight * scale
+        return CGRect(
+            x: targetRect.midX - drawWidth / 2,
+            y: targetRect.midY - drawHeight / 2,
+            width: drawWidth,
+            height: drawHeight
+        )
     }
 
     enum ImageVideoError: LocalizedError {

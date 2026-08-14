@@ -142,21 +142,45 @@ struct AgentPanelView: View {
 
     private var modelPicker: some View {
         Menu {
-            ForEach(service.availableModels, id: \.self) { model in
-                Button {
-                    service.model = model
-                } label: {
-                    Text(verbatim: model.displayName)
+            Section(L10n.string("Built-in")) {
+                ForEach(service.availableModels, id: \.self) { model in
+                    Button {
+                        service.clearCustomSelection()
+                        service.model = model
+                    } label: {
+                        menuOptionLabel(model.displayName, selected: !service.isCustomModelSelected && service.model == model)
+                    }
+                    .disabled(!service.canSelectModel(model))
                 }
-                .disabled(!service.canSelectModel(model))
+            }
+            if !service.customProviders.isEmpty {
+                Section(L10n.string("Custom")) {
+                    ForEach(service.customProviders) { provider in
+                        Button {
+                            service.selectCustomProvider(provider)
+                        } label: {
+                            menuOptionLabel(
+                                "\(provider.name) · \(provider.modelID)",
+                                selected: service.selectedCustomProviderID == provider.id
+                            )
+                        }
+                    }
+                }
             }
         } label: {
-            footerPickerLabel(service.model.displayName) {
-                switch service.model.provider {
-                case .anthropic:
-                    ExternalAgentLogo(agent: .claude, size: AppTheme.IconSize.xs)
-                case .openAI:
-                    ProviderLogo(iconKey: "openai", size: AppTheme.IconSize.xs)
+            footerPickerLabel(modelPickerDisplayTitle) {
+                if let custom = service.activeCustomProvider {
+                    Image(systemName: "server.rack")
+                        .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.medium))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
+                } else {
+                    switch service.model.provider {
+                    case .anthropic:
+                        ExternalAgentLogo(agent: .claude, size: AppTheme.IconSize.xs)
+                    case .openAI:
+                        ProviderLogo(iconKey: "openai", size: AppTheme.IconSize.xs)
+                    }
                 }
             }
         }
@@ -164,8 +188,15 @@ struct AgentPanelView: View {
         .menuIndicator(.hidden)
         .layoutPriority(1)
         .accessibilityLabel(L10n.string("Model"))
-        .accessibilityValue(Text(verbatim: service.model.displayName))
+        .accessibilityValue(Text(verbatim: modelPickerDisplayTitle))
         .help(L10n.string("Model"))
+    }
+
+    private var modelPickerDisplayTitle: String {
+        if let custom = service.activeCustomProvider {
+            return "\(custom.name) · \(custom.modelID)"
+        }
+        return service.model.displayName
     }
 
     private var reasoningEffortPicker: some View {
@@ -227,7 +258,15 @@ struct AgentPanelView: View {
 
     @ViewBuilder
     private var byokIndicator: some View {
-        if let provider = service.activeBYOKProvider {
+        if let custom = service.activeCustomProvider {
+            Image(systemName: "key")
+                .font(.system(size: AppTheme.FontSize.xs))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Text(verbatim: "using \(custom.name) API key"))
+                .help("Streaming through your \(custom.name) API key")
+        } else if let provider = service.activeBYOKProvider {
             Image(systemName: "key")
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)

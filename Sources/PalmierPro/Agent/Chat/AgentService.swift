@@ -10,6 +10,10 @@ final class AgentService {
     private let userDefaults: UserDefaults
     private var reasoningEfforts: [AgentModel: AgentReasoningEffort]
 
+    var customProviders: [CustomAgentProvider] = []
+    var selectedCustomProviderID: UUID?
+    private var customAPIKeyStatus: [UUID: Bool] = [:]
+
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
         self.model = userDefaults.string(forKey: "agentModel")
@@ -19,6 +23,7 @@ final class AgentService {
             ($0, AgentReasoningPreferences.effort(for: $0, defaults: userDefaults))
         })
         reloadAPIKeys()
+        reloadCustomProviders()
         apiKeyObserver = NotificationCenter.default.addObserver(
             forName: .agentAPIKeyChanged,
             object: nil,
@@ -34,6 +39,27 @@ final class AgentService {
         Task { [weak self] in
             let credentials = await AgentCredentialSnapshot.loadFromKeychain()
             self?.credentials = credentials
+            if let providers = self?.customProviders {
+                var status: [UUID: Bool] = [:]
+                for provider in providers {
+                    let key = await provider.loadAPIKey()
+                    status[provider.id] = !key.isEmpty
+                }
+                self?.customAPIKeyStatus = status
+            }
+        }
+    }
+
+    private func reloadCustomProviders() {
+        Task { [weak self] in
+            let providers = await CustomAgentProvider.loadAll()
+            var status: [UUID: Bool] = [:]
+            for provider in providers {
+                let key = await provider.loadAPIKey()
+                status[provider.id] = !key.isEmpty
+            }
+            self?.customProviders = providers
+            self?.customAPIKeyStatus = status
         }
     }
 
@@ -43,8 +69,14 @@ final class AgentService {
         }
     }
 
+    var isCustomModelSelected: Bool { selectedCustomProviderID != nil }
+
     var route: AgentRoute {
-        AgentRouting.route(
+        if let customID = selectedCustomProviderID,
+           let _ = customProviders.first(where: { $0.id == customID }) {
+            return .direct
+        }
+        return AgentRouting.route(
             model: model,
             credentials: credentials,
             hasHostedCredits: AccountService.shared.isSignedIn && AccountService.shared.hasCredits,
@@ -53,7 +85,11 @@ final class AgentService {
     }
 
     var canStream: Bool {
-        route != .unavailable
+        if let customID = selectedCustomProviderID {
+            return customProviders.contains(where: { $0.id == customID })
+                && (customAPIKeyStatus[customID] ?? false)
+        }
+        return route != .unavailable
     }
 
     var availableModels: [AgentModel] { AgentModel.allCases }
@@ -65,7 +101,13 @@ final class AgentService {
     }
 
     var activeBYOKProvider: AgentProvider? {
-        route == .direct ? model.provider : nil
+        if isCustomModelSelected { return nil }
+        return route == .direct ? model.provider : nil
+    }
+
+    var activeCustomProvider: CustomAgentProvider? {
+        guard let id = selectedCustomProviderID else { return nil }
+        return customProviders.first { $0.id == id }
     }
 
     var reasoningEffort: AgentReasoningEffort {
@@ -78,13 +120,46 @@ final class AgentService {
     }
 
     func snapshotRunSettings() -> AgentRunSettings {
-        AgentRunSettings(model: model, reasoningEffort: reasoningEffort)
+        if let customID = selectedCustomProviderID,
+           let provider = customProviders.first(where: { $0.id == customID }) {
+            return AgentRunSettings(model: model, reasoningEffort: .medium, customProvider: provider)
+        }
+        return AgentRunSettings(model: model, reasoningEffort: reasoningEffort)
+    }
+
+    func selectCustomProvider(_ provider: CustomAgentProvider) {
+        selectedCustomProviderID = provider.id
+        streamError = nil
+    }
+
+    func clearCustomSelection() {
+        selectedCustomProviderID = nil
+    }
+
+    func addCustomProvider(_ provider: CustomAgentProvider) {
+        customProviders.append(provider)
+        Task {
+            await CustomAgentProvider.saveAll(customProviders)
+        }
+    }
+
+    func removeCustomProvider(id: UUID) {
+        customProviders.removeAll { $0.id == id }
+        if selectedCustomProviderID == id { selectedCustomProviderID = nil }
+        Task {
+            await CustomAgentProvider.saveAll(customProviders)
+        }
     }
 
     private func selectClient(for settings: AgentRunSettings) async -> (any AgentClient)? {
-        // Re-read keys so changes made mid-session affect the next send.
         let credentials = await AgentCredentialSnapshot.loadFromKeychain()
         self.credentials = credentials
+
+        if let custom = settings.customProvider {
+            let key = await custom.loadAPIKey()
+            guard !key.isEmpty else { return nil }
+            return BYOKClient(apiKey: key, settings: settings, customProvider: custom)
+        }
 
         switch AgentRouting.route(
             model: settings.model,
@@ -358,7 +433,7 @@ final class AgentService {
         )
         let analyticsPayload: [String: Any] = [
             "project_id": editor?.projectId ?? "unknown",
-            "model": runSettings.model.rawValue,
+            "model": runSettings.customProvider?.modelID ?? runSettings.model.rawValue,
         ]
         if sessionActivation.activate() {
             Analytics.capture(.agentSessionStarted, properties: analyticsPayload)
@@ -456,7 +531,7 @@ final class AgentService {
 
                 let finalSnapshot = try await presentAgentStream(
                     stream,
-                    model: chosenModel
+                    model: settings.customProvider != nil ? .defaultModel : chosenModel
                 ) { [weak self] snapshot in
                     await self?.applyStreamSnapshot(
                         snapshot,

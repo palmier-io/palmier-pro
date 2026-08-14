@@ -121,6 +121,59 @@ enum AgentModel: String, CaseIterable, Codable, Sendable {
 struct AgentRunSettings: Equatable, Sendable {
     let model: AgentModel
     let reasoningEffort: AgentReasoningEffort
+    let customProvider: CustomAgentProvider?
+
+    init(model: AgentModel, reasoningEffort: AgentReasoningEffort, customProvider: CustomAgentProvider? = nil) {
+        self.model = model
+        self.reasoningEffort = reasoningEffort
+        self.customProvider = customProvider
+    }
+}
+
+struct CustomAgentProvider: Identifiable, Codable, Equatable, Sendable {
+    let id: UUID
+    var name: String
+    var baseURL: URL
+    var modelID: String
+
+    init(id: UUID = UUID(), name: String, baseURL: URL, modelID: String) {
+        self.id = id
+        self.name = name
+        self.baseURL = baseURL
+        self.modelID = modelID
+    }
+
+    private static let userDefaultsKey = "customAgentProviders"
+
+    @concurrent
+    static func loadAll() async -> [CustomAgentProvider] {
+        guard let data = UserDefaults.standard.data(forKey: userDefaultsKey),
+              let providers = try? JSONDecoder().decode([CustomAgentProvider].self, from: data) else { return [] }
+        return providers
+    }
+
+    @concurrent
+    static func saveAll(_ providers: [CustomAgentProvider]) async {
+        guard let data = try? JSONEncoder().encode(providers) else { return }
+        UserDefaults.standard.set(data, forKey: userDefaultsKey)
+    }
+
+    private var keychainAccount: String { "custom-agent-\(id.uuidString)" }
+
+    @concurrent
+    func loadAPIKey() async -> String {
+        KeychainStore.load(account: keychainAccount) ?? ""
+    }
+
+    @concurrent
+    func setAPIKey(_ key: String?) async {
+        if let key {
+            KeychainStore.save(key, account: keychainAccount)
+        } else {
+            KeychainStore.delete(account: keychainAccount)
+        }
+        NotificationCenter.default.post(name: .agentAPIKeyChanged, object: id.uuidString)
+    }
 }
 
 enum AgentReasoningPreferences {
@@ -157,6 +210,10 @@ enum AgentRouting {
         if !credentials[model.provider].isEmpty { return .direct }
         if model.requiresPaidHostedPlan && !hasPaidPlan { return .unavailable }
         return hasHostedCredits ? .hosted : .unavailable
+    }
+
+    static func routeCustom(customAPIKey: String) -> AgentRoute {
+        !customAPIKey.isEmpty ? .direct : .unavailable
     }
 }
 
@@ -240,17 +297,26 @@ enum AgentStreamEvent: Equatable, Sendable {
 
 enum AgentClientTransportError: LocalizedError {
     case missingAPIKey(AgentProvider)
+    case missingCustomAPIKey(String)
     case httpError(provider: AgentProvider, status: Int, body: String)
+    case customHTTPError(providerName: String, status: Int, body: String)
     case streamError(provider: AgentProvider, message: String)
+    case customStreamError(providerName: String, message: String)
 
     var errorDescription: String? {
         switch self {
         case .missingAPIKey(let provider):
             "No \(provider.displayName) API key is set."
+        case .missingCustomAPIKey(let name):
+            "No API key is set for \(name)."
         case .httpError(let provider, let status, let body):
             "\(provider.displayName) API error (\(status)): \(body.prefix(500))"
+        case .customHTTPError(let name, let status, let body):
+            "\(name) API error (\(status)): \(body.prefix(500))"
         case .streamError(let provider, let message):
             "\(provider.displayName) stream error: \(message)"
+        case .customStreamError(let name, let message):
+            "\(name) stream error: \(message)"
         }
     }
 }
@@ -307,6 +373,16 @@ extension AgentRunSettings {
         tools: [AgentToolSchema],
         messages: [AgentRequestMessage]
     ) -> [String: Any] {
+        if let customProvider {
+            return OpenAIRequestBody.buildOpenAIFormat(
+                modelID: customProvider.modelID,
+                maxOutputTokens: 16_000,
+                reasoningEffort: reasoningEffort,
+                system: system,
+                tools: tools,
+                messages: messages
+            )
+        }
         switch model.provider {
         case .anthropic:
             AnthropicRequestBody.build(
@@ -339,5 +415,14 @@ extension AgentProvider {
         case .openAI:
             try await OpenAISSE.parse(bytes: bytes, continuation: continuation)
         }
+    }
+}
+
+enum CustomSSE {
+    static func parse(
+        bytes: URLSession.AsyncBytes,
+        continuation: AsyncThrowingStream<AgentStreamEvent, Error>.Continuation
+    ) async throws {
+        try await OpenAISSE.parse(bytes: bytes, continuation: continuation)
     }
 }
