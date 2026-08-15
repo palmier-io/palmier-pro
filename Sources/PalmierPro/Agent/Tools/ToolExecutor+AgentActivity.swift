@@ -10,7 +10,8 @@ extension ToolName {
         .manageClipLinks,
         .addClips, .insertClips, .moveClips, .removeClips,
         .splitClips, .rippleDeleteRanges, .swapClipMedia,
-        .setClipProperties, .copyClipSettings, .setKeyframes, .applyLayout, .syncClips, .undo,
+        .setClipProperties, .cropToSubject, .copyClipSettings, .setKeyframes,
+        .applyLayout, .syncClips, .undo,
         .manageMulticam, .changeCam,
         .removeWords, .removeSilence,
         .addTexts, .updateText, .addCaptions,
@@ -111,6 +112,19 @@ extension ToolExecutor {
         case .captureFrame:
             if let frame = args.int("timelineFrame"), frame >= 0, frame < Int.max {
                 range = clampedTimelineReadRange(start: frame, end: frame + 1, editor: editor)
+            }
+        case .cropToSubject:
+            if let clipId = args.string("clipId"),
+               let clip = editor.clipFor(id: clipId) {
+                readClipIds.insert(clipId)
+                let (midpoint, overflow) = clip.startFrame.addingReportingOverflow(
+                    clip.durationFrames / 2
+                )
+                if let frame = args.int("atFrame") ?? (overflow ? nil : midpoint),
+                   frame >= 0,
+                   frame < Int.max {
+                    range = clampedTimelineReadRange(start: frame, end: frame + 1, editor: editor)
+                }
             }
         default:
             return nil

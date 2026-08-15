@@ -34,6 +34,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case rippleDeleteRanges = "ripple_delete_ranges"
     case swapClipMedia = "swap_clip_media"
     case setClipProperties = "set_clip_properties"
+    case cropToSubject = "crop_to_subject"
     case copyClipSettings = "copy_clip_settings"
     case setKeyframes = "set_keyframes"
     case applyLayout = "apply_layout"
@@ -565,6 +566,28 @@ enum ToolDefinitions {
                     ],
                 ],
                 required: ["clipIds"]
+            )
+        ),
+        AgentTool(
+            name: .cropToSubject,
+            description: "Crop a video or image clip to a visually described rectangular subject, such as \"the streamer's PIP\" or \"the receipt on the desk.\" This is a vision-guided preview/commit workflow; the tool does not guess coordinates by itself.\n\nFirst call with clipId and prompt only. It returns the raw source frame with a 10×10 A1–J10 grid. Identify the requested subject in that image and estimate its normalized top-left-origin bounds. Call again with bounds to preview: the first returned image shows the proposed rectangle over the source and the second is the cropped result. Refine with more preview calls if needed. Only the final call sets apply=true; that commits one undoable static crop and clears crop keyframes. Preview calls never mutate the timeline or create undo entries.\n\nBounds are absolute source coordinates from 0 to 1: left < right and top < bottom. They are converted to the clip's crop insets without changing its transform or placement. atFrame selects the representative timeline frame and must be inside the clip; omit it to use the midpoint. For moving subjects use set_keyframes after identifying bounds at multiple frames.",
+            inputSchema: objectSchema(
+                properties: [
+                    "clipId": ["type": "string", "description": "Video or image clip ID from get_timeline."],
+                    "prompt": ["type": "string", "description": "The visual region to keep, stated plainly, e.g. \"the streamer's PIP\"."],
+                    "atFrame": ["type": "integer", "description": "Optional timeline frame inside the clip to inspect. Defaults to the clip midpoint."],
+                    "bounds": objectSchema(
+                        properties: [
+                            "left": ["type": "number", "minimum": 0, "maximum": 1],
+                            "top": ["type": "number", "minimum": 0, "maximum": 1],
+                            "right": ["type": "number", "minimum": 0, "maximum": 1],
+                            "bottom": ["type": "number", "minimum": 0, "maximum": 1],
+                        ],
+                        required: ["left", "top", "right", "bottom"]
+                    ),
+                    "apply": ["type": "boolean", "description": "Omit or false to preview without mutation. Set true only after the returned crop preview is correct."],
+                ],
+                required: ["clipId", "prompt"]
             )
         ),
         AgentTool(

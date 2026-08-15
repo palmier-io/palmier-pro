@@ -9,6 +9,11 @@ struct RenderedFrame: Sendable {
     let actualSourceSeconds: Double?
 }
 
+struct SourceFramePreview: Sendable {
+    let image: CGImage
+    let actualSourceSeconds: Double
+}
+
 enum FrameCaptureRenderer {
     private static let renderGate = AsyncSemaphore(value: 2)
     private static let mediaDurationReceiptTolerance = 0.001
@@ -80,6 +85,16 @@ enum FrameCaptureRenderer {
 
     @concurrent
     static func media(url: URL, sourceSeconds: Double) async throws -> RenderedFrame {
+        let preview = try await sourcePreview(url: url, sourceSeconds: sourceSeconds)
+        return try stage(preview.image, actualSourceSeconds: preview.actualSourceSeconds)
+    }
+
+    @concurrent
+    static func sourcePreview(
+        url: URL,
+        sourceSeconds: Double,
+        maximumDimension: CGFloat? = nil
+    ) async throws -> SourceFramePreview {
         try await renderGate.wait()
         defer { Task { await renderGate.signal() } }
         try Task.checkCancellation()
@@ -102,12 +117,15 @@ enum FrameCaptureRenderer {
 
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
+        if let maximumDimension {
+            generator.maximumSize = CGSize(width: maximumDimension, height: maximumDimension)
+        }
         generator.requestedTimeToleranceBefore = minimumFrameDuration
         generator.requestedTimeToleranceAfter = request.capturesLastFrame ? .zero : minimumFrameDuration
 
         let generated = try await generateImage(using: generator, at: request.time)
-        return try stage(
-            generated.image,
+        return SourceFramePreview(
+            image: generated.image,
             actualSourceSeconds: SourceMediaTimebase.relativeSeconds(
                 absoluteTime: generated.actualTime,
                 trackStart: timeRange.start
