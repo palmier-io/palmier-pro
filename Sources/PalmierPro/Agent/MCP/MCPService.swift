@@ -78,7 +78,12 @@ final class MCPService {
 
     nonisolated static func registerTools(on server: Server, executor: ToolExecutor) async {
         let tools: [Tool] = ToolDefinitions.mcpServer.map { def in
-            Tool(name: def.name.rawValue, description: def.description, inputSchema: def.mcpSchemaValue)
+            Tool(
+                name: def.name.rawValue,
+                description: def.description,
+                inputSchema: def.mcpSchemaValue,
+                _meta: def.name == .generateImage ? MCPPreviewApp.toolMeta : nil
+            )
         }
 
         await server.withMethodHandler(ListTools.self) { _ in
@@ -111,6 +116,7 @@ final class MCPService {
                 description: "Available AI image generation models and their capabilities",
                 mimeType: "application/json"
             ),
+            MCPPreviewApp.resource,
         ]
 
         await server.withMethodHandler(ListResources.self) { _ in
@@ -123,7 +129,7 @@ final class MCPService {
     }
 
     @MainActor
-    private static func readResource(uri: String) -> ReadResource.Result {
+    private static func readResource(uri: String) async -> ReadResource.Result {
         switch uri {
         case "palmier://models/video":
             let json = ToolExecutor.jsonString(VideoModelConfig.allModels.map { ToolExecutor.videoModelInfo($0) }) ?? "[]"
@@ -131,6 +137,10 @@ final class MCPService {
         case "palmier://models/image":
             let json = ToolExecutor.jsonString(ImageModelConfig.allModels.map { ToolExecutor.imageModelInfo($0) }) ?? "[]"
             return .init(contents: [.text(json, uri: uri, mimeType: "application/json")])
+        case MCPPreviewApp.resourceURI:
+            return .init(contents: [
+                .text(MCPPreviewApp.html, uri: uri, mimeType: MCPPreviewApp.mimeType, _meta: MCPPreviewApp.resourceMeta)
+            ])
         default:
             return .init(contents: [.text("Unknown resource: \(uri)", uri: uri)])
         }

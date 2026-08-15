@@ -1083,7 +1083,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .generateImage,
-            description: "Starts an async AI image generation. Returns a placeholder asset ID immediately; generation runs in the background. Costs real money and is not undoable.",
+            description: "Starts an async AI image generation. Returns a placeholder asset ID. In MCP Apps hosts, an inline preview appears immediately and fills in when Palmier finishes generating. Costs real money and is not undoable.",
             inputSchema: objectSchema(
                 properties: [
                     "prompt": ["type": "string", "description": "Text description of the image to generate"],

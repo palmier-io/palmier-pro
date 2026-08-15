@@ -32,7 +32,7 @@ extension ToolExecutor {
         return match.id
     }
 
-    func generate(_ editor: EditorViewModel, _ args: [String: Any], type: ClipType) throws -> ToolResult {
+    func generate(_ editor: EditorViewModel, _ args: [String: Any], type: ClipType) async throws -> ToolResult {
         let prompt = args["prompt"] == nil ? "" : try args.requireString("prompt")
         guard AccountService.shared.isSignedIn else {
             throw ToolError("Generation requires signing in to Palmier. Tell the user to sign in.")
@@ -69,7 +69,7 @@ extension ToolExecutor {
             }
             return try generateVideoText(editor, args, prompt: prompt, model: model)
         case .image:
-            return try generateImage(editor, args, prompt: prompt)
+            return try await generateImage(editor, args, prompt: prompt)
         case .audio:
             throw ToolError("internal: audio generation is dispatched via the async path")
         case .text:
@@ -254,7 +254,7 @@ extension ToolExecutor {
 
     private func generateImage(
         _ editor: EditorViewModel, _ args: [String: Any], prompt: String
-    ) throws -> ToolResult {
+    ) async throws -> ToolResult {
         guard !prompt.isEmpty else { throw ToolError("Empty prompt") }
         let modelId = try args.string("model") ?? defaultModelId(
             ImageModelConfig.allModels.map { (id: $0.id, paidOnly: $0.paidOnly) }, kind: "image")
@@ -285,18 +285,83 @@ extension ToolExecutor {
             aspectRatio: aspectRatio, resolution: resolution, quality: quality
         )
         let folderId = try resolveFolder(args, editor: editor, fallbackReferences: refs)
-        let placeholderId = ImageGenerationSubmission.make(
+        let submission = ImageGenerationSubmission.make(
             genInput: genInput,
             model: model,
             references: refs,
             name: args.string("name"),
             folderId: folderId
-        ).submit(
-            service: editor.generationService,
-            projectURL: editor.projectURL,
+        )
+        let waitForPreview = Analytics.origin?.source == "mcp"
+        guard waitForPreview else {
+            let placeholderId = submission.submit(
+                service: editor.generationService,
+                projectURL: editor.projectURL,
+                editor: editor
+            )
+            return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), aspect: \(aspectRatio)")
+        }
+
+        let outcome = try await waitForImageGeneration(
+            submission: submission,
             editor: editor
         )
-        return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), aspect: \(aspectRatio)")
+        switch outcome {
+        case .ready(let assetId):
+            guard let asset = editor.mediaAssets.first(where: { $0.id == assetId }) else {
+                return .ok("Generation complete. Asset ID: \(assetId). Model: \(model.displayName), aspect: \(aspectRatio)")
+            }
+            return try await mcpImagePreviewResult(
+                asset: asset,
+                model: model,
+                aspectRatio: aspectRatio
+            )
+        case .failed(let message):
+            throw ToolError(message)
+        }
+    }
+
+    private func waitForImageGeneration(
+        submission: ImageGenerationSubmission,
+        editor: EditorViewModel
+    ) async throws -> ImageGenerationWait {
+        let gate = ImageGenerationWaitGate()
+        return try await withTaskCancellationHandler {
+            try await gate.wait {
+                _ = submission.submit(
+                    service: editor.generationService,
+                    projectURL: editor.projectURL,
+                    editor: editor,
+                    onComplete: { asset in gate.resume(.ready(asset.id)) },
+                    onFailure: { gate.resume(.failed("Generation failed")) }
+                )
+            }
+        } onCancel: {
+            Task { @MainActor in
+                gate.resume(throwing: CancellationError())
+            }
+        }
+    }
+
+    private func mcpImagePreviewResult(
+        asset: MediaAsset,
+        model: ImageModelConfig,
+        aspectRatio: String
+    ) async throws -> ToolResult {
+        let text = "Generation complete. Asset ID: \(asset.id). Model: \(model.displayName), aspect: \(aspectRatio)"
+        let url = asset.url
+        let encoded = await Task.detached(priority: .userInitiated) {
+            guard let image = ImageEncoder.thumbnail(url: url, maxPixelSize: MCPPreviewApp.previewMaxPixelSize),
+                  let data = ImageEncoder.encodeJPEG(image, quality: 0.7)
+            else { return nil as (base64: String, mime: String)? }
+            return (base64: data.base64EncodedString(), mime: "image/jpeg")
+        }.value
+        try Task.checkCancellation()
+        guard let encoded else { return .ok(text) }
+        return ToolResult(
+            content: [.image(base64: encoded.base64, mediaType: encoded.mime), .text(text)],
+            isError: false
+        )
     }
 
     func generateAudio(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
@@ -749,5 +814,32 @@ extension ToolExecutor {
         }
         info["settings"] = selects + numbers + toggles
         return info
+    }
+}
+
+private enum ImageGenerationWait {
+    case ready(String)
+    case failed(String)
+}
+
+@MainActor
+private final class ImageGenerationWaitGate {
+    private var continuation: CheckedContinuation<ImageGenerationWait, Error>?
+
+    func wait(_ start: () -> Void) async throws -> ImageGenerationWait {
+        try await withCheckedThrowingContinuation { continuation in
+            self.continuation = continuation
+            start()
+        }
+    }
+
+    func resume(_ outcome: ImageGenerationWait) {
+        continuation?.resume(returning: outcome)
+        continuation = nil
+    }
+
+    func resume(throwing error: Error) {
+        continuation?.resume(throwing: error)
+        continuation = nil
     }
 }
