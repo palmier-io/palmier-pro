@@ -267,13 +267,65 @@ actor MCPHTTPServer {
             return
         }
 
-        let token = String(path.dropFirst("/preview/".count))
-        guard UUID(uuidString: token) != nil, let item = await MCPPreviewStore.shared.item(for: token) else {
+        let rest = String(path.dropFirst("/preview/".count))
+        if rest == "context" {
+            await handlePreviewContext(cors: cors, method: method, connection: connection)
+            return
+        }
+        if rest.hasPrefix("blob/") {
+            let token = String(rest.dropFirst("blob/".count))
+            guard UUID(uuidString: token) != nil, let blob = await MCPPreviewStore.shared.blob(for: token) else {
+                sendRaw("HTTP/1.1 404 Not Found\r\n\(cors)Content-Length: 0\r\n\r\n", on: connection, keepAlive: false)
+                return
+            }
+            await sendPreviewBytes(
+                request: request,
+                cors: cors,
+                method: method,
+                mimeType: blob.mimeType,
+                cacheControl: "private, max-age=60",
+                size: UInt64(blob.data.count),
+                read: { start, length in
+                    let lo = Int(start)
+                    let hi = min(blob.data.count, lo + length)
+                    guard lo < hi else { return Data() }
+                    return blob.data.subdata(in: lo..<hi)
+                },
+                connection: connection
+            )
+            return
+        }
+
+        let parts = rest.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard let token = parts.first, UUID(uuidString: token) != nil else {
             sendRaw("HTTP/1.1 404 Not Found\r\n\(cors)Content-Length: 0\r\n\r\n", on: connection, keepAlive: false)
             return
         }
-        let fileURL = item.url
-        let mimeType = item.mimeType
+        if parts.count == 2, parts[1] == "events" {
+            await handlePreviewEvents(token: token, cors: cors, connection: connection)
+            return
+        }
+        if parts.count == 2, parts[1] == "open" {
+            let handle = await MCPPreviewStore.shared.asset(forToken: token)
+            let opened = await MainActor.run { () -> Bool in
+                guard let mediaRef = handle?.mediaRef else { return false }
+                return MCPPreviewRuntime.reveal(mediaRef: mediaRef)
+            }
+            let code = opened ? 204 : 404
+            sendRaw(
+                "HTTP/1.1 \(code) \(statusText(code))\r\n\(cors)Content-Length: 0\r\n\r\n",
+                on: connection,
+                keepAlive: true
+            )
+            receive(on: connection)
+            return
+        }
+        guard parts.count == 1, let handle = await MCPPreviewStore.shared.asset(forToken: token),
+              let fileURL = handle.fileURL else {
+            sendRaw("HTTP/1.1 404 Not Found\r\n\(cors)Content-Length: 0\r\n\r\n", on: connection, keepAlive: false)
+            return
+        }
+        let mimeType = handle.mimeType
         let size: UInt64
         do {
             size = try await Task.detached(priority: .utility) {
@@ -287,7 +339,106 @@ actor MCPHTTPServer {
             sendRaw("HTTP/1.1 404 Not Found\r\n\(cors)Content-Length: 0\r\n\r\n", on: connection, keepAlive: false)
             return
         }
+        await sendPreviewBytes(
+            request: request,
+            cors: cors,
+            method: method,
+            mimeType: mimeType,
+            cacheControl: "private, no-cache",
+            size: size,
+            read: { start, length in
+                try await Task.detached(priority: .utility) {
+                    let handle = try FileHandle(forReadingFrom: fileURL)
+                    defer { try? handle.close() }
+                    try handle.seek(toOffset: start)
+                    return try handle.read(upToCount: length) ?? Data()
+                }.value
+            },
+            connection: connection
+        )
+    }
 
+    private func handlePreviewContext(cors: String, method: String, connection: NWConnection) async {
+        let payload = await MainActor.run { MCPPreviewRuntime.context() }
+        let body = ToolExecutor.jsonString(payload) ?? "{}"
+        var head = "HTTP/1.1 200 OK\r\n\(cors)"
+        head += "Content-Type: application/json\r\n"
+        head += "Cache-Control: no-store\r\n"
+        head += "Content-Length: \(body.utf8.count)\r\nConnection: keep-alive\r\n\r\n"
+        if method == "HEAD" {
+            sendRaw(head, on: connection, keepAlive: true)
+        } else {
+            sendRaw(head + body, on: connection, keepAlive: true)
+        }
+        receive(on: connection)
+    }
+
+    private func handlePreviewEvents(token: String, cors: String, connection: NWConnection) async {
+        var head = "HTTP/1.1 200 OK\r\n\(cors)"
+        head += "Content-Type: text/event-stream\r\n"
+        head += "Cache-Control: no-cache\r\n"
+        head += "Connection: keep-alive\r\n\r\n"
+        connection.send(content: Data(head.utf8), completion: .contentProcessed { _ in })
+        let stream = await MCPPreviewStore.shared.events(forToken: token)
+        let port = self.port
+        Task {
+            await Self.pipePreviewEvents(stream, token: token, port: port, connection: connection)
+        }
+    }
+
+    private nonisolated static func pipePreviewEvents(
+        _ stream: AsyncStream<MCPPreviewStore.AssetHandle>,
+        token: String,
+        port: UInt16,
+        connection: NWConnection
+    ) async {
+        var iterator = stream.makeAsyncIterator()
+        let heartbeat = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(15))
+                if Task.isCancelled { break }
+                connection.send(content: Data(": \n\n".utf8), completion: .contentProcessed { _ in })
+            }
+        }
+        defer { heartbeat.cancel() }
+        while let handle = await iterator.next() {
+            let payload = eventJSON(handle, token: token, port: port)
+            let chunk = Data("data: \(payload)\n\n".utf8)
+            connection.send(content: chunk, completion: .contentProcessed { _ in })
+        }
+    }
+
+    private nonisolated static func eventJSON(
+        _ handle: MCPPreviewStore.AssetHandle,
+        token: String,
+        port: UInt16
+    ) -> String {
+        var obj: [String: Any] = [
+            "mediaRef": handle.mediaRef,
+            "type": handle.kind.rawValue,
+            "mimeType": handle.mimeType,
+        ]
+        if let fileURL = handle.fileURL, FileManager.default.isReadableFile(atPath: fileURL.path) {
+            obj["url"] = MCPPreviewApp.previewURL(token: token, port: port)
+        }
+        if let width = handle.width { obj["width"] = width }
+        if let height = handle.height { obj["height"] = height }
+        if let duration = handle.durationSeconds { obj["durationSeconds"] = duration }
+        if let status = handle.status { obj["status"] = status }
+        if let failure = handle.failure { obj["message"] = failure }
+        return ToolExecutor.jsonString(obj) ?? "{}"
+    }
+
+    private func sendPreviewBytes(
+        request: HTTPRequest,
+        cors: String,
+        method: String,
+        mimeType: String,
+        cacheControl: String,
+        size: UInt64,
+        read: @escaping (UInt64, Int) async throws -> Data,
+        connection: NWConnection
+    ) async {
         let byteRange: (start: UInt64, endInclusive: UInt64, status: Int, extra: String)
         if let header = request.header("Range"), let parsed = Self.parseBytesRange(header, size: size) {
             let endInclusive = parsed.upperBound - 1
@@ -319,7 +470,7 @@ actor MCPHTTPServer {
         head += "Accept-Ranges: bytes\r\n"
         head += byteRange.extra
         head += "Content-Length: \(length)\r\n"
-        head += "Cache-Control: private, max-age=60\r\n"
+        head += "Cache-Control: \(cacheControl)\r\n"
         head += "Connection: keep-alive\r\n\r\n"
 
         if method == "HEAD" || length == 0 {
@@ -330,13 +481,7 @@ actor MCPHTTPServer {
 
         let body: Data
         do {
-            let start = byteRange.start
-            body = try await Task.detached(priority: .utility) {
-                let handle = try FileHandle(forReadingFrom: fileURL)
-                defer { try? handle.close() }
-                try handle.seek(toOffset: start)
-                return try handle.read(upToCount: Int(length)) ?? Data()
-            }.value
+            body = try await read(byteRange.start, Int(length))
         } catch {
             sendRaw("HTTP/1.1 500 Internal Server Error\r\n\(cors)Content-Length: 0\r\n\r\n", on: connection, keepAlive: false)
             return

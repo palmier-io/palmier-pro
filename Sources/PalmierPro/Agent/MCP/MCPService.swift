@@ -33,6 +33,7 @@ final class MCPService {
     }
 
     func start() {
+        MCPPreviewRuntime.projectProvider = projectProvider
         let httpServer = MCPHTTPServer(port: Self.port) { [self] in
             let toolExecutor = await makeSessionToolExecutor()
             let server = Server(
@@ -73,6 +74,7 @@ final class MCPService {
         }
         httpServer = nil
         isRunning = false
+        MCPPreviewRuntime.projectProvider = nil
         Log.mcp.notice("http server stopped")
     }
 

@@ -106,6 +106,15 @@ extension ToolExecutor {
                 let end = args.int("endFrame").flatMap { $0 > start ? $0 : nil } ?? start + 1
                 range = clampedTimelineReadRange(start: start, end: end, editor: editor)
             }
+        case .showPreview:
+            if let clipId = args.string("clipId") { readClipIds.insert(clipId) }
+            if args.int("startFrame") != nil || args.int("endFrame") != nil || args.keys.contains("look") {
+                let start = max(0, args.int("startFrame") ?? editor.currentFrame)
+                if start < Int.max {
+                    let end = args.int("endFrame").flatMap { $0 > start ? $0 : nil } ?? start + 1
+                    range = clampedTimelineReadRange(start: start, end: end, editor: editor)
+                }
+            }
         case .getTimeline:
             range = timelineReadWindow(args, editor: editor)
         case .captureFrame:

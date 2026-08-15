@@ -1257,7 +1257,7 @@ enum ToolDefinitions {
 
     static let showPreview = AgentTool(
         name: .showPreview,
-        description: "Play library video, image, or audio in the chat. Call this when the user should watch or hear the media itself — inspect_media stills are not a substitute, and inspect_timeline is for the composited cut. Pass mediaRef for one asset, or mediaRefs to show several in one grid (max 12). Portrait video is framed to its aspect ratio rather than stretched to a landscape player. Hosts that support MCP Apps render the player; others get loopback URLs. Does not place or edit clips.",
+        description: "Show a playable preview in the chat. Hosts that support MCP Apps render a player with actions; others get loopback URLs. The timeline stays the source of truth — this tool never mutates.\n\nLibrary media: pass mediaRef or mediaRefs (max 12). Optional clipId turns the grid into a picker whose Keep action swaps that clip's media. Place uses add_clips at the playhead; Upscale calls upscale_media.\n\nCut window: pass startFrame and endFrame (no media refs) to show a composited filmstrip of the live timeline — the hook, a caption pass, a grade. Same renderer as inspect_timeline.\n\nLook: pass look.style / transform / animation to dry-run captions or type on a range without writing an undo step. Apply in the widget commits with update_text (existing captions) or add_captions (sample look). inspect_timeline stills are not a substitute for watching source media.",
         inputSchema: objectSchema(
             properties: [
                 "mediaRef": ["type": "string", "description": "One asset ID from get_media. Use mediaRefs instead to show several at once."],
@@ -1265,6 +1265,41 @@ enum ToolDefinitions {
                     "type": "array",
                     "items": ["type": "string"],
                     "description": "Asset IDs from get_media. One call shows them together (images as a grid, video/audio as stacked players). Max 12. Combined with mediaRef if both are set.",
+                ],
+                "clipId": [
+                    "type": "string",
+                    "description": "Optional timeline clip to bind Keep to. Keep swaps this clip onto the chosen mediaRef via swap_clip_media.",
+                ],
+                "timelineId": [
+                    "type": "string",
+                    "description": "Optional timeline to render for a cut or look preview. Defaults to the active timeline. Does not switch the active timeline.",
+                ],
+                "startFrame": [
+                    "type": "integer",
+                    "description": "Cut/look window start (project frames). With endFrame, samples a filmstrip across the range. Cannot combine with mediaRef/mediaRefs.",
+                ],
+                "endFrame": [
+                    "type": "integer",
+                    "description": "Cut/look window end (exclusive). Required with startFrame for a multi-frame window.",
+                ],
+                "maxFrames": [
+                    "type": "integer",
+                    "description": "Filmstrip samples when a range is set (default 8, max 12).",
+                ],
+                "look": [
+                    "type": "object",
+                    "description": "Dry-run caption/type look on the range. Does not mutate. Apply commits with update_text or add_captions.",
+                    "properties": [
+                        "style": textStyleProperties(detailed: false)["style"] ?? ["type": "object" as Any],
+                        "transform": [
+                            "type": "object",
+                            "description": "Partial text transform. Same fields as add_captions/update_text.",
+                            "properties": textTransformProperties(),
+                        ],
+                        "animation": ["type": "string", "description": "Text animation preset. Same as update_text."],
+                        "highlightColor": ["type": "string", "description": "Karaoke highlight hex color."],
+                        "sampleText": ["type": "string", "description": "Overlay copy when the range has no captions yet."],
+                    ],
                 ],
             ]
         ),

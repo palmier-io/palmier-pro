@@ -639,9 +639,10 @@ extension EditorViewModel {
                 telemetry: "Media asset finalize unreadable",
                 data: ["assetId": Telemetry.shortId(asset.id), "type": asset.type.rawValue]
             )
-            refreshMissingMediaCache()
-            refreshPreviewForFinalizedAsset(asset)
-            return false
+        refreshMissingMediaCache()
+        refreshPreviewForFinalizedAsset(asset)
+        MCPPreviewRuntime.publish(asset)
+        return false
         }
         if asset.isGenerating {
             asset.generationStatus = .none
@@ -658,6 +659,7 @@ extension EditorViewModel {
             prepareMediaVisuals(for: asset)
         }
         refreshPreviewForFinalizedAsset(asset)
+        MCPPreviewRuntime.publish(asset)
         Log.project.debug(
             "media finalize ok asset=\(asset.id.prefix(8)) type=\(asset.type.rawValue) duration=\(asset.duration)"
         )
