@@ -36,6 +36,10 @@ export type CommandMap = {
     args: { projectId: string; files: ImportCandidate[] }
     result: MediaAsset[]
   }
+  import_media_dialog: {
+    args: { projectId: string }
+    result: MediaAsset[]
+  }
   persist_project: {
     args: { project: ProjectDocument }
     result: void
@@ -120,6 +124,7 @@ export const commandNames = [
   'create_project',
   'open_project',
   'import_media',
+  'import_media_dialog',
   'persist_project',
   'save_provider_settings',
   'start_generation',

@@ -875,9 +875,19 @@ function editorReducer(
 const readyMediaStatus: MediaAsset['status'] = { kind: 'ready' }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error
-    ? error.message
-    : 'The operation could not be completed'
+  if (error instanceof Error && error.message.trim()) {
+    return error.message
+  }
+  if (typeof error === 'string' && error.trim()) {
+    return error
+  }
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>
+    if (typeof record.message === 'string' && record.message.trim()) {
+      return record.message
+    }
+  }
+  return 'The operation could not be completed'
 }
 
 interface EditorContextValue {
@@ -889,6 +899,7 @@ interface EditorContextValue {
   createProject: (name: string) => Promise<void>
   openProject: (path?: string) => Promise<void>
   importFiles: (files: File[]) => Promise<void>
+  importFromDialog: () => Promise<void>
   saveProject: () => Promise<void>
   saveSettings: (settings: ProviderSettings) => Promise<void>
   startGeneration: (request: Omit<GenerationRequest, 'projectId'>) => Promise<void>
@@ -1172,7 +1183,7 @@ export function EditorProvider({
         name: file.name,
         type: file.type,
         size: file.size,
-        path: 'path' in file ? String(file.path) : undefined,
+        path: 'path' in file ? String((file as File & { path?: string }).path) : undefined,
       }))
       try {
         const assets = await backend.importMedia(project.id, candidates)
@@ -1189,6 +1200,31 @@ export function EditorProvider({
     },
     [backend],
   )
+
+  const importFromDialog = useCallback(async () => {
+    const project = projectRef.current
+    if (!project) return
+    if (backend.kind === 'tauri' && backend.importMediaDialog) {
+      rawDispatch({ type: 'SET_OPERATION', label: 'importingMedia' })
+      try {
+        const assets = await backend.importMediaDialog(project.id)
+        rawDispatch({ type: 'ADD_ASSETS', assets })
+        rawDispatch({ type: 'SET_OPERATION', label: null })
+        rawDispatch({
+          type: 'SET_TOAST',
+          message: `importComplete:${assets.length}`,
+        })
+      } catch (error) {
+        rawDispatch({ type: 'SET_OPERATION', label: null })
+        const message = errorMessage(error)
+        if (message !== 'import canceled') {
+          rawDispatch({ type: 'SET_ERROR', message })
+        }
+      }
+      return
+    }
+    // Demo / browser fallback uses the hidden file input via MediaPanel.
+  }, [backend])
 
   const saveProject = useCallback(async () => {
     const project = projectRef.current
@@ -1321,6 +1357,7 @@ export function EditorProvider({
       createProject,
       openProject,
       importFiles,
+      importFromDialog,
       saveProject,
       saveSettings,
       startGeneration,
@@ -1336,6 +1373,7 @@ export function EditorProvider({
       createProject,
       dispatch,
       importFiles,
+      importFromDialog,
       openProject,
       relinkAsset,
       saveProject,

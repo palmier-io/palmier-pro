@@ -51,6 +51,7 @@ pub fn run() {
             commands::create_project,
             commands::open_project,
             commands::import_media,
+            commands::import_media_dialog,
             commands::persist_project,
             commands::save_provider_settings,
             commands::start_generation,

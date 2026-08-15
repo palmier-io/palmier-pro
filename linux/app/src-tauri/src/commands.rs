@@ -99,6 +99,28 @@ pub async fn import_media(
             "import_media requires absolute file paths from the native dialog",
         ));
     }
+    import_media_paths(&state, project_id, paths).await
+}
+
+#[tauri::command]
+pub async fn import_media_dialog(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+    project_id: String,
+) -> AppResult<Vec<MediaAsset>> {
+    let project_id = parse_uuid(&project_id, "projectId")?;
+    let paths = pick_import_paths(&app)?;
+    if paths.is_empty() {
+        return Err(AppError::message("import canceled"));
+    }
+    import_media_paths(&state, project_id, paths).await
+}
+
+async fn import_media_paths(
+    state: &AppState,
+    project_id: Uuid,
+    paths: Vec<PathBuf>,
+) -> AppResult<Vec<MediaAsset>> {
     let mode = if state
         .editor
         .project_view(project_id)
@@ -843,6 +865,25 @@ fn pick_project_path(app: &AppHandle) -> AppResult<PathBuf> {
         )));
     }
     Ok(path)
+}
+
+fn pick_import_paths(app: &AppHandle) -> AppResult<Vec<PathBuf>> {
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("Media", &["mp4", "mov", "m4v", "mp3", "wav", "aac", "m4a", "png", "jpg", "jpeg", "webp", "gif"])
+        .add_filter("All Files", &["*"])
+        .blocking_pick_files();
+    let Some(files) = picked else {
+        return Ok(Vec::new());
+    };
+    files
+        .into_iter()
+        .map(|path| {
+            path.into_path()
+                .map_err(|error| AppError::message(format!("resolve import path: {error}")))
+        })
+        .collect()
 }
 
 fn default_projects_dir() -> PathBuf {

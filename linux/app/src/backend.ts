@@ -35,6 +35,10 @@ interface CommandMap {
     args: { projectId: string; files: ImportCandidate[] }
     result: MediaAsset[]
   }
+  import_media_dialog: {
+    args: { projectId: string }
+    result: MediaAsset[]
+  }
   persist_project: {
     args: { project: ProjectDocument }
     result: void
@@ -117,6 +121,10 @@ class TauriBackendAdapter implements BackendAdapter {
 
   importMedia(projectId: string, files: ImportCandidate[]) {
     return invokeCommand('import_media', { projectId, files })
+  }
+
+  importMediaDialog(projectId: string) {
+    return invokeCommand('import_media_dialog', { projectId })
   }
 
   persistProject(project: ProjectDocument) {

@@ -329,6 +329,7 @@ export interface BackendAdapter {
   createProject(name: string): Promise<ProjectDocument>
   openProject(path?: string): Promise<ProjectDocument>
   importMedia(projectId: string, files: ImportCandidate[]): Promise<MediaAsset[]>
+  importMediaDialog?(projectId: string): Promise<MediaAsset[]>
   persistProject(project: ProjectDocument): Promise<void>
   saveProviderSettings(settings: ProviderSettings): Promise<void>
   startGeneration(request: GenerationRequest): Promise<{

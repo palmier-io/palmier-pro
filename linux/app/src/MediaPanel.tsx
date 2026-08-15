@@ -329,7 +329,7 @@ function GenerationForm() {
 }
 
 export function MediaPanel() {
-  const { state, dispatch, importFiles } = useEditor()
+  const { state, dispatch, importFiles, importFromDialog, backend } = useEditor()
   const { t } = useI18n()
   const inputRef = useRef<HTMLInputElement>(null)
   const [dropActive, setDropActive] = useState(false)
@@ -346,6 +346,10 @@ export function MediaPanel() {
   const receiveDrop = (event: DragEvent) => {
     event.preventDefault()
     setDropActive(false)
+    if (backend.kind === 'tauri') {
+      void importFromDialog()
+      return
+    }
     const files = [...event.dataTransfer.files]
     if (files.length > 0) void importFiles(files)
   }
@@ -381,7 +385,13 @@ export function MediaPanel() {
           compact
           icon={Import}
           label={t('import')}
-          onClick={() => inputRef.current?.click()}
+          onClick={() => {
+            if (backend.kind === 'tauri') {
+              void importFromDialog()
+              return
+            }
+            inputRef.current?.click()
+          }}
         />
         <IconButton
           compact
