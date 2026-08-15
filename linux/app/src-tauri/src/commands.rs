@@ -12,7 +12,7 @@ use palmier_media::{
     PausedFrameRequest, PreparedProjectRender, discover_codec_capabilities, encode_jpeg,
     prepare_project_render,
 };
-use palmier_project::{PROJECT_FILE_EXTENSION, ProjectSnapshot};
+use palmier_project::{PROJECT_FILE_EXTENSION, ProjectSnapshot, is_project_package_path};
 use palmier_service::{EditResult, ImportMode, PreviewResult, ProjectView};
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
@@ -828,17 +828,21 @@ fn xml_escape(value: &str) -> String {
 }
 
 fn pick_project_path(app: &AppHandle) -> AppResult<PathBuf> {
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("Palmier Project", &[PROJECT_FILE_EXTENSION])
-        .blocking_pick_file();
-    match picked {
+    // .palmier packages are directories, so use a folder picker.
+    let dialog = app.dialog().file().set_directory(default_projects_dir());
+    let picked = dialog.blocking_pick_folder();
+    let path = match picked {
         Some(path) => path
             .into_path()
-            .map_err(|error| AppError::message(format!("resolve project path: {error}"))),
-        None => Err(AppError::message("open project canceled")),
+            .map_err(|error| AppError::message(format!("resolve project path: {error}")))?,
+        None => return Err(AppError::message("open project canceled")),
+    };
+    if !is_project_package_path(&path) {
+        return Err(AppError::message(format!(
+            "select a .{PROJECT_FILE_EXTENSION} project folder"
+        )));
     }
+    Ok(path)
 }
 
 fn default_projects_dir() -> PathBuf {
