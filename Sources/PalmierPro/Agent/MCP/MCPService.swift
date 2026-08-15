@@ -6,7 +6,7 @@ import MCP
 @MainActor
 final class MCPService {
 
-    static let port: UInt16 = 19789
+    nonisolated static let port: UInt16 = 19789
 
     private static let enabledKey = "io.palmier.pro.mcp.enabled"
 
@@ -78,7 +78,12 @@ final class MCPService {
 
     nonisolated static func registerTools(on server: Server, executor: ToolExecutor) async {
         let tools: [Tool] = ToolDefinitions.mcpServer.map { def in
-            Tool(name: def.name.rawValue, description: def.description, inputSchema: def.mcpSchemaValue)
+            Tool(
+                name: def.name.rawValue,
+                description: def.description,
+                inputSchema: def.mcpSchemaValue,
+                _meta: def.mcpMeta
+            )
         }
 
         await server.withMethodHandler(ListTools.self) { _ in
@@ -97,7 +102,7 @@ final class MCPService {
         return result.toMCPResult()
     }
 
-    private nonisolated static func registerResources(on server: Server) async {
+    nonisolated static func registerResources(on server: Server) async {
         let resources = [
             Resource(
                 name: "Video Models",
@@ -110,6 +115,13 @@ final class MCPService {
                 uri: "palmier://models/image",
                 description: "Available AI image generation models and their capabilities",
                 mimeType: "application/json"
+            ),
+            Resource(
+                name: "Preview",
+                uri: MCPPreviewApp.resourceURI,
+                description: "In-chat player for Palmier media",
+                mimeType: MCPPreviewApp.mimeType,
+                _meta: MCPPreviewApp.resourceMeta
             ),
         ]
 
@@ -125,6 +137,15 @@ final class MCPService {
     @MainActor
     private static func readResource(uri: String) -> ReadResource.Result {
         switch uri {
+        case MCPPreviewApp.resourceURI:
+            return .init(contents: [
+                .text(
+                    MCPPreviewApp.html,
+                    uri: uri,
+                    mimeType: MCPPreviewApp.mimeType,
+                    _meta: MCPPreviewApp.resourceMeta
+                )
+            ])
         case "palmier://models/video":
             let json = ToolExecutor.jsonString(VideoModelConfig.allModels.map { ToolExecutor.videoModelInfo($0) }) ?? "[]"
             return .init(contents: [.text(json, uri: uri, mimeType: "application/json")])

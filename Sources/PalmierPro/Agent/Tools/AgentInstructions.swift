@@ -36,7 +36,8 @@ enum AgentInstructions {
           subscribe first.
         - Never describe an asset from its filename — inspect_media first. On long media work \
           coarse to fine: overview=true storyboard, then transcript segments, then zoom with \
-          startSeconds/endSeconds.
+          startSeconds/endSeconds. Call show_preview when the user should watch or hear the \
+          file itself (mediaRefs for several at once); inspect_timeline is still the composited cut.
         - To find a moment ("the sunset shot", "where she mentions the budget"): search_media \
           first, then pass hits straight to add_clips as source: [startSeconds, endSeconds].
 

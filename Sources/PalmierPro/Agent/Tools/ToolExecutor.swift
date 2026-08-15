@@ -37,7 +37,10 @@ final class ToolExecutor {
         self.exportQueue = exportQueue
     }
 
-    init(projectProvider: @escaping () -> VideoProject?, exportQueue: ExportQueue = .shared) {
+    init(
+        projectProvider: @escaping () -> VideoProject?,
+        exportQueue: ExportQueue = .shared
+    ) {
         let project = projectProvider()
         self.inAppEditor = nil
         self.frontmostProjectProvider = projectProvider
@@ -236,7 +239,7 @@ final class ToolExecutor {
 
     private static func canReadInactiveProject(_ tool: ToolName) -> Bool {
         switch tool {
-        case .getTimeline, .inspectTimeline, .getMedia, .inspectMedia, .searchMedia,
+        case .getTimeline, .inspectTimeline, .getMedia, .inspectMedia, .searchMedia, .showPreview,
              .getMulticam, .getTranscript, .detectBeats, .inspectColor, .listModels, .sendFeedback:
             true
         default:
@@ -351,6 +354,7 @@ final class ToolExecutor {
         case .createTimeline:     return try createTimeline(editor, args)
         case .setActiveTimeline:  return try setActiveTimeline(editor, args)
         case .readSkill:     return readSkill(args)
+        case .showPreview:   return try await showPreview(editor, args)
         case .manageProject:
             return await manageProject(args)
         }

@@ -71,12 +71,26 @@ enum ToolName: String, CaseIterable, Sendable {
     // Meta
     case sendFeedback = "send_feedback"
     case readSkill = "read_skill"
+    case showPreview = "show_preview"
 }
 
 struct AgentTool: @unchecked Sendable {
     let name: ToolName
     let description: String
     let inputSchema: [String: Any]
+    let mcpMeta: Metadata?
+
+    init(
+        name: ToolName,
+        description: String,
+        inputSchema: [String: Any],
+        mcpMeta: Metadata? = nil
+    ) {
+        self.name = name
+        self.description = description
+        self.inputSchema = inputSchema
+        self.mcpMeta = mcpMeta
+    }
 }
 
 enum ToolDefinitions {
@@ -1187,7 +1201,23 @@ enum ToolDefinitions {
         )
     )
 
-    static var mcpServer: [AgentTool] { all + [manageProject] }
+    static let showPreview = AgentTool(
+        name: .showPreview,
+        description: "Play library video, image, or audio in the chat. Call this when the user should watch or hear the media itself — inspect_media stills are not a substitute, and inspect_timeline is for the composited cut. Pass mediaRef for one asset, or mediaRefs to show several in one grid (max 12). Portrait video is framed to its aspect ratio rather than stretched to a landscape player. Hosts that support MCP Apps render the player; others get loopback URLs. Does not place or edit clips.",
+        inputSchema: objectSchema(
+            properties: [
+                "mediaRef": ["type": "string", "description": "One asset ID from get_media. Use mediaRefs instead to show several at once."],
+                "mediaRefs": [
+                    "type": "array",
+                    "items": ["type": "string"],
+                    "description": "Asset IDs from get_media. One call shows them together (images as a grid, video/audio as stacked players). Max 12. Combined with mediaRef if both are set.",
+                ],
+            ]
+        ),
+        mcpMeta: MCPPreviewApp.toolMeta
+    )
+
+    static var mcpServer: [AgentTool] { all + [manageProject, showPreview] }
     static var inAppAgent: [AgentTool] { all + [readSkill] }
 
     private static func textTransformProperties() -> [String: [String: Any]] {

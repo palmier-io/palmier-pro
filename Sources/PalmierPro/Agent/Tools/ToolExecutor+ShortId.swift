@@ -12,7 +12,7 @@ extension ToolExecutor {
         "groupId", "memberId",
     ]
     private static let arrayIdKeys: Set<String> = [
-        "clipIds", "targetClipIds", "items", "ids", "deletes",
+        "clipIds", "targetClipIds", "items", "ids", "deletes", "mediaRefs",
         "referenceMediaRefs", "referenceImageMediaRefs",
         "referenceVideoMediaRefs", "referenceAudioMediaRefs",
     ]
@@ -59,7 +59,12 @@ extension ToolExecutor {
             guard case .text(let s) = block else { return block }
             return .text(s.replacing(uuidRegex) { map[String($0.output)] ?? String($0.output) })
         }
-        return ToolResult(content: content, isError: result.isError)
+        return ToolResult(
+            content: content,
+            isError: result.isError,
+            structuredContent: result.structuredContent,
+            mcpMeta: result.mcpMeta
+        )
     }
 
     /// Maps each id to its shortest prefix (≥ idPrefixFloor) that no other id shares. O(n log n)

@@ -9,6 +9,20 @@ struct ToolResult: Sendable {
 
     let content: [Block]
     let isError: Bool
+    let structuredContent: Value?
+    let mcpMeta: Metadata?
+
+    init(
+        content: [Block],
+        isError: Bool,
+        structuredContent: Value? = nil,
+        mcpMeta: Metadata? = nil
+    ) {
+        self.content = content
+        self.isError = isError
+        self.structuredContent = structuredContent
+        self.mcpMeta = mcpMeta
+    }
 
     static func ok(_ text: String) -> ToolResult {
         ToolResult(content: [.text(text)], isError: false)
@@ -29,7 +43,12 @@ extension ToolResult {
                 return .image(data: base64, mimeType: mime, annotations: nil, _meta: nil)
             }
         }
-        return .init(content: mapped, isError: isError ? true : nil)
+        return .init(
+            content: mapped,
+            structuredContent: structuredContent,
+            isError: isError ? true : nil,
+            _meta: mcpMeta
+        )
     }
 }
 
