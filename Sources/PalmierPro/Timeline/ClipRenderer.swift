@@ -87,6 +87,7 @@ enum ClipRenderer {
         linkOffset: Int? = nil,
         multicamAngleLabel: String? = nil,
         fps: Int,
+        showsKeyframeAutomation: Bool = true,
         isMissing: Bool = false,
         isGenerating: Bool = false
     ) {
@@ -141,7 +142,7 @@ enum ClipRenderer {
         }
 
         let showsFadeControls = showsFadeControls(isSelected: isSelected, isHovered: isHovered, in: rect)
-        let volumeKeyframesVisible = showsVolumeKeyframes(
+        let volumeKeyframesVisible = showsKeyframeAutomation && showsVolumeKeyframes(
             isSelected: isSelected,
             isHovered: isHovered,
             in: rect
@@ -208,7 +209,7 @@ enum ClipRenderer {
             drawOffsetBadge(frames: linkOffset, in: rect, context: context)
         }
 
-        if showDetailChrome {
+        if showDetailChrome, showsKeyframeAutomation {
             drawKeyframeMarkers(clip: clip, in: rect, context: context)
         }
 
@@ -230,7 +231,9 @@ enum ClipRenderer {
         for kf in clip.opacityTrack?.keyframes ?? [] { frameSet.insert(kf.frame + absStart) }
         for kf in clip.positionTrack?.keyframes ?? [] { frameSet.insert(kf.frame + absStart) }
         for kf in clip.scaleTrack?.keyframes ?? [] { frameSet.insert(kf.frame + absStart) }
+        for kf in clip.rotationTrack?.keyframes ?? [] { frameSet.insert(kf.frame + absStart) }
         for kf in clip.cropTrack?.keyframes ?? [] { frameSet.insert(kf.frame + absStart) }
+        for kf in clip.blurKeyframeTrack?.keyframes ?? [] { frameSet.insert(kf.frame + absStart) }
         let frames = frameSet.sorted()
         guard !frames.isEmpty, clip.durationFrames > 0 else { return }
         let pxPerFrame = rect.width / CGFloat(clip.durationFrames)
@@ -529,7 +532,7 @@ enum ClipRenderer {
         let half = volumeKeyframeSize / 2
 
         if showsVolumeKeyframes {
-            context.setFillColor(lineColor)
+            context.setFillColor(AppTheme.Accent.timecodeNSColor.cgColor)
             context.setStrokeColor(AppTheme.MediaOverlay.background.withAlphaComponent(0.5).cgColor)
             context.setLineWidth(0.5)
 
@@ -881,10 +884,7 @@ enum ClipRenderer {
             .font: NSFont.systemFont(ofSize: AppTheme.FontSize.xs, weight: .medium),
             .foregroundColor: clip.sourceClipType.themeForegroundColor,
         ]
-        let attributed = NSMutableAttributedString(string: text, attributes: baseAttrs)
-        if clip.linkGroupId != nil {
-            attributed.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: NSRange(location: 0, length: (name as NSString).length))
-        }
+        let attributed = NSAttributedString(string: text, attributes: baseAttrs)
         let size = attributed.size()
         let inset = AppTheme.Spacing.sm
         let origin = NSPoint(

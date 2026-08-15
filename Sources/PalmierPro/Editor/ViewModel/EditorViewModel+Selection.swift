@@ -6,6 +6,7 @@ extension EditorViewModel {
 
     func selectPreviewClip(_ clipId: String) {
         selectedGap = nil
+        selectedTimelineMarkerIds = []
         guard !selectedClipIds.contains(clipId) else { return }
         selectedClipIds = expandToLinkGroup([clipId])
     }
@@ -30,6 +31,7 @@ extension EditorViewModel {
         selectedClipIds = expandToLinkGroup(ids)
         selectedGap = nil
         selectedTimelineRange = nil
+        selectedTimelineMarkerIds = []
     }
 
     private func forwardSelectionAnchorId() -> String? {

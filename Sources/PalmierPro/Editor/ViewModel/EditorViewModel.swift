@@ -118,6 +118,7 @@ final class EditorViewModel {
     var isMarqueeSelecting: Bool = false
     var selectedGap: GapSelection?
     var selectedTimelineRange: TimelineRangeSelection?
+    var selectedTimelineMarkerIds: Set<String> = []
     var selectedMediaAssetIds: Set<String> = []
     var selectedFolderIds: Set<String> = []
     var selectedTimelineIds: Set<String> = []
@@ -135,6 +136,11 @@ final class EditorViewModel {
     var timelineVisibleWidth: Double = 0
     var timelineRenderRevision: Int = 0
     @ObservationIgnored private var clipLocationIndexCache: (revision: Int, timelineId: String, index: [String: ClipLocation])?
+    @ObservationIgnored var keyframeNavigationCache: [
+        KeyframeNavigationCacheKey: [KeyframeLaneNavigationTarget]
+    ] = [:]
+    @ObservationIgnored var keyframeNavigationCacheTimelineId: String?
+    @ObservationIgnored var keyframeNavigationCacheRevision = -1
     /// Live horizontal scroll of the timeline panel, mirrored from AppKit for view-state stash.
     @ObservationIgnored var timelineScrollOffsetX: Double = 0
     var timelineScrollRestoreX: Double?
@@ -222,12 +228,6 @@ final class EditorViewModel {
         UserDefaults.standard.object(forKey: "inspectorPanelVisible") as? Bool ?? true
     }() {
         didSet { UserDefaults.standard.set(inspectorPanelVisible, forKey: "inspectorPanelVisible") }
-    }
-
-    var keyframesPanelVisible: Bool = {
-        UserDefaults.standard.object(forKey: "keyframesPanelVisible") as? Bool ?? false
-    }() {
-        didSet { UserDefaults.standard.set(keyframesPanelVisible, forKey: "keyframesPanelVisible") }
     }
 
     var markDeadAir: Bool = {
@@ -342,6 +342,7 @@ final class EditorViewModel {
     @ObservationIgnored let projectPackageCoordinator = ProjectPackageCoordinator()
     @ObservationIgnored var onProjectCheckpointRequired: (() -> Void)?
     @ObservationIgnored var onCancelTimelineDrag: (() -> Void)?
+    @ObservationIgnored var onPresentTimelineMarkerEditor: ((String) -> Void)?
     var isDocumentEdited: Bool = false
 
     func telemetrySnapshot() -> [String: Any] {
@@ -479,6 +480,7 @@ final class EditorViewModel {
     var pendingRebuildTask: Task<Void, Never>?
 
     func notifyTimelineChanged(refreshVisuals: Bool = true) {
+        selectedTimelineMarkerIds.formIntersection(timeline.markers.map(\.id))
         guard undo.isRegistrationEnabled else { return }
         enhancePendingDenoises()
         pendingRebuildTask?.cancel()

@@ -54,9 +54,16 @@ private struct PersistedSkillLedger: Codable {
 @Observable
 @MainActor
 final class SkillStore {
+    enum UpdateResult: Sendable {
+        case updated(Skill)
+        case unchanged(Skill)
+        case failed
+    }
+
     static let shared = SkillStore()
 
     private(set) var skills: [Skill] = []
+    private let storageDirectory: URL
 
     private var ledger: SkillLedger?
 
@@ -72,21 +79,23 @@ final class SkillStore {
             .appendingPathComponent(".palmier/skills", isDirectory: true)
     }
 
-    nonisolated private static var ledgerURL: URL { directory.appendingPathComponent(".installed.json") }
-
     private var reloadGeneration = 0
     private var syncTask: Task<Void, Never>?
     private var mutationTask: Task<Void, Never>?
 
-    private init() {
+    private convenience init() { self.init(directory: Self.directory) }
+
+    init(directory: URL) {
+        storageDirectory = directory
         Task { await reloadSkills() }
     }
 
     private func reloadInBackground() async {
         reloadGeneration += 1
         let generation = reloadGeneration
+        let directory = storageDirectory
         let result = await Task.detached(priority: .utility) {
-            (Self.scan(), Self.loadLedger())
+            (Self.scan(directory: directory), Self.loadLedger(directory: directory))
         }.value
         guard generation == reloadGeneration else { return }
         apply(result.0)
@@ -125,7 +134,7 @@ final class SkillStore {
         )
     }
 
-    nonisolated static func scan() -> SkillScan {
+    nonisolated static func scan(directory: URL = SkillStore.directory) -> SkillScan {
         let fm = FileManager.default
         var found: [Skill] = []
         var bodies: [String: String] = [:]
@@ -222,7 +231,7 @@ final class SkillStore {
     func install(_ entry: SkillCatalogEntry, automatically: Bool = false) async -> Bool {
         guard ledger != nil else { return false }
         guard let url = SkillCatalog.bodyURL(path: entry.path) else { return false }
-        guard let dir = Self.skillDirectory(for: entry.id) else {
+        guard let dir = Self.skillDirectory(for: entry.id, directory: storageDirectory) else {
             Log.agent.error("install skill \(entry.id) rejected: invalid id")
             return false
         }
@@ -266,7 +275,7 @@ final class SkillStore {
                 }
                 ledger.installed[entry.id] = entry.sha
                 ledger.suppressed.remove(entry.id)
-                try await Self.persistLedger(ledger)
+                try await Self.persistLedger(ledger, directory: storageDirectory)
                 self.ledger = ledger
                 return true
             } ?? false
@@ -295,10 +304,13 @@ final class SkillStore {
     }
 
     /// Resolves `~/.palmier/skills/<id>/` only when `id` is a single safe path component.
-    nonisolated static func skillDirectory(for id: String) -> URL? {
+    nonisolated static func skillDirectory(
+        for id: String,
+        directory: URL = SkillStore.directory
+    ) -> URL? {
         guard isValidSkillId(id) else { return nil }
         let dir = directory.appendingPathComponent(id, isDirectory: true).standardizedFileURL
-        guard isUnderSkillsRoot(dir) else { return nil }
+        guard isUnderSkillsRoot(dir, directory: directory) else { return nil }
         return dir
     }
 
@@ -308,7 +320,7 @@ final class SkillStore {
         return true
     }
 
-    nonisolated private static func isUnderSkillsRoot(_ url: URL) -> Bool {
+    nonisolated private static func isUnderSkillsRoot(_ url: URL, directory: URL) -> Bool {
         let root = directory.standardizedFileURL.path
         let path = url.standardizedFileURL.path
         return path == root || path.hasPrefix(root + "/")
@@ -325,7 +337,8 @@ final class SkillStore {
         try operation()
     }
 
-    nonisolated private static func loadLedger() -> SkillLedger? {
+    nonisolated private static func loadLedger(directory: URL) -> SkillLedger? {
+        let ledgerURL = directory.appendingPathComponent(".installed.json")
         guard FileManager.default.fileExists(atPath: ledgerURL.path) else { return SkillLedger() }
         guard let data = try? Data(contentsOf: ledgerURL) else { return nil }
         return decodeLedger(data)
@@ -346,7 +359,7 @@ final class SkillStore {
     }
 
     @concurrent
-    private static func persistLedger(_ ledger: SkillLedger) async throws {
+    private static func persistLedger(_ ledger: SkillLedger, directory: URL) async throws {
         let persisted = PersistedSkillLedger(
             version: PersistedSkillLedger.currentVersion,
             installed: ledger.installed,
@@ -354,6 +367,7 @@ final class SkillStore {
         )
         let data = try JSONEncoder().encode(persisted)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let ledgerURL = directory.appendingPathComponent(".installed.json")
         try data.write(to: ledgerURL, options: .atomic)
     }
 
@@ -373,9 +387,9 @@ final class SkillStore {
 
     func openFolder() {
         try? FileManager.default.createDirectory(
-            at: Self.directory, withIntermediateDirectories: true
+            at: storageDirectory, withIntermediateDirectories: true
         )
-        NSWorkspace.shared.open(Self.directory)
+        NSWorkspace.shared.open(storageDirectory)
     }
 
     func reveal(_ url: URL) {
@@ -392,6 +406,34 @@ final class SkillStore {
             await reloadInBackground()
             return true
         } ?? false
+    }
+
+    func update(
+        _ skill: Skill,
+        name: String?,
+        description: String?,
+        instructions: String?
+    ) async -> UpdateResult {
+        await serializeMutation("update skill \(skill.id)") { [self] in
+            let path = skill.path
+            let changed = try await Self.performFileOperation {
+                let raw = try String(contentsOf: path, encoding: .utf8)
+                let updated = SkillFrontmatter.replacingFields(
+                    raw,
+                    name: name,
+                    description: description,
+                    instructions: instructions
+                )
+                guard updated != raw else { return false }
+                try Data(updated.utf8).write(to: path, options: .atomic)
+                return true
+            }
+            await reloadInBackground()
+            guard let saved = skills.first(where: { $0.id == skill.id }) else {
+                return UpdateResult.failed
+            }
+            return changed ? .updated(saved) : .unchanged(saved)
+        } ?? .failed
     }
 
     /// Copies under a `palmier-` prefix so we only overwrite our own prior copy
@@ -415,13 +457,23 @@ final class SkillStore {
     func delete(_ skill: Skill) async -> Bool {
         await serializeMutation("delete skill \(skill.id)") { [self] in
             guard var ledger else { return false }
-            try await Self.performFileOperation {
-                try FileManager.default.removeItem(at: skill.path.deletingLastPathComponent())
-            }
-            if ledger.installed.removeValue(forKey: skill.id) != nil {
-                ledger.suppressed.insert(skill.id)
-                try await Self.persistLedger(ledger)
-                self.ledger = ledger
+            let originalLedger = ledger
+            ledger.installed.removeValue(forKey: skill.id)
+            ledger.suppressed.insert(skill.id)
+            try await Self.persistLedger(ledger, directory: storageDirectory)
+            self.ledger = ledger
+            do {
+                try await Self.performFileOperation {
+                    try FileManager.default.removeItem(at: skill.path.deletingLastPathComponent())
+                }
+            } catch let removalError {
+                do {
+                    try await Self.persistLedger(originalLedger, directory: storageDirectory)
+                    self.ledger = originalLedger
+                } catch {
+                    Log.agent.error("restore skill ledger failed: \(error.localizedDescription)")
+                }
+                throw removalError
             }
             await reloadInBackground()
             return true
@@ -440,10 +492,13 @@ final class SkillStore {
         """
 
     @discardableResult
-    func createSkill(raw: String) async -> String? {
+    func createSkill(raw: String, preferredID: String? = nil) async -> String? {
         guard let parsed = SkillFrontmatter.requiredFields(raw) else { return nil }
         guard let id = await serializeMutation("create skill", { [self] in
-            let id = try await Self.performFileOperation { try Self.createSkillFile(raw: raw) }
+            let directory = storageDirectory
+            let id = try await Self.performFileOperation {
+                try Self.createSkillFile(raw: raw, preferredID: preferredID, directory: directory)
+            }
             await reloadInBackground()
             return id
         }) else {
@@ -453,17 +508,48 @@ final class SkillStore {
         return id
     }
 
-    nonisolated private static func createSkillFile(raw: String) throws -> String {
+    nonisolated static func suggestedID(for name: String) -> String {
+        let words = name.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+        let candidate = String(words.joined(separator: "-").prefix(64))
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        return candidate.isEmpty ? "new-skill" : candidate
+    }
+
+    nonisolated private static func createSkillFile(
+        raw: String,
+        preferredID: String?,
+        directory: URL
+    ) throws -> String {
         let fm = FileManager.default
-        var id = "new-skill"
-        var n = 2
-        while fm.fileExists(atPath: Self.directory.appendingPathComponent(id).path) {
-            id = "new-skill-\(n)"; n += 1
+        let validatedPreferredID = preferredID.flatMap { isValidSkillId($0) ? $0 : nil }
+        let baseID = validatedPreferredID ?? "new-skill"
+        var id = baseID
+        if validatedPreferredID != nil {
+            let existing = directory.appendingPathComponent(id, isDirectory: true)
+                .appendingPathComponent("SKILL.md")
+            if fm.fileExists(atPath: existing.path) {
+                guard try String(contentsOf: existing, encoding: .utf8) == raw else {
+                    throw CocoaError(.fileWriteFileExists)
+                }
+                return id
+            }
+        } else {
+            var n = 2
+            while fm.fileExists(atPath: directory.appendingPathComponent(id).path) {
+                id = "\(baseID)-\(n)"; n += 1
+            }
         }
-        let dir = Self.directory.appendingPathComponent(id, isDirectory: true)
+        let dir = directory.appendingPathComponent(id, isDirectory: true)
         let md = dir.appendingPathComponent("SKILL.md")
         try fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        try raw.write(to: md, atomically: true, encoding: .utf8)
+        do {
+            try raw.write(to: md, atomically: true, encoding: .utf8)
+        } catch {
+            try? fm.removeItem(at: dir)
+            throw error
+        }
         return id
     }
 
@@ -479,7 +565,7 @@ final class SkillStore {
 
     nonisolated private static func renameSkillFile(_ skill: Skill, to name: String) throws {
         let text = try String(contentsOf: skill.path, encoding: .utf8)
-        let updated = SkillFrontmatter.replacingName(text, name: name)
+        let updated = SkillFrontmatter.replacingFields(text, name: name)
         try updated.write(to: skill.path, atomically: true, encoding: .utf8)
     }
 }

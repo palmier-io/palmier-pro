@@ -22,6 +22,7 @@ struct Timeline: Codable, Sendable, Equatable, Identifiable {
     var settingsConfigured: Bool = false
     var folderId: String?
     var tracks: [Track] = []
+    var markers: [TimelineMarker] = []
 
     var totalFrames: Int {
         var maxFrame = 0
@@ -29,6 +30,12 @@ struct Timeline: Codable, Sendable, Equatable, Identifiable {
             maxFrame = max(maxFrame, track.endFrame)
         }
         return maxFrame
+    }
+
+    var displayFrames: Int {
+        markers.reduce(totalFrames) { result, marker in
+            max(result, marker.startFrame + max(1, marker.durationFrames))
+        }
     }
 
     var hasAudioClips: Bool {
@@ -60,7 +67,7 @@ struct Timeline: Codable, Sendable, Equatable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, fps, width, height, settingsConfigured, folderId, tracks
+        case id, name, fps, width, height, settingsConfigured, folderId, tracks, markers
     }
 }
 
@@ -75,7 +82,8 @@ extension Timeline {
             height: try c.decode(Int.self, forKey: .height),
             settingsConfigured: (try? c.decode(Bool.self, forKey: .settingsConfigured)) ?? false,
             folderId: try? c.decode(String.self, forKey: .folderId),
-            tracks: try c.decode([Track].self, forKey: .tracks)
+            tracks: try c.decode([Track].self, forKey: .tracks),
+            markers: (try? c.decode([TimelineMarker].self, forKey: .markers)) ?? []
         )
     }
 }
@@ -255,6 +263,30 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         return (s.a, s.b)
     }
 
+    func textScaleAt(frame: Int) -> Double {
+        let baseScale = textStyle?.fontScale ?? TextStyle().fontScale
+        guard mediaType == .text else { return baseScale }
+        guard baseScale.isFinite, baseScale > 0,
+              transform.width.isFinite, transform.width > 0,
+              transform.height.isFinite, transform.height > 0 else {
+            return TextStyle().fontScale
+        }
+        let size = sizeAt(frame: frame)
+        let widthRatio = size.width / transform.width
+        let heightRatio = size.height / transform.height
+        guard widthRatio.isFinite, widthRatio > 0,
+              heightRatio.isFinite, heightRatio > 0 else {
+            return baseScale
+        }
+        return baseScale * min(widthRatio, heightRatio)
+    }
+
+    func textStyleAt(frame: Int) -> TextStyle {
+        var style = textStyle ?? TextStyle()
+        style.fontScale = textScaleAt(frame: frame)
+        return style
+    }
+
     /// Resolve the full Transform at `frame`
     func transformAt(frame: Int) -> Transform {
         let tl = topLeftAt(frame: frame)
@@ -363,7 +395,7 @@ extension Clip {
         captionGroupId = remap(captionGroupId)
     }
 
-    /// Drops kfs past `durationFrames`. Call after any mutation that shrinks the clip.
+    /// Normalizes the boundary keyframe and drops keyframes beyond the clip.
     mutating func clampKeyframesToDuration() {
         opacityTrack = clampedKeyframeTrack(opacityTrack)
         positionTrack = clampedKeyframeTrack(positionTrack)
@@ -371,6 +403,7 @@ extension Clip {
         rotationTrack = clampedKeyframeTrack(rotationTrack)
         cropTrack = clampedKeyframeTrack(cropTrack)
         volumeTrack = clampedKeyframeTrack(volumeTrack)
+        setBlurKeyframeTrack(clampedKeyframeTrack(blurKeyframeTrack))
     }
 
     mutating func rescaleKeyframes(by scale: Double) {
@@ -380,6 +413,7 @@ extension Clip {
         rotationTrack = rescaledKeyframeTrack(rotationTrack, by: scale)
         cropTrack = rescaledKeyframeTrack(cropTrack, by: scale)
         volumeTrack = rescaledKeyframeTrack(volumeTrack, by: scale)
+        setBlurKeyframeTrack(rescaledKeyframeTrack(blurKeyframeTrack, by: scale))
     }
 
     private func clampedKeyframeTrack<V: Codable & Sendable & Equatable>(
@@ -388,7 +422,9 @@ extension Clip {
         guard var track else { return nil }
         var normalized = KeyframeTrack<V>()
         for kf in track.keyframes where kf.frame >= 0 && kf.frame <= durationFrames {
-            normalized.upsert(kf)
+            var next = kf
+            next.frame = min(next.frame, max(0, durationFrames - 1))
+            normalized.upsert(next)
         }
         track.keyframes = normalized.keyframes
         return track.keyframes.isEmpty ? nil : track
@@ -403,7 +439,10 @@ extension Clip {
         var normalized = KeyframeTrack<V>()
         for kf in existing.keyframes {
             var next = kf
-            next.frame = Int((Double(kf.frame) * scale).rounded())
+            next.frame = min(
+                max(0, durationFrames - 1),
+                Int((Double(kf.frame) * scale).rounded())
+            )
             normalized.upsert(next)
         }
         return normalized.keyframes.isEmpty ? nil : normalized
@@ -657,6 +696,8 @@ struct Transform: Codable, Sendable, Equatable, Hashable {
 
 /// Per-clip crop as edge insets in normalized (0–1) source coordinates.
 struct Crop: Codable, Sendable, Equatable {
+    static let minimumVisibleFraction = 0.05
+
     var left: Double = 0
     var top: Double = 0
     var right: Double = 0
@@ -665,6 +706,40 @@ struct Crop: Codable, Sendable, Equatable {
     var isIdentity: Bool { left == 0 && top == 0 && right == 0 && bottom == 0 }
     var visibleWidthFraction: Double { max(0, 1 - left - right) }
     var visibleHeightFraction: Double { max(0, 1 - top - bottom) }
+
+    mutating func setInset(_ value: Double, edge: Edge) {
+        guard value.isFinite else { return }
+        let inset = min(max(0, value), maximumInset(for: edge))
+        switch edge {
+        case .left: left = inset
+        case .top: top = inset
+        case .right: right = inset
+        case .bottom: bottom = inset
+        }
+    }
+
+    func inset(for edge: Edge) -> Double {
+        switch edge {
+        case .left: left
+        case .top: top
+        case .right: right
+        case .bottom: bottom
+        }
+    }
+
+    func maximumInset(for edge: Edge) -> Double {
+        let maximum = switch edge {
+        case .left: 1 - Self.minimumVisibleFraction - right
+        case .top: 1 - Self.minimumVisibleFraction - bottom
+        case .right: 1 - Self.minimumVisibleFraction - left
+        case .bottom: 1 - Self.minimumVisibleFraction - top
+        }
+        return min(1, max(0, maximum))
+    }
+
+    enum Edge: Sendable {
+        case left, top, right, bottom
+    }
 }
 
 struct CropAspectRatio: Hashable, Sendable {

@@ -7,10 +7,21 @@ enum DragState {
     case trimLeft(TrimDrag)
     case trimRight(TrimDrag)
     case slip(SlipDrag)
+    case keyframe(KeyframeDrag)
     case audioVolumeKf(AudioVolumeKfDrag)
     case fadeKnee(FadeKneeDrag)
     case marquee(MarqueeDrag)
     case timelineRange(TimelineRangeDrag)
+    case timelineMarker(TimelineMarkerDrag)
+
+    struct KeyframeDrag {
+        let clipId: String
+        let trackIndex: Int
+        let property: AnimatableProperty
+        let originalFrame: Int
+        let grabFrame: Int
+        var currentFrame: Int
+    }
 
     struct AudioVolumeKfDrag {
         let clipId: String
@@ -98,9 +109,17 @@ enum DragState {
         let origin: NSPoint
         var current: NSRect = .zero
         var baseSelection: Set<String> = []
+        var baseMarkerSelection: Set<String> = []
     }
 
     struct TimelineRangeDrag {
         let anchorFrame: Int
+    }
+
+    struct TimelineMarkerDrag {
+        let original: TimelineMarker
+        let adjustsDuration: Bool
+        let grabFrame: Int
+        var value: TimelineMarker
     }
 }

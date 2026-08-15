@@ -99,6 +99,7 @@ final class AppState {
     func showEditor(for project: VideoProject) {
         activateProject(project)
         project.showWindows()
+        hideHomeIfEditorIsVisible(for: project)
     }
 
     func activateProject(_ project: VideoProject) {
@@ -107,6 +108,15 @@ final class AppState {
             project.editorViewModel.refreshProjectId()
             recordProjectActive(project)
         }
+    }
+
+    func projectWindowDidBecomeKey(_ project: VideoProject) {
+        activateProject(project)
+        hideHomeIfEditorIsVisible(for: project)
+    }
+
+    private func hideHomeIfEditorIsVisible(for project: VideoProject) {
+        guard project.windowControllers.contains(where: { $0.window?.isVisible == true }) else { return }
         HomeWindowController.shared.window?.orderOut(nil)
     }
 
@@ -135,9 +145,7 @@ final class AppState {
             return
         }
 
-        activeProject = project
-        HomeWindowController.shared.window?.orderOut(nil)
-        project.showWindows()
+        showEditor(for: project)
         project.windowControllers.first?.window?.makeKeyAndOrderFront(nil)
 
         guard let assetId,
@@ -178,8 +186,8 @@ final class AppState {
         doc.fileURL = url
         doc.fileType = VideoProject.typeIdentifier
         doc.makeWindowControllers()
-        doc.showWindows()
         NSDocumentController.shared.addDocument(doc)
+        showEditor(for: doc)
         return doc
     }
 
@@ -277,8 +285,8 @@ final class AppState {
         }
 
         doc.makeWindowControllers()
-        doc.showWindows()
         NSDocumentController.shared.addDocument(doc)
+        showEditor(for: doc)
         if register { ProjectRegistry.shared.register(resolved) }
         doc.editorViewModel.refreshProjectId()
         recordProjectOpened(doc)

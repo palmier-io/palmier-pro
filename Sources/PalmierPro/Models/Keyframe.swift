@@ -35,6 +35,30 @@ struct KeyframeTrack<Value: Codable & Sendable & Equatable>: Codable, Sendable, 
         kf.frame = newFrame
         upsert(kf)
     }
+
+    func frames(in range: ClosedRange<Int>) -> [Int] {
+        var lower = 0
+        var upper = keyframes.count
+        while lower < upper {
+            let middle = (lower + upper) / 2
+            if keyframes[middle].frame < range.lowerBound {
+                lower = middle + 1
+            } else {
+                upper = middle
+            }
+        }
+        let start = lower
+        upper = keyframes.count
+        while lower < upper {
+            let middle = (lower + upper) / 2
+            if keyframes[middle].frame <= range.upperBound {
+                lower = middle + 1
+            } else {
+                upper = middle
+            }
+        }
+        return keyframes[start..<lower].map(\.frame)
+    }
 }
 
 extension KeyframeTrack where Value: KeyframeInterpolatable {
@@ -90,7 +114,7 @@ extension Crop: KeyframeInterpolatable {
 
 /// Identifies which clip property an inspector lane / stamp button drives.
 enum AnimatableProperty: String, CaseIterable, Sendable {
-    case opacity, position, scale, rotation, crop, volume
+    case opacity, position, scale, rotation, crop, blur, volume
 
     var displayName: String {
         switch self {
@@ -99,7 +123,19 @@ enum AnimatableProperty: String, CaseIterable, Sendable {
         case .scale:    "Scale"
         case .rotation: "Rotation"
         case .crop:     "Crop"
+        case .blur:     "Blur"
         case .volume:   "Volume"
+        }
+    }
+
+    static let visualLaneOrder: [AnimatableProperty] = [
+        .position, .scale, .rotation, .opacity, .blur, .crop,
+    ]
+
+    static func lanes(for track: Track) -> [AnimatableProperty] {
+        guard track.type != .audio else { return [] }
+        return visualLaneOrder.filter { property in
+            track.clips.contains { $0.supportsKeyframes(for: property) }
         }
     }
 }
@@ -107,6 +143,41 @@ enum AnimatableProperty: String, CaseIterable, Sendable {
 // MARK: - Clip keyframe helpers
 
 extension Clip {
+    func supportsKeyframes(for property: AnimatableProperty) -> Bool {
+        switch property {
+        case .volume:
+            return mediaType == .audio
+        case .position, .rotation, .opacity, .blur:
+            return mediaType.isVisual
+        case .scale:
+            switch mediaType {
+            case .video, .image, .lottie, .sequence, .text:
+                return true
+            case .audio, .subtitle:
+                return false
+            }
+        case .crop:
+            switch mediaType {
+            case .video, .image, .lottie, .sequence:
+                return true
+            case .audio, .text, .subtitle:
+                return false
+            }
+        }
+    }
+
+    func hasActiveKeyframes(for property: AnimatableProperty) -> Bool {
+        switch property {
+        case .opacity: opacityTrack?.isActive == true
+        case .position: positionTrack?.isActive == true
+        case .scale: scaleTrack?.isActive == true
+        case .rotation: rotationTrack?.isActive == true
+        case .crop: cropTrack?.isActive == true
+        case .blur: blurKeyframeTrack?.isActive == true
+        case .volume: volumeTrack?.isActive == true
+        }
+    }
+
     func contains(timelineFrame frame: Int) -> Bool {
         frame >= startFrame && frame < endFrame
     }
@@ -124,9 +195,28 @@ extension Clip {
         case .scale:    offsets = scaleTrack?.keyframes.map(\.frame) ?? []
         case .rotation: offsets = rotationTrack?.keyframes.map(\.frame) ?? []
         case .crop:     offsets = cropTrack?.keyframes.map(\.frame) ?? []
+        case .blur:     offsets = blurKeyframeTrack?.keyframes.map(\.frame) ?? []
         case .volume:   offsets = volumeTrack?.keyframes.map(\.frame) ?? []
         }
         return offsets.map(toAbs)
+    }
+
+    func keyframeFrames(
+        for property: AnimatableProperty,
+        intersecting timelineRange: ClosedRange<Int>
+    ) -> [Int] {
+        let offsets = (timelineRange.lowerBound - startFrame)...(timelineRange.upperBound - startFrame)
+        let frames: [Int]
+        switch property {
+        case .opacity: frames = opacityTrack?.frames(in: offsets) ?? []
+        case .position: frames = positionTrack?.frames(in: offsets) ?? []
+        case .scale: frames = scaleTrack?.frames(in: offsets) ?? []
+        case .rotation: frames = rotationTrack?.frames(in: offsets) ?? []
+        case .crop: frames = cropTrack?.frames(in: offsets) ?? []
+        case .blur: frames = blurKeyframeTrack?.frames(in: offsets) ?? []
+        case .volume: frames = volumeTrack?.frames(in: offsets) ?? []
+        }
+        return frames.map(toAbs)
     }
 
     func interpolation(for property: AnimatableProperty, atFrame frame: Int) -> Interpolation? {
@@ -137,6 +227,7 @@ extension Clip {
         case .scale:    return scaleTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
         case .rotation: return rotationTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
         case .crop:     return cropTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
+        case .blur:     return blurKeyframeTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
         case .volume:   return volumeTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
         }
     }
@@ -170,6 +261,10 @@ extension Clip {
         case .crop:
             cropTrack?.remove(at: o)
             if cropTrack?.keyframes.isEmpty == true { cropTrack = nil }
+        case .blur:
+            var track = blurKeyframeTrack
+            track?.remove(at: o)
+            setBlurKeyframeTrack(track)
         case .volume:
             volumeTrack?.remove(at: o)
             if volumeTrack?.keyframes.isEmpty == true { volumeTrack = nil }
@@ -199,6 +294,12 @@ extension Clip {
             if let i = cropTrack?.keyframes.firstIndex(where: { $0.frame == o }) {
                 cropTrack?.keyframes[i].interpolationOut = interpolation
             }
+        case .blur:
+            var track = blurKeyframeTrack
+            if let i = track?.keyframes.firstIndex(where: { $0.frame == o }) {
+                track?.keyframes[i].interpolationOut = interpolation
+                setBlurKeyframeTrack(track)
+            }
         case .volume:
             if let i = volumeTrack?.keyframes.firstIndex(where: { $0.frame == o }) {
                 volumeTrack?.keyframes[i].interpolationOut = interpolation
@@ -214,6 +315,10 @@ extension Clip {
         case .scale:    scaleTrack?.move(from: fromO, to: toO)
         case .rotation: rotationTrack?.move(from: fromO, to: toO)
         case .crop:     cropTrack?.move(from: fromO, to: toO)
+        case .blur:
+            var track = blurKeyframeTrack
+            track?.move(from: fromO, to: toO)
+            setBlurKeyframeTrack(track)
         case .volume:   volumeTrack?.move(from: fromO, to: toO)
         }
     }

@@ -94,6 +94,7 @@ extension EditorViewModel {
         selectedClipIds = []
         selectedGap = nil
         selectedTimelineRange = nil
+        selectedTimelineMarkerIds = []
         pendingSwapClipId = nil
         pendingSwapTargetClipIds = []
         clearAgentActivity()
@@ -270,5 +271,6 @@ extension Timeline {
                 tracks[ti].clips[ci].freshenIds(groups: &groups)
             }
         }
+        for i in markers.indices { markers[i].id = UUID().uuidString }
     }
 }

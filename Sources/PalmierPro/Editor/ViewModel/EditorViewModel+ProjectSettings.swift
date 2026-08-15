@@ -180,6 +180,7 @@ extension EditorViewModel {
 
 extension Timeline {
     mutating func rescaleFrames(by scale: Double) {
+        for i in markers.indices { markers[i].rescaleFrames(by: scale) }
         for ti in tracks.indices {
             let clipIndices = tracks[ti].clips.indices.sorted {
                 tracks[ti].clips[$0].startFrame < tracks[ti].clips[$1].startFrame

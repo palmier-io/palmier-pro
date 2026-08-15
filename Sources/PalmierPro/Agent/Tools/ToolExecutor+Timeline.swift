@@ -14,6 +14,14 @@ extension ToolExecutor {
         if let tracks = dict["tracks"] as? [[String: Any]] {
             dict["tracks"] = Self.compactTracks(tracks, editor: editor, window: window, captionDetail: captionDetail)
         }
+        let markers = editor.displayedTimelineMarkers().filter { marker in
+            window.map(marker.intersects) ?? true
+        }
+        if markers.isEmpty {
+            dict.removeValue(forKey: "markers")
+        } else {
+            dict["markers"] = markers.map(Self.timelineMarkerDict)
+        }
         dict["totalFrames"] = editor.timeline.totalFrames
         dict["durationSeconds"] = Double(editor.timeline.totalFrames) / Double(max(editor.timeline.fps, 1))
         if let window {
@@ -42,6 +50,54 @@ extension ToolExecutor {
 
     static func rawTimelineDict(_ timeline: Timeline) -> [String: Any]? {
         try? JSONSerialization.jsonObject(with: JSONEncoder().encode(timeline)) as? [String: Any]
+    }
+
+    static func focusedRawTracks(
+        _ editor: EditorViewModel,
+        clipIds: Set<String> = [],
+        captionGroupIds: Set<String> = []
+    ) -> [[String: Any]] {
+        var linkGroupIds = Set<String>()
+        var includedCaptionGroupIds = captionGroupIds
+        for track in editor.timeline.tracks {
+            for clip in track.clips where clipIds.contains(clip.id) {
+                if let linkGroupId = clip.linkGroupId {
+                    linkGroupIds.insert(linkGroupId)
+                }
+                if let captionGroupId = clip.captionGroupId {
+                    includedCaptionGroupIds.insert(captionGroupId)
+                }
+            }
+        }
+
+        return editor.timeline.tracks.map { track in
+            let clips = track.clips.filter { clip in
+                clipIds.contains(clip.id)
+                    || clip.captionGroupId.map(includedCaptionGroupIds.contains) == true
+                    || clip.linkGroupId.map(linkGroupIds.contains) == true
+            }
+            return [
+                "id": track.id,
+                "type": track.type.rawValue,
+                "clips": clips.compactMap(Self.rawClipDict),
+            ]
+        }
+    }
+
+    private static func rawClipDict(_ clip: Clip) -> [String: Any]? {
+        try? JSONSerialization.jsonObject(with: JSONEncoder().encode(clip)) as? [String: Any]
+    }
+
+    static func timelineMarkerDict(_ marker: TimelineMarker) -> [String: Any] {
+        [
+            "markerId": marker.id,
+            "name": marker.name,
+            "startFrame": marker.startFrame,
+            "endFrame": marker.endFrame,
+            "durationFrames": marker.durationFrames,
+            "color": marker.color.hexString,
+            "comment": marker.comment,
+        ]
     }
 
     func timelineEntries(_ editor: EditorViewModel, detailed: Bool = false) -> [[String: Any]] {
@@ -311,7 +367,10 @@ extension ToolExecutor {
         out = strippingDefaults(out, clipDefaults)
         if let id = out["id"] as? String, let grade = grades[id] { out["color"] = grade }
         if let fx = out["effects"] as? [[String: Any]] {
-            let cleaned = compactEffects(fx)
+            let isText = out["mediaType"] as? String == ClipType.text.rawValue
+            let cleaned = compactEffects(fx).filter {
+                !isText || $0["type"] as? String != Effect.gaussianBlurType
+            }
             if cleaned.isEmpty { out.removeValue(forKey: "effects") } else { out["effects"] = cleaned }
         }
         let start = intValue(out["startFrame"])
@@ -476,6 +535,27 @@ extension ToolExecutor {
                 row.append(contentsOf: exposedValues)
                 if let interp = kf["interpolationOut"] as? String, interp != "smooth" {
                     row.append(interp)
+                }
+                return row
+            }
+        }
+        if let effects = clip["effects"] as? [[String: Any]],
+           let blurEffect = effects.first(where: {
+               $0["type"] as? String == Effect.gaussianBlurType
+           }),
+           let params = blurEffect["params"] as? [String: Any],
+           let radius = params[Effect.gaussianBlurRadiusKey] as? [String: Any],
+           let track = radius["track"] as? [String: Any],
+           let blurKeyframes = track["keyframes"] as? [[String: Any]],
+           !blurKeyframes.isEmpty {
+            keyframes["blur"] = blurKeyframes.map { keyframe -> [Any] in
+                var row: [Any] = [
+                    keyframe["frame"] ?? 0,
+                    (keyframe["value"] as? NSNumber)?.doubleValue ?? 0,
+                ]
+                if let interpolation = keyframe["interpolationOut"] as? String,
+                   interpolation != "smooth" {
+                    row.append(interpolation)
                 }
                 return row
             }

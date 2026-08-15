@@ -127,7 +127,7 @@ struct CropOverlayView: View {
 
     private func resizedCrop(_ start: Crop, corner: Corner, by translation: CGSize, clipRect: CGRect, clip: Clip) -> Crop {
         guard clipRect.width > 0, clipRect.height > 0 else { return start }
-        let minVis = 0.05
+        let minVis = Crop.minimumVisibleFraction
         if let aspectN = lockedAspectNormalized(for: clip) {
             return resizedCropLocked(start, corner: corner, translation: translation, clipRect: clipRect, aspectN: aspectN, minVis: minVis)
         }

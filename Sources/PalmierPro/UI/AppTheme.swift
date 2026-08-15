@@ -58,6 +58,8 @@ enum AppTheme {
         )
         static let timelineClip = AppTheme.adaptive(light: .white, dark: .black)
         static let timelineClipSelected = AppTheme.adaptive(light: .black, dark: .white)
+        static let timelineMarker = AppTheme.adaptive(light: .white, dark: .black)
+        static let timelineMarkerSelected = AppTheme.adaptive(light: .black, dark: .white)
 
         static var primaryColor: Color { Color(primary) }
         static var subtleColor: Color { Color(subtle) }
@@ -204,6 +206,20 @@ enum AppTheme {
         static let changeGlowRadius: CGFloat = 8
         static let readGlowOpacity: Float = 0.35
         static let readGlowRadius: CGFloat = 4
+    }
+
+    enum TimelineMarker {
+        static let flagWidth: CGFloat = 10
+        static let flagHeight: CGFloat = 12
+        static let rangeBarHeight: CGFloat = 4
+        static let hitSlop: CGFloat = 3
+        static let editorWidth: CGFloat = 320
+        static let timeFieldWidth: CGFloat = 82
+        static let notesHeight: CGFloat = 54
+        static let presetColors = [
+            "#4094FF", "#40CCE6", "#40BF5C", "#F2C72E", "#FF8C26", "#E64040", "#F259A6",
+            "#A666F2", "#8CBFFF", "#73E6B8", "#A6D936", "#C79E6B", "#D1D1D1",
+        ].compactMap(TextStyle.RGBA.init(hex:))
     }
 
     // MARK: - Text
@@ -415,6 +431,16 @@ enum AppTheme {
         static let timelineTrackHeaderMinimumWidth: CGFloat = 112
         static let timelineTrackHeaderMaximumWidth: CGFloat = 320
         static let timelineTrackHeaderResizeHitWidth: CGFloat = 8
+        static let timelineTrackHeaderColorStripWidth: CGFloat = 3
+        static let timelineTrackHeaderReorderLeadingInset: CGFloat = 9
+        static let timelineKeyframeResizeHandleWidth: CGFloat =
+            timelineTrackHeaderReorderLeadingInset + AppTheme.IconSize.md
+        static let timelineKeyframeTrackHeaderMinimumWidth: CGFloat = 220
+        static let timelineKeyframeValueFieldWidth: CGFloat = 36
+        static let timelineKeyframeValueFieldHeight: CGFloat = 18
+        static let timelineKeyframeLaneHeight: CGFloat = 24
+        static let timelineKeyframeDiamondSize: CGFloat = 8
+        static let timelineKeyframeHitSize: CGFloat = 14
         static let timelineClipLabelMinWidth: CGFloat = 56
         static let timelineBadgePadH: CGFloat = 4
         static let timelineBadgePadV: CGFloat = 1

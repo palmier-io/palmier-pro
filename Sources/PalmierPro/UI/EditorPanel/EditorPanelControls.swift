@@ -2,15 +2,17 @@ import SwiftUI
 
 private struct EditorValueFieldModifier: ViewModifier {
     var active = false
+    var minHeight = AppTheme.EditorPanel.fieldMinHeight
+    var fill = AppTheme.Background.baseColor
     @Environment(\.isEnabled) private var isEnabled
     @State private var isHovered = false
 
     func body(content: Content) -> some View {
         content
-            .frame(minHeight: AppTheme.EditorPanel.fieldMinHeight)
+            .frame(minHeight: minHeight)
             .background(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.xsSm, style: .continuous)
-                    .fill(AppTheme.Background.baseColor)
+                    .fill(fill)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.xsSm, style: .continuous)
@@ -29,8 +31,12 @@ private struct EditorValueFieldModifier: ViewModifier {
 }
 
 extension View {
-    func editorValueField(active: Bool = false) -> some View {
-        modifier(EditorValueFieldModifier(active: active))
+    func editorValueField(
+        active: Bool = false,
+        minHeight: CGFloat = AppTheme.EditorPanel.fieldMinHeight,
+        fill: Color = AppTheme.Background.baseColor
+    ) -> some View {
+        modifier(EditorValueFieldModifier(active: active, minHeight: minHeight, fill: fill))
     }
 }
 
