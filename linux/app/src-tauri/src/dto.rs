@@ -82,6 +82,8 @@ pub struct MediaAsset {
     pub accent: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub generated: Option<bool>,
+    #[serde(default)]
+    pub has_audio: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -110,6 +112,8 @@ pub struct TimelineClip {
     pub volume: f64,
     pub fade_in_frames: i64,
     pub fade_out_frames: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link_group_id: Option<String>,
     pub transform: ClipTransform,
 }
 
@@ -132,6 +136,7 @@ pub struct ProjectDocument {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+    pub timeline_id: String,
     pub width: i32,
     pub height: i32,
     pub fps: i32,
@@ -212,4 +217,31 @@ pub struct DecodePreviewFrameResult {
     pub height: u32,
     pub mime_type: String,
     pub data_base64: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UiEditResult {
+    pub receipt: palmier_core::MutationReceipt,
+    pub project: ProjectDocument,
+    pub revision: u64,
+    pub dirty: bool,
+    pub undo_depth: usize,
+    pub redo_depth: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UiPreviewEditResult {
+    pub receipt: palmier_core::MutationReceipt,
+    pub project: ProjectDocument,
+    pub expected_revision: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewAudio {
+    pub sample_rate: u32,
+    pub channels: u16,
+    pub samples_base64: String,
 }

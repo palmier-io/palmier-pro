@@ -4,27 +4,30 @@ use std::sync::Arc;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use chrono::Utc;
-use palmier_core::EditorCommand;
+use palmier_core::{AddMode, Clip, ClipType, EditorCommand};
 use palmier_generation::{FAL_API_KEY, GenerationRequest, JobState, REPLICATE_API_TOKEN};
 use palmier_media::{
-    AudioExportSettings, DecodedFrameData, ExportFrameSource,
-    ExportRequest as MediaExportRequest, ExportSettings, ExportState, FrameOutput,
-    PausedFrameRequest, PreparedProjectRender, discover_codec_capabilities, encode_jpeg,
-    prepare_project_render,
+    AudioExportSettings, DecodedFrameData, ExportFrameSource, ExportRequest as MediaExportRequest,
+    ExportSettings, ExportState, FrameOutput, PausedFrameRequest, PreparedProjectRender,
+    decode_pcm_range, discover_codec_capabilities, encode_jpeg, prepare_project_render,
+    resolve_media_path,
 };
 use palmier_project::{PROJECT_FILE_EXTENSION, ProjectSnapshot, is_project_package_path};
-use palmier_service::{EditResult, ImportMode, PreviewResult, ProjectView};
+use palmier_service::{ImportMode, ProjectView};
+use serde_json::Value;
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
 use uuid::Uuid;
 
 use crate::dto::{
-    DecodePreviewFrameResult, ImportCandidate, MediaAsset, MediaStatus, ProjectDocument,
-    ProviderSettings, StartGenerationResult, UiBootstrapPayload, UiExportJob, UiExportRequest,
-    UiGenerationJob, UiGenerationRequest,
+    DecodePreviewFrameResult, ImportCandidate, MediaAsset, MediaStatus, PreviewAudio,
+    ProjectDocument, ProviderSettings, StartGenerationResult, UiBootstrapPayload, UiEditResult,
+    UiExportJob, UiExportRequest, UiGenerationJob, UiGenerationRequest, UiPreviewEditResult,
 };
 use crate::error::{AppError, AppResult};
-use crate::map::{project_document, recent_project, safe_project_filename};
+use crate::map::{
+    project_document, recent_project, safe_project_filename, ui_edit_result, ui_preview_edit_result,
+};
 use crate::state::{AppState, RenderCacheEntry};
 
 #[tauri::command]
@@ -253,6 +256,7 @@ pub async fn start_generation(
         status: MediaStatus::generating(0.0, label),
         accent: "violet".into(),
         generated: Some(true),
+        has_audio: request.kind != "image",
     };
     state
         .generation_assets
@@ -436,12 +440,16 @@ pub async fn commit_edit(
     state: State<'_, Arc<AppState>>,
     project_id: Uuid,
     expected_revision: u64,
-    command: EditorCommand,
-) -> AppResult<EditResult> {
-    Ok(state
+    command: Value,
+) -> AppResult<UiEditResult> {
+    let view = state.editor.project_view(project_id).await?;
+    let command = parse_editor_command(command, active_timeline_id(&view))?;
+    let result = state
         .editor
         .commit_edit(project_id, expected_revision, command)
-        .await?)
+        .await?;
+    let view = state.editor.project_view(project_id).await?;
+    Ok(ui_edit_result(&view, result.receipt))
 }
 
 #[tauri::command]
@@ -449,21 +457,51 @@ pub async fn preview_edit(
     state: State<'_, Arc<AppState>>,
     project_id: Uuid,
     expected_revision: u64,
-    command: EditorCommand,
-) -> AppResult<PreviewResult> {
-    Ok(state
+    command: Value,
+) -> AppResult<UiPreviewEditResult> {
+    let view = state.editor.project_view(project_id).await?;
+    let command = parse_editor_command(command, active_timeline_id(&view))?;
+    let result = state
         .editor
         .preview_edit(project_id, expected_revision, command)
-        .await?)
+        .await?;
+    let mut view = state.editor.project_view(project_id).await?;
+    view.snapshot = result.snapshot;
+    Ok(ui_preview_edit_result(
+        &view,
+        result.receipt,
+        result.expected_revision,
+    ))
 }
 
 #[tauri::command]
 pub async fn get_project(
     state: State<'_, Arc<AppState>>,
     project_id: String,
-) -> AppResult<ProjectView> {
+) -> AppResult<ProjectDocument> {
     let project_id = parse_uuid(&project_id, "projectId")?;
-    Ok(state.editor.project_view(project_id).await?)
+    let view = state.editor.project_view(project_id).await?;
+    Ok(project_document(&view))
+}
+
+#[tauri::command]
+pub async fn place_asset(
+    state: State<'_, Arc<AppState>>,
+    project_id: String,
+    expected_revision: u64,
+    asset_id: String,
+    track_id: Option<String>,
+    start_frame: i64,
+) -> AppResult<UiEditResult> {
+    let project_id = parse_uuid(&project_id, "projectId")?;
+    let view = state.editor.project_view(project_id).await?;
+    let command = place_asset_command(&view, &asset_id, track_id.as_deref(), start_frame)?;
+    let result = state
+        .editor
+        .commit_edit(project_id, expected_revision, command)
+        .await?;
+    let view = state.editor.project_view(project_id).await?;
+    Ok(ui_edit_result(&view, result.receipt))
 }
 
 #[tauri::command]
@@ -528,6 +566,7 @@ pub async fn render_preview_frame(
     );
     let render = prepared_render(&state, &view, output_size).await?;
     let source = Arc::clone(&render.source);
+    let frame = frame.min(render.plan.duration_frames.saturating_sub(1));
     let rendered = tokio::task::spawn_blocking(move || source.render_frame(frame))
         .await
         .map_err(|error| AppError::message(format!("preview render task failed: {error}")))??;
@@ -537,6 +576,179 @@ pub async fn render_preview_frame(
         height: rendered.height,
         mime_type: "image/jpeg".into(),
         data_base64: BASE64.encode(jpeg),
+    })
+}
+
+#[tauri::command]
+pub async fn decode_asset_preview(
+    state: State<'_, Arc<AppState>>,
+    project_id: String,
+    asset_id: String,
+    time_seconds: Option<f64>,
+    max_width: Option<u32>,
+    max_height: Option<u32>,
+) -> AppResult<DecodePreviewFrameResult> {
+    let project_id = parse_uuid(&project_id, "projectId")?;
+    let view = state.editor.project_view(project_id).await?;
+    let path = media_file_path(&view, &asset_id)?;
+    let micros = (time_seconds.unwrap_or(0.0) * 1_000_000.0).round() as i64;
+    let time = palmier_media::MediaTime::from_micros(micros.max(0))?;
+    let request = PausedFrameRequest {
+        path,
+        stream_index: None,
+        time,
+        max_width: max_width.unwrap_or(1280).max(1),
+        max_height: max_height.unwrap_or(720).max(1),
+        allow_upscale: false,
+        output: FrameOutput::Jpeg { quality: 85 },
+    };
+    let frame = state.editor.decode_paused_frame(request).await?;
+    let (mime_type, bytes) = match frame.data {
+        DecodedFrameData::Jpeg { bytes, .. } => ("image/jpeg".to_owned(), bytes),
+        DecodedFrameData::Rgba { bytes } => ("application/octet-stream".to_owned(), bytes),
+    };
+    Ok(DecodePreviewFrameResult {
+        width: frame.width,
+        height: frame.height,
+        mime_type,
+        data_base64: BASE64.encode(bytes),
+    })
+}
+
+#[tauri::command]
+pub async fn capture_frame(
+    state: State<'_, Arc<AppState>>,
+    project_id: String,
+    timeline_frame: Option<i64>,
+    media_ref: Option<String>,
+    source_seconds: Option<f64>,
+) -> AppResult<Vec<MediaAsset>> {
+    let project_id = parse_uuid(&project_id, "projectId")?;
+    let view = state.editor.project_view(project_id).await?;
+    let jpeg = match (
+        timeline_frame,
+        media_ref.as_deref(),
+        source_seconds,
+    ) {
+        (Some(frame), None, None) => {
+            let timeline = active_timeline(&view)?;
+            let output_size = (
+                u32::try_from(timeline.width).unwrap_or(1920).max(1),
+                u32::try_from(timeline.height).unwrap_or(1080).max(1),
+            );
+            let render = prepared_render(&state, &view, output_size).await?;
+            let source = Arc::clone(&render.source);
+            let frame_index = u64::try_from(frame.max(0))
+                .map_err(|_| AppError::message("timelineFrame is out of range"))?
+                .min(render.plan.duration_frames.saturating_sub(1));
+            let rendered = tokio::task::spawn_blocking(move || source.render_frame(frame_index))
+                .await
+                .map_err(|error| {
+                    AppError::message(format!("capture render task failed: {error}"))
+                })??;
+            encode_jpeg(&rendered, 90)?
+        }
+        (None, Some(asset_id), Some(seconds)) => {
+            let path = media_file_path(&view, asset_id)?;
+            let micros = (seconds * 1_000_000.0).round() as i64;
+            let time = palmier_media::MediaTime::from_micros(micros.max(0))?;
+            let frame = state
+                .editor
+                .decode_paused_frame(PausedFrameRequest {
+                    path,
+                    stream_index: None,
+                    time,
+                    max_width: 1920,
+                    max_height: 1080,
+                    allow_upscale: true,
+                    output: FrameOutput::Jpeg { quality: 90 },
+                })
+                .await?;
+            match frame.data {
+                DecodedFrameData::Jpeg { bytes, .. } => bytes,
+                _ => {
+                    return Err(AppError::message(
+                        "capture_frame expected JPEG decode output",
+                    ));
+                }
+            }
+        }
+        _ => {
+            return Err(AppError::message(
+                "pass timelineFrame alone, or mediaRef with sourceSeconds",
+            ));
+        }
+    };
+    let temp_path = std::env::temp_dir().join(format!("palmier-capture-{}.jpg", Uuid::new_v4()));
+    tokio::fs::write(&temp_path, &jpeg)
+        .await
+        .map_err(|error| AppError::message(format!("write capture: {error}")))?;
+    let result = import_media_paths(&state, project_id, vec![temp_path.clone()]).await;
+    let _ = tokio::fs::remove_file(&temp_path).await;
+    result
+}
+
+#[tauri::command]
+pub async fn render_preview_audio(
+    state: State<'_, Arc<AppState>>,
+    project_id: String,
+    start_frame: u64,
+    frame_count: u64,
+) -> AppResult<PreviewAudio> {
+    let project_id = parse_uuid(&project_id, "projectId")?;
+    let view = state.editor.project_view(project_id).await?;
+    let timeline = active_timeline(&view)?;
+    let fps = f64::from(timeline.fps.max(1));
+    let output_size = fit_size(
+        u32::try_from(timeline.width).unwrap_or(1920).max(1),
+        u32::try_from(timeline.height).unwrap_or(1080).max(1),
+        1280,
+        720,
+    );
+    let render = prepared_render(&state, &view, output_size).await?;
+    let start_seconds = start_frame as f64 / fps;
+    let duration_seconds = (frame_count.max(1) as f64 / fps).max(1.0 / fps);
+    let sample_rate = 48_000_u32;
+    let channels = 2_u16;
+    let start_sample = (start_seconds * f64::from(sample_rate)).floor().max(0.0) as u64;
+    let sample_count = (duration_seconds * f64::from(sample_rate)).ceil().max(1.0) as usize;
+    let source = Arc::clone(&render.source);
+    let audio = tokio::task::spawn_blocking(move || {
+        source.render_audio(start_sample, sample_count, sample_rate, channels)
+    })
+    .await
+    .map_err(|error| AppError::message(format!("preview audio task failed: {error}")))??;
+    Ok(PreviewAudio {
+        sample_rate,
+        channels: audio.channels,
+        samples_base64: f32_samples_to_base64(&audio.samples),
+    })
+}
+
+#[tauri::command]
+pub async fn decode_asset_audio(
+    state: State<'_, Arc<AppState>>,
+    project_id: String,
+    asset_id: String,
+    time_seconds: Option<f64>,
+    duration_seconds: Option<f64>,
+) -> AppResult<PreviewAudio> {
+    let project_id = parse_uuid(&project_id, "projectId")?;
+    let view = state.editor.project_view(project_id).await?;
+    let path = media_file_path(&view, &asset_id)?;
+    let start = time_seconds.unwrap_or(0.0).max(0.0);
+    let duration = duration_seconds.unwrap_or(0.5).max(1.0 / 48_000.0);
+    let sample_rate = 48_000_u32;
+    let channels = 2_u16;
+    let pcm = tokio::task::spawn_blocking(move || {
+        decode_pcm_range(&path, start, duration, sample_rate, channels)
+    })
+    .await
+    .map_err(|error| AppError::message(format!("preview audio task failed: {error}")))??;
+    Ok(PreviewAudio {
+        sample_rate: pcm.sample_rate,
+        channels: pcm.channels,
+        samples_base64: f32_samples_to_base64(&pcm.samples),
     })
 }
 
@@ -614,8 +826,9 @@ fn apply_export_state(job: &mut UiExportJob, state: &ExportState) {
         ExportState::Running { progress } => {
             job.status = match progress.phase {
                 palmier_media::ExportPhase::Preflight => "preparing",
-                palmier_media::ExportPhase::Encoding
-                | palmier_media::ExportPhase::Finalizing => "running",
+                palmier_media::ExportPhase::Encoding | palmier_media::ExportPhase::Finalizing => {
+                    "running"
+                }
             }
             .into();
             job.progress = f64::from(progress.fraction);
@@ -634,6 +847,223 @@ fn apply_export_state(job: &mut UiExportJob, state: &ExportState) {
             job.progress = 1.0;
         }
     }
+}
+
+fn active_timeline_id(view: &ProjectView) -> String {
+    view.snapshot
+        .project
+        .active_timeline_id()
+        .map(str::to_owned)
+        .or_else(|| {
+            view.snapshot
+                .project
+                .timelines
+                .first()
+                .map(|timeline| timeline.id.clone())
+        })
+        .unwrap_or_default()
+}
+
+fn parse_editor_command(value: Value, timeline_id: String) -> AppResult<EditorCommand> {
+    let value = with_timeline_id(value, &timeline_id);
+    serde_json::from_value(value.clone())
+        .or_else(|_| serde_json::from_value(duplicate_case_keys(value.clone())))
+        .map_err(|error| AppError::message(format!("invalid edit command: {error}")))
+}
+
+fn with_timeline_id(mut value: Value, timeline_id: &str) -> Value {
+    let Some(object) = value.as_object_mut() else {
+        return value;
+    };
+    let tag = object
+        .get("command")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned();
+    if tag == "undo" || tag == "redo" || timeline_id.is_empty() {
+        return value;
+    }
+    if !object.contains_key("timelineId") && !object.contains_key("timeline_id") {
+        object.insert(
+            "timelineId".into(),
+            Value::String(timeline_id.to_owned()),
+        );
+        object.insert(
+            "timeline_id".into(),
+            Value::String(timeline_id.to_owned()),
+        );
+    }
+    value
+}
+
+fn duplicate_case_keys(value: Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut out = serde_json::Map::new();
+            for (key, child) in map {
+                let child = duplicate_case_keys(child);
+                let snake = camel_to_snake(&key);
+                let camel = snake_to_camel(&key);
+                out.insert(key, child.clone());
+                out.insert(snake, child.clone());
+                out.insert(camel, child);
+            }
+            Value::Object(out)
+        }
+        Value::Array(items) => Value::Array(items.into_iter().map(duplicate_case_keys).collect()),
+        other => other,
+    }
+}
+
+fn camel_to_snake(input: &str) -> String {
+    let mut out = String::new();
+    for (index, ch) in input.chars().enumerate() {
+        if ch.is_uppercase() {
+            if index > 0 {
+                out.push('_');
+            }
+            out.extend(ch.to_lowercase());
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+fn snake_to_camel(input: &str) -> String {
+    let mut out = String::new();
+    let mut upper = false;
+    for ch in input.chars() {
+        if ch == '_' {
+            upper = true;
+            continue;
+        }
+        if upper {
+            out.extend(ch.to_uppercase());
+            upper = false;
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+fn place_asset_command(
+    view: &ProjectView,
+    asset_id: &str,
+    requested_track_id: Option<&str>,
+    start_frame: i64,
+) -> AppResult<EditorCommand> {
+    let timeline = active_timeline(view)?;
+    let media = view
+        .snapshot
+        .media_manifest
+        .entries
+        .iter()
+        .find(|entry| entry.id == asset_id)
+        .ok_or_else(|| AppError::message(format!("media not found: {asset_id}")))?;
+    let start_frame = start_frame.max(0);
+    let duration = media_duration_frames(media.duration, timeline.fps, media.media_type);
+    let primary_track = select_compatible_track(timeline, media.media_type, requested_track_id)?;
+    let link_group_id = if media.media_type == ClipType::Video && media.has_audio == Some(true) {
+        Some(palmier_core::new_id())
+    } else {
+        None
+    };
+    let mut video_clip = Clip::new(asset_id, start_frame, duration);
+    video_clip.media_type = media.media_type;
+    video_clip.source_clip_type = media.media_type;
+    video_clip.link_group_id = link_group_id.clone();
+    video_clip.fit_visual_to_canvas(
+        media.source_width,
+        media.source_height,
+        timeline.width,
+        timeline.height,
+    );
+    let mut commands = vec![EditorCommand::AddClips {
+        timeline_id: timeline.id.clone(),
+        track_id: primary_track.id.clone(),
+        start_frame,
+        clips: vec![video_clip],
+        mode: AddMode::Overwrite,
+    }];
+    if let Some(link_group_id) = link_group_id {
+        if let Some(audio_track) = timeline
+            .tracks
+            .iter()
+            .find(|track| track.track_type == ClipType::Audio)
+        {
+            let mut audio_clip = Clip::new(asset_id, start_frame, duration);
+            audio_clip.media_type = ClipType::Audio;
+            audio_clip.source_clip_type = media.media_type;
+            audio_clip.link_group_id = Some(link_group_id);
+            commands.push(EditorCommand::AddClips {
+                timeline_id: timeline.id.clone(),
+                track_id: audio_track.id.clone(),
+                start_frame,
+                clips: vec![audio_clip],
+                mode: AddMode::Overwrite,
+            });
+        }
+    }
+    if commands.len() == 1 {
+        return Ok(commands.remove(0));
+    }
+    Ok(EditorCommand::Batch {
+        timeline_id: timeline.id.clone(),
+        commands,
+    })
+}
+
+fn select_compatible_track<'a>(
+    timeline: &'a palmier_core::Timeline,
+    clip_type: ClipType,
+    requested_track_id: Option<&str>,
+) -> AppResult<&'a palmier_core::Track> {
+    if let Some(track_id) = requested_track_id {
+        if let Some(track) = timeline
+            .tracks
+            .iter()
+            .find(|track| track.id == track_id && track.track_type.is_compatible_with(clip_type))
+        {
+            return Ok(track);
+        }
+    }
+    timeline
+        .tracks
+        .iter()
+        .find(|track| track.track_type.is_compatible_with(clip_type))
+        .ok_or_else(|| AppError::message("timeline has no compatible track"))
+}
+
+fn media_duration_frames(duration: f64, fps: i32, media_type: ClipType) -> i64 {
+    if duration.is_finite() && duration > 0.0 && fps > 0 {
+        return (duration * f64::from(fps)).round().max(1.0) as i64;
+    }
+    let fallback_seconds = if media_type == ClipType::Image { 4 } else { 5 };
+    i64::from(fps.max(1)) * fallback_seconds
+}
+
+fn media_file_path(view: &ProjectView, asset_id: &str) -> AppResult<PathBuf> {
+    let entry = view
+        .snapshot
+        .media_manifest
+        .entries
+        .iter()
+        .find(|entry| entry.id == asset_id)
+        .ok_or_else(|| AppError::message(format!("media not found: {asset_id}")))?;
+    Ok(resolve_media_path(
+        &entry.source,
+        view.summary.path.as_deref(),
+    )?)
+}
+
+fn f32_samples_to_base64(samples: &[f32]) -> String {
+    let mut bytes = Vec::with_capacity(samples.len() * 4);
+    for sample in samples {
+        bytes.extend_from_slice(&sample.to_le_bytes());
+    }
+    BASE64.encode(bytes)
 }
 
 async fn prepared_render(
@@ -711,8 +1141,7 @@ fn fit_size(width: u32, height: u32, maximum_width: u32, maximum_height: u32) ->
     if width == 0 || height == 0 {
         return (maximum_width.max(1), maximum_height.max(1));
     }
-    let scale = (maximum_width as f64 / width as f64)
-        .min(maximum_height as f64 / height as f64);
+    let scale = (maximum_width as f64 / width as f64).min(maximum_height as f64 / height as f64);
     (
         (width as f64 * scale).round().max(1.0) as u32,
         (height as f64 * scale).round().max(1.0) as u32,
@@ -871,7 +1300,13 @@ fn pick_import_paths(app: &AppHandle) -> AppResult<Vec<PathBuf>> {
     let picked = app
         .dialog()
         .file()
-        .add_filter("Media", &["mp4", "mov", "m4v", "mp3", "wav", "aac", "m4a", "png", "jpg", "jpeg", "webp", "gif"])
+        .add_filter(
+            "Media",
+            &[
+                "mp4", "mov", "m4v", "mp3", "wav", "aac", "m4a", "png", "jpg", "jpeg", "webp",
+                "gif",
+            ],
+        )
         .add_filter("All Files", &["*"])
         .blocking_pick_files();
     let Some(files) = picked else {

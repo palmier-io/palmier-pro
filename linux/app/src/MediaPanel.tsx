@@ -20,6 +20,7 @@ import {
   type FormEvent,
 } from 'react'
 import { useEditor } from './editorState'
+import { writeAssetDrag } from './assetDrag'
 import { UserText, useI18n } from './i18n'
 import type { GenerationKind, MediaAsset } from './model'
 import { IconButton, Panel, Spinner } from './ui'
@@ -97,8 +98,7 @@ function AssetCard({
   const { t } = useI18n()
 
   const beginDrag = (event: DragEvent<HTMLButtonElement>) => {
-    event.dataTransfer.effectAllowed = 'copy'
-    event.dataTransfer.setData('application/x-palmier-asset', asset.id)
+    writeAssetDrag(event.dataTransfer, asset.id)
   }
 
   return (
@@ -346,12 +346,12 @@ export function MediaPanel() {
   const receiveDrop = (event: DragEvent) => {
     event.preventDefault()
     setDropActive(false)
-    if (backend.kind === 'tauri') {
-      void importFromDialog()
+    if (!event.dataTransfer.types.includes('Files')) return
+    const files = [...event.dataTransfer.files]
+    if (files.length > 0) {
+      void importFiles(files)
       return
     }
-    const files = [...event.dataTransfer.files]
-    if (files.length > 0) void importFiles(files)
   }
 
   const header = (

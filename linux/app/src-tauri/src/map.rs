@@ -5,7 +5,7 @@ use palmier_service::ProjectView;
 
 use crate::dto::{
     ClipTransform, MediaAsset, MediaStatus, ProjectDocument, RecentProject, TimelineClip,
-    TimelineTrack,
+    TimelineTrack, UiEditResult, UiPreviewEditResult,
 };
 
 const ACCENTS: [&str; 6] = ["moss", "amber", "violet", "slate", "rose", "ocean"];
@@ -65,14 +65,15 @@ pub fn project_document(view: &ProjectView) -> ProjectDocument {
         })
         .or_else(|| view.snapshot.project.timelines.first());
 
-    let (width, height, fps, tracks) = match timeline {
+    let (timeline_id, width, height, fps, tracks) = match timeline {
         Some(timeline) => (
+            timeline.id.clone(),
             timeline.width,
             timeline.height,
             timeline.fps,
             map_tracks(timeline, &view.snapshot.media_manifest.entries),
         ),
-        None => (1920, 1080, 30, Vec::new()),
+        None => (String::new(), 1920, 1080, 30, Vec::new()),
     };
 
     let media = view
@@ -87,12 +88,36 @@ pub fn project_document(view: &ProjectView) -> ProjectDocument {
         id: view.summary.project_id.to_string(),
         name,
         path,
+        timeline_id,
         width,
         height,
         fps,
         updated_at: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         media,
         tracks,
+    }
+}
+
+pub fn ui_edit_result(view: &ProjectView, receipt: palmier_core::MutationReceipt) -> UiEditResult {
+    UiEditResult {
+        receipt,
+        project: project_document(view),
+        revision: view.summary.revision,
+        dirty: view.summary.dirty,
+        undo_depth: view.summary.undo_depth,
+        redo_depth: view.summary.redo_depth,
+    }
+}
+
+pub fn ui_preview_edit_result(
+    view: &ProjectView,
+    receipt: palmier_core::MutationReceipt,
+    expected_revision: u64,
+) -> UiPreviewEditResult {
+    UiPreviewEditResult {
+        receipt,
+        project: project_document(view),
+        expected_revision,
     }
 }
 
@@ -168,6 +193,7 @@ fn map_clip(
         volume: clip.volume,
         fade_in_frames: clip.fade_in_frames,
         fade_out_frames: clip.fade_out_frames,
+        link_group_id: clip.link_group_id.clone(),
         transform: ClipTransform {
             position_x: (clip.transform.center_x - 0.5) * 100.0,
             position_y: (clip.transform.center_y - 0.5) * 100.0,
@@ -216,6 +242,7 @@ fn map_media_entry(entry: &palmier_core::MediaManifestEntry, fps: i32) -> MediaA
         status,
         accent,
         generated: generated.then_some(true),
+        has_audio: entry.has_audio.unwrap_or(false),
     }
 }
 

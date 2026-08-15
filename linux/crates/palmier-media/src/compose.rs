@@ -130,9 +130,7 @@ fn blit_layer(out: &mut [u8], out_w: u32, out_h: u32, layer: &LayerFrame) -> Res
             let local_y = sin * relative_x + cos * relative_y;
             let normalized_x = local_x / dest_w + 0.5;
             let normalized_y = local_y / dest_h + 0.5;
-            if !(0.0..1.0).contains(&normalized_x)
-                || !(0.0..1.0).contains(&normalized_y)
-            {
+            if !(0.0..1.0).contains(&normalized_x) || !(0.0..1.0).contains(&normalized_y) {
                 continue;
             }
             let normalized_x = if layer.flip_horizontal {

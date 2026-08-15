@@ -27,6 +27,7 @@ import {
   projectDurationFrames,
   useEditor,
 } from './editorState'
+import { isAssetDrag, readAssetDrag } from './assetDrag'
 import { UserText, useI18n } from './i18n'
 import type { TimelineClip, TimelineTrack } from './model'
 import { IconButton, Panel, formatTimecode } from './ui'
@@ -537,9 +538,7 @@ function TrackRow({
   }
 
   const dropAsset = (event: DragEvent<HTMLDivElement>) => {
-    const assetId = event.dataTransfer.getData(
-      'application/x-palmier-asset',
-    )
+    const assetId = readAssetDrag(event.dataTransfer)
     if (!assetId) return
     event.preventDefault()
     const rect = event.currentTarget.getBoundingClientRect()
@@ -560,11 +559,7 @@ function TrackRow({
         data-track-id={track.id}
         onPointerDown={seek}
         onDragOver={(event) => {
-          if (
-            event.dataTransfer.types.includes(
-              'application/x-palmier-asset',
-            )
-          ) {
+          if (isAssetDrag([...event.dataTransfer.types])) {
             event.preventDefault()
             event.dataTransfer.dropEffect = 'copy'
           }

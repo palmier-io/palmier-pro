@@ -25,6 +25,7 @@ export interface MediaAsset {
   status: MediaStatus
   accent: 'moss' | 'amber' | 'violet' | 'slate' | 'rose' | 'ocean'
   generated?: boolean
+  hasAudio?: boolean
 }
 
 export type TrackKind = 'video' | 'audio'
@@ -51,6 +52,7 @@ export interface TimelineClip {
   volume: number
   fadeInFrames: number
   fadeOutFrames: number
+  linkGroupId?: string
   transform: ClipTransform
 }
 
@@ -323,6 +325,12 @@ export interface PreviewFrame {
   dataBase64: string
 }
 
+export interface PreviewAudio {
+  sampleRate: number
+  channels: number
+  samplesBase64: string
+}
+
 export interface BackendAdapter {
   readonly kind: 'tauri' | 'demo'
   bootstrap(): Promise<BootstrapPayload>
@@ -342,10 +350,43 @@ export interface BackendAdapter {
   cancelExport(jobId: string): Promise<void>
   previewEdit(request: EditRequest): Promise<PreviewEditResult>
   commitEdit(request: EditRequest): Promise<EditResult>
+  placeAsset?(
+    projectId: string,
+    expectedRevision: number,
+    assetId: string,
+    trackId: string | undefined,
+    startFrame: number,
+  ): Promise<EditResult>
   renderPreviewFrame(
     projectId: string,
     frame: number,
     maxWidth: number,
     maxHeight: number,
   ): Promise<PreviewFrame | null>
+  decodeAssetPreview?(
+    projectId: string,
+    assetId: string,
+    timeSeconds: number,
+    maxWidth: number,
+    maxHeight: number,
+  ): Promise<PreviewFrame | null>
+  renderPreviewAudio?(
+    projectId: string,
+    startFrame: number,
+    frameCount: number,
+  ): Promise<PreviewAudio>
+  decodeAssetAudio?(
+    projectId: string,
+    assetId: string,
+    timeSeconds: number,
+    durationSeconds: number,
+  ): Promise<PreviewAudio>
+  captureFrame?(
+    projectId: string,
+    request: {
+      timelineFrame?: number
+      mediaRef?: string
+      sourceSeconds?: number
+    },
+  ): Promise<MediaAsset[]>
 }

@@ -62,9 +62,14 @@ pub fn run() {
             commands::commit_edit,
             commands::preview_edit,
             commands::get_project,
+            commands::place_asset,
             commands::close_project,
             commands::decode_preview_frame,
+            commands::decode_asset_preview,
+            commands::capture_frame,
             commands::render_preview_frame,
+            commands::render_preview_audio,
+            commands::decode_asset_audio,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Palmier Pro");

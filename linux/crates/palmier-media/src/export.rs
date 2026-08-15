@@ -605,7 +605,10 @@ fn configure_video_encoder(
         usize::try_from(settings.video_bit_rate)
             .map_err(|_| MediaError::ArithmeticOverflow("video bit rate"))?,
     );
-    if matches!(codec.id(), ffmpeg::codec::Id::H264 | ffmpeg::codec::Id::HEVC) {
+    if matches!(
+        codec.id(),
+        ffmpeg::codec::Id::H264 | ffmpeg::codec::Id::HEVC
+    ) {
         let gop = frame_rate
             .numerator()
             .div_ceil(frame_rate.denominator())

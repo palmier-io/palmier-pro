@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use palmier_mcp::{
-    EditorServiceBackend, InMemoryEditorBackend, McpServer, PROTOCOL_VERSION,
-};
+use palmier_mcp::{EditorServiceBackend, InMemoryEditorBackend, McpServer, PROTOCOL_VERSION};
 use palmier_service::EditorService;
 use reqwest::header::{ACCEPT, CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde_json::{Value, json};
@@ -157,9 +155,8 @@ async fn shared_editor_service_mutation_readback_and_undo() {
     .await;
     assert_eq!(added["isError"], false);
 
-    let timeline = tool_structured(
-        &call_tool(&client, &base, &session, "get_timeline", json!({})).await,
-    );
+    let timeline =
+        tool_structured(&call_tool(&client, &base, &session, "get_timeline", json!({})).await);
     assert_eq!(
         timeline["timeline"]["tracks"][0]["clips"]
             .as_array()
@@ -169,9 +166,8 @@ async fn shared_editor_service_mutation_readback_and_undo() {
 
     let undone = call_tool(&client, &base, &session, "undo", json!({})).await;
     assert_eq!(undone["isError"], false);
-    let timeline = tool_structured(
-        &call_tool(&client, &base, &session, "get_timeline", json!({})).await,
-    );
+    let timeline =
+        tool_structured(&call_tool(&client, &base, &session, "get_timeline", json!({})).await);
     assert_eq!(
         timeline["timeline"]["tracks"][0]["clips"]
             .as_array()

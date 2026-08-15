@@ -13,6 +13,7 @@ import type {
   MediaKind,
   PreviewEditResult,
   PreviewFrame,
+  PreviewAudio,
   ProjectDocument,
   ProviderSettings,
   TimelineClip,
@@ -83,6 +84,52 @@ interface CommandMap {
       maxHeight: number
     }
     result: PreviewFrame
+  }
+  place_asset: {
+    args: {
+      projectId: string
+      expectedRevision: number
+      assetId: string
+      trackId?: string
+      startFrame: number
+    }
+    result: EditResult
+  }
+  decode_asset_preview: {
+    args: {
+      projectId: string
+      assetId: string
+      timeSeconds?: number | null
+      maxWidth?: number | null
+      maxHeight?: number | null
+    }
+    result: PreviewFrame
+  }
+  render_preview_audio: {
+    args: {
+      projectId: string
+      startFrame: number
+      frameCount: number
+    }
+    result: PreviewAudio
+  }
+  decode_asset_audio: {
+    args: {
+      projectId: string
+      assetId: string
+      timeSeconds?: number | null
+      durationSeconds?: number | null
+    }
+    result: PreviewAudio
+  }
+  capture_frame: {
+    args: {
+      projectId: string
+      timelineFrame?: number | null
+      mediaRef?: string | null
+      sourceSeconds?: number | null
+    }
+    result: MediaAsset[]
   }
 }
 
@@ -176,6 +223,76 @@ class TauriBackendAdapter implements BackendAdapter {
       maxHeight,
     })
   }
+
+  placeAsset(
+    projectId: string,
+    expectedRevision: number,
+    assetId: string,
+    trackId: string | undefined,
+    startFrame: number,
+  ) {
+    return invokeCommand('place_asset', {
+      projectId,
+      expectedRevision,
+      assetId,
+      trackId,
+      startFrame,
+    })
+  }
+
+  decodeAssetPreview(
+    projectId: string,
+    assetId: string,
+    timeSeconds: number,
+    maxWidth: number,
+    maxHeight: number,
+  ) {
+    return invokeCommand('decode_asset_preview', {
+      projectId,
+      assetId,
+      timeSeconds,
+      maxWidth,
+      maxHeight,
+    })
+  }
+
+  renderPreviewAudio(projectId: string, startFrame: number, frameCount: number) {
+    return invokeCommand('render_preview_audio', {
+      projectId,
+      startFrame,
+      frameCount,
+    })
+  }
+
+  decodeAssetAudio(
+    projectId: string,
+    assetId: string,
+    timeSeconds: number,
+    durationSeconds: number,
+  ) {
+    return invokeCommand('decode_asset_audio', {
+      projectId,
+      assetId,
+      timeSeconds,
+      durationSeconds,
+    })
+  }
+
+  captureFrame(
+    projectId: string,
+    request: {
+      timelineFrame?: number
+      mediaRef?: string
+      sourceSeconds?: number
+    },
+  ) {
+    return invokeCommand('capture_frame', {
+      projectId,
+      timelineFrame: request.timelineFrame,
+      mediaRef: request.mediaRef,
+      sourceSeconds: request.sourceSeconds,
+    })
+  }
 }
 
 interface TimedJob<T> {
@@ -212,6 +329,7 @@ function demoAsset(
     createdAt: DEMO_DATE,
     status: ready(),
     accent,
+    hasAudio: kind !== 'image',
   }
 }
 
@@ -657,6 +775,52 @@ export function createDemoBackend(
     async renderPreviewFrame() {
       await wait()
       return null
+    },
+
+    async decodeAssetPreview() {
+      await wait()
+      return null
+    },
+
+    async renderPreviewAudio() {
+      await wait()
+      return {
+        sampleRate: 48000,
+        channels: 2,
+        samplesBase64: '',
+      }
+    },
+
+    async decodeAssetAudio() {
+      await wait()
+      return {
+        sampleRate: 48000,
+        channels: 2,
+        samplesBase64: '',
+      }
+    },
+
+    async captureFrame(_projectId, request) {
+      await wait()
+      importCounter += 1
+      const name =
+        request.mediaRef != null
+          ? `capture-${request.mediaRef}.jpg`
+          : `capture-f${request.timelineFrame ?? 0}.jpg`
+      return [
+        {
+          id: `asset-capture-${importCounter}`,
+          name,
+          kind: 'image' as const,
+          durationFrames: 120,
+          width: 1920,
+          height: 1080,
+          sourcePath: `/Captured/${name}`,
+          createdAt: new Date(now()).toISOString(),
+          status: ready(),
+          accent: 'rose' as const,
+        },
+      ]
     },
 
     async previewEdit(request) {

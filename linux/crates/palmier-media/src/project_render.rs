@@ -92,9 +92,10 @@ pub async fn prepare_project_render(
     collect_media_probes(&plan, &mut media).await?;
     let codecs = discover_codec_capabilities().await?;
     let capabilities = RendererCapabilities::software(&codecs);
-    let has_audio = plan.tracks.iter().any(|track| {
-        track.kind == TrackKind::Audio && !track.clips.is_empty()
-    });
+    let has_audio = plan
+        .tracks
+        .iter()
+        .any(|track| track.kind == TrackKind::Audio && !track.clips.is_empty());
     let source = Arc::new(ProjectFrameSource {
         plan: plan.clone(),
         clips,
@@ -120,12 +121,7 @@ impl ExportFrameSource for ProjectFrameSource {
         self.capabilities.clone()
     }
 
-    fn render_video_frame(
-        &self,
-        frame_index: u64,
-        width: u32,
-        height: u32,
-    ) -> Result<RgbaFrame> {
+    fn render_video_frame(&self, frame_index: u64, width: u32, height: u32) -> Result<RgbaFrame> {
         if width != self.plan.width || height != self.plan.height {
             return Err(MediaError::InvalidRequest(
                 "render dimensions do not match the composition plan".into(),
@@ -198,8 +194,7 @@ impl ExportFrameSource for ProjectFrameSource {
         channels: u16,
     ) -> Result<InterleavedAudio> {
         let channel_count = usize::from(channels.max(1));
-        let mut samples =
-            vec![0.0_f32; sample_count.saturating_mul(channel_count)];
+        let mut samples = vec![0.0_f32; sample_count.saturating_mul(channel_count)];
         if sample_count == 0 || !self.has_audio {
             return Ok(InterleavedAudio { channels, samples });
         }
@@ -211,7 +206,9 @@ impl ExportFrameSource for ProjectFrameSource {
 
         let fps = self.plan.frame_rate.as_rational().as_f64();
         if fps <= 0.0 {
-            return Err(MediaError::InvalidPlan("invalid composition frame rate".into()));
+            return Err(MediaError::InvalidPlan(
+                "invalid composition frame rate".into(),
+            ));
         }
         let start_seconds = start_sample as f64 / f64::from(sample_rate);
         let duration_seconds = sample_count as f64 / f64::from(sample_rate);
@@ -223,7 +220,8 @@ impl ExportFrameSource for ProjectFrameSource {
             }
             for clip in &track.clips {
                 let clip_start = clip.timeline_range.start as f64 / fps;
-                let clip_end = (clip.timeline_range.start + clip.timeline_range.duration) as f64 / fps;
+                let clip_end =
+                    (clip.timeline_range.start + clip.timeline_range.duration) as f64 / fps;
                 let overlap_start = start_seconds.max(clip_start);
                 let overlap_end = end_seconds.min(clip_end);
                 if overlap_end <= overlap_start {
@@ -237,8 +235,7 @@ impl ExportFrameSource for ProjectFrameSource {
                 })?;
                 let local_start = overlap_start - clip_start;
                 let playback_rate = clip.playback_rate.as_f64().max(0.0001);
-                let source_start =
-                    clip.source_in.seconds().as_f64() + local_start * playback_rate;
+                let source_start = clip.source_in.seconds().as_f64() + local_start * playback_rate;
                 let source_duration = (overlap_end - overlap_start) * playback_rate;
                 let pcm = decode_pcm_range(
                     &source.path,
@@ -256,14 +253,15 @@ impl ExportFrameSource for ProjectFrameSource {
                     if out_frame >= sample_count {
                         break;
                     }
-                    let timeline_frame = ((overlap_start + frame_index as f64 / f64::from(sample_rate))
-                        * fps)
-                        .floor() as i64;
+                    let timeline_frame =
+                        ((overlap_start + frame_index as f64 / f64::from(sample_rate)) * fps)
+                            .floor() as i64;
                     let gain = metadata.clip.volume_at(timeline_frame) as f32;
                     for channel in 0..channel_count {
                         let sample = pcm.samples[frame_index * channel_count + channel] * gain;
                         samples[out_frame * channel_count + channel] =
-                            (samples[out_frame * channel_count + channel] + sample).clamp(-1.0, 1.0);
+                            (samples[out_frame * channel_count + channel] + sample)
+                                .clamp(-1.0, 1.0);
                     }
                 }
             }
@@ -294,12 +292,8 @@ fn build_timeline_plan(
         )));
     }
     let duration_frames = u64::try_from(timeline.total_frames())
-        .map_err(|_| MediaError::InvalidPlan("timeline duration is negative".into()))?;
-    if duration_frames == 0 {
-        return Err(MediaError::InvalidPlan(
-            "cannot render an empty timeline".into(),
-        ));
-    }
+        .map_err(|_| MediaError::InvalidPlan("timeline duration is negative".into()))?
+        .max(1);
     let frame_rate = FrameRate::new(
         u32::try_from(timeline.fps)
             .map_err(|_| MediaError::InvalidPlan("timeline fps is invalid".into()))?,
@@ -476,7 +470,7 @@ fn validate_supported_clip(clip: &Clip) -> Result<()> {
     Ok(())
 }
 
-fn resolve_media_path(source: &ManifestSource, project_path: Option<&Path>) -> Result<PathBuf> {
+pub fn resolve_media_path(source: &ManifestSource, project_path: Option<&Path>) -> Result<PathBuf> {
     match source {
         ManifestSource::External { absolute_path } => {
             let path = PathBuf::from(absolute_path);
@@ -551,9 +545,7 @@ fn collect_media_sources(plan: &CompositionPlan, output: &mut Vec<(String, PathB
 }
 
 pub fn encode_jpeg(frame: &RgbaFrame, quality: u8) -> Result<Vec<u8>> {
-    if frame.bytes.len()
-        != frame.width as usize * frame.height as usize * 4
-    {
+    if frame.bytes.len() != frame.width as usize * frame.height as usize * 4 {
         return Err(MediaError::InvalidRequest(
             "RGBA frame byte count does not match dimensions".into(),
         ));
@@ -566,8 +558,7 @@ pub fn encode_jpeg(frame: &RgbaFrame, quality: u8) -> Result<Vec<u8>> {
     jpeg_encoder::Encoder::new(&mut output, quality)
         .encode(
             &rgb,
-            u16::try_from(frame.width)
-                .map_err(|_| MediaError::ArithmeticOverflow("JPEG width"))?,
+            u16::try_from(frame.width).map_err(|_| MediaError::ArithmeticOverflow("JPEG width"))?,
             u16::try_from(frame.height)
                 .map_err(|_| MediaError::ArithmeticOverflow("JPEG height"))?,
             jpeg_encoder::ColorType::Rgb,
@@ -639,6 +630,44 @@ mod tests {
         .unwrap();
         assert_eq!(plan.duration_frames, 30);
         assert_eq!(plan.tracks[0].clips.len(), 1);
+    }
+
+    #[test]
+    fn empty_timeline_renders_as_a_single_black_frame() {
+        let mut timeline = Timeline::default();
+        timeline.fps = 30;
+        timeline.width = 1920;
+        timeline.height = 1080;
+        timeline.tracks.push(Track::new(ClipType::Video));
+        timeline.tracks.push(Track::new(ClipType::Audio));
+        let project = ProjectFile::new(vec![timeline]).unwrap();
+        let entries = HashMap::new();
+        let timelines = project
+            .timelines
+            .iter()
+            .map(|timeline| (timeline.id.as_str(), timeline))
+            .collect();
+        let mut clips = HashMap::new();
+        let plan = build_timeline_plan(
+            &project.timelines[0],
+            &entries,
+            &timelines,
+            None,
+            &mut clips,
+            &mut Vec::new(),
+        )
+        .unwrap();
+        assert_eq!(plan.duration_frames, 1);
+        assert!(plan.tracks.iter().all(|track| track.clips.is_empty()));
+        let frame = crate::compose::empty_plan_frame(&plan).unwrap();
+        assert_eq!(frame.width, 1920);
+        assert_eq!(frame.height, 1080);
+        assert!(
+            frame
+                .bytes
+                .chunks_exact(4)
+                .all(|pixel| pixel == [0, 0, 0, 255])
+        );
     }
 
     #[tokio::test]

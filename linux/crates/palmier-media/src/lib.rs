@@ -49,6 +49,7 @@ pub use plan::{
 pub use probe::{AudioProbe, MediaKind, MediaProbe, VideoProbe, probe_media};
 pub use project_render::{
     PreparedProjectRender, ProjectFrameSource, encode_jpeg, prepare_project_render,
+    resolve_media_path,
 };
 pub use renderer::{
     PreflightLocation, RenderPreflightReport, RendererCapabilities, UnsupportedRenderItem,

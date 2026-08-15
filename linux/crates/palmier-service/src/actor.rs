@@ -29,13 +29,12 @@ impl ProjectActor {
             palmier_core::Track::new(palmier_core::ClipType::Video),
             palmier_core::Track::new(palmier_core::ClipType::Audio),
         ];
-        let project = palmier_core::ProjectFile::new(vec![timeline])
-            .map_err(|error| {
-                ServiceError::Mutation(palmier_core::MutationError::new(
-                    palmier_core::MutationErrorCode::InvalidArgument,
-                    error.to_string(),
-                ))
-            })?;
+        let project = palmier_core::ProjectFile::new(vec![timeline]).map_err(|error| {
+            ServiceError::Mutation(palmier_core::MutationError::new(
+                palmier_core::MutationErrorCode::InvalidArgument,
+                error.to_string(),
+            ))
+        })?;
         let session = EditorSession::new(project)?;
         Ok(Self::from_parts(id, session, None, false))
     }

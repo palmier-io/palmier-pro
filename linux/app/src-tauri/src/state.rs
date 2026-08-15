@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use palmier_generation::GenerationService;
-use palmier_media::PreparedProjectRender;
 use palmier_mcp::McpServerHandle;
+use palmier_media::PreparedProjectRender;
 use palmier_service::EditorService;
 use tokio::sync::Mutex;
 use uuid::Uuid;

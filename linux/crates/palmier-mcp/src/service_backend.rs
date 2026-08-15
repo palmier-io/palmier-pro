@@ -8,16 +8,13 @@ use palmier_core::{
 };
 use palmier_generation::{
     GenerateAudioParams, GenerateImageParams, GenerateVideoParams, GenerationService,
-    UpscaleMediaParams, generate_audio, generate_image, generate_video, list_models,
-    upscale_media,
+    UpscaleMediaParams, generate_audio, generate_image, generate_video, list_models, upscale_media,
 };
 use palmier_service::{EditorService, ImportMode, ProjectView};
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
-use crate::backend::{
-    BoxFut, CreateProjectRequest, McpEditorBackend, ProjectSelector,
-};
+use crate::backend::{BoxFut, CreateProjectRequest, McpEditorBackend, ProjectSelector};
 use crate::error::{BackendError, BackendResult};
 
 pub struct EditorServiceBackend {
@@ -33,10 +30,7 @@ impl EditorServiceBackend {
         }
     }
 
-    pub fn with_generation(
-        editor: EditorService,
-        generation: Arc<GenerationService>,
-    ) -> Self {
+    pub fn with_generation(editor: EditorService, generation: Arc<GenerationService>) -> Self {
         Self {
             editor,
             generation: Some(generation),
@@ -94,7 +88,7 @@ impl EditorServiceBackend {
     #[cfg(feature = "media")]
     async fn capture_frame_media(&self, args: Value) -> BackendResult<Value> {
         use palmier_media::{
-            MediaTime, PausedFrameRequest, FrameOutput, encode_jpeg, prepare_project_render,
+            FrameOutput, MediaTime, PausedFrameRequest, encode_jpeg, prepare_project_render,
         };
         use palmier_service::ImportMode;
         use std::time::{SystemTime, UNIX_EPOCH};
@@ -185,7 +179,8 @@ impl EditorServiceBackend {
             .duration_since(UNIX_EPOCH)
             .map(|value| value.as_millis())
             .unwrap_or(0);
-        let temp_dir = tempfile::tempdir().map_err(|error| BackendError::message(error.to_string()))?;
+        let temp_dir =
+            tempfile::tempdir().map_err(|error| BackendError::message(error.to_string()))?;
         let temp_path = temp_dir.path().join(format!("capture-{stamp}.jpg"));
         tokio::fs::write(&temp_path, &jpeg)
             .await
@@ -233,7 +228,10 @@ impl EditorServiceBackend {
             .summary
             .path
             .as_ref()
-            .and_then(|path| path.file_stem().map(|stem| stem.to_string_lossy().into_owned()))
+            .and_then(|path| {
+                path.file_stem()
+                    .map(|stem| stem.to_string_lossy().into_owned())
+            })
             .unwrap_or_else(|| "export".to_owned());
         let filename = format!("{}.mp4", stem.replace(' ', "_"));
         let destination = string(map, "outputPath")?
@@ -340,7 +338,11 @@ impl McpEditorBackend for EditorServiceBackend {
             let path = request
                 .path
                 .ok_or_else(|| BackendError::message("path is required"))?;
-            let view = self.editor.open_project(path).await.map_err(service_error)?;
+            let view = self
+                .editor
+                .open_project(path)
+                .await
+                .map_err(service_error)?;
             serde_json::to_value(view).map_err(json_error)
         })
     }
@@ -667,7 +669,9 @@ impl McpEditorBackend for EditorServiceBackend {
                     .entries
                     .iter()
                     .find(|candidate| candidate.id == media_ref)
-                    .ok_or_else(|| BackendError::message(format!("media not found: {media_ref}")))?;
+                    .ok_or_else(|| {
+                        BackendError::message(format!("media not found: {media_ref}"))
+                    })?;
                 let start = required_integer(entry, "startFrame")?;
                 let end = integer(entry, "endFrame")?;
                 let duration = end
@@ -682,6 +686,12 @@ impl McpEditorBackend for EditorServiceBackend {
                 let mut clip = Clip::new(media_ref, start, duration);
                 clip.media_type = media.media_type;
                 clip.source_clip_type = media.media_type;
+                clip.fit_visual_to_canvas(
+                    media.source_width,
+                    media.source_height,
+                    timeline.width,
+                    timeline.height,
+                );
                 commands.push(EditorCommand::AddClips {
                     timeline_id: timeline.id.clone(),
                     track_id: track.id.clone(),
@@ -723,12 +733,20 @@ impl McpEditorBackend for EditorServiceBackend {
                     .entries
                     .iter()
                     .find(|candidate| candidate.id == media_ref)
-                    .ok_or_else(|| BackendError::message(format!("media not found: {media_ref}")))?;
+                    .ok_or_else(|| {
+                        BackendError::message(format!("media not found: {media_ref}"))
+                    })?;
                 let duration = integer(entry, "durationFrames")?
                     .unwrap_or_else(|| media_duration_frames(media.duration, timeline.fps));
                 let mut clip = Clip::new(media_ref, cursor, duration);
                 clip.media_type = media.media_type;
                 clip.source_clip_type = media.media_type;
+                clip.fit_visual_to_canvas(
+                    media.source_width,
+                    media.source_height,
+                    timeline.width,
+                    timeline.height,
+                );
                 commands.push(EditorCommand::AddClips {
                     timeline_id: timeline.id.clone(),
                     track_id: track.id.clone(),
@@ -886,7 +904,11 @@ impl McpEditorBackend for EditorServiceBackend {
                     timeline_id,
                     clip_ids,
                 },
-                other => return Err(BackendError::message(format!("unsupported action: {other}"))),
+                other => {
+                    return Err(BackendError::message(format!(
+                        "unsupported action: {other}"
+                    )));
+                }
             };
             self.commit_value(&view, command).await
         })
@@ -932,7 +954,9 @@ impl McpEditorBackend for EditorServiceBackend {
                             timeline
                                 .tracks
                                 .get(usize::try_from(index).unwrap_or(usize::MAX))
-                                .ok_or_else(|| BackendError::message("track index is out of range"))?
+                                .ok_or_else(|| {
+                                    BackendError::message("track index is out of range")
+                                })?
                                 .id
                                 .clone(),
                         );
@@ -1007,9 +1031,9 @@ impl McpEditorBackend for EditorServiceBackend {
                     ripple: true,
                 });
             }
-            let has_clip_property_patch = map.keys().any(|key| {
-                !matches!(key.as_str(), "clipIds" | "speed")
-            });
+            let has_clip_property_patch = map
+                .keys()
+                .any(|key| !matches!(key.as_str(), "clipIds" | "speed"));
             if has_clip_property_patch {
                 commands.push(EditorCommand::UpdateClips {
                     timeline_id: timeline.id.clone(),
@@ -1046,7 +1070,8 @@ impl McpEditorBackend for EditorServiceBackend {
             for value in required_array(object(&args)?, "entries")? {
                 let entry = object(value)?;
                 let start = required_integer(entry, "startFrame")?;
-                let end = integer(entry, "endFrame")?.unwrap_or(start + i64::from(timeline.fps) * 3);
+                let end =
+                    integer(entry, "endFrame")?.unwrap_or(start + i64::from(timeline.fps) * 3);
                 let mut clip = Clip::new("", start, end - start);
                 clip.media_type = ClipType::Text;
                 clip.source_clip_type = ClipType::Text;
@@ -1250,8 +1275,7 @@ impl McpEditorBackend for EditorServiceBackend {
 
     fn generate_video(&self, args: Value) -> BoxFut<'_, BackendResult<Value>> {
         Box::pin(async move {
-            let params: GenerateVideoParams =
-                serde_json::from_value(args).map_err(json_error)?;
+            let params: GenerateVideoParams = serde_json::from_value(args).map_err(json_error)?;
             let job = generate_video(self.generation()?, params)
                 .await
                 .map_err(generation_error)?;
@@ -1261,8 +1285,7 @@ impl McpEditorBackend for EditorServiceBackend {
 
     fn generate_image(&self, args: Value) -> BoxFut<'_, BackendResult<Value>> {
         Box::pin(async move {
-            let params: GenerateImageParams =
-                serde_json::from_value(args).map_err(json_error)?;
+            let params: GenerateImageParams = serde_json::from_value(args).map_err(json_error)?;
             let job = generate_image(self.generation()?, params)
                 .await
                 .map_err(generation_error)?;
@@ -1272,8 +1295,7 @@ impl McpEditorBackend for EditorServiceBackend {
 
     fn generate_audio(&self, args: Value) -> BoxFut<'_, BackendResult<Value>> {
         Box::pin(async move {
-            let params: GenerateAudioParams =
-                serde_json::from_value(args).map_err(json_error)?;
+            let params: GenerateAudioParams = serde_json::from_value(args).map_err(json_error)?;
             let job = generate_audio(self.generation()?, params)
                 .await
                 .map_err(generation_error)?;
@@ -1283,8 +1305,7 @@ impl McpEditorBackend for EditorServiceBackend {
 
     fn upscale_media(&self, args: Value) -> BoxFut<'_, BackendResult<Value>> {
         Box::pin(async move {
-            let params: UpscaleMediaParams =
-                serde_json::from_value(args).map_err(json_error)?;
+            let params: UpscaleMediaParams = serde_json::from_value(args).map_err(json_error)?;
             let job = upscale_media(self.generation()?, params)
                 .await
                 .map_err(generation_error)?;

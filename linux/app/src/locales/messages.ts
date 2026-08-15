@@ -135,6 +135,8 @@ export const messageKeys = {
   savingSettings: 'Saving settings...',
   exportStarted: 'Export added to the queue.',
   generationStarted: 'Generation started.',
+  capturingFrame: 'Capturing frame...',
+  captureComplete: 'Frame captured to the library.',
   importComplete: '{{count}} media items imported.',
   generatedMedia: 'Generated media',
   generationDescription: 'Create media inside this project.',

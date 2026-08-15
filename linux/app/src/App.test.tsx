@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, test } from 'vitest'
 import App from './App'
@@ -56,6 +56,26 @@ describe('Palmier editor', () => {
     expect(
       screen.getByRole('button', { name: 'eye_macro' }),
     ).toBeInTheDocument()
+  })
+
+  test('places a library asset dropped onto the timeline', async () => {
+    await renderEditor()
+    expect(
+      screen.queryByRole('button', { name: /^film_scan_04$/ }),
+    ).not.toBeInTheDocument()
+
+    const lane = document.querySelector('.timeline-lane')
+    expect(lane).not.toBeNull()
+    fireEvent.drop(lane!, {
+      dataTransfer: {
+        getData: (type: string) =>
+          type === 'text/plain' ? 'palmier-asset:asset-scan' : '',
+      },
+    })
+
+    expect(
+      screen.getAllByRole('button', { name: /^film_scan_04$/ }),
+    ).toHaveLength(2)
   })
 
   test('guards editor shortcuts while typing in a search field', async () => {

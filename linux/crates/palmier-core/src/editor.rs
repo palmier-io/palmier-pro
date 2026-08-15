@@ -81,7 +81,7 @@ pub struct ClipClipboardEntry {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "command", rename_all = "camelCase")]
+#[serde(tag = "command", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum EditorCommand {
     AddClips {
         timeline_id: String,
@@ -431,10 +431,9 @@ impl EditorSession {
                 width,
                 height,
             } => self.apply_project_settings(&timeline_id, fps, width, height),
-            EditorCommand::UpdateClips {
-                timeline_id,
-                clips,
-            } => self.update_clips(&timeline_id, clips),
+            EditorCommand::UpdateClips { timeline_id, clips } => {
+                self.update_clips(&timeline_id, clips)
+            }
             EditorCommand::SetClipSpeed {
                 timeline_id,
                 clip_ids,
@@ -619,6 +618,7 @@ impl EditorSession {
         if moves.is_empty() {
             return self.no_op_receipt(MutationKind::MoveClips, timeline_id);
         }
+        let moves = expand_linked_moves(&self.project.timelines[timeline_index], moves)?;
         let mut seen = HashSet::new();
         let mut plans = Vec::new();
         for request in moves {
@@ -815,6 +815,7 @@ impl EditorSession {
         edits: Vec<TrimClipRequest>,
     ) -> Result<MutationReceipt, MutationError> {
         let timeline_index = self.timeline_index(timeline_id)?;
+        let edits = expand_linked_trims(&self.project.timelines[timeline_index], edits);
         let mut seen = HashSet::new();
         for edit in &edits {
             if !seen.insert(edit.clip_id.clone()) {
@@ -1709,7 +1710,7 @@ impl EditorSession {
                             let old_aspect = source_aspect
                                 / (f64::from(previous_width) / f64::from(previous_height));
                             let new_aspect = source_aspect / (f64::from(width) / f64::from(height));
-                            let old_fit = fit_transform(
+                            let old_fit = Transform::fitted_to_canvas(
                                 source_width,
                                 source_height,
                                 previous_width,
@@ -1720,8 +1721,12 @@ impl EditorSession {
                                 .as_ref()
                                 .is_some_and(KeyframeTrack::is_active);
                             if !scale_animated && transform_scale_matches(clip.transform, old_fit) {
-                                let new_fit =
-                                    fit_transform(source_width, source_height, width, height);
+                                let new_fit = Transform::fitted_to_canvas(
+                                    source_width,
+                                    source_height,
+                                    width,
+                                    height,
+                                );
                                 clip.transform.width = new_fit.width;
                                 clip.transform.height = new_fit.height;
                             } else {
@@ -1858,8 +1863,8 @@ impl EditorSession {
             let mut changes = MutationChanges::default();
             for clip_id in &ids {
                 let location = session.clip_location(timeline_index, clip_id)?;
-                let track = &mut session.project.timelines[timeline_index].tracks
-                    [location.track_index];
+                let track =
+                    &mut session.project.timelines[timeline_index].tracks[location.track_index];
                 let clip = &mut track.clips[location.clip_index];
                 if (clip.speed - speed).abs() < f64::EPSILON {
                     continue;
@@ -1882,15 +1887,14 @@ impl EditorSession {
                 changes.affected_track_ids.push(track_id);
 
                 if ripple {
-                    let ripple_delta = checked_sub(start_frame + new_duration, old_end)
-                        .map_err(frame_error)?;
+                    let ripple_delta =
+                        checked_sub(start_frame + new_duration, old_end).map_err(frame_error)?;
                     if ripple_delta != 0 {
                         let chain = track.contiguous_clip_ids(old_end, &clip_id);
                         for other in &mut track.clips {
                             if chain.contains(&other.id) {
-                                other.start_frame =
-                                    checked_add(other.start_frame, ripple_delta)
-                                        .map_err(frame_error)?;
+                                other.start_frame = checked_add(other.start_frame, ripple_delta)
+                                    .map_err(frame_error)?;
                                 changes.updated_clip_ids.push(other.id.clone());
                             }
                         }
@@ -1928,8 +1932,7 @@ impl EditorSession {
         self.transact(MutationKind::SetClipFades, timeline_id, move |session| {
             let timeline_index = session.timeline_index(timeline_id)?;
             let location = session.clip_location(timeline_index, &clip_id)?;
-            let track =
-                &mut session.project.timelines[timeline_index].tracks[location.track_index];
+            let track = &mut session.project.timelines[timeline_index].tracks[location.track_index];
             let clip = &mut track.clips[location.clip_index];
             if let Some(value) = fade_in_frames {
                 clip.fade_in_frames = value;
@@ -1986,7 +1989,8 @@ impl EditorSession {
         for target in &targets {
             let speed = target.speed.max(0.001);
             let right = ((target.trim_start_frame as f64) / speed).floor() as Frame;
-            let left = ((effective_trim_end(&self.project, target) as f64) / speed).floor() as Frame;
+            let left =
+                ((effective_trim_end(&self.project, target) as f64) / speed).floor() as Frame;
             delta = delta.min(right).max(-left);
         }
         if delta == 0 {
@@ -2017,8 +2021,8 @@ impl EditorSession {
                     if applied_delta == 0 {
                         continue;
                     }
-                    clip.trim_start_frame = checked_sub(clip.trim_start_frame, applied_delta)
-                        .map_err(frame_error)?;
+                    clip.trim_start_frame =
+                        checked_sub(clip.trim_start_frame, applied_delta).map_err(frame_error)?;
                     clip.trim_end_frame =
                         checked_add(clip.trim_end_frame, applied_delta).map_err(frame_error)?;
                     changes.updated_clip_ids.push(clip.id.clone());
@@ -2076,22 +2080,18 @@ impl EditorSession {
         timeline_id: &str,
     ) -> Result<MutationReceipt, MutationError> {
         self.timeline_index(timeline_id)?;
-        self.transact(
-            MutationKind::SetActiveTimeline,
-            timeline_id,
-            |session| {
-                session.project.active_timeline_id = Some(timeline_id.to_owned());
-                let open = session.project.open_timeline_ids.get_or_insert_default();
-                if !open.iter().any(|id| id == timeline_id) {
-                    open.push(timeline_id.to_owned());
-                }
-                let mut result = TransactionResult::new(MutationChanges::default());
-                result
-                    .details
-                    .insert("timelineId".into(), json!(timeline_id));
-                Ok(result)
-            },
-        )
+        self.transact(MutationKind::SetActiveTimeline, timeline_id, |session| {
+            session.project.active_timeline_id = Some(timeline_id.to_owned());
+            let open = session.project.open_timeline_ids.get_or_insert_default();
+            if !open.iter().any(|id| id == timeline_id) {
+                open.push(timeline_id.to_owned());
+            }
+            let mut result = TransactionResult::new(MutationChanges::default());
+            result
+                .details
+                .insert("timelineId".into(), json!(timeline_id));
+            Ok(result)
+        })
     }
 
     pub fn update_media_manifest(
@@ -2150,12 +2150,24 @@ impl EditorSession {
             let mut receipts = Vec::with_capacity(commands.len());
             for command in commands {
                 let receipt = staged.execute(command)?;
-                changes.created_clip_ids.extend(receipt.created_clip_ids.clone());
-                changes.updated_clip_ids.extend(receipt.updated_clip_ids.clone());
-                changes.removed_clip_ids.extend(receipt.removed_clip_ids.clone());
-                changes.affected_track_ids.extend(receipt.affected_track_ids.clone());
-                changes.created_track_ids.extend(receipt.created_track_ids.clone());
-                changes.removed_track_ids.extend(receipt.removed_track_ids.clone());
+                changes
+                    .created_clip_ids
+                    .extend(receipt.created_clip_ids.clone());
+                changes
+                    .updated_clip_ids
+                    .extend(receipt.updated_clip_ids.clone());
+                changes
+                    .removed_clip_ids
+                    .extend(receipt.removed_clip_ids.clone());
+                changes
+                    .affected_track_ids
+                    .extend(receipt.affected_track_ids.clone());
+                changes
+                    .created_track_ids
+                    .extend(receipt.created_track_ids.clone());
+                changes
+                    .removed_track_ids
+                    .extend(receipt.removed_track_ids.clone());
                 changes.skipped_ids.extend(receipt.skipped_ids.clone());
                 changes.warnings.extend(receipt.warnings.clone());
                 receipts.push(receipt);
@@ -2164,9 +2176,7 @@ impl EditorSession {
             session.project = snapshot.project;
             session.media_manifest = snapshot.media_manifest;
             let mut result = TransactionResult::new(changes);
-            result
-                .details
-                .insert("receipts".into(), json!(receipts));
+            result.details.insert("receipts".into(), json!(receipts));
             Ok(result)
         })
     }
@@ -2679,6 +2689,80 @@ fn link_index(timeline: &Timeline) -> HashMap<String, Vec<String>> {
     result
 }
 
+fn expand_linked_moves(
+    timeline: &Timeline,
+    moves: Vec<MoveClipRequest>,
+) -> Result<Vec<MoveClipRequest>, MutationError> {
+    let requested: HashSet<_> = moves.iter().map(|request| request.clip_id.clone()).collect();
+    let mut extras = Vec::new();
+    let mut handled_groups = HashSet::new();
+    for request in &moves {
+        let location = timeline.clip_location(&request.clip_id).ok_or_else(|| {
+            MutationError::new(
+                MutationErrorCode::ClipNotFound,
+                format!("clip not found: {}", request.clip_id),
+            )
+        })?;
+        let clip = &timeline.tracks[location.track_index].clips[location.clip_index];
+        let Some(group) = clip.link_group_id.clone() else {
+            continue;
+        };
+        if !handled_groups.insert(group.clone()) {
+            continue;
+        }
+        let delta = request.start_frame - clip.start_frame;
+        for track in &timeline.tracks {
+            for partner in &track.clips {
+                if partner.link_group_id.as_ref() != Some(&group) {
+                    continue;
+                }
+                if requested.contains(&partner.id) {
+                    continue;
+                }
+                extras.push(MoveClipRequest {
+                    clip_id: partner.id.clone(),
+                    track_id: track.id.clone(),
+                    start_frame: (partner.start_frame + delta).max(0),
+                });
+            }
+        }
+    }
+    let mut expanded = moves;
+    expanded.extend(extras);
+    Ok(expanded)
+}
+
+fn expand_linked_trims(timeline: &Timeline, edits: Vec<TrimClipRequest>) -> Vec<TrimClipRequest> {
+    let requested: HashSet<_> = edits.iter().map(|edit| edit.clip_id.clone()).collect();
+    let mut extras = Vec::new();
+    let mut handled_groups = HashSet::new();
+    for edit in &edits {
+        let Some(location) = timeline.clip_location(&edit.clip_id) else {
+            continue;
+        };
+        let clip = &timeline.tracks[location.track_index].clips[location.clip_index];
+        let Some(group) = clip.link_group_id.clone() else {
+            continue;
+        };
+        if !handled_groups.insert(group.clone()) {
+            continue;
+        }
+        for partner in timeline.tracks.iter().flat_map(|track| &track.clips) {
+            if partner.link_group_id.as_ref() != Some(&group) || requested.contains(&partner.id) {
+                continue;
+            }
+            extras.push(TrimClipRequest {
+                clip_id: partner.id.clone(),
+                trim_start_frame: edit.trim_start_frame,
+                trim_end_frame: edit.trim_end_frame,
+            });
+        }
+    }
+    let mut expanded = edits;
+    expanded.extend(extras);
+    expanded
+}
+
 fn expand_link_groups(timeline: &Timeline, ids: &HashSet<String>) -> HashSet<String> {
     let index = link_index(timeline);
     let mut groups = HashSet::new();
@@ -2704,15 +2788,11 @@ fn linked_partner_ids(timeline: &Timeline, clip_id: &str) -> Vec<String> {
     let Some(group) = &clip.link_group_id else {
         return Vec::new();
     };
-    link_index(timeline)
-        .get(group)
-        .cloned()
-        .unwrap_or_default()
+    link_index(timeline).get(group).cloned().unwrap_or_default()
 }
 
 fn is_slip_eligible(clip: &Clip) -> bool {
-    !matches!(clip.media_type, ClipType::Image | ClipType::Text)
-        && clip.multicam_group_id.is_none()
+    !matches!(clip.media_type, ClipType::Image | ClipType::Text) && clip.multicam_group_id.is_none()
 }
 
 fn effective_trim_end(project: &ProjectFile, clip: &Clip) -> Frame {
@@ -2910,35 +2990,6 @@ fn rescale_timeline(timeline: &mut Timeline, scale: f64) -> Result<(), MutationE
     Ok(())
 }
 
-fn fit_transform(
-    source_width: i32,
-    source_height: i32,
-    canvas_width: i32,
-    canvas_height: i32,
-) -> Transform {
-    if source_width <= 0 || source_height <= 0 || canvas_width <= 0 || canvas_height <= 0 {
-        return Transform::default();
-    }
-    let canvas_aspect = f64::from(canvas_width) / f64::from(canvas_height);
-    let relative_aspect = (f64::from(source_width) / f64::from(source_height)) / canvas_aspect;
-    let source_aspect = relative_aspect * canvas_aspect;
-    if (canvas_aspect - source_aspect).abs() < 0.02 {
-        Transform::default()
-    } else if relative_aspect > 1.0 {
-        Transform {
-            width: 1.0,
-            height: 1.0 / relative_aspect,
-            ..Transform::default()
-        }
-    } else {
-        Transform {
-            width: relative_aspect,
-            height: 1.0,
-            ..Transform::default()
-        }
-    }
-}
-
 fn transform_scale_matches(left: Transform, right: Transform) -> bool {
     (left.width - right.width).abs() < 0.0001 && (left.height - right.height).abs() < 0.0001
 }
@@ -3076,6 +3127,54 @@ mod tests {
             )
             .unwrap();
         assert_eq!(spans(&session, "v2"), vec![(90, 100), (100, 130)]);
+    }
+
+    #[test]
+    fn move_shifts_linked_partners_on_their_own_tracks() {
+        let mut video = clip("video", ClipType::Video, 0, 60);
+        let mut audio = clip("audio", ClipType::Audio, 10, 60);
+        video.link_group_id = Some("group".to_owned());
+        audio.link_group_id = Some("group".to_owned());
+        let mut session = session(vec![
+            track("v1", ClipType::Video, vec![video]),
+            track("a1", ClipType::Audio, vec![audio]),
+        ]);
+        session
+            .move_clips(
+                "timeline",
+                vec![MoveClipRequest {
+                    clip_id: "video".to_owned(),
+                    track_id: "v1".to_owned(),
+                    start_frame: 40,
+                }],
+            )
+            .unwrap();
+        assert_eq!(spans(&session, "v1"), vec![(40, 100)]);
+        assert_eq!(spans(&session, "a1"), vec![(50, 110)]);
+    }
+
+    #[test]
+    fn trim_applies_to_linked_partners() {
+        let mut video = clip("video", ClipType::Video, 0, 60);
+        let mut audio = clip("audio", ClipType::Audio, 0, 60);
+        video.link_group_id = Some("group".to_owned());
+        audio.link_group_id = Some("group".to_owned());
+        let mut session = session(vec![
+            track("v1", ClipType::Video, vec![video]),
+            track("a1", ClipType::Audio, vec![audio]),
+        ]);
+        session
+            .trim_clips(
+                "timeline",
+                vec![TrimClipRequest {
+                    clip_id: "video".to_owned(),
+                    trim_start_frame: 10,
+                    trim_end_frame: 0,
+                }],
+            )
+            .unwrap();
+        assert_eq!(spans(&session, "v1"), vec![(10, 60)]);
+        assert_eq!(spans(&session, "a1"), vec![(10, 60)]);
     }
 
     #[test]
@@ -3431,6 +3530,29 @@ mod tests {
     }
 
     #[test]
+    fn editor_command_accepts_frontend_camel_case_move() {
+        let value = serde_json::json!({
+            "command": "moveClips",
+            "timelineId": "timeline",
+            "moves": [{
+                "clipId": "clip",
+                "trackId": "v1",
+                "startFrame": 10
+            }]
+        });
+        let parsed = serde_json::from_value::<EditorCommand>(value).unwrap();
+        match parsed {
+            EditorCommand::MoveClips { timeline_id, moves } => {
+                assert_eq!(timeline_id, "timeline");
+                assert_eq!(moves[0].clip_id, "clip");
+                assert_eq!(moves[0].track_id, "v1");
+                assert_eq!(moves[0].start_frame, 10);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
     fn crop_keyframe_values_round_trip_through_commands() {
         let command = EditorCommand::UpsertKeyframe {
             timeline_id: "timeline".to_owned(),
@@ -3465,9 +3587,15 @@ mod tests {
             .unwrap();
 
         assert_eq!(receipt.status, MutationStatus::Applied);
-        assert_eq!(session.project().timelines[0].tracks[0].clips[0].opacity, 0.5);
+        assert_eq!(
+            session.project().timelines[0].tracks[0].clips[0].opacity,
+            0.5
+        );
         session.undo().unwrap();
-        assert_eq!(session.project().timelines[0].tracks[0].clips[0].opacity, 1.0);
+        assert_eq!(
+            session.project().timelines[0].tracks[0].clips[0].opacity,
+            1.0
+        );
     }
 
     #[test]

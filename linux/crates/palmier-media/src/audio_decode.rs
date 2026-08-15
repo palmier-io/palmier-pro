@@ -166,8 +166,8 @@ fn drain_audio(
         };
         let channels = usize::from(output_channels.max(1));
         let frame_offset = if seconds < start_seconds {
-            let skip =
-                ((start_seconds - seconds) * f64::from(converted.rate())).floor() as usize * channels;
+            let skip = ((start_seconds - seconds) * f64::from(converted.rate())).floor() as usize
+                * channels;
             skip.min(values.len())
         } else {
             0

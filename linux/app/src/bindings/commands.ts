@@ -15,8 +15,10 @@ import type {
   ImportCandidate,
   MediaAsset,
   PreviewFrame,
+  PreviewAudio,
   ProjectDocument,
   ProviderSettings,
+  EditResult,
 } from '../model'
 
 export type CommandMap = {
@@ -86,7 +88,7 @@ export type CommandMap = {
   }
   get_project: {
     args: { projectId: string }
-    result: unknown
+    result: ProjectDocument
   }
   close_project: {
     args: { projectId: string }
@@ -115,6 +117,43 @@ export type CommandMap = {
     }
     result: PreviewFrame
   }
+  place_asset: {
+    args: {
+      projectId: string
+      expectedRevision: number
+      assetId: string
+      trackId?: string
+      startFrame: number
+    }
+    result: EditResult
+  }
+  decode_asset_preview: {
+    args: {
+      projectId: string
+      assetId: string
+      timeSeconds?: number | null
+      maxWidth?: number | null
+      maxHeight?: number | null
+    }
+    result: PreviewFrame
+  }
+  render_preview_audio: {
+    args: {
+      projectId: string
+      startFrame: number
+      frameCount: number
+    }
+    result: PreviewAudio
+  }
+  decode_asset_audio: {
+    args: {
+      projectId: string
+      assetId: string
+      timeSeconds?: number | null
+      durationSeconds?: number | null
+    }
+    result: PreviewAudio
+  }
 }
 
 export type CommandName = keyof CommandMap
@@ -137,5 +176,9 @@ export const commandNames = [
   'get_project',
   'close_project',
   'decode_preview_frame',
+  'decode_asset_preview',
   'render_preview_frame',
+  'render_preview_audio',
+  'decode_asset_audio',
+  'place_asset',
 ] as const satisfies readonly CommandName[]

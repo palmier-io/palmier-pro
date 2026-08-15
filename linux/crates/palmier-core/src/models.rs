@@ -469,6 +469,35 @@ impl<'de> Deserialize<'de> for Transform {
 }
 
 impl Transform {
+    pub fn fitted_to_canvas(
+        source_width: i32,
+        source_height: i32,
+        canvas_width: i32,
+        canvas_height: i32,
+    ) -> Self {
+        if source_width <= 0 || source_height <= 0 || canvas_width <= 0 || canvas_height <= 0 {
+            return Self::default();
+        }
+        let canvas_aspect = f64::from(canvas_width) / f64::from(canvas_height);
+        let relative_aspect = (f64::from(source_width) / f64::from(source_height)) / canvas_aspect;
+        let source_aspect = relative_aspect * canvas_aspect;
+        if (canvas_aspect - source_aspect).abs() < 0.02 {
+            Self::default()
+        } else if relative_aspect > 1.0 {
+            Self {
+                width: 1.0,
+                height: 1.0 / relative_aspect,
+                ..Self::default()
+            }
+        } else {
+            Self {
+                width: relative_aspect,
+                height: 1.0,
+                ..Self::default()
+            }
+        }
+    }
+
     pub fn top_left(self) -> AnimPair {
         AnimPair {
             a: self.center_x - self.width / 2.0,
@@ -1056,6 +1085,26 @@ impl Clip {
             effects: None,
             blend_mode: None,
         }
+    }
+
+    pub fn fit_visual_to_canvas(
+        &mut self,
+        source_width: Option<i32>,
+        source_height: Option<i32>,
+        canvas_width: i32,
+        canvas_height: i32,
+    ) {
+        if !matches!(
+            self.media_type,
+            ClipType::Video | ClipType::Image | ClipType::Sequence
+        ) {
+            return;
+        }
+        let (Some(source_width), Some(source_height)) = (source_width, source_height) else {
+            return;
+        };
+        self.transform =
+            Transform::fitted_to_canvas(source_width, source_height, canvas_width, canvas_height);
     }
 
     pub fn checked_end_frame(&self) -> Result<Frame, FrameError> {
@@ -1930,6 +1979,23 @@ mod tests {
         let mut clip = Clip::new("media", start, duration);
         clip.id = id.to_owned();
         clip
+    }
+
+    #[test]
+    fn fitted_transform_letterboxes_portrait_media() {
+        let transform = Transform::fitted_to_canvas(1080, 1920, 1920, 1080);
+        assert!((transform.width - 1080.0 / 1920.0 * 1080.0 / 1920.0).abs() < 0.0001);
+        assert_eq!(transform.height, 1.0);
+        assert_eq!(transform.center_x, 0.5);
+        assert_eq!(transform.center_y, 0.5);
+    }
+
+    #[test]
+    fn fitted_transform_keeps_matching_landscape_full_frame() {
+        assert_eq!(
+            Transform::fitted_to_canvas(1920, 1080, 1920, 1080),
+            Transform::default()
+        );
     }
 
     #[test]

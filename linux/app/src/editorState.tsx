@@ -10,6 +10,7 @@ import {
   type PropsWithChildren,
 } from 'react'
 import { createBackendAdapter } from './backend'
+import { errorMessage } from './errors'
 import {
   planClipPropertyEdit,
   planMoveClip,
@@ -273,6 +274,14 @@ export function projectDurationFrames(
   )
 }
 
+function previewDuration(state: EditorState): number {
+  if (state.previewAssetId) {
+    const asset = findAsset(state.project, state.previewAssetId)
+    return Math.max(1, asset?.durationFrames ?? 1)
+  }
+  return projectDurationFrames(state.project)
+}
+
 export function findClip(
   project: ProjectDocument | null,
   clipId: string,
@@ -283,6 +292,20 @@ export function findClip(
     if (clip) return clip
   }
   return null
+}
+
+function linkedPartnerClips(
+  project: ProjectDocument,
+  clipId: string,
+): TimelineClip[] {
+  const clip = findClip(project, clipId)
+  if (!clip?.linkGroupId) return []
+  return project.tracks.flatMap((track) =>
+    track.clips.filter(
+      (candidate) =>
+        candidate.linkGroupId === clip.linkGroupId && candidate.id !== clipId,
+    ),
+  )
 }
 
 export function findAsset(
@@ -415,14 +438,14 @@ function editorReducer(
         focusedPanel: 'preview',
       }
     case 'SET_ACTIVE_FRAME': {
-      const duration = projectDurationFrames(state.project)
+      const duration = previewDuration(state)
       return {
         ...state,
         activeFrame: Math.max(0, Math.min(duration, Math.round(action.frame))),
       }
     }
     case 'STEP_PLAYBACK': {
-      const duration = projectDurationFrames(state.project)
+      const duration = previewDuration(state)
       const next = state.activeFrame + action.frames
       return {
         ...state,
@@ -457,11 +480,16 @@ function editorReducer(
         ...state,
         project: {
           ...state.project,
-          media: [...state.project.media, ...action.assets],
+          media: [
+            ...state.project.media,
+            ...action.assets.filter(
+              (asset) =>
+                !state.project?.media.some((existing) => existing.id === asset.id),
+            ),
+          ],
         },
         selectedAssetIds: action.assets.map((asset) => asset.id),
         dirty: true,
-        revision: state.revision + 1,
       }
     case 'UPDATE_MEDIA_STATUS':
       if (!state.project) return state
@@ -500,6 +528,10 @@ function editorReducer(
         )
       if (!track) return state
       const clipId = `clip-${asset.id}-${state.revision + 1}`
+      const linkGroupId =
+        asset.kind === 'video' && asset.hasAudio
+          ? `link-${asset.id}-${state.revision + 1}`
+          : undefined
       const clip: TimelineClip = {
         id: clipId,
         assetId: asset.id,
@@ -514,6 +546,7 @@ function editorReducer(
         volume: 1,
         fadeInFrames: 0,
         fadeOutFrames: 0,
+        linkGroupId,
         transform: {
           positionX: 0,
           positionY: 0,
@@ -522,16 +555,29 @@ function editorReducer(
           opacity: 100,
         },
       }
+      const audioTrack =
+        linkGroupId == null
+          ? undefined
+          : state.project.tracks.find(
+              (candidate) => candidate.kind === 'audio' && !candidate.locked,
+            )
+      const audioClip: TimelineClip | null =
+        linkGroupId && audioTrack
+          ? {
+              ...clip,
+              id: `${clipId}-audio`,
+              kind: 'audio',
+              trackId: audioTrack.id,
+            }
+          : null
       const project = {
         ...state.project,
-        tracks: state.project.tracks.map((candidate) =>
-          candidate.id === track.id
-            ? sortClips({
-                ...candidate,
-                clips: [...candidate.clips, clip],
-              })
-            : candidate,
-        ),
+        tracks: state.project.tracks.map((candidate) => {
+          const clips = [...candidate.clips]
+          if (candidate.id === track.id) clips.push(clip)
+          if (audioClip && candidate.id === audioTrack?.id) clips.push(audioClip)
+          return sortClips({ ...candidate, clips })
+        }),
       }
       return {
         ...commitProject(state, project),
@@ -555,16 +601,28 @@ function editorReducer(
         trackId: destination.id,
         startFrame: Math.max(0, Math.round(action.startFrame)),
       }
+      const delta = moved.startFrame - clip.startFrame
+      const relocated = new Map<string, TimelineClip>([[moved.id, moved]])
+      for (const partner of linkedPartnerClips(state.project, clip.id)) {
+        relocated.set(partner.id, {
+          ...partner,
+          startFrame: Math.max(0, partner.startFrame + delta),
+        })
+      }
       const project = {
         ...state.project,
         tracks: state.project.tracks.map((track) =>
           sortClips({
             ...track,
             clips: [
-              ...track.clips.filter(
-                (candidate) => candidate.id !== action.clipId,
-              ),
-              ...(track.id === destination.id ? [moved] : []),
+              ...track.clips.filter((candidate) => !relocated.has(candidate.id)),
+              ...[...relocated.values()].filter((candidate) => {
+                const trackId =
+                  candidate.id === action.clipId
+                    ? destination.id
+                    : candidate.trackId
+                return trackId === track.id
+              }),
             ],
           }),
         ),
@@ -573,10 +631,15 @@ function editorReducer(
     }
     case 'TRIM_CLIP': {
       if (!state.project || action.delta === 0) return state
-      const project = updateClipInProject(
-        state.project,
+      const targets = [
         action.clipId,
-        (clip) => {
+        ...linkedPartnerClips(state.project, action.clipId).map(
+          (clip) => clip.id,
+        ),
+      ]
+      let project = state.project
+      for (const clipId of targets) {
+        project = updateClipInProject(project, clipId, (clip) => {
           if (action.edge === 'start') {
             const applied = Math.max(
               -clip.startFrame,
@@ -599,8 +662,8 @@ function editorReducer(
               clip.durationFrames + Math.round(action.delta),
             ),
           }
-        },
-      )
+        })
+      }
       return commitProject(state, project)
     }
     case 'SPLIT_AT_PLAYHEAD': {
@@ -845,10 +908,10 @@ function editorReducer(
       return { ...state, dirty: false }
     case 'APPLY_EDIT_RESULT': {
       const { result } = action
+      const created = result.receipt.createdClipIds ?? []
       const selectedClipIds = state.selectedClipIds.filter((clipId) =>
         Boolean(findClip(result.project, clipId)),
       )
-      const created = result.receipt.createdClipIds
       const locks = new Map(
         (state.project?.tracks ?? []).map((track) => [track.id, track.locked]),
       )
@@ -874,22 +937,6 @@ function editorReducer(
 
 const readyMediaStatus: MediaAsset['status'] = { kind: 'ready' }
 
-function errorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message
-  }
-  if (typeof error === 'string' && error.trim()) {
-    return error
-  }
-  if (error && typeof error === 'object') {
-    const record = error as Record<string, unknown>
-    if (typeof record.message === 'string' && record.message.trim()) {
-      return record.message
-    }
-  }
-  return 'The operation could not be completed'
-}
-
 interface EditorContextValue {
   state: EditorState
   dispatch: Dispatch<EditorAction>
@@ -905,6 +952,7 @@ interface EditorContextValue {
   startGeneration: (request: Omit<GenerationRequest, 'projectId'>) => Promise<void>
   startExport: (request: Omit<ExportRequest, 'projectId'>) => Promise<void>
   cancelExport: (jobId: string) => Promise<void>
+  captureFrame: () => Promise<void>
   relinkAsset: (assetId: string, file?: File) => void
 }
 
@@ -962,6 +1010,14 @@ function planRemoteMutation(
   }
 }
 
+function withTimeline(command: EditorCommand, timelineId: string): EditorCommand {
+  if (command.command === 'undo' || command.command === 'redo') return command
+  if (!timelineId || ('timelineId' in command && command.timelineId)) {
+    return command
+  }
+  return { ...command, timelineId }
+}
+
 const EditorContext = createContext<EditorContextValue | null>(null)
 
 interface EditorProviderProps extends PropsWithChildren {
@@ -1002,7 +1058,7 @@ export function EditorProvider({
             const result = await backend.commitEdit({
               projectId: latest.project.id,
               expectedRevision,
-              command,
+              command: withTimeline(command, latest.project.timelineId),
             })
             if (stateRef.current.revision !== expectedRevision) {
               rawDispatch({
@@ -1012,7 +1068,7 @@ export function EditorProvider({
               return
             }
             rawDispatch({ type: 'APPLY_EDIT_RESULT', result })
-            if (result.receipt.warnings.length > 0) {
+            if (result.receipt.warnings?.length) {
               rawDispatch({
                 type: 'SET_TOAST',
                 message: result.receipt.warnings[0] ?? null,
@@ -1034,6 +1090,49 @@ export function EditorProvider({
       }
       const plan = planRemoteMutation(stateRef.current, action)
       if (plan === null) {
+        if (action.type === 'PLACE_ASSET' && backend.placeAsset) {
+          const latest = stateRef.current
+          if (!latest.project) return
+          const expectedRevision = latest.revision
+          editQueue.current = editQueue.current
+            .catch(() => undefined)
+            .then(async () => {
+              const current = stateRef.current
+              if (!current.project || current.revision !== expectedRevision) {
+                rawDispatch({
+                  type: 'SET_ERROR',
+                  message: 'revisionMismatch',
+                })
+                return
+              }
+              try {
+                const result = await backend.placeAsset!(
+                  current.project.id,
+                  expectedRevision,
+                  action.assetId,
+                  action.trackId,
+                  Math.max(0, Math.round(action.frame)),
+                )
+                if (stateRef.current.revision !== expectedRevision) {
+                  rawDispatch({
+                    type: 'SET_ERROR',
+                    message: 'revisionMismatch',
+                  })
+                  return
+                }
+                rawDispatch({ type: 'APPLY_EDIT_RESULT', result })
+            if (result.receipt.warnings?.length) {
+              rawDispatch({
+                type: 'SET_TOAST',
+                message: result.receipt.warnings[0] ?? null,
+              })
+            }
+              } catch (error) {
+                rawDispatch({ type: 'SET_ERROR', message: errorMessage(error) })
+              }
+            })
+          return
+        }
         rawDispatch(action)
         return
       }
@@ -1044,7 +1143,7 @@ export function EditorProvider({
       }
       commitRemote(plan.command, stateRef.current.revision)
     },
-    [backend.kind, commitRemote],
+    [backend, commitRemote],
   )
 
   useEffect(() => {
@@ -1081,23 +1180,38 @@ export function EditorProvider({
 
   useEffect(() => {
     if (!state.isPlaying || !state.project) return
-    const framesPerTick = Math.max(1, Math.round(state.project.fps / 10))
+    const fps = Math.max(1, state.project.fps)
+    let last = performance.now()
     const timer = window.setInterval(() => {
-      rawDispatch({ type: 'STEP_PLAYBACK', frames: framesPerTick })
-    }, 100)
+      const now = performance.now()
+      const frames = Math.max(1, Math.round(((now - last) / 1000) * fps))
+      last = now
+      rawDispatch({ type: 'STEP_PLAYBACK', frames })
+    }, Math.round(1000 / fps))
     return () => window.clearInterval(timer)
   }, [state.isPlaying, state.project])
 
   useEffect(() => {
     if (!state.project || !state.dirty) return
     const project = state.project
+    const revision = state.revision
     const timer = window.setTimeout(() => {
-      void backend.persistProject(project).catch((error: unknown) => {
-        rawDispatch({ type: 'SET_ERROR', message: errorMessage(error) })
-      })
+      void backend
+        .persistProject(project)
+        .then(() => {
+          if (
+            stateRef.current.project?.id === project.id &&
+            stateRef.current.revision === revision
+          ) {
+            rawDispatch({ type: 'MARK_SAVED' })
+          }
+        })
+        .catch((error: unknown) => {
+          rawDispatch({ type: 'SET_ERROR', message: errorMessage(error) })
+        })
     }, 600)
     return () => window.clearTimeout(timer)
-  }, [backend, state.dirty, state.project])
+  }, [backend, state.dirty, state.project, state.revision])
 
   const hasActiveGeneration = state.generationJobs.some((job) =>
     ['waiting', 'preparing', 'running'].includes(job.status),
@@ -1193,6 +1307,9 @@ export function EditorProvider({
           type: 'SET_TOAST',
           message: `importComplete:${assets.length}`,
         })
+        if (!stateRef.current.previewAssetId && assets[0]) {
+          rawDispatch({ type: 'SET_PREVIEW_ASSET', assetId: assets[0].id })
+        }
       } catch (error) {
         rawDispatch({ type: 'SET_OPERATION', label: null })
         rawDispatch({ type: 'SET_ERROR', message: errorMessage(error) })
@@ -1214,6 +1331,9 @@ export function EditorProvider({
           type: 'SET_TOAST',
           message: `importComplete:${assets.length}`,
         })
+        if (!stateRef.current.previewAssetId && assets[0]) {
+          rawDispatch({ type: 'SET_PREVIEW_ASSET', assetId: assets[0].id })
+        }
       } catch (error) {
         rawDispatch({ type: 'SET_OPERATION', label: null })
         const message = errorMessage(error)
@@ -1224,6 +1344,30 @@ export function EditorProvider({
       return
     }
     // Demo / browser fallback uses the hidden file input via MediaPanel.
+  }, [backend])
+
+  const captureFrame = useCallback(async () => {
+    const latest = stateRef.current
+    const project = latest.project
+    if (!project || !backend.captureFrame) return
+    rawDispatch({ type: 'SET_OPERATION', label: 'capturingFrame' })
+    try {
+      const fps = Math.max(1, project.fps)
+      const assets = latest.previewAssetId
+        ? await backend.captureFrame(project.id, {
+            mediaRef: latest.previewAssetId,
+            sourceSeconds: latest.activeFrame / fps,
+          })
+        : await backend.captureFrame(project.id, {
+            timelineFrame: latest.activeFrame,
+          })
+      rawDispatch({ type: 'ADD_ASSETS', assets })
+      rawDispatch({ type: 'SET_OPERATION', label: null })
+      rawDispatch({ type: 'SET_TOAST', message: 'captureComplete' })
+    } catch (error) {
+      rawDispatch({ type: 'SET_OPERATION', label: null })
+      rawDispatch({ type: 'SET_ERROR', message: errorMessage(error) })
+    }
   }, [backend])
 
   const saveProject = useCallback(async () => {
@@ -1363,6 +1507,7 @@ export function EditorProvider({
       startGeneration,
       startExport,
       cancelExport,
+      captureFrame,
       relinkAsset,
     }),
     [
@@ -1370,6 +1515,7 @@ export function EditorProvider({
       canRedo,
       canUndo,
       cancelExport,
+      captureFrame,
       createProject,
       dispatch,
       importFiles,

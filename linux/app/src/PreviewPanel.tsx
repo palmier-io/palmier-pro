@@ -9,7 +9,7 @@ import {
   SkipForward,
   ZoomIn,
 } from 'lucide-react'
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import {
   findAsset,
   projectDurationFrames,
@@ -18,6 +18,14 @@ import {
 } from './editorState'
 import { UserText, useI18n } from './i18n'
 import type { MediaAsset, TimelineClip } from './model'
+import {
+  decodePreviewAudio,
+  playAudioBuffer,
+  resumeAudioContext,
+  stopAudioSource,
+} from './previewAudio'
+import { errorMessage } from './errors'
+import { previewFrameObjectUrl } from './previewFrame'
 import { IconButton, Panel, Spinner, formatTimecode } from './ui'
 
 type CanvasStyle = CSSProperties & {
@@ -54,48 +62,102 @@ function PreviewCanvas({
   const status = asset?.status
   const transform = clip?.transform
   const [renderedFrame, setRenderedFrame] = useState<string | null>(null)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+  const urlRef = useRef<string | null>(null)
+  const inflightRef = useRef(false)
+  const latestRef = useRef<{
+    frame: number
+    sourceAssetId: string | null
+    playing: boolean
+  } | null>(null)
+
   useEffect(() => {
-    if (
-      backend.kind !== 'tauri' ||
-      !project ||
-      state.previewAssetId
-    ) {
+    if (backend.kind !== 'tauri' || !project) {
+      if (urlRef.current) {
+        URL.revokeObjectURL(urlRef.current)
+        urlRef.current = null
+      }
       setRenderedFrame(null)
+      setPreviewError(null)
       return
     }
-    let active = true
-    const timer = window.setTimeout(() => {
-      void backend
-        .renderPreviewFrame(project.id, state.activeFrame, 1280, 720)
-        .then((frame) => {
-          if (!active) return
-          setRenderedFrame(
-            frame
-              ? `data:${frame.mimeType};base64,${frame.dataBase64}`
-              : null,
-          )
-        })
-        .catch(() => {
-          if (active) setRenderedFrame(null)
-        })
-    }, 50)
-    return () => {
-      active = false
-      window.clearTimeout(timer)
+    if (state.previewAssetId && asset?.kind === 'audio') {
+      setPreviewError(null)
+      return
     }
+
+    latestRef.current = {
+      frame: state.activeFrame,
+      sourceAssetId: state.previewAssetId,
+      playing: state.isPlaying,
+    }
+
+    const pump = () => {
+      const pending = latestRef.current
+      if (!pending || inflightRef.current) return
+      inflightRef.current = true
+      latestRef.current = null
+      const maxWidth = pending.playing ? 640 : 1280
+      const maxHeight = pending.playing ? 360 : 720
+      const request = pending.sourceAssetId
+        ? backend.decodeAssetPreview?.(
+            project.id,
+            pending.sourceAssetId,
+            pending.frame / Math.max(1, project.fps),
+            maxWidth,
+            maxHeight,
+          )
+        : backend.renderPreviewFrame(
+            project.id,
+            pending.frame,
+            maxWidth,
+            maxHeight,
+          )
+      if (!request) {
+        inflightRef.current = false
+        return
+      }
+      void request
+        .then((frame) => {
+          inflightRef.current = false
+          const url = frame ? previewFrameObjectUrl(frame) : null
+          if (url) {
+            if (urlRef.current) URL.revokeObjectURL(urlRef.current)
+            urlRef.current = url
+            setPreviewError(null)
+            setRenderedFrame(url)
+          } else if (!latestRef.current) {
+            setPreviewError(frame ? 'Preview frame is not an image' : null)
+          }
+          pump()
+        })
+        .catch((error: unknown) => {
+          inflightRef.current = false
+          if (!latestRef.current) {
+            setPreviewError(errorMessage(error))
+          }
+          pump()
+        })
+    }
+
+    pump()
   }, [
+    asset?.kind,
     backend,
     project,
     state.activeFrame,
+    state.isPlaying,
     state.previewAssetId,
   ])
 
+  useEffect(() => {
+    return () => {
+      if (urlRef.current) URL.revokeObjectURL(urlRef.current)
+    }
+  }, [])
+
   const style = {
-    '--canvas-scale': String(
-      renderedFrame
-        ? state.canvasZoom
-        : ((transform?.scale ?? 100) / 100) * state.canvasZoom,
-    ),
+    '--canvas-scale': String(state.canvasZoom),
     '--canvas-opacity': String(
       renderedFrame ? 1 : (transform?.opacity ?? 100) / 100,
     ),
@@ -115,6 +177,10 @@ function PreviewCanvas({
             className="preview-rendered-frame"
             src={renderedFrame}
             alt=""
+            onError={() => {
+              setRenderedFrame(null)
+              setPreviewError('Preview image could not be displayed')
+            }}
           />
         ) : (
           <div className="preview-art" aria-hidden="true">
@@ -134,10 +200,17 @@ function PreviewCanvas({
               ))}
             </div>
           </div>
-        ) : !renderedFrame ? (
+        ) : !renderedFrame && !previewError ? (
           <div className="preview-title-overlay">
             <strong>palmier<span>.</span></strong>
             <small>{t('previewTagline')}</small>
+          </div>
+        ) : null}
+        {previewError ? (
+          <div className="preview-state-overlay is-error">
+            <RotateCcw aria-hidden="true" />
+            <strong>{t('failed')}</strong>
+            <p>{previewError}</p>
           </div>
         ) : null}
         <div className="preview-safe-area" aria-hidden="true" />
@@ -184,19 +257,85 @@ function PreviewCanvas({
   )
 }
 
+function usePreviewAudio(duration: number) {
+  const { state, backend } = useEditor()
+  const sourceRef = useRef<AudioBufferSourceNode | null>(null)
+  const playheadRef = useRef(state.activeFrame)
+  playheadRef.current = state.activeFrame
+
+  useEffect(() => {
+    if (!state.isPlaying || !state.project || backend.kind !== 'tauri') {
+      stopAudioSource(sourceRef.current)
+      sourceRef.current = null
+      return
+    }
+
+    let cancelled = false
+    const project = state.project
+    const fps = Math.max(1, project.fps)
+    const previewAssetId = state.previewAssetId
+    let nextFrame = playheadRef.current
+
+    const stopSource = () => {
+      stopAudioSource(sourceRef.current)
+      sourceRef.current = null
+    }
+
+    const playChunk = async () => {
+      await resumeAudioContext()
+      while (!cancelled) {
+        if (nextFrame >= duration) {
+          nextFrame = 0
+        }
+        const frameCount = Math.min(
+          Math.max(1, Math.round(fps / 2)),
+          Math.max(1, duration - nextFrame),
+        )
+        const request = previewAssetId
+          ? backend.decodeAssetAudio?.(
+              project.id,
+              previewAssetId,
+              nextFrame / fps,
+              frameCount / fps,
+            )
+          : backend.renderPreviewAudio?.(project.id, nextFrame, frameCount)
+        const payload = await request
+        if (cancelled || !payload?.samplesBase64) return
+        const buffer = decodePreviewAudio(payload)
+        if (!buffer || cancelled) return
+        stopSource()
+        sourceRef.current = playAudioBuffer(buffer)
+        nextFrame += frameCount
+        await new Promise((resolve) => {
+          window.setTimeout(resolve, (frameCount / fps) * 1000)
+        })
+      }
+    }
+
+    void playChunk().catch(() => undefined)
+    return () => {
+      cancelled = true
+      stopSource()
+    }
+  }, [backend, duration, state.isPlaying, state.previewAssetId, state.project])
+}
+
 export function PreviewPanel() {
-  const { state, dispatch } = useEditor()
+  const { state, dispatch, captureFrame } = useEditor()
   const { t } = useI18n()
   const project = state.project
-  const duration = projectDurationFrames(project)
+  const sourceAsset = state.previewAssetId
+    ? findAsset(project, state.previewAssetId)
+    : null
+  const duration = sourceAsset
+    ? Math.max(1, sourceAsset.durationFrames)
+    : projectDurationFrames(project)
+  usePreviewAudio(duration)
   const timelineClip = currentTimelineClip(
     state.activeFrame,
     project?.tracks.flatMap((track) => track.clips) ?? [],
   )
   const selectedClip = selectedClipForState(state)
-  const sourceAsset = state.previewAssetId
-    ? findAsset(project, state.previewAssetId)
-    : null
   const displayedClip = sourceAsset ? null : timelineClip ?? selectedClip
   const displayedAsset =
     sourceAsset ??
@@ -287,7 +426,12 @@ export function PreviewPanel() {
               type="button"
               className="play-button"
               aria-label={state.isPlaying ? t('pause') : t('play')}
-              onClick={() => dispatch({ type: 'TOGGLE_PLAYBACK' })}
+              onClick={() => {
+                if (!state.isPlaying) {
+                  void resumeAudioContext()
+                }
+                dispatch({ type: 'TOGGLE_PLAYBACK' })
+              }}
             >
               {state.isPlaying ? (
                 <Pause aria-hidden="true" />
@@ -314,7 +458,14 @@ export function PreviewPanel() {
             />
           </div>
           <div className="preview-options">
-            <IconButton icon={Camera} label={t('captureFrame')} />
+            <IconButton
+              icon={Camera}
+              label={t('captureFrame')}
+              disabled={sourceAsset?.kind === 'audio'}
+              onClick={() => {
+                void captureFrame()
+              }}
+            />
             <label className="zoom-select">
               <ZoomIn aria-hidden="true" />
               <select
