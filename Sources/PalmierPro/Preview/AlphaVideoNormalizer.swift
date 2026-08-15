@@ -6,10 +6,13 @@ import CoreVideo
 enum AlphaVideoNormalizer {
 
     /// Returns cached premultiplied-alpha video if source has straight alpha; else nil.
-    static func premultipliedVideo(for sourceURL: URL, mediaRef: String) async throws -> URL? {
-        let asset = AVURLAsset(url: sourceURL)
-        guard let track = try await asset.loadTracks(withMediaType: .video).first,
-              try await trackContainsAlpha(track) else { return nil }
+    static func premultipliedVideo(
+        for sourceURL: URL,
+        mediaRef: String,
+        asset: AVURLAsset,
+        track: AVAssetTrack
+    ) async throws -> URL? {
+        guard try await trackContainsAlpha(track) else { return nil }
 
         // Skip rotated/flipped sources since baking orientation would lose the original transform.
         let preferredTransform = (try? await track.load(.preferredTransform)) ?? .identity
@@ -23,12 +26,7 @@ enum AlphaVideoNormalizer {
         let outputURL = ImageVideoGenerator.cacheDirectory.appendingPathComponent(filename)
         if FileManager.default.fileExists(atPath: outputURL.path) { return outputURL }
 
-        do {
-            return try await transcode(asset: asset, track: track, size: size, to: outputURL)
-        } catch {
-            Log.preview.error("alpha premultiply failed mediaRef=\(mediaRef): \(error.localizedDescription)")
-            return nil
-        }
+        return try await transcode(asset: asset, track: track, size: size, to: outputURL)
     }
 
     private static func trackContainsAlpha(_ track: AVAssetTrack) async throws -> Bool {
