@@ -21,33 +21,18 @@ import Testing
         return clip
     }
 
-    @Test func calculatesCharactersPerSecondFromTimelineDuration() {
-        let cps = CaptionBrowserMetrics.charactersPerSecond(
-            content: "12345 6789",
-            durationFrames: 30,
-            fps: 30
-        )
-
-        #expect(cps == 10)
-    }
-
-    @Test func excludesLineBreaksFromCharacterCount() {
-        let cps = CaptionBrowserMetrics.charactersPerSecond(
-            content: "12345\n6789",
-            durationFrames: 30,
-            fps: 30
-        )
-
-        #expect(cps == 9)
+    @Test func formatsRoundedDurationInSeconds() {
+        #expect(CaptionBrowserMetrics.durationLabel(durationFrames: 30, fps: 30) == "1s")
+        #expect(CaptionBrowserMetrics.durationLabel(durationFrames: 45, fps: 30) == "2s")
+        #expect(CaptionBrowserMetrics.durationLabel(durationFrames: 10, fps: 30) == "1s")
     }
 
     @Test(arguments: [
         (durationFrames: 0, fps: 30),
         (durationFrames: 30, fps: 0),
     ])
-    func rejectsInvalidTiming(durationFrames: Int, fps: Int) {
-        #expect(CaptionBrowserMetrics.charactersPerSecond(
-            content: "Caption",
+    func rejectsInvalidDuration(durationFrames: Int, fps: Int) {
+        #expect(CaptionBrowserMetrics.durationLabel(
             durationFrames: durationFrames,
             fps: fps
         ) == nil)

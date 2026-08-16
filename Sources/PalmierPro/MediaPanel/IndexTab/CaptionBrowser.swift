@@ -54,10 +54,6 @@ struct CaptionBrowser: View {
                                     playheadState: editor.playheadState
                                 )
                                 .id(row.id)
-                                Rectangle()
-                                    .fill(AppTheme.Border.subtleColor)
-                                    .frame(height: AppTheme.BorderWidth.hairline)
-                                    .padding(.horizontal, AppTheme.Spacing.sm)
                             }
                         }
                     }
@@ -210,9 +206,8 @@ private struct CaptionBrowserRow: View {
     var body: some View {
         let clip = item.clip
         let content = clip.textContent ?? ""
-        let timeRange = "\(formatTimecode(frame: clip.startFrame, fps: fps)) – \(formatTimecode(frame: clip.endFrame, fps: fps))"
-        let charactersPerSecond = CaptionBrowserMetrics.charactersPerSecond(
-            content: content,
+        let startTimecode = formatTimecode(frame: clip.startFrame, fps: fps)
+        let durationLabel = CaptionBrowserMetrics.durationLabel(
             durationFrames: clip.durationFrames,
             fps: fps
         )
@@ -222,12 +217,18 @@ private struct CaptionBrowserRow: View {
                 HStack(spacing: AppTheme.Spacing.sm) {
                     Text(verbatim: "\(item.number)")
                         .foregroundStyle(AppTheme.Text.mutedColor)
-                    Text(verbatim: timeRange)
+                        .monospacedDigit()
+                        .frame(
+                            minWidth: AppTheme.MediaPanel.captionIndexNumberWidth,
+                            alignment: .leading
+                        )
+                    Text(verbatim: startTimecode)
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    Spacer(minLength: AppTheme.Spacing.xs)
-                    if let charactersPerSecond {
-                        Text(verbatim: "\(charactersPerSecond) CPS")
-                            .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        .monospacedDigit()
+                    if let durationLabel {
+                        Text(verbatim: durationLabel)
+                            .foregroundStyle(AppTheme.Text.mutedColor)
+                            .monospacedDigit()
                     }
                 }
                 .font(.system(
@@ -259,16 +260,16 @@ private struct CaptionBrowserRow: View {
         .padding(.horizontal, AppTheme.Spacing.xxs)
         .accessibilityLabel(Text(verbatim: content))
         .accessibilityValue(Text(verbatim: accessibilityValue(
-            timeRange: timeRange,
-            charactersPerSecond: charactersPerSecond
+            startTimecode: startTimecode,
+            durationLabel: durationLabel
         )))
     }
 
-    private func accessibilityValue(timeRange: String, charactersPerSecond: Int?) -> String {
-        if let charactersPerSecond {
-            return "\(timeRange), \(charactersPerSecond) CPS"
+    private func accessibilityValue(startTimecode: String, durationLabel: String?) -> String {
+        if let durationLabel {
+            return "\(startTimecode), \(durationLabel)"
         }
-        return timeRange
+        return startTimecode
     }
 
     private func select() {
@@ -312,12 +313,11 @@ private struct CaptionBrowserCurrentText: View, Equatable {
 }
 
 enum CaptionBrowserMetrics {
-    static func charactersPerSecond(content: String, durationFrames: Int, fps: Int) -> Int? {
+    static func durationLabel(durationFrames: Int, fps: Int) -> String? {
         guard durationFrames > 0, fps > 0 else { return nil }
-        let characterCount = content.count(where: { !$0.isNewline })
-        let rate = Double(characterCount) * Double(fps) / Double(durationFrames)
-        guard rate.isFinite, rate <= Double(Int.max) else { return nil }
-        return Int(rate.rounded())
+        let seconds = Double(durationFrames) / Double(fps)
+        guard seconds.isFinite, seconds <= Double(Int.max) else { return nil }
+        return "\(max(Int(seconds.rounded()), 1))s"
     }
 }
 
