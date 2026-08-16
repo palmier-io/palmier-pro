@@ -9,7 +9,7 @@ struct ToolError: Error { let message: String; init(_ m: String) { self.message 
 final class ToolExecutor {
     // In-app chat stays with the editor owned by its project window.
     private weak var inAppEditor: EditorViewModel?
-    // External MCP observes the frontmost project only to guard writes.
+    // External MCP observes the visible project for project-list context.
     private let frontmostProjectProvider: (() -> VideoProject?)?
     // External MCP stays on this project until manage_project rebinds it.
     private weak var boundProject: VideoProject?
@@ -123,19 +123,6 @@ final class ToolExecutor {
             break
         }
 
-        if !Self.canReadInactiveProject(tool), let error = projectFocusError() {
-            let result = ToolResult.error(error)
-            captureToolAnalytics(
-                toolName: tool.rawValue,
-                origin: origin,
-                projectId: editor?.projectId,
-                result: result,
-                started: started,
-                failureReason: "project_inactive"
-            )
-            return result
-        }
-
         guard let editor else {
             let result = ToolResult.error("Editor not available")
             captureToolAnalytics(
@@ -234,26 +221,6 @@ final class ToolExecutor {
             properties["client_info"] = mcpClientInfo.payload
         }
         return properties
-    }
-
-    private func projectFocusError() -> String? {
-        guard frontmostProjectProvider != nil else { return nil }
-        let session = sessionProject
-        let frontmost = frontmostProject
-        guard session !== frontmost else { return nil }
-        let sessionName = session?.displayName ?? boundProject?.displayName ?? "no project"
-        let frontmostName = frontmost?.displayName ?? "no project"
-        return "This session is on '\(sessionName)', but '\(frontmostName)' is active in Palmier Pro. Activate '\(sessionName)' or call manage_project with action='open' before making changes."
-    }
-
-    private static func canReadInactiveProject(_ tool: ToolName) -> Bool {
-        switch tool {
-        case .getTimeline, .inspectTimeline, .getMedia, .inspectMedia, .searchMedia,
-             .getMulticam, .getTranscript, .detectBeats, .inspectColor, .listModels, .sendFeedback:
-            true
-        default:
-            false
-        }
     }
 
     private func captureToolAnalytics(

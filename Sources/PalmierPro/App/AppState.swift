@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct ProjectOpenOptions {
     var startTutorial = false
+    var presentsEditor = true
 }
 
 enum ProjectError: LocalizedError {
@@ -71,6 +72,7 @@ final class AppState {
     }
 
     func showHome() {
+        presentApplicationUI()
         guard let project = activeProject else {
             HomeWindowController.shared.showWindow(nil)
             return
@@ -97,9 +99,16 @@ final class AppState {
     }
 
     func showEditor(for project: VideoProject) {
+        presentApplicationUI()
+        project.makeWindowControllers()
         activateProject(project)
         project.showWindows()
         hideHomeIfEditorIsVisible(for: project)
+    }
+
+    func presentApplicationUI() {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     func activateProject(_ project: VideoProject) {
@@ -180,20 +189,20 @@ final class AppState {
 
     // MARK: - Project lifecycle
 
-    // Creates and displays a project at `url`; doesn't save or register.
-    private func instantiateProject(at url: URL) -> VideoProject {
+    // Creates a project session at `url`; doesn't save or register.
+    private func instantiateProject(at url: URL, presentsEditor: Bool) -> VideoProject {
         let doc = VideoProject()
         doc.fileURL = url
         doc.fileType = VideoProject.typeIdentifier
-        doc.makeWindowControllers()
+        doc.prepareSession()
         NSDocumentController.shared.addDocument(doc)
-        showEditor(for: doc)
+        if presentsEditor { showEditor(for: doc) }
         return doc
     }
 
     /// Creates a new project in the storage folder; errors if the name is invalid or already taken.
     @discardableResult
-    func createProject(named name: String) async throws -> VideoProject {
+    func createProject(named name: String, presentsEditor: Bool = true) async throws -> VideoProject {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let base = trimmed.isEmpty ? Project.defaultProjectName : trimmed
         guard !base.contains("/"), !base.contains("\\"), base != ".", base != ".." else {
@@ -206,7 +215,7 @@ final class AppState {
             throw ProjectError.nameTaken(url)
         }
         let previous = activeProject
-        let doc = instantiateProject(at: url)
+        let doc = instantiateProject(at: url, presentsEditor: presentsEditor)
         do {
             try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
                 doc.save(to: url, ofType: VideoProject.typeIdentifier, for: .saveOperation) { error in
@@ -216,7 +225,7 @@ final class AppState {
         } catch {
             doc.close()
             try? FileManager.default.removeItem(at: url)
-            if let previous { showEditor(for: previous) }
+            if presentsEditor, let previous { showEditor(for: previous) }
             throw error
         }
         ProjectRegistry.shared.register(url)
@@ -227,6 +236,7 @@ final class AppState {
     }
 
     func createProjectInteractively() {
+        presentApplicationUI()
         Telemetry.beginOperation("save_panel", data: ["flow": "project_create"])
         let panel = NSSavePanel()
         panel.allowedContentTypes = [Self.projectContentType]
@@ -236,7 +246,7 @@ final class AppState {
         panel.begin { [self] response in
             Telemetry.endOperation("save_panel")
             guard response == .OK, let url = panel.url else { return }
-            let doc = instantiateProject(at: url)
+            let doc = instantiateProject(at: url, presentsEditor: true)
             doc.save(to: url, ofType: VideoProject.typeIdentifier, for: .saveOperation) { error in
                 guard error == nil else { return }
                 ProjectRegistry.shared.register(url)
@@ -284,9 +294,9 @@ final class AppState {
             return existing
         }
 
-        doc.makeWindowControllers()
+        doc.prepareSession()
         NSDocumentController.shared.addDocument(doc)
-        showEditor(for: doc)
+        if options.presentsEditor { showEditor(for: doc) }
         if register { ProjectRegistry.shared.register(resolved) }
         doc.editorViewModel.refreshProjectId()
         recordProjectOpened(doc)
@@ -318,7 +328,7 @@ final class AppState {
     private func showExistingProject(at url: URL, register: Bool, options: ProjectOpenOptions) -> VideoProject? {
         if let existing = openProjects.first(where: { Self.sameFile($0.fileURL, url) }) {
             if register { ProjectRegistry.shared.register(url) }
-            showEditor(for: existing)
+            if options.presentsEditor { showEditor(for: existing) }
             apply(options, to: existing.editorViewModel)
             return existing
         }
@@ -360,6 +370,7 @@ final class AppState {
     }
 
     func openProjectFromPanel() {
+        presentApplicationUI()
         Telemetry.beginOperation("open_panel", data: ["flow": "project_open"])
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [Self.projectContentType]

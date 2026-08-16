@@ -56,7 +56,7 @@ struct ManageProjectToolTests {
         }
     }
 
-    @Test func mcpSessionPinsProjectWhileInAppChatStaysLocal() async {
+    @Test func mcpSessionEditsPinnedProjectWithoutMakingItVisible() async {
         let first = VideoProject()
         first.editorViewModel.timeline.name = "First Session"
         let second = VideoProject()
@@ -75,7 +75,9 @@ struct ManageProjectToolTests {
 
         visible = second
         #expect(ToolHarness.textOf(await firstSession.execute(name: "get_timeline", args: [:])).contains("First Session"))
-        #expect((await firstSession.execute(name: "create_timeline", args: ["name": "Blocked"])).isError)
+        #expect(!(await firstSession.execute(name: "create_timeline", args: ["name": "Background"])).isError)
+        #expect(first.editorViewModel.timelines.contains { $0.name == "Background" })
+        #expect(first.windowControllers.isEmpty)
         #expect(!(await ToolExecutor(editor: first.editorViewModel).execute(name: "create_timeline", args: ["name": "In-App"])).isError)
     }
 
@@ -89,5 +91,50 @@ struct ManageProjectToolTests {
         _ = await executor.execute(name: "get_timeline", args: [:], source: "mcp")
         _ = await executor.execute(name: "get_media", args: [:], source: "mcp")
         #expect(executor.mcpSessionActivation.isActivated)
+    }
+
+    @Test func openLoadsAndEditsProjectWithoutCreatingWindow() async throws {
+        let packageURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("headless-\(UUID().uuidString).palmier", isDirectory: true)
+        var timeline = Fixtures.timeline()
+        timeline.name = "Headless"
+        let projectFile = ProjectFile(timelines: [timeline])
+        try await Task.detached {
+            try FileManager.default.createDirectory(at: packageURL, withIntermediateDirectories: true)
+            try JSONEncoder().encode(projectFile)
+                .write(to: packageURL.appendingPathComponent(Project.timelineFilename), options: .atomic)
+        }.value
+        defer {
+            ProjectRegistry.shared.remove(packageURL)
+            Task.detached { try? FileManager.default.removeItem(at: packageURL) }
+        }
+
+        let executor = ToolExecutor(projectProvider: { nil })
+        let opened = await executor.execute(
+            name: "manage_project",
+            args: ["action": "open", "path": packageURL.path],
+            source: "mcp"
+        )
+
+        #expect(!opened.isError)
+        let project = try #require(executor.sessionProject)
+        #expect(project.isSessionPrepared)
+        #expect(project.windowControllers.isEmpty)
+        #expect(project.editorViewModel.timeline.name == "Headless")
+
+        let edited = await executor.execute(
+            name: "create_timeline",
+            args: ["name": "Background Edit"],
+            source: "mcp"
+        )
+        #expect(!edited.isError)
+        #expect(project.editorViewModel.timelines.contains { $0.name == "Background Edit" })
+
+        let closed = await executor.execute(
+            name: "manage_project",
+            args: ["action": "close"],
+            source: "mcp"
+        )
+        #expect(!closed.isError)
     }
 }

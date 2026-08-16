@@ -13,14 +13,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Activate the app (required when launched from CLI, not a .app bundle)
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.setActivationPolicy(.accessory)
+        AgentHostMenuController.shared.start()
 
         // Start Sparkle updater
         _ = Updater.shared
 
-        HomeWindowController.shared.showWindow(nil)
         SkillStore.shared.startSkillSync()
         Task.detached(priority: .utility) {
             Project.ensureStorageDirectory()
@@ -143,21 +141,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     @objc func showSettings(_ sender: Any?) {
+        AppState.shared.presentApplicationUI()
         SettingsWindowController.shared.show()
     }
 
     @MainActor
     @objc func showKeyboardShortcuts(_ sender: Any?) {
+        AppState.shared.presentApplicationUI()
         HelpWindowController.shared.show(tab: .shortcuts)
     }
 
     @MainActor
     @objc func showMCPInstructions(_ sender: Any?) {
+        AppState.shared.presentApplicationUI()
         HelpWindowController.shared.show(tab: .mcp)
     }
 
     @MainActor
     @objc func showFeedback(_ sender: Any?) {
+        AppState.shared.presentApplicationUI()
         FeedbackWindowController.shared.show()
     }
 

@@ -58,6 +58,7 @@ class VideoProject: NSDocument {
     private var saveQueue: [SaveRequest] = []
     private var projectCheckpointAutosaveScheduled = false
     private var isSavingBeforeClose = false
+    private(set) var isSessionPrepared = false
 
     // MARK: - Persistence
 
@@ -431,7 +432,10 @@ class VideoProject: NSDocument {
 
     // MARK: - Window setup
 
-    override func makeWindowControllers() {
+    func prepareSession() {
+        guard !isSessionPrepared else { return }
+        isSessionPrepared = true
+
         if let loaded = loadedProjectFile {
             editorViewModel.applyProjectFile(loaded)
             loadedProjectFile = nil
@@ -453,6 +457,19 @@ class VideoProject: NSDocument {
         }
         editorViewModel.enhancePendingDenoises()
         if editorViewModel.markSpeakers { editorViewModel.identifySpeakers() }
+
+        editorViewModel.searchIndex.projectOpened()
+        editorViewModel.updateTelemetryContext()
+        Telemetry.breadcrumb(
+            "Project opened",
+            category: "project",
+            data: editorViewModel.telemetrySnapshot()
+        )
+    }
+
+    override func makeWindowControllers() {
+        prepareSession()
+        guard windowControllers.isEmpty else { return }
 
         let editorView = EditorView()
             .environment(editorViewModel)
@@ -498,13 +515,6 @@ class VideoProject: NSDocument {
 
         window.standardWindowButton(.documentIconButton)?.isHidden = true
 
-        editorViewModel.searchIndex.projectOpened()
-        editorViewModel.updateTelemetryContext()
-        Telemetry.breadcrumb(
-            "Project opened",
-            category: "project",
-            data: editorViewModel.telemetrySnapshot()
-        )
     }
 
     // MARK: - Thumbnail

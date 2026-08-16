@@ -73,7 +73,10 @@ extension ToolExecutor {
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw ToolError("No project at \(url.path).")
         }
-        let doc = try await AppState.shared.openProjectAsync(at: url)
+        let doc = try await AppState.shared.openProjectAsync(
+            at: url,
+            options: ProjectOpenOptions(presentsEditor: false)
+        )
         bindProject(doc)
         notifyNowEditing(doc)
         let result = ToolResult.ok(Self.jsonString(projectSnapshot(doc, status: "active")) ?? "{}")
@@ -89,7 +92,7 @@ extension ToolExecutor {
         let settingsArgs = args.filter { ["fps", "aspectRatio", "quality"].contains($0.key) }
         let settings = try settingsArgs.isEmpty ? nil : validateProjectSettings(settingsArgs)
         let resolvedSettings = try settings?.resolve(for: Timeline())
-        let doc = try await AppState.shared.createProject(named: name)
+        let doc = try await AppState.shared.createProject(named: name, presentsEditor: false)
         bindProject(doc)
         if let resolvedSettings {
             _ = setProjectSettings(doc.editorViewModel, resolvedSettings)
