@@ -506,6 +506,10 @@ enum AppTheme {
     enum MediaPanel {
         static let contextRowHeight: CGFloat = IconSize.smMd
         static let speakerNameFieldWidth: CGFloat = 96
+        static let captionIndexNumberWidth: CGFloat = 32
+        static let captionIndexTimecodeWidth: CGFloat = 68
+        static let captionIndexDurationWidth: CGFloat = 28
+        static let captionIndexGroupMenuWidth: CGFloat = 168
     }
 
     enum Export {

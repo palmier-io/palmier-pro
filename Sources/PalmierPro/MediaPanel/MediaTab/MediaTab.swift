@@ -167,16 +167,6 @@ struct MediaTab: View {
         .onChange(of: currentFolderId, initial: true) { _, folderId in
             editor.mediaPanelCurrentFolderId = folderId
         }
-        .onAppear { consumeSearchFocusRequest() }
-        .onChange(of: editor.mediaPanelSearchFocusTick) { _, _ in
-            consumeSearchFocusRequest()
-        }
-        .onChange(of: editor.isMediaPanelSearchExpanded) { _, expanded in
-            if !expanded {
-                searchQuery = ""
-                isSearchFocused = false
-            }
-        }
         .sheet(isPresented: $showMatteSheet) {
             MatteSheet(isPresented: $showMatteSheet)
         }
@@ -267,7 +257,7 @@ struct MediaTab: View {
         guard let asset = editor.mediaAssets.first(where: { $0.id == id }) else { return }
         if !passesFilters(asset) {
             clearFilters()
-            collapseSearch()
+            editor.collapseMediaPanelSearch()
         }
         if viewMode == .folder, currentFolderId != asset.folderId {
             currentFolderId = asset.folderId
@@ -306,9 +296,11 @@ struct MediaTab: View {
         let showGenerate = !AccountService.shared.isMisconfigured
         return HStack(spacing: AppTheme.Spacing.xs) {
             if editor.isMediaPanelSearchExpanded {
-                searchField
+                ExpandablePanelSearch(
+                    text: $searchQuery,
+                    focus: $isSearchFocused
+                )
                     .layoutPriority(1)
-                    .transition(.opacity.combined(with: .scale(scale: AppTheme.Opacity.prominent, anchor: .trailing)))
             } else {
                 toolbarButton(title: L10n.string("Import"), action: importMedia)
                     .tourAnchor(.importButton)
@@ -324,7 +316,10 @@ struct MediaTab: View {
                 .tourAnchor(.smartSearch)
 
             if !editor.isMediaPanelSearchExpanded {
-                searchToggleButton
+                ExpandablePanelSearch(
+                    text: $searchQuery,
+                    focus: $isSearchFocused
+                )
             }
 
             displayControls
@@ -568,74 +563,6 @@ struct MediaTab: View {
             .fixedSize()
     }
 
-    private var searchToggleButton: some View {
-        Button(action: expandSearch) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: AppTheme.FontSize.xs))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
-                .hoverHighlight()
-        }
-        .buttonStyle(.plain)
-        .focusable(false)
-        .help(L10n.string("Search (⌘K)"))
-        .accessibilityLabel(L10n.string("Search"))
-    }
-
-    private var searchField: some View {
-        HStack(spacing: AppTheme.Spacing.xs) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: AppTheme.FontSize.xs))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-            TextField(L10n.string("Search"), text: $searchQuery)
-                .textFieldStyle(.plain)
-                .font(.system(size: AppTheme.FontSize.xs))
-                .foregroundStyle(AppTheme.Text.primaryColor)
-                .focused($isSearchFocused)
-                .onExitCommand { collapseSearch() }
-            if !searchQuery.isEmpty {
-                Button { collapseSearch() } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: AppTheme.FontSize.xs))
-                        .foregroundStyle(AppTheme.Text.mutedColor)
-                }
-                .buttonStyle(.plain)
-                .focusable(false)
-                .help(L10n.string("Clear search"))
-            }
-        }
-        .padding(.leading, AppTheme.Spacing.smMd)
-        .padding(.trailing, AppTheme.Spacing.xs)
-        .padding(.vertical, AppTheme.Spacing.xs)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            Capsule(style: .continuous)
-                .fill(AppTheme.Interaction.fill(AppTheme.Opacity.subtle))
-        )
-        .overlay(
-            Capsule(style: .continuous)
-                .strokeBorder(AppTheme.Interaction.fill(AppTheme.Opacity.faint), lineWidth: AppTheme.BorderWidth.thin)
-        )
-        .onChange(of: isSearchFocused) { _, focused in
-            if !focused, searchQuery.isEmpty { editor.collapseMediaPanelSearch() }
-        }
-    }
-
-    private func expandSearch() {
-        editor.isMediaPanelSearchExpanded = true
-        Task { isSearchFocused = true }
-    }
-
-    private func collapseSearch() {
-        editor.collapseMediaPanelSearch()
-    }
-
-    private func consumeSearchFocusRequest() {
-        guard editor.mediaPanelSearchFocusPending else { return }
-        editor.mediaPanelSearchFocusPending = false
-        expandSearch()
-    }
-
     private func toolbarButton(
         title: String,
         prominent: Bool = false,
@@ -721,7 +648,7 @@ struct MediaTab: View {
     // MARK: - Folder commands
 
     private func createNewFolderInCurrent() {
-        collapseSearch()
+        editor.collapseMediaPanelSearch()
         setViewMode(.folder)
         renamingTimelineId = nil
         let id = editor.createMediaPanelFolder(in: currentFolderId)

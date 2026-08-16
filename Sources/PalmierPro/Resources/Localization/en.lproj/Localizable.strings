@@ -500,6 +500,7 @@
 "Invert Colors" = "Invert Colors";
 "Inverted" = "Inverted";
 "Italic" = "Italic";
+"Jump to Playhead" = "Jump to Playhead";
 "Keep Current" = "Keep Current";
 "Keep Editing" = "Keep Editing";
 "Keep Skill" = "Keep Skill";
@@ -627,6 +628,7 @@
 "No audio" = "No audio";
 "No audio selected." = "No audio selected.";
 "No beats detected." = "No beats detected.";
+"No captions" = "No captions";
 "No conversations yet" = "No conversations yet";
 "No exports yet" = "No exports yet";
 "No generations yet" = "No generations yet";
@@ -980,6 +982,7 @@
 "Top" = "Top";
 "Top / Bottom" = "Top / Bottom";
 "Track Name" = "Track Name";
+"Track: %@" = "Track: %@";
 "Tracking" = "Tracking";
 "Transcribing…" = "Transcribing…";
 "Transcription failed: %@" = "Transcription failed: %@";

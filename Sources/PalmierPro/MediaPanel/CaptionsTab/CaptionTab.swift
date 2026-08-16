@@ -3,6 +3,7 @@ import SwiftUI
 struct CaptionTab: View {
     @Environment(EditorViewModel.self) var editor
     @Bindable private var account = AccountService.shared
+    let onGeneratedCaptions: (String?) -> Void
 
     @State private var style: TextStyle = .caption
     @State private var center = AppTheme.Caption.defaultCenter
@@ -555,10 +556,15 @@ struct CaptionTab: View {
                         return
                     }
                 }
-                if try await editor.generateCaptions(for: request).isEmpty {
+                let createdIds = try await editor.generateCaptions(for: request)
+                if createdIds.isEmpty {
                     note = L10n.string("No speech detected.")
                 } else {
+                    let groupId = createdIds.lazy.compactMap {
+                        editor.clipFor(id: $0)?.captionGroupId
+                    }.first
                     editor.captionPreviewEnabled = false
+                    onGeneratedCaptions(groupId)
                 }
             } catch {
                 note = localizedCaptionError(error)
@@ -567,7 +573,9 @@ struct CaptionTab: View {
     }
 
     private func showCaptionPreview() {
-        editor.captionPreviewConfiguration = editor.mediaPanelVisible ? previewConfiguration : nil
+        editor.captionPreviewConfiguration = editor.mediaPanelVisible
+            ? previewConfiguration
+            : nil
     }
 
     private func updateMaxCharacters(_ value: Double) {
