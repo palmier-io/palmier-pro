@@ -31,7 +31,6 @@
 "%lld items" = "%lld items";
 "%lld media files are missing and will be skipped." = "%lld media files are missing and will be skipped.";
 "%lld of %lld credits remaining this period" = "%lld of %lld credits remaining this period";
-"%lld sections" = "%lld sections";
 "%lld selected" = "%lld selected";
 "%lld subtitle files are ready in Palmier Pro." = "%lld subtitle files are ready in Palmier Pro.";
 "%lld text clips are ready in Palmier Pro." = "%lld text clips are ready in Palmier Pro.";
@@ -49,7 +48,6 @@
 "1 credit. %lld remaining after this generation." = "1 credit. %lld remaining after this generation.";
 "1 item" = "1 item";
 "1 media file is missing and will be skipped." = "1 media file is missing and will be skipped.";
-"1 section" = "1 section";
 "= %lld credits" = "= %lld credits";
 "= 1 credit" = "= 1 credit";
 "A video editor built for AI. Generate, and edit all in one place." = "A video editor built for AI. Generate, and edit all in one place.";
@@ -101,7 +99,6 @@
 "Alignment" = "Alignment";
 "All" = "All";
 "All fonts" = "All fonts";
-"All timelines" = "All timelines";
 "Amount" = "Amount";
 "Analyzing media so you can search it." = "Analyzing media so you can search it.";
 "Angle" = "Angle";
@@ -170,7 +167,6 @@
 "Change to Match" = "Change to Match";
 "Changes take effect after restarting Palmier Pro." = "Changes take effect after restarting Palmier Pro.";
 "Changing the ratio preserves the shorter edge." = "Changing the ratio preserves the shorter edge.";
-"Chat" = "Chat";
 "Chat history" = "Chat history";
 "Chat with your agent! It can generate content, edit clips, organize your assets, and much more. Start by signing in, or bring your own Anthropic API key." = "Chat with your agent! It can generate content, edit clips, organize your assets, and much more. Start by signing in, or bring your own Anthropic API key.";
 "Check for Updates…" = "Check for Updates…";
@@ -415,7 +411,6 @@
 "General" = "General";
 "Generate" = "Generate";
 "Generate B-roll" = "Generate B-roll";
-"Generate Captions" = "Generate Captions";
 "Generate Music" = "Generate Music";
 "Generate Music only works on video" = "Generate Music only works on video";
 "Generate Music…" = "Generate Music…";
@@ -455,6 +450,7 @@
 "Help" = "Help";
 "Hide Guides" = "Hide Guides";
 "Hide Info" = "Hide Info";
+"Hide Timeline Tabs" = "Hide Timeline Tabs";
 "Hide clip keyframes" = "Hide clip keyframes";
 "Hide reasoning" = "Hide reasoning";
 "High" = "High";
@@ -466,7 +462,7 @@
 "How did you find Palmier Pro?" = "How did you find Palmier Pro?";
 "Hue" = "Hue";
 "Hue Curves" = "Hue Curves";
-"Identify Speakers" = "Identify Speakers";
+"Identify" = "Identify";
 "Identifying…" = "Identifying…";
 "Ignores speech-free pauses shorter than this." = "Ignores speech-free pauses shorter than this.";
 "Image" = "Image";
@@ -820,6 +816,7 @@
 "Scroll Horizontally" = "Scroll Horizontally";
 "Scroll to latest" = "Scroll to latest";
 "Search" = "Search";
+"Search (⌘K)" = "Search (⌘K)";
 "Search models" = "Search models";
 "Search projects" = "Search projects";
 "Search skills" = "Search skills";
@@ -856,7 +853,9 @@
 "Sharpen" = "Sharpen";
 "Short-form and social" = "Short-form and social";
 "Shortcuts" = "Shortcuts";
+"Show All Tabs" = "Show All Tabs";
 "Show Info" = "Show Info";
+"Show Timeline Tabs" = "Show Timeline Tabs";
 "Show clip keyframes" = "Show clip keyframes";
 "Show in Finder" = "Show in Finder";
 "Show notifications" = "Show notifications";
@@ -896,7 +895,7 @@
 "Source Audio" = "Source Audio";
 "Source Media" = "Source Media";
 "Source Video" = "Source Video";
-"Speakers" = "Speakers";
+"Speaker Detection" = "Speaker Detection";
 "Speech" = "Speech";
 "Speech Padding" = "Speech Padding";
 "Speech is detected on-device in the background. Dims quiet, speech-free spans on timeline waveforms." = "Speech is detected on-device in the background. Dims quiet, speech-free spans on timeline waveforms.";
@@ -976,7 +975,6 @@
 "Tint" = "Tint";
 "Tints waveforms by speaker. Voices are matched across clips using cloud transcripts." = "Tints waveforms by speaker. Voices are matched across clips using cloud transcripts.";
 "Title Safe" = "Title Safe";
-"Toggle Agent Panel" = "Toggle Agent Panel";
 "Tone" = "Tone";
 "Tools" = "Tools";
 "Top" = "Top";

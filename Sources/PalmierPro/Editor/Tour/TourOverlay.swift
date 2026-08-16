@@ -135,7 +135,7 @@ struct TourOverlay: View {
             if let hero = TourAssets.hero {
                 Image(nsImage: hero).resizable().aspectRatio(contentMode: .fill)
             } else {
-                AppTheme.aiGradient
+                AppTheme.Background.raisedColor
             }
         }
         .frame(maxWidth: .infinity)

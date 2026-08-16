@@ -106,6 +106,7 @@ extension EditorViewModel {
             }
             openTimelineIds.append(child.id)
             timelineTabRenameRequest = child.id
+            timelineTabBarExpandedOverride = true
         }
     }
 

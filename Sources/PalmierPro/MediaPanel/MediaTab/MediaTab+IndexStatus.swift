@@ -1,12 +1,6 @@
 import SwiftUI
 
-extension MediaTab {
-    var searchIndexStatus: some View {
-        MediaSearchIndexStatus(search: editor.searchIndex, mediaAssets: editor.mediaAssets)
-    }
-}
-
-private struct MediaSearchIndexStatus: View {
+struct MediaSearchIndexStatus: View {
     let search: SearchIndexCoordinator
     let mediaAssets: [MediaAsset]
 

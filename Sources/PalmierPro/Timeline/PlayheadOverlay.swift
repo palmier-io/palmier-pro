@@ -1,7 +1,7 @@
 import AppKit
 
 enum Playhead {
-    static let color: NSColor = .systemRed
+    static var color: NSColor { AppTheme.Accent.playheadNSColor }
     static let triangleSize: CGFloat = 8
 
     static func appendPath(
@@ -15,9 +15,9 @@ enum Playhead {
         path.addLine(to: CGPoint(x: x, y: bottom))
         if triangle {
             let half = triangleSize / 2
-            path.move(to: CGPoint(x: x, y: top))
-            path.addLine(to: CGPoint(x: x - half, y: top - triangleSize))
-            path.addLine(to: CGPoint(x: x + half, y: top - triangleSize))
+            path.move(to: CGPoint(x: x - half, y: top))
+            path.addLine(to: CGPoint(x: x + half, y: top))
+            path.addLine(to: CGPoint(x: x, y: top + triangleSize))
             path.closeSubpath()
         }
     }
@@ -33,11 +33,9 @@ final class PlayheadOverlay {
     init(view: TimelineView, editor: EditorViewModel) {
         self.view = view
         self.editor = editor
-        let cg = Playhead.color.cgColor
-        layer.fillColor = cg
-        layer.strokeColor = cg
-        layer.lineWidth = 1
+        layer.lineWidth = AppTheme.BorderWidth.thin
         layer.zPosition = 100
+        applyColor(in: view)
         view.layer?.addSublayer(layer)
         observe()
     }
@@ -47,9 +45,12 @@ final class PlayheadOverlay {
         guard let view, let editor else { return }
         let geo = view.geometry
         let viewport = view.visibleRect
-        guard !viewport.isEmpty else { return }
+        guard !viewport.isEmpty else {
+            refreshAppearance()
+            return
+        }
         let x = Double(editor.playheadState.timelineFrame) * geo.pixelsPerFrame - viewport.minX
-        let top = Double(geo.rulerHeight)
+        let top = 0.0
         let bottom = Double(viewport.height)
 
         let path = CGMutablePath()
@@ -62,6 +63,22 @@ final class PlayheadOverlay {
         }
         layer.path = path
         CATransaction.commit()
+    }
+
+    func refreshAppearance() {
+        guard let view else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        applyColor(in: view)
+        CATransaction.commit()
+    }
+
+    private func applyColor(in view: TimelineView) {
+        view.effectiveAppearance.performAsCurrentDrawingAppearance {
+            let cg = Playhead.color.cgColor
+            layer.fillColor = cg
+            layer.strokeColor = cg
+        }
     }
 
     /// Re-arms after each fire; the Task hop reads the post-set value.

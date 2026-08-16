@@ -19,11 +19,22 @@ extension EditorSplitViewController {
 
     private func tourFrame(for target: TourTarget) -> CGRect? {
         switch target {
-        case .panel(let panel):
-            return flippedFrame(of: leafItem(for: panel)?.viewController.view)
+        case .panel:
+            return excludingTitlebar(flippedFrame(of: leafItem(for: target.hostPanel)?.viewController.view))
         case .element(let id):
             return flippedFrame(of: editor.tour.anchorViews[id]?.value)
         }
+    }
+
+    private func excludingTitlebar(_ frame: CGRect?) -> CGRect? {
+        guard var frame else { return nil }
+        let titlebarHeight = view.window?.contentView?.safeAreaInsets.top ?? 0
+        let minY = max(frame.minY, titlebarHeight)
+        let height = frame.maxY - minY
+        guard height > 0 else { return frame }
+        frame.origin.y = minY
+        frame.size.height = height
+        return frame
     }
 
     /// A view's frame in the full window content coords, flipped to top-left origin.

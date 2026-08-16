@@ -4,19 +4,21 @@ struct TabStrip<Item: Identifiable, Tab: View, Trailing: View>: View where Item.
     let items: [Item]
     let activeId: String
     var scrollRequest: String? = nil
+    var leadingPadding: CGFloat = AppTheme.Spacing.sm
     @ViewBuilder let tab: (Item) -> Tab
     @ViewBuilder let trailing: () -> Trailing
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: AppTheme.Spacing.zero) {
+                HStack(spacing: AppTheme.Spacing.xs) {
                     ForEach(items) { item in
                         tab(item).id(item.id)
                     }
                     trailing()
                 }
-                .padding(.horizontal, AppTheme.Spacing.sm)
+                .padding(.leading, leadingPadding)
+                .padding(.trailing, AppTheme.Spacing.sm)
             }
             .mouseWheelScrollsHorizontally()
             .onChange(of: activeId) { _, newId in
@@ -49,5 +51,59 @@ struct TabCloseButton: View {
                 .hoverHighlight(cornerRadius: AppTheme.Radius.xs)
         }
         .buttonStyle(.plain)
+    }
+}
+
+extension View {
+    func documentTabChrome(
+        isActive: Bool,
+        isCloseable: Bool = false,
+        onClose: (() -> Void)? = nil
+    ) -> some View {
+        modifier(DocumentTabChrome(isActive: isActive, isCloseable: isCloseable, onClose: onClose))
+    }
+}
+
+private struct DocumentTabChrome: ViewModifier {
+    let isActive: Bool
+    let isCloseable: Bool
+    let onClose: (() -> Void)?
+    @State private var isHovered = false
+
+    func body(content: Content) -> some View {
+        content
+            .padding(.leading, AppTheme.Spacing.mdLg)
+            .padding(.trailing, isCloseable ? AppTheme.Spacing.xlXxl : AppTheme.Spacing.mdLg)
+            .frame(height: AppTheme.IconSize.md)
+            .fixedSize(horizontal: true, vertical: false)
+            .hoverHighlight(cornerRadius: AppTheme.Radius.xl, isActive: isActive)
+            .overlay(alignment: .trailing) {
+                if isCloseable, let onClose {
+                    TabCloseButton(action: onClose)
+                        .padding(.trailing, AppTheme.Spacing.xs)
+                        .opacity(isHovered ? AppTheme.Opacity.opaque : AppTheme.Opacity.transparent)
+                        .allowsHitTesting(isHovered)
+                        .accessibilityHidden(true)
+                }
+            }
+            .contentShape(Rectangle())
+            .modifier(DocumentTabCloseAccess(isCloseable: isCloseable, onClose: onClose))
+            .onHover { isHovered = $0 }
+            .animation(.easeOut(duration: AppTheme.Anim.hover), value: isActive)
+            .animation(.easeOut(duration: AppTheme.Anim.hover), value: isHovered)
+    }
+}
+
+private struct DocumentTabCloseAccess: ViewModifier {
+    let isCloseable: Bool
+    let onClose: (() -> Void)?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isCloseable, let onClose {
+            content.accessibilityAction(named: Text(L10n.string("Close Tab")), onClose)
+        } else {
+            content
+        }
     }
 }

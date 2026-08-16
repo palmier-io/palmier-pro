@@ -16,7 +16,7 @@ enum Layout {
 
     // Headers & toolbars
     static let panelHeaderHeight: CGFloat = AppTheme.IconSize.xl
-    static let toolbarHeight: CGFloat = 38
+    static let toolbarHeight: CGFloat = AppTheme.IconSize.mdLg + AppTheme.Spacing.sm * 2
 
     static let panelGap: CGFloat = 5
 
@@ -24,12 +24,12 @@ enum Layout {
     static let timelineMinHeight: CGFloat = 100
     static let timelineDefaultHeightFraction: CGFloat = 0.35
     static let trackHeight: CGFloat = TrackSize.defaultHeight
-    static let rulerHeight: CGFloat = 24
+    static let rulerHeight: CGFloat = AppTheme.IconSize.lgXl
     static let trackHeaderDefaultWidth = AppTheme.ComponentSize.timelineTrackHeaderDefaultWidth
     static let trackHeaderMinimumWidth = AppTheme.ComponentSize.timelineTrackHeaderMinimumWidth
     static let trackHeaderMaximumWidth = AppTheme.ComponentSize.timelineTrackHeaderMaximumWidth
     static let trackHeaderResizeHitWidth = AppTheme.ComponentSize.timelineTrackHeaderResizeHitWidth
-    static let dropZoneHeight: CGFloat = 60
+    static let dropZoneHeight: CGFloat = TrackSize.minHeight
     static let insertThreshold: CGFloat = 10
     static let dragThreshold: CGFloat = 3
 

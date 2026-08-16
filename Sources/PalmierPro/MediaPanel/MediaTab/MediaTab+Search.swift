@@ -222,7 +222,7 @@ extension MediaTab {
             .frame(maxWidth: .infinity)
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
             Text(asset.name)
-                .font(.system(size: AppTheme.FontSize.xs))
+                .font(.system(size: AppTheme.FontSize.xxs))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .lineLimit(1)
         }

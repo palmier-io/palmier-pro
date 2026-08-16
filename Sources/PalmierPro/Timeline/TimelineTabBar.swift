@@ -36,9 +36,14 @@ private struct TimelineTabBarContent: View, Equatable {
     }
 
     var body: some View {
-        HStack(spacing: AppTheme.Spacing.xs) {
-            allTimelinesMenu
-            TabStrip(items: tabs, activeId: activeId, scrollRequest: renameRequest) { tab in
+        HStack(spacing: AppTheme.Spacing.md) {
+            overflowMenu
+            TabStrip(
+                items: tabs,
+                activeId: activeId,
+                scrollRequest: renameRequest,
+                leadingPadding: 0
+            ) { tab in
                 tabItem(tab)
             } trailing: {
                 addButton
@@ -52,39 +57,47 @@ private struct TimelineTabBarContent: View, Equatable {
 
             Spacer(minLength: 0)
         }
-        .panelHeaderBar()
+        .padding(.horizontal, AppTheme.Spacing.md)
+        .frame(maxWidth: .infinity)
+        .frame(height: Layout.panelHeaderHeight)
+        .background(AppTheme.Background.surfaceColor)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(AppTheme.Border.primaryColor)
+                .frame(height: AppTheme.BorderWidth.thin)
+        }
     }
 
-    private var allTimelinesMenu: some View {
+    private var overflowMenu: some View {
         Menu {
-            ForEach(allTabs) { tab in
-                Button {
-                    editor.activateTimeline(tab.id)
-                } label: {
-                    if tab.id == activeId {
-                        Label(tab.name, systemImage: "checkmark")
-                    } else {
-                        Text(tab.name)
-                    }
+            Button(L10n.string("Show All Tabs")) {
+                withAnimation(.easeInOut(duration: AppTheme.Anim.transition)) {
+                    editor.openAllTimelineTabs()
                 }
             }
+            .disabled(tabs.count >= allTabs.count)
+            Button(L10n.string("Close All Tabs")) {
+                withAnimation(.easeInOut(duration: AppTheme.Anim.transition)) {
+                    editor.closeAllTimelineTabs()
+                }
+            }
+            .disabled(tabs.count <= 1)
         } label: {
             Image(systemName: "ellipsis")
-                .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+                .font(.system(size: AppTheme.FontSize.md))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
-                .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.md)
-                .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
+                .frame(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.mdLg)
+                .hoverHighlight()
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
+        .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .padding(.leading, AppTheme.Spacing.xs)
-        .help(L10n.string("All timelines"))
+        .help(L10n.string("More"))
     }
 
     private func tabItem(_ tab: TimelineTabInfo) -> some View {
         let isActive = tab.id == activeId
+        let canClose = tabs.count > 1 && renamingTabId != tab.id
         return HStack(spacing: AppTheme.Spacing.xs) {
             if renamingTabId == tab.id {
                 renameField(tab)
@@ -94,24 +107,19 @@ private struct TimelineTabBarContent: View, Equatable {
                     .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
                     .lineLimit(1)
             }
-
-            if tabs.count > 1 {
-                TabCloseButton {
+        }
+        .documentTabChrome(
+            isActive: isActive,
+            isCloseable: canClose,
+            onClose: canClose
+                ? {
                     withAnimation(.easeInOut(duration: AppTheme.Anim.transition)) {
                         editor.closeTimelineTab(tab.id)
                     }
                 }
-            }
-        }
-        .padding(.horizontal, AppTheme.Spacing.xs)
-        .frame(height: Layout.panelHeaderHeight)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(isActive ? AppTheme.Accent.primary : Color.clear)
-                .frame(height: AppTheme.BorderWidth.thin)
-        }
-        .fixedSize(horizontal: true, vertical: false)
-        .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
+                : nil
+        )
+        .accessibilityAddTraits(isActive ? .isSelected : [])
         .gesture(TapGesture(count: 2).onEnded { renamingTabId = tab.id })
         .simultaneousGesture(TapGesture().onEnded { editor.activateTimeline(tab.id) })
         .contextMenu {
@@ -126,7 +134,6 @@ private struct TimelineTabBarContent: View, Equatable {
             Button(L10n.string("Delete Timeline"), role: .destructive) { editor.deleteTimeline(tab.id) }
                 .disabled(allTabs.count <= 1)
         }
-        .animation(.easeOut(duration: AppTheme.Anim.hover), value: isActive)
     }
 
     private func renameField(_ tab: TimelineTabInfo) -> some View {
@@ -147,14 +154,18 @@ private struct TimelineTabBarContent: View, Equatable {
         Button {
             editor.createTimeline()
         } label: {
-            Image(systemName: "plus")
-                .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
-                .foregroundStyle(AppTheme.Text.secondaryColor)
-                .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.md)
-                .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
+            tabBarIcon("plus")
         }
         .buttonStyle(.plain)
         .help(L10n.string("New timeline"))
+    }
+
+    private func tabBarIcon(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+            .foregroundStyle(AppTheme.Text.secondaryColor)
+            .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.md)
+            .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
     }
 
 }

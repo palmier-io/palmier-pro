@@ -12,7 +12,6 @@ struct TitleTabBar: View {
     let selected: String?
     var tourAnchors: [String: TourAnchorID] = [:]
     let onSelect: (String) -> Void
-    @State private var hoveredTitle: String?
 
     var body: some View {
         HStack(spacing: AppTheme.Spacing.zero) {
@@ -26,7 +25,6 @@ struct TitleTabBar: View {
     @ViewBuilder
     private func tab(_ item: Item) -> some View {
         let active = selected == item.id
-        let hovered = hoveredTitle == item.id
         let button = Button {
             onSelect(item.id)
         } label: {
@@ -47,29 +45,22 @@ struct TitleTabBar: View {
             .lineLimit(1)
             .foregroundStyle(active ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(tabBackground(active: active, hovered: hovered))
             .overlay(alignment: .bottom) {
                 Rectangle()
-                    .fill(active ? AppTheme.Accent.primary : Color.clear)
+                    .fill(active ? AppTheme.Text.primaryColor : Color.clear)
                     .frame(height: AppTheme.BorderWidth.thin)
+                    .offset(y: -AppTheme.BorderWidth.thin)
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .onHover { hovering in
-            hoveredTitle = hovering ? item.id : (hoveredTitle == item.id ? nil : hoveredTitle)
-        }
-        .animation(.easeOut(duration: AppTheme.Anim.hover), value: hovered)
+        .focusable(false)
+        .accessibilityLabel(L10n.string(key: item.titleKey))
+        .accessibilityAddTraits(active ? .isSelected : [])
         if let anchor = tourAnchors[item.id] {
             button.tourAnchor(anchor)
         } else {
             button
         }
-    }
-
-    private func tabBackground(active: Bool, hovered: Bool) -> Color {
-        if active { return AppTheme.Background.surfaceColor }
-        if hovered { return AppTheme.Interaction.fill(AppTheme.Opacity.faint) }
-        return Color.clear
     }
 }

@@ -109,7 +109,6 @@ struct CaptionTab: View {
     var body: some View {
         ZStack {
             VStack(spacing: AppTheme.Spacing.zero) {
-                previewToggleBar
                 ScrollView {
                     VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
                         sourceSection
@@ -165,41 +164,12 @@ struct CaptionTab: View {
         }
     }
 
-    private var previewToggleBar: some View {
-        HStack(spacing: AppTheme.Spacing.sm) {
-            Image(systemName: editor.captionPreviewEnabled ? "eye" : "eye.slash")
-                .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
-            Text(L10n.string("Preview"))
-                .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium))
-                .foregroundStyle(AppTheme.Text.primaryColor)
-            Spacer(minLength: AppTheme.Spacing.sm)
-            Toggle(
-                String(),
-                isOn: Binding(
-                    get: { editor.captionPreviewEnabled },
-                    set: { editor.captionPreviewEnabled = $0 }
-                )
-            )
-            .labelsHidden()
-            .toggleStyle(.switch)
-            .controlSize(.mini)
-            .accessibilityLabel(L10n.string("Preview"))
-            .tint(AppTheme.Text.primaryColor.opacity(AppTheme.Opacity.strong))
-        }
-        .padding(.horizontal, AppTheme.Spacing.smMd)
-        .frame(maxWidth: .infinity, minHeight: AppTheme.EditorPanel.groupHeaderHeight)
-        .background(AppTheme.Background.surfaceColor)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(AppTheme.Border.primaryColor)
-                .frame(height: AppTheme.BorderWidth.thin)
-        }
-    }
-
     private var sourceSection: some View {
-        EditorPanelGroup(L10n.string("Source"), isExpanded: $sourceExpanded) {
+        EditorPanelGroup(
+            L10n.string("Source"),
+            isExpanded: $sourceExpanded,
+            headerAccessory: { captionPreviewToggle }
+        ) {
             InspectorRow(
                 label: L10n.string("Source"),
                 labelHelp: L10n.string("Uses selected clips when available, otherwise all captionable audio. Choose a track to limit captions."),
@@ -214,6 +184,27 @@ struct CaptionTab: View {
                 onReset: { provider = .cloud }
             ) { providerPicker }
         }
+    }
+
+    private var captionPreviewToggle: some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            Text(L10n.string("Preview"))
+                .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+            Toggle(
+                String(),
+                isOn: Binding(
+                    get: { editor.captionPreviewEnabled },
+                    set: { editor.captionPreviewEnabled = $0 }
+                )
+            )
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .tint(AppTheme.Text.primaryColor.opacity(AppTheme.Opacity.strong))
+            .accessibilityLabel(L10n.string("Preview"))
+        }
+        .help(L10n.string("Preview"))
     }
 
     private var settingsSection: some View {
@@ -464,6 +455,18 @@ struct CaptionTab: View {
         }
     }
 
+    private var generateLabel: String {
+        if cloudModeUnavailableMessage == nil, provider == .cloud, let cost = estimatedCloudCost, cost > 0 {
+            return CostEstimator.localizedGenerateLabel(cost)
+        }
+        return L10n.string("Generate")
+    }
+
+    private var generateHelp: String {
+        if let cloudModeUnavailableMessage { return cloudModeUnavailableMessage }
+        return provider == .cloud ? costHelpText : String()
+    }
+
     private var agentMenu: some View {
         EditorAgentMenu(
             help: L10n.string("Let Agent create captions for you. Choose a predefined task, or ask Agent in the chat.")
@@ -499,23 +502,18 @@ struct CaptionTab: View {
     }
 
     private var generateBar: some View {
-        EditorActionFooter(message: note) {
+        EditorActionFooter(message: note ?? cloudModeUnavailableMessage) {
             HStack(spacing: AppTheme.Spacing.sm) {
+                Spacer(minLength: AppTheme.Spacing.zero)
                 Button(action: generate) {
-                    HStack(spacing: AppTheme.Spacing.xs) {
-                        Text(cloudModeUnavailableMessage ?? L10n.string("Generate Captions"))
-                        if cloudModeUnavailableMessage == nil, provider == .cloud, let cost = estimatedCloudCost {
-                            Image(systemName: "dollarsign.circle.fill").font(.system(size: AppTheme.FontSize.xs))
-                            Text(verbatim: "\(cost)").monospacedDigit()
-                        }
-                    }
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity)
+                    Text(generateLabel)
+                        .lineLimit(1)
                 }
-                .buttonStyle(.editorPrimary)
+                .buttonStyle(.capsule(.prominent))
+                .fixedSize()
                 .focusable(false)
                 .disabled(!canGenerateCaptions)
-                .help(provider == .cloud ? costHelpText : String())
+                .help(generateHelp)
 
                 agentMenu
             }

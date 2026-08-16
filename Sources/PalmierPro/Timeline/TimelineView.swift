@@ -99,6 +99,7 @@ final class TimelineView: NSView, NSPopoverDelegate {
             layer?.backgroundColor = Self.trackBg
         }
         updateAgentActivityColors()
+        playheadOverlay?.refreshAppearance()
     }
 
     private func configureAgentActivityLayers() {
@@ -331,17 +332,6 @@ final class TimelineView: NSView, NSPopoverDelegate {
             }
         }
 
-        if case .marquee(let marq) = inputController.dragState,
-           marq.current.width > 0 || marq.current.height > 0 {
-            ctx.setStrokeColor(AppTheme.Text.primary.withAlphaComponent(0.6).cgColor)
-            ctx.setFillColor(AppTheme.Text.primary.withAlphaComponent(0.1).cgColor)
-            ctx.setLineWidth(1)
-            ctx.setLineDash(phase: 0, lengths: [3, 3])
-            ctx.addRect(marq.current)
-            ctx.drawPath(using: .fillStroke)
-            ctx.setLineDash(phase: 0, lengths: [])
-        }
-
         let activeDropTarget: TrackDropTarget? = {
             if case .moveClip(let drag) = inputController.dragState {
                 if case .newTrackAt = drag.dropTarget { return drag.dropTarget }
@@ -384,6 +374,17 @@ final class TimelineView: NSView, NSPopoverDelegate {
             rulerMinY: scrollOffset.y,
             context: ctx
         )
+
+        if case .marquee(let marq) = inputController.dragState,
+           marq.current.width > 0 || marq.current.height > 0 {
+            ctx.setStrokeColor(AppTheme.Text.primary.withAlphaComponent(0.6).cgColor)
+            ctx.setFillColor(AppTheme.Text.primary.withAlphaComponent(0.1).cgColor)
+            ctx.setLineWidth(AppTheme.BorderWidth.thin)
+            ctx.setLineDash(phase: 0, lengths: [3, 3])
+            ctx.addRect(marq.current)
+            ctx.drawPath(using: .fillStroke)
+            ctx.setLineDash(phase: 0, lengths: [])
+        }
     }
 
     func updatePlayheadLayer() { playheadOverlay.update() }

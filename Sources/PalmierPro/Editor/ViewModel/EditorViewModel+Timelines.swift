@@ -27,6 +27,7 @@ extension EditorViewModel {
         if !openTimelineIds.contains(activeTimelineId) {
             openTimelineIds.append(activeTimelineId)
         }
+        timelineTabBarExpandedOverride = nil
         restoreActiveViewState()
     }
 
@@ -61,6 +62,16 @@ extension EditorViewModel {
         zoomScale = vs.zoomScale
         currentFrame = min(max(0, vs.playheadFrame), max(0, timeline.totalFrames))
         timelineScrollRestoreX = vs.scrollOffsetX
+    }
+
+    @discardableResult
+    func selectAdjacentOpenTimeline(delta: Int) -> Bool {
+        guard let id = EditorViewModel.adjacentId(in: openTimelineIds, current: activeTimelineId, delta: delta) else {
+            return false
+        }
+        activateTimeline(id)
+        revealTimelineTabBarIfMultiple()
+        return true
     }
 
     func activateTimeline(_ id: String) {
@@ -175,6 +186,9 @@ extension EditorViewModel {
         selectedTimelineIds.remove(id)
         videoEngine?.evictComposition(for: id)
         if let openIndex { openTimelineIds.remove(at: openIndex) }
+        if timelines.count <= 1 {
+            timelineTabBarExpandedOverride = nil
+        }
         undo.register("Delete Timeline", withTarget: self) { vm in
             vm.reinsertTimeline(removed, viewState: removedViewState, at: index, openAt: openIndex, reactivate: wasActive)
         }
@@ -200,6 +214,17 @@ extension EditorViewModel {
             videoEngine?.evictComposition(for: closed)
         }
         openTimelineIds = [id]
+    }
+
+    func closeAllTimelineTabs() {
+        closeOtherTimelineTabs(keeping: activeTimelineId)
+    }
+
+    func openAllTimelineTabs() {
+        let opened = Set(openTimelineIds)
+        let missing = timelines.map(\.id).filter { !opened.contains($0) }
+        guard !missing.isEmpty else { return }
+        openTimelineIds.append(contentsOf: missing)
     }
 
     private func reinsertTimeline(_ t: Timeline, viewState: TimelineViewState, at index: Int, openAt openIndex: Int?, reactivate: Bool) {

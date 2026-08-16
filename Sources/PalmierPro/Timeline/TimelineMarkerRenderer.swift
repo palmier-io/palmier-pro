@@ -85,7 +85,7 @@ enum TimelineMarkerRenderer {
                 color.alphaComponent * AppTheme.Opacity.strong
             ).cgColor)
             context.fill(CGRect(
-                x: startX, y: lane.minY + lane.height - AppTheme.TimelineMarker.rangeBarHeight,
+                x: startX, y: lane.minY,
                 width: max(0, endX - startX), height: AppTheme.TimelineMarker.rangeBarHeight
             ))
             paths = [
@@ -111,7 +111,7 @@ enum TimelineMarkerRenderer {
     ) -> NSRect {
         NSRect(
             x: geometry.xForFrame(marker.startFrame) - AppTheme.TimelineMarker.flagWidth / 2,
-            y: lane.minY + lane.height - AppTheme.TimelineMarker.flagHeight,
+            y: lane.minY,
             width: AppTheme.TimelineMarker.flagWidth,
             height: AppTheme.TimelineMarker.flagHeight
         )

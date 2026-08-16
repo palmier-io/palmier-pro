@@ -21,22 +21,32 @@ struct EditorView: NSViewControllerRepresentable {
 
 // MARK: - Split view controller
 
-private final class HiddenDividerSplitView: NSSplitView {
-    override var dividerThickness: CGFloat { 0 }
+private final class PanelDividerSplitView: NSSplitView {
+    var showsDivider = true
 
-    override func drawDivider(in rect: NSRect) {}
+    override var dividerThickness: CGFloat {
+        showsDivider ? AppTheme.BorderWidth.thin : AppTheme.Spacing.zero
+    }
+
+    override func drawDivider(in rect: NSRect) {
+        guard showsDivider else { return }
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            AppTheme.Border.panel.setFill()
+            rect.fill()
+        }
+    }
 }
 
-/// Invisible divider with a larger hit area for panel resizing
+/// Visible divider with a larger hit area for panel resizing.
 class PaddedDividerSplitViewController: NSSplitViewController {
     override init(nibName nibNameOrNil: NSNib.Name?, bundle nibBundleOrNil: Bundle?) {
         super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
-        splitView = HiddenDividerSplitView()
+        splitView = PanelDividerSplitView()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
-        splitView = HiddenDividerSplitView()
+        splitView = PanelDividerSplitView()
     }
 
     override func splitView(
@@ -80,29 +90,17 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
     private weak var inspectorSplitItem: NSSplitViewItem?
     private weak var timelineSplitItem: NSSplitViewItem?
 
+    private let editorTitlebarFill = EditorTitlebarFillView()
     private lazy var mediaHC: NSViewController     = makeHosting(MediaPanelView(), panel: .media)
     private lazy var previewHC: NSViewController   = makeHosting(PreviewContainerView(), panel: .preview)
     private lazy var inspectorHC: NSViewController = makeHosting(InspectorView(), panel: .inspector)
     private lazy var agentHC: NSViewController     = makeAgentSidebarHosting(AgentPanelView())
-    private lazy var timelineHC: NSViewController  = makeHosting(
-        VStack(spacing: 0) {
-            TimelineTabBar()
-            ToolbarView()
-                .frame(height: Layout.toolbarHeight)
-                .overlay(alignment: .bottom) {
-                    Rectangle().fill(AppTheme.Border.primaryColor).frame(height: AppTheme.BorderWidth.thin)
-                }
-            HStack(spacing: 0) {
-                TimelineContainerView()
-                AudioMeterView()
-            }
-        },
-        panel: .timeline
-    )
+    private lazy var timelineHC: NSViewController  = makeHosting(TimelinePaneView(), panel: .timeline)
 
     init(editor: EditorViewModel) {
         self.editor = editor
         super.init(nibName: nil, bundle: nil)
+        (splitView as? PanelDividerSplitView)?.showsDivider = false
     }
 
     @available(*, unavailable)
@@ -225,10 +223,7 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
 
         // Preset layout lives in an inner VC so the agent can be a sibling column.
         let presetRoot = makeChildSplit(isVertical: false, autosave: SplitAutosave.preset(preset))
-        presetRoot.view.wantsLayer = true
-        presetRoot.view.layer?.cornerRadius = AppTheme.Radius.sm
-        presetRoot.view.layer?.cornerCurve = .continuous
-        presetRoot.view.layer?.masksToBounds = true
+        installEditorTitlebarFill(in: presetRoot.view)
         switch preset {
         case .default:  buildDefaultLayout(into: presetRoot)
         case .media:    buildMediaLayout(into: presetRoot)
@@ -352,7 +347,7 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
 
     private func makeMediaItem() -> NSSplitViewItem {
         let item = NSSplitViewItem(viewController: mediaHC)
-        item.minimumThickness = Layout.mediaPanelMin + AppTheme.MediaPanel.tabRailWidth
+        item.minimumThickness = Layout.mediaPanelMin
         item.canCollapse = false
         item.isCollapsed = !editor.mediaPanelVisible
         mediaSplitItem = item
@@ -383,19 +378,17 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
     }
 
     private func makeHosting<V: View>(_ content: V, panel: EditorViewModel.FocusedPanel) -> NSHostingController<some View> {
-        let panelShell = RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
         let hc = NSHostingController(
             rootView: content
                 .environment(editor)
                 .appLocalization()
                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                .background(AppTheme.Background.surfaceColor)
-                .clipShape(panelShell)
-                .padding(AppTheme.Spacing.xxs)
-                .background(AppTheme.Background.baseColor)
+                .background {
+                    AppTheme.Background.surfaceColor
+                        .ignoresSafeArea(edges: .top)
+                }
                 .overlay {
-                    PanelFocusRing(editor: editor, panel: panel)
-                        .padding(AppTheme.Spacing.xxs)
+                    PanelFocusRing(panel: panel)
                         .allowsHitTesting(false)
                 }
         )
@@ -422,6 +415,35 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
             DispatchQueue.main.async { [weak self] in self?.runPendingPositioning() }
         }
         updateTourFrame()   // see EditorSplitViewController+Tour.swift
+        updateEditorTitlebarFill()
+    }
+
+    private func installEditorTitlebarFill(in editorColumn: NSView) {
+        if editorTitlebarFill.superview !== editorColumn {
+            editorTitlebarFill.removeFromSuperview()
+            editorColumn.addSubview(editorTitlebarFill, positioned: .above, relativeTo: nil)
+            editorTitlebarFill.autoresizingMask = [.width, .minYMargin]
+        }
+        updateEditorTitlebarFill()
+    }
+
+    private func updateEditorTitlebarFill() {
+        guard let editorColumn = editorTitlebarFill.superview else { return }
+        let height = titlebarOverlapHeight(in: editorColumn)
+        editorTitlebarFill.frame = NSRect(
+            x: 0,
+            y: editorColumn.bounds.height - height,
+            width: editorColumn.bounds.width,
+            height: height
+        )
+    }
+
+    private func titlebarOverlapHeight(in editorColumn: NSView) -> CGFloat {
+        if editorColumn.safeAreaInsets.top > 0 { return editorColumn.safeAreaInsets.top }
+        guard let content = editorColumn.window?.contentView else { return 0 }
+        let column = editorColumn.convert(editorColumn.bounds, to: content)
+        let titlebarMinY = content.bounds.maxY - content.safeAreaInsets.top
+        return max(0, column.maxY - titlebarMinY)
     }
 
     private func applyAfterLayout(_ apply: @escaping () -> Void) {
@@ -439,21 +461,42 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
         pendingPositioning = nil
         work()
         updateTourFrame()
+        updateEditorTitlebarFill()
     }
 }
 
-// MARK: - Panel focus ring overlay
-
 private struct PanelFocusRing: View {
-    var editor: EditorViewModel
+    @Environment(EditorViewModel.self) var editor
     let panel: EditorViewModel.FocusedPanel
 
     private var isFocused: Bool { editor.focusedPanel == panel }
 
     var body: some View {
-        RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-            .strokeBorder(AppTheme.Accent.primary, lineWidth: AppTheme.BorderWidth.medium)
+        Rectangle()
+            .strokeBorder(AppTheme.Accent.primary, lineWidth: AppTheme.BorderWidth.thin)
             .opacity(isFocused ? AppTheme.Opacity.strong : 0)
             .animation(.easeOut(duration: AppTheme.Anim.transition), value: isFocused)
     }
+}
+
+/// Window chrome in the titlebar band of the editor column. Width tracks the column.
+private final class EditorTitlebarFillView: NSView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            AppTheme.Background.base.setFill()
+            bounds.fill()
+            AppTheme.Border.panel.setFill()
+            NSRect(x: 0, y: 0, width: bounds.width, height: AppTheme.BorderWidth.thin).fill()
+        }
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }

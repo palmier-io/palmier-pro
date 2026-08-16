@@ -929,3 +929,28 @@ struct HandleClipboardPasteTests {
         #expect(e.mediaAssets.isEmpty)
     }
 }
+
+@Suite("EditorViewModel — media panel search")
+@MainActor
+struct MediaPanelSearchTests {
+
+    @Test func requestExpandsSearchAndCollapseClearsIt() {
+        let e = editor()
+        #expect(!e.isMediaPanelSearchExpanded)
+
+        e.requestMediaPanelSearch()
+        #expect(e.isMediaPanelSearchExpanded)
+        #expect(e.mediaPanelSearchFocusPending)
+
+        e.collapseMediaPanelSearch()
+        #expect(!e.isMediaPanelSearchExpanded)
+        #expect(!e.mediaPanelSearchFocusPending)
+    }
+
+    @Test func requestDoesNotStartMissingMediaRefresh() {
+        let e = editor()
+        #expect(e.missingMediaRefreshTask == nil)
+        e.requestMediaPanelSearch()
+        #expect(e.missingMediaRefreshTask == nil)
+    }
+}

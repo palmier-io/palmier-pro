@@ -94,6 +94,7 @@ struct TimelineToolsTests {
         #expect(h.editor.timeline.name == "Intro")
         #expect(h.editor.timeline.fps == 60)
         #expect(h.editor.timelines.count == 2)
+        #expect(h.editor.isTimelineTabBarExpanded)
     }
 
     @Test func setActiveTimelineSwitchesByShortPrefix() async throws {
@@ -107,6 +108,7 @@ struct TimelineToolsTests {
         #expect(!result.isError)
         #expect(h.editor.activeTimelineId == second.id)
         #expect(h.editor.activeTimelineId != firstId)
+        #expect(h.editor.isTimelineTabBarExpanded)
         // Switching should not create an undo action.
         let undo = await h.runRaw("undo")
         #expect(undo.isError)
@@ -127,6 +129,16 @@ struct TimelineToolsTests {
         #expect(h.editor.timeline.tracks[0].clips.count == 1)
         #expect(h.editor.timeline.tracks[0].clips[0].id != "orig")
         #expect(h.editor.timeline.tracks[0].clips[0].durationFrames == 30)
+        #expect(h.editor.isTimelineTabBarExpanded)
+    }
+
+    @Test func createTimelineExpandsTabBarEvenIfUserCollapsedIt() async throws {
+        let h = ToolHarness()
+        h.editor.timelineTabBarExpandedOverride = false
+        #expect(h.editor.isTimelineTabBarExpanded == false)
+        let result = await h.runRaw("create_timeline", args: ["name": "Alt"])
+        #expect(!result.isError)
+        #expect(h.editor.isTimelineTabBarExpanded)
     }
 
     @Test func setActiveTimelineRejectsUnknownId() async throws {

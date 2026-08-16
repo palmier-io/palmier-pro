@@ -58,15 +58,21 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func handleKeyDown(_ event: NSEvent) -> Bool {
+        let mods = event.modifierFlags
+        let shift = mods.contains(.shift)
+        let cmd = mods.contains(.command)
+        let rangeMarkShortcut = mods.intersection([.command, .option, .control]).isEmpty
+
         // Don't intercept keys when a text field has focus
         if isTextInputFocused {
             return false
         }
 
-        let mods = event.modifierFlags
-        let shift = mods.contains(.shift)
-        let cmd = mods.contains(.command)
-        let rangeMarkShortcut = mods.intersection([.command, .option, .control]).isEmpty
+        if handlesMediaPanelCommands, cmd, event.keyCode == 40,
+           mods.intersection([.option, .control, .shift]).isEmpty {
+            editorViewModel.requestMediaPanelSearch()
+            return true
+        }
 
         if handlesMediaPanelCommands, cmd, event.keyCode == 126,
            mods.intersection([.option, .control, .shift]).isEmpty {
@@ -173,6 +179,18 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             editorViewModel.trimEndToPlayhead()
             return true
 
+        case 48: // Tab
+            guard mods.intersection([.command, .option, .control]).isEmpty else { return false }
+            let delta = shift ? -1 : 1
+            switch editorViewModel.focusedPanel {
+            case .preview:
+                return editorViewModel.selectAdjacentPreviewTab(delta: delta)
+            case .timeline:
+                return editorViewModel.selectAdjacentOpenTimeline(delta: delta)
+            default:
+                return false
+            }
+
         case 50: // ` (backtick) — toggle panel maximize
             if mods.intersection([.command, .option, .control, .shift]).isEmpty {
                 toggleMaximizePanelAction()
@@ -208,6 +226,10 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             }
             if editorViewModel.maximizedPanel != nil {
                 editorViewModel.maximizedPanel = nil
+                return true
+            }
+            if editorViewModel.isMediaPanelSearchExpanded {
+                editorViewModel.collapseMediaPanelSearch()
                 return true
             }
             editorViewModel.onCancelTimelineDrag?()

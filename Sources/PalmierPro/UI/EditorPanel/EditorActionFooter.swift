@@ -17,12 +17,6 @@ struct EditorActionFooter<Actions: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, AppTheme.Spacing.lgXl)
         .padding(.vertical, AppTheme.Spacing.md)
-        .background(AppTheme.Background.raisedColor)
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(AppTheme.Border.primaryColor)
-                .frame(height: AppTheme.BorderWidth.thin)
-        }
     }
 }
 
@@ -39,23 +33,12 @@ struct EditorAgentMenu<MenuContent: View>: View {
                 Image(systemName: "chevron.down")
                     .font(.system(size: AppTheme.FontSize.xs))
             }
-            .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.semibold))
-            .foregroundStyle(AppTheme.aiGradient)
+            .foregroundStyle(AppTheme.Text.secondaryColor)
             .lineLimit(1)
             .fixedSize()
-            .padding(.horizontal, AppTheme.Spacing.mdLg)
-            .padding(.vertical, AppTheme.Spacing.smMd)
-            .background(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                    .fill(AppTheme.Background.baseColor)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                    .strokeBorder(AppTheme.aiGradient.opacity(AppTheme.Opacity.medium), lineWidth: AppTheme.BorderWidth.thin)
-            )
         }
         .menuStyle(.button)
-        .buttonStyle(.plain)
+        .buttonStyle(.capsule(.secondary))
         .menuIndicator(.hidden)
         .focusable(false)
         .help(L10n.string(key: help))

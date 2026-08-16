@@ -38,7 +38,7 @@ struct AssetThumbnailView: View {
                     InlineRenameField(
                         originalName: asset.name,
                         placeholder: L10n.string("Name"),
-                        font: .system(size: AppTheme.FontSize.xs),
+                        font: .system(size: AppTheme.FontSize.xxs),
                         onCommit: { name in
                             editor.renameMediaAsset(id: asset.id, name: name)
                             isRenaming = false
@@ -47,7 +47,7 @@ struct AssetThumbnailView: View {
                     )
                 } else {
                     Text(asset.name)
-                        .font(.system(size: AppTheme.FontSize.xs))
+                        .font(.system(size: AppTheme.FontSize.xxs))
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .foregroundStyle(isSelected ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
@@ -220,7 +220,7 @@ struct AssetThumbnailView: View {
     private var sourceBadge: some View {
         Text(verbatim: "AI")
             .font(.system(size: AppTheme.FontSize.xxs, weight: .semibold))
-            .foregroundStyle(AppTheme.MediaOverlay.aiGradient)
+            .foregroundStyle(AppTheme.MediaOverlay.primaryColor)
             .padding(.horizontal, AppTheme.Spacing.sm)
             .padding(.vertical, AppTheme.Spacing.xxs)
             .background(AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.prominent), in: .capsule)
