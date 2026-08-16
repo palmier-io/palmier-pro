@@ -94,47 +94,71 @@ struct ManageProjectToolTests {
     }
 
     @Test func openLoadsAndEditsProjectWithoutCreatingWindow() async throws {
-        let packageURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("headless-\(UUID().uuidString).palmier", isDirectory: true)
         var timeline = Fixtures.timeline()
         timeline.name = "Headless"
-        let projectFile = ProjectFile(timelines: [timeline])
-        try await Task.detached {
-            try FileManager.default.createDirectory(at: packageURL, withIntermediateDirectories: true)
-            try JSONEncoder().encode(projectFile)
-                .write(to: packageURL.appendingPathComponent(Project.timelineFilename), options: .atomic)
-        }.value
-        defer {
-            ProjectRegistry.shared.remove(packageURL)
-            Task.detached { try? FileManager.default.removeItem(at: packageURL) }
+        try await withTemporaryProject(timeline: timeline) { packageURL in
+            let executor = ToolExecutor(projectProvider: { nil })
+            let opened = await executor.execute(
+                name: "manage_project",
+                args: ["action": "open", "path": packageURL.path],
+                source: "mcp"
+            )
+
+            #expect(!opened.isError)
+            let project = try #require(executor.sessionProject)
+            #expect(project.isSessionPrepared)
+            #expect(project.windowControllers.isEmpty)
+            #expect(project.editorViewModel.timeline.name == "Headless")
+
+            let edited = await executor.execute(
+                name: "create_timeline",
+                args: ["name": "Background Edit"],
+                source: "mcp"
+            )
+            #expect(!edited.isError)
+            #expect(project.editorViewModel.timelines.contains { $0.name == "Background Edit" })
+
+            AppState.shared.showEditor(for: project)
+            #expect(project.windowControllers.contains { $0.window?.isVisible == true })
+            #expect(!(await executor.execute(name: "get_timeline", args: [:], source: "mcp")).isError)
+
+            let closed = await executor.execute(
+                name: "manage_project",
+                args: ["action": "close"],
+                source: "mcp"
+            )
+            #expect(!closed.isError)
         }
+    }
 
-        let executor = ToolExecutor(projectProvider: { nil })
-        let opened = await executor.execute(
-            name: "manage_project",
-            args: ["action": "open", "path": packageURL.path],
-            source: "mcp"
-        )
+    private func withTemporaryProject(
+        timeline: Timeline,
+        operation: (URL) async throws -> Void
+    ) async throws {
+        let packageURL = try await Self.makeTemporaryProject(timeline: timeline)
+        do {
+            try await operation(packageURL)
+        } catch {
+            ProjectRegistry.shared.remove(packageURL)
+            try await Self.removeTemporaryProject(at: packageURL)
+            throw error
+        }
+        ProjectRegistry.shared.remove(packageURL)
+        try await Self.removeTemporaryProject(at: packageURL)
+    }
 
-        #expect(!opened.isError)
-        let project = try #require(executor.sessionProject)
-        #expect(project.isSessionPrepared)
-        #expect(project.windowControllers.isEmpty)
-        #expect(project.editorViewModel.timeline.name == "Headless")
+    @concurrent
+    private static func makeTemporaryProject(timeline: Timeline) async throws -> URL {
+        let packageURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("headless-\(UUID().uuidString).palmier", isDirectory: true)
+        try FileManager.default.createDirectory(at: packageURL, withIntermediateDirectories: true)
+        try JSONEncoder().encode(ProjectFile(timelines: [timeline]))
+            .write(to: packageURL.appendingPathComponent(Project.timelineFilename), options: .atomic)
+        return packageURL
+    }
 
-        let edited = await executor.execute(
-            name: "create_timeline",
-            args: ["name": "Background Edit"],
-            source: "mcp"
-        )
-        #expect(!edited.isError)
-        #expect(project.editorViewModel.timelines.contains { $0.name == "Background Edit" })
-
-        let closed = await executor.execute(
-            name: "manage_project",
-            args: ["action": "close"],
-            source: "mcp"
-        )
-        #expect(!closed.isError)
+    @concurrent
+    private static func removeTemporaryProject(at url: URL) async throws {
+        try FileManager.default.removeItem(at: url)
     }
 }

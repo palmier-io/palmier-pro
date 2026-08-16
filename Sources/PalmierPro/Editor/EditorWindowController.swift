@@ -5,6 +5,8 @@ import AppKit
 final class EditorWindowController: NSWindowController, NSWindowDelegate {
     let editorViewModel: EditorViewModel
     var onBecameKey: (() -> Void)?
+    var onCloseRequested: (() -> Void)?
+    var allowsDocumentClose = false
     private nonisolated(unsafe) var keyMonitor: Any?
     private nonisolated(unsafe) var mouseMonitor: Any?
     private nonisolated(unsafe) var endEditingObserver: Any?
@@ -19,6 +21,12 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
     func windowDidBecomeKey(_ notification: Notification) {
         onBecameKey?()
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard !allowsDocumentClose else { return true }
+        onCloseRequested?()
+        return false
     }
 
     deinit {

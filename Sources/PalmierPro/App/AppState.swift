@@ -37,6 +37,7 @@ final class AppState {
     private(set) var activeProject: VideoProject?
     private var projectPathsBeingDeleted: Set<String> = []
     private var projectOpenCounts: [String: Int] = [:]
+    private var projectHideGenerations: [ObjectIdentifier: Int] = [:]
 
     var openProjects: [VideoProject] {
         NSDocumentController.shared.documents.compactMap { $0 as? VideoProject }
@@ -99,6 +100,7 @@ final class AppState {
     }
 
     func showEditor(for project: VideoProject) {
+        invalidateHideRequest(for: project)
         presentApplicationUI()
         project.makeWindowControllers()
         activateProject(project)
@@ -120,8 +122,61 @@ final class AppState {
     }
 
     func projectWindowDidBecomeKey(_ project: VideoProject) {
+        presentApplicationUI()
         activateProject(project)
         hideHomeIfEditorIsVisible(for: project)
+    }
+
+    func hideEditor(for project: VideoProject) {
+        let projectID = ObjectIdentifier(project)
+        let generation = (projectHideGenerations[projectID] ?? 0) &+ 1
+        projectHideGenerations[projectID] = generation
+        let hide = {
+            guard self.projectHideGenerations[projectID] == generation,
+                  self.openProjects.contains(where: { $0 === project }) else { return }
+            project.windowControllers.forEach { $0.window?.orderOut(nil) }
+            if self.activeProject === project {
+                self.activeProject = nil
+            }
+            self.activateFirstVisibleProject()
+            AgentHostMenuController.shared.refreshActivationPolicy()
+        }
+        guard project.isDocumentEdited else {
+            DispatchQueue.main.async {
+                hide()
+            }
+            return
+        }
+        project.autosave(withImplicitCancellability: false) { error in
+            DispatchQueue.main.async {
+                if let error {
+                    project.presentError(error)
+                } else if !project.isDocumentEdited {
+                    hide()
+                }
+            }
+        }
+    }
+
+    func projectDidClose(_ project: VideoProject) {
+        projectHideGenerations[ObjectIdentifier(project)] = nil
+        guard activeProject === project else { return }
+        activeProject = nil
+        activateFirstVisibleProject()
+        AgentHostMenuController.shared.refreshActivationPolicy()
+    }
+
+    private func activateFirstVisibleProject() {
+        guard activeProject == nil,
+              let project = openProjects.first(where: {
+                  $0.windowControllers.contains { $0.window?.isVisible == true }
+              }) else { return }
+        activateProject(project)
+    }
+
+    private func invalidateHideRequest(for project: VideoProject) {
+        let projectID = ObjectIdentifier(project)
+        projectHideGenerations[projectID] = (projectHideGenerations[projectID] ?? 0) &+ 1
     }
 
     private func hideHomeIfEditorIsVisible(for project: VideoProject) {
@@ -129,24 +184,16 @@ final class AppState {
         HomeWindowController.shared.window?.orderOut(nil)
     }
 
-    // Save and close project; switch to next open or show Home. Throws (without closing) if the save fails.
+    // Save and close the project session. Throws without closing if the save fails.
     func closeProject(_ project: VideoProject) async throws {
         if let url = project.fileURL { ProjectRegistry.shared.register(url) }
         try await project.saveBeforeClosing()
-        let wasActive = activeProject === project
         project.close()
-        if wasActive {
-            activeProject = nil
-            if let next = openProjects.first {
-                showEditor(for: next)
-            } else {
-                HomeWindowController.shared.showWindow(nil)
-            }
-        }
+        projectDidClose(project)
     }
 
     func revealGeneratedAssetFromNotification(assetId: String?, projectURL: URL?) {
-        NSApp.activate(ignoringOtherApps: true)
+        presentApplicationUI()
         guard let project = notificationTargetProject(assetId: assetId, projectURL: projectURL) else {
             if activeProject == nil {
                 HomeWindowController.shared.showWindow(nil)
@@ -208,12 +255,7 @@ final class AppState {
         guard !base.contains("/"), !base.contains("\\"), base != ".", base != ".." else {
             throw ProjectError.invalidName(base)
         }
-        let directory = Project.storageDirectory
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = directory.appendingPathComponent(base).appendingPathExtension(Project.fileExtension)
-        guard !FileManager.default.fileExists(atPath: url.path) else {
-            throw ProjectError.nameTaken(url)
-        }
+        let url = try await Self.prepareProjectURL(named: base)
         let previous = activeProject
         let doc = instantiateProject(at: url, presentsEditor: presentsEditor)
         do {
@@ -224,7 +266,11 @@ final class AppState {
             }
         } catch {
             doc.close()
-            try? FileManager.default.removeItem(at: url)
+            do {
+                try await Self.removeProjectPackage(at: url)
+            } catch let cleanupError {
+                Log.project.warning("failed to remove unsaved project package: \(cleanupError.localizedDescription)")
+            }
             if presentsEditor, let previous { showEditor(for: previous) }
             throw error
         }
@@ -390,5 +436,21 @@ final class AppState {
             ?? UTType(filenameExtension: Project.fileExtension, conformingTo: .package)
             ?? .package
     }()
+
+    @concurrent
+    private static func prepareProjectURL(named name: String) async throws -> URL {
+        let directory = Project.storageDirectory
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent(name).appendingPathExtension(Project.fileExtension)
+        guard !FileManager.default.fileExists(atPath: url.path) else {
+            throw ProjectError.nameTaken(url)
+        }
+        return url
+    }
+
+    @concurrent
+    private static func removeProjectPackage(at url: URL) async throws {
+        try FileManager.default.removeItem(at: url)
+    }
 
 }

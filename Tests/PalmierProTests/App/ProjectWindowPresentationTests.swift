@@ -50,6 +50,51 @@ struct ProjectWindowPresentationTests {
         #expect(HomeWindowController.shared.window?.isVisible == false)
     }
 
+    @Test func closingEditorWindowKeepsProjectSessionLoaded() async throws {
+        _ = NSApplication.shared
+        let project = VideoProject()
+        project.prepareSession()
+        project.makeWindowControllers()
+        NSDocumentController.shared.addDocument(project)
+        defer {
+            NSDocumentController.shared.removeDocument(project)
+            cleanUp(project)
+        }
+
+        AppState.shared.showEditor(for: project)
+        let controller = try #require(project.windowControllers.first as? EditorWindowController)
+        let window = try #require(controller.window)
+
+        window.performClose(nil)
+        await waitForMainQueue()
+
+        #expect(!window.isVisible)
+        #expect(NSDocumentController.shared.documents.contains { $0 === project })
+        #expect(project.isSessionPrepared)
+    }
+
+    @Test func closingVisibleProjectDoesNotPresentBackgroundSession() {
+        _ = NSApplication.shared
+        let background = VideoProject()
+        background.prepareSession()
+        NSDocumentController.shared.addDocument(background)
+        let (visible, _) = makeProjectWindow()
+        NSDocumentController.shared.addDocument(visible)
+        defer {
+            NSDocumentController.shared.removeDocument(background)
+            NSDocumentController.shared.removeDocument(visible)
+            cleanUp(background)
+            cleanUp(visible)
+        }
+
+        AppState.shared.showEditor(for: visible)
+        NSDocumentController.shared.removeDocument(visible)
+        AppState.shared.projectDidClose(visible)
+
+        #expect(AppState.shared.activeProject == nil)
+        #expect(background.windowControllers.isEmpty)
+    }
+
     private func makeProjectWindow() -> (VideoProject, NSWindow) {
         let project = VideoProject()
         let window = NSWindow(
@@ -71,5 +116,13 @@ struct ProjectWindowPresentationTests {
             project.removeWindowController(controller)
         }
         HomeWindowController.shared.window?.orderOut(nil)
+    }
+
+    private func waitForMainQueue() async {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async {
+                continuation.resume()
+            }
+        }
     }
 }

@@ -43,7 +43,7 @@ final class AgentHostMenuController: NSObject, NSMenuDelegate {
         menu.removeAllItems()
 
         let statusItem = NSMenuItem(title: L10n.string("MCP Server"), action: nil, keyEquivalent: "")
-        statusItem.state = AppState.shared.mcpService == nil ? .off : .on
+        statusItem.state = AppState.shared.mcpService?.isRunning == true ? .on : .off
         statusItem.isEnabled = false
         menu.addItem(statusItem)
         menu.addItem(.separator())
@@ -103,12 +103,16 @@ final class AgentHostMenuController: NSObject, NSMenuDelegate {
         NSApp.terminate(nil)
     }
 
-    @objc private func windowVisibilityChanged(_ notification: Notification) {
+    func refreshActivationPolicy() {
         DispatchQueue.main.async {
             let hasVisibleWindow = NSApp.windows.contains { $0.isVisible && $0.level == .normal }
             if !hasVisibleWindow {
                 NSApp.setActivationPolicy(.accessory)
             }
         }
+    }
+
+    @objc private func windowVisibilityChanged(_ notification: Notification) {
+        refreshActivationPolicy()
     }
 }

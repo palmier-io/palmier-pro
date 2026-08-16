@@ -16,7 +16,7 @@ extension ToolExecutor {
             }
             let actionArgs = args.filter { $0.key != "action" }
             switch action {
-            case "list":   return try listProjects(actionArgs)
+            case "list":   return try await listProjects(actionArgs)
             case "open":   return try await openProject(actionArgs)
             case "create": return try await createProject(actionArgs)
             case "close":  return try await closeProject(actionArgs)
@@ -30,7 +30,7 @@ extension ToolExecutor {
         }
     }
 
-    private func listProjects(_ args: [String: Any]) throws -> ToolResult {
+    private func listProjects(_ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: [], path: "manage_project action='list'")
         let openDocs = AppState.shared.openProjects
         let openURLs = Set(openDocs.compactMap { $0.fileURL?.standardizedFileURL })
@@ -38,9 +38,11 @@ extension ToolExecutor {
         let activeURL = active?.fileURL?.standardizedFileURL
         let visible = frontmostProject
         let visibleURL = visible?.fileURL?.standardizedFileURL
+        let entries = ProjectRegistry.shared.sortedEntries
+        let accessiblePaths = await Self.accessibleProjectPaths(entries.map(\.url))
 
         // Only registered projects, sorted by most recently opened.
-        let projects = ProjectRegistry.shared.sortedEntries.map { entry -> [String: Any] in
+        let projects = entries.map { entry -> [String: Any] in
             let url = entry.url.standardizedFileURL
             return [
                 "id": entry.id.uuidString,
@@ -49,7 +51,7 @@ extension ToolExecutor {
                 "isOpen": openURLs.contains(url),
                 "isActive": activeURL == url,
                 "isVisible": visibleURL == url,
-                "isAccessible": entry.isAccessible,
+                "isAccessible": accessiblePaths.contains(url.path),
             ]
         }
 
@@ -70,7 +72,7 @@ extension ToolExecutor {
             throw ToolError("\(actionPath) needs a name, an id from action='list', or a path.")
         }
         let url = try resolveProjectURL(selector)
-        guard FileManager.default.fileExists(atPath: url.path) else {
+        guard await Self.projectExists(at: url) else {
             throw ToolError("No project at \(url.path).")
         }
         let doc = try await AppState.shared.openProjectAsync(
@@ -216,5 +218,18 @@ extension ToolExecutor {
     private func notifyNowEditing(_ doc: VideoProject) {
         let name = doc.displayName ?? Project.defaultProjectName
         doc.editorViewModel.agentService.postSystemNotice("Now editing: \(name)")
+    }
+
+    @concurrent
+    private static func projectExists(at url: URL) async -> Bool {
+        FileManager.default.fileExists(atPath: url.path)
+    }
+
+    @concurrent
+    private static func accessibleProjectPaths(_ urls: [URL]) async -> Set<String> {
+        Set(urls.compactMap { url in
+            let resolved = url.standardizedFileURL
+            return FileManager.default.fileExists(atPath: resolved.path) ? resolved.path : nil
+        })
     }
 }

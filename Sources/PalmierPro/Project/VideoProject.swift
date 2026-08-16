@@ -39,7 +39,7 @@ class VideoProject: NSDocument {
 
     let editorViewModel = EditorViewModel()
 
-    /// Decoded off-main in read(), applied on main in makeWindowControllers.
+    /// Decoded off-main in read(), applied on main when the project session is prepared.
     private nonisolated(unsafe) var loadedProjectFile: ProjectFile?
     private nonisolated(unsafe) var loadedManifest: MediaManifest?
 
@@ -422,11 +422,12 @@ class VideoProject: NSDocument {
     // MARK: - Close
 
     override func close() {
+        windowControllers
+            .compactMap { $0 as? EditorWindowController }
+            .forEach { $0.allowsDocumentClose = true }
         super.close()
         DispatchQueue.main.async {
-            if AppState.shared.activeProject === self {
-                AppState.shared.showHome()
-            }
+            AppState.shared.projectDidClose(self)
         }
     }
 
@@ -508,6 +509,10 @@ class VideoProject: NSDocument {
         controller.onBecameKey = { [weak self] in
             guard let self else { return }
             AppState.shared.projectWindowDidBecomeKey(self)
+        }
+        controller.onCloseRequested = { [weak self] in
+            guard let self else { return }
+            AppState.shared.hideEditor(for: self)
         }
         window.delegate = controller
         controller.installKeyMonitor()

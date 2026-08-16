@@ -102,6 +102,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
+            if url.pathExtension.caseInsensitiveCompare(Project.fileExtension) == .orderedSame {
+                AppState.shared.openProject(at: url)
+                continue
+            }
             Task { @MainActor in
                 do {
                     let handled = try await Clerk.shared.handle(url)

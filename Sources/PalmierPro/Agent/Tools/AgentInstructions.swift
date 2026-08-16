@@ -202,9 +202,8 @@ enum AgentInstructions {
         action='create' for a fresh project (optional fps / aspectRatio / quality); \
         action='close' to save and close. It never deletes projects.
         The session stays on its project if the user activates another project window. Reads \
-        still inspect the session project, but changes pause until that project is visible \
-        again or action='open' selects the visible project. Other MCP sessions and in-app \
-        chats keep their own project context.
+        and changes continue against the bound project even when it has no visible window. \
+        Other MCP sessions and in-app chats keep their own project context.
         Timelines and export work inside the bound project: create_timeline / \
         set_active_timeline for versions and nests; export_project / manage_exports for \
         delivery. If a client searches tools by keyword, use those exact names.
