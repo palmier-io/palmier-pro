@@ -315,10 +315,10 @@ final class EditorViewModel {
     }
 
     func requestMediaPanelSearch() {
-        showMediaPanelMediaTab()
+        mediaPanelShowMediaTabTick &+= 1
         isMediaPanelSearchExpanded = true
         mediaPanelSearchFocusPending = true
-        mediaPanelSearchFocusTick += 1
+        mediaPanelSearchFocusTick &+= 1
     }
 
     func collapseMediaPanelSearch() {

@@ -946,4 +946,11 @@ struct MediaPanelSearchTests {
         #expect(!e.isMediaPanelSearchExpanded)
         #expect(!e.mediaPanelSearchFocusPending)
     }
+
+    @Test func requestDoesNotStartMissingMediaRefresh() {
+        let e = editor()
+        #expect(e.missingMediaRefreshTask == nil)
+        e.requestMediaPanelSearch()
+        #expect(e.missingMediaRefreshTask == nil)
+    }
 }
