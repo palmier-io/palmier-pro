@@ -21,10 +21,10 @@ import Testing
         return clip
     }
 
-    @Test func formatsRoundedDurationInSeconds() {
-        #expect(CaptionBrowserMetrics.durationLabel(durationFrames: 30, fps: 30) == "1s")
-        #expect(CaptionBrowserMetrics.durationLabel(durationFrames: 45, fps: 30) == "2s")
-        #expect(CaptionBrowserMetrics.durationLabel(durationFrames: 10, fps: 30) == "1s")
+    @Test func formatsDurationToOneDecimalSecond() {
+        #expect(CaptionBrowserMetrics.durationLabel(durationFrames: 30, fps: 30) == "1.0s")
+        #expect(CaptionBrowserMetrics.durationLabel(durationFrames: 45, fps: 30) == "1.5s")
+        #expect(CaptionBrowserMetrics.durationLabel(durationFrames: 10, fps: 30) == "0.3s")
     }
 
     @Test(arguments: [
@@ -63,6 +63,12 @@ import Testing
         #expect(groups.map(\.isVisible) == [false, true])
         #expect(groups[0].captions.map(\.id) == ["first", "a", "b"])
         #expect(groups[1].captions.map(\.id) == ["lower"])
+    }
+
+    @Test func formatsTrackCodeWithOptionalName() {
+        #expect(CaptionBrowserNavigation.groupLabel(code: "V1", name: nil) == "V1")
+        #expect(CaptionBrowserNavigation.groupLabel(code: "V1", name: "") == "V1")
+        #expect(CaptionBrowserNavigation.groupLabel(code: "V1", name: "test1") == "V1 (test1)")
     }
 
     @Test func searchMatchesCaptionTextCaseInsensitivelyAndKeepsTimelineNumbers() {

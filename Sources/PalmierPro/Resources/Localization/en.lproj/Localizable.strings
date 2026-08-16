@@ -982,6 +982,7 @@
 "Top" = "Top";
 "Top / Bottom" = "Top / Bottom";
 "Track Name" = "Track Name";
+"Track: %@" = "Track: %@";
 "Tracking" = "Tracking";
 "Transcribing…" = "Transcribing…";
 "Transcription failed: %@" = "Transcription failed: %@";

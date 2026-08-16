@@ -108,7 +108,11 @@ struct CaptionBrowser: View {
                     .layoutPriority(1)
             } else {
                 if let activeGroup {
-                    groupPicker(activeGroup: activeGroup)
+                    if groups.count > 1 {
+                        groupPicker(activeGroup: activeGroup)
+                    } else {
+                        groupTitle(activeGroup)
+                    }
                 }
                 Spacer(minLength: AppTheme.Spacing.zero)
                 ExpandablePanelSearch(
@@ -132,6 +136,19 @@ struct CaptionBrowser: View {
         )
     }
 
+    private func groupTitle(_ group: CaptionBrowserGroup) -> some View {
+        Text(verbatim: groupLabel(group))
+            .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
+            .foregroundStyle(AppTheme.Text.secondaryColor)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .frame(
+                maxWidth: AppTheme.MediaPanel.captionIndexGroupMenuWidth,
+                alignment: .leading
+            )
+            .layoutPriority(2)
+    }
+
     private func groupPicker(activeGroup: CaptionBrowserGroup) -> some View {
         Menu {
             ForEach(groups) { group in
@@ -150,18 +167,18 @@ struct CaptionBrowser: View {
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
-        .frame(
-            minWidth: AppTheme.EditorPanel.numericFieldWidth,
-            maxWidth: AppTheme.EditorPanel.labelColumnWidth
-        )
+        .frame(width: AppTheme.MediaPanel.captionIndexGroupMenuWidth)
         .layoutPriority(2)
         .focusable(false)
     }
 
     private func groupLabel(_ group: CaptionBrowserGroup) -> String {
         guard editor.timeline.tracks.indices.contains(group.trackIndex) else { return "" }
-        return editor.timeline.tracks[group.trackIndex].name
-            ?? editor.timelineTrackDisplayLabel(at: group.trackIndex)
+        let title = CaptionBrowserNavigation.groupLabel(
+            code: editor.timelineTrackDisplayLabel(at: group.trackIndex),
+            name: editor.timeline.tracks[group.trackIndex].name
+        )
+        return L10n.string("Track: \(title)")
     }
 }
 
@@ -213,23 +230,29 @@ private struct CaptionBrowserRow: View {
         )
 
         Button(action: select) {
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-                HStack(spacing: AppTheme.Spacing.sm) {
+            HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
+                HStack(spacing: AppTheme.Spacing.xxs) {
                     Text(verbatim: "\(item.number)")
                         .foregroundStyle(AppTheme.Text.mutedColor)
                         .monospacedDigit()
                         .frame(
-                            minWidth: AppTheme.MediaPanel.captionIndexNumberWidth,
+                            width: AppTheme.MediaPanel.captionIndexNumberWidth,
                             alignment: .leading
                         )
                     Text(verbatim: startTimecode)
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                         .monospacedDigit()
-                    if let durationLabel {
-                        Text(verbatim: durationLabel)
-                            .foregroundStyle(AppTheme.Text.mutedColor)
-                            .monospacedDigit()
-                    }
+                        .frame(
+                            width: AppTheme.MediaPanel.captionIndexTimecodeWidth,
+                            alignment: .leading
+                        )
+                    Text(verbatim: durationLabel ?? "")
+                        .foregroundStyle(AppTheme.Text.mutedColor)
+                        .monospacedDigit()
+                        .frame(
+                            width: AppTheme.MediaPanel.captionIndexDurationWidth,
+                            alignment: .leading
+                        )
                 }
                 .font(.system(
                     size: AppTheme.FontSize.xs,
@@ -246,6 +269,7 @@ private struct CaptionBrowserRow: View {
                 .font(.system(size: AppTheme.FontSize.smMd))
                 .lineSpacing(AppTheme.Spacing.zero)
                 .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.horizontal, AppTheme.Spacing.sm)
             .padding(.vertical, AppTheme.Spacing.sm)
@@ -316,8 +340,8 @@ enum CaptionBrowserMetrics {
     static func durationLabel(durationFrames: Int, fps: Int) -> String? {
         guard durationFrames > 0, fps > 0 else { return nil }
         let seconds = Double(durationFrames) / Double(fps)
-        guard seconds.isFinite, seconds <= Double(Int.max) else { return nil }
-        return "\(max(Int(seconds.rounded()), 1))s"
+        guard seconds.isFinite else { return nil }
+        return String(format: "%.1fs", seconds)
     }
 }
 
@@ -394,6 +418,11 @@ enum CaptionBrowserNavigation {
             }
             return $0.id < $1.id
         }
+    }
+
+    static func groupLabel(code: String, name: String?) -> String {
+        guard let name, !name.isEmpty else { return code }
+        return "\(code) (\(name))"
     }
 
     static func numberedCaptions(
