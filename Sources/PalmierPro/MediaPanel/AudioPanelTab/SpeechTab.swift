@@ -1,27 +1,24 @@
 import SwiftUI
 
-struct SpeechTab: View {
+struct SpeechAnalysisSections: View {
     @Environment(EditorViewModel.self) private var editor
+    @Binding var silenceExpanded: Bool
+    @Binding var speakerExpanded: Bool
 
     var body: some View {
-        ZStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
-                    speakersSection
-                    silenceSection
-                }
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-            }
-            if let phase = editor.speakerIdentifyPhase {
-                AppTheme.Background.surfaceColor.opacity(AppTheme.Opacity.prominent)
-                GeneratingOverlay(label: phase, size: .preview)
-            }
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
+            silenceSection
+            speakersSection
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private var speakersSection: some View {
-        EditorPanelGroup(L10n.string("Speakers"), contentInsets: sectionContentInsets) {
+        EditorPanelGroup(
+            L10n.string("Speaker Detection"),
+            isExpanded: $speakerExpanded,
+            contentInsets: AudioPanelSectionLayout.contentInsets
+        ) {
             InspectorRow(
                 label: L10n.string("Mark Speakers"),
                 labelHelp: L10n.string("Tints waveforms by speaker. Voices are matched across clips using cloud transcripts."),
@@ -37,12 +34,6 @@ struct SpeechTab: View {
                 .labelsHidden()
                 .accessibilityLabel(L10n.string("Mark Speakers"))
             }
-            Button(editor.projectSpeakers.isEmpty ? L10n.string("Identify Speakers") : L10n.string("Refresh")) {
-                editor.identifySpeakers(transcribeMissing: true)
-            }
-            .buttonStyle(.capsule(.secondary))
-            .disabled(editor.speakerIdentifyInFlight)
-            .help(L10n.string("Matches voices across clips, transcribing untranscribed timeline clips first (uses credits). Transcripts and voice fingerprints are cached, so re-runs are fast."))
             if let error = editor.speakerIdentifyError {
                 Text(error)
                     .font(.system(size: AppTheme.FontSize.xs))
@@ -51,40 +42,76 @@ struct SpeechTab: View {
             }
             if !editor.projectSpeakers.isEmpty {
                 Text(L10n.string("Labels"))
-                    .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
                     .padding(.top, AppTheme.Spacing.xs)
-            }
-            ForEach(editor.projectSpeakers) { speaker in
-                HStack(spacing: AppTheme.Spacing.sm) {
-                    ColorPicker(String(), selection: Binding(
-                        get: { editor.projectSpeakers.first(where: { $0.id == speaker.id })?.color ?? speaker.color },
-                        set: { editor.setSpeakerColor(id: speaker.id, color: $0) }
-                    ))
-                    .labelsHidden()
-                    .controlSize(.small)
-                    TextField(L10n.string("Name"), text: Binding(
-                        get: { editor.projectSpeakers.first(where: { $0.id == speaker.id })?.name ?? speaker.name },
-                        set: { editor.renameSpeaker(id: speaker.id, name: $0) }
-                    ))
-                    .textFieldStyle(.roundedBorder)
-                    .controlSize(.small)
-                    .font(.system(size: AppTheme.FontSize.sm))
-                    Button {
-                        editor.removeSpeaker(id: speaker.id)
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(AppTheme.Text.tertiaryColor)
+                LazyVGrid(columns: speakerColumns, alignment: .leading, spacing: AppTheme.Spacing.sm) {
+                    ForEach(editor.projectSpeakers) { speaker in
+                        speakerLabel(speaker)
                     }
-                    .buttonStyle(.plain)
-                    .help(L10n.string("Removes this label and tint. Identify recreates it if the voice is still present."))
                 }
             }
+            speakerDetectionActions
+        }
+    }
+
+    private var speakerDetectionActions: some View {
+        HStack {
+            Spacer(minLength: AppTheme.Spacing.zero)
+            Button(editor.projectSpeakers.isEmpty ? L10n.string("Identify") : L10n.string("Refresh")) {
+                editor.identifySpeakers(transcribeMissing: true)
+            }
+            .buttonStyle(.capsule(.secondary))
+            .disabled(editor.speakerIdentifyInFlight)
+            .help(L10n.string("Matches voices across clips, transcribing untranscribed timeline clips first (uses credits). Transcripts and voice fingerprints are cached, so re-runs are fast."))
+        }
+    }
+
+    private var speakerColumns: [GridItem] {
+        [
+            GridItem(.flexible(minimum: AppTheme.Spacing.zero), spacing: AppTheme.Spacing.sm),
+            GridItem(.flexible(minimum: AppTheme.Spacing.zero), spacing: AppTheme.Spacing.sm),
+        ]
+    }
+
+    private func speakerLabel(_ speaker: ProjectSpeaker) -> some View {
+        HStack(spacing: AppTheme.Spacing.xs) {
+            ColorPicker(String(), selection: Binding(
+                get: { editor.projectSpeakers.first(where: { $0.id == speaker.id })?.color ?? speaker.color },
+                set: { editor.setSpeakerColor(id: speaker.id, color: $0) }
+            ))
+            .labelsHidden()
+            .controlSize(.mini)
+            .frame(width: AppTheme.IconSize.xl, height: AppTheme.IconSize.smMd)
+
+            TextField(L10n.string("Name"), text: Binding(
+                get: { editor.projectSpeakers.first(where: { $0.id == speaker.id })?.name ?? speaker.name },
+                set: { editor.renameSpeaker(id: speaker.id, name: $0) }
+            ))
+            .textFieldStyle(.roundedBorder)
+            .controlSize(.small)
+            .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
+            .foregroundStyle(AppTheme.Text.secondaryColor)
+            .frame(width: AppTheme.MediaPanel.speakerNameFieldWidth)
+
+            Button {
+                editor.removeSpeaker(id: speaker.id)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .frame(width: AppTheme.IconSize.smMd, height: AppTheme.IconSize.smMd)
+            }
+            .buttonStyle(.plain)
+            .help(L10n.string("Removes this label and tint. Identify recreates it if the voice is still present."))
         }
     }
 
     private var silenceSection: some View {
-        EditorPanelGroup(L10n.string("Silence Detection"), contentInsets: sectionContentInsets) {
+        EditorPanelGroup(
+            L10n.string("Silence Detection"),
+            isExpanded: $silenceExpanded,
+            contentInsets: AudioPanelSectionLayout.contentInsets
+        ) {
             InspectorRow(
                 label: L10n.string("Mark Silence"),
                 labelHelp: L10n.string("Speech is detected on-device in the background. Dims quiet, speech-free spans on timeline waveforms."),
@@ -112,7 +139,7 @@ struct SpeechTab: View {
                 }
             }
             silenceTimingControls
-            removeSilenceRow
+            silenceActions
         }
     }
 
@@ -174,27 +201,20 @@ struct SpeechTab: View {
         .accessibilityLabel(L10n.string(key: label))
     }
 
-    private var removeSilenceRow: some View {
+    private var silenceActions: some View {
         let count = editor.allDeadAir().reduce(0) { $0 + $1.ranges.count }
         return HStack(spacing: AppTheme.Spacing.sm) {
+            Spacer(minLength: AppTheme.Spacing.zero)
+            if count > 0 {
+                Text(verbatim: "\(count)")
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Text.mutedColor)
+                    .monospacedDigit()
+            }
             Button(L10n.string("Remove")) { editor.removeAllDeadAir() }
                 .buttonStyle(.capsule(.secondary))
                 .disabled(count == 0)
                 .help(L10n.string("Ripple-deletes every silent section; downstream clips close the gaps."))
-            if count > 0 {
-                Text(count == 1 ? L10n.string("1 section") : L10n.string("\(count) sections"))
-                    .font(.system(size: AppTheme.FontSize.xs))
-                    .foregroundStyle(AppTheme.Text.mutedColor)
-            }
         }
-    }
-
-    private var sectionContentInsets: EdgeInsets {
-        EdgeInsets(
-            top: AppTheme.Spacing.smMd,
-            leading: AppTheme.Spacing.mdLg,
-            bottom: AppTheme.Spacing.smMd,
-            trailing: AppTheme.Spacing.mdLg
-        )
     }
 }

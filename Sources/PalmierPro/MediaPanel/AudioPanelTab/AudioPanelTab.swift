@@ -1,32 +1,35 @@
 import SwiftUI
 
+enum AudioPanelSectionLayout {
+    static let contentInsets = EdgeInsets(
+        top: AppTheme.Spacing.smMd,
+        leading: AppTheme.Spacing.mdLg,
+        bottom: AppTheme.Spacing.smMd,
+        trailing: AppTheme.Spacing.mdLg
+    )
+}
+
 struct AudioPanelTab: View {
-    private enum Tab: String, CaseIterable {
-        case speech = "Speech", music = "Music"
-
-        var systemImage: String {
-            switch self {
-            case .speech: "mic"
-            case .music: "music.note"
-            }
-        }
-    }
-
-    @State private var tab: Tab = .speech
+    @Environment(EditorViewModel.self) private var editor
+    @State private var musicExpanded = true
+    @State private var silenceExpanded = false
+    @State private var speakerExpanded = false
 
     var body: some View {
-        VStack(spacing: AppTheme.Spacing.zero) {
-            TitleTabBar(
-                items: Tab.allCases.map {
-                    TitleTabBar.Item(titleKey: $0.rawValue, systemImage: $0.systemImage)
-                },
-                selected: tab.rawValue
-            ) { title in
-                if let t = Tab(rawValue: title) { tab = t }
+        ZStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
+                    MusicSection(isExpanded: $musicExpanded)
+                    SpeechAnalysisSections(
+                        silenceExpanded: $silenceExpanded,
+                        speakerExpanded: $speakerExpanded
+                    )
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            switch tab {
-            case .speech: SpeechTab()
-            case .music: MusicTab()
+            if let phase = editor.speakerIdentifyPhase {
+                AppTheme.Background.surfaceColor.opacity(AppTheme.Opacity.prominent)
+                GeneratingOverlay(label: phase, size: .preview)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -1,8 +1,9 @@
 import SwiftUI
 
-struct MusicTab: View {
+struct MusicSection: View {
     @Environment(EditorViewModel.self) var editor
     @Bindable private var account = AccountService.shared
+    @Binding var isExpanded: Bool
 
     @State private var selectedModelId: String?
     @State private var mode: MusicGenerationSubmission.Mode = .videoToMusic
@@ -117,37 +118,40 @@ struct MusicTab: View {
     }
 
     var body: some View {
-        ZStack {
-            VStack(spacing: AppTheme.Spacing.zero) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
-                        musicSection
+        musicSection
+            .overlay {
+                if isGenerating {
+                    ZStack {
+                        AppTheme.Background.surfaceColor.opacity(AppTheme.Opacity.prominent)
+                        GeneratingOverlay(label: generatingLabel, size: .preview)
                     }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
-                generateBar
             }
-            if isGenerating {
-                AppTheme.Background.surfaceColor.opacity(AppTheme.Opacity.prominent)
-                GeneratingOverlay(label: generatingLabel, size: .preview)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(AppTheme.Background.surfaceColor)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .background(AppTheme.Background.surfaceColor)
     }
 
     private var musicSection: some View {
-        EditorPanelGroup(L10n.string("Music")) {
+        EditorPanelGroup(
+            L10n.string("Music"),
+            isExpanded: $isExpanded,
+            contentInsets: AudioPanelSectionLayout.contentInsets
+        ) {
             sourceControls
             modelControl
             promptControl
+            musicActions
         }
     }
 
     @ViewBuilder
     private var sourceControls: some View {
         if model.map(supportsTextMode) == true {
-            InspectorRow(label: L10n.string("Input"), onReset: { mode = .videoToMusic }) {
+            InspectorRow(
+                label: L10n.string("Input"),
+                labelAlignment: .leading,
+                onReset: { mode = .videoToMusic }
+            ) {
                 Menu {
                     Button(L10n.string("Video to Music")) { mode = .videoToMusic }
                     Button(L10n.string("Text to Music")) { mode = .textToMusic }
@@ -160,6 +164,7 @@ struct MusicTab: View {
             InspectorRow(
                 label: L10n.string("Duration"),
                 labelHelp: L10n.string("Length of the generated music. It's placed at the playhead, or at the marked range start."),
+                labelAlignment: .leading,
                 onReset: { textDuration = defaultTextDuration }
             ) {
                 ScrubbableNumberField(
@@ -174,7 +179,8 @@ struct MusicTab: View {
         } else {
             InspectorRow(
                 label: L10n.string("Video"),
-                labelHelp: L10n.string("Uses the whole timeline by default. Mark a range on the timeline to score only that span.")
+                labelHelp: L10n.string("Uses the whole timeline by default. Mark a range on the timeline to score only that span."),
+                labelAlignment: .leading
             ) { valueText(sourceSummary) }
         }
     }
@@ -187,7 +193,11 @@ struct MusicTab: View {
     }
 
     private var modelControl: some View {
-        InspectorRow(label: L10n.string("Model"), onReset: { selectModel(nil) }) {
+        InspectorRow(
+            label: L10n.string("Model"),
+            labelAlignment: .leading,
+            onReset: { selectModel(nil) }
+        ) {
             Menu {
                 ForEach(models, id: \.id) { m in
                     Button(m.displayName) { selectModel(m) }
@@ -213,7 +223,7 @@ struct MusicTab: View {
     }
 
     private var promptControl: some View {
-        InspectorRow(label: L10n.string("Prompt")) {
+        InspectorRow(label: L10n.string("Prompt"), labelAlignment: .leading) {
             TextField(text: $prompt, axis: .vertical) {
                 Text(verbatim: model?.promptLabel ?? String())
             }
@@ -226,15 +236,22 @@ struct MusicTab: View {
         }
     }
 
-    private var generateBar: some View {
-        EditorActionFooter(message: note ?? validationNote) {
+    private var musicActions: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+            if let message = note ?? validationNote {
+                Text(message)
+                    .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(AppTheme.Status.errorColor)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             HStack(spacing: AppTheme.Spacing.sm) {
+                Spacer(minLength: AppTheme.Spacing.zero)
                 Button(action: generate) {
                     Text(generateLabel)
                         .lineLimit(1)
-                        .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.editorPrimary)
+                .buttonStyle(.capsule(.prominent))
+                .fixedSize()
                 .focusable(false)
                 .disabled(!canGenerate || !account.aiAllowed)
                 .help(account.aiAllowed ? String() : L10n.string("Sign in to generate"))

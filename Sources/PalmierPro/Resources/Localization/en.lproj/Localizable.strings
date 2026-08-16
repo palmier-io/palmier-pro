@@ -31,7 +31,6 @@
 "%lld items" = "%lld items";
 "%lld media files are missing and will be skipped." = "%lld media files are missing and will be skipped.";
 "%lld of %lld credits remaining this period" = "%lld of %lld credits remaining this period";
-"%lld sections" = "%lld sections";
 "%lld selected" = "%lld selected";
 "%lld subtitle files are ready in Palmier Pro." = "%lld subtitle files are ready in Palmier Pro.";
 "%lld text clips are ready in Palmier Pro." = "%lld text clips are ready in Palmier Pro.";
@@ -49,7 +48,6 @@
 "1 credit. %lld remaining after this generation." = "1 credit. %lld remaining after this generation.";
 "1 item" = "1 item";
 "1 media file is missing and will be skipped." = "1 media file is missing and will be skipped.";
-"1 section" = "1 section";
 "= %lld credits" = "= %lld credits";
 "= 1 credit" = "= 1 credit";
 "A video editor built for AI. Generate, and edit all in one place." = "A video editor built for AI. Generate, and edit all in one place.";
@@ -466,7 +464,7 @@
 "How did you find Palmier Pro?" = "How did you find Palmier Pro?";
 "Hue" = "Hue";
 "Hue Curves" = "Hue Curves";
-"Identify Speakers" = "Identify Speakers";
+"Identify" = "Identify";
 "Identifying…" = "Identifying…";
 "Ignores speech-free pauses shorter than this." = "Ignores speech-free pauses shorter than this.";
 "Image" = "Image";
@@ -896,7 +894,7 @@
 "Source Audio" = "Source Audio";
 "Source Media" = "Source Media";
 "Source Video" = "Source Video";
-"Speakers" = "Speakers";
+"Speaker Detection" = "Speaker Detection";
 "Speech" = "Speech";
 "Speech Padding" = "Speech Padding";
 "Speech is detected on-device in the background. Dims quiet, speech-free spans on timeline waveforms." = "Speech is detected on-device in the background. Dims quiet, speech-free spans on timeline waveforms.";

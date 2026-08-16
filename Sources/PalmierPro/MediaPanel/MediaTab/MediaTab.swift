@@ -90,7 +90,7 @@ struct MediaTab: View {
                 swapBanner
             }
 
-            ZStack(alignment: .top) {
+            ZStack(alignment: .bottom) {
                 MediaPanelDropArea(
                     isTargeted: $isDropTargeted,
                     onDrop: { urls in handlePanelFinderDrop(urls: urls) }
@@ -126,16 +126,16 @@ struct MediaTab: View {
                     }
                 }
                 .animation(.easeInOut(duration: AppTheme.Anim.transition), value: editor.mediaPanelToast)
+
+                if editor.showGenerationPanel && !mediaAreaCollapsed {
+                    GenerationView(maxPanelHeight: generationPanelMaxHeight)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .tourAnchor(.generation)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
             .layoutPriority(1)
             .onChange(of: searchQuery) { _, _ in scheduleMomentSearch() }
-
-            if editor.showGenerationPanel && !mediaAreaCollapsed {
-                GenerationView(maxPanelHeight: generationPanelMaxHeight)
-                    .frame(maxHeight: CGFloat(generationPanelMaxHeight), alignment: .bottom)
-                    .tourAnchor(.generation)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
         }
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.size.height
@@ -281,13 +281,12 @@ struct MediaTab: View {
     // MARK: - Toolbar
 
     private var toolbar: some View {
-        VStack(spacing: AppTheme.Spacing.xxs) {
+        VStack(spacing: AppTheme.Spacing.sm) {
             actionsRow
             searchControlsRow
             contextBar
         }
         .padding(.horizontal, AppTheme.Spacing.sm)
-        .padding(.top, AppTheme.Spacing.sm)
         .padding(.bottom, AppTheme.Spacing.sm)
         .background(AppTheme.Background.surfaceColor)
     }
@@ -295,21 +294,20 @@ struct MediaTab: View {
     private var actionsRow: some View {
         let showGenerate = !AccountService.shared.isMisconfigured
         return HStack(spacing: AppTheme.Spacing.xs) {
-            toolbarButton(title: L10n.string("Import"), systemImage: "plus", action: importMedia)
+            toolbarButton(title: L10n.string("Import"), action: importMedia)
                 .tourAnchor(.importButton)
             if showGenerate {
-                toolbarButton(title: L10n.string("Generate"), systemImage: "sparkles", filled: true, accentStyle: AnyShapeStyle(AppTheme.aiGradient), action: toggleGenerationPanel)
+                toolbarButton(title: L10n.string("Generate"), prominent: true, action: toggleGenerationPanel)
                     .tourAnchor(.generateButton)
             }
 
             overflowMenu
 
-            Spacer(minLength: 0)
+            Spacer(minLength: AppTheme.Spacing.zero)
 
-            searchIndexStatus
+            MediaSearchIndexStatus(search: editor.searchIndex, mediaAssets: editor.mediaAssets)
                 .tourAnchor(.smartSearch)
         }
-        .frame(height: Layout.panelHeaderHeight)
     }
 
     private var searchControlsRow: some View {
@@ -319,7 +317,6 @@ struct MediaTab: View {
 
             displayControls
         }
-        .frame(height: Layout.panelHeaderHeight)
     }
 
     // MARK: - Context bar (breadcrumb + count)
@@ -595,18 +592,14 @@ struct MediaTab: View {
 
     private func toolbarButton(
         title: String,
-        systemImage: String,
-        filled: Bool = false,
-        accentStyle: AnyShapeStyle? = nil,
+        prominent: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            HStack(spacing: AppTheme.Spacing.xs) {
-                Image(systemName: systemImage)
-                Text(title)
-            }
+            Text(title)
         }
-        .buttonStyle(.capsule(filled ? .prominent : .secondary, fill: accentStyle))
+        .buttonStyle(.capsule(prominent ? .prominent : .secondary))
+        .fixedSize(horizontal: true, vertical: false)
         .focusable(false)
         .help(title)
     }
