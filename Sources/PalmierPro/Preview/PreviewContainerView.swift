@@ -115,9 +115,8 @@ struct PreviewContainerView: View {
     // MARK: - Transport bar
 
     private var transportBar: some View {
-        let duration = durationFrames
         let fps = editor.timeline.fps
-        let durationTimecode = formatTimecode(frame: duration, fps: fps)
+        let durationTimecode = formatTimecode(frame: durationFrames, fps: fps)
 
         return HStack(spacing: AppTheme.Spacing.sm) {
             PreviewTimecodeText(
@@ -125,25 +124,45 @@ struct PreviewContainerView: View {
                 fps: fps,
                 durationTimecode: durationTimecode
             )
+            .layoutPriority(1)
 
-            Spacer()
-
-            HStack(spacing: AppTheme.Spacing.md) {
-                transportButton("backward.end.fill") { seekTo(0) }
-                transportButton("backward.frame.fill") { seekTo(playheadFrame - 1) }
-                transportButton(editor.isPlaying ? "pause.fill" : "play.fill") {
-                    if isTimeline {
-                        editor.togglePlayback()
-                    } else {
-                        editor.toggleSourcePlayback()
-                    }
-                }
-                transportButton("forward.frame.fill") { seekTo(playheadFrame + 1) }
-                transportButton("forward.end.fill") { seekTo(duration) }
+            ViewThatFits(in: .horizontal) {
+                transportControls(spacing: AppTheme.Spacing.md)
+                transportControls(spacing: AppTheme.Spacing.xs)
             }
+            .frame(minWidth: 0, maxWidth: .infinity)
+        }
+        .padding(.horizontal, AppTheme.Spacing.sm)
+        .frame(height: Layout.toolbarHeight)
+    }
 
-            Spacer()
+    private func transportControls(spacing: CGFloat) -> some View {
+        HStack(spacing: spacing) {
+            Spacer(minLength: 0)
+            transportButtons(spacing: spacing)
+            Spacer(minLength: 0)
+            accessoryButtons(spacing: spacing)
+        }
+    }
 
+    private func transportButtons(spacing: CGFloat) -> some View {
+        HStack(spacing: spacing) {
+            transportButton("backward.end.fill") { seekTo(0) }
+            transportButton("backward.frame.fill") { seekTo(playheadFrame - 1) }
+            transportButton(editor.isPlaying ? "pause.fill" : "play.fill") {
+                if isTimeline {
+                    editor.togglePlayback()
+                } else {
+                    editor.toggleSourcePlayback()
+                }
+            }
+            transportButton("forward.frame.fill") { seekTo(playheadFrame + 1) }
+            transportButton("forward.end.fill") { seekTo(durationFrames) }
+        }
+    }
+
+    private func accessoryButtons(spacing: CGFloat) -> some View {
+        HStack(spacing: spacing) {
             if isTimeline || editor.activePreviewTab.clipType == .video {
                 captureFrameButton
             }
@@ -163,8 +182,7 @@ struct PreviewContainerView: View {
                 zoomMenuItems
             }
         }
-        .padding(.horizontal, AppTheme.Spacing.lg)
-        .frame(height: 36)
+        .fixedSize()
     }
 
     // MARK: - Image settings bar
@@ -181,8 +199,8 @@ struct PreviewContainerView: View {
                 zoomMenuItems
             }
         }
-        .padding(.horizontal, AppTheme.Spacing.lg)
-        .frame(height: 36)
+        .padding(.horizontal, AppTheme.Spacing.sm)
+        .frame(height: Layout.toolbarHeight)
     }
 
     // MARK: - Capture frame
@@ -892,7 +910,7 @@ struct PreviewContainerView: View {
             Image(systemName: systemName)
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
-                .frame(width: 32, height: 28)
+                .frame(width: AppTheme.IconSize.lgXl, height: AppTheme.IconSize.lgXl)
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
@@ -949,6 +967,7 @@ private struct PreviewTimecodeText: View {
         }
         .monospacedDigit()
         .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
+        .fixedSize()
     }
 }
 
