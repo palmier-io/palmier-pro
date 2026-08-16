@@ -81,4 +81,18 @@ struct PreviewSelectionTests {
             editor: editor
         ) == nil)
     }
+
+    @Test func selectAdjacentPreviewTabWrapsAcrossOpenTabs() {
+        let editor = EditorViewModel()
+        #expect(editor.selectAdjacentPreviewTab(delta: 1) == false)
+        let clip = PreviewTab.mediaAsset(id: "clip", name: "Clip", type: .video)
+        editor.previewTabs = [.timeline, clip]
+        editor.activePreviewTabId = PreviewTab.timeline.id
+        #expect(editor.selectAdjacentPreviewTab(delta: 1))
+        #expect(editor.activePreviewTabId == clip.id)
+        #expect(editor.selectAdjacentPreviewTab(delta: 1))
+        #expect(editor.activePreviewTabId == PreviewTab.timeline.id)
+        #expect(editor.selectAdjacentPreviewTab(delta: -1))
+        #expect(editor.activePreviewTabId == clip.id)
+    }
 }

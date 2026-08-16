@@ -4,6 +4,7 @@ struct TabStrip<Item: Identifiable, Tab: View, Trailing: View>: View where Item.
     let items: [Item]
     let activeId: String
     var scrollRequest: String? = nil
+    var leadingPadding: CGFloat = AppTheme.Spacing.sm
     @ViewBuilder let tab: (Item) -> Tab
     @ViewBuilder let trailing: () -> Trailing
 
@@ -16,7 +17,8 @@ struct TabStrip<Item: Identifiable, Tab: View, Trailing: View>: View where Item.
                     }
                     trailing()
                 }
-                .padding(.horizontal, AppTheme.Spacing.sm)
+                .padding(.leading, leadingPadding)
+                .padding(.trailing, AppTheme.Spacing.sm)
             }
             .mouseWheelScrollsHorizontally()
             .onChange(of: activeId) { _, newId in

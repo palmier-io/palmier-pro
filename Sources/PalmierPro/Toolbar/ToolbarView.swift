@@ -6,6 +6,10 @@ struct ToolbarView: View {
 
     var body: some View {
         HStack(spacing: AppTheme.Spacing.md) {
+            timelineTabsButton
+
+            toolbarDivider
+
             HStack(spacing: AppTheme.Spacing.md) {
                 toolbarButton("arrow.uturn.backward", help: L10n.string("Undo (⌘Z)"), action: undo)
                 toolbarButton("arrow.uturn.forward", help: L10n.string("Redo (⇧⌘Z)"), action: redo)
@@ -64,6 +68,21 @@ struct ToolbarView: View {
         .padding(.horizontal, AppTheme.Spacing.md)
         .padding(.vertical, AppTheme.Spacing.sm)
         .frame(maxWidth: .infinity)
+    }
+
+    private var timelineTabsButton: some View {
+        let expanded = editor.isTimelineTabBarExpanded
+        return Button {
+            editor.toggleTimelineTabBarExpanded()
+        } label: {
+            Image(systemName: expanded ? "rectangle.stack.fill" : "rectangle.stack")
+                .font(.system(size: AppTheme.FontSize.md))
+                .foregroundStyle(expanded ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
+                .frame(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.mdLg)
+                .hoverHighlight(isActive: expanded)
+        }
+        .buttonStyle(.plain)
+        .help(L10n.string(expanded ? "Hide Timeline Tabs" : "Show Timeline Tabs"))
     }
 
     private var toolbarDivider: some View {

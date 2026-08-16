@@ -146,6 +146,7 @@ extension ToolExecutor {
             }
             note = "Empty and now active; all edit tools target it."
         }
+        editor.revealTimelineTabBarIfMultiple()
         let payload: [String: Any] = [
             "timelineId": id,
             "name": editor.timeline(for: id)?.name ?? "",
@@ -175,6 +176,7 @@ extension ToolExecutor {
             editor.activateTimeline(target.id)
             payload["note"] = "Re-read get_timeline — clip and track ids from the previous timeline no longer apply."
         }
+        editor.revealTimelineTabBarIfMultiple()
         return .ok(Self.jsonString(payload) ?? "{}")
     }
 

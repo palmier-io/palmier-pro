@@ -99,7 +99,6 @@
 "Alignment" = "Alignment";
 "All" = "All";
 "All fonts" = "All fonts";
-"All timelines" = "All timelines";
 "Amount" = "Amount";
 "Analyzing media so you can search it." = "Analyzing media so you can search it.";
 "Angle" = "Angle";
@@ -451,6 +450,7 @@
 "Help" = "Help";
 "Hide Guides" = "Hide Guides";
 "Hide Info" = "Hide Info";
+"Hide Timeline Tabs" = "Hide Timeline Tabs";
 "Hide clip keyframes" = "Hide clip keyframes";
 "Hide reasoning" = "Hide reasoning";
 "High" = "High";
@@ -853,7 +853,9 @@
 "Sharpen" = "Sharpen";
 "Short-form and social" = "Short-form and social";
 "Shortcuts" = "Shortcuts";
+"Show All Tabs" = "Show All Tabs";
 "Show Info" = "Show Info";
+"Show Timeline Tabs" = "Show Timeline Tabs";
 "Show clip keyframes" = "Show clip keyframes";
 "Show in Finder" = "Show in Finder";
 "Show notifications" = "Show notifications";

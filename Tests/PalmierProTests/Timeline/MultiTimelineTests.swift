@@ -154,6 +154,50 @@ struct MultiTimelineTests {
         #expect(e.openTimelineIds == [firstId])
     }
 
+    @MainActor
+    @Test func closeAllTimelineTabsKeepsTheActiveTab() {
+        let e = EditorViewModel()
+        let firstId = e.activeTimelineId
+        _ = e.createTimeline()
+        let thirdId = e.createTimeline()
+        e.closeAllTimelineTabs()
+        #expect(e.openTimelineIds == [thirdId])
+        #expect(e.activeTimelineId == thirdId)
+        #expect(e.timeline(for: firstId) != nil)
+        e.closeAllTimelineTabs()
+        #expect(e.openTimelineIds == [thirdId])
+    }
+
+    @MainActor
+    @Test func selectAdjacentOpenTimelineWrapsAndRevealsTabs() {
+        let e = EditorViewModel()
+        #expect(e.selectAdjacentOpenTimeline(delta: 1) == false)
+        let firstId = e.activeTimelineId
+        let secondId = e.createTimeline()
+        e.timelineTabBarExpandedOverride = false
+        #expect(e.selectAdjacentOpenTimeline(delta: -1))
+        #expect(e.activeTimelineId == firstId)
+        #expect(e.isTimelineTabBarExpanded)
+        #expect(e.selectAdjacentOpenTimeline(delta: 1))
+        #expect(e.activeTimelineId == secondId)
+        #expect(e.selectAdjacentOpenTimeline(delta: 1))
+        #expect(e.activeTimelineId == firstId)
+    }
+
+    @MainActor
+    @Test func openAllTimelineTabsAppendsClosedTimelines() {
+        let e = EditorViewModel()
+        let firstId = e.activeTimelineId
+        let secondId = e.createTimeline()
+        e.closeTimelineTab(secondId)
+        #expect(e.openTimelineIds == [firstId])
+        e.openAllTimelineTabs()
+        #expect(e.openTimelineIds == [firstId, secondId])
+        #expect(e.activeTimelineId == firstId)
+        e.openAllTimelineTabs()
+        #expect(e.openTimelineIds == [firstId, secondId])
+    }
+
     @Test func deleteMediaSweepsAllTimelines() {
         let e = EditorViewModel()
         e.timeline.tracks = [Fixtures.videoTrack(clips: [Fixtures.clip(mediaRef: "m1", start: 0, duration: 30)])]
@@ -360,6 +404,44 @@ struct ProjectFilePersistenceTests {
         #expect(!file.timelines[0].id.isEmpty)
         #expect(file.timelines[0].name == "Timeline 1")
         #expect(file.timelines[0].settingsConfigured)
+    }
+
+    @MainActor
+    @Test func timelineTabBarFollowsTimelineCountUntilToggled() {
+        let e = EditorViewModel()
+        #expect(e.isTimelineTabBarExpanded == false)
+
+        e.createTimeline()
+        #expect(e.isTimelineTabBarExpanded == true)
+
+        e.toggleTimelineTabBarExpanded()
+        #expect(e.isTimelineTabBarExpanded == false)
+
+        e.createTimeline()
+        #expect(e.isTimelineTabBarExpanded == false)
+
+        e.toggleTimelineTabBarExpanded()
+        #expect(e.isTimelineTabBarExpanded == true)
+        e.deleteTimeline(e.activeTimelineId)
+        e.deleteTimeline(e.activeTimelineId)
+        #expect(e.timelines.count == 1)
+        #expect(e.isTimelineTabBarExpanded == false)
+    }
+
+    @MainActor
+    @Test func applyProjectFileResetsTimelineTabBarToCountDefault() {
+        let e = EditorViewModel()
+        e.toggleTimelineTabBarExpanded()
+        #expect(e.isTimelineTabBarExpanded == true)
+
+        let single = Fixtures.timeline()
+        e.applyProjectFile(ProjectFile(timelines: [single], activeTimelineId: single.id, openTimelineIds: [single.id]))
+        #expect(e.isTimelineTabBarExpanded == false)
+
+        let a = Fixtures.timeline()
+        let b = Fixtures.timeline()
+        e.applyProjectFile(ProjectFile(timelines: [a, b], activeTimelineId: a.id, openTimelineIds: [a.id, b.id]))
+        #expect(e.isTimelineTabBarExpanded == true)
     }
 
     @MainActor

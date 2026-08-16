@@ -95,23 +95,7 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
     private lazy var previewHC: NSViewController   = makeHosting(PreviewContainerView(), panel: .preview)
     private lazy var inspectorHC: NSViewController = makeHosting(InspectorView(), panel: .inspector)
     private lazy var agentHC: NSViewController     = makeAgentSidebarHosting(AgentPanelView())
-    private lazy var timelineHC: NSViewController  = makeHosting(
-        VStack(spacing: 0) {
-            TimelineTabBar()
-            ToolbarView()
-                .frame(height: Layout.toolbarHeight)
-                .overlay(alignment: .bottom) {
-                    Rectangle()
-                        .fill(AppTheme.Border.primaryColor)
-                        .frame(height: AppTheme.BorderWidth.thin)
-                }
-            HStack(spacing: 0) {
-                TimelineContainerView()
-                AudioMeterView()
-            }
-        },
-        panel: .timeline
-    )
+    private lazy var timelineHC: NSViewController  = makeHosting(TimelinePaneView(), panel: .timeline)
 
     init(editor: EditorViewModel) {
         self.editor = editor

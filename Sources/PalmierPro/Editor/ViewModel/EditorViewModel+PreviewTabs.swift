@@ -68,6 +68,15 @@ extension EditorViewModel {
         pushPreviewHistory(id)
     }
 
+    @discardableResult
+    func selectAdjacentPreviewTab(delta: Int) -> Bool {
+        guard let id = Self.adjacentId(in: previewTabs.map(\.id), current: activePreviewTabId, delta: delta) else {
+            return false
+        }
+        selectPreviewTab(id: id)
+        return true
+    }
+
     // MARK: - Tab history (back/forward navigation)
 
     var canGoBackPreviewTab: Bool { previewTabHistoryIndex > 0 }

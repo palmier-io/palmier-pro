@@ -179,6 +179,18 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             editorViewModel.trimEndToPlayhead()
             return true
 
+        case 48: // Tab
+            guard mods.intersection([.command, .option, .control]).isEmpty else { return false }
+            let delta = shift ? -1 : 1
+            switch editorViewModel.focusedPanel {
+            case .preview:
+                return editorViewModel.selectAdjacentPreviewTab(delta: delta)
+            case .timeline:
+                return editorViewModel.selectAdjacentOpenTimeline(delta: delta)
+            default:
+                return false
+            }
+
         case 50: // ` (backtick) — toggle panel maximize
             if mods.intersection([.command, .option, .control, .shift]).isEmpty {
                 toggleMaximizePanelAction()

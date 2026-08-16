@@ -46,6 +46,26 @@ final class EditorViewModel {
     var openTimelineIds: [String]
     @ObservationIgnored var liveViewStates: [String: TimelineViewState] = [:]
     var timelineTabRenameRequest: String?
+    var timelineTabBarExpandedOverride: Bool?
+
+    var isTimelineTabBarExpanded: Bool {
+        timelineTabBarExpandedOverride ?? (timelines.count > 1)
+    }
+
+    func toggleTimelineTabBarExpanded() {
+        timelineTabBarExpandedOverride = !isTimelineTabBarExpanded
+    }
+
+    func revealTimelineTabBarIfMultiple() {
+        guard timelines.count > 1 else { return }
+        timelineTabBarExpandedOverride = true
+    }
+
+    static func adjacentId(in ids: [String], current: String, delta: Int) -> String? {
+        guard ids.count > 1, let index = ids.firstIndex(of: current) else { return nil }
+        let count = ids.count
+        return ids[((index + delta) % count + count) % count]
+    }
 
     /// Active-timeline proxy; assignment routes by id and activates so undo lands on its timeline.
     var timeline: Timeline {
