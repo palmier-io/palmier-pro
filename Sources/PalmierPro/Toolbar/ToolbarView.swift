@@ -61,6 +61,7 @@ struct ToolbarView: View {
                     "plus.magnifyingglass",
                     help: L10n.string("Zoom In"),
                     isDisabled: editor.zoomScale >= Zoom.max,
+                    tooltipAlignment: .bottomTrailing,
                     action: zoomIn
                 )
             }
@@ -82,7 +83,10 @@ struct ToolbarView: View {
                 .hoverHighlight(isActive: expanded)
         }
         .buttonStyle(.plain)
-        .help(L10n.string(expanded ? "Hide Timeline Tabs" : "Show Timeline Tabs"))
+        .hoverTooltip(
+            L10n.string(expanded ? "Hide Timeline Tabs" : "Show Timeline Tabs"),
+            alignment: .bottomLeading
+        )
     }
 
     private var toolbarDivider: some View {
@@ -103,7 +107,7 @@ struct ToolbarView: View {
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
-        .help(L10n.string("Add Marker (M)"))
+        .hoverTooltip(L10n.string("Add Marker (M)"))
     }
 
     private func toolbarButton(_ systemName: String, help: String, action: @escaping () -> Void) -> some View {
@@ -115,13 +119,14 @@ struct ToolbarView: View {
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
-        .help(L10n.string(key: help))
+        .hoverTooltip(help)
     }
 
     private func zoomButton(
         _ systemName: String,
         help: String,
         isDisabled: Bool,
+        tooltipAlignment: Alignment = .bottom,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -133,7 +138,7 @@ struct ToolbarView: View {
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
-        .help(L10n.string(key: help))
+        .hoverTooltip(help, alignment: tooltipAlignment)
     }
 
     private func zoomOut() {
@@ -166,7 +171,7 @@ struct ToolbarView: View {
                 .hoverHighlight(isActive: isActive)
         }
         .buttonStyle(.plain)
-        .help(L10n.string(key: help))
+        .hoverTooltip(help)
     }
 
     private func textGlyphButton(_ glyph: String, help: String, action: @escaping () -> Void) -> some View {
@@ -178,7 +183,7 @@ struct ToolbarView: View {
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
-        .help(L10n.string(key: help))
+        .hoverTooltip(help)
     }
 
     private func bracketButton(_ bracket: String, help: String, action: @escaping () -> Void) -> some View {
@@ -190,6 +195,6 @@ struct ToolbarView: View {
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
-        .help(L10n.string(key: help))
+        .hoverTooltip(help)
     }
 }

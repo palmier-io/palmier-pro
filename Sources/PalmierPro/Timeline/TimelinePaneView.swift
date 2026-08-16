@@ -15,6 +15,7 @@ struct TimelinePaneView: View {
                         .fill(AppTheme.Border.primaryColor)
                         .frame(height: AppTheme.BorderWidth.thin)
                 }
+                .zIndex(1)
             HStack(spacing: 0) {
                 TimelineContainerView()
                 AudioMeterView()
