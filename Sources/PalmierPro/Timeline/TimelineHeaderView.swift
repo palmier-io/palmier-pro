@@ -95,10 +95,6 @@ final class TimelineHeaderView: NSView {
         ctx.setFillColor(Self.headerBg)
         ctx.fill(bounds)
 
-        let rulerBottom = bounds.origin.y + Layout.rulerHeight - 0.5
-        ctx.setFillColor(AppTheme.Border.primary.cgColor)
-        ctx.fill(NSRect(x: 0, y: rulerBottom, width: bounds.width, height: 1))
-
         // Clip drawing below the ruler so headers don't overlap it when scrolled
         let clipTop = bounds.origin.y + Layout.rulerHeight
         let visibleHeaderRect = NSRect(x: bounds.minX, y: clipTop, width: bounds.width, height: max(0, bounds.maxY - clipTop))
@@ -205,11 +201,12 @@ final class TimelineHeaderView: NSView {
                 )
             }
 
-            // White border at top of first track and bottom of every track
             if i == 0 {
                 ctx.setFillColor(AppTheme.Border.primary.cgColor)
                 ctx.fill(NSRect(x: 0, y: y, width: headerWidth, height: 1))
             }
+
+            // Bottom edge is the resize handle for each track.
             let handleY = y + h - 1
             ctx.setFillColor(AppTheme.Border.primary.cgColor)
             ctx.fill(NSRect(x: 0, y: handleY, width: headerWidth, height: 1))
@@ -814,12 +811,5 @@ private final class TimelineHeaderRulerCoverView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         AppTheme.Background.surface.setFill()
         bounds.fill()
-        AppTheme.Border.primary.setFill()
-        NSRect(
-            x: bounds.minX,
-            y: bounds.maxY - AppTheme.BorderWidth.thin,
-            width: bounds.width,
-            height: AppTheme.BorderWidth.thin
-        ).fill()
     }
 }

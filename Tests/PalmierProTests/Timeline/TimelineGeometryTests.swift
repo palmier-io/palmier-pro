@@ -5,8 +5,7 @@ import Testing
 @Suite("TimelineGeometry")
 struct TimelineGeometryTests {
 
-    // Three tracks of 50 each. baseY = rulerHeight (24) + dropZoneHeight (60) = 84.
-    // cumulativeY = [84, 134, 184]; track bottoms = [134, 184, 234]. All assertions below derive from this.
+    // Three tracks of 50 each start at rulerHeight (28) + dropZoneHeight (32) = 60.
     private func geometry(
         pxPerFrame: Double = 4,
         header: Double = 0,
@@ -43,9 +42,9 @@ struct TimelineGeometryTests {
 
     @Test func trackYReturnsCumulativeOffsets() {
         let g = geometry()
-        #expect(g.trackY(at: 0) == 84)
-        #expect(g.trackY(at: 1) == 134)
-        #expect(g.trackY(at: 2) == 184)
+        #expect(g.trackY(at: 0) == 60)
+        #expect(g.trackY(at: 1) == 110)
+        #expect(g.trackY(at: 2) == 160)
     }
 
     @Test func trackYOutOfBoundsReturnsRulerHeight() {
@@ -57,10 +56,10 @@ struct TimelineGeometryTests {
         let laneHeight = AppTheme.ComponentSize.timelineKeyframeLaneHeight
         let g = geometry(lanes: [[.position, .opacity], [], [.volume]])
 
-        #expect(g.trackY(at: 0) == 84)
-        #expect(g.trackY(at: 1) == 134 + laneHeight * 2)
-        #expect(g.trackY(at: 2) == 184 + laneHeight * 2)
-        #expect(g.contentBottom == 234 + laneHeight * 3)
+        #expect(g.trackY(at: 0) == 60)
+        #expect(g.trackY(at: 1) == 110 + laneHeight * 2)
+        #expect(g.trackY(at: 2) == 160 + laneHeight * 2)
+        #expect(g.contentBottom == 210 + laneHeight * 3)
     }
 
     @Test func rowLocationDistinguishesTrackAndPropertyLanes() {
@@ -83,9 +82,9 @@ struct TimelineGeometryTests {
         let g = geometry()
         let clip = Fixtures.clip(start: 100, duration: 50)
         let rect = g.clipRect(for: clip, trackIndex: 0)
-        // x = 100*4 = 400. y = 84 + 2 = 86. w = 50*4 = 200. h = 50 - 4 = 46.
+        // x = 100*4 = 400. y = 60 + 2 = 62. w = 50*4 = 200. h = 50 - 4 = 46.
         #expect(rect.origin.x == 400)
-        #expect(rect.origin.y == 86)
+        #expect(rect.origin.y == 62)
         #expect(rect.size.width == 200)
         #expect(rect.size.height == 46)
     }
@@ -94,9 +93,9 @@ struct TimelineGeometryTests {
 
     @Test func trackAtReturnsCorrectTrackIndex() {
         let g = geometry()
-        #expect(g.trackAt(y: 100) == 0)  // 84 ≤ 100 < 134
-        #expect(g.trackAt(y: 140) == 1)  // 134 ≤ 140 < 184
-        #expect(g.trackAt(y: 200) == 2)  // 184 ≤ 200 < 234
+        #expect(g.trackAt(y: 100) == 0)
+        #expect(g.trackAt(y: 140) == 1)
+        #expect(g.trackAt(y: 200) == 2)
     }
 
     @Test func trackAtBelowLastTrackClampsToLast() {
@@ -108,21 +107,21 @@ struct TimelineGeometryTests {
 
     @Test func dropTargetAboveFirstTrackIsNewTrackAtZero() {
         let g = geometry()
-        // y < cumY[0] (84)
+        // y < cumY[0] (60)
         #expect(g.dropTargetAt(y: 50) == .newTrackAt(0))
     }
 
     @Test func dropTargetBetweenTracksWithinThresholdIsNewTrack() {
         let g = geometry()
-        // Boundary between track 0 and 1 is at y=134. Threshold is 10. Range [124, 144].
-        #expect(g.dropTargetAt(y: 130) == .newTrackAt(1))
-        #expect(g.dropTargetAt(y: 134) == .newTrackAt(1))
+        // Boundary between track 0 and 1 is at y=110. Threshold is 10.
+        #expect(g.dropTargetAt(y: 106) == .newTrackAt(1))
+        #expect(g.dropTargetAt(y: 110) == .newTrackAt(1))
     }
 
     @Test func dropTargetOnExistingTrackBodyIsExistingTrack() {
         let g = geometry()
-        // Track 0 body is [84, 134). Outside the boundary zones — y=100 should land in body.
-        #expect(g.dropTargetAt(y: 100) == .existingTrack(0))
+        // Track 0 body is [60, 110). Outside the boundary zones.
+        #expect(g.dropTargetAt(y: 90) == .existingTrack(0))
         #expect(g.dropTargetAt(y: 200) == .existingTrack(2))
     }
 
@@ -134,7 +133,7 @@ struct TimelineGeometryTests {
 
     @Test func dropTargetBelowLastTrackIsNewTrackAtCount() {
         let g = geometry()
-        // Last track bottom is 234.
+        // Last track bottom is 210.
         #expect(g.dropTargetAt(y: 250) == .newTrackAt(3))
     }
 
@@ -152,18 +151,17 @@ struct TimelineGeometryTests {
 
     @Test func insertionLineYAtTopReturnsFirstCumulative() {
         let g = geometry()
-        #expect(g.insertionLineY(for: .newTrackAt(0)) == 84)
+        #expect(g.insertionLineY(for: .newTrackAt(0)) == 60)
     }
 
     @Test func insertionLineYBetweenTracksReturnsBoundary() {
         let g = geometry()
-        #expect(g.insertionLineY(for: .newTrackAt(1)) == 134)
-        #expect(g.insertionLineY(for: .newTrackAt(2)) == 184)
+        #expect(g.insertionLineY(for: .newTrackAt(1)) == 110)
+        #expect(g.insertionLineY(for: .newTrackAt(2)) == 160)
     }
 
     @Test func insertionLineYAtBottomReturnsLastBottom() {
         let g = geometry()
-        // index == trackCount → last cumulativeY + last height = 184 + 50 = 234.
-        #expect(g.insertionLineY(for: .newTrackAt(3)) == 234)
+        #expect(g.insertionLineY(for: .newTrackAt(3)) == 210)
     }
 }

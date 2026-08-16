@@ -77,9 +77,30 @@ struct TimelineMarkerTests {
         let geometry = TimelineGeometry(pixelsPerFrame: 1, trackHeights: [])
         let marker = TimelineMarker(id: "range", name: "Range", startFrame: 10, durationFrames: 30)
         let selected = TimelineMarkerRenderer.markerIds(
-            intersecting: NSRect(x: 20, y: geometry.rulerHeight - 4, width: 5, height: 2),
+            intersecting: NSRect(x: 20, y: 0, width: 5, height: 2),
             markers: [marker], geometry: geometry, rulerMinY: 0
         )
         #expect(selected.isEmpty)
+    }
+
+    @Test func markerFlagSitsAtTopOfRuler() {
+        let geometry = TimelineGeometry(pixelsPerFrame: 1, trackHeights: [])
+        let marker = TimelineMarker(id: "mark", name: "Mark", startFrame: 10)
+        #expect(
+            TimelineMarkerRenderer.marker(
+                at: NSPoint(x: 10, y: 2),
+                markers: [marker],
+                geometry: geometry,
+                rulerMinY: 0
+            )?.id == "mark"
+        )
+        #expect(
+            TimelineMarkerRenderer.marker(
+                at: NSPoint(x: 10, y: geometry.rulerHeight - 2),
+                markers: [marker],
+                geometry: geometry,
+                rulerMinY: 0
+            ) == nil
+        )
     }
 }
