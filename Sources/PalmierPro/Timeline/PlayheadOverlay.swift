@@ -61,7 +61,6 @@ final class PlayheadOverlay {
         if layer.frame != viewport {
             layer.frame = viewport
         }
-        applyColor(in: view)
         layer.path = path
         CATransaction.commit()
     }

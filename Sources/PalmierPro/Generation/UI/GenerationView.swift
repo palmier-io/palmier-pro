@@ -164,6 +164,7 @@ struct GenerationView: View {
                 catalogLoadingView
             }
         }
+        .frame(maxHeight: max(0, CGFloat(maxPanelHeight)), alignment: .top)
         .onChange(of: upscaleModels.isEmpty) { _, isEmpty in
             if isEmpty && selectedType == .upscale { selectedType = .video }
         }
@@ -262,7 +263,6 @@ struct GenerationView: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measuredPanelHeight = $0 }
         .background { panelChrome }
         .padding(.horizontal, AppTheme.Spacing.sm)
-        .frame(maxHeight: max(0, CGFloat(maxPanelHeight)), alignment: .top)
         .onAppear {
             let hadSeed = editor.pendingPanelSeed != nil
             consumePendingPanelSeed()

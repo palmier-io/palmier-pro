@@ -75,7 +75,7 @@ struct ToolbarView: View {
         return Button {
             editor.toggleTimelineTabBarExpanded()
         } label: {
-            Image(systemName: expanded ? "rectangle.stack.fill" : "rectangle.stack")
+            Image(systemName: expanded ? "film.stack.fill" : "film.stack")
                 .font(.system(size: AppTheme.FontSize.md))
                 .foregroundStyle(expanded ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
                 .frame(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.mdLg)

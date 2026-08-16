@@ -61,6 +61,11 @@ private struct TimelineTabBarContent: View, Equatable {
         .frame(maxWidth: .infinity)
         .frame(height: Layout.panelHeaderHeight)
         .background(AppTheme.Background.surfaceColor)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(AppTheme.Border.primaryColor)
+                .frame(height: AppTheme.BorderWidth.thin)
+        }
     }
 
     private var overflowMenu: some View {
