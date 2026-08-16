@@ -30,7 +30,7 @@ final class AgentHostMenuController: NSObject, NSMenuDelegate {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(windowVisibilityChanged),
-            name: NSWindow.didOrderOffNotification,
+            name: NSWindow.didChangeOcclusionStateNotification,
             object: nil
         )
     }
