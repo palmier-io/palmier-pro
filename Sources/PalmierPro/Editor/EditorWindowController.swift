@@ -58,15 +58,21 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func handleKeyDown(_ event: NSEvent) -> Bool {
-        // Don't intercept keys when a text field has focus
-        if isTextInputFocused {
-            return false
-        }
-
         let mods = event.modifierFlags
         let shift = mods.contains(.shift)
         let cmd = mods.contains(.command)
         let rangeMarkShortcut = mods.intersection([.command, .option, .control]).isEmpty
+
+        if handlesMediaPanelCommands, cmd, event.keyCode == 40,
+           mods.intersection([.option, .control, .shift]).isEmpty {
+            editorViewModel.requestMediaPanelSearch()
+            return true
+        }
+
+        // Don't intercept keys when a text field has focus
+        if isTextInputFocused {
+            return false
+        }
 
         if handlesMediaPanelCommands, cmd, event.keyCode == 126,
            mods.intersection([.option, .control, .shift]).isEmpty {

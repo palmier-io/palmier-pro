@@ -168,7 +168,6 @@
 "Change to Match" = "Change to Match";
 "Changes take effect after restarting Palmier Pro." = "Changes take effect after restarting Palmier Pro.";
 "Changing the ratio preserves the shorter edge." = "Changing the ratio preserves the shorter edge.";
-"Chat" = "Chat";
 "Chat history" = "Chat history";
 "Chat with your agent! It can generate content, edit clips, organize your assets, and much more. Start by signing in, or bring your own Anthropic API key." = "Chat with your agent! It can generate content, edit clips, organize your assets, and much more. Start by signing in, or bring your own Anthropic API key.";
 "Check for Updates…" = "Check for Updates…";
@@ -413,7 +412,6 @@
 "General" = "General";
 "Generate" = "Generate";
 "Generate B-roll" = "Generate B-roll";
-"Generate Captions" = "Generate Captions";
 "Generate Music" = "Generate Music";
 "Generate Music only works on video" = "Generate Music only works on video";
 "Generate Music…" = "Generate Music…";
@@ -818,6 +816,7 @@
 "Scroll Horizontally" = "Scroll Horizontally";
 "Scroll to latest" = "Scroll to latest";
 "Search" = "Search";
+"Search (⌘K)" = "Search (⌘K)";
 "Search models" = "Search models";
 "Search projects" = "Search projects";
 "Search skills" = "Search skills";
@@ -974,7 +973,6 @@
 "Tint" = "Tint";
 "Tints waveforms by speaker. Voices are matched across clips using cloud transcripts." = "Tints waveforms by speaker. Voices are matched across clips using cloud transcripts.";
 "Title Safe" = "Title Safe";
-"Toggle Agent Panel" = "Toggle Agent Panel";
 "Tone" = "Tone";
 "Tools" = "Tools";
 "Top" = "Top";

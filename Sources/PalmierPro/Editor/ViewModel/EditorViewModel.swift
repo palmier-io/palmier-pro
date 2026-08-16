@@ -276,6 +276,8 @@ final class EditorViewModel {
     var mediaPanelNewFolderRequestTick: Int = 0
     var mediaPanelPasteRequestTick: Int = 0
     var mediaPanelShowMediaTabTick: Int = 0
+    var mediaPanelSearchFocusTick: Int = 0
+    var mediaPanelSearchFocusPending = false
     var mediaPanelToast: MediaPanelToast?
     @ObservationIgnored var mediaImportTail: Task<MediaImportSummary, Error>?
     @ObservationIgnored var mediaImportSequence: Int = 0
@@ -289,6 +291,12 @@ final class EditorViewModel {
         // Refresh offline status when the user opens the media tab, so missing
         // files show as offline even for assets not on the timeline.
         refreshMissingMediaCache()
+    }
+
+    func requestMediaPanelSearch() {
+        showMediaPanelMediaTab()
+        mediaPanelSearchFocusPending = true
+        mediaPanelSearchFocusTick += 1
     }
 
     init() {

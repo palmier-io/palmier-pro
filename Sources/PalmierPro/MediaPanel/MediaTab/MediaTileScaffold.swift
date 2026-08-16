@@ -45,6 +45,7 @@ struct MediaTileScaffold<Artwork: View, MenuItems: View>: View {
         if isRenaming {
             InlineRenameField(
                 originalName: name,
+                font: .system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.medium),
                 onCommit: onCommitRename,
                 onCancel: onCancelRename
             )
@@ -56,7 +57,7 @@ struct MediaTileScaffold<Artwork: View, MenuItems: View>: View {
                         .frame(width: AppTheme.Spacing.xs, height: AppTheme.Spacing.xs)
                 }
                 Text(name)
-                    .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
+                    .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.medium))
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .foregroundStyle(AppTheme.Text.primaryColor)
