@@ -18,7 +18,7 @@ struct OnboardingWelcomeStep: View {
             if let hero = Self.hero {
                 Image(nsImage: hero).resizable().aspectRatio(contentMode: .fill)
             } else {
-                AppTheme.aiGradient
+                AppTheme.Background.raisedColor
             }
         }
         .frame(maxWidth: .infinity)

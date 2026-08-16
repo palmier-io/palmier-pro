@@ -6,36 +6,29 @@ struct ToolbarView: View {
 
     var body: some View {
         HStack(spacing: AppTheme.Spacing.md) {
-            // Undo / Redo
             HStack(spacing: AppTheme.Spacing.md) {
                 toolbarButton("arrow.uturn.backward", help: L10n.string("Undo (⌘Z)"), action: undo)
                 toolbarButton("arrow.uturn.forward", help: L10n.string("Redo (⇧⌘Z)"), action: redo)
             }
 
-            Divider()
-                .frame(height: AppTheme.Spacing.xl)
+            toolbarDivider
 
-            // Tool mode
             HStack(spacing: AppTheme.Spacing.md) {
                 toolModeButton("cursorarrow", mode: .pointer, help: L10n.string("Pointer (V)"))
                 toolModeButton("scissors", mode: .razor, help: L10n.string("Razor (C)"))
                 toolModeButton("arrow.left.and.right", mode: .trim, help: L10n.string("Trim (T)"))
             }
 
-            Divider()
-                .frame(height: AppTheme.Spacing.xl)
+            toolbarDivider
 
-            // Split, trim buttons
             HStack(spacing: AppTheme.Spacing.md) {
                 toolbarButton("square.split.2x1", help: L10n.string("Split at Playhead (⌘K)"), action: editor.splitAtPlayhead)
                 bracketButton("[", help: L10n.string("Trim Start to Playhead (Q)"), action: editor.trimStartToPlayhead)
                 bracketButton("]", help: L10n.string("Trim End to Playhead (W)"), action: editor.trimEndToPlayhead)
             }
 
-            Divider()
-                .frame(height: AppTheme.Spacing.xl)
+            toolbarDivider
 
-            // Add content
             HStack(spacing: AppTheme.Spacing.md) {
                 textGlyphButton("T", help: L10n.string("Add Text"), action: { _ = editor.addTextClip() })
                 markerButton
@@ -69,7 +62,14 @@ struct ToolbarView: View {
             }
         }
         .padding(.horizontal, AppTheme.Spacing.md)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.vertical, AppTheme.Spacing.sm)
+        .frame(maxWidth: .infinity)
+    }
+
+    private var toolbarDivider: some View {
+        Rectangle()
+            .fill(AppTheme.Border.primaryColor)
+            .frame(width: AppTheme.BorderWidth.thin, height: AppTheme.Spacing.xl)
     }
 
     private var markerButton: some View {

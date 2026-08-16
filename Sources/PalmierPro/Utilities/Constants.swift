@@ -16,7 +16,7 @@ enum Layout {
 
     // Headers & toolbars
     static let panelHeaderHeight: CGFloat = AppTheme.IconSize.xl
-    static let toolbarHeight: CGFloat = 38
+    static let toolbarHeight: CGFloat = AppTheme.IconSize.mdLg + AppTheme.Spacing.sm * 2
 
     static let panelGap: CGFloat = 5
 
