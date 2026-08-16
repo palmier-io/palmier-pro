@@ -3,20 +3,8 @@ import SwiftUI
 struct CaptionTab: View {
     @Environment(EditorViewModel.self) var editor
     @Bindable private var account = AccountService.shared
+    let onGeneratedCaptions: (String?) -> Void
 
-    private enum Tab: CaseIterable {
-        case browse
-        case generate
-
-        var title: String {
-            switch self {
-            case .browse: L10n.key("Browse")
-            case .generate: L10n.key("Generate")
-            }
-        }
-    }
-
-    @State private var tab: Tab = .browse
     @State private var style: TextStyle = .caption
     @State private var center = AppTheme.Caption.defaultCenter
     @State private var selectedTrackId: String?
@@ -120,29 +108,19 @@ struct CaptionTab: View {
     }
 
     var body: some View {
-        let timeline = editor.timeline
-        let captions = CaptionBrowserNavigation.sortedCaptions(in: timeline)
-
         ZStack {
             VStack(spacing: AppTheme.Spacing.zero) {
-                if captions.isEmpty {
-                    generatorContent
-                } else {
-                    TitleTabBar(
-                        titles: Tab.allCases.map(\.title),
-                        selected: tab.title
-                    ) { title in
-                        if let selected = Tab.allCases.first(where: { $0.title == title }) {
-                            tab = selected
-                        }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
+                        sourceSection
+                        settingsSection
+                        styleSection
+                        animationSection
                     }
-                    switch tab {
-                    case .browse:
-                        CaptionBrowser(captions: captions, fps: timeline.fps)
-                    case .generate:
-                        generatorContent
-                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
+
+                generateBar
             }
             if isGenerating {
                 AppTheme.Background.surfaceColor.opacity(AppTheme.Opacity.prominent)
@@ -166,7 +144,6 @@ struct CaptionTab: View {
             editor.captionPreviewCenterChange = nil
         }
         .onChange(of: previewConfiguration) { _, _ in showCaptionPreview() }
-        .onChange(of: tab) { _, _ in showCaptionPreview() }
         .onChange(of: editor.mediaPanelVisible) { _, _ in showCaptionPreview() }
         .onChange(of: editor.selectedClipIds) { _, _ in
             guard !editor.isMarqueeSelecting else { return }
@@ -185,22 +162,6 @@ struct CaptionTab: View {
             let cost = await editor.captionCloudCreditCost(for: request)
             guard !Task.isCancelled else { return }
             estimatedCloudCost = cost
-        }
-    }
-
-    private var generatorContent: some View {
-        VStack(spacing: AppTheme.Spacing.zero) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
-                    sourceSection
-                    settingsSection
-                    styleSection
-                    animationSection
-                }
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-            }
-
-            generateBar
         }
     }
 
@@ -595,11 +556,15 @@ struct CaptionTab: View {
                         return
                     }
                 }
-                if try await editor.generateCaptions(for: request).isEmpty {
+                let createdIds = try await editor.generateCaptions(for: request)
+                if createdIds.isEmpty {
                     note = L10n.string("No speech detected.")
                 } else {
+                    let groupId = createdIds.lazy.compactMap {
+                        editor.clipFor(id: $0)?.captionGroupId
+                    }.first
                     editor.captionPreviewEnabled = false
-                    tab = .browse
+                    onGeneratedCaptions(groupId)
                 }
             } catch {
                 note = localizedCaptionError(error)
@@ -608,9 +573,7 @@ struct CaptionTab: View {
     }
 
     private func showCaptionPreview() {
-        let showsGenerator = tab == .generate
-            || !CaptionBrowserNavigation.hasCaptions(in: editor.timeline)
-        editor.captionPreviewConfiguration = editor.mediaPanelVisible && showsGenerator
+        editor.captionPreviewConfiguration = editor.mediaPanelVisible
             ? previewConfiguration
             : nil
     }

@@ -6,15 +6,25 @@ struct CaptionBrowserItem: Identifiable {
     var id: String { clip.id }
 }
 
+struct CaptionBrowserGroup: Identifiable {
+    let id: String
+    let trackIndex: Int
+    let isVisible: Bool
+    let captions: [Clip]
+}
+
 struct CaptionBrowser: View {
     @Environment(EditorViewModel.self) private var editor
-    let captions: [Clip]
+    let groups: [CaptionBrowserGroup]
     let fps: Int
+    @Binding var selectedGroupId: String?
 
     @State private var searchQuery = ""
     @State private var jumpTargetId: String?
+    @FocusState private var isSearchFocused: Bool
 
     var body: some View {
+        let captions = activeGroup?.captions ?? []
         let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         let rows = CaptionBrowserNavigation.numberedCaptions(captions, matching: query)
         let timelineIndex = CaptionBrowserTimelineIndex(sortedCaptions: captions)
@@ -64,6 +74,29 @@ struct CaptionBrowser: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onChange(of: groups.map(\.id), initial: true) { _, _ in
+            if !groups.contains(where: { $0.id == selectedGroupId }) {
+                selectedGroupId = defaultGroup?.id
+            }
+        }
+        .onChange(of: selectedClipGroupId, initial: true) { _, groupId in
+            if let groupId { selectedGroupId = groupId }
+        }
+    }
+
+    private var activeGroup: CaptionBrowserGroup? {
+        groups.first { $0.id == selectedGroupId } ?? defaultGroup
+    }
+
+    private var defaultGroup: CaptionBrowserGroup? {
+        groups.first(where: \.isVisible) ?? groups.first
+    }
+
+    private var selectedClipGroupId: String? {
+        let selectedIds = editor.selectedClipIds
+        return groups.first {
+            $0.captions.contains { selectedIds.contains($0.id) }
+        }?.id
     }
 
     private func controls(
@@ -71,18 +104,68 @@ struct CaptionBrowser: View {
         onJump: @escaping (String) -> Void
     ) -> some View {
         HStack(spacing: AppTheme.Spacing.xs) {
-            PanelSearchField(text: $searchQuery)
-                .layoutPriority(1)
-            CaptionJumpToPlayheadButton(
-                timelineIndex: timelineIndex,
-                playheadState: editor.playheadState,
-                onJump: onJump
-            )
+            if editor.isMediaPanelSearchExpanded {
+                ExpandablePanelSearch(
+                    text: $searchQuery,
+                    focus: $isSearchFocused
+                )
+                    .layoutPriority(1)
+            } else {
+                if let activeGroup {
+                    groupPicker(activeGroup: activeGroup)
+                }
+                Spacer(minLength: AppTheme.Spacing.zero)
+                ExpandablePanelSearch(
+                    text: $searchQuery,
+                    focus: $isSearchFocused
+                )
+                CaptionJumpToPlayheadButton(
+                    timelineIndex: timelineIndex,
+                    playheadState: editor.playheadState,
+                    onJump: onJump
+                )
+            }
         }
         .padding(.horizontal, AppTheme.Spacing.sm)
         .padding(.vertical, AppTheme.Spacing.sm)
         .fixedSize(horizontal: false, vertical: true)
         .background(AppTheme.Background.surfaceColor)
+        .animation(
+            .easeInOut(duration: AppTheme.Anim.transition),
+            value: editor.isMediaPanelSearchExpanded
+        )
+    }
+
+    private func groupPicker(activeGroup: CaptionBrowserGroup) -> some View {
+        Menu {
+            ForEach(groups) { group in
+                Button {
+                    selectedGroupId = group.id
+                } label: {
+                    Label(
+                        groupLabel(group),
+                        systemImage: group.id == activeGroup.id ? "checkmark" : ""
+                    )
+                }
+            }
+        } label: {
+            EditorMenuValue(text: groupLabel(activeGroup), expanded: true)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .frame(
+            minWidth: AppTheme.EditorPanel.numericFieldWidth,
+            maxWidth: AppTheme.EditorPanel.labelColumnWidth
+        )
+        .layoutPriority(2)
+        .focusable(false)
+    }
+
+    private func groupLabel(_ group: CaptionBrowserGroup) -> String {
+        guard editor.timeline.tracks.indices.contains(group.trackIndex) else { return "" }
+        return editor.timeline.tracks[group.trackIndex].name
+            ?? editor.timelineTrackDisplayLabel(at: group.trackIndex)
     }
 }
 
@@ -97,7 +180,7 @@ private struct CaptionJumpToPlayheadButton: View {
         Button {
             if let currentCaption { onJump(currentCaption.id) }
         } label: {
-            Image(systemName: "scope")
+            Image(systemName: "timeline.selection")
                 .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
                 .foregroundStyle(
                     currentCaption == nil
@@ -111,8 +194,10 @@ private struct CaptionJumpToPlayheadButton: View {
         .buttonStyle(.plain)
         .focusable(false)
         .disabled(currentCaption == nil)
-        .accessibilityLabel(L10n.string("Jump to Playhead"))
-        .help(L10n.string("Show the caption at the playhead"))
+        .hoverTooltip(
+            L10n.string("Jump to Playhead"),
+            alignment: .bottomTrailing
+        )
     }
 }
 
@@ -135,20 +220,20 @@ private struct CaptionBrowserRow: View {
         Button(action: select) {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
                 HStack(spacing: AppTheme.Spacing.sm) {
-                    Text(verbatim: "#\(item.number)")
-                        .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium).monospacedDigit())
+                    Text(verbatim: "\(item.number)")
                         .foregroundStyle(AppTheme.Text.mutedColor)
                     Text(verbatim: timeRange)
-                        .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
-                        .monospacedDigit()
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                     Spacer(minLength: AppTheme.Spacing.xs)
                     if let charactersPerSecond {
                         Text(verbatim: "\(charactersPerSecond) CPS")
-                            .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium).monospacedDigit())
                             .foregroundStyle(AppTheme.Text.tertiaryColor)
                     }
                 }
+                .font(.system(
+                    size: AppTheme.FontSize.xs,
+                    weight: AppTheme.FontWeight.medium
+                ))
                 .lineLimit(1)
 
                 CaptionBrowserPlayheadText(
@@ -187,8 +272,10 @@ private struct CaptionBrowserRow: View {
     }
 
     private func select() {
+        editor.selectPreviewTab(id: PreviewTab.timeline.id)
         editor.selectedGap = nil
         editor.selectedTimelineRange = nil
+        editor.selectedTimelineMarkerIds = []
         editor.selectedClipIds = [item.id]
         editor.seekToFrame(item.clip.startFrame)
     }
@@ -277,20 +364,36 @@ struct CaptionBrowserTimelineIndex {
 }
 
 enum CaptionBrowserNavigation {
-    static func hasCaptions(in timeline: Timeline) -> Bool {
-        timeline.tracks.contains { $0.clips.contains(where: isCaption) }
-    }
+    static func groups(in timeline: Timeline) -> [CaptionBrowserGroup] {
+        var captionsByGroup: [String: [Clip]] = [:]
+        var trackIndexByGroup: [String: Int] = [:]
+        var visibilityByGroup: [String: Bool] = [:]
 
-    static func sortedCaptions(in timeline: Timeline) -> [Clip] {
-        timeline.tracks
-            .flatMap(\.clips)
-            .filter(isCaption)
-            .sorted {
-                if $0.startFrame != $1.startFrame {
-                    return $0.startFrame < $1.startFrame
-                }
-                return $0.id < $1.id
+        for (trackIndex, track) in timeline.tracks.enumerated() {
+            for caption in track.clips where isCaption(caption) {
+                guard let groupId = caption.captionGroupId else { continue }
+                captionsByGroup[groupId, default: []].append(caption)
+                trackIndexByGroup[groupId] = trackIndexByGroup[groupId] ?? trackIndex
+                visibilityByGroup[groupId, default: false] =
+                    visibilityByGroup[groupId, default: false] || !track.hidden
             }
+        }
+
+        return captionsByGroup.compactMap { groupId, captions in
+            guard let trackIndex = trackIndexByGroup[groupId] else { return nil }
+            return CaptionBrowserGroup(
+                id: groupId,
+                trackIndex: trackIndex,
+                isVisible: visibilityByGroup[groupId] ?? false,
+                captions: captions.sorted(by: captionComesBefore)
+            )
+        }
+        .sorted {
+            if $0.trackIndex != $1.trackIndex {
+                return $0.trackIndex < $1.trackIndex
+            }
+            return $0.id < $1.id
+        }
     }
 
     static func numberedCaptions(
@@ -305,7 +408,15 @@ enum CaptionBrowserNavigation {
             return CaptionBrowserItem(number: index + 1, clip: caption)
         }
     }
+
     private static func isCaption(_ clip: Clip) -> Bool {
         clip.mediaType == .text && clip.captionGroupId != nil
+    }
+
+    private static func captionComesBefore(_ lhs: Clip, _ rhs: Clip) -> Bool {
+        if lhs.startFrame != rhs.startFrame {
+            return lhs.startFrame < rhs.startFrame
+        }
+        return lhs.id < rhs.id
     }
 }

@@ -1,12 +1,13 @@
 import Testing
 @testable import PalmierPro
 
-@Suite struct CaptionBrowserTests {
+@Suite struct CaptionIndexTests {
     private func caption(
         _ id: String,
         text: String,
         start: Int,
-        duration: Int = 10
+        duration: Int = 10,
+        groupId: String = "captions"
     ) -> Clip {
         var clip = Fixtures.clip(
             id: id,
@@ -16,7 +17,7 @@ import Testing
             duration: duration
         )
         clip.textContent = text
-        clip.captionGroupId = "captions"
+        clip.captionGroupId = groupId
         return clip
     }
 
@@ -52,24 +53,31 @@ import Testing
         ) == nil)
     }
 
-    @Test func collectsOnlyCaptionTextInTimelineOrder() {
-        let first = caption("first", text: "First", start: 0)
-        let sameStartFirst = caption("a", text: "Same start first", start: 10)
-        let sameStartSecond = caption("b", text: "Same start second", start: 10)
+    @Test func groupsCaptionTextByTopmostTrackAndTimelineOrder() {
+        let first = caption("first", text: "First", start: 0, groupId: "top")
+        let sameStartFirst = caption("a", text: "Same start first", start: 10, groupId: "top")
+        let sameStartSecond = caption("b", text: "Same start second", start: 10, groupId: "top")
+        let lower = caption("lower", text: "Lower", start: 5, groupId: "lower")
         var plainText = caption("plain", text: "Plain text", start: 5)
         plainText.captionGroupId = nil
         var groupedVideo = caption("video", text: "Video", start: 5)
         groupedVideo.mediaType = .video
-        let timeline = Timeline(
-            tracks: [Track(
+        let timeline = Timeline(tracks: [
+            Track(
                 type: .video,
+                hidden: true,
                 clips: [sameStartSecond, plainText, first, groupedVideo, sameStartFirst]
-            )]
-        )
+            ),
+            Track(type: .video, clips: [lower]),
+        ])
 
-        let captions = CaptionBrowserNavigation.sortedCaptions(in: timeline)
+        let groups = CaptionBrowserNavigation.groups(in: timeline)
 
-        #expect(captions.map(\.id) == ["first", "a", "b"])
+        #expect(groups.map(\.id) == ["top", "lower"])
+        #expect(groups.map(\.trackIndex) == [0, 1])
+        #expect(groups.map(\.isVisible) == [false, true])
+        #expect(groups[0].captions.map(\.id) == ["first", "a", "b"])
+        #expect(groups[1].captions.map(\.id) == ["lower"])
     }
 
     @Test func searchMatchesCaptionTextCaseInsensitivelyAndKeepsTimelineNumbers() {

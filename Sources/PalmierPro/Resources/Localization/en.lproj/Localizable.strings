@@ -129,7 +129,6 @@
 "Bold" = "Bold";
 "Both" = "Both";
 "Bottom" = "Bottom";
-"Browse" = "Browse";
 "Browse Community Skills ↗" = "Browse Community Skills ↗";
 "Buy" = "Buy";
 "Buy $%lld" = "Buy $%lld";
@@ -629,6 +628,7 @@
 "No audio" = "No audio";
 "No audio selected." = "No audio selected.";
 "No beats detected." = "No beats detected.";
+"No captions" = "No captions";
 "No conversations yet" = "No conversations yet";
 "No exports yet" = "No exports yet";
 "No generations yet" = "No generations yet";
@@ -862,7 +862,6 @@
 "Show in Finder" = "Show in Finder";
 "Show notifications" = "Show notifications";
 "Show reasoning" = "Show reasoning";
-"Show the caption at the playhead" = "Show the caption at the playhead";
 "Side by Side" = "Side by Side";
 "Sign In" = "Sign In";
 "Sign in" = "Sign in";
