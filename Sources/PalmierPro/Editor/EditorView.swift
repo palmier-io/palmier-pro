@@ -403,6 +403,10 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
                     AppTheme.Background.surfaceColor
                         .ignoresSafeArea(edges: .top)
                 }
+                .overlay {
+                    PanelFocusRing(panel: panel)
+                        .allowsHitTesting(false)
+                }
         )
         hc.sizingOptions = []
         hc.view.setAccessibilityIdentifier(panel.accessibilityID)
@@ -474,6 +478,21 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
         work()
         updateTourFrame()
         updateEditorTitlebarFill()
+    }
+}
+
+private struct PanelFocusRing: View {
+    @Environment(EditorViewModel.self) var editor
+    let panel: EditorViewModel.FocusedPanel
+
+    private var isFocused: Bool { editor.focusedPanel == panel }
+
+    var body: some View {
+        Rectangle()
+            .strokeBorder(AppTheme.Accent.primary, lineWidth: AppTheme.BorderWidth.thin)
+            .padding(AppTheme.BorderWidth.thin)
+            .opacity(isFocused ? AppTheme.Opacity.strong : 0)
+            .animation(.easeOut(duration: AppTheme.Anim.transition), value: isFocused)
     }
 }
 
