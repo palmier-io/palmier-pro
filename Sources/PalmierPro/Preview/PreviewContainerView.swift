@@ -8,7 +8,6 @@ struct PreviewContainerView: View {
     private var isImage: Bool { editor.activePreviewTab.clipType == .image }
     private var isSubtitle: Bool { editor.activePreviewTab.clipType == .subtitle }
 
-    @State private var hoveredTabId: String?
     @State private var failedImagePreviewKey: String?
     @State private var canvasOverlays = CanvasOverlaySelection()
 
@@ -712,41 +711,30 @@ struct PreviewContainerView: View {
 
     private func tabItem(for tab: PreviewTab) -> some View {
         let isActive = tab.id == editor.activePreviewTabId
-        let isHovered = hoveredTabId == tab.id
-        return HStack(spacing: AppTheme.Spacing.xs) {
+        return Button {
+            editor.selectPreviewTab(id: tab.id)
+        } label: {
             Text(tab == .timeline ? editor.timeline.name : tab.displayName)
-                .font(.system(size: AppTheme.FontSize.xs, weight: isActive ? .semibold : .medium))
-                .foregroundStyle(isActive || isHovered ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
+                .font(.system(
+                    size: AppTheme.FontSize.xs,
+                    weight: isActive ? AppTheme.FontWeight.semibold : AppTheme.FontWeight.medium
+                ))
+                .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
                 .lineLimit(1)
-
-            if tab.isCloseable {
-                TabCloseButton {
+        }
+        .buttonStyle(.plain)
+        .documentTabChrome(
+            isActive: isActive,
+            isCloseable: tab.isCloseable,
+            onClose: tab.isCloseable
+                ? {
                     withAnimation(.easeInOut(duration: AppTheme.Anim.transition)) {
                         editor.closePreviewTab(id: tab.id)
                     }
                 }
-            }
-        }
-        .padding(.horizontal, AppTheme.Spacing.xs)
-        .frame(height: Layout.panelHeaderHeight)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(isActive ? tab.underlineColor : Color.clear)
-                .frame(height: AppTheme.BorderWidth.thin)
-        }
-        .fixedSize(horizontal: true, vertical: false)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            editor.selectPreviewTab(id: tab.id)
-        }
-        .onHover { hovering in
-            if hovering {
-                hoveredTabId = tab.id
-            } else if hoveredTabId == tab.id {
-                hoveredTabId = nil
-            }
-        }
-        .animation(.easeOut(duration: AppTheme.Anim.hover), value: isActive)
+                : nil
+        )
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 
     private func navButton(_ systemName: String, enabled: Bool, help: String, action: @escaping () -> Void) -> some View {
