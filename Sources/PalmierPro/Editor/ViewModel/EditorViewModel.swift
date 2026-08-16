@@ -298,6 +298,7 @@ final class EditorViewModel {
     var mediaPanelShowMediaTabTick: Int = 0
     var mediaPanelSearchFocusTick: Int = 0
     var mediaPanelSearchFocusPending = false
+    var isMediaPanelSearchExpanded = false
     var mediaPanelToast: MediaPanelToast?
     @ObservationIgnored var mediaImportTail: Task<MediaImportSummary, Error>?
     @ObservationIgnored var mediaImportSequence: Int = 0
@@ -315,8 +316,14 @@ final class EditorViewModel {
 
     func requestMediaPanelSearch() {
         showMediaPanelMediaTab()
+        isMediaPanelSearchExpanded = true
         mediaPanelSearchFocusPending = true
         mediaPanelSearchFocusTick += 1
+    }
+
+    func collapseMediaPanelSearch() {
+        isMediaPanelSearchExpanded = false
+        mediaPanelSearchFocusPending = false
     }
 
     init() {

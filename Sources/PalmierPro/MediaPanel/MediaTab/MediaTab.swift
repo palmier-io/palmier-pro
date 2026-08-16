@@ -9,7 +9,6 @@ struct MediaTab: View {
     @State var filterTypes: Set<ClipType> = []
     @State var filterAI = false
     @State var searchQuery: String = ""
-    @State var isSearchExpanded = false
     @State var thumbnailSize: Double = 80
     @State var viewMode: ViewMode = .folder
     @FocusState private var isSearchFocused: Bool
@@ -172,6 +171,12 @@ struct MediaTab: View {
         .onChange(of: editor.mediaPanelSearchFocusTick) { _, _ in
             consumeSearchFocusRequest()
         }
+        .onChange(of: editor.isMediaPanelSearchExpanded) { _, expanded in
+            if !expanded {
+                searchQuery = ""
+                isSearchFocused = false
+            }
+        }
         .sheet(isPresented: $showMatteSheet) {
             MatteSheet(isPresented: $showMatteSheet)
         }
@@ -294,13 +299,13 @@ struct MediaTab: View {
         .padding(.horizontal, AppTheme.Spacing.sm)
         .padding(.bottom, AppTheme.Spacing.sm)
         .background(AppTheme.Background.surfaceColor)
-        .animation(.easeInOut(duration: AppTheme.Anim.transition), value: isSearchExpanded)
+        .animation(.easeInOut(duration: AppTheme.Anim.transition), value: editor.isMediaPanelSearchExpanded)
     }
 
     private var actionsRow: some View {
         let showGenerate = !AccountService.shared.isMisconfigured
         return HStack(spacing: AppTheme.Spacing.xs) {
-            if isSearchExpanded {
+            if editor.isMediaPanelSearchExpanded {
                 searchField
                     .layoutPriority(1)
                     .transition(.opacity.combined(with: .scale(scale: AppTheme.Opacity.prominent, anchor: .trailing)))
@@ -318,7 +323,7 @@ struct MediaTab: View {
             MediaSearchIndexStatus(search: editor.searchIndex, mediaAssets: editor.mediaAssets)
                 .tourAnchor(.smartSearch)
 
-            if !isSearchExpanded {
+            if !editor.isMediaPanelSearchExpanded {
                 searchToggleButton
             }
 
@@ -612,19 +617,17 @@ struct MediaTab: View {
                 .strokeBorder(AppTheme.Interaction.fill(AppTheme.Opacity.faint), lineWidth: AppTheme.BorderWidth.thin)
         )
         .onChange(of: isSearchFocused) { _, focused in
-            if !focused, searchQuery.isEmpty { isSearchExpanded = false }
+            if !focused, searchQuery.isEmpty { editor.collapseMediaPanelSearch() }
         }
     }
 
     private func expandSearch() {
-        isSearchExpanded = true
+        editor.isMediaPanelSearchExpanded = true
         Task { isSearchFocused = true }
     }
 
     private func collapseSearch() {
-        searchQuery = ""
-        isSearchFocused = false
-        isSearchExpanded = false
+        editor.collapseMediaPanelSearch()
     }
 
     private func consumeSearchFocusRequest() {

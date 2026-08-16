@@ -63,15 +63,15 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         let cmd = mods.contains(.command)
         let rangeMarkShortcut = mods.intersection([.command, .option, .control]).isEmpty
 
+        // Don't intercept keys when a text field has focus
+        if isTextInputFocused {
+            return false
+        }
+
         if handlesMediaPanelCommands, cmd, event.keyCode == 40,
            mods.intersection([.option, .control, .shift]).isEmpty {
             editorViewModel.requestMediaPanelSearch()
             return true
-        }
-
-        // Don't intercept keys when a text field has focus
-        if isTextInputFocused {
-            return false
         }
 
         if handlesMediaPanelCommands, cmd, event.keyCode == 126,
@@ -226,6 +226,10 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             }
             if editorViewModel.maximizedPanel != nil {
                 editorViewModel.maximizedPanel = nil
+                return true
+            }
+            if editorViewModel.isMediaPanelSearchExpanded {
+                editorViewModel.collapseMediaPanelSearch()
                 return true
             }
             editorViewModel.onCancelTimelineDrag?()

@@ -474,7 +474,6 @@ private struct PanelFocusRing: View {
     var body: some View {
         Rectangle()
             .strokeBorder(AppTheme.Accent.primary, lineWidth: AppTheme.BorderWidth.thin)
-            .padding(AppTheme.BorderWidth.thin)
             .opacity(isFocused ? AppTheme.Opacity.strong : 0)
             .animation(.easeOut(duration: AppTheme.Anim.transition), value: isFocused)
     }
