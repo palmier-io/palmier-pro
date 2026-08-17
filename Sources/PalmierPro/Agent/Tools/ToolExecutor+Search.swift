@@ -38,16 +38,19 @@ extension ToolExecutor {
         _ editor: EditorViewModel, query: String, limit: Int, restrict: Set<String>?
     ) async -> (moments: [[String: Any]], index: [String: Any]?) {
         let coordinator = editor.searchIndex
-        if VisualModelLoader.shared.enabled, VisualModelLoader.shared.state == .unknown {
-            await VisualModelLoader.shared.prepare()
-        }
-
-        let status = Self.visualStatus(coordinator)
         let indexable = editor.mediaAssets.filter {
             ($0.type == .video || $0.type == .image) && (restrict?.contains($0.id) ?? true)
         }
+        if !indexable.isEmpty, visualSearchModel.enabled, visualSearchModel.state == .unknown {
+            await visualSearchModel.prepare()
+        }
+        if !indexable.isEmpty, visualSearchModel.enabled, visualSearchModel.state == .notInstalled {
+            visualSearchModel.download()
+        }
+
+        let status = Self.visualStatus(coordinator, model: visualSearchModel)
         var indexed: Int?
-        if let spec = VisualModelLoader.shared.embedder?.spec {
+        if let spec = visualSearchModel.embedder?.spec {
             let urls = indexable.map(\.url)
             indexed = await Task.detached {
                 urls.filter { !VisualIndexer.needsIndex(url: $0, spec: spec) }.count
@@ -55,9 +58,15 @@ extension ToolExecutor {
         }
 
         var index: [String: Any]?
-        if status != "ready" || (indexed ?? indexable.count) < indexable.count {
+        if !indexable.isEmpty, status != "ready" || (indexed ?? indexable.count) < indexable.count {
             var info: [String: Any] = ["status": status, "indexableAssets": indexable.count]
             if let indexed { info["indexedAssets"] = indexed }
+            if case .downloading(let progress) = visualSearchModel.state {
+                info["modelDownloadProgress"] = progress
+            }
+            if case .failed(let reason) = visualSearchModel.state {
+                info["modelDownloadError"] = reason
+            }
             index = info
         }
 
@@ -98,9 +107,12 @@ extension ToolExecutor {
         }
     }
 
-    private static func visualStatus(_ coordinator: SearchIndexCoordinator) -> String {
-        guard VisualModelLoader.shared.enabled else { return "disabled" }
-        switch VisualModelLoader.shared.state {
+    private static func visualStatus(
+        _ coordinator: SearchIndexCoordinator,
+        model: any VisualSearchModelLoading
+    ) -> String {
+        guard model.enabled else { return "disabled" }
+        switch model.state {
         case .ready: return coordinator.indexingActive ? "indexing" : "ready"
         case .notInstalled: return "modelNotInstalled"
         case .downloading: return "downloadingModel"
