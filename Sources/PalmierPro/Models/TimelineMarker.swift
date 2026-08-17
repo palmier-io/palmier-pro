@@ -35,6 +35,25 @@ struct TimelineMarker: Codable, Sendable, Equatable, Hashable, Identifiable {
     }
 }
 
+extension TimelineMarker {
+    private enum CodingKeys: String, CodingKey {
+        case id, name, startFrame, durationFrames, color, comment, status
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try values.decode(String.self, forKey: .id),
+            name: try values.decode(String.self, forKey: .name),
+            startFrame: try values.decode(Int.self, forKey: .startFrame),
+            durationFrames: try values.decode(Int.self, forKey: .durationFrames),
+            color: try values.decode(TextStyle.RGBA.self, forKey: .color),
+            comment: try values.decode(String.self, forKey: .comment),
+            status: try values.decodeIfPresent(Status.self, forKey: .status) ?? .open
+        )
+    }
+}
+
 enum TimelineMarkerValidationError: Error, Equatable {
     case invalidName
     case invalidComment
