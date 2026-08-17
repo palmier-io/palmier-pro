@@ -44,17 +44,26 @@ struct MCPMarkerTests {
             #expect(marker["name"] as? String == "Timeline note")
             #expect(marker["endFrame"] as? Int == 30)
             #expect(marker["color"] as? String == "#FF9500FF")
+            #expect(marker["status"] as? String == "open")
             _ = try json(try await client.callTool(name: "manage_markers", arguments: [
                 "action": .string("update"),
                 "markerId": .string(markerId),
                 "startFrame": .int(40),
                 "color": .string("#34C759"),
                 "comment": .string("Addressed"),
+                "status": .string("review"),
             ]))
             #expect(harness.editor.timeline.markers.first?.startFrame == 40)
             #expect(harness.editor.timeline.markers.first?.comment == "Addressed")
+            #expect(harness.editor.timeline.markers.first?.status == .review)
+            #expect((try await client.callTool(name: "manage_markers", arguments: [
+                "action": .string("update"),
+                "markerId": .string(markerId),
+                "status": .string("done"),
+            ])).isError == true)
             #expect((try await client.callTool(name: "undo")).isError != true)
             #expect(harness.editor.timeline.markers.first?.startFrame == 20)
+            #expect(harness.editor.timeline.markers.first?.status == .open)
         } catch {
             await server.stop()
             await client.disconnect()
