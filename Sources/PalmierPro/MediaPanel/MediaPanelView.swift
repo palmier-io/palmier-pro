@@ -28,8 +28,8 @@ enum MediaPanelSection: String, CaseIterable {
 struct MediaPanelView: View {
     @Environment(EditorViewModel.self) private var editor
     @State private var section: MediaPanelSection = .media
-    @State private var indexSection: IndexBrowserSection = .captions
-    @State private var selectedCaptionGroupId: String?
+    @State private var indexSection: IndexBrowserSection = .transcript
+    @State private var indexTranscript: EditorViewModel.TimelineTranscriptDocument?
 
     var body: some View {
         VStack(spacing: AppTheme.Spacing.zero) {
@@ -50,16 +50,12 @@ struct MediaPanelView: View {
                 switch section {
                 case .media: MediaTab()
                 case .index:
-                    IndexTab(
-                        selectedCaptionGroupId: $selectedCaptionGroupId,
-                        section: $indexSection
-                    )
+                    IndexTab(section: $indexSection, transcript: $indexTranscript)
                 case .captions:
-                    CaptionTab { groupId in
-                        selectedCaptionGroupId = groupId
-                        indexSection = .captions
+                    CaptionTab(onGeneratedCaptions: { _ in
+                        indexSection = .transcript
                         selectSection(.index)
-                    }
+                    })
                 case .audio: AudioPanelTab()
                 }
             }
@@ -78,6 +74,9 @@ struct MediaPanelView: View {
             if section != .media, section != .index {
                 selectSection(.media)
             }
+        }
+        .onChange(of: editor.timelineRenderRevision) { _, _ in
+            indexTranscript = nil
         }
     }
 
