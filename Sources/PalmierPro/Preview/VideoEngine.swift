@@ -51,6 +51,11 @@ final class VideoEngine {
     private var compositionDuration: CMTime = .zero
     private var timelinePreviewTimelineId: String?
     private static let frameImageGate = AsyncSemaphore(value: 2)
+    /// Composition snapshots are immutable after publication; each request owns its generator.
+    private struct FrameImageSource: @unchecked Sendable {
+        let asset: AVAsset
+        let videoComposition: AVVideoComposition?
+    }
 
     private var pendingInteractiveSeek: (time: CMTime, tolerance: CMTime)?
     private var interactiveThrottleTask: Task<Void, Never>?
@@ -479,8 +484,25 @@ final class VideoEngine {
               (try? await item.asset.loadTracks(withMediaType: .video).first) != nil else {
             return nil
         }
-        let generator = AVAssetImageGenerator(asset: item.asset)
-        generator.videoComposition = item.videoComposition
+        return await Self.generateFrameImage(
+            source: FrameImageSource(
+                asset: item.asset,
+                videoComposition: item.videoComposition
+            ),
+            time: time,
+            maximumSize: maximumSize
+        )
+    }
+
+    @concurrent
+    private static func generateFrameImage(
+        source: FrameImageSource,
+        time: CMTime,
+        maximumSize: CGSize?
+    ) async -> CGImage? {
+        guard !Task.isCancelled else { return nil }
+        let generator = AVAssetImageGenerator(asset: source.asset)
+        generator.videoComposition = source.videoComposition
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = .zero
         if let maximumSize { generator.maximumSize = maximumSize }
