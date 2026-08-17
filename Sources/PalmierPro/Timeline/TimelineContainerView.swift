@@ -121,6 +121,7 @@ struct TimelineContainerView: NSViewRepresentable {
             selectedClipIds: editor.selectedClipIds,
             selectedTimelineRange: editor.selectedTimelineRange,
             selectedTimelineMarkerIds: editor.selectedTimelineMarkerIds,
+            timelineMarkerPreview: editor.timelineMarkerPreview,
             pendingReplacements: editor.pendingReplacements,
             generatingAssetIds: Set(editor.mediaAssets.lazy.filter(\.isGenerating).map(\.id))
         )
@@ -170,6 +171,7 @@ struct TimelineContainerView: NSViewRepresentable {
         let selectedClipIds: Set<String>
         let selectedTimelineRange: TimelineRangeSelection?
         let selectedTimelineMarkerIds: Set<String>
+        let timelineMarkerPreview: TimelineMarker?
         let pendingReplacements: Set<String>
         let generatingAssetIds: Set<String>
     }

@@ -66,6 +66,22 @@ struct TimelineMarkerTests {
         undo.undo()
         #expect(editor.timeline.markers[0].status == .open)
     }
+    @Test func committingMarkerChangeClearsItsPreview() throws {
+        let editor = EditorViewModel()
+        let marker = TimelineMarker(id: "marker", name: "Review", startFrame: 12)
+        editor.timeline.markers = [marker]
+        var preview = marker
+        preview.startFrame = 20
+        editor.timelineMarkerPreview = preview
+
+        _ = try editor.changeTimelineMarkers(
+            updates: [preview],
+            actionName: "Move Marker"
+        )
+
+        #expect(editor.timeline.markers == [preview])
+        #expect(editor.timelineMarkerPreview == nil)
+    }
     @Test func defaultMarkerNamesUseNextNumber() {
         let editor = EditorViewModel()
         editor.selectedClipIds = ["clip"]

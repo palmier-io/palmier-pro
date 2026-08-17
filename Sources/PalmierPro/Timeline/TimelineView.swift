@@ -22,7 +22,6 @@ final class TimelineView: NSView, NSPopoverDelegate {
     private(set) var hoveredClipId: String?
     private let canvas = TimelineCanvasView()
     private var markerPopover: NSPopover?
-    private var markerEditorPreview: TimelineMarker?
 
     // MARK: - Init
 
@@ -315,7 +314,9 @@ final class TimelineView: NSView, NSPopoverDelegate {
             drawRippleInsertGapBand(preview: rippleInsertPreview, geometry: geo, context: ctx)
         }
         drawClips(geometry: geo, dirtyRect: dirtyRect, context: ctx, rippleInsertPreview: rippleInsertPreview)
-        var displayedMarkers = editor.displayedTimelineMarkers(preview: markerEditorPreview)
+        var displayedMarkers = editor.displayedTimelineMarkers(
+            preview: editor.timelineMarkerPreview
+        )
         if case .timelineMarker(let drag) = inputController.dragState,
            let index = displayedMarkers.firstIndex(where: { $0.id == drag.original.id }) {
             displayedMarkers[index] = drag.value
@@ -406,7 +407,7 @@ final class TimelineView: NSView, NSPopoverDelegate {
                 marker: marker,
                 fps: editor.timeline.fps,
                 onPreview: { [weak self] marker in
-                    self?.markerEditorPreview = marker
+                    self?.editor.timelineMarkerPreview = marker
                     self?.needsDisplay = true
                 },
                 onDismiss: { [weak self] in self?.dismissMarkerEditor() }
@@ -418,7 +419,7 @@ final class TimelineView: NSView, NSPopoverDelegate {
     }
 
     private func dismissMarkerEditor() {
-        markerEditorPreview = nil
+        editor.timelineMarkerPreview = nil
         markerPopover?.close()
         needsDisplay = true
     }
@@ -426,7 +427,7 @@ final class TimelineView: NSView, NSPopoverDelegate {
     func popoverDidClose(_ notification: Notification) {
         guard let closed = notification.object as? NSPopover,
               closed === markerPopover else { return }
-        markerEditorPreview = nil
+        editor.timelineMarkerPreview = nil
         markerPopover = nil
         needsDisplay = true
     }

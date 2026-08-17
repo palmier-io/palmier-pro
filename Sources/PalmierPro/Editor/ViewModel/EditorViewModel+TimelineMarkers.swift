@@ -65,6 +65,7 @@ extension EditorViewModel {
         actionName: String
     ) throws -> TimelineMarkerChangeReceipt {
         let deleteSet = Set(deleteIds)
+        let affectedIds = deleteSet.union(updates.map(\.id))
         guard deleteSet.count == deleteIds.count else { throw TimelineMarkerValidationError.invalidRange }
         let before = timeline.markers
         var next = before
@@ -87,10 +88,12 @@ extension EditorViewModel {
         let created = try creates.map(validatedTimelineMarker)
         next += created
         next.sort { ($0.startFrame, $0.id) < ($1.startFrame, $1.id) }
+        if let preview = timelineMarkerPreview, affectedIds.contains(preview.id) {
+            timelineMarkerPreview = nil
+        }
         guard next != before else {
             return TimelineMarkerChangeReceipt(created: [], updated: [], deletedIds: [])
         }
-
         timeline.markers = next
         registerTimelineMarkerSwap(undoMarkers: before, redoMarkers: next, actionName: actionName)
         selectedTimelineMarkerIds.subtract(deleteSet)
@@ -136,6 +139,7 @@ extension EditorViewModel {
         actionName: String
     ) {
         registerTimelineUndo(actionName) { vm in
+            vm.timelineMarkerPreview = nil
             vm.timeline.markers = undoMarkers
             vm.selectedTimelineMarkerIds.formIntersection(undoMarkers.map(\.id))
             vm.registerTimelineMarkerSwap(
