@@ -32,6 +32,7 @@ extension EditorViewModel {
         let fps: Int
         let rows: [TimelineTranscriptRow]
         let sourceTrackId: String?
+        let sourceCaptionGroupId: String?
     }
 
     enum CaptionCase: String, CaseIterable, Sendable {
@@ -383,7 +384,8 @@ extension EditorViewModel {
         return TimelineTranscriptDocument(
             fps: prepared.timeline.fps,
             rows: rows,
-            sourceTrackId: nil
+            sourceTrackId: nil,
+            sourceCaptionGroupId: nil
         )
     }
 

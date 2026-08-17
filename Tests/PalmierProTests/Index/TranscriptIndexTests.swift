@@ -53,15 +53,28 @@ import Testing
         )
         first.textContent = "First cue"
         first.captionGroupId = "imported-vtt"
+        var translated = Fixtures.clip(
+            id: "translated",
+            mediaRef: "text",
+            mediaType: .text,
+            start: 0,
+            duration: 20
+        )
+        translated.textContent = "Premier sous-titre"
+        translated.captionGroupId = "translated-vtt"
         let timeline = Fixtures.timeline(
-            tracks: [Fixtures.videoTrack(clips: [second, first])]
+            tracks: [
+                Fixtures.videoTrack(clips: [second, first]),
+                Fixtures.videoTrack(clips: [translated]),
+            ]
         )
 
-        let fallback = try #require(
-            TranscriptBrowserNavigation.captionFallback(in: timeline)
-        )
+        let fallbacks = TranscriptBrowserNavigation.captionFallbacks(in: timeline)
+        let fallback = try #require(fallbacks.first)
 
+        #expect(fallbacks.map(\.sourceCaptionGroupId) == ["imported-vtt", "translated-vtt"])
         #expect(fallback.sourceTrackId == timeline.tracks[0].id)
+        #expect(fallback.sourceCaptionGroupId == "imported-vtt")
         #expect(fallback.rows.map(\.text) == ["First cue", "Second cue"])
     }
 

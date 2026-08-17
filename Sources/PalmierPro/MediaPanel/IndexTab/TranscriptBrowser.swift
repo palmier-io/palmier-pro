@@ -3,6 +3,8 @@ import SwiftUI
 struct TranscriptBrowser: View {
     @Environment(EditorViewModel.self) private var editor
     let document: EditorViewModel.TimelineTranscriptDocument
+    let captionSources: [EditorViewModel.TimelineTranscriptDocument]
+    @Binding var source: TranscriptIndexSource
     @Binding var indexSection: IndexBrowserSection
 
     @State private var searchQuery = ""
@@ -73,10 +75,12 @@ struct TranscriptBrowser: View {
             } else {
                 IndexModeTabs(selection: $indexSection)
                 Spacer(minLength: AppTheme.Spacing.zero)
-                if let captionSourceLabel {
-                    Text(verbatim: captionSourceLabel)
-                        .font(.system(size: AppTheme.FontSize.xs))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                if !captionSources.isEmpty {
+                    TranscriptSourceMenu(
+                        document: document,
+                        captionSources: captionSources,
+                        source: $source
+                    )
                 }
                 ExpandablePanelSearch(text: $searchQuery, focus: $isSearchFocused)
                 TranscriptJumpToPlayheadButton(
@@ -95,17 +99,59 @@ struct TranscriptBrowser: View {
             value: editor.isMediaPanelSearchExpanded
         )
     }
+}
 
-    private var captionSourceLabel: String? {
+struct TranscriptSourceMenu: View {
+    @Environment(EditorViewModel.self) private var editor
+    let document: EditorViewModel.TimelineTranscriptDocument?
+    let captionSources: [EditorViewModel.TimelineTranscriptDocument]
+    @Binding var source: TranscriptIndexSource
+
+    var body: some View {
+        Menu {
+            Button {
+                source = .transcript
+            } label: {
+                Label(
+                    L10n.string("Transcript"),
+                    systemImage: document?.sourceCaptionGroupId == nil ? "checkmark" : ""
+                )
+            }
+            if !captionSources.isEmpty {
+                Divider()
+                ForEach(captionSources, id: \.sourceCaptionGroupId) { caption in
+                    Button {
+                        if let groupId = caption.sourceCaptionGroupId {
+                            source = .captions(groupId)
+                        }
+                    } label: {
+                        Label(
+                            trackLabel(for: caption),
+                            systemImage: document?.sourceCaptionGroupId
+                                == caption.sourceCaptionGroupId ? "checkmark" : ""
+                        )
+                    }
+                }
+            }
+        } label: {
+            EditorMenuValue(text: document.map(trackLabel) ?? L10n.string("Transcript"), expanded: true)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .frame(maxWidth: AppTheme.MediaPanel.captionIndexGroupMenuWidth)
+        .focusable(false)
+    }
+
+    private func trackLabel(
+        for document: EditorViewModel.TimelineTranscriptDocument
+    ) -> String {
         guard let trackId = document.sourceTrackId,
               let index = editor.timeline.tracks.firstIndex(where: { $0.id == trackId }) else {
-            return nil
+            return L10n.string("Transcript")
         }
         let code = editor.timelineTrackDisplayLabel(at: index)
-        guard let name = editor.timeline.tracks[index].name, !name.isEmpty else {
-            return code
-        }
-        return "\(code) (\(name))"
+        return L10n.string("Caption \(code)")
     }
 }
 
@@ -308,37 +354,40 @@ struct TranscriptBrowserTimelineIndex {
 }
 
 enum TranscriptBrowserNavigation {
-    static func captionFallback(
+    static func captionFallbacks(
         in timeline: Timeline
-    ) -> EditorViewModel.TimelineTranscriptDocument? {
+    ) -> [EditorViewModel.TimelineTranscriptDocument] {
         let tracks = timeline.tracks.filter { !$0.hidden }
             + timeline.tracks.filter(\.hidden)
+        var documents: [EditorViewModel.TimelineTranscriptDocument] = []
         for track in tracks {
-            guard let groupId = track.clips.first(where: {
-                $0.mediaType == .text && $0.captionGroupId != nil
-            })?.captionGroupId else {
-                continue
+            var seen: Set<String> = []
+            let groupIds = track.clips.compactMap(\.captionGroupId).filter {
+                seen.insert($0).inserted
             }
-            let rows = track.clips.filter {
-                $0.mediaType == .text && $0.captionGroupId == groupId
+            for groupId in groupIds {
+                let rows = track.clips.filter {
+                    $0.mediaType == .text && $0.captionGroupId == groupId
+                }
+                .sorted { ($0.startFrame, $0.id) < ($1.startFrame, $1.id) }
+                .map {
+                    EditorViewModel.TimelineTranscriptRow(
+                        id: $0.id,
+                        clipId: $0.id,
+                        text: $0.textContent ?? "",
+                        startFrame: $0.startFrame,
+                        endFrame: $0.endFrame
+                    )
+                }
+                documents.append(EditorViewModel.TimelineTranscriptDocument(
+                    fps: timeline.fps,
+                    rows: rows,
+                    sourceTrackId: track.id,
+                    sourceCaptionGroupId: groupId
+                ))
             }
-            .sorted { ($0.startFrame, $0.id) < ($1.startFrame, $1.id) }
-            .map {
-                EditorViewModel.TimelineTranscriptRow(
-                    id: $0.id,
-                    clipId: $0.id,
-                    text: $0.textContent ?? "",
-                    startFrame: $0.startFrame,
-                    endFrame: $0.endFrame
-                )
-            }
-            return EditorViewModel.TimelineTranscriptDocument(
-                fps: timeline.fps,
-                rows: rows,
-                sourceTrackId: track.id
-            )
         }
-        return nil
+        return documents
     }
 
     static func rows(

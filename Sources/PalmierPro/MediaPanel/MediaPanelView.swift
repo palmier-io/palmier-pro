@@ -30,6 +30,7 @@ struct MediaPanelView: View {
     @State private var section: MediaPanelSection = .media
     @State private var indexSection: IndexBrowserSection = .transcript
     @State private var indexTranscript: EditorViewModel.TimelineTranscriptDocument?
+    @State private var indexSource: TranscriptIndexSource = .automatic
 
     var body: some View {
         VStack(spacing: AppTheme.Spacing.zero) {
@@ -50,10 +51,15 @@ struct MediaPanelView: View {
                 switch section {
                 case .media: MediaTab()
                 case .index:
-                    IndexTab(section: $indexSection, transcript: $indexTranscript)
+                    IndexTab(
+                        section: $indexSection,
+                        transcript: $indexTranscript,
+                        source: $indexSource
+                    )
                 case .captions:
                     CaptionTab(onGeneratedCaptions: { _ in
                         indexSection = .transcript
+                        indexSource = .automatic
                         selectSection(.index)
                     })
                 case .audio: AudioPanelTab()
@@ -77,6 +83,7 @@ struct MediaPanelView: View {
         }
         .onChange(of: editor.timelineRenderRevision) { _, _ in
             indexTranscript = nil
+            indexSource = .automatic
         }
     }
 

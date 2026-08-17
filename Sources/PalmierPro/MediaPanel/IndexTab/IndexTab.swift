@@ -6,6 +6,12 @@ enum IndexBrowserSection: String, CaseIterable {
     var titleKey: String { self == .transcript ? L10n.key("Transcript") : L10n.key("Markers") }
 }
 
+enum TranscriptIndexSource: Equatable {
+    case automatic
+    case transcript
+    case captions(String)
+}
+
 struct IndexModeTabs: View {
     @Binding var selection: IndexBrowserSection
 
@@ -49,12 +55,13 @@ struct IndexTab: View {
     @Environment(EditorViewModel.self) private var editor
     @Binding var section: IndexBrowserSection
     @Binding var transcript: EditorViewModel.TimelineTranscriptDocument?
+    @Binding var source: TranscriptIndexSource
     @State private var emptySearchQuery = ""
     @FocusState private var isSearchFocused: Bool
 
     var body: some View {
         let timeline = editor.timeline
-        let displayedTranscript = transcript ?? captionFallback
+        let displayedTranscript = displayedTranscript(captions: captionSources)
 
         Group {
             switch section {
@@ -62,6 +69,8 @@ struct IndexTab: View {
                 if let displayedTranscript {
                     TranscriptBrowser(
                         document: displayedTranscript,
+                        captionSources: captionSources,
+                        source: $source,
                         indexSection: $section
                     )
                 } else {
@@ -99,6 +108,13 @@ struct IndexTab: View {
                 } else {
                     IndexModeTabs(selection: $section)
                     Spacer(minLength: AppTheme.Spacing.zero)
+                    if !captionSources.isEmpty {
+                        TranscriptSourceMenu(
+                            document: nil,
+                            captionSources: captionSources,
+                            source: $source
+                        )
+                    }
                     ExpandablePanelSearch(text: $emptySearchQuery, focus: $isSearchFocused)
                 }
             }
@@ -109,12 +125,28 @@ struct IndexTab: View {
                 .fill(AppTheme.Border.primaryColor)
                 .frame(height: AppTheme.BorderWidth.hairline)
 
-            CaptionTab(onGeneratedTranscript: { transcript = $0 })
+            CaptionTab(onGeneratedTranscript: {
+                transcript = $0
+                source = .transcript
+            })
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var captionFallback: EditorViewModel.TimelineTranscriptDocument? {
-        TranscriptBrowserNavigation.captionFallback(in: editor.timeline)
+    private var captionSources: [EditorViewModel.TimelineTranscriptDocument] {
+        TranscriptBrowserNavigation.captionFallbacks(in: editor.timeline)
+    }
+
+    private func displayedTranscript(
+        captions: [EditorViewModel.TimelineTranscriptDocument]
+    ) -> EditorViewModel.TimelineTranscriptDocument? {
+        switch source {
+        case .automatic:
+            transcript ?? captions.first
+        case .transcript:
+            transcript
+        case .captions(let groupId):
+            captions.first { $0.sourceCaptionGroupId == groupId }
+        }
     }
 }
