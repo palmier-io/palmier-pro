@@ -186,6 +186,8 @@ enum AppTheme {
         static let warning = NSColor.systemOrange
 
         static var warningColor: Color { Color(warning) }
+
+        static var pendingColor: Color { Color(NSColor.systemYellow) }
     }
 
     enum AgentActivity {
@@ -211,7 +213,7 @@ enum AppTheme {
         static let hitSlop: CGFloat = 3
         static let editorWidth: CGFloat = 320
         static let timeFieldWidth: CGFloat = 82
-        static let notesHeight: CGFloat = 54
+        static let commentsHeight: CGFloat = 54
         static let presetColors = [
             "#4094FF", "#40CCE6", "#40BF5C", "#F2C72E", "#FF8C26", "#E64040", "#F259A6",
             "#A666F2", "#8CBFFF", "#73E6B8", "#A6D936", "#C79E6B", "#D1D1D1",
@@ -510,6 +512,11 @@ enum AppTheme {
         static let captionIndexTimecodeWidth: CGFloat = 68
         static let captionIndexDurationWidth: CGFloat = 28
         static let captionIndexGroupMenuWidth: CGFloat = 168
+        static let markerIndexTimeFieldWidth: CGFloat = 64
+        static let markerIndexDurationFieldWidth: CGFloat = 32
+        static let markerIndexCommentHeight: CGFloat = 36
+        static let markerIndexThumbnailHeight = EditorPanel.fieldMinHeight
+            + Spacing.xs + markerIndexCommentHeight
     }
 
     enum Export {

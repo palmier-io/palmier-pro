@@ -18,6 +18,7 @@ struct CaptionBrowser: View {
     let groups: [CaptionBrowserGroup]
     let fps: Int
     @Binding var selectedGroupId: String?
+    @Binding var indexSection: IndexBrowserSection
 
     @State private var searchQuery = ""
     @State private var jumpTargetId: String?
@@ -101,24 +102,15 @@ struct CaptionBrowser: View {
     ) -> some View {
         HStack(spacing: AppTheme.Spacing.xs) {
             if editor.isMediaPanelSearchExpanded {
-                ExpandablePanelSearch(
-                    text: $searchQuery,
-                    focus: $isSearchFocused
-                )
+                ExpandablePanelSearch(text: $searchQuery, focus: $isSearchFocused)
                     .layoutPriority(1)
             } else {
-                if let activeGroup {
-                    if groups.count > 1 {
-                        groupPicker(activeGroup: activeGroup)
-                    } else {
-                        groupTitle(activeGroup)
-                    }
-                }
+                IndexModeTabs(selection: $indexSection)
                 Spacer(minLength: AppTheme.Spacing.zero)
-                ExpandablePanelSearch(
-                    text: $searchQuery,
-                    focus: $isSearchFocused
-                )
+                if groups.count > 1, let activeGroup {
+                    groupPicker(activeGroup: activeGroup)
+                }
+                ExpandablePanelSearch(text: $searchQuery, focus: $isSearchFocused)
                 CaptionJumpToPlayheadButton(
                     timelineIndex: timelineIndex,
                     playheadState: editor.playheadState,
@@ -127,26 +119,13 @@ struct CaptionBrowser: View {
             }
         }
         .padding(.horizontal, AppTheme.Spacing.sm)
-        .padding(.vertical, AppTheme.Spacing.sm)
+        .padding(.vertical, AppTheme.Spacing.xxs)
         .fixedSize(horizontal: false, vertical: true)
         .background(AppTheme.Background.surfaceColor)
         .animation(
             .easeInOut(duration: AppTheme.Anim.transition),
             value: editor.isMediaPanelSearchExpanded
         )
-    }
-
-    private func groupTitle(_ group: CaptionBrowserGroup) -> some View {
-        Text(verbatim: groupLabel(group))
-            .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
-            .foregroundStyle(AppTheme.Text.secondaryColor)
-            .lineLimit(1)
-            .truncationMode(.middle)
-            .frame(
-                maxWidth: AppTheme.MediaPanel.captionIndexGroupMenuWidth,
-                alignment: .leading
-            )
-            .layoutPriority(2)
     }
 
     private func groupPicker(activeGroup: CaptionBrowserGroup) -> some View {
@@ -167,8 +146,8 @@ struct CaptionBrowser: View {
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
-        .frame(width: AppTheme.MediaPanel.captionIndexGroupMenuWidth)
-        .layoutPriority(2)
+        .frame(maxWidth: AppTheme.MediaPanel.captionIndexGroupMenuWidth)
+        .layoutPriority(1)
         .focusable(false)
     }
 
@@ -178,7 +157,7 @@ struct CaptionBrowser: View {
             code: editor.timelineTrackDisplayLabel(at: group.trackIndex),
             name: editor.timeline.tracks[group.trackIndex].name
         )
-        return L10n.string("Track: \(title)")
+        return title
     }
 }
 
