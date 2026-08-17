@@ -46,7 +46,8 @@ enum AgentInstructions {
           coarse to fine: overview=true storyboard, then transcript segments, then zoom with \
           startSeconds/endSeconds.
         - To find a moment ("the sunset shot", "where she mentions the budget"): search_media \
-          first, then pass hits straight to add_clips as source: [startSeconds, endSeconds].
+          first. Use scope='spoken' for dialogue-only requests so visual search is not installed \
+          unnecessarily, then pass hits straight to add_clips as source: [startSeconds, endSeconds].
 
         # Editing
         - Edits are undoable and effectively free — don't ask permission for individual \

@@ -18,6 +18,7 @@ final class ToolExecutor {
     private let analyticsSessionID = UUID().uuidString
     let exportQueue: ExportQueue
     let skillStore: SkillStore
+    let visualSearchModel: any VisualSearchModelLoading
 
     var editor: EditorViewModel? {
         frontmostProjectProvider == nil ? inAppEditor : sessionProject?.editorViewModel
@@ -35,17 +36,20 @@ final class ToolExecutor {
     init(
         editor: EditorViewModel,
         exportQueue: ExportQueue = .shared,
-        skillStore: SkillStore = .shared
+        skillStore: SkillStore = .shared,
+        visualSearchModel: any VisualSearchModelLoading = VisualModelLoader.shared
     ) {
         self.inAppEditor = editor
         self.frontmostProjectProvider = nil
         self.exportQueue = exportQueue
         self.skillStore = skillStore
+        self.visualSearchModel = visualSearchModel
     }
 
     init(
         projectProvider: @escaping () -> VideoProject?,
-        exportQueue: ExportQueue = .shared
+        exportQueue: ExportQueue = .shared,
+        visualSearchModel: any VisualSearchModelLoading = VisualModelLoader.shared
     ) {
         let project = projectProvider()
         self.inAppEditor = nil
@@ -53,6 +57,7 @@ final class ToolExecutor {
         self.boundProject = project
         self.exportQueue = exportQueue
         self.skillStore = .shared
+        self.visualSearchModel = visualSearchModel
     }
 
     func bindProject(_ project: VideoProject?) {

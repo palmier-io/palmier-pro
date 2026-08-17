@@ -13,12 +13,20 @@ final class ToolHarness {
     let executor: ToolExecutor
     let exportQueue: ExportQueue
 
-    init(timeline: Timeline = Fixtures.timeline(), exportQueue: ExportQueue = ExportQueue()) {
+    init(
+        timeline: Timeline = Fixtures.timeline(),
+        exportQueue: ExportQueue = ExportQueue(),
+        visualSearchModel: any VisualSearchModelLoading = VisualModelLoader.shared
+    ) {
         let editor = EditorViewModel()
         editor.timeline = timeline
         self.editor = editor
         self.exportQueue = exportQueue
-        self.executor = ToolExecutor(editor: editor, exportQueue: exportQueue)
+        self.executor = ToolExecutor(
+            editor: editor,
+            exportQueue: exportQueue,
+            visualSearchModel: visualSearchModel
+        )
     }
 
     /// Run a tool by name and decode the .ok text payload as JSON.
