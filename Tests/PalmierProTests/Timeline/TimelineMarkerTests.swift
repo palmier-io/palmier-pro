@@ -18,6 +18,26 @@ struct TimelineMarkerTests {
         let withoutMarkers = try JSONSerialization.data(withJSONObject: object)
         #expect(try JSONDecoder().decode(Timeline.self, from: withoutMarkers).markers.isEmpty)
     }
+    @Test func markersWithoutStatusDecodeAsOpen() throws {
+        var timeline = Fixtures.timeline()
+        timeline.markers = [
+            TimelineMarker(name: "Existing marker", startFrame: 12, status: .review)
+        ]
+        var object = try #require(
+            JSONSerialization.jsonObject(
+                with: JSONEncoder().encode(timeline)
+            ) as? [String: Any]
+        )
+        var markers = try #require(object["markers"] as? [[String: Any]])
+        markers[0].removeValue(forKey: "status")
+        object["markers"] = markers
+
+        let data = try JSONSerialization.data(withJSONObject: object)
+        let decoded = try JSONDecoder().decode(Timeline.self, from: data)
+
+        #expect(decoded.markers.count == 1)
+        #expect(decoded.markers[0].status == .open)
+    }
     @Test func duplicateTimelineFreshensMarkerIds() throws {
         let editor = EditorViewModel()
         editor.timeline.markers = [TimelineMarker(name: "Note", startFrame: 4)]
