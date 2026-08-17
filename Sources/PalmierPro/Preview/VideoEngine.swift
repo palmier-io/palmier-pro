@@ -475,7 +475,10 @@ final class VideoEngine {
         -> CGImage? {
         guard let _ = try? await Self.frameImageGate.wait() else { return nil }
         defer { Task { await Self.frameImageGate.signal() } }
-        guard !Task.isCancelled else { return nil }
+        guard !Task.isCancelled,
+              (try? await item.asset.loadTracks(withMediaType: .video).first) != nil else {
+            return nil
+        }
         let generator = AVAssetImageGenerator(asset: item.asset)
         generator.videoComposition = item.videoComposition
         generator.requestedTimeToleranceBefore = .zero
