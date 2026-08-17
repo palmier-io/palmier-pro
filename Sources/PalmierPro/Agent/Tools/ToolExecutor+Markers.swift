@@ -8,17 +8,26 @@ private struct ManageMarkersInput: DecodableToolArgs {
     let durationFrames: Int?
     let color: String?
     let comment: String?
+    let status: String?
     static let allowedKeys: Set<String> = [
         "action", "markerId", "name", "startFrame", "durationFrames", "color", "comment",
+        "status",
     ]
     var hasPatch: Bool {
-        name != nil || startFrame != nil || durationFrames != nil || color != nil || comment != nil
+        name != nil || startFrame != nil || durationFrames != nil || color != nil
+            || comment != nil || status != nil
     }
 }
 
 extension ToolExecutor {
     func manageMarkers(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         let input: ManageMarkersInput = try decodeToolArgs(args, path: "manage_markers")
+        let status: TimelineMarker.Status? = try input.status.map {
+            guard let status = TimelineMarker.Status(rawValue: $0) else {
+                throw ToolError("status must be open, review, or resolved.")
+            }
+            return status
+        }
         let receipt: TimelineMarkerChangeReceipt
         do {
             switch input.action {
@@ -30,7 +39,8 @@ extension ToolExecutor {
                     name: name, startFrame: start,
                     durationFrames: input.durationFrames ?? 0,
                     color: try parseColorHex(input.color, path: "color") ?? TimelineMarker.defaultColor,
-                    comment: input.comment ?? ""
+                    comment: input.comment ?? "",
+                    status: status ?? .open
                 )
                 receipt = try editor.changeTimelineMarkers(
                     creates: [marker], actionName: "Add Marker (Agent)"
@@ -47,6 +57,7 @@ extension ToolExecutor {
                 if let value = input.durationFrames { marker.durationFrames = value }
                 if let value = try parseColorHex(input.color, path: "color") { marker.color = value }
                 if let value = input.comment { marker.comment = value }
+                if let status { marker.status = status }
                 receipt = try editor.changeTimelineMarkers(
                     updates: [marker], actionName: "Change Marker (Agent)"
                 )

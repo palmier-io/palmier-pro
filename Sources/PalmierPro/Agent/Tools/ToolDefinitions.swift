@@ -127,7 +127,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .manageMarkers,
-            description: "Creates, updates, or deletes one persistent timeline marker. A zero duration marks one frame; a positive duration is half-open.",
+            description: "Creates, updates, or deletes one persistent timeline marker. A zero duration marks one frame; a positive duration is half-open. Status tracks the review workflow: open is awaiting work, review is ready for user approval, and resolved is accepted. Set review only after applying and verifying the requested edit. Set resolved only when the user explicitly approves or requests it.",
             inputSchema: objectSchema(
                 properties: [
                     "action": ["type": "string", "enum": ["create", "update", "delete"]],
@@ -137,6 +137,7 @@ enum ToolDefinitions {
                     "durationFrames": ["type": "integer", "description": "0 for a point; positive for a range."],
                     "color": ["type": "string", "description": "#RGB, #RRGGBB, or #RRGGBBAA."],
                     "comment": ["type": "string"],
+                    "status": ["type": "string", "enum": ["open", "review", "resolved"]],
                 ],
                 required: ["action"]
             )

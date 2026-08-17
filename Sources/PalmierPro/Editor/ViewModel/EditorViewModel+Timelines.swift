@@ -106,6 +106,7 @@ extension EditorViewModel {
         selectedGap = nil
         selectedTimelineRange = nil
         selectedTimelineMarkerIds = []
+        timelineMarkerPreview = nil
         pendingSwapClipId = nil
         pendingSwapTargetClipIds = []
         clearAgentActivity()

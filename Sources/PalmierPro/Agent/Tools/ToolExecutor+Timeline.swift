@@ -97,6 +97,7 @@ extension ToolExecutor {
             "durationFrames": marker.durationFrames,
             "color": marker.color.hexString,
             "comment": marker.comment,
+            "status": marker.status.rawValue,
         ]
     }
 

@@ -28,6 +28,7 @@ enum MediaPanelSection: String, CaseIterable {
 struct MediaPanelView: View {
     @Environment(EditorViewModel.self) private var editor
     @State private var section: MediaPanelSection = .media
+    @State private var indexSection: IndexBrowserSection = .captions
     @State private var selectedCaptionGroupId: String?
 
     var body: some View {
@@ -50,11 +51,13 @@ struct MediaPanelView: View {
                 case .media: MediaTab()
                 case .index:
                     IndexTab(
-                        selectedCaptionGroupId: $selectedCaptionGroupId
+                        selectedCaptionGroupId: $selectedCaptionGroupId,
+                        section: $indexSection
                     )
                 case .captions:
                     CaptionTab { groupId in
                         selectedCaptionGroupId = groupId
+                        indexSection = .captions
                         selectSection(.index)
                     }
                 case .audio: AudioPanelTab()
