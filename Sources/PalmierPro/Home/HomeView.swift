@@ -24,15 +24,22 @@ struct HomeView: View {
         .task { await VisualModelLoader.shared.prepare() }
         .onAppear { changelog.checkForWhatsNew() }
         .overlay {
-            if !onboarding.isComplete {
-                OnboardingOverlay(onboarding: onboarding)
-            } else if let entry = changelog.pending {
-                UpdateOverlay(entry: entry, changelogURL: changelog.changelogURL) {
-                    withAnimation { changelog.dismiss() }
+            ZStack {
+                if !onboarding.isComplete {
+                    OnboardingOverlay(onboarding: onboarding)
+                } else if let entry = changelog.pending {
+                    UpdateOverlay(entry: entry, changelogURL: changelog.changelogURL) {
+                        changelog.dismiss()
+                    }
                 }
             }
+            .allowsHitTesting(isModalOverlayPresented)
         }
-        .animation(.easeInOut(duration: AppTheme.Anim.transition), value: onboarding.isComplete)
+        .animation(.easeInOut(duration: AppTheme.Anim.transition), value: isModalOverlayPresented)
+    }
+
+    private var isModalOverlayPresented: Bool {
+        !onboarding.isComplete || changelog.pending != nil
     }
 
     private var content: some View {
