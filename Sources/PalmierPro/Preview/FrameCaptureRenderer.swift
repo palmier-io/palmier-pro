@@ -85,7 +85,10 @@ enum FrameCaptureRenderer {
 
     @concurrent
     static func media(url: URL, sourceSeconds: Double) async throws -> RenderedFrame {
-        let preview = try await sourcePreview(url: url, sourceSeconds: sourceSeconds)
+        try await renderGate.wait()
+        defer { Task { await renderGate.signal() } }
+        try Task.checkCancellation()
+        let preview = try await decodeSourcePreview(url: url, sourceSeconds: sourceSeconds)
         return try stage(preview.image, actualSourceSeconds: preview.actualSourceSeconds)
     }
 
@@ -98,7 +101,18 @@ enum FrameCaptureRenderer {
         try await renderGate.wait()
         defer { Task { await renderGate.signal() } }
         try Task.checkCancellation()
+        return try await decodeSourcePreview(
+            url: url,
+            sourceSeconds: sourceSeconds,
+            maximumDimension: maximumDimension
+        )
+    }
 
+    private static func decodeSourcePreview(
+        url: URL,
+        sourceSeconds: Double,
+        maximumDimension: CGFloat? = nil
+    ) async throws -> SourceFramePreview {
         let asset = AVURLAsset(url: url)
         guard let track = try await asset.loadTracks(withMediaType: .video).first else {
             throw RenderError.noVideoTrack

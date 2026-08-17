@@ -236,7 +236,7 @@ final class ToolExecutor {
         return properties
     }
 
-    private func projectFocusError() -> String? {
+    func projectFocusError() -> String? {
         guard frontmostProjectProvider != nil else { return nil }
         let session = sessionProject
         let frontmost = frontmostProject

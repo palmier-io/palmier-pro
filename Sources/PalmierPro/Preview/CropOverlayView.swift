@@ -16,7 +16,7 @@ struct CropOverlayView: View {
                 let frame = editor.activeFrame
                 let transform = clip.transformAt(frame: frame)
                 let clipRect = clipFrame(transform, videoRect: videoRect)
-                let cropRect = cropFrame(clip.cropAt(frame: frame), in: clipRect)
+                let cropRect = cropFrame(clip.effectiveCropAt(frame: frame), in: clipRect)
 
                 ZStack {
                     Canvas { ctx, _ in
@@ -74,7 +74,7 @@ struct CropOverlayView: View {
     private func panGesture(clip: Clip, clipRect: CGRect) -> some Gesture {
         DragGesture(coordinateSpace: .global)
             .onChanged { value in
-                if dragStart == nil { dragStart = clip.cropAt(frame: editor.activeFrame) }
+                if dragStart == nil { dragStart = clip.effectiveCropAt(frame: editor.activeFrame) }
                 guard let start = dragStart else { return }
                 let updated = pannedCrop(start, by: clipLocal(value.translation, clip: clip), clipRect: clipRect)
                 editor.applyCrop(clipId: clip.id, newCrop: updated)
@@ -112,7 +112,7 @@ struct CropOverlayView: View {
     private func resizeGesture(clip: Clip, corner: Corner, clipRect: CGRect) -> some Gesture {
         DragGesture(coordinateSpace: .global)
             .onChanged { value in
-                if dragStart == nil { dragStart = clip.cropAt(frame: editor.activeFrame) }
+                if dragStart == nil { dragStart = clip.effectiveCropAt(frame: editor.activeFrame) }
                 guard let start = dragStart else { return }
                 let updated = resizedCrop(start, corner: corner, by: clipLocal(value.translation, clip: clip), clipRect: clipRect, clip: clip)
                 editor.applyCrop(clipId: clip.id, newCrop: updated)

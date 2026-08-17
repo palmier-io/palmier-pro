@@ -996,7 +996,10 @@ extension ToolExecutor {
         case "crop":
             let kfs = try Self.parseCropKeyframes(rows, path: "keyframes")
             applyKeyframes = {
-                editor.commitClipProperty(clipId: input.clipId) { $0.cropTrack = kfs.keyframes.isEmpty ? nil : kfs }
+                editor.commitClipProperty(clipId: input.clipId) {
+                    $0.bakeLayoutCropIntoContent()
+                    $0.cropTrack = kfs.keyframes.isEmpty ? nil : kfs
+                }
             }
         case "blur":
             let kfs = try Self.parseScalarKeyframes(rows, path: "keyframes", range: 0...100)

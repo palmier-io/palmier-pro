@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import ImageIO
 import MCP
 import Testing
 @testable import PalmierPro
@@ -37,6 +38,10 @@ struct CropToSubjectToolTests {
             let guideReceipt = try json(text(guide.content))
             #expect(guideReceipt["status"] as? String == "needsBounds")
             #expect(guideReceipt["atFrame"] as? Int == 15)
+            #expect(guideReceipt["imageRoles"] as? [String] == ["fullGrid"])
+            let guideGrid = try #require(guideReceipt["grid"] as? [String: Any])
+            #expect(guideGrid["scope"] as? String == "full")
+            #expect((guideGrid["xEdges"] as? [Double])?.count == 11)
             #expect(fixture.editor.clipFor(id: fixture.clipId)?.crop == Crop())
             #expect(fixture.undoManager.canUndo == false)
 
@@ -51,8 +56,25 @@ struct CropToSubjectToolTests {
                 "prompt": .string("the blue picture-in-picture"),
                 "bounds": .object(bounds),
             ])
-            #expect(images(preview.content).count == 2)
-            #expect(try json(text(preview.content))["status"] as? String == "preview")
+            let previewImages = images(preview.content)
+            #expect(previewImages.count == 3)
+            let previewReceipt = try json(text(preview.content))
+            #expect(previewReceipt["status"] as? String == "preview")
+            #expect(previewReceipt["imageRoles"] as? [String] == [
+                "fullContext", "refinementGrid", "cropPreview",
+            ])
+            let previewGrid = try #require(previewReceipt["grid"] as? [String: Any])
+            #expect(previewGrid["scope"] as? String == "refinement")
+            let xEdges = try #require(previewGrid["xEdges"] as? [Double])
+            let yEdges = try #require(previewGrid["yEdges"] as? [Double])
+            #expect(xEdges == [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1])
+            #expect(yEdges == [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5])
+            #expect(try imageSize(previewImages[0]) == CGSize(width: 200, height: 120))
+            #expect(try imageSize(previewImages[1]) == CGSize(width: 100, height: 60))
+            #expect(try imageSize(previewImages[2]) == CGSize(width: 100, height: 60))
+            let previewRGB = try averageRGB(previewImages[2])
+            #expect(previewRGB.blue > 0.7)
+            #expect(previewRGB.blue > previewRGB.red * 4)
             #expect(fixture.editor.clipFor(id: fixture.clipId)?.crop == Crop())
             #expect(fixture.undoManager.canUndo == false)
 
@@ -69,8 +91,10 @@ struct CropToSubjectToolTests {
             let receipt = try json(text(applied.content))
             #expect(receipt["status"] as? String == "applied")
             #expect(receipt["clearedCropKeyframes"] as? Bool == true)
+            #expect(images(applied.content).count == 3)
             let clip = try #require(fixture.editor.clipFor(id: fixture.clipId))
             #expect(clip.crop == Crop(left: 0.5, top: 0, right: 0, bottom: 0.5))
+            #expect(clip.layoutCrop == nil)
             #expect(clip.cropTrack == nil)
 
             let timeline = try json(text(
@@ -81,6 +105,14 @@ struct CropToSubjectToolTests {
             let crop = try #require(clips.first?["crop"] as? [String: Any])
             #expect(crop["left"] as? Double == 0.5)
             #expect(crop["bottom"] as? Double == 0.5)
+
+            let unchanged = try await client.callTool(name: "crop_to_subject", arguments: [
+                "clipId": .string(fixture.clipId),
+                "prompt": .string("the blue picture-in-picture"),
+                "bounds": .object(bounds),
+                "apply": .bool(true),
+            ])
+            #expect(try json(text(unchanged.content))["status"] as? String == "unchanged")
 
             _ = try await client.callTool(name: "undo")
             let restored = try #require(fixture.editor.clipFor(id: fixture.clipId))
@@ -93,6 +125,50 @@ struct CropToSubjectToolTests {
         }
         await server.stop()
         await client.disconnect()
+    }
+
+    @Test func videoInspectionUsesTrimAndSpeedSourceTime() async throws {
+        let url = try await FixtureVideo.write(
+            scenes: [
+                .init(rgb: (255, 0, 0), seconds: 1),
+                .init(rgb: (0, 0, 255), seconds: 1),
+            ],
+            fps: 10,
+            size: 64
+        )
+        defer { Task.detached { try? FileManager.default.removeItem(at: url) } }
+        let media = MediaAsset(url: url, type: .video, name: "Timing", duration: 2)
+        media.sourceWidth = 64
+        media.sourceHeight = 64
+        var clip = Fixtures.clip(
+            id: "video-crop",
+            mediaRef: media.id,
+            mediaType: .video,
+            start: 0,
+            duration: 10
+        )
+        clip.trimStartFrame = 5
+        var timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
+        timeline.fps = 10
+        timeline.width = 64
+        timeline.height = 64
+        let editor = EditorViewModel()
+        editor.timeline = timeline
+        editor.importMediaAsset(media)
+
+        let result = await ToolExecutor(editor: editor).execute(name: "crop_to_subject", args: [
+            "clipId": clip.id,
+            "prompt": "blue frame",
+            "atFrame": 7,
+            "bounds": ["left": 0.0, "top": 0.0, "right": 1.0, "bottom": 1.0],
+        ])
+
+        #expect(result.isError == false)
+        let receipt = try json(text(result.content))
+        let actual = try #require(receipt["actualSourceSeconds"] as? Double)
+        #expect(abs(actual - 1.2) < 0.11)
+        let rgb = try averageRGB(try #require(images(result.content).last))
+        #expect(rgb.blue > rgb.red * 4)
     }
 
     @Test func invalidBoundsAndFrameDoNotMutate() async throws {
@@ -128,6 +204,17 @@ struct CropToSubjectToolTests {
             let result = await executor.execute(name: "crop_to_subject", args: request)
             #expect(result.isError)
         }
+
+        let cancelled = Task {
+            await executor.execute(name: "crop_to_subject", args: [
+                "clipId": fixture.clipId,
+                "prompt": "subject",
+                "bounds": ["left": 0.5, "top": 0.0, "right": 1.0, "bottom": 0.5],
+                "apply": true,
+            ])
+        }
+        cancelled.cancel()
+        #expect((await cancelled.value).isError)
         #expect(fixture.editor.clipFor(id: fixture.clipId)?.crop == Crop())
         #expect(fixture.undoManager.canUndo == false)
     }
@@ -226,10 +313,55 @@ struct CropToSubjectToolTests {
         throw CocoaError(.coderReadCorrupt)
     }
 
+    private func text(_ content: [ToolResult.Block]) throws -> String {
+        for item in content {
+            if case .text(let text) = item { return text }
+        }
+        throw CocoaError(.coderReadCorrupt)
+    }
+
     private func images(_ content: [Tool.Content]) -> [String] {
         content.compactMap { item in
             if case .image(let data, _, _, _) = item { return data }
             return nil
         }
+    }
+
+    private func images(_ content: [ToolResult.Block]) -> [String] {
+        content.compactMap { item in
+            if case .image(let data, _) = item { return data }
+            return nil
+        }
+    }
+
+    private func imageSize(_ base64: String) throws -> CGSize {
+        let image = try decodedImage(base64)
+        return CGSize(width: image.width, height: image.height)
+    }
+
+    private func averageRGB(_ base64: String) throws -> (red: Double, green: Double, blue: Double) {
+        let image = try decodedImage(base64)
+        let context = try #require(CGContext(
+            data: nil,
+            width: 1,
+            height: 1,
+            bitsPerComponent: 8,
+            bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        let bytes = try #require(context.data?.assumingMemoryBound(to: UInt8.self))
+        return (
+            Double(bytes[0]) / 255,
+            Double(bytes[1]) / 255,
+            Double(bytes[2]) / 255
+        )
+    }
+
+    private func decodedImage(_ base64: String) throws -> CGImage {
+        let data = try #require(Data(base64Encoded: base64))
+        let source = try #require(CGImageSourceCreateWithData(data as CFData, nil))
+        return try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
     }
 }

@@ -229,7 +229,7 @@ extension ToolExecutor {
             throw ToolError("Could not decode a frame for clip \(clipId).")
         }
         // Match the render path: crop to the visible region before grading (FrameRenderer crops first).
-        let cropped = Self.cropping(frame, crop: clip.cropAt(frame: clip.startFrame + offset))
+        let cropped = Self.cropping(frame, crop: clip.effectiveCropAt(frame: clip.startFrame + offset))
         let graded = Self.applyingEffects(cropped, clip: clip, atOffset: offset)
         guard let scopes = ColorScopes.measure(graded) else { throw ToolError("Could not measure the clip frame.") }
         return (graded, scopes)

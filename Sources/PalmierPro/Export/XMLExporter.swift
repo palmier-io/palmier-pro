@@ -501,13 +501,16 @@ enum XMLExporter {
         /// Converts crop fractions to FCP7 percentages.
         private func cropFilter(_ clip: Clip) -> XMLNode? {
             let frames = clip.keyframeFrames(for: .crop)
-            if frames.isEmpty && clip.crop.isIdentity { return nil }
+            let effectiveCrop = clip.effectiveCropAt(frame: clip.startFrame)
+            if frames.isEmpty && effectiveCrop.isIdentity { return nil }
 
             func edge(_ id: String, _ kp: KeyPath<Crop, Double>) -> XMLNode {
                 if frames.isEmpty {
-                    return scalarParam(id: id, name: id, min: "0", max: "100", base: clip.crop[keyPath: kp] * 100)
+                    return scalarParam(id: id, name: id, min: "0", max: "100", base: effectiveCrop[keyPath: kp] * 100)
                 }
-                let kfs = frames.map { (when: $0 - clip.startFrame, value: clip.cropAt(frame: $0)[keyPath: kp] * 100) }
+                let kfs = frames.map {
+                    (when: $0 - clip.startFrame, value: clip.effectiveCropAt(frame: $0)[keyPath: kp] * 100)
+                }
                 return scalarParam(id: id, name: id, min: "0", max: "100", base: kfs[0].value, keyframes: kfs)
             }
             let params = [edge("left", \.left), edge("right", \.right), edge("top", \.top), edge("bottom", \.bottom)]

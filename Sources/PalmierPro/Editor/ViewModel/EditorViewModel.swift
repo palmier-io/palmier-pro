@@ -720,7 +720,7 @@ final class EditorViewModel {
     func displayedCropAspectRatio(for clip: Clip, preferLockedRatio: Bool = true) -> CropAspectRatio? {
         if preferLockedRatio, let ratio = cropAspectLock.aspectRatio { return ratio }
         guard let dimensions = sourceDimensions(for: clip) else { return nil }
-        let crop = clip.cropAt(frame: activeFrame)
+        let crop = clip.effectiveCropAt(frame: activeFrame)
         if crop.isIdentity {
             return CropAspectRatio(pixelWidth: dimensions.width, pixelHeight: dimensions.height)
         }

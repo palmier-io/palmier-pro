@@ -790,6 +790,7 @@ struct InspectorView: View {
                 editor.cropAspectLock = .free
                 editor.commitClipProperty(clipId: single.id) {
                     $0.crop = Crop()
+                    $0.layoutCrop = nil
                     $0.cropTrack = nil
                 }
             }

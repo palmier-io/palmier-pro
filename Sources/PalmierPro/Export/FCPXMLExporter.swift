@@ -573,7 +573,7 @@ enum FCPXMLExporter {
 
         /// Uses Resolve trim units when source dimensions are known.
         private func cropNode(for clip: Clip) -> FCPXMLNode? {
-            let c = clip.crop
+            let c = clip.effectiveCropAt(frame: clip.startFrame)
             guard !c.isIdentity else { return nil }
             var lr = 100.0, tb = 100.0
             if target == .resolve,

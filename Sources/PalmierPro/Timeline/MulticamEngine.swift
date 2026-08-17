@@ -79,16 +79,16 @@ enum MulticamEngine {
                         && track.clips[i].startFrame >= target.lowerBound
                         && track.clips[i].endFrame <= target.upperBound {
                         let wasDefaultFit = track.clips[i].transform == fitTransform(track.clips[i])
-                            && track.clips[i].crop == Crop()
+                            && track.clips[i].effectiveCropAt(frame: track.clips[i].startFrame).isIdentity
                         rewrite(&track.clips[i], group: group, to: entry.member,
                                 sourceDurations: sourceDurations, fps: fps)
                         if entry.layout != .full, let programRect {
                             let placed = placement(track.clips[i], programRect)
                             track.clips[i].transform = placed.transform
-                            track.clips[i].crop = placed.crop
+                            track.clips[i].layoutCrop = placed.crop.isIdentity ? nil : placed.crop
                         } else if wasDefaultFit || hadLayout {
                             track.clips[i].transform = fitTransform(track.clips[i])
-                            if hadLayout { track.clips[i].crop = Crop() }
+                            if hadLayout { track.clips[i].layoutCrop = nil }
                         }
                         outcome.switched += 1
                     }
@@ -161,7 +161,7 @@ enum MulticamEngine {
         }
         let placed = style(clip)
         clip.transform = placed.transform
-        clip.crop = placed.crop
+        clip.layoutCrop = placed.crop.isIdentity ? nil : placed.crop
 
         guard let programIdx = timeline.tracks.firstIndex(where: { $0.id == programId }) else { return nil }
         let free = timeline.tracks[..<programIdx].lastIndex { track in
@@ -242,6 +242,7 @@ enum MulticamEngine {
             && a.opacity == b.opacity
             && a.transform == b.transform
             && a.crop == b.crop
+            && a.layoutCrop == b.layoutCrop
             && a.edgeRounding == b.edgeRounding
             && a.edgeSoftness == b.edgeSoftness
             && a.effects == b.effects

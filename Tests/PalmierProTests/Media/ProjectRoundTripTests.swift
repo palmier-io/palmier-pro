@@ -54,6 +54,7 @@ struct ProjectRoundTripTests {
                                    rotationX: 20, rotationY: -30,
                                    flipHorizontal: true, flipVertical: false)
         clip.crop = Crop(left: 0.1, top: 0.2, right: 0.3, bottom: 0.4)
+        clip.layoutCrop = Crop(left: 0.25, right: 0.25)
         clip.edgeRounding = 0.35
         clip.edgeSoftness = 0.2
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
@@ -67,6 +68,8 @@ struct ProjectRoundTripTests {
         #expect(dc.transform.rotationY == -30)
         #expect(dc.transform.flipHorizontal == true)
         #expect(dc.crop == Crop(left: 0.1, top: 0.2, right: 0.3, bottom: 0.4))
+        #expect(dc.layoutCrop == Crop(left: 0.25, right: 0.25))
+        #expect(dc.effectiveCropAt(frame: 0) == Crop(left: 0.25, top: 0.2, right: 0.45, bottom: 0.4))
         #expect(dc.edgeRounding == 0.35)
         #expect(dc.edgeSoftness == 0.2)
     }
@@ -90,6 +93,24 @@ struct ProjectRoundTripTests {
         #expect(dc.rotationTrack?.keyframes[0].value == 30)
         #expect(dc.cropTrack?.keyframes[0].value.left == 0.1)
         #expect(dc.volumeTrack?.keyframes[0].value == -6)
+    }
+
+    @Test func bakingLayoutCropPreservesStaticAndAnimatedEffectiveCrop() {
+        var clip = Fixtures.clip(start: 100, duration: 100)
+        clip.crop = Crop(left: 0.1, right: 0.1)
+        clip.cropTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: Crop(left: 0.2)),
+            Keyframe(frame: 99, value: Crop(right: 0.2)),
+        ])
+        clip.layoutCrop = Crop(top: 0.25, bottom: 0.25)
+        let beforeStart = clip.effectiveCropAt(frame: 100)
+        let beforeEnd = clip.effectiveCropAt(frame: 199)
+
+        clip.bakeLayoutCropIntoContent()
+
+        #expect(clip.layoutCrop == nil)
+        #expect(clip.effectiveCropAt(frame: 100) == beforeStart)
+        #expect(clip.effectiveCropAt(frame: 199) == beforeEnd)
     }
 
     @Test func clipLinkGroupAndTextContentSurviveRoundTrip() throws {

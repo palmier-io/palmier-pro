@@ -46,7 +46,7 @@ enum PreviewHitTester {
         let t = clip.transformAt(frame: frame)
         let rect = clipFrame(t, videoRect: videoRect)
         guard rect.width > 0, rect.height > 0 else { return false }
-        let crop = clip.cropAt(frame: frame)
+        let crop = clip.effectiveCropAt(frame: frame)
 
         // Move the point into the clip's unrotated local space (origin at clip center).
         let center = CGPoint(x: rect.midX, y: rect.midY)

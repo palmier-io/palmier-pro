@@ -66,11 +66,13 @@ struct ApplyLayoutTests {
         #expect(approx(right.transform.centerX, 0.75))
         let canvasAspect = 1920.0 / 1080.0
         for c in [left, right] {
-            #expect(approx(c.crop.left, 0.25))
-            #expect(approx(c.crop.right, 0.25))
+            let crop = c.effectiveCropAt(frame: c.startFrame)
+            #expect(c.crop.isIdentity)
+            #expect(approx(crop.left, 0.25))
+            #expect(approx(crop.right, 0.25))
             #expect(approx((c.transform.width / c.transform.height) * canvasAspect, 16.0 / 9.0, tol: 1e-3))
-            #expect(approx(c.transform.width * c.crop.visibleWidthFraction, 0.5))
-            #expect(approx(c.transform.height * c.crop.visibleHeightFraction, 1.0))
+            #expect(approx(c.transform.width * crop.visibleWidthFraction, 0.5))
+            #expect(approx(c.transform.height * crop.visibleHeightFraction, 1.0))
         }
     }
 
@@ -106,7 +108,8 @@ struct ApplyLayoutTests {
         #expect(r.isError == false)
         let canvasAspect = 1920.0 / 1080.0
         for c in h.editor.timeline.tracks.flatMap(\.clips) {
-            #expect(approx(c.crop.left, 0) && approx(c.crop.top, 0))
+            let crop = c.effectiveCropAt(frame: c.startFrame)
+            #expect(approx(crop.left, 0) && approx(crop.top, 0))
             #expect(approx((c.transform.width / c.transform.height) * canvasAspect, 16.0 / 9.0, tol: 1e-3))
             #expect(c.transform.height <= 0.5 + 1e-6)
         }
@@ -129,8 +132,9 @@ struct ApplyLayoutTests {
         let cell = 1.0 / Double(edge)
         for (index, id) in slotIDs.enumerated() {
             let clip = try #require(clips(h, mediaRef: id))
-            #expect(approx(clip.transform.width * clip.crop.visibleWidthFraction, cell))
-            #expect(approx(clip.transform.height * clip.crop.visibleHeightFraction, cell))
+            let crop = clip.effectiveCropAt(frame: clip.startFrame)
+            #expect(approx(clip.transform.width * crop.visibleWidthFraction, cell))
+            #expect(approx(clip.transform.height * crop.visibleHeightFraction, cell))
             #expect(approx(clip.transform.centerX, (Double(index % edge) + 0.5) * cell))
             #expect(approx(clip.transform.centerY, (Double(index / edge) + 0.5) * cell))
         }
@@ -176,6 +180,110 @@ struct ApplyLayoutTests {
         #expect(approx(clip(h, id: "ca")!.transform.centerX, 0.25))
         #expect(approx(clip(h, id: "cb")!.transform.centerX, 0.75))
         #expect(clip(h, id: "ca")!.startFrame == 0)
+    }
+
+    @Test func fillPreservesAuthoredCropAndReappliesWithoutAccumulation() async throws {
+        var left = Fixtures.clip(id: "ca", mediaRef: "a", start: 0, duration: 60)
+        left.crop = Crop(left: 0.125, right: 0.125)
+        let timeline = Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [left]),
+            Fixtures.videoTrack(clips: [Fixtures.clip(id: "cb", mediaRef: "b", start: 0, duration: 60)]),
+        ])
+        let h = ToolHarness(timeline: timeline)
+        videoAsset(h, id: "a"); videoAsset(h, id: "b")
+        let args: [String: Any] = [
+            "layout": "side_by_side",
+            "slots": [["slot": "left", "clipIds": ["ca"]], ["slot": "right", "clipIds": ["cb"]]],
+        ]
+
+        #expect((await h.runRaw("apply_layout", args: args)).isError == false)
+        let first = try #require(clip(h, id: "ca"))
+        let firstLayoutCrop = try #require(first.layoutCrop)
+        #expect(first.crop == left.crop)
+        #expect(first.effectiveCropAt(frame: 0).left > left.crop.left)
+
+        #expect((await h.runRaw("apply_layout", args: [
+            "layout": "top_bottom",
+            "slots": [["slot": "top", "clipIds": ["ca"]], ["slot": "bottom", "clipIds": ["cb"]]],
+        ])).isError == false)
+        #expect(clip(h, id: "ca")?.crop == left.crop)
+
+        #expect((await h.runRaw("apply_layout", args: args)).isError == false)
+        let second = try #require(clip(h, id: "ca"))
+        #expect(second.crop == left.crop)
+        #expect(second.layoutCrop == firstLayoutCrop)
+        #expect(second.transform == first.transform)
+    }
+
+    @Test func fitUsesAuthoredCropAsTheVisibleSource() async throws {
+        var left = Fixtures.clip(id: "ca", mediaRef: "a", start: 0, duration: 60)
+        left.crop = Crop(top: 0.25, bottom: 0.25)
+        let timeline = Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [left]),
+            Fixtures.videoTrack(clips: [Fixtures.clip(id: "cb", mediaRef: "b", start: 0, duration: 60)]),
+        ])
+        let h = ToolHarness(timeline: timeline)
+        videoAsset(h, id: "a"); videoAsset(h, id: "b")
+
+        let result = await h.runRaw("apply_layout", args: [
+            "layout": "side_by_side",
+            "fit": "fit",
+            "slots": [["slot": "left", "clipIds": ["ca"]], ["slot": "right", "clipIds": ["cb"]]],
+        ])
+
+        #expect(result.isError == false)
+        let placed = try #require(clip(h, id: "ca"))
+        #expect(placed.crop == left.crop)
+        #expect(placed.layoutCrop == nil)
+        #expect(placed.effectiveCropAt(frame: 0) == left.crop)
+        #expect(placed.transform.width * left.crop.visibleWidthFraction <= 0.5 + 1e-6)
+        #expect(placed.transform.height * left.crop.visibleHeightFraction <= 1 + 1e-6)
+    }
+
+    @Test func directCropEditBakesLayoutCropBeforeEditing() async throws {
+        let timeline = Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [Fixtures.clip(id: "ca", mediaRef: "a", start: 0, duration: 60)]),
+            Fixtures.videoTrack(clips: [Fixtures.clip(id: "cb", mediaRef: "b", start: 0, duration: 60)]),
+        ])
+        let h = ToolHarness(timeline: timeline)
+        videoAsset(h, id: "a"); videoAsset(h, id: "b")
+        #expect((await h.runRaw("apply_layout", args: [
+            "layout": "side_by_side",
+            "slots": [["slot": "left", "clipIds": ["ca"]], ["slot": "right", "clipIds": ["cb"]]],
+        ])).isError == false)
+        let laidOut = try #require(clip(h, id: "ca"))
+        let effective = laidOut.effectiveCropAt(frame: 0)
+
+        h.editor.commitCrop(clipId: "ca", newCrop: effective)
+
+        let edited = try #require(clip(h, id: "ca"))
+        #expect(edited.layoutCrop == nil)
+        #expect(edited.crop == effective)
+    }
+
+    @Test func undoRestoresAuthoredCropAndLayoutStateExactly() async throws {
+        var left = Fixtures.clip(id: "ca", mediaRef: "a", start: 0, duration: 60)
+        left.crop = Crop(left: 0.1, top: 0.1, right: 0.2, bottom: 0.1)
+        let timeline = Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [left]),
+            Fixtures.videoTrack(clips: [Fixtures.clip(id: "cb", mediaRef: "b", start: 0, duration: 60)]),
+        ])
+        let h = ToolHarness(timeline: timeline)
+        videoAsset(h, id: "a"); videoAsset(h, id: "b")
+        let undoManager = SpyUndoManager()
+        h.editor.undo.attach(undoManager)
+
+        let result = await h.runRaw("apply_layout", args: [
+            "layout": "side_by_side",
+            "slots": [["slot": "left", "clipIds": ["ca"]], ["slot": "right", "clipIds": ["cb"]]],
+        ])
+        #expect(result.isError == false)
+        #expect(clip(h, id: "ca")?.layoutCrop != nil)
+
+        undoManager.undo()
+
+        #expect(clip(h, id: "ca") == left)
+        #expect(undoManager.canUndo == false)
     }
 
     @Test func reLayoutsBatchOfClipsIntoOneSlot() async throws {
@@ -237,7 +345,7 @@ struct ApplyLayoutTests {
         #expect(dup.isError)
     }
 
-    @Test func reLayoutClearsAnimationTracks() async throws {
+    @Test func reLayoutRejectsAnimatedCropWithoutClearingTracks() async throws {
         var t = Fixtures.timeline(tracks: [
             Fixtures.videoTrack(clips: [Fixtures.clip(id: "ca", mediaRef: "a", start: 0, duration: 60)]),
             Fixtures.videoTrack(clips: [Fixtures.clip(id: "cb", mediaRef: "b", start: 0, duration: 60)]),
@@ -261,11 +369,12 @@ struct ApplyLayoutTests {
             "layout": "side_by_side",
             "slots": [["slot": "left", "clipIds": ["ca"]], ["slot": "right", "clipIds": ["cb"]]],
         ])
-        #expect(r.isError == false)
+        #expect(r.isError)
         let c = clip(h, id: "ca")!
-        #expect(c.positionTrack == nil && c.scaleTrack == nil && c.cropTrack == nil)
-        #expect(approx(c.transformAt(frame: 0).centerX, 0.25))
-        #expect(approx(c.transformAt(frame: 60).centerX, 0.25))
+        #expect(c.positionTrack?.isActive == true)
+        #expect(c.scaleTrack?.isActive == true)
+        #expect(c.cropTrack?.isActive == true)
+        #expect(approx(c.transform.centerX, 0.5))
     }
 
     @Test func reLayoutRejectsSameTrackOverlap() async throws {
@@ -312,11 +421,12 @@ struct ApplyLayoutTests {
         #expect(r.isError == false)
         #expect(h.editor.timeline.tracks.count == before)
         let c = clip(h, id: "c1")!
-        #expect(approx(c.transform.width * c.crop.visibleWidthFraction, 1.0))
-        #expect(approx(c.transform.height * c.crop.visibleHeightFraction, 1.0))
+        let crop = c.effectiveCropAt(frame: c.startFrame)
+        #expect(approx(c.transform.width * crop.visibleWidthFraction, 1.0))
+        #expect(approx(c.transform.height * crop.visibleHeightFraction, 1.0))
         #expect(approx((c.transform.width / c.transform.height) * (1080.0 / 1920.0), 16.0 / 9.0, tol: 1e-3))
-        #expect(approx(c.crop.top, 0))
-        #expect(approx(c.crop.left, (c.crop.left + c.crop.right) * 0.3))
+        #expect(approx(crop.top, 0))
+        #expect(approx(crop.left, (crop.left + crop.right) * 0.3))
     }
 
     @Test func threeStackFillsHorizontalRows() async throws {
@@ -337,8 +447,9 @@ struct ApplyLayoutTests {
         let bottom = clips(h, mediaRef: "c")!
         let third = 1.0 / 3.0
         for c in [top, middle, bottom] {
-            #expect(approx(c.transform.width * c.crop.visibleWidthFraction, 1.0))
-            #expect(approx(c.transform.height * c.crop.visibleHeightFraction, third))
+            let crop = c.effectiveCropAt(frame: c.startFrame)
+            #expect(approx(c.transform.width * crop.visibleWidthFraction, 1.0))
+            #expect(approx(c.transform.height * crop.visibleHeightFraction, third))
             #expect(approx(c.transform.centerX, 0.5))
         }
         #expect(approx(top.transform.centerY, third * 0.5))
@@ -376,8 +487,9 @@ struct ApplyLayoutTests {
         let third = 1.0 / 3.0
         for (index, child) in children.enumerated() {
             let clip = try #require(carriers.first { $0.mediaRef == child.id })
-            #expect(approx(clip.transform.width * clip.crop.visibleWidthFraction, 1.0))
-            #expect(approx(clip.transform.height * clip.crop.visibleHeightFraction, third))
+            let crop = clip.effectiveCropAt(frame: clip.startFrame)
+            #expect(approx(clip.transform.width * crop.visibleWidthFraction, 1.0))
+            #expect(approx(clip.transform.height * crop.visibleHeightFraction, third))
             #expect(approx(clip.transform.centerY, third * (Double(index) + 0.5)))
         }
     }
@@ -418,8 +530,9 @@ struct ApplyLayoutTests {
         for i in 0..<3 {
             let placed = try #require(clip(h, id: "seq-\(i)"))
             #expect(placed.mediaType == .sequence)
-            #expect(approx(placed.transform.width * placed.crop.visibleWidthFraction, 1.0))
-            #expect(approx(placed.transform.height * placed.crop.visibleHeightFraction, third))
+            let crop = placed.effectiveCropAt(frame: placed.startFrame)
+            #expect(approx(placed.transform.width * crop.visibleWidthFraction, 1.0))
+            #expect(approx(placed.transform.height * crop.visibleHeightFraction, third))
             #expect(approx(placed.transform.centerY, third * (Double(i) + 0.5)))
             #expect(placed.startFrame == 0 && placed.durationFrames == 60)
         }
@@ -455,12 +568,15 @@ struct ApplyLayoutTests {
         ])
         #expect(r.isError == false)
         let center = clips(h, mediaRef: "c")!, partial = clips(h, mediaRef: "p")!, top = clips(h, mediaRef: "t")!
-        let total = center.crop.top + center.crop.bottom
+        let centerCrop = center.effectiveCropAt(frame: center.startFrame)
+        let partialCrop = partial.effectiveCropAt(frame: partial.startFrame)
+        let topCrop = top.effectiveCropAt(frame: top.startFrame)
+        let total = centerCrop.top + centerCrop.bottom
         #expect(total > 0.01)
-        #expect(approx(partial.crop.top, total * 0.2))
-        #expect(approx(top.crop.top, 0))
-        #expect(top.crop.top < partial.crop.top && partial.crop.top < center.crop.top)
-        #expect(approx(center.crop.top, center.crop.bottom))
+        #expect(approx(partialCrop.top, total * 0.2))
+        #expect(approx(topCrop.top, 0))
+        #expect(topCrop.top < partialCrop.top && partialCrop.top < centerCrop.top)
+        #expect(approx(centerCrop.top, centerCrop.bottom))
         #expect(approx(top.transform.topLeft.y, 0))
     }
 

@@ -179,6 +179,7 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var opacity: Double = 1.0
     var transform: Transform = Transform()
     var crop: Crop = Crop()
+    var layoutCrop: Crop?
     var edgeRounding: Double = 0
     var edgeSoftness: Double = 0
     var linkGroupId: String?
@@ -209,7 +210,7 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         case id, mediaRef, mediaType, sourceClipType, startFrame, durationFrames
         case trimStartFrame, trimEndFrame, speed, volume
         case fadeInFrames, fadeOutFrames, fadeInInterpolation, fadeOutInterpolation
-        case opacity, transform, crop, edgeRounding, edgeSoftness
+        case opacity, transform, crop, layoutCrop, edgeRounding, edgeSoftness
         case linkGroupId, captionGroupId, multicamGroupId, textContent, textStyle, textAnimation, wordTimings
         case textFillMode
         case opacityTrack, positionTrack, scaleTrack, rotationTrack, cropTrack, volumeTrack
@@ -308,6 +309,22 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
 
     func cropAt(frame: Int) -> Crop {
         cropTrack?.sample(at: keyframeOffset(forFrame: frame), fallback: crop) ?? crop
+    }
+
+    func effectiveCropAt(frame: Int) -> Crop {
+        cropAt(frame: frame).composed(with: layoutCrop ?? Crop())
+    }
+
+    mutating func bakeLayoutCropIntoContent() {
+        guard let layoutCrop else { return }
+        crop = crop.composed(with: layoutCrop)
+        if var cropTrack {
+            for index in cropTrack.keyframes.indices {
+                cropTrack.keyframes[index].value = cropTrack.keyframes[index].value.composed(with: layoutCrop)
+            }
+            self.cropTrack = cropTrack
+        }
+        self.layoutCrop = nil
     }
 
     func liveVolumeKfDb(at frame: Int) -> Double? {
@@ -521,6 +538,7 @@ extension Clip {
             opacity: (try? c.decode(Double.self, forKey: .opacity)) ?? 1.0,
             transform: (try? c.decode(Transform.self, forKey: .transform)) ?? Transform(),
             crop: (try? c.decode(Crop.self, forKey: .crop)) ?? Crop(),
+            layoutCrop: try? c.decode(Crop.self, forKey: .layoutCrop),
             edgeRounding: normalizedValue(forKey: .edgeRounding),
             edgeSoftness: normalizedValue(forKey: .edgeSoftness),
             linkGroupId: try? c.decode(String.self, forKey: .linkGroupId),
@@ -706,6 +724,17 @@ struct Crop: Codable, Sendable, Equatable {
     var isIdentity: Bool { left == 0 && top == 0 && right == 0 && bottom == 0 }
     var visibleWidthFraction: Double { max(0, 1 - left - right) }
     var visibleHeightFraction: Double { max(0, 1 - top - bottom) }
+
+    func composed(with crop: Crop) -> Crop {
+        let width = visibleWidthFraction
+        let height = visibleHeightFraction
+        return Crop(
+            left: left + crop.left * width,
+            top: top + crop.top * height,
+            right: right + crop.right * width,
+            bottom: bottom + crop.bottom * height
+        )
+    }
 
     mutating func setInset(_ value: Double, edge: Edge) {
         guard value.isFinite else { return }

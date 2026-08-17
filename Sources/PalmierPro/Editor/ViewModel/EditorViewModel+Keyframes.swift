@@ -151,6 +151,7 @@ extension EditorViewModel {
             case .rotation:
                 clip.upsertKeyframe(in: \.rotationTrack, frame: f, value: clip.rotationAt(frame: f))
             case .crop:
+                clip.bakeLayoutCropIntoContent()
                 clip.upsertKeyframe(in: \.cropTrack, frame: f, value: clip.cropAt(frame: f))
             case .blur:
                 clip.upsertBlurKeyframe(frame: f, value: clip.blurRadius(at: f))
@@ -431,6 +432,7 @@ extension EditorViewModel {
     }
 
     private func writeCrop(into clip: inout Clip, newCrop: Crop) {
+        clip.bakeLayoutCropIntoContent()
         if clip.cropTrack?.isActive == true {
             guard clip.contains(timelineFrame: activeFrame) else { return }
             clip.upsertKeyframe(in: \.cropTrack, frame: activeFrame, value: newCrop)

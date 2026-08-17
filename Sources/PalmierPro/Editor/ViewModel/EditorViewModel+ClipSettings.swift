@@ -144,6 +144,7 @@ extension EditorViewModel {
             result.opacity = source.opacity
             result.transform = source.transform
             result.crop = source.crop
+            result.layoutCrop = source.layoutCrop
             result.edgeRounding = source.edgeRounding
             result.edgeSoftness = source.edgeSoftness
             result.blendMode = source.blendMode

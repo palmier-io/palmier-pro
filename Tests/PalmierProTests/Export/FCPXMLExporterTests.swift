@@ -586,6 +586,19 @@ struct FCPXMLExporterTests {
         #expect(xml.contains("<trim-rect top=\"5\" right=\"10\" bottom=\"5\" left=\"20\"/>"))
     }
 
+    @Test func fcpTargetExportsComposedContentAndLayoutCrop() throws {
+        let entry = videoEntry(id: "media-v", in: NSTemporaryDirectory(), sourceWidth: 1280, sourceHeight: 720)
+        let (resolver, _) = try makeResolver(entries: [entry])
+        var clip = Fixtures.clip(id: "clip-1", mediaRef: "media-v", start: 0, duration: 60)
+        clip.crop = Crop(left: 0.1, right: 0.1)
+        clip.layoutCrop = Crop(left: 0.25, right: 0.25)
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
+
+        let xml = FCPXMLExporter.render(timeline: timeline, resolver: resolver, target: .fcp)
+
+        #expect(xml.contains("<trim-rect top=\"0\" right=\"30\" bottom=\"0\" left=\"30\"/>"))
+    }
+
     @Test func positionKeyframesExportAsParamAnimation() async throws {
         let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "media-v", in: NSTemporaryDirectory())])
         var clip = Fixtures.clip(id: "clip-1", mediaRef: "media-v", start: 0, duration: 60)

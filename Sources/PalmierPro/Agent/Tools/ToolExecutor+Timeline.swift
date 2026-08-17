@@ -49,7 +49,29 @@ extension ToolExecutor {
     static var canGenerate: Bool { AccountService.shared.isSignedIn && AccountService.shared.hasCredits }
 
     static func rawTimelineDict(_ timeline: Timeline) -> [String: Any]? {
-        try? JSONSerialization.jsonObject(with: JSONEncoder().encode(timeline)) as? [String: Any]
+        guard var result = try? JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(timeline)
+        ) as? [String: Any],
+        let tracks = result["tracks"] as? [[String: Any]] else {
+            return nil
+        }
+        result["tracks"] = tracks.enumerated().map { trackIndex, rawTrack in
+            guard timeline.tracks.indices.contains(trackIndex),
+                  var clips = rawTrack["clips"] as? [[String: Any]] else {
+                return rawTrack
+            }
+            let clipsById = Dictionary(
+                uniqueKeysWithValues: timeline.tracks[trackIndex].clips.map { ($0.id, $0) }
+            )
+            clips = clips.map { raw in
+                guard let id = raw["id"] as? String, let clip = clipsById[id] else { return raw }
+                return cropReadbackDict(raw, clip: clip)
+            }
+            var track = rawTrack
+            track["clips"] = clips
+            return track
+        }
+        return result
     }
 
     static func focusedRawTracks(
@@ -85,7 +107,25 @@ extension ToolExecutor {
     }
 
     private static func rawClipDict(_ clip: Clip) -> [String: Any]? {
-        try? JSONSerialization.jsonObject(with: JSONEncoder().encode(clip)) as? [String: Any]
+        guard let raw = try? JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(clip)
+        ) as? [String: Any] else {
+            return nil
+        }
+        return cropReadbackDict(raw, clip: clip)
+    }
+
+    private static func cropReadbackDict(_ raw: [String: Any], clip: Clip) -> [String: Any] {
+        guard clip.layoutCrop != nil,
+              let effective = try? JSONSerialization.jsonObject(
+                with: JSONEncoder().encode(clip.effectiveCropAt(frame: clip.startFrame))
+              ) as? [String: Any] else {
+            return raw
+        }
+        var result = raw
+        result["contentCrop"] = raw["crop"]
+        result["crop"] = effective
+        return result
     }
 
     static func timelineMarkerDict(_ marker: TimelineMarker) -> [String: Any] {

@@ -284,7 +284,7 @@ enum FrameRenderer {
         let clip = layer.clip
         var image = input
 
-        let crop = clip.cropAt(frame: frame)
+        let crop = clip.effectiveCropAt(frame: frame)
         if !crop.isIdentity {
             // Display-space insets → source pixels → CI's bottom-left origin.
             let avRect = CGRect(

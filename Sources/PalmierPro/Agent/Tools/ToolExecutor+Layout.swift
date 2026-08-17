@@ -123,6 +123,12 @@ extension ToolExecutor {
                     guard clip.mediaType == .video || clip.mediaType == .image || clip.mediaType == .sequence else {
                         throw ToolError("slot '\(e.slot.id)': clip \(cid) is \(clip.mediaType.rawValue); layout applies to video, image, and nested timeline clips.")
                     }
+                    guard clip.cropTrack?.isActive != true else {
+                        throw ToolError(
+                            "slot '\(e.slot.id)': clip \(cid) has animated crop keyframes. "
+                                + "Convert the crop to a static crop before applying a layout."
+                        )
+                    }
                     let trackId = editor.timeline.tracks[loc.trackIndex].id
                     let start = clip.startFrame, end = clip.startFrame + clip.durationFrames
                     for other in rangesByTrack[trackId] ?? [] where other.slot != e.slot.id && start < other.end && other.start < end {
@@ -171,11 +177,10 @@ extension ToolExecutor {
                     guard let clip = editor.clipFor(id: cid), let loc = editor.findClip(id: cid) else { continue }
                     let p = editor.layoutPlacement(for: clip, in: e.slot.rect, fit: fit, anchorX: e.anchor.x, anchorY: e.anchor.y)
                     editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].transform = p.transform
-                    editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].crop = p.crop
+                    editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].layoutCrop = p.crop.isIdentity ? nil : p.crop
                     editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].positionTrack = nil
                     editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].scaleTrack = nil
                     editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].rotationTrack = nil
-                    editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].cropTrack = nil
                 }
             }
             slots = clipsBySlot

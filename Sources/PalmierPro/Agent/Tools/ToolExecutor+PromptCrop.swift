@@ -4,7 +4,7 @@ import CoreText
 import Foundation
 
 private struct CropToSubjectInput: DecodableToolArgs {
-    struct Bounds: DecodableToolArgs {
+    struct Bounds: DecodableToolArgs, Sendable {
         let left: Double
         let top: Double
         let right: Double
@@ -30,6 +30,7 @@ extension ToolExecutor {
         _ editor: EditorViewModel,
         _ args: [String: Any]
     ) async throws -> ToolResult {
+        try Task.checkCancellation()
         if let rawBounds = args["bounds"] {
             guard let bounds = rawBounds as? [String: Any] else {
                 throw ToolError("crop_to_subject.bounds: expected object")
@@ -67,7 +68,7 @@ extension ToolExecutor {
         let crop = try input.bounds.map(Self.crop(from:))
         let originalTimelineId = editor.activeTimelineId
         let media = try asset(originalClip.mediaRef, editor: editor, label: "Clip source")
-        guard let url = editor.mediaResolver.resolveURL(for: originalClip.mediaRef) else {
+        guard let url = editor.mediaResolver.expectedURL(for: originalClip.mediaRef) else {
             throw ToolError("Could not resolve a source URL for clip \(input.clipId).")
         }
 
@@ -75,82 +76,112 @@ extension ToolExecutor {
             Double(originalClip.trimStartFrame)
                 + Double(atFrame - originalClip.startFrame) * originalClip.speed
         ) / Double(max(1, editor.timeline.fps))
-        let sourceFrame = try await PromptCropRenderer.sourceFrame(
+        let rendered = try await PromptCropRenderer.render(
             url: url,
             type: media.type,
-            sourceSeconds: sourceSeconds
+            sourceSeconds: sourceSeconds,
+            bounds: input.bounds,
+            quality: Self.cropPreviewJPEGQuality
         )
         try Task.checkCancellation()
 
-        guard editor.activeTimelineId == originalTimelineId,
-              editor.clipFor(id: input.clipId) == originalClip else {
+        guard self.editor === editor,
+              editor.activeTimelineId == originalTimelineId,
+              editor.clipFor(id: input.clipId) == originalClip,
+              editor.mediaResolver.expectedURL(for: originalClip.mediaRef) == url,
+              projectFocusError() == nil else {
             throw ToolError("Clip \(input.clipId) changed while the crop preview was rendering. Retry.")
         }
 
-        guard let gridded = PromptCropRenderer.drawGrid(on: sourceFrame, selection: input.bounds),
-              let griddedJPEG = ImageEncoder.encodeJPEG(
-                gridded,
-                quality: Self.cropPreviewJPEGQuality
-              ) else {
-            throw ToolError("Failed to render the crop guide.")
-        }
-
         var blocks: [ToolResult.Block] = [
-            .image(base64: griddedJPEG.base64EncodedString(), mediaType: "image/jpeg"),
+            .image(base64: rendered.contextJPEG.base64EncodedString(), mediaType: "image/jpeg"),
         ]
-        if let crop,
-           let preview = PromptCropRenderer.crop(sourceFrame, to: crop),
-           let previewJPEG = ImageEncoder.encodeJPEG(
-               preview,
-               quality: Self.cropPreviewJPEGQuality
-           ) {
+        if let refinementJPEG = rendered.refinementJPEG {
+            blocks.append(.image(base64: refinementJPEG.base64EncodedString(), mediaType: "image/jpeg"))
+        }
+        if let previewJPEG = rendered.previewJPEG {
             blocks.append(.image(base64: previewJPEG.base64EncodedString(), mediaType: "image/jpeg"))
-        } else if crop != nil {
-            throw ToolError("Failed to render the proposed crop.")
         }
 
         let status: String
         var changed = false
         if let crop, input.apply == true {
-            editor.undo.perform("Crop to Subject (Agent)") {
-                editor.commitClipProperty(
-                    clipId: input.clipId,
-                    actionName: "Crop to Subject (Agent)"
-                ) {
-                    $0.crop = crop
-                    $0.cropTrack = nil
+            let unchanged = originalClip.crop == crop
+                && originalClip.cropTrack?.isActive != true
+                && originalClip.layoutCrop == nil
+            if unchanged {
+                status = "unchanged"
+            } else {
+                try Task.checkCancellation()
+                guard self.editor === editor,
+                      editor.activeTimelineId == originalTimelineId,
+                      editor.clipFor(id: input.clipId) == originalClip,
+                      editor.mediaResolver.expectedURL(for: originalClip.mediaRef) == url,
+                      projectFocusError() == nil else {
+                    throw ToolError("Clip \(input.clipId) changed before the crop could be applied. Retry.")
                 }
+                try editor.projectPackageCoordinator.beginMutation()
+                defer { editor.projectPackageCoordinator.endMutation() }
+                try editor.undo.perform("Crop to Subject (Agent)") {
+                    try Task.checkCancellation()
+                    editor.commitClipProperty(
+                        clipId: input.clipId,
+                        actionName: "Crop to Subject (Agent)"
+                    ) {
+                        $0.crop = crop
+                        $0.layoutCrop = nil
+                        $0.cropTrack = nil
+                    }
+                }
+                changed = true
+                status = "applied"
             }
-            changed = editor.clipFor(id: input.clipId) != originalClip
-            status = changed ? "applied" : "unchanged"
         } else {
             status = crop == nil ? "needsBounds" : "preview"
         }
 
+        let imageRoles = input.bounds == nil
+            ? ["fullGrid"]
+            : ["fullContext", "refinementGrid", "cropPreview"]
+        let gridBounds = input.bounds ?? CropToSubjectInput.Bounds(
+            left: 0,
+            top: 0,
+            right: 1,
+            bottom: 1
+        )
         var payload: [String: Any] = [
             "status": status,
             "clipId": input.clipId,
             "prompt": prompt,
             "atFrame": atFrame,
-            "sourceWidth": sourceFrame.width,
-            "sourceHeight": sourceFrame.height,
+            "sourceWidth": rendered.sourceWidth,
+            "sourceHeight": rendered.sourceHeight,
+            "imageRoles": imageRoles,
             "grid": [
                 "columns": "A-J",
                 "rows": "1-10",
                 "origin": "top-left",
                 "coordinates": "normalized 0-1 source coordinates",
+                "scope": input.bounds == nil ? "full" : "refinement",
+                "focusBounds": Self.boundsJSON(gridBounds),
+                "xEdges": Self.gridEdges(from: gridBounds.left, to: gridBounds.right),
+                "yEdges": Self.gridEdges(from: gridBounds.top, to: gridBounds.bottom),
             ],
             "currentBounds": Self.boundsJSON(originalClip.cropAt(frame: atFrame)),
         ]
+        if let actualSourceSeconds = rendered.actualSourceSeconds {
+            payload["actualSourceSeconds"] = actualSourceSeconds
+        }
         if let crop {
             payload["proposedBounds"] = Self.boundsJSON(crop)
+            payload["refinementRegion"] = Self.boundsJSON(crop)
             payload["crop"] = Self.cropJSON(crop)
             payload["changed"] = changed
         } else {
             payload["next"] = "Return approximate bounds for the prompted subject, then call again with bounds to preview."
         }
         if crop != nil, input.apply != true {
-            payload["next"] = "Inspect both images. Refine bounds with another preview call, or set apply=true to commit one undoable crop."
+            payload["next"] = "Inspect the full context, refinement grid, and clean preview. Use grid.xEdges and grid.yEdges to submit tighter absolute bounds, or set apply=true to commit."
         }
         if input.apply == true {
             payload["clearedCropKeyframes"] = originalClip.cropTrack?.isActive == true
@@ -216,6 +247,19 @@ extension ToolExecutor {
         ]
     }
 
+    private static func boundsJSON(_ bounds: CropToSubjectInput.Bounds) -> [String: Double] {
+        [
+            "left": bounds.left,
+            "top": bounds.top,
+            "right": bounds.right,
+            "bottom": bounds.bottom,
+        ]
+    }
+
+    private static func gridEdges(from start: Double, to end: Double) -> [Double] {
+        (0...10).map { start + (end - start) * Double($0) / 10 }
+    }
+
     private static func cropJSON(_ crop: Crop) -> [String: Double] {
         [
             "left": crop.left,
@@ -226,16 +270,79 @@ extension ToolExecutor {
     }
 }
 
+private struct PromptCropRenderResult: Sendable {
+    let contextJPEG: Data
+    let refinementJPEG: Data?
+    let previewJPEG: Data?
+    let sourceWidth: Int
+    let sourceHeight: Int
+    let actualSourceSeconds: Double?
+}
+
+private struct PromptCropSourceFrame: Sendable {
+    let image: CGImage
+    let actualSourceSeconds: Double?
+}
+
 private enum PromptCropRenderer {
     private static let maximumDimension = 1_024
     private static let gridDivisions = 10
+    private static let renderGate = AsyncSemaphore(value: 2)
+    private static let imageContext = CIContext(options: [.cacheIntermediates: false])
 
     @concurrent
-    static func sourceFrame(
+    static func render(
+        url: URL,
+        type: ClipType,
+        sourceSeconds: Double,
+        bounds: CropToSubjectInput.Bounds?,
+        quality: CGFloat
+    ) async throws -> PromptCropRenderResult {
+        try await renderGate.wait()
+        defer { Task { await renderGate.signal() } }
+        try Task.checkCancellation()
+
+        let source = try await sourceFrame(url: url, type: type, sourceSeconds: sourceSeconds)
+        try Task.checkCancellation()
+        guard let contextImage = drawGrid(on: source.image, selection: bounds),
+              let contextJPEG = ImageEncoder.encodeJPEG(contextImage, quality: quality) else {
+            throw ToolError("Failed to render the crop guide.")
+        }
+
+        var refinementJPEG: Data?
+        var previewJPEG: Data?
+        if let bounds {
+            let proposedCrop = Crop(
+                left: bounds.left,
+                top: bounds.top,
+                right: 1 - bounds.right,
+                bottom: 1 - bounds.bottom
+            )
+            guard let preview = crop(source.image, to: proposedCrop),
+                  let refinement = drawGrid(on: preview, selection: nil),
+                  let encodedRefinement = ImageEncoder.encodeJPEG(refinement, quality: quality),
+                  let encodedPreview = ImageEncoder.encodeJPEG(preview, quality: quality) else {
+                throw ToolError("Failed to render the proposed crop.")
+            }
+            refinementJPEG = encodedRefinement
+            previewJPEG = encodedPreview
+        }
+        try Task.checkCancellation()
+        return PromptCropRenderResult(
+            contextJPEG: contextJPEG,
+            refinementJPEG: refinementJPEG,
+            previewJPEG: previewJPEG,
+            sourceWidth: source.image.width,
+            sourceHeight: source.image.height,
+            actualSourceSeconds: source.actualSourceSeconds
+        )
+    }
+
+    private static func sourceFrame(
         url: URL,
         type: ClipType,
         sourceSeconds: Double
-    ) async throws -> CGImage {
+    ) async throws -> PromptCropSourceFrame {
         if type == .image {
             guard let image = ImageEncoder.thumbnail(
                 url: url,
@@ -243,14 +350,20 @@ private enum PromptCropRenderer {
             ) else {
                 throw ToolError("Could not decode the source image.")
             }
-            return image
+            return PromptCropSourceFrame(image: image, actualSourceSeconds: nil)
         }
         do {
-            return try await FrameCaptureRenderer.sourcePreview(
+            let preview = try await FrameCaptureRenderer.sourcePreview(
                 url: url,
                 sourceSeconds: sourceSeconds,
                 maximumDimension: CGFloat(maximumDimension)
-            ).image
+            )
+            return PromptCropSourceFrame(
+                image: preview.image,
+                actualSourceSeconds: preview.actualSourceSeconds
+            )
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             throw ToolError("Could not decode the source video frame: \(error.localizedDescription)")
         }
@@ -317,7 +430,7 @@ private enum PromptCropRenderer {
             height: CGFloat(crop.visibleHeightFraction) * extent.height
         ).integral
         guard cropRect.width >= 1, cropRect.height >= 1 else { return nil }
-        return CIContext(options: [.cacheIntermediates: false]).createCGImage(
+        return imageContext.createCGImage(
             input.cropped(to: cropRect),
             from: cropRect
         )

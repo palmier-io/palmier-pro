@@ -139,7 +139,7 @@ struct KeyframePropertyValueFields: View {
     @ViewBuilder
     private var cropEditor: some View {
         if let clip = clips.first {
-            let crop = clip.cropAt(frame: editor.activeFrame)
+            let crop = clip.effectiveCropAt(frame: editor.activeFrame)
             VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
                 if editor.cropAspectLock == .free {
                     cropField(L10n.string("Left"), crop: crop, edge: .left)
@@ -343,7 +343,7 @@ struct KeyframePropertyValueFields: View {
               let clipId = clipIds.first,
               let clip = editor.clipFor(id: clipId) else { return }
         let frame = interactionFrame ?? editor.activeFrame
-        var crop = clip.cropAt(frame: frame)
+        var crop = clip.effectiveCropAt(frame: frame)
         crop.setInset(value, edge: edge)
         if commit {
             editor.commitCrop(clipId: clipId, newCrop: crop)
