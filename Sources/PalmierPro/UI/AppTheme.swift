@@ -14,19 +14,19 @@ enum AppTheme {
     enum Background {
         static let base = AppTheme.adaptive(
             light: NSColor(red: 241/255, green: 240/255, blue: 237/255, alpha: 1),
-            dark: NSColor(red: 20/255, green: 21/255, blue: 24/255, alpha: 1)
+            dark: NSColor(red: 24/255, green: 25/255, blue: 28/255, alpha: 1)
         )
         static let surface = AppTheme.adaptive(
             light: NSColor(red: 245/255, green: 244/255, blue: 241/255, alpha: 1),
-            dark: NSColor(red: 26/255, green: 27/255, blue: 31/255, alpha: 1)
+            dark: NSColor(red: 30/255, green: 31/255, blue: 35/255, alpha: 1)
         )
         static let raised = AppTheme.adaptive(
             light: NSColor(red: 249/255, green: 248/255, blue: 245/255, alpha: 1),
-            dark: NSColor(red: 34/255, green: 35/255, blue: 40/255, alpha: 1)
+            dark: NSColor(red: 38/255, green: 39/255, blue: 44/255, alpha: 1)
         )
         static let prominent = AppTheme.adaptive(
             light: NSColor(red: 252/255, green: 251/255, blue: 248/255, alpha: 1),
-            dark: NSColor(red: 44/255, green: 45/255, blue: 51/255, alpha: 1)
+            dark: NSColor(red: 48/255, green: 49/255, blue: 55/255, alpha: 1)
         )
 
         /// Alias — empty media slot is a raised plate.
