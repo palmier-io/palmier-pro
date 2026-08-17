@@ -7,7 +7,7 @@ import Testing
 struct TimelineMarkerTests {
     @Test func markersPersistWithoutChangingContentDuration() throws {
         var timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [Fixtures.clip(start: 0, duration: 30)])])
-        timeline.markers = [TimelineMarker(name: "Review", startFrame: 40, durationFrames: 10, color: .init(r: 1, g: 0, b: 0), comment: "Tighten")]
+        timeline.markers = [TimelineMarker(name: "Review", startFrame: 40, durationFrames: 10, color: .init(r: 1, g: 0, b: 0), comment: "Tighten", status: .review)]
         let file = ProjectFile(timelines: [timeline])
         let decoded = try JSONDecoder().decode(ProjectFile.self, from: JSONEncoder().encode(file))
         #expect(decoded.timelines[0].markers == timeline.markers)
@@ -50,6 +50,21 @@ struct TimelineMarkerTests {
         #expect(editor.timelineMarkerSnapFrames(
             excludingMarkerIds: [created.id]
         ).isEmpty)
+    }
+    @Test func markerStatusChangesUndo() throws {
+        let editor = EditorViewModel()
+        let undo = UndoManager()
+        editor.undo.attach(undo)
+        editor.timeline.markers = [TimelineMarker(id: "marker", name: "Review", startFrame: 12)]
+        var marker = editor.timeline.markers[0]
+        marker.status = .review
+        _ = try editor.changeTimelineMarkers(
+            updates: [marker],
+            actionName: "Change Marker Status"
+        )
+        #expect(editor.timeline.markers[0].status == .review)
+        undo.undo()
+        #expect(editor.timeline.markers[0].status == .open)
     }
     @Test func defaultMarkerNamesUseNextNumber() {
         let editor = EditorViewModel()

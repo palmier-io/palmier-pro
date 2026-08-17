@@ -1,6 +1,12 @@
 import Foundation
 
 struct TimelineMarker: Codable, Sendable, Equatable, Hashable, Identifiable {
+    enum Status: String, Codable, Sendable, CaseIterable {
+        case open
+        case review
+        case resolved
+    }
+
     static let maximumNameLength = 120
     static let maximumCommentLength = 4_000
     static let defaultColor = TextStyle.RGBA(r: 0, g: 0.478, b: 1, a: 1)
@@ -11,6 +17,7 @@ struct TimelineMarker: Codable, Sendable, Equatable, Hashable, Identifiable {
     var durationFrames: Int = 0
     var color: TextStyle.RGBA = defaultColor
     var comment: String = ""
+    var status: Status = .open
 
     var endFrame: Int { startFrame + durationFrames }
     var isRange: Bool { durationFrames > 0 }
