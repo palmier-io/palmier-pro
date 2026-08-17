@@ -6,7 +6,7 @@ struct MarkerEditorPopover: View {
     let onPreview: (TimelineMarker) -> Void
     let onDismiss: () -> Void
     @State private var draft: TimelineMarker
-    @FocusState private var notesFocused: Bool
+    @FocusState private var commentsFocused: Bool
     init(
         marker: TimelineMarker,
         fps: Int,
@@ -37,44 +37,23 @@ struct MarkerEditorPopover: View {
                         .gridCellColumns(3)
                 }
                 GridRow {
-                    fieldLabel(L10n.string("Notes"))
-                    TextField(String(), text: $draft.comment, axis: .vertical)
+                    fieldLabel(L10n.string("Comments"))
+                    TextField(L10n.string("Add a comment"), text: $draft.comment, axis: .vertical)
                         .textFieldStyle(.plain)
-                        .focused($notesFocused)
+                        .focused($commentsFocused)
                         .font(.system(size: AppTheme.FontSize.sm))
                         .lineLimit(3, reservesSpace: true)
-                        .frame(height: AppTheme.TimelineMarker.notesHeight)
+                        .frame(height: AppTheme.TimelineMarker.commentsHeight)
                         .padding(.horizontal, AppTheme.Spacing.sm)
                         .editorValueField(
-                            minHeight: AppTheme.TimelineMarker.notesHeight,
+                            minHeight: AppTheme.TimelineMarker.commentsHeight,
                             fill: AppTheme.Background.raisedColor
                         )
                         .gridCellColumns(3)
                 }
                 GridRow {
                     fieldLabel(L10n.string("Color"))
-                    HStack(spacing: AppTheme.Spacing.xxs) {
-                        ForEach(Array(AppTheme.TimelineMarker.presetColors.enumerated()), id: \.offset) { _, preset in
-                            Button {
-                                draft.color = preset
-                                onPreview(draft)
-                            } label: {
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: AppTheme.Radius.xs)
-                                        .stroke(
-                                            draft.color == preset ? AppTheme.Text.primaryColor : .clear,
-                                            lineWidth: AppTheme.BorderWidth.medium
-                                        )
-                                    TimelineMarkerShape()
-                                        .fill(preset.swiftUIColor)
-                                        .padding(AppTheme.Spacing.xxs)
-                                }
-                                .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(Text(verbatim: preset.hexString))
-                        }
-                    }
+                    MarkerColorPicker(selection: draft.color) { draft.color = $0; onPreview(draft) }
                     .gridCellColumns(3)
                 }
             }
@@ -92,7 +71,7 @@ struct MarkerEditorPopover: View {
         }
         .padding(AppTheme.Spacing.md)
         .frame(width: AppTheme.TimelineMarker.editorWidth)
-        .task { notesFocused = true }
+        .task { commentsFocused = true }
     }
     private func fieldLabel(_ label: String) -> some View {
         Text(label)
