@@ -49,6 +49,13 @@ final class VideoEngine {
     private var clipNaturalSizes: [String: CGSize] = [:]
     private var clipTransforms: [String: CGAffineTransform] = [:]
     private var compositionDuration: CMTime = .zero
+    private var timelinePreviewTimelineId: String?
+    private static let frameImageGate = AsyncSemaphore(value: 2)
+    /// Composition snapshots are immutable after publication; each request owns its generator.
+    private struct FrameImageSource: @unchecked Sendable {
+        let asset: AVAsset
+        let videoComposition: AVVideoComposition?
+    }
 
     private var pendingInteractiveSeek: (time: CMTime, tolerance: CMTime)?
     private var interactiveThrottleTask: Task<Void, Never>?
@@ -66,6 +73,7 @@ final class VideoEngine {
         invalidateRebuild()
         cancelSourcePreviewLoad()
         compositionCache.removeAll()
+        timelinePreviewTimelineId = nil
         invalidateSeekState()
         scrubAudioEngine.teardown()
         if let timeObserver { player.removeTimeObserver(timeObserver) }
@@ -218,6 +226,7 @@ final class VideoEngine {
         sourceTrackStart = .zero
         invalidateSeekState()
         pause()
+        timelinePreviewTimelineId = nil
 
         switch tab {
         case .timeline:
@@ -413,6 +422,8 @@ final class VideoEngine {
         let item = AVPlayerItem(asset: result.composition)
         item.audioMix = appliedVisuals.audioMix
         item.videoComposition = appliedVisuals.videoComposition
+        timelinePreviewTimelineId = editor.timeline.id
+        editor.timelineCompositionGeneration &+= 1
         replacePlayerItem(item, reason: "rebuild")
 
         seek(to: editor.currentFrame, mode: .exact)
@@ -439,6 +450,8 @@ final class VideoEngine {
         )
         currentItem.audioMix = audioMix
         currentItem.videoComposition = videoComposition
+        timelinePreviewTimelineId = editor.timeline.id
+        editor.timelineCompositionGeneration &+= 1
         scrubAudioEngine.configure(asset: currentItem.asset, audioMix: audioMix, resetMeter: false)
         switch Self.visualRefreshAction(isPlaying: editor.isPlaying, playbackRate: editor.playbackRate) {
         case .meterPlayback:
@@ -452,18 +465,59 @@ final class VideoEngine {
 
     // MARK: - Scopes
 
+    func timelineThumbnail(timelineId: String, frame: Int, maximumSize: CGSize) async -> CGImage? {
+        guard timelinePreviewTimelineId == timelineId,
+              let item = player.currentItem,
+              let editor,
+              editor.activePreviewTab == .timeline,
+              editor.timeline.id == timelineId,
+              frame >= 0,
+              let time = playerTime(forPreviewFrame: frame) else { return nil }
+        return await frameImage(item: item, time: time, maximumSize: maximumSize)
+    }
+
+    private func frameImage(item: AVPlayerItem, time: CMTime, maximumSize: CGSize? = nil) async
+        -> CGImage? {
+        guard let _ = try? await Self.frameImageGate.wait() else { return nil }
+        defer { Task { await Self.frameImageGate.signal() } }
+        guard !Task.isCancelled,
+              (try? await item.asset.loadTracks(withMediaType: .video).first) != nil else {
+            return nil
+        }
+        return await Self.generateFrameImage(
+            source: FrameImageSource(
+                asset: item.asset,
+                videoComposition: item.videoComposition
+            ),
+            time: time,
+            maximumSize: maximumSize
+        )
+    }
+
+    @concurrent
+    private static func generateFrameImage(
+        source: FrameImageSource,
+        time: CMTime,
+        maximumSize: CGSize?
+    ) async -> CGImage? {
+        guard !Task.isCancelled else { return nil }
+        let generator = AVAssetImageGenerator(asset: source.asset)
+        generator.videoComposition = source.videoComposition
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        if let maximumSize { generator.maximumSize = maximumSize }
+        guard let image = try? await generator.image(at: time).image,
+              !Task.isCancelled else { return nil }
+        return image
+    }
+
     /// Luma + per-channel histogram of the current composited frame (downsampled), normalized 0…1.
     func histogramYRGB(frame: Int? = nil, count: Int = 256) async
         -> (y: [Float], r: [Float], g: [Float], b: [Float])? {
-        guard let item = player.currentItem,
-              (try? await item.asset.loadTracks(withMediaType: .video).first) != nil else { return nil }
+        guard let item = player.currentItem else { return nil }
         let time = frame.flatMap(playerTime(forPreviewFrame:)) ?? player.currentTime()
-        let generator = AVAssetImageGenerator(asset: item.asset)
-        generator.videoComposition = item.videoComposition
-        generator.requestedTimeToleranceBefore = .zero
-        generator.requestedTimeToleranceAfter = .zero
-        generator.maximumSize = CGSize(width: 320, height: 180)
-        guard let cg = try? await generator.image(at: time).image else { return nil }
+        guard let cg = await frameImage(item: item, time: time, maximumSize: CGSize(width: 320, height: 180))
+        else { return nil }
         return Self.histogram(from: cg, count: count)
     }
 
@@ -509,15 +563,10 @@ final class VideoEngine {
     /// Hue distribution of the current composited frame — pixel count per hue bucket, weighted by
     /// saturation so achromatic pixels don't show. Drives the silhouette behind the hue curves.
     func hueHistogram(frame: Int? = nil, count: Int = 96) async -> [Float]? {
-        guard let item = player.currentItem,
-              (try? await item.asset.loadTracks(withMediaType: .video).first) != nil else { return nil }
+        guard let item = player.currentItem else { return nil }
         let time = frame.flatMap(playerTime(forPreviewFrame:)) ?? player.currentTime()
-        let generator = AVAssetImageGenerator(asset: item.asset)
-        generator.videoComposition = item.videoComposition
-        generator.requestedTimeToleranceBefore = .zero
-        generator.requestedTimeToleranceAfter = .zero
-        generator.maximumSize = CGSize(width: 320, height: 180)
-        guard let cg = try? await generator.image(at: time).image else { return nil }
+        guard let cg = await frameImage(item: item, time: time, maximumSize: CGSize(width: 320, height: 180))
+        else { return nil }
         return Self.hueHistogram(from: cg, count: count)
     }
 
@@ -550,12 +599,9 @@ final class VideoEngine {
     }
 
     func sampleKeyHue(at normalizedPoint: CGPoint, frame: Int? = nil) async -> Double? {
-        guard let item = player.currentItem,
-              (try? await item.asset.loadTracks(withMediaType: .video).first) != nil else { return nil }
+        guard let item = player.currentItem else { return nil }
         let time = frame.flatMap(playerTime(forPreviewFrame:)) ?? player.currentTime()
-        let generator = AVAssetImageGenerator(asset: item.asset)
-        generator.videoComposition = item.videoComposition
-        guard let cg = try? await generator.image(at: time).image else { return nil }
+        guard let cg = await frameImage(item: item, time: time) else { return nil }
         return Self.sampleKeyHue(from: cg, at: normalizedPoint)
     }
 
