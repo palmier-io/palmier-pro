@@ -7,15 +7,12 @@ struct UpdateOverlay: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        GeometryReader { proxy in
-            ZStack {
-                AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.strong)
-                    .ignoresSafeArea()
-                card
-                    .frame(width: AppTheme.ComponentSize.updateOverlayWidth)
-                    .frame(maxHeight: max(0, proxy.size.height - AppTheme.Spacing.xxl * 2))
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        ZStack {
+            AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.strong)
+                .ignoresSafeArea()
+            card
+                .frame(width: AppTheme.ComponentSize.updateOverlayWidth)
+                .padding(.vertical, AppTheme.Spacing.xxl)
         }
         .transition(.opacity)
     }
