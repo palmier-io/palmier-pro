@@ -297,7 +297,14 @@ extension EditorViewModel {
         for request: CaptionRequest
     ) async throws -> TimelineTranscriptDocument {
         let prepared = try await prepareTranscript(for: request)
-        return await Self.makeTimelineTranscriptDocument(prepared)
+        let document = await Self.makeTimelineTranscriptDocument(prepared)
+        guard captionPreparationIsCurrent(
+            timelineId: prepared.timelineId,
+            snapshot: prepared.timeline
+        ) else {
+            throw CaptionError.timelineChanged
+        }
+        return document
     }
 
     func cachedTimelineTranscript() async -> TimelineTranscriptDocument? {

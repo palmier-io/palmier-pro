@@ -83,6 +83,8 @@ struct MediaPanelView: View {
         }
         .onChange(of: editor.timelineRenderRevision) { _, _ in
             indexTranscript = nil
+        }
+        .onChange(of: editor.activeTimelineId) { _, _ in
             indexSource = .automatic
         }
     }
