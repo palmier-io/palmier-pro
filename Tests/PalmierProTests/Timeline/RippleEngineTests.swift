@@ -173,6 +173,32 @@ struct RippleEngineTests {
         #expect(next.map(\.startFrame) == [170, 250])
     }
 
+    @Test func closingIgnoresCollapsedMapsFromTracksThatRemovedThePoint() {
+        let onPicture = TimelineMarker(id: "onPicture", name: "On picture", startFrame: 220)
+        let next = RippleEngine.rippleMarkers(
+            [onPicture],
+            closing: [
+                [FrameRange(start: 0, end: 50)],
+                [FrameRange(start: 100, end: 250)],
+            ]
+        )
+        #expect(next.map(\.startFrame) == [170])
+    }
+
+    @Test func closingKeepsRangeThatAnotherTrackConsumed() {
+        let span = TimelineMarker(id: "span", name: "Span", startFrame: 300, durationFrames: 50)
+        let next = RippleEngine.rippleMarkers(
+            [span],
+            closing: [
+                [FrameRange(start: 0, end: 50)],
+                [FrameRange(start: 200, end: 400)],
+            ]
+        )
+        #expect(next.map(\.id) == ["span"])
+        #expect(next[0].startFrame == 250)
+        #expect(next[0].durationFrames == 50)
+    }
+
     @Test func negativeOpeningClosesTheTrimmedTail() {
         let onTail = TimelineMarker(id: "tail", name: "Tail", startFrame: 90)
         let after = TimelineMarker(id: "after", name: "After", startFrame: 120)

@@ -67,27 +67,28 @@ enum RippleEngine {
             .map { ClipShift(clipId: $0.id, newStartFrame: $0.startFrame + pushAmount) }
     }
 
-    /// Close removed spans. One range list per shifting track; drop a point only if every track removed it.
+    /// Close removed spans. One range list per shifting track; remap only tracks that still hold the marker.
     static func rippleMarkers(_ markers: [TimelineMarker], closing trackRanges: [[FrameRange]]) -> [TimelineMarker] {
         let mergedTracks = trackRanges.map { mergeRanges($0.filter { $0.length > 0 }) }.filter { !$0.isEmpty }
         guard !mergedTracks.isEmpty else { return markers }
         return markers.compactMap { marker in
-            let mappedStarts = mergedTracks.map { mapFrame(marker.startFrame, closing: $0) }
-            if !marker.isRange {
-                let removedOnEveryTrack = mergedTracks.allSatisfy { ranges in
-                    ranges.contains { ($0.start..<$0.end).contains(marker.startFrame) }
+            let surviving = mergedTracks.compactMap { ranges -> (start: Int, end: Int)? in
+                let start = mapFrame(marker.startFrame, closing: ranges)
+                if !marker.isRange {
+                    let removed = ranges.contains { ($0.start..<$0.end).contains(marker.startFrame) }
+                    return removed ? nil : (start, start)
                 }
-                guard !removedOnEveryTrack else { return nil }
-                var next = marker
-                next.startFrame = mappedStarts.min() ?? marker.startFrame
-                return next
+                let end = mapFrame(marker.endFrame, closing: ranges)
+                return end > start ? (start, end) : nil
             }
-            let newStart = mappedStarts.min() ?? marker.startFrame
-            let newEnd = mergedTracks.map { mapFrame(marker.endFrame, closing: $0) }.min() ?? marker.endFrame
-            guard newEnd > newStart else { return nil }
+            guard let first = surviving.first else { return nil }
             var next = marker
-            next.startFrame = newStart
-            next.durationFrames = newEnd - newStart
+            next.startFrame = surviving.map(\.start).min() ?? first.start
+            if marker.isRange {
+                let newEnd = surviving.map(\.end).min() ?? first.end
+                guard newEnd > next.startFrame else { return nil }
+                next.durationFrames = newEnd - next.startFrame
+            }
             return next
         }
     }
