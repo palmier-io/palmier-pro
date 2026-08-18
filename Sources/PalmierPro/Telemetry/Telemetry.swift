@@ -77,13 +77,15 @@ enum Telemetry {
         String(id.prefix(8))
     }
 
-    static func setUser(id: String?) {
+    static func setUser(id: String?, email: String? = nil, username: String? = nil) {
         #if PRODUCTION_TELEMETRY
         guard didStart else { return }
         SentrySDK.configureScope { scope in
             guard let id else { scope.setUser(nil); return }
             let user = User()
             user.userId = id
+            user.email = email
+            user.username = username
             scope.setUser(user)
         }
         #endif
