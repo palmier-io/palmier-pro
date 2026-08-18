@@ -147,13 +147,7 @@ enum Telemetry {
         var attributes: [String: Any] = ["category": category]
         if let data {
             for (key, value) in data {
-                switch value {
-                case let string as String: attributes[key] = string
-                case let bool as Bool: attributes[key] = bool
-                case let int as Int: attributes[key] = int
-                case let double as Double: attributes[key] = double
-                default: break
-                }
+                attributes[key] = value
             }
         }
         switch level {
