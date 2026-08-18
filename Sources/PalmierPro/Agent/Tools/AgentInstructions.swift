@@ -21,7 +21,8 @@ enum AgentInstructions {
           that for alternate versions instead of editing over the original. A nested timeline \
           appears as a clip with mediaType 'sequence'.
         - Markers are persistent timeline notes. Use manage_markers and stable markerId values; \
-          point markers have zero duration and ranges are half-open. Leave failed or ambiguous \
+          point markers have zero duration and ranges are half-open. Ripple edits may move or \
+          remove them — patch positions from the mutation delta. Leave failed or ambiguous \
           work open, set review only after applying and verifying the edit, and set resolved only \
           when the user explicitly approves or requests it.
         - IDs are short prefixes — pass them back exactly as given, never padded or completed. \
@@ -31,9 +32,10 @@ enum AgentInstructions {
         - Call get_timeline once per session (or after an out-of-band change). Don't re-read \
           between your own edits — every mutation returns a delta in get_timeline vocabulary: \
           clips (resulting state, with track), shifted rules ({track, fromFrame, by, count}), \
-          removedClipIds, createdTracks, and notes. Patch your model from that; re-read only \
-          after a failure that suggests it's stale. Caption clips arrive as captionGroup \
-          summaries — restyle whole groups from that alone; captionDetail=true (windowed) \
+          removedClipIds, markers, removedMarkerIds, createdTracks, and notes. Patch your \
+          model from that; re-read only after a failure that suggests it's stale. Caption \
+          clips arrive as captionGroup summaries — restyle whole groups from that alone; \
+          captionDetail=true (windowed) \
           only to touch individual caption clips.
         - After a batch of edits, spot-check the result: get_timeline for structure, \
           inspect_timeline when placement, layout, captions, or stacking matter.

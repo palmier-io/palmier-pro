@@ -110,6 +110,7 @@ extension EditorViewModel {
         guard let plan = planRippleTrim(clipId: clipId, edge: edge, deltaFrames: deltaFrames, propagateToLinked: propagateToLinked) else { return }
 
         let touched = plan.targetIds.union(plan.shifts.map(\.clipId))
+        let leadEnd = findClip(id: clipId).map { timeline.tracks[$0.trackIndex].clips[$0.clipIndex].endFrame }
         withTimelineSwap(actionName: "Ripple Trim") {
             for r in plan.resizes {
                 guard let l = findClip(id: r.clipId) else { continue }
@@ -118,6 +119,9 @@ extension EditorViewModel {
                 timeline.tracks[l.trackIndex].clips[l.clipIndex].setDuration(r.duration)
             }
             applyShifts(plan.shifts)
+            if let leadEnd {
+                applyRippledMarkers(RippleEngine.rippleMarkers(timeline.markers, openingAt: leadEnd, by: plan.durationDelta))
+            }
             for ti in timeline.tracks.indices where timeline.tracks[ti].clips.contains(where: { touched.contains($0.id) }) {
                 sortClips(trackIndex: ti)
             }
@@ -188,11 +192,15 @@ extension EditorViewModel {
         }
 
         var shiftsByTrack: [Int: [ClipShift]] = [:]
+        var markerRanges: [[FrameRange]] = []
         for ti in timeline.tracks.indices {
             let track = timeline.tracks[ti]
             let hasOwnRemovals = track.clips.contains { ids.contains($0.id) }
             if hasOwnRemovals {
                 shiftsByTrack[ti] = RippleEngine.computeRippleShifts(clips: track.clips, removedIds: ids)
+                markerRanges.append(track.clips.filter { ids.contains($0.id) }.map {
+                    FrameRange(start: $0.startFrame, end: $0.endFrame)
+                })
             } else if track.syncLocked {
                 shiftsByTrack[ti] = RippleEngine.computeRippleShiftsForRanges(
                     clips: track.clips,
@@ -202,12 +210,14 @@ extension EditorViewModel {
                     refuseRipple(reason: reason)
                     return
                 }
+                markerRanges.append(globalRemovedRanges)
             }
         }
 
         withTimelineSwap(actionName: "Ripple Delete", refreshVisuals: false) {
             removeClips(ids: ids)
             for shifts in shiftsByTrack.values { applyShifts(shifts) }
+            applyRippledMarkers(RippleEngine.rippleMarkers(timeline.markers, closing: markerRanges))
         }
     }
 
@@ -220,6 +230,12 @@ extension EditorViewModel {
             applied += 1
         }
         return applied
+    }
+
+    private func applyRippledMarkers(_ next: [TimelineMarker]) {
+        guard rippleTimelineMarkers, next != timeline.markers else { return }
+        timeline.markers = next
+        timelineMarkerPreview = nil
     }
 
     /// Ripple-delete timeline-frame `ranges` anchored to `anchorClipId`
@@ -300,6 +316,7 @@ extension EditorViewModel {
                 shiftedClips += applyShifts(shifts)
                 sortClips(trackIndex: ti)
             }
+            applyRippledMarkers(RippleEngine.rippleMarkers(timeline.markers, closing: [merged]))
         }
 
         // Anchor track's post-cut layout (surviving + new fragments) so the caller needn't re-read.
@@ -361,6 +378,7 @@ extension EditorViewModel {
                     removedRanges: [gap.range]
                 ))
             }
+            applyRippledMarkers(RippleEngine.rippleMarkers(timeline.markers, closing: [[gap.range]]))
         }
         selectedGap = nil
     }
@@ -385,6 +403,7 @@ extension EditorViewModel {
                     pushAmount: totalPush
                 ))
             }
+            applyRippledMarkers(RippleEngine.rippleMarkers(timeline.markers, openingAt: atFrame, by: totalPush))
             created = createClips(from: assets, trackIndex: trackIndex, startFrame: atFrame, segments: segments)
             sortClips(trackIndex: trackIndex)
         }
@@ -504,6 +523,7 @@ extension EditorViewModel {
                     clips: timeline.tracks[ti].clips, insertFrame: atFrame, pushAmount: totalPush
                 ))
             }
+            applyRippledMarkers(RippleEngine.rippleMarkers(timeline.markers, openingAt: atFrame, by: totalPush))
 
             var cursor = atFrame
             for spec in specs {

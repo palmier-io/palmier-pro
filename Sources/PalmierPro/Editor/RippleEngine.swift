@@ -67,7 +67,69 @@ enum RippleEngine {
             .map { ClipShift(clipId: $0.id, newStartFrame: $0.startFrame + pushAmount) }
     }
 
+    /// Close removed spans. One range list per shifting track; remap only tracks that still hold the marker.
+    static func rippleMarkers(_ markers: [TimelineMarker], closing trackRanges: [[FrameRange]]) -> [TimelineMarker] {
+        let mergedTracks = trackRanges.map { mergeRanges($0.filter { $0.length > 0 }) }.filter { !$0.isEmpty }
+        guard !mergedTracks.isEmpty else { return markers }
+        return markers.compactMap { marker in
+            let surviving = mergedTracks.compactMap { ranges -> (start: Int, end: Int)? in
+                let start = mapFrame(marker.startFrame, closing: ranges)
+                if !marker.isRange {
+                    let removed = ranges.contains { ($0.start..<$0.end).contains(marker.startFrame) }
+                    return removed ? nil : (start, start)
+                }
+                let end = mapFrame(marker.endFrame, closing: ranges)
+                return end > start ? (start, end) : nil
+            }
+            guard let first = surviving.first else { return nil }
+            var next = marker
+            next.startFrame = surviving.map(\.start).min() ?? first.start
+            if marker.isRange {
+                let newEnd = surviving.map(\.end).min() ?? first.end
+                guard newEnd > next.startFrame else { return nil }
+                next.durationFrames = newEnd - next.startFrame
+            }
+            return next
+        }
+    }
+
+    /// Open a gap at `insertFrame`. Negative `pushAmount` closes `[insertFrame + pushAmount, insertFrame)`.
+    static func rippleMarkers(
+        _ markers: [TimelineMarker],
+        openingAt insertFrame: Int,
+        by pushAmount: Int
+    ) -> [TimelineMarker] {
+        guard pushAmount != 0 else { return markers }
+        if pushAmount < 0 {
+            return rippleMarkers(
+                markers,
+                closing: [[FrameRange(start: insertFrame + pushAmount, end: insertFrame)]]
+            )
+        }
+        return markers.map { marker in
+            var next = marker
+            if next.startFrame >= insertFrame {
+                next.startFrame += pushAmount
+            } else if next.isRange, next.endFrame > insertFrame {
+                next.durationFrames += pushAmount
+            }
+            return next
+        }
+    }
+
     // MARK: - Helpers
+
+    private static func mapFrame(_ frame: Int, closing ranges: [FrameRange]) -> Int {
+        var mapped = frame
+        for range in ranges {
+            if range.end <= frame {
+                mapped -= range.length
+            } else if range.start < frame {
+                mapped -= frame - range.start
+            }
+        }
+        return max(0, mapped)
+    }
 
     static func mergeRanges(_ ranges: [FrameRange]) -> [FrameRange] {
         let sorted = ranges.sorted { $0.start < $1.start }

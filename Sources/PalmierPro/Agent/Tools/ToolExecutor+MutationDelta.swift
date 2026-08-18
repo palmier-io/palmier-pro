@@ -16,6 +16,7 @@ extension ToolExecutor {
     struct TimelineSnapshot {
         let placements: [String: ClipPlacement]
         let trackIds: [String]
+        let markers: [String: TimelineMarker]
     }
 
     private static let mutationClipLimit = 30
@@ -28,7 +29,11 @@ extension ToolExecutor {
                 placements[clip.id] = ClipPlacement(trackId: track.id, index: i, start: clip.startFrame, duration: clip.durationFrames)
             }
         }
-        return TimelineSnapshot(placements: placements, trackIds: editor.timeline.tracks.map(\.id))
+        return TimelineSnapshot(
+            placements: placements,
+            trackIds: editor.timeline.tracks.map(\.id),
+            markers: Dictionary(uniqueKeysWithValues: editor.timeline.markers.map { ($0.id, $0) })
+        )
     }
 
     func mutationResult(
@@ -86,6 +91,14 @@ extension ToolExecutor {
 
         let removedIds = snapshot.placements.keys.filter { after.placements[$0] == nil }.sorted()
         if !removedIds.isEmpty { payload["removedClipIds"] = removedIds }
+
+        let changedMarkers = editor.timeline.markers.filter { snapshot.markers[$0.id] != $0 }
+        if !changedMarkers.isEmpty {
+            payload["markers"] = changedMarkers.map(Self.timelineMarkerDict)
+        }
+        let remainingMarkerIds = Set(editor.timeline.markers.map(\.id))
+        let removedMarkerIds = snapshot.markers.keys.filter { !remainingMarkerIds.contains($0) }.sorted()
+        if !removedMarkerIds.isEmpty { payload["removedMarkerIds"] = removedMarkerIds }
 
         let created = after.trackIds.enumerated()
             .filter { !snapshot.trackIds.contains($0.element) }

@@ -799,6 +799,7 @@
 "Ripple Delete" = "Ripple Delete";
 "Ripple Delete Gap" = "Ripple Delete Gap";
 "Ripple Insert" = "Ripple Insert";
+"Ripple Timeline Markers" = "Ripple Timeline Markers";
 "Ripple Trim" = "Ripple Trim";
 "Ripple-deletes every silent section; downstream clips close the gaps." = "Ripple-deletes every silent section; downstream clips close the gaps.";
 "Rotation" = "Rotation";
