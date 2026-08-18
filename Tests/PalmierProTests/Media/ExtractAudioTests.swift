@@ -79,6 +79,26 @@ struct ExtractAudioTests {
         #expect(video.linkGroupId == audio.linkGroupId)
     }
 
+    @Test func skipsLinkedClipWhileSourceIsGenerating() async throws {
+        let e = EditorViewModel()
+        _ = e.insertTrack(at: 0, type: .video)
+        let source = MediaAsset(
+            url: URL(fileURLWithPath: "/tmp/extract-audio-generating.mp4"),
+            type: .video,
+            name: "Gen",
+            duration: 1
+        )
+        source.hasAudio = true
+        source.generationStatus = .generating
+        e.importMediaAsset(source)
+        let ids = e.placeClip(asset: source, trackIndex: 0, startFrame: 0, durationFrames: 10)
+        let videoId = try #require(ids.first)
+
+        #expect(!e.canExtractAudio(fromClipId: videoId))
+        await e.extractAudio(fromClipId: videoId)
+        #expect(e.mediaAssets.allSatisfy { $0.id == source.id })
+    }
+
     private static func writeSilentAudio() throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("extract-audio-\(UUID().uuidString).caf")

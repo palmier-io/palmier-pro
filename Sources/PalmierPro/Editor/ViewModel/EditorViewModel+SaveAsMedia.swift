@@ -24,8 +24,8 @@ extension EditorViewModel {
             name: "\(asset.name) (audio)",
             folderId: asset.folderId,
             sourceId: assetId
-        ) {
-            try await AudioTrackExtractor.extract(sourceURL: sourceURL)
+        ) { destURL in
+            _ = try await AudioTrackExtractor.extract(sourceURL: sourceURL, destURL: destURL)
         }
     }
 
@@ -46,8 +46,7 @@ extension EditorViewModel {
         let sourceFramesConsumed = clip.sourceFramesConsumed
         let durationFrames = clip.durationFrames
         let speed = clip.speed
-        await installExtractedAudio(name: name, folderId: folderId, sourceId: clipId) {
-            let stagedURL = FileIO.temporaryFileURL(pathExtension: "m4a")
+        await installExtractedAudio(name: name, folderId: folderId, sourceId: clipId) { stagedURL in
             try await Self.exportClipRange(
                 sourceURL: sourceURL,
                 destURL: stagedURL,
@@ -58,7 +57,6 @@ extension EditorViewModel {
                 speed: speed,
                 mediaType: .audio
             )
-            return stagedURL
         }
     }
 
@@ -68,22 +66,26 @@ extension EditorViewModel {
         let partners = linkedPartnerIds(of: clip.id).compactMap { clipFor(id: $0) }
         if clip.mediaType == .video {
             if let audio = partners.first(where: { $0.mediaType == .audio }) {
-                return isClipMediaOffline(audio) ? nil : audio
+                return isExtractableClip(audio) ? audio : nil
             }
             guard let asset = mediaAssetsById[clip.mediaRef], canExtractAudio(from: asset) else { return nil }
-            return isClipMediaOffline(clip) ? nil : clip
+            return isExtractableClip(clip) ? clip : nil
         }
         if clip.mediaType == .audio, partners.contains(where: { $0.mediaType == .video }) {
-            return isClipMediaOffline(clip) ? nil : clip
+            return isExtractableClip(clip) ? clip : nil
         }
         return nil
+    }
+
+    private func isExtractableClip(_ clip: Clip) -> Bool {
+        !isClipMediaOffline(clip) && !isClipMediaGenerating(clip)
     }
 
     private func installExtractedAudio(
         name: String,
         folderId: String?,
         sourceId: String,
-        produce: () async throws -> URL
+        produce: (URL) async throws -> Void
     ) async {
         guard (try? projectPackageCoordinator.beginMutation()) != nil else { return }
         let filename = Self.uniqueClipFilename(for: .audio)
@@ -94,14 +96,15 @@ extension EditorViewModel {
         placeholder.folderId = folderId
         placeholder.generationStatus = .generating
         importMediaAsset(placeholder)
-        defer { projectPackageCoordinator.endMutation() }
+        let stagedURL = FileIO.temporaryFileURL(pathExtension: "m4a")
+        defer {
+            try? FileManager.default.removeItem(at: stagedURL)
+            projectPackageCoordinator.endMutation()
+        }
 
         do {
-            let stagedURL = try await produce()
-            guard mediaAssetsById[placeholder.id] != nil else {
-                try? FileManager.default.removeItem(at: stagedURL)
-                return
-            }
+            try await produce(stagedURL)
+            guard mediaAssetsById[placeholder.id] != nil else { return }
             placeholder.url = try await commitStagedProjectMedia(
                 stagedURL,
                 filename: filename,
