@@ -496,7 +496,7 @@ enum AppTheme {
     enum GenerationPanel {
         static let typeTabWidth: CGFloat = IconSize.xl + Spacing.lg
         static let minimumWidthAdjustment: CGFloat = typeTabWidth + Spacing.xxl
-        static let mediaAreaMinHeight: CGFloat = 120
+        static let mediaAreaMinHeight: CGFloat = 60
         static let loadingHeight: CGFloat = 180
         static let promptMinHeight: CGFloat = 40
         static let referenceTileWidth: CGFloat = 72
