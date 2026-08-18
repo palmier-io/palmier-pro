@@ -1526,6 +1526,12 @@ final class TimelineView: NSView, NSPopoverDelegate {
             item.representedObject = clip.id
             mediaItems.append(item)
         }
+        if clip.mediaType == .video, editor.canExtractAudio(fromClipId: clip.id) {
+            let item = NSMenuItem(title: L10n.string("Save as Audio"), action: #selector(performSaveAsAudio(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = clip.id
+            mediaItems.append(item)
+        }
         // Sync
         var syncItems: [NSMenuItem] = []
         if let pair = editor.syncSelection() {
@@ -1781,6 +1787,12 @@ final class TimelineView: NSView, NSPopoverDelegate {
         guard let item = sender as? NSMenuItem,
               let clipId = item.representedObject as? String else { return }
         editor.saveClipAsMedia(clipId: clipId)
+    }
+
+    @objc private func performSaveAsAudio(_ sender: Any?) {
+        guard let item = sender as? NSMenuItem,
+              let clipId = item.representedObject as? String else { return }
+        Task { await editor.extractAudio(fromClipId: clipId) }
     }
 
     @objc private func performSwapMedia(_ sender: Any?) {

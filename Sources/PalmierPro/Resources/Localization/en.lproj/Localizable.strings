@@ -371,6 +371,7 @@
 "Extend" = "Extend";
 "Extends captions across short gaps and holds the final caption." = "Extends captions across short gaps and holds the final caption.";
 "Extra Large" = "Extra Large";
+"Extract Audio" = "Extract Audio";
 "FLUX Enhance" = "FLUX Enhance";
 "Fade In" = "Fade In";
 "Fade Out" = "Fade Out";
@@ -818,6 +819,7 @@
 "Save As…" = "Save As…";
 "Save Changes" = "Save Changes";
 "Save Range as Media" = "Save Range as Media";
+"Save as Audio" = "Save as Audio";
 "Save as Media" = "Save as Media";
 "Save this project to view activity" = "Save this project to view activity";
 "Saves a copy of this project with all media bundled inside, so it opens on any machine." = "Saves a copy of this project with all media bundled inside, so it opens on any machine.";

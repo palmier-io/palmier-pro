@@ -91,6 +91,14 @@ struct AssetThumbnailView: View {
             AIEditMenu(asset: asset)
             Divider()
         }
+        if ids.contains(where: { id in
+            guard let candidate = editor.mediaAssetsById[id] else { return false }
+            return editor.canExtractAudio(from: candidate)
+        }) {
+            Button(L10n.string("Extract Audio")) {
+                Task { await editor.extractAudio(from: ids) }
+            }
+        }
         Button(L10n.string("Reveal in Finder")) { revealInFinder(ids: ids) }
         Button(L10n.string("Copy Path")) { copyPaths(ids: ids) }
         Divider()

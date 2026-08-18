@@ -7,9 +7,11 @@ enum AudioTrackExtractor {
         var errorDescription: String? { "Audio extraction failed: \(reason)" }
     }
 
+    @concurrent
     static func extract(
         sourceURL: URL,
-        trimmedSource: TrimmedSource? = nil
+        trimmedSource: TrimmedSource? = nil,
+        destURL: URL? = nil
     ) async throws -> URL {
         let asset = AVURLAsset(url: sourceURL)
         guard let audioTrack = try await asset.loadTracks(withMediaType: .audio).first else {
@@ -29,7 +31,7 @@ enum AudioTrackExtractor {
         }
         try compositionTrack.insertTimeRange(sourceRange, of: audioTrack, at: .zero)
 
-        let outputURL = FileManager.default.temporaryDirectory
+        let outputURL = destURL ?? FileManager.default.temporaryDirectory
             .appendingPathComponent("audio-\(UUID().uuidString).m4a")
         guard let session = AVAssetExportSession(
             asset: composition,
@@ -37,7 +39,14 @@ enum AudioTrackExtractor {
         ) else {
             throw ExtractionError(reason: "M4A export is unavailable")
         }
-        try await session.export(to: outputURL, as: .m4a)
-        return outputURL
+        do {
+            try await session.export(to: outputURL, as: .m4a)
+            return outputURL
+        } catch {
+            if destURL == nil {
+                try? FileManager.default.removeItem(at: outputURL)
+            }
+            throw error
+        }
     }
 }
