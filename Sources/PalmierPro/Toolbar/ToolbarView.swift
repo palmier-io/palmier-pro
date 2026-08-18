@@ -96,17 +96,39 @@ struct ToolbarView: View {
     }
 
     private var markerButton: some View {
-        Button { _ = editor.addTimelineMarkerAtSelection() } label: {
-            TimelineMarkerShape()
-                .fill(AppTheme.Text.secondaryColor)
-                .frame(
-                    width: AppTheme.TimelineMarker.flagWidth,
-                    height: AppTheme.TimelineMarker.flagHeight
+        HStack(spacing: AppTheme.Spacing.xxs) {
+            Button { _ = editor.addTimelineMarkerAtSelection() } label: {
+                TimelineMarkerShape()
+                    .fill(AppTheme.Text.secondaryColor)
+                    .frame(
+                        width: AppTheme.TimelineMarker.flagWidth,
+                        height: AppTheme.TimelineMarker.flagHeight
+                    )
+                    .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.mdLg)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.string("Add Marker (M)"))
+
+            Menu {
+                Toggle(
+                    L10n.string("Ripple Timeline Markers"),
+                    isOn: Bindable(editor).rippleTimelineMarkers
                 )
-                .frame(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.mdLg)
-                .hoverHighlight()
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: AppTheme.FontSize.micro, weight: AppTheme.FontWeight.semibold))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .frame(width: AppTheme.Spacing.md, height: AppTheme.IconSize.mdLg)
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .accessibilityLabel(L10n.string("Ripple Timeline Markers"))
         }
-        .buttonStyle(.plain)
+        .padding(.trailing, AppTheme.Spacing.xxs)
+        .hoverHighlight()
         .hoverTooltip(L10n.string("Add Marker (M)"))
     }
 

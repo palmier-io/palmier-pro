@@ -301,6 +301,9 @@ extension EditorWindowController: EditorActions {
             editorViewModel.rippleDeleteSelectedClips()
         }
     }
+    @objc func toggleRippleTimelineMarkers(_ sender: Any?) {
+        editorViewModel.rippleTimelineMarkers.toggle()
+    }
     @objc func importMedia(_ sender: Any?) {
         // Handled by MediaTab directly
     }
@@ -359,6 +362,9 @@ extension EditorWindowController: EditorActions {
 
     @objc func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
+        case #selector(toggleRippleTimelineMarkers(_:)):
+            menuItem.state = editorViewModel.rippleTimelineMarkers ? .on : .off
+            return true
         case #selector(toggleMediaPanel(_:)):
             menuItem.state = editorViewModel.mediaPanelVisible ? .on : .off
             return true
