@@ -207,11 +207,15 @@ final class AccountService {
         guard let convex else { return }
 
         let user = Clerk.shared.user
-        Telemetry.setUser(id: user?.id)
-        Analytics.identifyUser(id: user?.id)
         let name = [user?.firstName, user?.lastName]
             .compactMap { $0 }
             .joined(separator: " ")
+        Telemetry.setUser(
+            id: user?.id,
+            email: user?.primaryEmailAddress?.emailAddress,
+            username: name.isEmpty ? nil : name
+        )
+        Analytics.identifyUser(id: user?.id)
         let args: [String: ConvexEncodable?] = [
             "email": user?.primaryEmailAddress?.emailAddress,
             "name": name.isEmpty ? nil : name,
