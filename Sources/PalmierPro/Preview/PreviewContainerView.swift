@@ -37,8 +37,8 @@ struct PreviewContainerView: View {
 
     private var canvas: some View {
         GeometryReader { geo in
-            let aspect = generatingAspect ?? CGFloat(editor.timeline.width) / CGFloat(editor.timeline.height)
-            let fitSize = fitSize(in: geo.size, aspect: aspect)
+            let aspect = previewCanvasAspect
+            let fitSize = CanvasOverlayGeometry.contentRect(aspectRatio: aspect, in: geo.size).size
             let scaledWidth = fitSize.width * editor.canvasZoom
             let scaledHeight = fitSize.height * editor.canvasZoom
             let timelineState = timelineFrameState
@@ -449,24 +449,23 @@ struct PreviewContainerView: View {
         }
     }
 
-    private func fitSize(in container: CGSize, aspect: CGFloat) -> CGSize {
-        let widthFromHeight = container.height * aspect
-        if widthFromHeight <= container.width {
-            return CGSize(width: widthFromHeight, height: container.height)
+    private var previewCanvasAspect: CGFloat {
+        if isTimeline {
+            return PreviewCanvasAspect.ratio(width: editor.timeline.width, height: editor.timeline.height)
         }
-        return CGSize(width: container.width, height: container.width / aspect)
+        let asset = activeMediaAsset
+        return PreviewCanvasAspect.sourcePreviewRatio(
+            sourceWidth: asset?.sourceWidth,
+            sourceHeight: asset?.sourceHeight,
+            generationAspectRatio: asset?.generationInput?.aspectRatio,
+            timelineWidth: editor.timeline.width,
+            timelineHeight: editor.timeline.height
+        )
     }
 
     private var activeMediaAsset: MediaAsset? {
         guard case .mediaAsset(let id, _, _) = editor.activePreviewTab else { return nil }
         return editor.mediaAssets.first { $0.id == id }
-    }
-
-    private var generatingAspect: CGFloat? {
-        guard let asset = activeMediaAsset, asset.isGenerating else { return nil }
-        let parts = (asset.generationInput?.aspectRatio ?? "").split(separator: ":").compactMap { Double($0) }
-        guard parts.count == 2, parts[0] > 0, parts[1] > 0 else { return nil }
-        return CGFloat(parts[0] / parts[1])
     }
 
     private var activeFailedError: String? {
