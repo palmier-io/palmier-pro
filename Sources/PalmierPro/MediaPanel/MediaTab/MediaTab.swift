@@ -91,7 +91,7 @@ struct MediaTab: View {
                 swapBanner
             }
 
-            ZStack(alignment: .bottom) {
+            VStack(spacing: 0) {
                 MediaPanelDropArea(
                     isTargeted: $isDropTargeted,
                     onDrop: { urls in handlePanelFinderDrop(urls: urls) }
@@ -127,6 +127,8 @@ struct MediaTab: View {
                     }
                 }
                 .animation(.easeInOut(duration: AppTheme.Anim.transition), value: editor.mediaPanelToast)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .layoutPriority(1)
 
                 if editor.showGenerationPanel && !mediaAreaCollapsed {
                     GenerationView(maxPanelHeight: generationPanelMaxHeight)
@@ -464,7 +466,7 @@ struct MediaTab: View {
     }
 
     private var showsEmptyState: Bool {
-        editor.mediaAssets.isEmpty && editor.folders.isEmpty && !editor.showGenerationPanel
+        editor.mediaAssets.isEmpty && editor.folders.isEmpty
     }
 
     // MARK: - Sort & Filter
