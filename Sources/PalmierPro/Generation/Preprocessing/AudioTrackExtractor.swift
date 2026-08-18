@@ -7,6 +7,7 @@ enum AudioTrackExtractor {
         var errorDescription: String? { "Audio extraction failed: \(reason)" }
     }
 
+    @concurrent
     static func extract(
         sourceURL: URL,
         trimmedSource: TrimmedSource? = nil
