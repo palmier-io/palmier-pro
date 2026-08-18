@@ -59,10 +59,8 @@ struct AgentPanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ZStack(alignment: .top) {
-                messageList
-                floatingTabBar
-            }
+            floatingTabBar
+            messageList
             footer
         }
     }
@@ -280,7 +278,7 @@ struct AgentPanelView: View {
                         .padding(.top, AppTheme.Spacing.sm)
                 }
                 .padding(.horizontal, AppTheme.Spacing.lgXl)
-                .padding(.top, Layout.panelHeaderHeight + AppTheme.Spacing.mdLg)
+                .padding(.top, AppTheme.Spacing.mdLg)
                 .padding(.bottom, AppTheme.Spacing.smMd)
                 .frame(maxWidth: Layout.chatColumnMax)
                 .frame(maxWidth: .infinity)
