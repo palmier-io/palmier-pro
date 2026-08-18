@@ -46,9 +46,19 @@ enum Telemetry {
             #endif
             options.tracesSampleRate = 0.1
             options.appHangTimeoutInterval = 5.0
+            options.enableLogs = true
             options.attachStacktrace = true
             options.enableCaptureFailedRequests = false
             options.enableUncaughtNSExceptionReporting = true
+            options.beforeSend = { event in
+                let type = event.exceptions?.first?.type ?? ""
+                if type.localizedCaseInsensitiveContains("App Hang") {
+                    let frames = event.exceptions?.first?.stacktrace?.frames ?? []
+                    let symbol = frames.last(where: { $0.inApp?.boolValue == true })?.function ?? "unknown"
+                    event.fingerprint = ["app-hang", symbol]
+                }
+                return event
+            }
             if let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
                let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String {
                 options.releaseName = "palmier-pro@\(version)+\(build)"
@@ -112,27 +122,45 @@ enum Telemetry {
         setExtra(value: nil, key: "active_operation")
     }
 
+    static func logInfo(_ message: String, category: String, data: Payload? = nil) {
+        sendLog(message, level: .info, category: category, data: data)
+    }
+
     static func logWarning(_ message: String, category: String, data: Payload? = nil) {
         breadcrumb(message, category: category, level: .warning, data: data)
+        sendLog(message, level: .warning, category: category, data: data)
     }
 
     static func logError(_ message: String, category: String, data: Payload? = nil) {
-        captureLogMessage(message, level: .error, category: category, data: data)
+        breadcrumb(message, category: category, level: .error, data: data)
+        sendLog(message, level: .error, category: category, data: data)
     }
 
     static func logFault(_ message: String, category: String, data: Payload? = nil) {
-        captureLogMessage(message, level: .fatal, category: category, data: data)
+        breadcrumb(message, category: category, level: .fatal, data: data)
+        sendLog(message, level: .fatal, category: category, data: data)
     }
 
-    private static func captureLogMessage(_ message: String, level: Level, category: String, data: Payload?) {
+    private static func sendLog(_ message: String, level: Level, category: String, data: Payload?) {
         #if PRODUCTION_TELEMETRY
         guard didStart else { return }
-        SentrySDK.capture(message: message) { scope in
-            scope.setLevel(level.sentryLevel)
-            scope.setTag(value: category, key: "log_category")
-            if let data {
-                scope.setExtra(value: data, key: "log")
+        var attributes: [String: Any] = ["category": category]
+        if let data {
+            for (key, value) in data {
+                switch value {
+                case let string as String: attributes[key] = string
+                case let bool as Bool: attributes[key] = bool
+                case let int as Int: attributes[key] = int
+                case let double as Double: attributes[key] = double
+                default: break
+                }
             }
+        }
+        switch level {
+        case .info: SentrySDK.logger.info(message, attributes: attributes)
+        case .warning: SentrySDK.logger.warn(message, attributes: attributes)
+        case .error: SentrySDK.logger.error(message, attributes: attributes)
+        case .fatal: SentrySDK.logger.fatal(message, attributes: attributes)
         }
         #endif
     }

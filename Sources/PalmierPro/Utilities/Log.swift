@@ -66,6 +66,7 @@ struct CategoryLog {
     func notice(_ m: String, telemetry: String? = nil, data: Telemetry.Payload? = nil) {
         mirror("NOTICE", m)
         logger.notice("\(m, privacy: .public)")
+        Telemetry.logInfo(m, category: category, data: data)
         if let telemetry {
             Telemetry.breadcrumb(telemetry, category: category, data: data)
         }
