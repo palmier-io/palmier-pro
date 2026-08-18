@@ -55,9 +55,10 @@ enum ImageEncoder {
         } else {
             thumbnailImage = nil
         }
+        let size = orientedPixelSize(properties: props)
         return ImageMetadata(
-            width: props?[kCGImagePropertyPixelWidth] as? Int,
-            height: props?[kCGImagePropertyPixelHeight] as? Int,
+            width: size.width,
+            height: size.height,
             thumbnail: thumbnailImage
         )
     }
@@ -146,6 +147,27 @@ enum ImageEncoder {
 
     private nonisolated static func imageSource(url: URL) -> CGImageSource? {
         CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary)
+    }
+
+    private nonisolated static func orientedPixelSize(properties: [CFString: Any]?) -> (width: Int?, height: Int?) {
+        let width = intProperty(properties, kCGImagePropertyPixelWidth)
+        let height = intProperty(properties, kCGImagePropertyPixelHeight)
+        guard let width, let height else { return (width, height) }
+        guard let raw = intProperty(properties, kCGImagePropertyOrientation),
+              let orientation = CGImagePropertyOrientation(rawValue: UInt32(raw)) else {
+            return (width, height)
+        }
+        switch orientation {
+        case .left, .leftMirrored, .right, .rightMirrored:
+            return (height, width)
+        default:
+            return (width, height)
+        }
+    }
+
+    private nonisolated static func intProperty(_ properties: [CFString: Any]?, _ key: CFString) -> Int? {
+        if let value = properties?[key] as? Int { return value }
+        return (properties?[key] as? NSNumber)?.intValue
     }
 
     private nonisolated static func makeThumbnail(source: CGImageSource, maxPixelSize: Int) -> CGImage? {

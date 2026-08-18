@@ -88,12 +88,9 @@ enum ImageVideoGenerator {
     }
 
     static func imageNativeSize(url: URL) -> CGSize? {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let w = props[kCGImagePropertyPixelWidth] as? Int,
-              let h = props[kCGImagePropertyPixelHeight] as? Int,
-              w > 0, h > 0 else { return nil }
-        return CGSize(width: w, height: h)
+        let metadata = ImageEncoder.metadata(url: url)
+        guard let width = metadata.width, let height = metadata.height, width > 0, height > 0 else { return nil }
+        return CGSize(width: width, height: height)
     }
 
     // MARK: - Private
