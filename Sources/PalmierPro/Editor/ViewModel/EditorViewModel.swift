@@ -261,6 +261,12 @@ final class EditorViewModel {
         }
     }
 
+    var rippleTimelineMarkers: Bool = {
+        UserDefaults.standard.object(forKey: "rippleTimelineMarkers") as? Bool ?? true
+    }() {
+        didSet { UserDefaults.standard.set(rippleTimelineMarkers, forKey: "rippleTimelineMarkers") }
+    }
+
     var silenceRemovalSettings = SilenceRemovalSettings.default {
         didSet {
             mediaVisualCache.timelineView?.needsDisplay = true

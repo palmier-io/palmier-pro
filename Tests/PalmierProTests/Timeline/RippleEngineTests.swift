@@ -116,6 +116,56 @@ struct RippleEngineTests {
         )
         #expect(shifts == [ClipShift(clipId: "b", newStartFrame: 225)])
     }
+
+    // MARK: - rippleMarkers
+
+    @Test func closingDropsPointInsideRemovedRange() {
+        let markers = [
+            TimelineMarker(id: "before", name: "Before", startFrame: 10),
+            TimelineMarker(id: "inside", name: "Inside", startFrame: 45),
+            TimelineMarker(id: "join", name: "Join", startFrame: 50),
+            TimelineMarker(id: "after", name: "After", startFrame: 80),
+        ]
+        let next = RippleEngine.rippleMarkers(markers, closing: [FrameRange(start: 40, end: 50)])
+        #expect(next.map(\.id) == ["before", "join", "after"])
+        #expect(next.map(\.startFrame) == [10, 40, 70])
+    }
+
+    @Test func closingShrinksOverlappingRangeAndDeletesConsumedRange() {
+        let overlap = TimelineMarker(id: "overlap", name: "Overlap", startFrame: 10, durationFrames: 40)
+        let consumed = TimelineMarker(id: "consumed", name: "Consumed", startFrame: 40, durationFrames: 10)
+        let after = TimelineMarker(id: "after", name: "After", startFrame: 60, durationFrames: 20)
+        let next = RippleEngine.rippleMarkers(
+            [overlap, consumed, after],
+            closing: [FrameRange(start: 40, end: 50)]
+        )
+        #expect(next.map(\.id) == ["overlap", "after"])
+        #expect(next[0].startFrame == 10)
+        #expect(next[0].durationFrames == 30)
+        #expect(next[1].startFrame == 50)
+        #expect(next[1].durationFrames == 20)
+    }
+
+    @Test func openingShiftsAtOrAfterAndExtendsContainingRange() {
+        let before = TimelineMarker(id: "before", name: "Before", startFrame: 10)
+        let containing = TimelineMarker(id: "range", name: "Range", startFrame: 20, durationFrames: 40)
+        let atInsert = TimelineMarker(id: "at", name: "At", startFrame: 50)
+        let next = RippleEngine.rippleMarkers(
+            [before, containing, atInsert],
+            openingAt: 50,
+            by: 20
+        )
+        #expect(next.map(\.startFrame) == [10, 20, 70])
+        #expect(next[1].durationFrames == 60)
+    }
+
+    @Test func negativeOpeningClosesTheTrimmedTail() {
+        let onTail = TimelineMarker(id: "tail", name: "Tail", startFrame: 90)
+        let after = TimelineMarker(id: "after", name: "After", startFrame: 120)
+        let next = RippleEngine.rippleMarkers([onTail, after], openingAt: 100, by: -20)
+        #expect(next.map(\.id) == ["after"])
+        #expect(next[0].startFrame == 100)
+    }
 }
 
 // MARK: - Adversarial

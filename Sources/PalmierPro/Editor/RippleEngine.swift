@@ -67,7 +67,61 @@ enum RippleEngine {
             .map { ClipShift(clipId: $0.id, newStartFrame: $0.startFrame + pushAmount) }
     }
 
+    /// Close removed spans: drop points inside, shrink overlapping ranges, shift the rest left.
+    static func rippleMarkers(_ markers: [TimelineMarker], closing removedRanges: [FrameRange]) -> [TimelineMarker] {
+        let merged = mergeRanges(removedRanges.filter { $0.length > 0 })
+        guard !merged.isEmpty else { return markers }
+        return markers.compactMap { marker in
+            if !marker.isRange, merged.contains(where: { ($0.start..<$0.end).contains(marker.startFrame) }) {
+                return nil
+            }
+            var next = marker
+            next.startFrame = mapFrame(marker.startFrame, closing: merged)
+            guard marker.isRange else { return next }
+            let newEnd = mapFrame(marker.endFrame, closing: merged)
+            guard newEnd > next.startFrame else { return nil }
+            next.durationFrames = newEnd - next.startFrame
+            return next
+        }
+    }
+
+    /// Open a gap at `insertFrame`. Negative `pushAmount` closes `[insertFrame + pushAmount, insertFrame)`.
+    static func rippleMarkers(
+        _ markers: [TimelineMarker],
+        openingAt insertFrame: Int,
+        by pushAmount: Int
+    ) -> [TimelineMarker] {
+        guard pushAmount != 0 else { return markers }
+        if pushAmount < 0 {
+            return rippleMarkers(
+                markers,
+                closing: [FrameRange(start: insertFrame + pushAmount, end: insertFrame)]
+            )
+        }
+        return markers.map { marker in
+            var next = marker
+            if next.startFrame >= insertFrame {
+                next.startFrame += pushAmount
+            } else if next.isRange, next.endFrame > insertFrame {
+                next.durationFrames += pushAmount
+            }
+            return next
+        }
+    }
+
     // MARK: - Helpers
+
+    private static func mapFrame(_ frame: Int, closing ranges: [FrameRange]) -> Int {
+        var mapped = frame
+        for range in ranges {
+            if range.end <= frame {
+                mapped -= range.length
+            } else if range.start < frame {
+                mapped -= frame - range.start
+            }
+        }
+        return max(0, mapped)
+    }
 
     static func mergeRanges(_ ranges: [FrameRange]) -> [FrameRange] {
         let sorted = ranges.sorted { $0.start < $1.start }
