@@ -114,7 +114,7 @@ struct FrameSlot: View {
     let onError: (String) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
             Text(L10n.string(key: label))
                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)

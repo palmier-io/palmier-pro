@@ -63,13 +63,13 @@ extension GenerationView {
     }
 
     private var refGridColumns: [GridItem] {
-        [GridItem(.adaptive(minimum: AppTheme.GenerationPanel.referenceTileWidth), spacing: AppTheme.Spacing.xs)]
+        [GridItem(.adaptive(minimum: AppTheme.GenerationPanel.referenceTileWidth), spacing: AppTheme.Spacing.xxs)]
     }
 
     // MARK: - Video frame references
 
     var videoFrameStrip: some View {
-        HStack(spacing: AppTheme.Spacing.xs) {
+        HStack(spacing: AppTheme.Spacing.sm) {
             FrameSlot(label: L10n.string("First Frame"), asset: firstFrame, isTargeted: $firstFrameTargeted,
                       onDrop: { firstFrame = $0 }, onClear: { firstFrame = nil }, onError: flashDropError)
             if videoModel.supportsLastFrame {
@@ -127,7 +127,7 @@ extension GenerationView {
     // MARK: - Reference strip
 
     var referenceSections: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
             HStack(spacing: AppTheme.Spacing.xs) {
                 Text(L10n.string("References"))
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
@@ -141,7 +141,7 @@ extension GenerationView {
             LazyVGrid(
                 columns: refGridColumns,
                 alignment: .leading,
-                spacing: AppTheme.Spacing.xs
+                spacing: AppTheme.Spacing.xxs
             ) {
                 ForEach(allRefCardItems, id: \.asset.id) { item in
                     RefCard(asset: item.asset, tag: item.tag) {
@@ -311,7 +311,7 @@ extension GenerationView {
     // MARK: - Image references
 
     var imageReferenceStrip: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
             Text(L10n.string("References"))
                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
@@ -319,7 +319,7 @@ extension GenerationView {
             LazyVGrid(
                 columns: refGridColumns,
                 alignment: .leading,
-                spacing: AppTheme.Spacing.xs
+                spacing: AppTheme.Spacing.xxs
             ) {
                 ForEach(imageReferences) { asset in
                     RefCard(asset: asset) {

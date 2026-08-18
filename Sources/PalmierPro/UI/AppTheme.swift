@@ -499,8 +499,8 @@ enum AppTheme {
         static let mediaAreaMinHeight: CGFloat = 120
         static let loadingHeight: CGFloat = 180
         static let promptMinHeight: CGFloat = 40
-        static let referenceTileWidth: CGFloat = 80
-        static let referenceTileHeight: CGFloat = 56
+        static let referenceTileWidth: CGFloat = 72
+        static let referenceTileHeight: CGFloat = 48
     }
 
     enum MediaPanel {
