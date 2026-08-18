@@ -1,23 +1,10 @@
 import SwiftUI
 
-struct CaptionBrowserItem: Identifiable {
-    let number: Int
-    let clip: Clip
-    var id: String { clip.id }
-}
-
-struct CaptionBrowserGroup: Identifiable {
-    let id: String
-    let trackIndex: Int
-    let isVisible: Bool
-    let captions: [Clip]
-}
-
-struct CaptionBrowser: View {
+struct TranscriptBrowser: View {
     @Environment(EditorViewModel.self) private var editor
-    let groups: [CaptionBrowserGroup]
-    let fps: Int
-    @Binding var selectedGroupId: String?
+    let document: EditorViewModel.TimelineTranscriptDocument
+    let captionSources: [EditorViewModel.TimelineTranscriptDocument]
+    @Binding var source: TranscriptIndexSource
     @Binding var indexSection: IndexBrowserSection
 
     @State private var searchQuery = ""
@@ -25,16 +12,20 @@ struct CaptionBrowser: View {
     @FocusState private var isSearchFocused: Bool
 
     var body: some View {
-        let captions = activeGroup?.captions ?? []
         let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        let rows = CaptionBrowserNavigation.numberedCaptions(captions, matching: query)
-        let timelineIndex = CaptionBrowserTimelineIndex(sortedCaptions: captions)
+        let rows = TranscriptBrowserNavigation.rows(
+            document.rows,
+            matching: query
+        )
+        let timelineIndex = TranscriptBrowserTimelineIndex(
+            sortedRows: document.rows
+        )
 
         return ScrollViewReader { proxy in
             VStack(spacing: AppTheme.Spacing.zero) {
-                controls(timelineIndex: timelineIndex) { captionId in
+                controls(timelineIndex: timelineIndex) { rowId in
                     searchQuery = ""
-                    jumpTargetId = captionId
+                    jumpTargetId = rowId
                 }
                 Rectangle()
                     .fill(AppTheme.Border.primaryColor)
@@ -49,9 +40,9 @@ struct CaptionBrowser: View {
                     } else {
                         LazyVStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
                             ForEach(rows) { row in
-                                CaptionBrowserRow(
-                                    item: row,
-                                    fps: fps,
+                                TranscriptBrowserRow(
+                                    row: row,
+                                    fps: document.fps,
                                     playheadState: editor.playheadState
                                 )
                                 .id(row.id)
@@ -71,33 +62,10 @@ struct CaptionBrowser: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .onChange(of: groups.map(\.id), initial: true) { _, _ in
-            if !groups.contains(where: { $0.id == selectedGroupId }) {
-                selectedGroupId = defaultGroup?.id
-            }
-        }
-        .onChange(of: selectedClipGroupId, initial: true) { _, groupId in
-            if let groupId { selectedGroupId = groupId }
-        }
-    }
-
-    private var activeGroup: CaptionBrowserGroup? {
-        groups.first { $0.id == selectedGroupId } ?? defaultGroup
-    }
-
-    private var defaultGroup: CaptionBrowserGroup? {
-        groups.first(where: \.isVisible) ?? groups.first
-    }
-
-    private var selectedClipGroupId: String? {
-        let selectedIds = editor.selectedClipIds
-        return groups.first {
-            $0.captions.contains { selectedIds.contains($0.id) }
-        }?.id
     }
 
     private func controls(
-        timelineIndex: CaptionBrowserTimelineIndex,
+        timelineIndex: TranscriptBrowserTimelineIndex,
         onJump: @escaping (String) -> Void
     ) -> some View {
         HStack(spacing: AppTheme.Spacing.xs) {
@@ -107,11 +75,15 @@ struct CaptionBrowser: View {
             } else {
                 IndexModeTabs(selection: $indexSection)
                 Spacer(minLength: AppTheme.Spacing.zero)
-                if groups.count > 1, let activeGroup {
-                    groupPicker(activeGroup: activeGroup)
+                if !captionSources.isEmpty {
+                    TranscriptSourceMenu(
+                        document: document,
+                        captionSources: captionSources,
+                        source: $source
+                    )
                 }
                 ExpandablePanelSearch(text: $searchQuery, focus: $isSearchFocused)
-                CaptionJumpToPlayheadButton(
+                TranscriptJumpToPlayheadButton(
                     timelineIndex: timelineIndex,
                     playheadState: editor.playheadState,
                     onJump: onJump
@@ -127,55 +99,77 @@ struct CaptionBrowser: View {
             value: editor.isMediaPanelSearchExpanded
         )
     }
+}
 
-    private func groupPicker(activeGroup: CaptionBrowserGroup) -> some View {
+struct TranscriptSourceMenu: View {
+    @Environment(EditorViewModel.self) private var editor
+    let document: EditorViewModel.TimelineTranscriptDocument?
+    let captionSources: [EditorViewModel.TimelineTranscriptDocument]
+    @Binding var source: TranscriptIndexSource
+
+    var body: some View {
         Menu {
-            ForEach(groups) { group in
-                Button {
-                    selectedGroupId = group.id
-                } label: {
-                    Label(
-                        groupLabel(group),
-                        systemImage: group.id == activeGroup.id ? "checkmark" : ""
-                    )
+            Button {
+                source = .transcript
+            } label: {
+                Label(
+                    L10n.string("Transcript"),
+                    systemImage: document?.sourceCaptionGroupId == nil ? "checkmark" : ""
+                )
+            }
+            if !captionSources.isEmpty {
+                Divider()
+                ForEach(captionSources, id: \.sourceCaptionGroupId) { caption in
+                    Button {
+                        if let groupId = caption.sourceCaptionGroupId {
+                            source = .captions(groupId)
+                        }
+                    } label: {
+                        Label(
+                            trackLabel(for: caption),
+                            systemImage: document?.sourceCaptionGroupId
+                                == caption.sourceCaptionGroupId ? "checkmark" : ""
+                        )
+                    }
                 }
             }
         } label: {
-            EditorMenuValue(text: groupLabel(activeGroup), expanded: true)
+            EditorMenuValue(text: document.map(trackLabel) ?? L10n.string("Transcript"), expanded: true)
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
-        .frame(maxWidth: AppTheme.MediaPanel.captionIndexGroupMenuWidth)
-        .layoutPriority(1)
+        .frame(maxWidth: AppTheme.MediaPanel.transcriptSourceMenuWidth)
         .focusable(false)
     }
 
-    private func groupLabel(_ group: CaptionBrowserGroup) -> String {
-        guard editor.timeline.tracks.indices.contains(group.trackIndex) else { return "" }
-        let title = CaptionBrowserNavigation.groupLabel(
-            code: editor.timelineTrackDisplayLabel(at: group.trackIndex),
-            name: editor.timeline.tracks[group.trackIndex].name
-        )
-        return title
+    private func trackLabel(
+        for document: EditorViewModel.TimelineTranscriptDocument
+    ) -> String {
+        guard let trackId = document.sourceTrackId,
+              let index = editor.timeline.tracks.firstIndex(where: { $0.id == trackId }) else {
+            return L10n.string("Transcript")
+        }
+        let code = editor.timelineTrackDisplayLabel(at: index)
+        return L10n.string("Caption \(code)")
     }
 }
 
-private struct CaptionJumpToPlayheadButton: View {
-    let timelineIndex: CaptionBrowserTimelineIndex
+private struct TranscriptJumpToPlayheadButton: View {
+    let timelineIndex: TranscriptBrowserTimelineIndex
     let playheadState: PreviewPlayheadState
     let onJump: (String) -> Void
 
     var body: some View {
-        let currentCaption = timelineIndex.currentCaption(at: playheadState.timelineFrame)
+        let currentRow = timelineIndex.currentRow(at: playheadState.timelineFrame)
 
         Button {
-            if let currentCaption { onJump(currentCaption.id) }
+            if let currentRow { onJump(currentRow.id) }
         } label: {
             Image(systemName: "timeline.selection")
                 .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
                 .foregroundStyle(
-                    currentCaption == nil
+                    currentRow == nil
                         ? AppTheme.Text.mutedColor
                         : AppTheme.Text.secondaryColor
                 )
@@ -185,7 +179,7 @@ private struct CaptionJumpToPlayheadButton: View {
         }
         .buttonStyle(.plain)
         .focusable(false)
-        .disabled(currentCaption == nil)
+        .disabled(currentRow == nil)
         .hoverTooltip(
             L10n.string("Jump to Playhead"),
             alignment: .bottomTrailing
@@ -193,31 +187,22 @@ private struct CaptionJumpToPlayheadButton: View {
     }
 }
 
-private struct CaptionBrowserRow: View {
+private struct TranscriptBrowserRow: View {
     @Environment(EditorViewModel.self) private var editor
-    let item: CaptionBrowserItem
+    let row: EditorViewModel.TimelineTranscriptRow
     let fps: Int
     let playheadState: PreviewPlayheadState
 
     var body: some View {
-        let clip = item.clip
-        let content = clip.textContent ?? ""
-        let startTimecode = formatTimecode(frame: clip.startFrame, fps: fps)
-        let durationLabel = CaptionBrowserMetrics.durationLabel(
-            durationFrames: clip.durationFrames,
+        let startTimecode = formatTimecode(frame: row.startFrame, fps: fps)
+        let durationLabel = TranscriptBrowserMetrics.durationLabel(
+            durationFrames: row.durationFrames,
             fps: fps
         )
 
         Button(action: select) {
             HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
                 HStack(spacing: AppTheme.Spacing.xxs) {
-                    Text(verbatim: "\(item.number)")
-                        .foregroundStyle(AppTheme.Text.mutedColor)
-                        .monospacedDigit()
-                        .frame(
-                            width: AppTheme.MediaPanel.captionIndexNumberWidth,
-                            alignment: .leading
-                        )
                     Text(verbatim: startTimecode)
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                         .monospacedDigit()
@@ -239,10 +224,10 @@ private struct CaptionBrowserRow: View {
                 ))
                 .lineLimit(1)
 
-                CaptionBrowserPlayheadText(
-                    content: content,
-                    clipStartFrame: clip.startFrame,
-                    clipEndFrame: clip.endFrame,
+                TranscriptBrowserPlayheadText(
+                    content: row.text,
+                    startFrame: row.startFrame,
+                    endFrame: row.endFrame,
                     playheadState: playheadState
                 )
                 .font(.system(size: AppTheme.FontSize.smMd))
@@ -258,10 +243,10 @@ private struct CaptionBrowserRow: View {
         .buttonStyle(.plain)
         .hoverHighlight(
             cornerRadius: AppTheme.Radius.xs,
-            isActive: editor.selectedClipIds.contains(clip.id)
+            isActive: editor.selectedClipIds.contains(row.clipId)
         )
         .padding(.horizontal, AppTheme.Spacing.xxs)
-        .accessibilityLabel(Text(verbatim: content))
+        .accessibilityLabel(Text(verbatim: row.text))
         .accessibilityValue(Text(verbatim: accessibilityValue(
             startTimecode: startTimecode,
             durationLabel: durationLabel
@@ -280,28 +265,30 @@ private struct CaptionBrowserRow: View {
         editor.selectedGap = nil
         editor.selectedTimelineRange = nil
         editor.selectedTimelineMarkerIds = []
-        editor.selectedClipIds = [item.id]
-        editor.seekToFrame(item.clip.startFrame)
+        editor.selectedClipIds = Set(
+            [row.clipId] + editor.linkedPartnerIds(of: row.clipId)
+        )
+        editor.seekToFrame(row.startFrame)
     }
 }
 
-private struct CaptionBrowserPlayheadText: View {
+private struct TranscriptBrowserPlayheadText: View {
     let content: String
-    let clipStartFrame: Int
-    let clipEndFrame: Int
+    let startFrame: Int
+    let endFrame: Int
     let playheadState: PreviewPlayheadState
 
     var body: some View {
         let frame = playheadState.timelineFrame
-        CaptionBrowserCurrentText(
+        TranscriptBrowserCurrentText(
             content: content,
-            isCurrent: clipStartFrame <= frame && frame < clipEndFrame
+            isCurrent: startFrame <= frame && frame < endFrame
         )
         .equatable()
     }
 }
 
-private struct CaptionBrowserCurrentText: View, Equatable {
+private struct TranscriptBrowserCurrentText: View, Equatable {
     let content: String
     let isCurrent: Bool
 
@@ -315,7 +302,7 @@ private struct CaptionBrowserCurrentText: View, Equatable {
     }
 }
 
-enum CaptionBrowserMetrics {
+enum TranscriptBrowserMetrics {
     static func durationLabel(durationFrames: Int, fps: Int) -> String? {
         guard durationFrames > 0, fps > 0 else { return nil }
         let seconds = Double(durationFrames) / Double(fps)
@@ -324,31 +311,31 @@ enum CaptionBrowserMetrics {
     }
 }
 
-struct CaptionBrowserTimelineIndex {
-    private let captions: [Clip]
-    private let longestEndingCaptionByPrefix: [Int]
+struct TranscriptBrowserTimelineIndex {
+    private let rows: [EditorViewModel.TimelineTranscriptRow]
+    private let longestEndingRowByPrefix: [Int]
 
-    init(sortedCaptions captions: [Clip]) {
-        self.captions = captions
-        var longestEndingCaptionByPrefix: [Int] = []
-        if !captions.isEmpty {
+    init(sortedRows rows: [EditorViewModel.TimelineTranscriptRow]) {
+        self.rows = rows
+        var longestEndingRowByPrefix: [Int] = []
+        if !rows.isEmpty {
             var longestEndingIndex = 0
-            for index in captions.indices {
-                if captions[index].endFrame >= captions[longestEndingIndex].endFrame {
+            for index in rows.indices {
+                if rows[index].endFrame >= rows[longestEndingIndex].endFrame {
                     longestEndingIndex = index
                 }
-                longestEndingCaptionByPrefix.append(longestEndingIndex)
+                longestEndingRowByPrefix.append(longestEndingIndex)
             }
         }
-        self.longestEndingCaptionByPrefix = longestEndingCaptionByPrefix
+        self.longestEndingRowByPrefix = longestEndingRowByPrefix
     }
 
-    func currentCaption(at frame: Int) -> Clip? {
+    func currentRow(at frame: Int) -> EditorViewModel.TimelineTranscriptRow? {
         var lowerBound = 0
-        var upperBound = captions.count
+        var upperBound = rows.count
         while lowerBound < upperBound {
             let midpoint = lowerBound + (upperBound - lowerBound) / 2
-            if captions[midpoint].startFrame <= frame {
+            if rows[midpoint].startFrame <= frame {
                 lowerBound = midpoint + 1
             } else {
                 upperBound = midpoint
@@ -357,74 +344,59 @@ struct CaptionBrowserTimelineIndex {
 
         guard lowerBound > 0 else { return nil }
         let latestIndex = lowerBound - 1
-        let latest = captions[latestIndex]
+        let latest = rows[latestIndex]
         if frame < latest.endFrame { return latest }
 
         guard latestIndex > 0 else { return nil }
-        let fallback = captions[longestEndingCaptionByPrefix[latestIndex - 1]]
+        let fallback = rows[longestEndingRowByPrefix[latestIndex - 1]]
         return frame < fallback.endFrame ? fallback : nil
     }
 }
 
-enum CaptionBrowserNavigation {
-    static func groups(in timeline: Timeline) -> [CaptionBrowserGroup] {
-        var captionsByGroup: [String: [Clip]] = [:]
-        var trackIndexByGroup: [String: Int] = [:]
-        var visibilityByGroup: [String: Bool] = [:]
-
-        for (trackIndex, track) in timeline.tracks.enumerated() {
-            for caption in track.clips where isCaption(caption) {
-                guard let groupId = caption.captionGroupId else { continue }
-                captionsByGroup[groupId, default: []].append(caption)
-                trackIndexByGroup[groupId] = trackIndexByGroup[groupId] ?? trackIndex
-                visibilityByGroup[groupId, default: false] =
-                    visibilityByGroup[groupId, default: false] || !track.hidden
+enum TranscriptBrowserNavigation {
+    static func captionFallbacks(
+        in timeline: Timeline
+    ) -> [EditorViewModel.TimelineTranscriptDocument] {
+        let tracks = timeline.tracks.filter { !$0.hidden }
+            + timeline.tracks.filter(\.hidden)
+        var documents: [EditorViewModel.TimelineTranscriptDocument] = []
+        for track in tracks {
+            var seen: Set<String> = []
+            let groupIds = track.clips.compactMap(\.captionGroupId).filter {
+                seen.insert($0).inserted
+            }
+            for groupId in groupIds {
+                let rows = track.clips.filter {
+                    $0.mediaType == .text && $0.captionGroupId == groupId
+                }
+                .sorted { ($0.startFrame, $0.id) < ($1.startFrame, $1.id) }
+                .map {
+                    EditorViewModel.TimelineTranscriptRow(
+                        id: $0.id,
+                        clipId: $0.id,
+                        text: $0.textContent ?? "",
+                        startFrame: $0.startFrame,
+                        endFrame: $0.endFrame
+                    )
+                }
+                documents.append(EditorViewModel.TimelineTranscriptDocument(
+                    fps: timeline.fps,
+                    rows: rows,
+                    sourceTrackId: track.id,
+                    sourceCaptionGroupId: groupId
+                ))
             }
         }
-
-        return captionsByGroup.compactMap { groupId, captions in
-            guard let trackIndex = trackIndexByGroup[groupId] else { return nil }
-            return CaptionBrowserGroup(
-                id: groupId,
-                trackIndex: trackIndex,
-                isVisible: visibilityByGroup[groupId] ?? false,
-                captions: captions.sorted(by: captionComesBefore)
-            )
-        }
-        .sorted {
-            if $0.trackIndex != $1.trackIndex {
-                return $0.trackIndex < $1.trackIndex
-            }
-            return $0.id < $1.id
-        }
+        return documents
     }
 
-    static func groupLabel(code: String, name: String?) -> String {
-        guard let name, !name.isEmpty else { return code }
-        return "\(code) (\(name))"
-    }
-
-    static func numberedCaptions(
-        _ captions: [Clip],
+    static func rows(
+        _ rows: [EditorViewModel.TimelineTranscriptRow],
         matching query: String
-    ) -> [CaptionBrowserItem] {
+    ) -> [EditorViewModel.TimelineTranscriptRow] {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        return captions.enumerated().compactMap { index, caption in
-            let matches = query.isEmpty
-                || (caption.textContent ?? "").localizedCaseInsensitiveContains(query)
-            guard matches else { return nil }
-            return CaptionBrowserItem(number: index + 1, clip: caption)
+        return rows.filter {
+            query.isEmpty || $0.text.localizedCaseInsensitiveContains(query)
         }
-    }
-
-    private static func isCaption(_ clip: Clip) -> Bool {
-        clip.mediaType == .text && clip.captionGroupId != nil
-    }
-
-    private static func captionComesBefore(_ lhs: Clip, _ rhs: Clip) -> Bool {
-        if lhs.startFrame != rhs.startFrame {
-            return lhs.startFrame < rhs.startFrame
-        }
-        return lhs.id < rhs.id
     }
 }

@@ -1,9 +1,15 @@
 import SwiftUI
 
 enum IndexBrowserSection: String, CaseIterable {
-    case captions = "Captions"
+    case transcript = "Transcript"
     case markers = "Markers"
-    var titleKey: String { self == .captions ? L10n.key("Captions") : L10n.key("Markers") }
+    var titleKey: String { self == .transcript ? L10n.key("Transcript") : L10n.key("Markers") }
+}
+
+enum TranscriptIndexSource: Equatable {
+    case automatic
+    case transcript
+    case captions(String)
 }
 
 struct IndexModeTabs: View {
@@ -47,27 +53,28 @@ struct IndexModeTabs: View {
 
 struct IndexTab: View {
     @Environment(EditorViewModel.self) private var editor
-    @Binding var selectedCaptionGroupId: String?
     @Binding var section: IndexBrowserSection
+    @Binding var transcript: EditorViewModel.TimelineTranscriptDocument?
+    @Binding var source: TranscriptIndexSource
     @State private var emptySearchQuery = ""
     @FocusState private var isSearchFocused: Bool
 
     var body: some View {
         let timeline = editor.timeline
-        let captionGroups = CaptionBrowserNavigation.groups(in: timeline)
+        let displayedTranscript = displayedTranscript(captions: captionSources)
 
         Group {
             switch section {
-            case .captions:
-                if captionGroups.isEmpty {
-                    captionEmptyState
-                } else {
-                    CaptionBrowser(
-                        groups: captionGroups,
-                        fps: timeline.fps,
-                        selectedGroupId: $selectedCaptionGroupId,
+            case .transcript:
+                if let displayedTranscript {
+                    TranscriptBrowser(
+                        document: displayedTranscript,
+                        captionSources: captionSources,
+                        source: $source,
                         indexSection: $section
                     )
+                } else {
+                    transcriptEmptyState
                 }
             case .markers:
                 MarkerBrowser(
@@ -81,9 +88,18 @@ struct IndexTab: View {
         .onChange(of: section) { _, _ in
             editor.collapseMediaPanelSearch()
         }
+        .task(id: editor.timelineRenderRevision) {
+            let revision = editor.timelineRenderRevision
+            if let cached = await editor.cachedTimelineTranscript(),
+               !cached.rows.isEmpty,
+               transcript == nil,
+               editor.timelineRenderRevision == revision {
+                transcript = cached
+            }
+        }
     }
 
-    private var captionEmptyState: some View {
+    private var transcriptEmptyState: some View {
         VStack(spacing: AppTheme.Spacing.zero) {
             HStack {
                 if editor.isMediaPanelSearchExpanded {
@@ -92,6 +108,13 @@ struct IndexTab: View {
                 } else {
                     IndexModeTabs(selection: $section)
                     Spacer(minLength: AppTheme.Spacing.zero)
+                    if !captionSources.isEmpty {
+                        TranscriptSourceMenu(
+                            document: nil,
+                            captionSources: captionSources,
+                            source: $source
+                        )
+                    }
                     ExpandablePanelSearch(text: $emptySearchQuery, focus: $isSearchFocused)
                 }
             }
@@ -102,24 +125,28 @@ struct IndexTab: View {
                 .fill(AppTheme.Border.primaryColor)
                 .frame(height: AppTheme.BorderWidth.hairline)
 
-            VStack(spacing: AppTheme.Spacing.sm) {
-                Spacer()
-                Image(systemName: "captions.bubble")
-                    .font(.system(
-                        size: AppTheme.FontSize.xl,
-                        weight: AppTheme.FontWeight.regular
-                    ))
-                    .foregroundStyle(AppTheme.Text.mutedColor)
-                Text(L10n.string("No captions"))
-                    .font(.system(
-                        size: AppTheme.FontSize.sm,
-                        weight: AppTheme.FontWeight.medium
-                    ))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-                Spacer()
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            CaptionTab(onGeneratedTranscript: {
+                transcript = $0
+                source = .transcript
+            })
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var captionSources: [EditorViewModel.TimelineTranscriptDocument] {
+        TranscriptBrowserNavigation.captionFallbacks(in: editor.timeline)
+    }
+
+    private func displayedTranscript(
+        captions: [EditorViewModel.TimelineTranscriptDocument]
+    ) -> EditorViewModel.TimelineTranscriptDocument? {
+        switch source {
+        case .automatic:
+            transcript ?? captions.first
+        case .transcript:
+            transcript
+        case .captions(let groupId):
+            captions.first { $0.sourceCaptionGroupId == groupId }
+        }
     }
 }

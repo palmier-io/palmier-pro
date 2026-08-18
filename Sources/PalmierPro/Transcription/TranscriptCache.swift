@@ -35,6 +35,14 @@ actor TranscriptCache {
         return range.map { Self.filter(full, to: $0) } ?? full
     }
 
+    func cachedTranscript(
+        for url: URL,
+        range: ClosedRange<Double>?
+    ) -> TranscriptionResult? {
+        guard let key = Self.key(for: url), let full = cached(key) else { return nil }
+        return range.map { Self.filter(full, to: $0) } ?? full
+    }
+
     nonisolated static func hasCachedOnDisk(for url: URL) -> Bool {
         guard let key = key(for: url) else { return false }
         return FileManager.default.fileExists(atPath: diskURL(key).path)

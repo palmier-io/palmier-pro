@@ -18,6 +18,23 @@ extension EditorViewModel {
         var animation: TextAnimation = TextAnimation()
     }
 
+    struct TimelineTranscriptRow: Identifiable, Sendable, Equatable {
+        let id: String
+        let clipId: String
+        let text: String
+        let startFrame: Int
+        let endFrame: Int
+
+        var durationFrames: Int { endFrame - startFrame }
+    }
+
+    struct TimelineTranscriptDocument: Sendable {
+        let fps: Int
+        let rows: [TimelineTranscriptRow]
+        let sourceTrackId: String?
+        let sourceCaptionGroupId: String?
+    }
+
     enum CaptionCase: String, CaseIterable, Sendable {
         case auto, upper, lower
 
@@ -173,10 +190,17 @@ extension EditorViewModel {
             .sorted { $0.startFrame < $1.startFrame }
     }
 
-    private struct CaptionTarget {
+    private struct CaptionTarget: Sendable {
         let id: String
         let trackId: String
         let clip: Clip
+    }
+
+    private struct PreparedTranscript: Sendable {
+        let timelineId: String
+        let timeline: Timeline
+        let targets: [CaptionTarget]
+        let results: [String: TranscriptionResult]
     }
 
     @discardableResult
@@ -184,22 +208,10 @@ extension EditorViewModel {
         for request: CaptionRequest,
         applying mutation: (@MainActor (@MainActor () -> [String]) async throws -> [String])? = nil
     ) async throws -> [String] {
-        let owningTimelineId = activeTimelineId
-        var targets = resolvedCaptionTargets(for: request)
-        guard !targets.isEmpty else { throw CaptionError.noSource }
-        let results = try await transcribe(targets, request: request)
-
-        guard timeline(for: owningTimelineId) != nil else { return [] }
-        if activeTimelineId != owningTimelineId { activateTimeline(owningTimelineId) }
-        targets = resolvedCaptionTargets(for: request)
-        guard !targets.isEmpty else { throw CaptionError.noSource }
-
-        let preparationTimeline = timeline
-
-        if request.autoDetect {
-            guard let winner = dominantSpeechTrack(targets, results) else { return [] }
-            targets = targets.filter { $0.trackId == winner }
-        }
+        let prepared = try await prepareTranscript(for: request)
+        let targets = prepared.targets
+        let results = prepared.results
+        let preparationTimeline = prepared.timeline
 
         let animation: TextAnimation? = request.animation.isActive ? request.animation : nil
         let input = CaptionSpecBuilder.Input(
@@ -211,10 +223,10 @@ extension EditorViewModel {
                     )
                 }
             },
-            fps: timeline.fps,
+            fps: preparationTimeline.fps,
             timelineEndFrame: preparationTimeline.totalFrames,
-            canvasWidth: timeline.width,
-            canvasHeight: timeline.height,
+            canvasWidth: preparationTimeline.width,
+            canvasHeight: preparationTimeline.height,
             style: request.style,
             center: request.center,
             textCase: request.textCase,
@@ -226,7 +238,7 @@ extension EditorViewModel {
         let specs = try await CaptionSpecBuilder.build(input)
         try Task.checkCancellation()
         guard captionPreparationIsCurrent(
-            timelineId: owningTimelineId,
+            timelineId: prepared.timelineId,
             snapshot: preparationTimeline
         ) else {
             throw CaptionError.timelineChanged
@@ -281,6 +293,109 @@ extension EditorViewModel {
         return placeCaptionTrack(specs, actionName: "Add Captions")
     }
 
+    func timelineTranscript(
+        for request: CaptionRequest
+    ) async throws -> TimelineTranscriptDocument {
+        let prepared = try await prepareTranscript(for: request)
+        let document = await Self.makeTimelineTranscriptDocument(prepared)
+        guard captionPreparationIsCurrent(
+            timelineId: prepared.timelineId,
+            snapshot: prepared.timeline
+        ) else {
+            throw CaptionError.timelineChanged
+        }
+        return document
+    }
+
+    func cachedTimelineTranscript() async -> TimelineTranscriptDocument? {
+        let timelineId = activeTimelineId
+        let snapshot = timeline
+        var targets = resolvedCaptionTargets(for: CaptionRequest(autoDetect: true))
+        guard !targets.isEmpty else { return nil }
+        let clips = targets.map(\.clip)
+        for provider in [TranscriptionProvider.cloud, .local] {
+            var seen: Set<String> = []
+            var results: [String: TranscriptionResult] = [:]
+            var complete = true
+            for target in targets where seen.insert(target.clip.mediaRef).inserted {
+                guard !Task.isCancelled,
+                      let url = mediaResolver.expectedURL(for: target.clip.mediaRef) else {
+                    return nil
+                }
+                let range = CaptionTranscriptMapper.sourceUnion(
+                    for: target.clip.mediaRef,
+                    clips: clips,
+                    fps: snapshot.fps
+                )
+                let cached = provider == .cloud
+                    ? await TranscriptCache.shared.cachedCloudTranscript(
+                        for: url, range: range, language: nil
+                    )
+                    : await TranscriptCache.shared.cachedTranscript(for: url, range: range)
+                guard let cached else {
+                    complete = false
+                    break
+                }
+                results[target.clip.mediaRef] = cached
+            }
+            guard complete else { continue }
+            guard !Task.isCancelled,
+                  activeTimelineId == timelineId,
+                  timeline == snapshot,
+                  let winner = dominantSpeechTrack(targets, results) else {
+                return nil
+            }
+            targets = targets.filter { $0.trackId == winner }
+            return await Self.makeTimelineTranscriptDocument(PreparedTranscript(
+                timelineId: timelineId,
+                timeline: snapshot,
+                targets: targets,
+                results: results
+            ))
+        }
+        return nil
+    }
+
+    @concurrent
+    private static func makeTimelineTranscriptDocument(
+        _ prepared: PreparedTranscript
+    ) async -> TimelineTranscriptDocument {
+        let rows = prepared.targets.flatMap { target -> [TimelineTranscriptRow] in
+            guard let result = prepared.results[target.clip.mediaRef] else { return [] }
+            let phrases = CaptionTranscriptMapper.phrases(
+                for: target.clip,
+                result: result,
+                fps: prepared.timeline.fps,
+                maxWords: nil,
+                maxCharacters: nil,
+                fits: { _ in true }
+            )
+            return CaptionBuilder.specs(
+                for: phrases,
+                sourceClip: target.clip,
+                trackIndex: 0,
+                fps: prepared.timeline.fps,
+                style: .caption,
+                captionGroupId: nil
+            ).enumerated().map { index, spec in
+                TimelineTranscriptRow(
+                    id: "\(target.clip.id):\(index):\(spec.startFrame)",
+                    clipId: target.clip.id,
+                    text: spec.content,
+                    startFrame: spec.startFrame,
+                    endFrame: spec.startFrame + spec.durationFrames
+                )
+            }
+        }
+        .sorted { ($0.startFrame, $0.id) < ($1.startFrame, $1.id) }
+        return TimelineTranscriptDocument(
+            fps: prepared.timeline.fps,
+            rows: rows,
+            sourceTrackId: nil,
+            sourceCaptionGroupId: nil
+        )
+    }
+
     // Estimate the cost of cloud transcription given the request. 0 if hit cache.
     func captionCloudCreditCost(for request: CaptionRequest) async -> Int {
         guard request.provider == .cloud else { return 0 }
@@ -307,6 +422,31 @@ extension EditorViewModel {
             totalCost += CostEstimator.estimatedTranscriptionCost(durationSeconds: seconds) ?? 0
         }
         return totalCost
+    }
+
+    private func prepareTranscript(
+        for request: CaptionRequest
+    ) async throws -> PreparedTranscript {
+        let timelineId = activeTimelineId
+        let timelineSnapshot = timeline
+        var targets = resolvedCaptionTargets(for: request)
+        guard !targets.isEmpty else { throw CaptionError.noSource }
+        let results = try await transcribe(targets, request: request)
+        try Task.checkCancellation()
+        guard activeTimelineId == timelineId, timeline == timelineSnapshot else {
+            throw CaptionError.timelineChanged
+        }
+        if request.autoDetect {
+            targets = dominantSpeechTrack(targets, results)
+                .map { winner in targets.filter { $0.trackId == winner } }
+                ?? []
+        }
+        return PreparedTranscript(
+            timelineId: timelineId,
+            timeline: timelineSnapshot,
+            targets: targets,
+            results: results
+        )
     }
 
     private func resolvedCaptionTargets(for request: CaptionRequest) -> [CaptionTarget] {

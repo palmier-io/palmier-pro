@@ -158,6 +158,7 @@
 "Cap characters per caption, including spaces and punctuation. A single word may exceed the limit." = "Cap characters per caption, including spaces and punctuation. A single word may exceed the limit.";
 "Cap the words shown per caption. None fits each line to the box." = "Cap the words shown per caption. None fits each line to the box.";
 "CapCut" = "CapCut";
+"Caption %@" = "Caption %@";
 "Captions" = "Captions";
 "Captions will look like this" = "Captions will look like this";
 "Capture Frame to Media" = "Capture Frame to Media";
@@ -634,7 +635,6 @@
 "No audio" = "No audio";
 "No audio selected." = "No audio selected.";
 "No beats detected." = "No beats detected.";
-"No captions" = "No captions";
 "No conversations yet" = "No conversations yet";
 "No exports yet" = "No exports yet";
 "No generations yet" = "No generations yet";
@@ -996,7 +996,11 @@
 "Top / Bottom" = "Top / Bottom";
 "Track Name" = "Track Name";
 "Tracking" = "Tracking";
+"Transcribe" = "Transcribe";
+"Transcribe · %lld credits" = "Transcribe · %lld credits";
+"Transcribe · 1 credit" = "Transcribe · 1 credit";
 "Transcribing…" = "Transcribing…";
+"Transcript" = "Transcript";
 "Transcription failed: %@" = "Transcription failed: %@";
 "Transform" = "Transform";
 "Transform with a prompt or motion reference" = "Transform with a prompt or motion reference";
