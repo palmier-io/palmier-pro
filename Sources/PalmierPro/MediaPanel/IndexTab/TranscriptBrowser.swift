@@ -139,7 +139,7 @@ struct TranscriptSourceMenu: View {
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
-        .frame(maxWidth: AppTheme.MediaPanel.captionIndexGroupMenuWidth)
+        .frame(maxWidth: AppTheme.MediaPanel.transcriptSourceMenuWidth)
         .focusable(false)
     }
 
