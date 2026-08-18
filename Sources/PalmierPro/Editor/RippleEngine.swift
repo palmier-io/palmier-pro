@@ -67,20 +67,27 @@ enum RippleEngine {
             .map { ClipShift(clipId: $0.id, newStartFrame: $0.startFrame + pushAmount) }
     }
 
-    /// Close removed spans: drop points inside, shrink overlapping ranges, shift the rest left.
-    static func rippleMarkers(_ markers: [TimelineMarker], closing removedRanges: [FrameRange]) -> [TimelineMarker] {
-        let merged = mergeRanges(removedRanges.filter { $0.length > 0 })
-        guard !merged.isEmpty else { return markers }
+    /// Close removed spans. One range list per shifting track; drop a point only if every track removed it.
+    static func rippleMarkers(_ markers: [TimelineMarker], closing trackRanges: [[FrameRange]]) -> [TimelineMarker] {
+        let mergedTracks = trackRanges.map { mergeRanges($0.filter { $0.length > 0 }) }.filter { !$0.isEmpty }
+        guard !mergedTracks.isEmpty else { return markers }
         return markers.compactMap { marker in
-            if !marker.isRange, merged.contains(where: { ($0.start..<$0.end).contains(marker.startFrame) }) {
-                return nil
+            let mappedStarts = mergedTracks.map { mapFrame(marker.startFrame, closing: $0) }
+            if !marker.isRange {
+                let removedOnEveryTrack = mergedTracks.allSatisfy { ranges in
+                    ranges.contains { ($0.start..<$0.end).contains(marker.startFrame) }
+                }
+                guard !removedOnEveryTrack else { return nil }
+                var next = marker
+                next.startFrame = mappedStarts.min() ?? marker.startFrame
+                return next
             }
+            let newStart = mappedStarts.min() ?? marker.startFrame
+            let newEnd = mergedTracks.map { mapFrame(marker.endFrame, closing: $0) }.min() ?? marker.endFrame
+            guard newEnd > newStart else { return nil }
             var next = marker
-            next.startFrame = mapFrame(marker.startFrame, closing: merged)
-            guard marker.isRange else { return next }
-            let newEnd = mapFrame(marker.endFrame, closing: merged)
-            guard newEnd > next.startFrame else { return nil }
-            next.durationFrames = newEnd - next.startFrame
+            next.startFrame = newStart
+            next.durationFrames = newEnd - newStart
             return next
         }
     }
@@ -95,7 +102,7 @@ enum RippleEngine {
         if pushAmount < 0 {
             return rippleMarkers(
                 markers,
-                closing: [FrameRange(start: insertFrame + pushAmount, end: insertFrame)]
+                closing: [[FrameRange(start: insertFrame + pushAmount, end: insertFrame)]]
             )
         }
         return markers.map { marker in

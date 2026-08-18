@@ -120,7 +120,7 @@ extension EditorViewModel {
             }
             applyShifts(plan.shifts)
             if let leadEnd {
-                rippleMarkersOpening(at: leadEnd, by: plan.durationDelta)
+                applyRippledMarkers(RippleEngine.rippleMarkers(timeline.markers, openingAt: leadEnd, by: plan.durationDelta))
             }
             for ti in timeline.tracks.indices where timeline.tracks[ti].clips.contains(where: { touched.contains($0.id) }) {
                 sortClips(trackIndex: ti)
@@ -192,11 +192,15 @@ extension EditorViewModel {
         }
 
         var shiftsByTrack: [Int: [ClipShift]] = [:]
+        var markerRanges: [[FrameRange]] = []
         for ti in timeline.tracks.indices {
             let track = timeline.tracks[ti]
             let hasOwnRemovals = track.clips.contains { ids.contains($0.id) }
             if hasOwnRemovals {
                 shiftsByTrack[ti] = RippleEngine.computeRippleShifts(clips: track.clips, removedIds: ids)
+                markerRanges.append(track.clips.filter { ids.contains($0.id) }.map {
+                    FrameRange(start: $0.startFrame, end: $0.endFrame)
+                })
             } else if track.syncLocked {
                 shiftsByTrack[ti] = RippleEngine.computeRippleShiftsForRanges(
                     clips: track.clips,
@@ -206,13 +210,14 @@ extension EditorViewModel {
                     refuseRipple(reason: reason)
                     return
                 }
+                markerRanges.append(globalRemovedRanges)
             }
         }
 
         withTimelineSwap(actionName: "Ripple Delete", refreshVisuals: false) {
             removeClips(ids: ids)
             for shifts in shiftsByTrack.values { applyShifts(shifts) }
-            rippleMarkersClosing(globalRemovedRanges)
+            applyRippledMarkers(RippleEngine.rippleMarkers(timeline.markers, closing: markerRanges))
         }
     }
 
@@ -225,14 +230,6 @@ extension EditorViewModel {
             applied += 1
         }
         return applied
-    }
-
-    fileprivate func rippleMarkersClosing(_ ranges: [FrameRange]) {
-        applyRippledMarkers(RippleEngine.rippleMarkers(timeline.markers, closing: ranges))
-    }
-
-    fileprivate func rippleMarkersOpening(at insertFrame: Int, by pushAmount: Int) {
-        applyRippledMarkers(RippleEngine.rippleMarkers(timeline.markers, openingAt: insertFrame, by: pushAmount))
     }
 
     private func applyRippledMarkers(_ next: [TimelineMarker]) {
@@ -319,7 +316,7 @@ extension EditorViewModel {
                 shiftedClips += applyShifts(shifts)
                 sortClips(trackIndex: ti)
             }
-            rippleMarkersClosing(merged)
+            applyRippledMarkers(RippleEngine.rippleMarkers(timeline.markers, closing: [merged]))
         }
 
         // Anchor track's post-cut layout (surviving + new fragments) so the caller needn't re-read.
@@ -381,7 +378,7 @@ extension EditorViewModel {
                     removedRanges: [gap.range]
                 ))
             }
-            rippleMarkersClosing([gap.range])
+            applyRippledMarkers(RippleEngine.rippleMarkers(timeline.markers, closing: [[gap.range]]))
         }
         selectedGap = nil
     }
@@ -406,7 +403,7 @@ extension EditorViewModel {
                     pushAmount: totalPush
                 ))
             }
-            rippleMarkersOpening(at: atFrame, by: totalPush)
+            applyRippledMarkers(RippleEngine.rippleMarkers(timeline.markers, openingAt: atFrame, by: totalPush))
             created = createClips(from: assets, trackIndex: trackIndex, startFrame: atFrame, segments: segments)
             sortClips(trackIndex: trackIndex)
         }
@@ -526,7 +523,7 @@ extension EditorViewModel {
                     clips: timeline.tracks[ti].clips, insertFrame: atFrame, pushAmount: totalPush
                 ))
             }
-            rippleMarkersOpening(at: atFrame, by: totalPush)
+            applyRippledMarkers(RippleEngine.rippleMarkers(timeline.markers, openingAt: atFrame, by: totalPush))
 
             var cursor = atFrame
             for spec in specs {

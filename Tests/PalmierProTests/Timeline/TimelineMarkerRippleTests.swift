@@ -39,6 +39,29 @@ struct TimelineMarkerRippleTests {
         #expect(e.timeline.markers.map(\.startFrame) == [45, 80])
     }
 
+    @Test func multiTrackRippleDeleteDoesNotOverShiftMarkers() {
+        let e = EditorViewModel()
+        e.timeline = Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [
+                Fixtures.clip(id: "v1", start: 0, duration: 50),
+                Fixtures.clip(id: "v2", start: 200, duration: 100),
+            ]),
+            Fixtures.audioTrack(clips: [
+                Fixtures.clip(id: "a1", mediaType: .audio, start: 200, duration: 50),
+                Fixtures.clip(id: "a2", mediaType: .audio, start: 300, duration: 50),
+            ]),
+        ])
+        e.rippleTimelineMarkers = true
+        e.timeline.markers = [
+            TimelineMarker(id: "onPicture", name: "On picture", startFrame: 220),
+            TimelineMarker(id: "after", name: "After", startFrame: 300),
+        ]
+        e.selectedClipIds = ["v1", "a1"]
+        e.rippleDeleteSelectedClips()
+        #expect(e.timeline.markers.map(\.id) == ["onPicture", "after"])
+        #expect(e.timeline.markers.map(\.startFrame) == [170, 250])
+    }
+
     @Test func markerRippleUndoesWithTheEdit() {
         let after = TimelineMarker(id: "after", name: "After", startFrame: 80)
         let e = editor(markers: [after], ripple: true)

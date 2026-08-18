@@ -126,7 +126,7 @@ struct RippleEngineTests {
             TimelineMarker(id: "join", name: "Join", startFrame: 50),
             TimelineMarker(id: "after", name: "After", startFrame: 80),
         ]
-        let next = RippleEngine.rippleMarkers(markers, closing: [FrameRange(start: 40, end: 50)])
+        let next = RippleEngine.rippleMarkers(markers, closing: [[FrameRange(start: 40, end: 50)]])
         #expect(next.map(\.id) == ["before", "join", "after"])
         #expect(next.map(\.startFrame) == [10, 40, 70])
     }
@@ -137,7 +137,7 @@ struct RippleEngineTests {
         let after = TimelineMarker(id: "after", name: "After", startFrame: 60, durationFrames: 20)
         let next = RippleEngine.rippleMarkers(
             [overlap, consumed, after],
-            closing: [FrameRange(start: 40, end: 50)]
+            closing: [[FrameRange(start: 40, end: 50)]]
         )
         #expect(next.map(\.id) == ["overlap", "after"])
         #expect(next[0].startFrame == 10)
@@ -157,6 +157,20 @@ struct RippleEngineTests {
         )
         #expect(next.map(\.startFrame) == [10, 20, 70])
         #expect(next[1].durationFrames == 60)
+    }
+
+    @Test func closingKeepsPointsThatStillExistOnAnotherTrack() {
+        let onPicture = TimelineMarker(id: "onPicture", name: "On picture", startFrame: 220)
+        let after = TimelineMarker(id: "after", name: "After", startFrame: 300)
+        let next = RippleEngine.rippleMarkers(
+            [onPicture, after],
+            closing: [
+                [FrameRange(start: 0, end: 50)],
+                [FrameRange(start: 200, end: 250)],
+            ]
+        )
+        #expect(next.map(\.id) == ["onPicture", "after"])
+        #expect(next.map(\.startFrame) == [170, 250])
     }
 
     @Test func negativeOpeningClosesTheTrimmedTail() {
