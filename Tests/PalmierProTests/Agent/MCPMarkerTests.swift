@@ -72,6 +72,47 @@ struct MCPMarkerTests {
         await server.stop()
         await client.disconnect()
     }
+
+    @Test func rippleDeleteShiftsMarkersThroughMCP() async throws {
+        let harness = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [Fixtures.clip(id: "clip", start: 0, duration: 100)])
+        ]))
+        harness.editor.rippleTimelineMarkers = true
+        harness.editor.timeline.markers = [
+            TimelineMarker(id: "inside", name: "Inside", startFrame: 45),
+            TimelineMarker(id: "after", name: "After", startFrame: 80),
+        ]
+        let server = Server(
+            name: "marker-ripple-test",
+            version: "1.0.0",
+            capabilities: .init(tools: .init(listChanged: false))
+        )
+        await MCPService.registerTools(on: server, executor: harness.executor)
+        let transports = await InMemoryTransport.createConnectedPair()
+        let client = Client(name: "marker-ripple-test", version: "1.0.0")
+        try await server.start(transport: transports.server)
+        do {
+            _ = try await client.connect(transport: transports.client)
+            let ripple = try json(try await client.callTool(name: "ripple_delete_ranges", arguments: [
+                "trackIndex": .int(0),
+                "ranges": .array([.array([.int(40), .int(50)])]),
+            ]))
+            #expect(ripple["removedMarkerIds"] as? [String] == ["inside"])
+            let markers = try #require(ripple["markers"] as? [[String: Any]])
+            #expect(markers[0]["markerId"] as? String == "after")
+            #expect(markers[0]["startFrame"] as? Int == 70)
+            let timeline = try json(try await client.callTool(name: "get_timeline", arguments: [:]))
+            let readBack = try #require((timeline["markers"] as? [[String: Any]])?.first)
+            #expect(readBack["startFrame"] as? Int == 70)
+        } catch {
+            await server.stop()
+            await client.disconnect()
+            throw error
+        }
+        await server.stop()
+        await client.disconnect()
+    }
+
     private func json(_ result: (content: [Tool.Content], isError: Bool?)) throws -> [String: Any] {
         guard case .text(let text, _, _) = result.content.first else {
             throw CocoaError(.coderReadCorrupt)
