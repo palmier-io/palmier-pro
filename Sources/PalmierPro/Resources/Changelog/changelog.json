@@ -2,15 +2,16 @@
   "changelogURL": "https://github.com/palmier-io/palmier-pro/releases",
   "entries": [
     {
-      "version": "0.7.5",
-      "date": "2026-08-14",
+      "version": "0.7.6",
+      "date": "2026-08-18",
       "sections": [
         {
           "heading": "New",
           "items": [
-            "New keyframe UI: Keyframe edit has moved to the timeline editor! Expand the keyframe editor from the track header, and start editing keyframes directly below the clips.",
-            "Timeline markers: You can now leave markers and comments and agent will see them automatically. Use M to add one at playhead, option+drag to split the marker to a range.",
-            "Blur and text keyframes: We have more keyframe controls on videos and text."
+            "Timeline Index - A new way to navigate the timeline in the media panel. In the index tab, you can search the timeline via transcripts. You can also manage markers and handoff to agents to address them.",
+            "Ripple markers with edits: Markers can move with ripple edits. This is configurable in the dropdown next to the marker button in toolbar.",
+            "Smart Search model installs on demand when agent needs it.",
+            "More supported languages: German, Dutch, Polish, Swedish, Czech, Danish, Norwegian, Finnish, Ukrainian, Indonesian, Thai, Hebrew, and European Portuguese"
           ]
         }
       ]
