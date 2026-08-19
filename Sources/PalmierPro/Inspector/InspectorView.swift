@@ -159,13 +159,7 @@ struct InspectorView: View {
             ScrollView {
                 EditorPanelGroup(
                     L10n.string("Canvas"),
-                    contentSpacing: AppTheme.Spacing.sm,
-                    contentInsets: EdgeInsets(
-                        top: AppTheme.Spacing.smMd,
-                        leading: AppTheme.Spacing.smMd + AppTheme.IconSize.xs + AppTheme.Spacing.sm,
-                        bottom: AppTheme.Spacing.smMd,
-                        trailing: AppTheme.Spacing.smMd
-                    )
+                    contentSpacing: AppTheme.Spacing.sm
                 ) {
                     menuMetadataRow(label: L10n.string("Resolution"), value: "\(editor.timeline.width) × \(editor.timeline.height)") { qualityMenuItems }
                     menuMetadataRow(label: L10n.string("Frame Rate"), value: "\(editor.timeline.fps) fps") { fpsMenuItems }

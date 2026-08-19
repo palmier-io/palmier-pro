@@ -472,6 +472,12 @@ enum AppTheme {
         static let compactNumericFieldWidth: CGFloat = 36
         static let fontMenuWidth: CGFloat = 160
         static let textEditorMinHeight: CGFloat = 96
+        static let contentInsets = EdgeInsets(
+            top: Spacing.smMd,
+            leading: Spacing.smMd + IconSize.xs + Spacing.sm,
+            bottom: Spacing.smMd,
+            trailing: Spacing.smMd
+        )
     }
 
     enum Window {

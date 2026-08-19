@@ -16,8 +16,7 @@ struct SpeechAnalysisSections: View {
     private var speakersSection: some View {
         EditorPanelGroup(
             L10n.string("Speaker Detection"),
-            isExpanded: $speakerExpanded,
-            contentInsets: AudioPanelSectionLayout.contentInsets
+            isExpanded: $speakerExpanded
         ) {
             InspectorRow(
                 label: L10n.string("Mark Speakers"),
@@ -109,8 +108,7 @@ struct SpeechAnalysisSections: View {
     private var silenceSection: some View {
         EditorPanelGroup(
             L10n.string("Silence Detection"),
-            isExpanded: $silenceExpanded,
-            contentInsets: AudioPanelSectionLayout.contentInsets
+            isExpanded: $silenceExpanded
         ) {
             InspectorRow(
                 label: L10n.string("Mark Silence"),
