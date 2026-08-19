@@ -134,8 +134,7 @@ struct MusicSection: View {
     private var musicSection: some View {
         EditorPanelGroup(
             L10n.string("Music"),
-            isExpanded: $isExpanded,
-            contentInsets: AudioPanelSectionLayout.contentInsets
+            isExpanded: $isExpanded
         ) {
             sourceControls
             modelControl

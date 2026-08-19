@@ -1,14 +1,5 @@
 import SwiftUI
 
-enum AudioPanelSectionLayout {
-    static let contentInsets = EdgeInsets(
-        top: AppTheme.Spacing.smMd,
-        leading: AppTheme.Spacing.mdLg,
-        bottom: AppTheme.Spacing.smMd,
-        trailing: AppTheme.Spacing.mdLg
-    )
-}
-
 struct AudioPanelTab: View {
     @Environment(EditorViewModel.self) private var editor
     @State private var musicExpanded = true

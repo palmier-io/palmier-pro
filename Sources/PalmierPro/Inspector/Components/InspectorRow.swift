@@ -11,7 +11,7 @@ struct InspectorRow<Trailing: View>: View {
     init(
         label: String,
         labelHelp: String? = nil,
-        labelAlignment: Alignment = .trailing,
+        labelAlignment: Alignment = .leading,
         onReset: (() -> Void)? = nil,
         @ViewBuilder trailing: @escaping () -> Trailing
     ) {

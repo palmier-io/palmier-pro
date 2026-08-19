@@ -14,12 +14,7 @@ struct EditorPanelGroup<Content: View, HeaderAccessory: View>: View {
         _ title: String,
         isExpanded: Binding<Bool>? = nil,
         contentSpacing: CGFloat = AppTheme.Spacing.smMd,
-        contentInsets: EdgeInsets = EdgeInsets(
-            top: AppTheme.Spacing.smMd,
-            leading: AppTheme.Spacing.smMd,
-            bottom: AppTheme.Spacing.smMd,
-            trailing: AppTheme.Spacing.smMd
-        ),
+        contentInsets: EdgeInsets = AppTheme.EditorPanel.contentInsets,
         onReset: (() -> Void)? = nil,
         @ViewBuilder headerAccessory: @escaping () -> HeaderAccessory,
         @ViewBuilder content: @escaping () -> Content
@@ -118,12 +113,7 @@ extension EditorPanelGroup where HeaderAccessory == EmptyView {
         _ title: String,
         isExpanded: Binding<Bool>? = nil,
         contentSpacing: CGFloat = AppTheme.Spacing.smMd,
-        contentInsets: EdgeInsets = EdgeInsets(
-            top: AppTheme.Spacing.smMd,
-            leading: AppTheme.Spacing.smMd,
-            bottom: AppTheme.Spacing.smMd,
-            trailing: AppTheme.Spacing.smMd
-        ),
+        contentInsets: EdgeInsets = AppTheme.EditorPanel.contentInsets,
         onReset: (() -> Void)? = nil,
         @ViewBuilder content: @escaping () -> Content
     ) {
