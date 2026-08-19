@@ -282,6 +282,15 @@ final class EditorViewModel {
         }
     }
 
+    var markScenes: Bool = {
+        UserDefaults.standard.object(forKey: "markScenes") as? Bool ?? true
+    }() {
+        didSet {
+            UserDefaults.standard.set(markScenes, forKey: "markScenes")
+            mediaVisualCache.timelineView?.needsDisplay = true
+        }
+    }
+
     var markSpeakers: Bool = {
         UserDefaults.standard.object(forKey: "markSpeakers") as? Bool ?? true
     }() {

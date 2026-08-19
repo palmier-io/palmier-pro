@@ -1561,6 +1561,21 @@ final class TimelineView: NSView, NSPopoverDelegate {
                 syncItems.append(markItem)
             }
         }
+        if clip.sourceClipType != .sequence,
+           let asset = editor.mediaAssets.first(where: { $0.id == clip.mediaRef }),
+           asset.type == .video {
+            let hasScenes = editor.mediaVisualCache.scenes.analysis(for: clip.mediaRef) != nil
+            let scenesItem = NSMenuItem(title: hasScenes ? L10n.string("Redetect Scenes") : L10n.string("Detect Scenes"), action: #selector(performDetectScenes(_:)), keyEquivalent: "")
+            scenesItem.target = self
+            scenesItem.representedObject = clip.mediaRef
+            syncItems.append(scenesItem)
+            if hasScenes {
+                let markItem = NSMenuItem(title: L10n.string("Mark Scenes"), action: #selector(toggleMarkScenes(_:)), keyEquivalent: "")
+                markItem.target = self
+                markItem.state = editor.markScenes ? .on : .off
+                syncItems.append(markItem)
+            }
+        }
 
         var multicamItems: [NSMenuItem] = []
         if let group = editor.multicamGroup(of: clip) {
@@ -1969,7 +1984,7 @@ final class TimelineView: NSView, NSPopoverDelegate {
         let targets = SnapEngine.collectTargets(
             tracks: editor.timeline.tracks,
             markerFrames: editor.timelineMarkerSnapFrames(),
-            beatFrames: editor.beatSnapFrames(for:)
+            beatFrames: editor.clipMarkSnapFrames(for:)
         )
         if let snap = SnapEngine.findSnap(
             position: candidate,

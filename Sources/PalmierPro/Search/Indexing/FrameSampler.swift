@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreGraphics
+import CoreVideo
 import Foundation
 
 /// Streams visually distinct frames for indexing: luma scene changes start new shots,
@@ -106,6 +107,28 @@ enum LumaGrid {
         ctx.draw(image, in: CGRect(x: 0, y: 0, width: n, height: n))
         return (0..<n * n).map { i in
             Float(pixels[i * 4]) * 0.299 + Float(pixels[i * 4 + 1]) * 0.587 + Float(pixels[i * 4 + 2]) * 0.114
+        }
+    }
+
+    /// 8×8 luma from a BGRA buffer by sampling each cell's center pixel.
+    static func compute(_ buffer: CVPixelBuffer) -> [Float]? {
+        guard CVPixelBufferGetPixelFormatType(buffer) == kCVPixelFormatType_32BGRA else { return nil }
+        let width = CVPixelBufferGetWidth(buffer)
+        let height = CVPixelBufferGetHeight(buffer)
+        guard width > 0, height > 0 else { return nil }
+        CVPixelBufferLockBaseAddress(buffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(buffer) else { return nil }
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
+        let ptr = base.assumingMemoryBound(to: UInt8.self)
+        let n = cells
+        return (0..<n * n).map { i in
+            let cx = i % n
+            let cy = i / n
+            let x = min(width - 1, (cx * 2 + 1) * width / (n * 2))
+            let y = min(height - 1, (cy * 2 + 1) * height / (n * 2))
+            let p = ptr + y * bytesPerRow + x * 4
+            return Float(p[2]) * 0.299 + Float(p[1]) * 0.587 + Float(p[0]) * 0.114
         }
     }
 

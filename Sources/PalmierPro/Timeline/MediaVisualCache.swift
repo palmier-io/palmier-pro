@@ -25,14 +25,20 @@ final class MediaVisualCache {
     }
 
     let beats = BeatStore()
+    let scenes = SceneStore()
 
     nonisolated func beatAnalysis(for mediaRef: String) -> BeatAnalysis? {
         beats.analysis(for: mediaRef)
     }
 
+    nonisolated func sceneAnalysis(for mediaRef: String) -> SceneAnalysis? {
+        scenes.analysis(for: mediaRef)
+    }
+
     init() {
         speech.onMaskReady = { [weak self] in self?.timelineView?.needsDisplay = true }
         beats.onBeatsReady = { [weak self] in self?.timelineView?.needsDisplay = true }
+        scenes.onScenesReady = { [weak self] in self?.timelineView?.needsDisplay = true }
     }
 
     // MARK: - Video thumbnails (sorted by time)
@@ -107,6 +113,7 @@ final class MediaVisualCache {
         speakerMasks.removeAll()
         speech.reset()
         beats.reset()
+        scenes.reset()
         videoThumbnails.removeAll()
         imageThumbnails.removeAll()
         onDeadAirCacheInvalidated?()
@@ -119,6 +126,7 @@ final class MediaVisualCache {
         speakerMasks.removeValue(forKey: mediaRef)
         speech.invalidate(mediaRef)
         beats.invalidate(mediaRef)
+        scenes.invalidate(mediaRef)
         videoThumbnails.removeValue(forKey: mediaRef)
         imageThumbnails.removeValue(forKey: mediaRef)
         onDeadAirCacheInvalidated?()
@@ -152,6 +160,7 @@ final class MediaVisualCache {
     }
 
     func generateVideoThumbnails(for asset: MediaAsset) {
+        scenes.hydrate(for: asset)
         let key = asset.id
         guard videoThumbnails[key] == nil, !videoThumbnailInFlight.contains(key) else { return }
         videoThumbnailInFlight.insert(key)

@@ -389,7 +389,7 @@ final class TimelineInputController {
                 playheadFrame: editor.currentFrame,
                 includePlayhead: true,
                 markerFrames: editor.timelineMarkerSnapFrames(),
-                beatFrames: editor.beatSnapFrames(for:)
+                beatFrames: editor.clipMarkSnapFrames(for:)
             )
             let rangeEndFrame: Int
             if let snap = SnapEngine.findSnap(
@@ -413,7 +413,7 @@ final class TimelineInputController {
                 playheadFrame: editor.currentFrame,
                 includePlayhead: true,
                 markerFrames: editor.timelineMarkerSnapFrames(excludingMarkerIds: [drag.original.id]),
-                beatFrames: editor.beatSnapFrames(for:)
+                beatFrames: editor.clipMarkSnapFrames(for:)
             )
             func snapped(_ position: Int, probes: [Int] = [0]) -> Int {
                 guard let snap = SnapEngine.findSnap(
@@ -447,7 +447,7 @@ final class TimelineInputController {
                 excludeClipIds: allDraggedIds,
                 includePlayhead: true,
                 markerFrames: editor.timelineMarkerSnapFrames(),
-                beatFrames: editor.beatSnapFrames(for:)
+                beatFrames: editor.clipMarkSnapFrames(for:)
             )
 
             // Let any selected edge drive snapping, not just the lead start.
@@ -495,7 +495,7 @@ final class TimelineInputController {
                 excludeClipIds: [drag.clipId],
                 includePlayhead: true,
                 markerFrames: editor.timelineMarkerSnapFrames(),
-                beatFrames: editor.beatSnapFrames(for:),
+                beatFrames: editor.clipMarkSnapFrames(for:),
                 includeExcludedClipBeats: true
             )
             let snappedStart: Int
@@ -527,7 +527,7 @@ final class TimelineInputController {
                 excludeClipIds: [drag.clipId],
                 includePlayhead: true,
                 markerFrames: editor.timelineMarkerSnapFrames(),
-                beatFrames: editor.beatSnapFrames(for:),
+                beatFrames: editor.clipMarkSnapFrames(for:),
                 includeExcludedClipBeats: true
             )
             let snappedEnd: Int
@@ -900,7 +900,7 @@ final class TimelineInputController {
                 playheadFrame: editor.currentFrame,
                 includePlayhead: true,
                 markerFrames: editor.timelineMarkerSnapFrames(),
-                beatFrames: editor.beatSnapFrames(for:)
+                beatFrames: editor.clipMarkSnapFrames(for:)
             )
             if let snap = SnapEngine.findSnap(
                 position: candidate,

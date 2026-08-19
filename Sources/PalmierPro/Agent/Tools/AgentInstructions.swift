@@ -82,6 +82,8 @@ enum AgentInstructions {
           maximum shortness.
         - Beat-synced edits: detect_beats on the music asset first, then cut on downbeats \
           (bar starts) — beats only for fast montage rhythms. Times are source seconds.
+        - Shot changes: detect_scenes on the video asset for hard cuts from pixel change \
+          (deterministic, cached). Times are source seconds; use scenes[] for ranges.
         - Text: add_texts for authored overlays; add_captions transcribes the timeline's \
           spoken audio (no targeting) — restyle with update_text and the returned \
           captionGroupId. Style covers typography, outline, shadow, background, \

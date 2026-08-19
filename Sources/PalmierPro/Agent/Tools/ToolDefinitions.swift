@@ -50,6 +50,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case removeWords = "remove_words"
     case removeSilence = "remove_silence"
     case detectBeats = "detect_beats"
+    case detectScenes = "detect_scenes"
 
     // Text & captions
     case addTexts = "add_texts"
@@ -830,6 +831,18 @@ enum ToolDefinitions {
                     "mediaRef": ["type": "string", "description": "Audio or video asset id from get_media."],
                     "startSeconds": ["type": "number", "description": "Optional. Return only beats at or after this source-media second. The whole file is analyzed once and cached; windowing trims the response, not the work."],
                     "endSeconds": ["type": "number", "description": "Optional. Return only beats at or before this source-media second."],
+                ],
+                required: ["mediaRef"]
+            )
+        ),
+        AgentTool(
+            name: .detectScenes,
+            description: "Detect hard cuts in a video asset from pixel change between consecutive frames, on-device. Deterministic: an 8×8 luma grid is compared frame-to-frame; a cut is recorded when the mean absolute difference exceeds a fixed threshold, with a 0.4s minimum scene length. Returns cuts in SOURCE seconds (multiply by fps for frame values, same convention as detect_beats and search_media hits) plus scene ranges [start, end). The first scene starts at 0; cuts are the boundaries after that.\n\nUse to split a clip on shot changes, list scene timings, or snap edits to cuts. Dissolves and fast motion can register as cuts; a single continuous shot returns no cuts. To place a cut at source second T on a clip, the timeline frame is startFrame + (T × fps − trimStartFrame) / speed. Runs locally — no subscription needed. The whole file is analyzed once and cached; startSeconds/endSeconds only window the response.",
+            inputSchema: objectSchema(
+                properties: [
+                    "mediaRef": ["type": "string", "description": "Video asset id from get_media."],
+                    "startSeconds": ["type": "number", "description": "Optional. Return only cuts at or after this source-media second. The whole file is analyzed once and cached; windowing trims the response, not the work."],
+                    "endSeconds": ["type": "number", "description": "Optional. Return only cuts at or before this source-media second."],
                 ],
                 required: ["mediaRef"]
             )

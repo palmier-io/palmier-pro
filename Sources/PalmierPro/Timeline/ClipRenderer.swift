@@ -217,6 +217,10 @@ enum ClipRenderer {
             drawBeatTicks(analysis: beats, clip: clip, in: rect, fps: fps, context: context)
         }
 
+        if markScenes, type == .video, clip.sourceClipType != .sequence, let scenes = cache?.sceneAnalysis(for: clip.mediaRef) {
+            drawSceneTicks(analysis: scenes, clip: clip, in: rect, fps: fps, context: context)
+        }
+
         if opacity < 1.0 {
             context.restoreGState()
         }
@@ -309,6 +313,40 @@ enum ClipRenderer {
         context.fill(ticks)
         context.setFillColor(downbeatTickColor)
         context.fill(downTicks)
+    }
+
+    private static var sceneTickColor: CGColor {
+        AppTheme.MediaOverlay.sceneCut.withAlphaComponent(AppTheme.Opacity.high).cgColor
+    }
+    private static let sceneTickBackingColor = AppTheme.MediaOverlay.background.withAlphaComponent(AppTheme.Opacity.strong).cgColor
+    private static var markScenes: Bool { UserDefaults.standard.object(forKey: "markScenes") as? Bool ?? true }
+
+    private static func drawSceneTicks(analysis: SceneAnalysis, clip: Clip, in rect: NSRect, fps: Int, context: CGContext) {
+        guard clip.durationFrames > 0, !analysis.cuts.isEmpty else { return }
+        let pxPerFrame = rect.width / CGFloat(clip.durationFrames)
+        guard pxPerFrame > 0 else { return }
+        let body = clipBodyRect(in: rect)
+        guard body.height > AppTheme.Spacing.lg * 2 else { return }
+
+        var ticks: [CGRect] = []
+        var lastX = -CGFloat.greatestFiniteMagnitude
+        for t in analysis.cuts {
+            guard let frame = clip.timelineFrame(sourceSeconds: t, fps: fps) else { continue }
+            let x = rect.minX + CGFloat(frame - clip.startFrame) * pxPerFrame
+            guard x - lastX >= AppTheme.Spacing.xs else { continue }
+            lastX = x
+            ticks.append(CGRect(
+                x: x - AppTheme.BorderWidth.thin / 2,
+                y: body.minY,
+                width: AppTheme.BorderWidth.thin,
+                height: AppTheme.Spacing.lg
+            ))
+        }
+        guard !ticks.isEmpty else { return }
+        context.setFillColor(sceneTickBackingColor)
+        context.fill(ticks.map { CGRect(x: $0.minX - 1, y: $0.minY, width: $0.width + 2, height: $0.height + 1) })
+        context.setFillColor(sceneTickColor)
+        context.fill(ticks)
     }
 
     // MARK: - Waveform

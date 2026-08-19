@@ -304,8 +304,10 @@
 "Destination" = "Destination";
 "Detail" = "Detail";
 "Detect Beats" = "Detect Beats";
+"Detect Scenes" = "Detect Scenes";
 "Detected %lld beats at %lld BPM." = "Detected %lld beats at %lld BPM.";
 "Detected %lld beats." = "Detected %lld beats.";
+"Detected %lld scene changes." = "Detected %lld scene changes.";
 "Detecting speech in %lld files…" = "Detecting speech in %lld files…";
 "Detecting speech…" = "Detecting speech…";
 "Difference" = "Difference";
@@ -569,6 +571,7 @@
 "Mark Beats" = "Mark Beats";
 "Mark Range End" = "Mark Range End";
 "Mark Range Start" = "Mark Range Start";
+"Mark Scenes" = "Mark Scenes";
 "Mark Silence" = "Mark Silence";
 "Mark Speakers" = "Mark Speakers";
 "Marker %lld" = "Marker %lld";
@@ -651,6 +654,7 @@
 "No music models available." = "No music models available.";
 "No projects found" = "No projects found";
 "No prompt needed" = "No prompt needed";
+"No scene changes detected." = "No scene changes detected.";
 "No speech detected." = "No speech detected.";
 "No track" = "No track";
 "No video" = "No video";
@@ -739,6 +743,7 @@
 "Re-render the same motion at full quality in 1080p" = "Re-render the same motion at full quality in 1080p";
 "Reasoning effort" = "Reasoning effort";
 "Redetect Beats" = "Redetect Beats";
+"Redetect Scenes" = "Redetect Scenes";
 "Redo" = "Redo";
 "Redo (⇧⌘Z)" = "Redo (⇧⌘Z)";
 "Reference" = "Reference";
@@ -824,6 +829,7 @@
 "Save this project to view activity" = "Save this project to view activity";
 "Saves a copy of this project with all media bundled inside, so it opens on any machine." = "Saves a copy of this project with all media bundled inside, so it opens on any machine.";
 "Scale" = "Scale";
+"Scene detection failed. Check that the media file is reachable, then retry." = "Scene detection failed. Check that the media file is reachable, then retry.";
 "Scope (2.39:1)" = "Scope (2.39:1)";
 "Score my timeline" = "Score my timeline";
 "Screen" = "Screen";
