@@ -1,3 +1,4 @@
+import AppKit
 import AVFoundation
 import Foundation
 
@@ -52,7 +53,20 @@ extension ToolExecutor {
                 ) else {
                     throw ToolError("Asset '\(mediaRef)' is not a completed enhanceable draft.")
                 }
-                return .ok("Draft enhancement started. Placeholder asset ID: \(placeholderId)")
+                let input = draft.generationInput
+                let model = input.flatMap { id in VideoModelConfig.allModels.first { $0.id == id.model } }
+                return generationPreviewReceipt(
+                    message: "Draft enhancement started. Placeholder asset ID: \(placeholderId)",
+                    mediaRef: placeholderId,
+                    kind: "video",
+                    prompt: input?.prompt ?? "",
+                    displayName: model?.displayName ?? "Enhance draft",
+                    iconKey: model?.entry.providerIconKey,
+                    aspectRatio: input?.aspectRatio,
+                    duration: input?.duration,
+                    resolution: input?.resolution,
+                    credits: input.flatMap { CostEstimator.cost(for: $0) }
+                )
             }
             let modelId = try args.string("model") ?? defaultModelId(
                 VideoModelConfig.allModels.map { (id: $0.id, paidOnly: $0.paidOnly) }, kind: "video")
@@ -160,7 +174,18 @@ extension ToolExecutor {
             editor: editor
         )
         let draftSummary = draft ? ", draft: true" : ""
-        return .ok("Edit started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), source: \(sourceAsset.name)\(draftSummary)")
+        return generationPreviewReceipt(
+            message: "Edit started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), source: \(sourceAsset.name)\(draftSummary)",
+            mediaRef: placeholderId,
+            kind: "video",
+            prompt: prompt,
+            displayName: model.displayName,
+            iconKey: model.entry.providerIconKey,
+            aspectRatio: aspectRatio,
+            duration: duration,
+            resolution: resolution,
+            credits: CostEstimator.cost(for: genInput)
+        )
     }
 
     private func generateVideoText(
@@ -238,7 +263,18 @@ extension ToolExecutor {
             ? ", refs: \(imageRefCount)img/\(videoRefCount)vid/\(audioRefCount)aud"
             : ""
         let draftSummary = draft ? ", draft: true" : ""
-        return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), duration: \(duration)s, aspect: \(aspectRatio)\(refSummary)\(draftSummary)")
+        return generationPreviewReceipt(
+            message: "Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), duration: \(duration)s, aspect: \(aspectRatio)\(refSummary)\(draftSummary)",
+            mediaRef: placeholderId,
+            kind: "video",
+            prompt: prompt,
+            displayName: model.displayName,
+            iconKey: model.entry.providerIconKey,
+            aspectRatio: aspectRatio,
+            duration: duration,
+            resolution: resolution,
+            credits: CostEstimator.cost(for: genInput)
+        )
     }
 
     private func referenceAssets(
@@ -296,7 +332,17 @@ extension ToolExecutor {
             projectURL: editor.projectURL,
             editor: editor
         )
-        return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), aspect: \(aspectRatio)")
+        return generationPreviewReceipt(
+            message: "Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), aspect: \(aspectRatio)",
+            mediaRef: placeholderId,
+            kind: "image",
+            prompt: prompt,
+            displayName: model.displayName,
+            iconKey: model.entry.providerIconKey,
+            aspectRatio: aspectRatio,
+            resolution: resolution,
+            credits: CostEstimator.cost(for: genInput)
+        )
     }
 
     func generateAudio(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
@@ -462,7 +508,16 @@ extension ToolExecutor {
                 )
                 return placeholderId
             }
-            return .ok("Generation started and placed on the timeline at frame \(startFrame). Placeholder asset ID: \(placeholderId). Model: \(model.displayName), \(model.category.label) (scored from video).")
+            return generationPreviewReceipt(
+                message: "Generation started and placed on the timeline at frame \(startFrame). Placeholder asset ID: \(placeholderId). Model: \(model.displayName), \(model.category.label) (scored from video).",
+                mediaRef: placeholderId,
+                kind: "audio",
+                prompt: prompt,
+                displayName: model.displayName,
+                iconKey: model.entry.providerIconKey,
+                duration: durationSeconds,
+                credits: CostEstimator.cost(for: genInput)
+            )
         }
 
         let placeholderId = submission.submit(
@@ -471,7 +526,16 @@ extension ToolExecutor {
             editor: editor
         )
         let sourceNote = sourceAsset != nil || videoURL != nil ? " (from source media)" : ""
-        return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), \(model.category.label)\(sourceNote). Place it with add_clips.")
+        return generationPreviewReceipt(
+            message: "Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), \(model.category.label)\(sourceNote). Place it with add_clips.",
+            mediaRef: placeholderId,
+            kind: "audio",
+            prompt: prompt,
+            displayName: model.displayName,
+            iconKey: model.entry.providerIconKey,
+            duration: durationSeconds,
+            credits: CostEstimator.cost(for: genInput)
+        )
     }
 
     func upscaleMedia(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
@@ -749,5 +813,299 @@ extension ToolExecutor {
         }
         info["settings"] = selects + numbers + toggles
         return info
+    }
+
+    private func generationPreviewReceipt(
+        message: String,
+        mediaRef: String,
+        kind: String,
+        prompt: String,
+        displayName: String,
+        iconKey: String?,
+        aspectRatio: String? = nil,
+        duration: Int? = nil,
+        resolution: String? = nil,
+        credits: Int? = nil
+    ) -> ToolResult {
+        guard Analytics.origin?.source == "mcp" else { return .ok(message) }
+        let group = registerMCPPreviewBurst(kind: kind, mediaRef: mediaRef)
+        var payload: [String: Any] = [
+            "kind": kind,
+            "mediaRef": mediaRef,
+            "message": message,
+            "model": displayName,
+            "previewUri": MCPPreviewApp.previewResourceURI(mediaRef: mediaRef),
+            "prompt": prompt,
+            "status": "generating",
+            "groupRole": group.role,
+            "groupMembers": group.members,
+        ]
+        if let iconKey, !iconKey.isEmpty { payload["modelIconKey"] = iconKey }
+        if let aspectRatio, !aspectRatio.isEmpty { payload["aspectRatio"] = aspectRatio }
+        if let duration, duration > 0 { payload["duration"] = duration }
+        if let resolution, !resolution.isEmpty { payload["resolution"] = resolution }
+        if let credits { payload["credits"] = credits }
+        return .ok(Self.jsonString(payload) ?? message)
+    }
+
+    static let groupedPreviewKinds: Set<String> = ["image", "video"]
+
+    func registerMCPPreviewBurst(kind: String, mediaRef: String) -> (role: String, members: [String]) {
+        if Self.groupedPreviewKinds.contains(kind), mcpPreviewBurstKind == kind {
+            mcpPreviewBurstMediaRefs.append(mediaRef)
+        } else {
+            mcpPreviewBurstKind = kind
+            mcpPreviewBurstMediaRefs = [mediaRef]
+        }
+        let members = mcpPreviewBurstMediaRefs
+        let isMember = Self.groupedPreviewKinds.contains(kind)
+            && members.count > 1
+            && mediaRef != members.first
+        if isMember, let host = members.first {
+            NotificationCenter.default.post(name: .generationAssetDidChange, object: host)
+        }
+        return (isMember ? "member" : "host", members)
+    }
+
+    func mcpPreviewGroup(for mediaRef: String) -> (role: String, members: [String])? {
+        guard let index = mcpPreviewBurstMediaRefs.firstIndex(of: mediaRef) else { return nil }
+        let groups = mcpPreviewBurstKind.map { Self.groupedPreviewKinds.contains($0) } ?? false
+        let members = groups ? mcpPreviewBurstMediaRefs : [mediaRef]
+        let isMember = groups && members.count > 1 && index > 0
+        return (isMember ? "member" : "host", members)
+    }
+
+    func getGenerationPreview(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
+        try validateUnknownKeys(args, allowed: ["mediaRef", "includeMedia"], path: "get_generation_preview")
+        let mediaRef = try args.requireString("mediaRef")
+        let includeMedia = args.bool("includeMedia") ?? false
+        return .ok(await generationPreviewJSON(mediaRef: mediaRef, includeMedia: includeMedia, editor: editor))
+    }
+
+    func revealGenerationMedia(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
+        try validateUnknownKeys(args, allowed: ["mediaRef"], path: "reveal_generation_media")
+        let mediaRef = try args.requireString("mediaRef")
+        let asset = try asset(mediaRef, editor: editor)
+        let url = asset.url
+        let exists = await Task.detached(priority: .userInitiated) {
+            FileManager.default.fileExists(atPath: url.path)
+        }.value
+        guard exists else {
+            throw ToolError("Generated file is not on disk yet.")
+        }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+        return .ok(#"{"revealed":true}"#)
+    }
+
+    func generationPreviewJSON(
+        mediaRef: String,
+        includeMedia: Bool = false,
+        editor: EditorViewModel? = nil
+    ) async -> String {
+        if let json = await timelinePreviewJSON(mediaRef: mediaRef, includeMedia: includeMedia) {
+            return json
+        }
+        let payload = await generationPreviewPayload(
+            mediaRef: mediaRef,
+            includeMedia: includeMedia,
+            editor: editor ?? self.editor
+        )
+        return Self.jsonString(payload) ?? #"{"status":"missing"}"#
+    }
+
+    private func generationPreviewPayload(
+        mediaRef: String,
+        includeMedia: Bool,
+        editor: EditorViewModel?
+    ) async -> [String: Any] {
+        guard let editor, let asset = editor.mediaAssets.first(where: { $0.id == mediaRef }) else {
+            return ["mediaRef": mediaRef, "status": "missing"]
+        }
+        var payload: [String: Any] = [
+            "kind": asset.type.rawValue,
+            "mediaRef": mediaRef,
+        ]
+        if let group = mcpPreviewGroup(for: mediaRef) {
+            payload["groupRole"] = group.role
+            payload["groupMembers"] = group.members
+        }
+        if let input = asset.generationInput {
+            if !input.prompt.isEmpty { payload["prompt"] = input.prompt }
+            if !input.aspectRatio.isEmpty { payload["aspectRatio"] = input.aspectRatio }
+            if let resolution = input.resolution, !resolution.isEmpty {
+                payload["resolution"] = resolution
+            }
+            payload["model"] = ModelRegistry.displayName(for: input.model)
+            if let iconKey = providerIconKey(for: input.model), !iconKey.isEmpty {
+                payload["modelIconKey"] = iconKey
+            }
+            if let credits = CostEstimator.cost(for: input) {
+                payload["credits"] = credits
+            }
+        }
+        let duration = asset.resolvedDuration
+        if (asset.type == .video || asset.type == .audio), duration > 0 {
+            payload["duration"] = duration
+        }
+
+        switch asset.generationStatus {
+        case .failed(let message):
+            payload["status"] = "failed"
+            payload["error"] = message
+            return payload
+        case .preparing:
+            payload["status"] = "generating"
+            payload["phase"] = "preparing"
+            return payload
+        case .generating:
+            payload["status"] = "generating"
+            payload["phase"] = "generating"
+            return payload
+        case .downloading:
+            payload["status"] = "generating"
+            payload["phase"] = "downloading"
+            return payload
+        case .rendering:
+            payload["status"] = "generating"
+            payload["phase"] = "rendering"
+            return payload
+        case .none:
+            break
+        }
+
+        let url = asset.url
+        let type = asset.type
+        let encoded = await Task.detached(priority: .userInitiated) {
+            await Self.encodeGenerationPreview(url: url, type: type, includeMedia: includeMedia)
+        }.value
+        payload["status"] = encoded.fileExists ? "ready" : "generating"
+        if encoded.fileExists, asset.type == .video || asset.type == .audio {
+            payload["mediaUrl"] = MCPPreviewApp.httpMediaURL(mediaRef: mediaRef)
+            payload["mediaResourceUri"] = MCPPreviewApp.generationMediaURI(mediaRef: mediaRef)
+            payload["mimeType"] = MCPPreviewApp.httpMediaMIMEType(url: url, type: type)
+        }
+        if let preview = encoded.preview {
+            payload["preview"] = preview
+        }
+        if let audio = encoded.audio {
+            payload["audio"] = audio
+        }
+        if let media = encoded.media {
+            payload["media"] = media
+        }
+        return payload
+    }
+
+    private func providerIconKey(for modelId: String) -> String? {
+        switch ModelRegistry.byId[modelId] {
+        case .video(let model): model.entry.providerIconKey
+        case .image(let model): model.entry.providerIconKey
+        case .audio(let model): model.entry.providerIconKey
+        case .upscale(let model): model.entry.providerIconKey
+        case .none: nil
+        }
+    }
+
+    private struct EncodedGenerationPreview: Sendable {
+        var fileExists: Bool
+        var preview: [String: String]?
+        var audio: [String: String]?
+        var media: [String: String]?
+    }
+
+    private nonisolated static func encodeGenerationPreview(
+        url: URL,
+        type: ClipType,
+        includeMedia: Bool
+    ) async -> EncodedGenerationPreview {
+        let exists = FileManager.default.fileExists(atPath: url.path)
+        guard exists else {
+            return EncodedGenerationPreview(fileExists: false, preview: nil, audio: nil, media: nil)
+        }
+        let media = includeMedia ? inlinePlayableMedia(url: url, type: type) : nil
+        switch type {
+        case .image:
+            guard let image = ImageEncoder.thumbnail(url: url, maxPixelSize: MCPPreviewApp.previewMaxPixelSize),
+                  let data = ImageEncoder.encodeJPEG(image, quality: 0.7)
+            else {
+                return EncodedGenerationPreview(fileExists: true, preview: nil, audio: nil, media: nil)
+            }
+            return EncodedGenerationPreview(
+                fileExists: true,
+                preview: ["mimeType": "image/jpeg", "data": data.base64EncodedString()],
+                audio: nil,
+                media: nil
+            )
+        case .video:
+            if includeMedia {
+                return EncodedGenerationPreview(fileExists: true, preview: nil, audio: nil, media: media)
+            }
+            guard let data = await videoPosterJPEG(url: url) else {
+                return EncodedGenerationPreview(fileExists: true, preview: nil, audio: nil, media: nil)
+            }
+            return EncodedGenerationPreview(
+                fileExists: true,
+                preview: ["mimeType": "image/jpeg", "data": data.base64EncodedString()],
+                audio: nil,
+                media: nil
+            )
+        case .audio:
+            if includeMedia {
+                return EncodedGenerationPreview(fileExists: true, preview: nil, audio: nil, media: media)
+            }
+            guard let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
+                  let size = values.fileSize,
+                  size > 0,
+                  size <= MCPPreviewApp.maxAudioPreviewBytes,
+                  let data = try? Data(contentsOf: url)
+            else {
+                return EncodedGenerationPreview(fileExists: true, preview: nil, audio: nil, media: nil)
+            }
+            return EncodedGenerationPreview(
+                fileExists: true,
+                preview: nil,
+                audio: ["mimeType": audioMIMEType(url: url), "data": data.base64EncodedString()],
+                media: nil
+            )
+        default:
+            return EncodedGenerationPreview(fileExists: true, preview: nil, audio: nil, media: nil)
+        }
+    }
+
+    private nonisolated static func inlinePlayableMedia(url: URL, type: ClipType) -> [String: String]? {
+        guard type == .video || type == .audio else { return nil }
+        guard let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
+              let size = values.fileSize,
+              size > 0,
+              size <= MCPPreviewApp.maxInlineMediaBytes,
+              let data = try? Data(contentsOf: url)
+        else { return nil }
+        return [
+            "mimeType": MCPPreviewApp.httpMediaMIMEType(url: url, type: type),
+            "data": data.base64EncodedString(),
+        ]
+    }
+
+    private nonisolated static func videoPosterJPEG(url: URL) async -> Data? {
+        let asset = AVURLAsset(url: url)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(
+            width: MCPPreviewApp.previewMaxPixelSize,
+            height: MCPPreviewApp.previewMaxPixelSize
+        )
+        let time = CMTime(seconds: 0.1, preferredTimescale: 600)
+        guard let cgImage = try? await generator.image(at: time).image else { return nil }
+        return ImageEncoder.encodeJPEG(cgImage, quality: 0.7)
+    }
+
+    private nonisolated static func audioMIMEType(url: URL) -> String {
+        switch url.pathExtension.lowercased() {
+        case "wav": "audio/wav"
+        case "m4a", "aac": "audio/mp4"
+        case "ogg": "audio/ogg"
+        case "flac": "audio/flac"
+        default: "audio/mpeg"
+        }
     }
 }

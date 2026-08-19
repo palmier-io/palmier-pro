@@ -6,7 +6,7 @@ import MCP
 @MainActor
 final class MCPService {
 
-    static let port: UInt16 = 19789
+    nonisolated static let port: UInt16 = 19789
 
     private static let enabledKey = "io.palmier.pro.mcp.enabled"
 
@@ -27,30 +27,46 @@ final class MCPService {
     private let projectProvider: () -> VideoProject?
     @ObservationIgnored
     private var httpServer: MCPHTTPServer?
+    @ObservationIgnored
+    private var previewNotifyTask: Task<Void, Never>?
 
     init(projectProvider: @escaping () -> VideoProject?) {
         self.projectProvider = projectProvider
     }
 
     func start() {
-        let httpServer = MCPHTTPServer(port: Self.port) { [self] in
+        let httpServer = MCPHTTPServer(
+            port: Self.port,
+            previewMedia: { mediaRef in
+                await MainActor.run { Self.previewMediaFile(mediaRef: mediaRef) }
+            }
+        ) { [self] in
             let toolExecutor = await makeSessionToolExecutor()
             let server = Server(
                 name: "palmier-pro",
                 version: "1.0.0",
                 instructions: AgentInstructions.serverInstructions + AgentInstructions.projectNavigation,
                 capabilities: .init(
-                    resources: .init(subscribe: false, listChanged: false),
+                    resources: .init(subscribe: true, listChanged: false),
                     tools: .init(listChanged: true)
                 )
             )
             await Self.registerTools(on: server, executor: toolExecutor)
-            await Self.registerResources(on: server)
+            await Self.registerResources(on: server, executor: toolExecutor)
             return MCPServerInstance(server: server) { clientInfo in
                 await toolExecutor.setMCPClientInfo(MCPClientInfo(clientInfo))
             }
         }
         self.httpServer = httpServer
+        previewNotifyTask?.cancel()
+        previewNotifyTask = Task { [weak self] in
+            for await note in NotificationCenter.default.notifications(named: .generationAssetDidChange) {
+                guard !Task.isCancelled, let mediaRef = note.object as? String else { continue }
+                await self?.httpServer?.notifyResourceUpdated(
+                    uri: MCPPreviewApp.previewResourceURI(mediaRef: mediaRef)
+                )
+            }
+        }
         Task { @MainActor [weak self] in
             do {
                 try await httpServer.start()
@@ -68,6 +84,8 @@ final class MCPService {
     }
 
     func stop() {
+        previewNotifyTask?.cancel()
+        previewNotifyTask = nil
         if let server = httpServer {
             Task { await server.stop() }
         }
@@ -78,7 +96,12 @@ final class MCPService {
 
     nonisolated static func registerTools(on server: Server, executor: ToolExecutor) async {
         let tools: [Tool] = ToolDefinitions.mcpServer.map { def in
-            Tool(name: def.name.rawValue, description: def.description, inputSchema: def.mcpSchemaValue)
+            Tool(
+                name: def.name.rawValue,
+                description: def.description,
+                inputSchema: def.mcpSchemaValue,
+                _meta: MCPPreviewApp.meta(for: def.name)
+            )
         }
 
         await server.withMethodHandler(ListTools.self) { _ in
@@ -97,7 +120,7 @@ final class MCPService {
         return result.toMCPResult()
     }
 
-    private nonisolated static func registerResources(on server: Server) async {
+    private nonisolated static func registerResources(on server: Server, executor: ToolExecutor) async {
         let resources = [
             Resource(
                 name: "Video Models",
@@ -111,6 +134,7 @@ final class MCPService {
                 description: "Available AI image generation models and their capabilities",
                 mimeType: "application/json"
             ),
+            MCPPreviewApp.resource,
         ]
 
         await server.withMethodHandler(ListResources.self) { _ in
@@ -118,12 +142,19 @@ final class MCPService {
         }
 
         await server.withMethodHandler(ReadResource.self) { params in
-            await Self.readResource(uri: params.uri)
+            await Self.readResource(uri: params.uri, executor: executor)
+        }
+
+        await server.withMethodHandler(ResourceSubscribe.self) { _ in
+            Empty()
+        }
+        await server.withMethodHandler(ResourceUnsubscribe.self) { _ in
+            Empty()
         }
     }
 
     @MainActor
-    private static func readResource(uri: String) -> ReadResource.Result {
+    private static func readResource(uri: String, executor: ToolExecutor) async -> ReadResource.Result {
         switch uri {
         case "palmier://models/video":
             let json = ToolExecutor.jsonString(VideoModelConfig.allModels.map { ToolExecutor.videoModelInfo($0) }) ?? "[]"
@@ -131,9 +162,60 @@ final class MCPService {
         case "palmier://models/image":
             let json = ToolExecutor.jsonString(ImageModelConfig.allModels.map { ToolExecutor.imageModelInfo($0) }) ?? "[]"
             return .init(contents: [.text(json, uri: uri, mimeType: "application/json")])
+        case MCPPreviewApp.resourceURI:
+            return .init(contents: [
+                .text(MCPPreviewApp.html, uri: uri, mimeType: MCPPreviewApp.mimeType, _meta: MCPPreviewApp.resourceMeta)
+            ])
         default:
+            if let mediaRef = MCPPreviewApp.previewResourceMediaRef(uri) {
+                let json = await executor.generationPreviewJSON(mediaRef: mediaRef)
+                return .init(contents: [.text(json, uri: uri, mimeType: "application/json")])
+            }
+            if let mediaRef = MCPPreviewApp.generationMediaRef(uri) {
+                return await Self.readGenerationMedia(uri: uri, mediaRef: mediaRef)
+            }
+            if let iconKey = MCPPreviewApp.modelIconKey(uri) {
+                let png = await Task.detached(priority: .utility) {
+                    MCPPreviewApp.modelIconPNG(iconKey: iconKey)
+                }.value
+                if let png {
+                    return .init(contents: [
+                        .binary(png, uri: uri, mimeType: "image/png")
+                    ])
+                }
+            }
             return .init(contents: [.text("Unknown resource: \(uri)", uri: uri)])
         }
+    }
+
+    @MainActor
+    private static func readGenerationMedia(uri: String, mediaRef: String) async -> ReadResource.Result {
+        guard let file = previewMediaFile(mediaRef: mediaRef) else {
+            return .init(contents: [])
+        }
+        let loaded = await Task.detached(priority: .userInitiated) { () -> Data? in
+            let values = try? file.url.resourceValues(forKeys: [.fileSizeKey])
+            let size = values?.fileSize ?? 0
+            guard size > 0, size <= MCPPreviewApp.maxHTTPMediaBytes else { return nil }
+            return try? Data(contentsOf: file.url)
+        }.value
+        guard let data = loaded else {
+            return .init(contents: [])
+        }
+        return .init(contents: [.binary(data, uri: uri, mimeType: file.mimeType)])
+    }
+
+    @MainActor
+    private static func previewMediaFile(mediaRef: String) -> (url: URL, mimeType: String)? {
+        guard MCPPreviewApp.isPreviewMediaRef(mediaRef) else { return nil }
+        for project in AppState.shared.openProjects {
+            guard let asset = project.editorViewModel.mediaAssets.first(where: { $0.id == mediaRef }) else {
+                continue
+            }
+            guard asset.generationStatus == .none else { return nil }
+            return (asset.url, MCPPreviewApp.httpMediaMIMEType(url: asset.url, type: asset.type))
+        }
+        return nil
     }
 
 }

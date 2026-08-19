@@ -407,6 +407,9 @@ final class GenerationService {
     ) {
         if let status {
             asset.generationStatus = status
+            if case .failed = status {
+                NotificationCenter.default.post(name: .generationAssetDidChange, object: asset.id)
+            }
         }
         if let mutateInput, var input = asset.generationInput {
             mutateInput(&input)
@@ -711,6 +714,7 @@ final class GenerationService {
             if await downloadAndFinalize(asset: placeholder, remoteURL: remote, editor: editor) {
                 onComplete?(placeholder)
                 finalized.append(placeholder)
+                NotificationCenter.default.post(name: .generationAssetDidChange, object: placeholder.id)
             }
         }
 

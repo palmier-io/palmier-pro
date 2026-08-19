@@ -10,6 +10,8 @@ enum ToolName: String, CaseIterable, Sendable {
     case inspectTimeline = "inspect_timeline"
     case createTimeline = "create_timeline"
     case setActiveTimeline = "set_active_timeline"
+    case showTimeline = "show_timeline"
+    case revealTimeline = "reveal_timeline"
     case manageMarkers = "manage_markers"
     case setProjectSettings = "set_project_settings"
     case exportProject = "export_project"
@@ -67,6 +69,8 @@ enum ToolName: String, CaseIterable, Sendable {
     case generateVideo = "generate_video"
     case generateImage = "generate_image"
     case generateAudio = "generate_audio"
+    case getGenerationPreview = "get_generation_preview"
+    case revealGenerationMedia = "reveal_generation_media"
     case upscaleMedia = "upscale_media"
 
     // Meta
@@ -112,6 +116,22 @@ enum ToolDefinitions {
                 properties: [
                     "name": ["type": "string", "description": "Optional display name. Defaults to 'Timeline N', or '<source> copy' when duplicating."],
                     "from": ["type": "string", "description": "Optional timelineId to duplicate instead of creating empty."],
+                ]
+            )
+        ),
+        AgentTool(
+            name: .showTimeline,
+            description: "Plays the composited timeline as video in the conversation — what the user would see in Palmier's preview, including stacked tracks, transforms, text, and captions. Use this after a batch of edits, or to compare variants, so the user can watch the cut without leaving chat. inspect_timeline is stills at specific frames; this is the moving picture.\n\nOmit timelineIds to show the active timeline. Pass several timelineIds (variant A/B/C) to show them side by side in one call. startFrame/endFrame (half-open timeline frames from get_timeline) select a range; do that on long timelines — the preview is capped at 20 seconds and reports the window it actually rendered. Returns immediately; the card fills in when Palmier finishes rendering.",
+            inputSchema: objectSchema(
+                properties: [
+                    "timelineIds": [
+                        "type": "array",
+                        "items": ["type": "string"],
+                        "description": "Optional. Timeline ids from get_media. Default: the active timeline. Max 6.",
+                    ],
+                    "timelineId": ["type": "string", "description": "Optional. Single timeline id; same as timelineIds with one entry."],
+                    "startFrame": ["type": "integer", "description": "Optional. Range start (inclusive). Default 0."],
+                    "endFrame": ["type": "integer", "description": "Optional. Range end (exclusive). Default: end of that timeline, capped at 20 seconds from startFrame."],
                 ]
             )
         ),
@@ -1060,7 +1080,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .generateVideo,
-            description: "Starts an async AI video generation. Returns a placeholder asset ID immediately; generation runs in the background and the asset becomes usable in add_clips once ready. Costs real money and is not undoable.",
+            description: "Starts an async AI video generation and returns a placeholder asset ID immediately so multiple generations can run at once. In MCP Apps hosts, an inline preview card appears and fills in when Palmier finishes. Costs real money and is not undoable.",
             inputSchema: objectSchema(
                 properties: [
                     "prompt": ["type": "string", "description": "Text description of the video to generate. Optional for transforms such as lip sync that do not use a prompt."],
@@ -1084,7 +1104,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .generateImage,
-            description: "Starts an async AI image generation. Returns a placeholder asset ID immediately; generation runs in the background. Costs real money and is not undoable.",
+            description: "Starts an async AI image generation and returns a placeholder asset ID immediately so multiple generations can run at once. In MCP Apps hosts, an inline preview card appears and fills in when Palmier finishes. Costs real money and is not undoable.",
             inputSchema: objectSchema(
                 properties: [
                     "prompt": ["type": "string", "description": "Text description of the image to generate"],
@@ -1101,7 +1121,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .generateAudio,
-            description: "Starts an async AI audio generation or transformation. Returns a placeholder asset ID immediately; the asset appears in get_media and becomes usable in add_clips once ready. TTS converts text into speech. Generative audio models create dialogue, music, or sound effects from a prompt, video, or supported image/audio references. Voice Cleanup isolates speech from background audio. Dubbing translates source speech while preserving speaker delivery; pass targetLanguage. For models whose inputs include audio or video, provide sourceMediaRef. Video-to-audio scoring models also accept videoSourceStartFrame+videoSourceEndFrame and place the result on the timeline automatically. Other results land in the media library for placement with add_clips. Use list_models with type='audio' to inspect inputs, category, voices, reference caps, and limits. Costs real money and is not undoable.",
+            description: "Starts an async AI audio generation or transformation and returns a placeholder asset ID immediately so multiple generations can run at once. In MCP Apps hosts, an inline preview card appears and fills in when Palmier finishes. TTS converts text into speech. Generative audio models create dialogue, music, or sound effects from a prompt, video, or supported image/audio references. Voice Cleanup isolates speech from background audio. Dubbing translates source speech while preserving speaker delivery; pass targetLanguage. For models whose inputs include audio or video, provide sourceMediaRef. Video-to-audio scoring models also accept videoSourceStartFrame+videoSourceEndFrame and place the result on the timeline automatically. Other results land in the media library for placement with add_clips. Use list_models with type='audio' to inspect inputs, category, voices, reference caps, and limits. Costs real money and is not undoable.",
             inputSchema: objectSchema(
                 properties: [
                     "prompt": ["type": "string", "description": "Required for text-driven models. TTS uses it as spoken text; generative audio models use it as the scene, music, or sound description. Omit for Voice Cleanup and Dubbing."],
@@ -1242,7 +1262,44 @@ enum ToolDefinitions {
         )
     )
 
-    static var mcpServer: [AgentTool] { all + [manageProject] }
+    /// MCP Apps preview poller. Hidden from the model.
+    static let getGenerationPreview = AgentTool(
+        name: .getGenerationPreview,
+        description: "Called by the generation preview UI to load a thumbnail or playable media once Palmier finishes generating. Do not call this from the conversation.",
+        inputSchema: objectSchema(
+            properties: [
+                "mediaRef": ["type": "string", "description": "Placeholder asset ID returned by generate_image, generate_video, or generate_audio."],
+                "includeMedia": ["type": "boolean", "description": "When true, include playable video or audio bytes once the file is ready."],
+            ],
+            required: ["mediaRef"]
+        )
+    )
+
+    /// MCP Apps Finder control. Hidden from the model.
+    static let revealGenerationMedia = AgentTool(
+        name: .revealGenerationMedia,
+        description: "Called by the generation preview UI to reveal the generated file in Finder. Do not call this from the conversation.",
+        inputSchema: objectSchema(
+            properties: [
+                "mediaRef": ["type": "string", "description": "Asset ID from generate_image, generate_video, or generate_audio."],
+            ],
+            required: ["mediaRef"]
+        )
+    )
+
+    /// MCP Apps "View in Palmier" control. Hidden from the model.
+    static let revealTimeline = AgentTool(
+        name: .revealTimeline,
+        description: "Called by the timeline preview UI to activate that timeline in Palmier Pro. Do not call this from the conversation.",
+        inputSchema: objectSchema(
+            properties: [
+                "timelineId": ["type": "string", "description": "Timeline id from show_timeline."],
+            ],
+            required: ["timelineId"]
+        )
+    )
+
+    static var mcpServer: [AgentTool] { all + [manageProject, getGenerationPreview, revealGenerationMedia, revealTimeline] }
     static var inAppAgent: [AgentTool] { all + [readSkill, manageSkills] }
 
     private static func textTransformProperties() -> [String: [String: Any]] {

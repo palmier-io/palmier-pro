@@ -2,6 +2,10 @@ import AppKit
 import Foundation
 import UserNotifications
 
+extension Notification.Name {
+    static let generationAssetDidChange = Notification.Name("io.palmier.pro.generationAssetDidChange")
+}
+
 @MainActor
 enum AppNotifications {
     private static let enabledKey = "io.palmier.pro.notifications.enabled"

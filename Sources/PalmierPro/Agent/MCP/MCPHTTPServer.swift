@@ -12,6 +12,7 @@ actor MCPHTTPServer {
 
     private let port: UInt16
     private let makeServer: @Sendable () async -> MCPServerInstance
+    private let previewMedia: @Sendable (String) async -> (url: URL, mimeType: String)?
     private nonisolated(unsafe) var listener: NWListener?
 
     private struct Session {
@@ -28,9 +29,11 @@ actor MCPHTTPServer {
 
     init(
         port: UInt16,
+        previewMedia: @escaping @Sendable (String) async -> (url: URL, mimeType: String)? = { _ in nil },
         makeServer: @escaping @Sendable () async -> MCPServerInstance
     ) {
         self.port = port
+        self.previewMedia = previewMedia
         self.makeServer = makeServer
     }
 
@@ -53,6 +56,25 @@ actor MCPHTTPServer {
         }
 
         listener?.start(queue: .global(qos: .userInitiated))
+    }
+
+    func notifyResourceUpdated(uri: String) async {
+        let servers = sessions.values.map(\.server)
+        let fallbackServer = fallback?.server
+        for server in servers {
+            do {
+                try await server.notify(ResourceUpdatedNotification.message(.init(uri: uri)))
+            } catch {
+                Log.mcp.warning("resource updated notify failed uri=\(uri): \(error.localizedDescription)")
+            }
+        }
+        if let fallbackServer {
+            do {
+                try await fallbackServer.notify(ResourceUpdatedNotification.message(.init(uri: uri)))
+            } catch {
+                Log.mcp.warning("resource updated notify failed uri=\(uri): \(error.localizedDescription)")
+            }
+        }
     }
 
     func stop() {
@@ -124,6 +146,11 @@ actor MCPHTTPServer {
             let body = "{\"resource\":\"http://127.0.0.1:\(port)\"}"
             sendRaw("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: \(body.utf8.count)\r\n\r\n\(body)", on: connection, keepAlive: true)
             receive(on: connection)
+            return
+        }
+
+        if let path = request.path, path.hasPrefix(MCPPreviewApp.previewHTTPPathPrefix) {
+            await servePreview(request: request, connection: connection)
             return
         }
 
@@ -301,9 +328,85 @@ actor MCPHTTPServer {
         })
     }
 
+    private func servePreview(request: HTTPRequest, connection: NWConnection) async {
+        let mediaRef = String((request.path ?? "").dropFirst(MCPPreviewApp.previewHTTPPathPrefix.count))
+        let method = request.method.uppercased()
+        if method == "OPTIONS" {
+            sendRaw(
+                "HTTP/1.1 204 No Content\r\n\(Self.previewCORSHeaders)Content-Length: 0\r\n\r\n",
+                on: connection,
+                keepAlive: true
+            )
+            receive(on: connection)
+            return
+        }
+        guard method == "GET" || method == "HEAD", MCPPreviewApp.isPreviewMediaRef(mediaRef) else {
+            sendRaw("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n", on: connection, keepAlive: false)
+            return
+        }
+        guard let file = await previewMedia(mediaRef) else {
+            sendRaw("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n", on: connection, keepAlive: false)
+            return
+        }
+        let loaded = await Task.detached(priority: .userInitiated) { () -> (Data, Int)? in
+            let values = try? file.url.resourceValues(forKeys: [.fileSizeKey])
+            let size = values?.fileSize ?? 0
+            guard size > 0, size <= MCPPreviewApp.maxHTTPMediaBytes else { return nil }
+            guard let data = try? Data(contentsOf: file.url) else { return nil }
+            return (data, data.count)
+        }.value
+        guard let (data, size) = loaded else {
+            sendRaw("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n", on: connection, keepAlive: false)
+            return
+        }
+        let range = Self.byteRange(from: request.header("Range"), size: size)
+        let body: Data
+        let status: Int
+        var extra = ""
+        if let range {
+            body = data.subdata(in: range)
+            status = 206
+            extra = "Content-Range: bytes \(range.lowerBound)-\(range.upperBound - 1)/\(size)\r\n"
+        } else {
+            body = data
+            status = 200
+        }
+        var head = "HTTP/1.1 \(status) \(statusText(status))\r\n"
+        head += Self.previewCORSHeaders
+        head += "Content-Type: \(file.mimeType)\r\n"
+        head += "Accept-Ranges: bytes\r\n"
+        head += extra
+        head += "Content-Length: \(method == "HEAD" ? 0 : body.count)\r\nConnection: close\r\n\r\n"
+        var response = head.data(using: .utf8) ?? Data()
+        if method != "HEAD" { response.append(body) }
+        connection.send(content: response, completion: .contentProcessed { _ in
+            connection.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { _ in
+                connection.cancel()
+            })
+        })
+    }
+
+    private static let previewCORSHeaders =
+        "Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, HEAD, OPTIONS\r\nAccess-Control-Allow-Headers: Range\r\n"
+
+    private nonisolated static func byteRange(from header: String?, size: Int) -> Range<Int>? {
+        guard let header, header.hasPrefix("bytes="), size > 0 else { return nil }
+        let spec = header.dropFirst("bytes=".count)
+        let parts = spec.split(separator: "-", maxSplits: 1)
+        guard let start = Int(parts.first ?? ""), start >= 0, start < size else { return nil }
+        let end: Int
+        if parts.count == 2, !parts[1].isEmpty {
+            guard let parsed = Int(parts[1]), parsed >= start else { return nil }
+            end = min(parsed + 1, size)
+        } else {
+            end = size
+        }
+        return start..<end
+    }
+
     private nonisolated func statusText(_ code: Int) -> String {
         switch code {
-        case 200: "OK"; case 202: "Accepted"; case 400: "Bad Request"
+        case 200: "OK"; case 202: "Accepted"; case 206: "Partial Content"; case 400: "Bad Request"
         case 404: "Not Found"; case 405: "Method Not Allowed"; case 409: "Conflict"
         case 500: "Internal Server Error"
         default: "Unknown"

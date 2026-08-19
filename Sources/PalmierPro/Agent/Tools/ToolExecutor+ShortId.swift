@@ -12,7 +12,7 @@ extension ToolExecutor {
         "groupId", "memberId", "markerId",
     ]
     private static let arrayIdKeys: Set<String> = [
-        "clipIds", "targetClipIds", "items", "ids", "deletes",
+        "clipIds", "targetClipIds", "items", "ids", "deletes", "timelineIds",
         "referenceMediaRefs", "referenceImageMediaRefs",
         "referenceVideoMediaRefs", "referenceAudioMediaRefs",
     ]
@@ -57,7 +57,7 @@ extension ToolExecutor {
         guard !map.isEmpty else { return result }
         let uuidRegex = /[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}/
         let content = result.content.map { block -> ToolResult.Block in
-            guard case .text(let s) = block else { return block }
+            guard case .text(let s) = block, s.count < 250_000 else { return block }
             return .text(s.replacing(uuidRegex) { map[String($0.output)] ?? String($0.output) })
         }
         return ToolResult(content: content, isError: result.isError)

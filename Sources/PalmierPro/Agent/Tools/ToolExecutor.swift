@@ -72,6 +72,11 @@ final class ToolExecutor {
 
     var feedbackState = FeedbackState()
     var lastTranscriptSession: TranscriptSession?
+    var mcpPreviewBurstKind: String?
+    var mcpPreviewBurstMediaRefs: [String] = []
+    var timelinePreviewJobs: [String: TimelinePreviewJob] = [:]
+    var timelinePreviewOrder: [String] = []
+    var timelinePreviewRenderTask: Task<Void, Never>?
 
     func execute(
         name: String,
@@ -254,7 +259,8 @@ final class ToolExecutor {
     private static func canReadInactiveProject(_ tool: ToolName) -> Bool {
         switch tool {
         case .getTimeline, .inspectTimeline, .getMedia, .inspectMedia, .searchMedia,
-             .getMulticam, .getTranscript, .detectBeats, .inspectColor, .listModels, .sendFeedback:
+             .getMulticam, .getTranscript, .detectBeats, .inspectColor, .listModels, .sendFeedback,
+             .getGenerationPreview, .revealGenerationMedia, .showTimeline, .revealTimeline:
             true
         default:
             false
@@ -359,6 +365,8 @@ final class ToolExecutor {
         case .generateVideo: return try generate(editor, args, type: .video)
         case .generateImage: return try generate(editor, args, type: .image)
         case .generateAudio: return try await generateAudio(editor, args)
+        case .getGenerationPreview: return try await getGenerationPreview(editor, args)
+        case .revealGenerationMedia: return try await revealGenerationMedia(editor, args)
         case .upscaleMedia:  return try upscaleMedia(editor, args)
         case .importMedia:   return try await importMedia(editor, args)
         case .listModels:    return listModels(args)
@@ -367,6 +375,8 @@ final class ToolExecutor {
         case .setProjectSettings: return try setProjectSettings(editor, args)
         case .createTimeline:     return try createTimeline(editor, args)
         case .setActiveTimeline:  return try setActiveTimeline(editor, args)
+        case .showTimeline:       return try showTimeline(editor, args)
+        case .revealTimeline:     return try revealTimeline(editor, args)
         case .manageMarkers:      return try manageMarkers(editor, args)
         case .readSkill:     return readSkill(args)
         case .manageSkills:  return try await manageSkills(args)
