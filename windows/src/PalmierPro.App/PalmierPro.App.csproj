@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <RootNamespace>PalmierPro.App</RootNamespace>
+    <UseWinUI>true</UseWinUI>
+    <Platforms>x64;ARM64</Platforms>
+    <PlatformTarget Condition="'$(Platform)' == 'x64' or '$(Platform)' == ''">x64</PlatformTarget>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <!-- Required for dotnet-CLI builds without Visual Studio (WindowsAppSDK PRI tasks). -->
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>PalmierPro</AssemblyName>
+    <!-- Explorer / exe icon; taskbar also needs AppWindow.SetIcon at runtime. -->
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.*" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.1742" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+    <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.3.2" />
+    <PackageReference Include="Velopack" Version="0.0.1298" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\PalmierPro.Core\PalmierPro.Core.csproj" />
+    <ProjectReference Include="..\PalmierPro.Media\PalmierPro.Media.csproj" />
+    <ProjectReference Include="..\PalmierPro.Agent\PalmierPro.Agent.csproj" />
+    <ProjectReference Include="..\PalmierPro.Cloud\PalmierPro.Cloud.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
