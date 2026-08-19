@@ -75,6 +75,17 @@ struct XMLExporterTimecodeTests {
         #expect(XMLExporter.formatTimecode(frame: 42966, fps: 30, dropFrame: true) == "00;23;53;18")
     }
 
+    @Test func dropFrameSkipsTwoFramesAtEachNonTenthMinute() {
+        // The first real frame of minute 1 must read ;02 — frames ;00/;01 are dropped. The raw
+        // count (fps*60 etc.) would emit an illegal 00;01;00;00 here.
+        #expect(XMLExporter.formatTimecode(frame: 1800, fps: 30, dropFrame: true) == "00;01;00;02")
+        #expect(XMLExporter.formatTimecode(frame: 3598, fps: 30, dropFrame: true) == "00;02;00;02")
+        // Minute 10 keeps all frames, so ;00 is legal there.
+        #expect(XMLExporter.formatTimecode(frame: 17982, fps: 30, dropFrame: true) == "00;10;00;00")
+        // 59.94: 4 frames dropped per non-tenth minute (quanta 60 DF).
+        #expect(XMLExporter.formatTimecode(frame: 3600, fps: 60, dropFrame: true) == "00;01;00;04")
+    }
+
     @Test func zeroFpsDoesNotCrash() {
         #expect(XMLExporter.formatTimecode(frame: 100, fps: 0, dropFrame: false) == "00:00:00:00")
     }
