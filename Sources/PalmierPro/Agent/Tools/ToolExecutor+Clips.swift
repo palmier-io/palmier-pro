@@ -66,6 +66,19 @@ fileprivate struct SplitClipsInput: DecodableToolArgs {
     }
 }
 
+fileprivate struct TrimClipsInput: DecodableToolArgs {
+    let edits: [Edit]
+    let ripple: Bool?
+    static let allowedKeys: Set<String> = ["edits", "ripple"]
+
+    struct Edit: DecodableToolArgs {
+        let clipId: String
+        let startFrame: Int?
+        let endFrame: Int?
+        static let allowedKeys: Set<String> = ["clipId", "startFrame", "endFrame"]
+    }
+}
+
 fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
     let clipIds: [String]?
     let durationFrames: Int?
@@ -231,14 +244,7 @@ extension ToolExecutor {
     func addClips(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         let input: AddClipsInput = try decodeToolArgs(args, path: "add_clips")
         guard !input.entries.isEmpty else { throw ToolError("Missing or empty 'entries' array") }
-        // Decodable doesn't reject unknown nested keys; check each raw entry.
-        if let raws = args["entries"] as? [Any] {
-            for (idx, raw) in raws.enumerated() {
-                if let d = raw as? [String: Any] {
-                    try validateUnknownKeys(d, allowed: AddClipsInput.Entry.allowedKeys, path: "entries[\(idx)]")
-                }
-            }
-        }
+        try validateEntryKeys(in: args, arrayKey: "entries", allowed: AddClipsInput.Entry.allowedKeys)
 
         var prepared: [(entry: AddClipsInput.Entry, asset: MediaAsset, trackId: String?)] = []
         prepared.reserveCapacity(input.entries.count)
@@ -351,13 +357,7 @@ extension ToolExecutor {
     func insertClips(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         let input: InsertClipsInput = try decodeToolArgs(args, path: "insert_clips")
         guard !input.entries.isEmpty else { throw ToolError("Missing or empty 'entries' array") }
-        if let raws = args["entries"] as? [Any] {
-            for (idx, raw) in raws.enumerated() {
-                if let d = raw as? [String: Any] {
-                    try validateUnknownKeys(d, allowed: InsertClipsInput.Entry.allowedKeys, path: "entries[\(idx)]")
-                }
-            }
-        }
+        try validateEntryKeys(in: args, arrayKey: "entries", allowed: InsertClipsInput.Entry.allowedKeys)
         guard editor.timeline.tracks.indices.contains(input.trackIndex) else {
             throw ToolError("trackIndex \(input.trackIndex) out of range (0..\(editor.timeline.tracks.count - 1))")
         }
@@ -458,13 +458,7 @@ extension ToolExecutor {
     func moveClips(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         let input: MoveClipsInput = try decodeToolArgs(args, path: "move_clips")
         guard !input.moves.isEmpty else { throw ToolError("Missing or empty 'moves' array") }
-        if let raws = args["moves"] as? [Any] {
-            for (idx, raw) in raws.enumerated() {
-                if let d = raw as? [String: Any] {
-                    try validateUnknownKeys(d, allowed: MoveClipsInput.Move.allowedKeys, path: "moves[\(idx)]")
-                }
-            }
-        }
+        try validateEntryKeys(in: args, arrayKey: "moves", allowed: MoveClipsInput.Move.allowedKeys)
 
         var parsed: [ParsedMove] = []
         parsed.reserveCapacity(input.moves.count)
@@ -1070,6 +1064,146 @@ extension ToolExecutor {
             _ = editor.splitClips(at: points)
         }
         return mutationResult(editor, since: snapshot)
+    }
+
+    // MARK: trim_clips
+
+    private struct TrimEdgeEdit {
+        let path: String
+        let clipId: String
+        let edge: EditorViewModel.TrimEdge
+        let deltaFrames: Int
+        let requestedFrame: Int
+        var edgeName: String { edge == .left ? "start" : "end" }
+    }
+
+    func trimClips(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        let input: TrimClipsInput = try decodeToolArgs(args, path: "trim_clips")
+        guard !input.edits.isEmpty else { throw ToolError("Missing or empty 'edits' array") }
+        try validateEntryKeys(in: args, arrayKey: "edits", allowed: TrimClipsInput.Edit.allowedKeys)
+        let ripple = input.ripple ?? false
+
+        // Bound requested frames so delta and speed math stays far from Int overflow.
+        let maxFrame = 500_000_000
+
+        var edgeEdits: [TrimEdgeEdit] = []
+        var claimed: Set<String> = []
+        for (idx, e) in input.edits.enumerated() {
+            let path = "edits[\(idx)]"
+            guard e.startFrame != nil || e.endFrame != nil else {
+                throw ToolError("\(path): at least one of 'startFrame' or 'endFrame' is required")
+            }
+            guard let loc = editor.findClip(id: e.clipId) else {
+                throw ToolError("\(path): clip not found: \(e.clipId)")
+            }
+            let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+
+            if let s = e.startFrame, !(0...maxFrame).contains(s) {
+                throw ToolError("\(path): startFrame must be between 0 and \(maxFrame) (got \(s))")
+            }
+            if let f = e.endFrame, !(1...maxFrame).contains(f) {
+                throw ToolError("\(path): endFrame must be between 1 and \(maxFrame) (got \(f))")
+            }
+            let newStart = e.startFrame ?? clip.startFrame
+            let newEnd = e.endFrame ?? clip.endFrame
+            guard newEnd > newStart else {
+                throw ToolError("\(path): resulting duration must be at least 1 frame (start \(newStart), end \(newEnd))")
+            }
+
+            // Process end edge before start edge to ensure correct delta calculations if both are trimmed.
+            var clipEdges: [TrimEdgeEdit] = []
+            if let f = e.endFrame, f != clip.endFrame {
+                clipEdges.append(TrimEdgeEdit(
+                    path: path, clipId: clip.id, edge: .right,
+                    deltaFrames: f - clip.endFrame, requestedFrame: f))
+            }
+            if let f = e.startFrame, f != clip.startFrame {
+                clipEdges.append(TrimEdgeEdit(
+                    path: path, clipId: clip.id, edge: .left,
+                    deltaFrames: f - clip.startFrame, requestedFrame: f))
+            }
+
+            // Prevent overlapping ripple trims on linked or multicam clips.
+            var group = Set([clip.id] + editor.linkedPartnerIds(of: clip.id))
+            if ripple {
+                for edge in clipEdges {
+                    group.formUnion(editor.rippleTrimTargets(
+                        clipId: clip.id, edge: edge.edge, propagateToLinked: true).map(\.id))
+                }
+            }
+            guard claimed.isDisjoint(with: group) else {
+                throw ToolError("\(path): clip \(e.clipId) overlaps an earlier edit — the same clip, a linked partner, or a multicam group member that trims together")
+            }
+            claimed.formUnion(group)
+            edgeEdits += clipEdges
+        }
+
+        if ripple {
+            for edit in edgeEdits {
+                if let reason = editor.rippleTrimRefusalReason(clipId: edit.clipId, edge: edit.edge, propagateToLinked: true) {
+                    throw ToolError("\(edit.path): \(reason)")
+                }
+            }
+        }
+
+        let snapshot = timelineSnapshot(editor)
+        var notes: [String] = []
+        if edgeEdits.isEmpty {
+            notes.append("No change: every requested edge matches the clip's current frames.")
+        }
+        if !ripple {
+            // Surface differences between lead and linked partners due to speed rounding.
+            for edit in edgeEdits {
+                guard let clip = editor.clipFor(id: edit.clipId) else { continue }
+                let leadDelta = editor.trimDurationDelta(for: clip, edge: edit.edge, delta: edit.deltaFrames)
+                for partnerId in editor.linkedPartnerIds(of: edit.clipId) {
+                    guard let partner = editor.clipFor(id: partnerId) else { continue }
+                    let partnerDelta = editor.trimDurationDelta(for: partner, edge: edit.edge, delta: edit.deltaFrames)
+                    guard partnerDelta != leadDelta else { continue }
+                    notes.append("\(edit.path): linked partner \(partnerId) moves \(abs(partnerDelta)) frames where \(edit.clipId) moves \(abs(leadDelta)) (speed rounding or partner source limits) — their \(edit.edgeName) edges will differ.")
+                }
+            }
+        }
+        editor.undo.perform(input.edits.count == 1 ? "Trim Clip (Agent)" : "Trim Clips (Agent)") {
+            for edit in edgeEdits {
+                if ripple {
+                    guard let plan = editor.planRippleTrim(
+                        clipId: edit.clipId, edge: edit.edge,
+                        deltaFrames: edit.deltaFrames, propagateToLinked: true
+                    ) else {
+                        notes.append("\(edit.path): no headroom to move the \(edit.edgeName) edge — skipped.")
+                        continue
+                    }
+                    let requestedDelta = edit.edge == .right ? edit.deltaFrames : -edit.deltaFrames
+                    if plan.durationDelta != requestedDelta {
+                        var note = "\(edit.path): \(edit.edgeName) edge clamped to \(abs(plan.durationDelta)) of the requested \(abs(requestedDelta)) frames"
+                        if let blocked = plan.blockedAtFrame { note += " (blocked by an obstacle at frame \(blocked))" }
+                        notes.append(note + ".")
+                    }
+                    editor.rippleTrimClip(clipId: edit.clipId, edge: edit.edge,
+                                          deltaFrames: edit.deltaFrames, propagateToLinked: true)
+                } else {
+                    editor.commitTrim(clipId: edit.clipId, edge: edit.edge,
+                                      deltaFrames: edit.deltaFrames, propagateToLinked: true)
+                }
+            }
+        }
+
+        if !ripple {
+            for edit in edgeEdits {
+                guard let loc = editor.findClip(id: edit.clipId) else {
+                    notes.append("\(edit.path): clip \(edit.clipId) was removed when an earlier edit extended over it — this trim was skipped.")
+                    continue
+                }
+                let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+                let landed = edit.edge == .left ? clip.startFrame : clip.endFrame
+                if landed != edit.requestedFrame {
+                    notes.append("\(edit.path): \(edit.edgeName) edge landed at frame \(landed), not the requested \(edit.requestedFrame) (source/multicam bounds or speed rounding).")
+                }
+            }
+        }
+
+        return mutationResult(editor, since: snapshot, touched: input.edits.map(\.clipId), notes: notes)
     }
 
     // MARK: ripple_delete_ranges
