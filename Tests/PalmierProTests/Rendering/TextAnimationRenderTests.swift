@@ -44,12 +44,25 @@ struct TextAnimationRenderTests {
         return n
     }
 
-    @Test func wordPopRevealsProgressively() {
-        let c = clip(TextAnimation(preset: .wordPop, perWordFrames: 6))
-        let early = pixels(c, frame: 5)   // only ONE has started
-        let late = pixels(c, frame: 80)   // all three in
-        #expect(brightCount(early) > 0, "first word should be visible early")
-        #expect(brightCount(late) > brightCount(early) * 2, "more words visible later (\(brightCount(early)) → \(brightCount(late)))")
+    private func highlightAmount(
+        _ preset: TextAnimation.Preset,
+        word: WordTiming,
+        nextWord: WordTiming?,
+        frame: Int
+    ) -> Double {
+        let animation = TextAnimation(
+            preset: preset,
+            perWordFrames: 6,
+            highlight: .init(r: 1, g: 0, b: 0, a: 1)
+        )
+        let state = TextAnimator.wordState(
+            animation,
+            word: word,
+            nextWord: nextWord,
+            rel: frame,
+            base: .init(r: 0, g: 0, b: 0, a: 1)
+        )
+        return preset == .highlightBlock ? state.bgColor?.a ?? 0 : state.color.r
     }
 
     @Test func highlightPopColorsActiveWord() {
@@ -60,6 +73,41 @@ struct TextAnimationRenderTests {
         for i in stride(from: 0, to: mid.count, by: 4)
         where mid[i] > 180 && mid[i + 1] > 150 && mid[i + 2] < 90 { yellow += 1 }
         #expect(yellow > 20, "active word should be highlighted yellow (\(yellow))")
+    }
+
+    @Test(arguments: [TextAnimation.Preset.highlightPop, .highlightBlock])
+    func shortWordHighlightAttackUsesOriginalTiming(preset: TextAnimation.Preset) {
+        let word = WordTiming(text: "A", startFrame: 10, endFrame: 12)
+        let nextWord = WordTiming(text: "pause", startFrame: 30, endFrame: 40)
+
+        #expect(highlightAmount(preset, word: word, nextWord: nextWord, frame: 11) == 1)
+    }
+
+    @Test(arguments: [TextAnimation.Preset.highlightPop, .highlightBlock])
+    func highlightHoldsAcrossPause(preset: TextAnimation.Preset) {
+        let word = WordTiming(text: "hold", startFrame: 0, endFrame: 2)
+        let nextWord = WordTiming(text: "next", startFrame: 20, endFrame: 30)
+
+        #expect(highlightAmount(preset, word: word, nextWord: nextWord, frame: 15) == 1)
+    }
+
+    @Test(arguments: [TextAnimation.Preset.highlightPop, .highlightBlock])
+    func adjacentWordHighlightsCrossfadeWithoutGap(preset: TextAnimation.Preset) {
+        let word = WordTiming(text: "first", startFrame: 0, endFrame: 2)
+        let nextWord = WordTiming(text: "next", startFrame: 20, endFrame: 30)
+
+        for frame in 20...24 {
+            let outgoing = highlightAmount(preset, word: word, nextWord: nextWord, frame: frame)
+            let incoming = highlightAmount(preset, word: nextWord, nextWord: nil, frame: frame)
+            #expect(abs(outgoing + incoming - 1) < 0.000_001)
+        }
+    }
+
+    @Test(arguments: [TextAnimation.Preset.highlightPop, .highlightBlock])
+    func finalWordHighlightHolds(preset: TextAnimation.Preset) {
+        let word = WordTiming(text: "final", startFrame: 70, endFrame: 72)
+
+        #expect(highlightAmount(preset, word: word, nextWord: nil, frame: 89) == 1)
     }
 
     @Test func typewriterShowsCompleteTextOnFinalFrame() {
@@ -97,6 +145,23 @@ struct TextAnimationRenderTests {
         let actualPixels = pixels(animated, frame: 36)
         let expectedPixels = pixels(expected, frame: 36)
         #expect(actualPixels == expectedPixels)
+    }
+
+    @Test func laterWordOutlinesDoNotPaintOverEarlierFills() {
+        var animated = clip(TextAnimation(preset: .wordReveal, perWordFrames: 4, highlight: .init(r: 1, g: 1, b: 1, a: 1)))
+        animated.textStyle?.border = .init(enabled: true, color: .init(r: 1, g: 0, b: 0, a: 1), width: 40)
+        animated.textStyle?.tracking = -6
+        var expected = animated
+        expected.textAnimation = nil
+
+        // Steady frame: all words revealed, no motion — per-word must match static stacking.
+        let animatedWhite = brightCount(pixels(animated, frame: 85))
+        let staticWhite = brightCount(pixels(expected, frame: 85))
+        #expect(staticWhite > 500, "expected a visible white fill baseline")
+        #expect(
+            animatedWhite >= staticWhite * 97 / 100,
+            "later words' outlines must not cover earlier fills (\(animatedWhite) vs \(staticWhite) white pixels)"
+        )
     }
 
     @Test func tokenTimingsSplitAlignedTranscriptSpan() {

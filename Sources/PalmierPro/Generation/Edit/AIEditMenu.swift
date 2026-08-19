@@ -35,6 +35,9 @@ struct AIEditMenu: View {
                                 Button(L10n.string("Set as reference")) { createVideo(asReference: true) }
                             }
                         }
+                        if enhanceActions.contains(.enhanceDraft) {
+                            Button(L10n.string("FLUX Enhance")) { enhanceDraft() }
+                        }
                     }
                 }
                 if !audioActions.isEmpty || !availableAudioTransforms.isEmpty {
@@ -103,6 +106,10 @@ struct AIEditMenu: View {
         guard let model = UpscaleModelConfig.models(for: asset.type).first else { return }
         let stored = EditSubmitter.upscaleSeed(for: asset, model: model)
         editor.seedGenerationPanel(asset: asset, stored: stored)
+    }
+
+    private func enhanceDraft() {
+        editor.generationService.enhanceDraft(asset: asset, editor: editor)
     }
 
     private func edit() {

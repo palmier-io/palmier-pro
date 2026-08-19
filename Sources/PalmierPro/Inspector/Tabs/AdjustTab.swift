@@ -508,7 +508,7 @@ extension InspectorView {
             .buttonStyle(.plain)
             .help(path ?? L10n.string("Choose a .cube LUT file"))
         }
-        .frame(height: KeyframesMetrics.rowHeight)
+        .frame(height: AppTheme.EditorPanel.fieldMinHeight)
     }
 
     private func lutIntensityRow(clips: [Clip]) -> some View {
@@ -528,7 +528,7 @@ extension InspectorView {
                 onChanged: { setLUTIntensity($0 / 100, clips: clips, commit: false) }
             ) { setLUTIntensity($0 / 100, clips: clips, commit: true) }
         }
-        .frame(height: KeyframesMetrics.rowHeight)
+        .frame(height: AppTheme.EditorPanel.fieldMinHeight)
     }
 
     private func lutPath(in clips: [Clip]) -> String? {
@@ -588,25 +588,31 @@ extension InspectorView {
             let label = control.label ?? spec.label
             HStack(spacing: AppTheme.Spacing.sm) {
                 adjustRowLabel(label, inset: adjustSubgroupChildLabelInset)
-                AdjustSlider(
-                    value: sharedClipValue(clips) { controlValue($0, control, spec) } ?? spec.defaultValue,
-                    range: spec.range,
-                    gradient: control.gradient,
-                    defaultValue: spec.defaultValue,
-                    onChanged: { setControlParam(control, label: label, value: $0, clips: clips, commit: false) },
-                    onCommit: { setControlParam(control, label: label, value: $0, clips: clips, commit: true) }
-                )
-                ScrubbableNumberField(
-                    value: sharedClipValue(clips) { controlValue($0, control, spec) },
-                    range: spec.range,
-                    format: effectParamFormat(spec),
-                    valueSuffix: spec.unit.isEmpty ? "" : " \(spec.unit)",
-                    dragSensitivity: effectParamSensitivity(spec),
-                    fieldWidth: AppTheme.EditorPanel.numericFieldWidth,
-                    onChanged: { setControlParam(control, label: label, value: $0, clips: clips, commit: false) }
-                ) { setControlParam(control, label: label, value: $0, clips: clips, commit: true) }
+                if control.effectId == Effect.gaussianBlurType,
+                   control.paramKey == Effect.gaussianBlurRadiusKey {
+                    Spacer(minLength: 0)
+                    KeyframePropertyValueFields(clips: clips, property: .blur, style: .inspector)
+                } else {
+                    AdjustSlider(
+                        value: sharedClipValue(clips) { controlValue($0, control, spec) } ?? spec.defaultValue,
+                        range: spec.range,
+                        gradient: control.gradient,
+                        defaultValue: spec.defaultValue,
+                        onChanged: { setControlParam(control, label: label, value: $0, clips: clips, commit: false) },
+                        onCommit: { setControlParam(control, label: label, value: $0, clips: clips, commit: true) }
+                    )
+                    ScrubbableNumberField(
+                        value: sharedClipValue(clips) { controlValue($0, control, spec) },
+                        range: spec.range,
+                        format: effectParamFormat(spec),
+                        valueSuffix: spec.unit.isEmpty ? "" : " \(spec.unit)",
+                        dragSensitivity: effectParamSensitivity(spec),
+                        fieldWidth: AppTheme.EditorPanel.numericFieldWidth,
+                        onChanged: { setControlParam(control, label: label, value: $0, clips: clips, commit: false) }
+                    ) { setControlParam(control, label: label, value: $0, clips: clips, commit: true) }
+                }
             }
-            .frame(height: KeyframesMetrics.rowHeight)
+            .frame(height: AppTheme.EditorPanel.fieldMinHeight)
         }
     }
 

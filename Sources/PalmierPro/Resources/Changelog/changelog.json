@@ -2,22 +2,16 @@
   "changelogURL": "https://github.com/palmier-io/palmier-pro/releases",
   "entries": [
     {
-      "version": "0.6.16",
-      "date": "2026-07-29",
+      "version": "0.7.6",
+      "date": "2026-08-18",
       "sections": [
         {
-          "heading": "AI Features",
+          "heading": "New",
           "items": [
-            "Video Reframing: Select a clip/video, and use LTX 2.3 Reframe video model to change the aspect ratio",
-            "Lip Sync: Select a video and audio and lip sync them with Veed Lip Sync model"
-          ]
-        },
-        {
-          "heading": "Improved",
-          "items": [
-            "Refund logs in generation history: You can now see the refund transaction details in the generation history",
-            "Custom Aspect Ratio: You can set a custom aspect ratio for your timeline",
-            "More controls in silence removal: You can control the silence threshold and padding via UI or agent"
+            "Timeline Index - A new way to navigate the timeline in the media panel. In the index tab, you can search the timeline via transcripts. You can also manage markers and handoff to agents to address them.",
+            "Ripple markers with edits: Markers can move with ripple edits. This is configurable in the dropdown next to the marker button in toolbar.",
+            "Smart Search model installs on demand when agent needs it.",
+            "More supported languages: German, Dutch, Polish, Swedish, Czech, Danish, Norwegian, Finnish, Ukrainian, Indonesian, Thai, Hebrew, and European Portuguese"
           ]
         }
       ]

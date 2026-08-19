@@ -36,6 +36,12 @@ struct FormatTimecodeTests {
         #expect(formatTimecode(frame: 23, fps: 24) == "00:00:00:23")
         #expect(formatTimecode(frame: 24, fps: 24) == "00:00:01:00")
     }
+
+    @Test func timecodeParsingValidatesFields() {
+        #expect(parseTimecode("01:02:03:04", fps: 30) == 111_694)
+        #expect(parseTimecode("00:00:00:30", fps: 30) == nil)
+        #expect(parseTimecode("invalid", fps: 30) == nil)
+    }
 }
 
 @Suite("frame/seconds conversion")

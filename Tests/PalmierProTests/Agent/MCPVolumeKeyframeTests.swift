@@ -16,6 +16,10 @@ struct MCPVolumeKeyframeTests {
             startFrame: 0,
             durationFrames: 60
         ).first)
+        var textClip = Fixtures.clip(id: "blur-text", mediaType: .text, start: 0, duration: 60)
+        textClip.textStyle = TextStyle()
+        _ = harness.editor.insertTrack(at: 0, type: .video)
+        harness.editor.timeline.tracks[0].clips = [textClip]
         let undoManager = UndoManager()
         harness.editor.undo.attach(undoManager)
 
@@ -37,6 +41,7 @@ struct MCPVolumeKeyframeTests {
             let keyframeProperties = try #require(tool.inputSchema.objectValue?["properties"]?.objectValue)
             let propertyValues = try #require(keyframeProperties["property"]?.objectValue?["enum"]?.arrayValue)
             #expect(propertyValues.contains(.string("volumeDb")))
+            #expect(propertyValues.contains(.string("blur")))
             #expect(!propertyValues.contains(.string("volume")))
 
             let clipTool = try #require(tools.first { $0.name == "set_clip_properties" })
@@ -111,6 +116,25 @@ struct MCPVolumeKeyframeTests {
             )
             let invalidUndoResult = try await client.callTool(name: "undo")
             #expect(invalidUndoResult.isError == true)
+
+            for id in [clipId, textClip.id] {
+                let result = try await client.callTool(name: "set_keyframes", arguments: [
+                    "clipId": .string(id),
+                    "property": .string("blur"),
+                    "keyframes": .array([
+                        .array([.int(0), .double(0), .string("linear")]),
+                        .array([.int(30), .double(60)]),
+                    ]),
+                ])
+                #expect(result.isError != true)
+                #expect(harness.editor.clipFor(id: id)?.blurRadius(at: 15) == 30)
+            }
+            let blurState = try json(text(try await client.callTool(name: "get_timeline").content))
+            let returnedText = ((blurState["tracks"] as? [[String: Any]]) ?? [])
+                .flatMap { ($0["clips"] as? [[String: Any]]) ?? [] }
+                .first { ($0["id"] as? String).map { textClip.id.hasPrefix($0) } == true }
+            #expect(returnedText?["effects"] == nil)
+            #expect((returnedText?["keyframes"] as? [String: Any])?["blur"] != nil)
         } catch {
             await server.stop()
             await client.disconnect()

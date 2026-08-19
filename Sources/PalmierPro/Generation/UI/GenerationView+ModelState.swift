@@ -150,7 +150,12 @@ extension GenerationView {
 
     var hasAnySettings: Bool {
         switch selectedType {
-        case .video: return !videoModel.durations.isEmpty || !videoModel.aspectRatios.isEmpty || videoModel.resolutions != nil || videoModel.audioDiscountRate != nil
+        case .video:
+            return !videoModel.durations.isEmpty
+                || !videoModel.aspectRatios.isEmpty
+                || videoModel.resolutions != nil
+                || videoModel.audioDiscountRate != nil
+                || videoModel.supportsDraft
         case .image: return !imageModel.aspectRatios.isEmpty || imageModel.resolutions != nil || imageModel.qualities != nil || imageModel.maxImages > 1
         case .audio:
             return audioModel.supportsInstrumental
@@ -198,7 +203,10 @@ extension GenerationView {
     }
 
     var effectiveResolution: String? {
-        currentResolutions != nil ? selectedResolution : nil
+        if isDraftGeneration {
+            return VideoModelConfig.draftResolution
+        }
+        return currentResolutions != nil ? selectedResolution : nil
     }
 
     var currentQualities: [String]? {
@@ -207,6 +215,20 @@ extension GenerationView {
 
     var supportsAudioToggle: Bool {
         selectedType == .video && videoModel.audioDiscountRate != nil
+    }
+
+    var supportsDraftToggle: Bool {
+        selectedType == .video && videoModel.supportsDraft
+    }
+
+    var isDraftGeneration: Bool {
+        supportsDraftToggle && videoDraft
+    }
+
+    var usesSourceVideoInput: Bool {
+        selectedType == .video
+            && (videoModel.requiresSourceVideo
+                || (videoModel.supportsSourceVideo && videoInputMode == .sourceVideo))
     }
 
     var effectiveGenerateAudio: Bool {
@@ -243,7 +265,7 @@ extension GenerationView {
     }
 
     var effectiveSourceVideoSeconds: Double {
-        guard videoModel.requiresSourceVideo else { return Double(selectedDuration) }
+        guard usesSourceVideoInput else { return Double(selectedDuration) }
         if let trim = editor.pendingEditTrimmedSource,
            let sv = sourceVideo,
            trim.sourceURL == sv.url, trim.hasTrim {
@@ -253,7 +275,9 @@ extension GenerationView {
     }
 
     var effectiveVideoSeconds: Int {
-        guard videoModel.requiresSourceVideo else { return selectedDuration }
+        guard usesSourceVideoInput, !videoModel.usesOutputDuration else {
+            return selectedDuration
+        }
         return videoModel.billingDurationSeconds(
             sourceVideoDuration: effectiveSourceVideoSeconds,
             sourceAudioDuration: refAudios.first?.resolvedDuration

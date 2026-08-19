@@ -410,6 +410,18 @@ extension EditorViewModel {
                 placeable.append(asset)
             }
         }
+        // Pre-parse subtitle files so caption placement joins the drop's single undo group.
+        var captionSpecSets: [[TextClipSpec]] = []
+        for asset in placeable where asset.type == .subtitle {
+            guard let url = mediaResolver.resolveURL(for: asset.id) else { continue }
+            do {
+                captionSpecSets.append(try await subtitleCaptionSpecs(from: url))
+            } catch {
+                mediaPanelToast = MediaPanelToast(
+                    message: L10n.string("Can't add captions from \"\(asset.name)\" — \(error.localizedDescription)")
+                )
+            }
+        }
         // Revalidate after the awaits: bail if the project changed while metadata loaded.
         guard summary.assets.allSatisfy({ mediaAssetsById[$0.id] === $0 }) else { return }
 
@@ -421,6 +433,9 @@ extension EditorViewModel {
                 }
                 if !placeable.isEmpty {
                     placeDroppedAssets(placeable, cursor: cursor, atFrame: atFrame, ripple: ripple)
+                }
+                for specs in captionSpecSets {
+                    placeCaptionTrack(specs, actionName: "Add Media")
                 }
             }
         }
@@ -468,6 +483,13 @@ extension EditorViewModel {
             cx = (tl.x + currentW) - needW / 2
         case .center:
             cx = tl.x + currentW / 2
+        }
+        if var track = clip.scaleTrack, currentW > 0, currentH > 0 {
+            for index in track.keyframes.indices {
+                track.keyframes[index].value.a *= needW / currentW
+                track.keyframes[index].value.b *= needH / currentH
+            }
+            clip.scaleTrack = track
         }
         clip.transform.centerX = cx
         clip.transform.centerY = cy
@@ -651,7 +673,7 @@ extension EditorViewModel {
             mediaVisualCache.generateWaveform(for: asset)
         case .image:
             mediaVisualCache.generateImageThumbnail(for: asset)
-        case .text, .lottie, .sequence:
+        case .text, .lottie, .sequence, .subtitle:
             break
         }
     }
@@ -674,7 +696,7 @@ extension EditorViewModel {
         }
         if case .mediaAsset(let id, _, let type) = activePreviewTab,
            id == asset.id,
-           type != .image {
+           type != .image, type != .subtitle {
             videoEngine?.previewAsset(asset)
             videoEngine?.seek(to: sourcePlayheadFrame, mode: .exact)
         }
@@ -682,8 +704,8 @@ extension EditorViewModel {
 
     struct TextClipSpec: Sendable {
         let trackIndex: Int
-        let startFrame: Int
-        let durationFrames: Int
+        var startFrame: Int
+        var durationFrames: Int
         let content: String
         let style: TextStyle
         /// When nil the box is auto-fit to content and centered on the canvas.
@@ -750,7 +772,9 @@ extension EditorViewModel {
             clip.captionGroupId = spec.captionGroupId
             clip.wordTimings = spec.words
             clip.textAnimation = spec.animation
-            clip.textFillMode = spec.fillMode == .footage ? .footage : nil
+            if let fillMode = spec.fillMode {
+                clip.setTextFillMode(fillMode, footageMatteColor: spec.style.color)
+            }
             if batchTimeline != nil {
                 batchTimeline!.tracks[spec.trackIndex].clips.append(clip)
             } else {

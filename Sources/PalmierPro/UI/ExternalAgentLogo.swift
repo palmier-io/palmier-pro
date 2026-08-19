@@ -9,6 +9,7 @@ struct ExternalAgentLogo: View {
         uniqueKeysWithValues: SkillExternalAgent.allCases.compactMap { agent in
             guard let url = BundledResource.url("Images/Agents/\(agent.rawValue).png"),
                   let image = NSImage(contentsOf: url) else { return nil }
+            image.size = NSSize(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
             return (agent, image)
         }
     )

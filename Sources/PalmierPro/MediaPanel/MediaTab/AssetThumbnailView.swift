@@ -38,7 +38,7 @@ struct AssetThumbnailView: View {
                     InlineRenameField(
                         originalName: asset.name,
                         placeholder: L10n.string("Name"),
-                        font: .system(size: AppTheme.FontSize.xs),
+                        font: .system(size: AppTheme.FontSize.xxs),
                         onCommit: { name in
                             editor.renameMediaAsset(id: asset.id, name: name)
                             isRenaming = false
@@ -47,7 +47,7 @@ struct AssetThumbnailView: View {
                     )
                 } else {
                     Text(asset.name)
-                        .font(.system(size: AppTheme.FontSize.xs))
+                        .font(.system(size: AppTheme.FontSize.xxs))
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .foregroundStyle(isSelected ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
@@ -90,6 +90,14 @@ struct AssetThumbnailView: View {
             Button(L10n.string("Rename")) { beginRename() }
             AIEditMenu(asset: asset)
             Divider()
+        }
+        if ids.contains(where: { id in
+            guard let candidate = editor.mediaAssetsById[id] else { return false }
+            return editor.canExtractAudio(from: candidate)
+        }) {
+            Button(L10n.string("Extract Audio")) {
+                Task { await editor.extractAudio(from: ids) }
+            }
         }
         Button(L10n.string("Reveal in Finder")) { revealInFinder(ids: ids) }
         Button(L10n.string("Copy Path")) { copyPaths(ids: ids) }
@@ -220,15 +228,15 @@ struct AssetThumbnailView: View {
     private var sourceBadge: some View {
         Text(verbatim: "AI")
             .font(.system(size: AppTheme.FontSize.xxs, weight: .semibold))
-            .foregroundStyle(AppTheme.MediaOverlay.aiGradient)
+            .foregroundStyle(AppTheme.MediaOverlay.primaryColor)
             .padding(.horizontal, AppTheme.Spacing.sm)
             .padding(.vertical, AppTheme.Spacing.xxs)
             .background(AppTheme.MediaOverlay.backgroundColor.opacity(AppTheme.Opacity.prominent), in: .capsule)
     }
 
     private var durationBadge: some View {
-        Text(formatDuration(asset.duration))
-            .font(.system(size: AppTheme.FontSize.xxs, weight: .medium))
+        Text(verbatim: formatMediaTileDuration(asset.duration))
+            .font(.system(size: AppTheme.FontSize.micro, weight: .medium))
             .monospacedDigit()
             .tileBadge()
     }
@@ -262,13 +270,6 @@ struct AssetThumbnailView: View {
                 .foregroundStyle(AppTheme.MediaOverlay.secondaryColor)
         }
         .help(L10n.string("Palmier couldn't load this source file. It may be missing, on an ejected drive, or unreadable."))
-    }
-
-    private func formatDuration(_ seconds: Double) -> String {
-        let total = Int(seconds)
-        let m = total / 60
-        let s = total % 60
-        return String(format: "%02d:%02d", m, s)
     }
 
     private var isSelected: Bool {

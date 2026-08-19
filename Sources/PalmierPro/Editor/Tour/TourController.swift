@@ -34,8 +34,7 @@ enum TourTarget: Equatable {
     }
 }
 
-/// Pinpointable controls. Add a case + its `hostPanel`, then tag the view with
-/// `.tourAnchor(_:)`. `timelineRuler` is derived (the AppKit ruler has no SwiftUI view).
+/// Pinpointable controls. Add a case + its `hostPanel`, then tag the view with `.tourAnchor(_:)`.
 enum TourAnchorID: Hashable {
     case importButton
     case generateButton
@@ -43,7 +42,6 @@ enum TourAnchorID: Hashable {
     case smartSearch
     case screenshotButton
     case skillsButton
-    case timelineRuler
     case aiEditTab
     case aiEditPanel
 
@@ -52,7 +50,6 @@ enum TourAnchorID: Hashable {
         case .importButton, .generateButton, .generation, .smartSearch: return .media
         case .screenshotButton: return .preview
         case .skillsButton: return .agent
-        case .timelineRuler: return .timeline
         case .aiEditTab, .aiEditPanel: return .inspector
         }
     }
@@ -196,8 +193,6 @@ final class TourController {
                     : L10n.string("Your timeline: the top half is video, the bottom half is audio. This is where you edit."),
                 prepare: hasAIEditClip ? .selectAIEditClip : .none
             ),
-            TourStep(kind: .spotlight(.element(.timelineRuler)), title: L10n.string("Select a range"),
-                     instruction: L10n.string("This is the timeline ruler. Shift+drag on the ruler to select a range to render. You can pick any slot to AI edit or generate music that fits that range.")),
         ]
         if hasAIEditClip {
             steps += [

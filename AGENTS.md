@@ -12,6 +12,13 @@ swift test
 
 Use `swift build --traits BundledSpeech` for changes that touch MLX, speech analysis, transcription, or bundled speech resources.
 
+## Agents
+
+- Do not preserve backward compatibility. Remove obsolete paths instead of adding compatibility layers, fallbacks, or migrations.
+- Choose the simplest implementation that fully meets the current requirements. Avoid speculative abstractions, configuration, and indirection.
+- Grow the system in layers, Start from the smallest version that works end to end, and add each new feature on top of a product that already works.
+- Make architectural decisions for the long term. Do not accept a stopgap that only works for now.
+
 ## Engineering approach
 
 - Understand the owning feature and existing abstractions before editing. Trace the complete call path, including UI, Agent tools, undo, persistence, and background work.

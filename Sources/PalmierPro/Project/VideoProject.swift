@@ -406,6 +406,11 @@ class VideoProject: NSDocument {
             if let oldURL, let newURL = newValue,
                oldURL.standardizedFileURL != newURL.standardizedFileURL {
                 MainActor.assumeIsolated {
+                    Telemetry.beginOperation("project_url_rebase", data: [
+                        "media_count": editorViewModel.mediaAssets.count,
+                        "registry_count": ProjectRegistry.shared.entries.count,
+                    ])
+                    defer { Telemetry.endOperation("project_url_rebase") }
                     ProjectRegistry.shared.updateURL(from: oldURL, to: newURL)
                     editorViewModel.rebaseProjectURL(from: oldURL, to: newURL)
                 }
@@ -452,6 +457,7 @@ class VideoProject: NSDocument {
         let editorView = EditorView()
             .environment(editorViewModel)
             .focusEffectDisabled()
+            .background(.ultraThinMaterial)
             .sheet(isPresented: Bindable(editorViewModel).showExportDialog) { [editorViewModel] in
                 ExportView()
                     .environment(editorViewModel)
@@ -464,31 +470,33 @@ class VideoProject: NSDocument {
                 TourOverlay()
                     .environment(editorViewModel)
             }
+            .ignoresSafeArea(.container, edges: .top)
         let hostingController = NSHostingController(rootView: editorView.appLocalization().tint(AppTheme.Accent.primary))
         hostingController.sizingOptions = .minSize
+        hostingController.safeAreaRegions = []
 
         let window = NSWindow(contentViewController: hostingController)
         window.minSize = AppTheme.Window.projectMin
         window.titleVisibility = .visible
         window.titlebarAppearsTransparent = true
-        window.backgroundColor = AppTheme.Background.surface
+        window.backgroundColor = AppTheme.Background.base.withAlphaComponent(AppTheme.Opacity.high)
+        window.isOpaque = false
+        window.styleMask.insert(.fullSizeContentView)
         window.fillVisibleScreen()
 
-        window.addTitlebarSwiftUI(TitleBarLeadingView().environment(editorViewModel), side: .leading, width: AppTheme.IconSize.lg + AppTheme.Spacing.sm)
+        window.addTitlebarSwiftUI(TitleBarLeadingView().environment(editorViewModel), side: .leading, width: AppTheme.Window.projectTitlebarLeadingWidth)
         window.addTitlebarSwiftUI(TitleBarTrailingView().environment(editorViewModel), side: .trailing, width: AppTheme.Window.projectTitlebarTrailingWidth)
 
         let controller = EditorWindowController(editorViewModel: editorViewModel, window: window)
         controller.onBecameKey = { [weak self] in
             guard let self else { return }
-            AppState.shared.activateProject(self)
+            AppState.shared.projectWindowDidBecomeKey(self)
         }
         window.delegate = controller
         controller.installKeyMonitor()
         addWindowController(controller)
 
         window.standardWindowButton(.documentIconButton)?.isHidden = true
-
-        AppState.shared.showEditor(for: self)
 
         editorViewModel.searchIndex.projectOpened()
         editorViewModel.updateTelemetryContext()

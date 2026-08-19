@@ -1,63 +1,66 @@
 import SwiftUI
 
 struct TitleTabBar: View {
-    let titles: [String]
+    struct Item: Identifiable {
+        let titleKey: String
+        let systemImage: String
+
+        var id: String { titleKey }
+    }
+
+    let items: [Item]
     let selected: String?
     var tourAnchors: [String: TourAnchorID] = [:]
     let onSelect: (String) -> Void
-    @State private var hoveredTitle: String?
 
     var body: some View {
         HStack(spacing: AppTheme.Spacing.zero) {
-            ForEach(titles, id: \.self) { title in
-                tab(title)
+            ForEach(items) { item in
+                tab(item)
             }
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: AppTheme.EditorPanel.tabBarHeight)
-        .background(AppTheme.Background.raisedColor)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(AppTheme.Border.primaryColor)
-                .frame(height: AppTheme.BorderWidth.thin)
-        }
+        .panelHeaderBar()
     }
 
     @ViewBuilder
-    private func tab(_ title: String) -> some View {
-        let active = selected == title
-        let hovered = hoveredTitle == title
+    private func tab(_ item: Item) -> some View {
+        let active = selected == item.id
         let button = Button {
-            onSelect(title)
+            onSelect(item.id)
         } label: {
-            Text(L10n.string(key: title))
-                .font(.system(size: AppTheme.FontSize.sm, weight: active ? AppTheme.FontWeight.medium : AppTheme.FontWeight.regular))
-                .lineLimit(1)
-                .foregroundStyle(active ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(tabBackground(active: active, hovered: hovered))
-                .overlay(alignment: .bottom) {
-                    Rectangle()
-                        .fill(active ? AppTheme.Accent.primary : Color.clear)
-                        .frame(height: AppTheme.BorderWidth.thick)
-                }
-                .contentShape(Rectangle())
+            VStack(spacing: AppTheme.Spacing.xxs) {
+                Image(systemName: item.systemImage)
+                    .font(.system(
+                        size: AppTheme.FontSize.xs,
+                        weight: active ? AppTheme.FontWeight.medium : AppTheme.FontWeight.regular
+                    ))
+                    .frame(width: AppTheme.IconSize.xxs, height: AppTheme.IconSize.xxs)
+                    .accessibilityHidden(true)
+                Text(L10n.string(key: item.titleKey))
+                    .font(.system(
+                        size: AppTheme.FontSize.xxs,
+                        weight: active ? AppTheme.FontWeight.medium : AppTheme.FontWeight.regular
+                    ))
+            }
+            .lineLimit(1)
+            .foregroundStyle(active ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(active ? AppTheme.Text.primaryColor : Color.clear)
+                    .frame(height: AppTheme.BorderWidth.thin)
+                    .offset(y: -AppTheme.BorderWidth.thin)
+            }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .onHover { hovering in
-            hoveredTitle = hovering ? title : (hoveredTitle == title ? nil : hoveredTitle)
-        }
-        .animation(.easeOut(duration: AppTheme.Anim.hover), value: hovered)
-        if let anchor = tourAnchors[title] {
+        .focusable(false)
+        .accessibilityLabel(L10n.string(key: item.titleKey))
+        .accessibilityAddTraits(active ? .isSelected : [])
+        if let anchor = tourAnchors[item.id] {
             button.tourAnchor(anchor)
         } else {
             button
         }
-    }
-
-    private func tabBackground(active: Bool, hovered: Bool) -> Color {
-        if active { return AppTheme.Background.surfaceColor }
-        if hovered { return AppTheme.Interaction.fill(AppTheme.Opacity.faint) }
-        return Color.clear
     }
 }

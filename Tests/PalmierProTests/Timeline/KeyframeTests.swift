@@ -85,6 +85,18 @@ struct KeyframeTrackMutationTests {
         #expect(track.keyframes.count == 1)
         #expect(track.keyframes[0].value == 0.5)
     }
+
+    @Test func framesInRangeReturnsOnlyInclusiveWindow() {
+        let track = KeyframeTrack(keyframes: [
+            Keyframe(frame: 5, value: 0.5),
+            Keyframe(frame: 10, value: 1),
+            Keyframe(frame: 20, value: 2),
+            Keyframe(frame: 30, value: 3),
+        ])
+
+        #expect(track.frames(in: 10...20) == [10, 20])
+        #expect(track.frames(in: 21...29).isEmpty)
+    }
 }
 
 @Suite("KeyframeTrack.sample")

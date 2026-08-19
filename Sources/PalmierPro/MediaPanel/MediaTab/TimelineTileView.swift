@@ -78,8 +78,10 @@ struct TimelineTileView: View {
             Spacer()
             HStack {
                 Spacer()
-                Text(formatTimecode(frame: timeline.totalFrames, fps: timeline.fps))
-                    .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.medium))
+                Text(verbatim: formatMediaTileDuration(
+                    Double(timeline.totalFrames) / Double(max(timeline.fps, 1))
+                ))
+                    .font(.system(size: AppTheme.FontSize.micro, weight: AppTheme.FontWeight.medium))
                     .monospacedDigit()
                     .tileBadge()
             }

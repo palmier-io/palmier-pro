@@ -11,6 +11,7 @@ struct MediaTab: View {
     @State var searchQuery: String = ""
     @State var thumbnailSize: Double = 80
     @State var viewMode: ViewMode = .folder
+    @FocusState private var isSearchFocused: Bool
 
     // Navigation + selection state
     @State var currentFolderId: String? = nil
@@ -57,7 +58,7 @@ struct MediaTab: View {
 
     /// Only media types that can actually appear in the panel. ClipType.text
     /// exists for timeline clips but is never assigned to a MediaAsset.
-    private static let filterableTypes: [ClipType] = [.video, .audio, .image]
+    private static let filterableTypes: [ClipType] = [.video, .audio, .image, .subtitle]
 
     private enum ThumbnailPreset: String, CaseIterable, Identifiable {
         case small, medium, large, xlarge
@@ -90,7 +91,7 @@ struct MediaTab: View {
                 swapBanner
             }
 
-            ZStack(alignment: .top) {
+            VStack(spacing: 0) {
                 MediaPanelDropArea(
                     isTargeted: $isDropTargeted,
                     onDrop: { urls in handlePanelFinderDrop(urls: urls) }
@@ -126,16 +127,18 @@ struct MediaTab: View {
                     }
                 }
                 .animation(.easeInOut(duration: AppTheme.Anim.transition), value: editor.mediaPanelToast)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .layoutPriority(1)
+
+                if editor.showGenerationPanel && !mediaAreaCollapsed {
+                    GenerationView(maxPanelHeight: generationPanelMaxHeight)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .tourAnchor(.generation)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
             .layoutPriority(1)
             .onChange(of: searchQuery) { _, _ in scheduleMomentSearch() }
-
-            if editor.showGenerationPanel && !mediaAreaCollapsed {
-                GenerationView(maxPanelHeight: generationPanelMaxHeight)
-                    .frame(maxHeight: CGFloat(generationPanelMaxHeight), alignment: .bottom)
-                    .tourAnchor(.generation)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
         }
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.size.height
@@ -256,7 +259,7 @@ struct MediaTab: View {
         guard let asset = editor.mediaAssets.first(where: { $0.id == id }) else { return }
         if !passesFilters(asset) {
             clearFilters()
-            searchQuery = ""
+            editor.collapseMediaPanelSearch()
         }
         if viewMode == .folder, currentFolderId != asset.folderId {
             currentFolderId = asset.folderId
@@ -281,45 +284,48 @@ struct MediaTab: View {
     // MARK: - Toolbar
 
     private var toolbar: some View {
-        VStack(spacing: AppTheme.Spacing.xs) {
+        VStack(spacing: AppTheme.Spacing.sm) {
             actionsRow
-            searchControlsRow
             contextBar
         }
         .padding(.horizontal, AppTheme.Spacing.sm)
-        .padding(.top, AppTheme.Spacing.sm)
-        .padding(.bottom, AppTheme.Spacing.xs)
+        .padding(.bottom, AppTheme.Spacing.sm)
         .background(AppTheme.Background.surfaceColor)
+        .animation(.easeInOut(duration: AppTheme.Anim.transition), value: editor.isMediaPanelSearchExpanded)
     }
 
     private var actionsRow: some View {
         let showGenerate = !AccountService.shared.isMisconfigured
         return HStack(spacing: AppTheme.Spacing.xs) {
-            toolbarButton(title: L10n.string("Import"), systemImage: "plus", action: importMedia)
-                .tourAnchor(.importButton)
-            if showGenerate {
-                toolbarButton(title: L10n.string("Generate"), systemImage: "sparkles", filled: true, accentStyle: AnyShapeStyle(AppTheme.aiGradient), action: toggleGenerationPanel)
-                    .tourAnchor(.generateButton)
+            if editor.isMediaPanelSearchExpanded {
+                ExpandablePanelSearch(
+                    text: $searchQuery,
+                    focus: $isSearchFocused
+                )
+                    .layoutPriority(1)
+            } else {
+                toolbarButton(title: L10n.string("Import"), action: importMedia)
+                    .tourAnchor(.importButton)
+                if showGenerate {
+                    toolbarButton(title: L10n.string("Generate"), prominent: true, action: toggleGenerationPanel)
+                        .tourAnchor(.generateButton)
+                }
+                overflowMenu
+                Spacer(minLength: AppTheme.Spacing.zero)
             }
 
-            overflowMenu
-
-            Spacer(minLength: 0)
-
-            searchIndexStatus
+            MediaSearchIndexStatus(search: editor.searchIndex, mediaAssets: editor.mediaAssets)
                 .tourAnchor(.smartSearch)
-        }
-        .frame(height: Layout.panelHeaderHeight)
-    }
 
-    private var searchControlsRow: some View {
-        HStack(spacing: AppTheme.Spacing.xs) {
-            searchField
-                .layoutPriority(1)
+            if !editor.isMediaPanelSearchExpanded {
+                ExpandablePanelSearch(
+                    text: $searchQuery,
+                    focus: $isSearchFocused
+                )
+            }
 
             displayControls
         }
-        .frame(height: Layout.panelHeaderHeight)
     }
 
     // MARK: - Context bar (breadcrumb + count)
@@ -460,7 +466,7 @@ struct MediaTab: View {
     }
 
     private var showsEmptyState: Bool {
-        editor.mediaAssets.isEmpty && editor.folders.isEmpty && !editor.showGenerationPanel
+        editor.mediaAssets.isEmpty && editor.folders.isEmpty
     }
 
     // MARK: - Sort & Filter
@@ -515,7 +521,11 @@ struct MediaTab: View {
     }
 
     func searchFilteredTimelines(_ timelines: [Timeline]) -> [Timeline] {
-        let q = searchQuery.trimmingCharacters(in: .whitespaces)
+        Self.timelinesMatchingName(timelines, query: searchQuery)
+    }
+
+    static func timelinesMatchingName(_ timelines: [Timeline], query: String) -> [Timeline] {
+        let q = query.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return timelines }
         return timelines.filter { $0.name.localizedCaseInsensitiveContains(q) }
     }
@@ -555,54 +565,16 @@ struct MediaTab: View {
             .fixedSize()
     }
 
-    private var searchField: some View {
-        HStack(spacing: AppTheme.Spacing.xs) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: AppTheme.FontSize.xs))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-            TextField(L10n.string("Search"), text: $searchQuery)
-                .textFieldStyle(.plain)
-                .font(.system(size: AppTheme.FontSize.xs))
-                .foregroundStyle(AppTheme.Text.primaryColor)
-            if !searchQuery.isEmpty {
-                Button { searchQuery = "" } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: AppTheme.FontSize.xs))
-                        .foregroundStyle(AppTheme.Text.mutedColor)
-                }
-                .buttonStyle(.plain)
-                .focusable(false)
-                .help(L10n.string("Clear search"))
-            }
-        }
-        .padding(.leading, AppTheme.Spacing.smMd)
-        .padding(.trailing, AppTheme.Spacing.xs)
-        .padding(.vertical, AppTheme.Spacing.xs)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            Capsule(style: .continuous)
-                .fill(AppTheme.Interaction.fill(AppTheme.Opacity.subtle))
-        )
-        .overlay(
-            Capsule(style: .continuous)
-                .strokeBorder(AppTheme.Interaction.fill(AppTheme.Opacity.faint), lineWidth: AppTheme.BorderWidth.thin)
-        )
-    }
-
     private func toolbarButton(
         title: String,
-        systemImage: String,
-        filled: Bool = false,
-        accentStyle: AnyShapeStyle? = nil,
+        prominent: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            HStack(spacing: AppTheme.Spacing.xs) {
-                Image(systemName: systemImage)
-                Text(title)
-            }
+            Text(title)
         }
-        .buttonStyle(.capsule(filled ? .prominent : .secondary, fill: accentStyle))
+        .buttonStyle(.capsule(prominent ? .prominent : .secondary))
+        .fixedSize(horizontal: true, vertical: false)
         .focusable(false)
         .help(title)
     }
@@ -678,7 +650,7 @@ struct MediaTab: View {
     // MARK: - Folder commands
 
     private func createNewFolderInCurrent() {
-        searchQuery = ""
+        editor.collapseMediaPanelSearch()
         setViewMode(.folder)
         renamingTimelineId = nil
         let id = editor.createMediaPanelFolder(in: currentFolderId)
@@ -822,6 +794,7 @@ struct MediaTab: View {
         panel.message = L10n.string("Select media files or folders to import")
         var types: [UTType] = [.movie, .image, .audio, .json]
         if let lottie = UTType(filenameExtension: "lottie") { types.append(lottie) }
+        types.append(contentsOf: SubtitleFileParser.contentTypes)
         panel.allowedContentTypes = types
         panel.begin { response in
             guard response == .OK else { return }

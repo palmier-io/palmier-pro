@@ -22,13 +22,15 @@ struct ExportRunReport {
     let unprocessableMediaRefs: Set<String>
 }
 
-struct ExportAnalyticsContext {
+struct ExportAnalyticsContext: Sendable {
     var source: String = "manual"
     var projectId: String?
+    var timelineInput: ExportTimelineAnalyticsInput?
 }
 
-private struct ExportAnalyticsRun {
-    private let basePayload: [String: Any]
+private struct ExportAnalyticsRun: Sendable {
+    private let source, projectId, mode, format, resolution: String
+    private let timelineInput: ExportTimelineAnalyticsInput?
     private let started: ContinuousClock.Instant
 
     init(
@@ -37,32 +39,42 @@ private struct ExportAnalyticsRun {
         resolution: ExportResolution?,
         context: ExportAnalyticsContext
     ) {
-        self.basePayload = [
-            "source": context.source,
-            "project_id": context.projectId ?? "unknown",
-            "mode": mode,
-            "format": format.displayName,
-            "resolution": resolution?.rawValue ?? "n/a",
-        ]
+        self.source = context.source
+        self.projectId = context.projectId ?? "unknown"
+        self.mode = mode
+        self.format = format.displayName
+        self.resolution = resolution?.rawValue ?? "n/a"
+        self.timelineInput = context.timelineInput
         self.started = ContinuousClock.now
     }
 
     init(palmierContext context: ExportAnalyticsContext) {
-        self.basePayload = [
-            "source": context.source,
-            "project_id": context.projectId ?? "unknown",
-            "mode": "palmier",
-            "format": "Palmier",
-        ]
+        self.source = context.source
+        self.projectId = context.projectId ?? "unknown"
+        self.mode = "palmier"
+        self.format = "Palmier"
+        self.resolution = "n/a"
+        self.timelineInput = context.timelineInput
         self.started = ContinuousClock.now
     }
 
     func begin() {
-        Analytics.capture(.exportStarted, properties: basePayload)
+        Analytics.capture(.exportStarted, properties: basePayload())
     }
 
     func finish() {
-        Analytics.capture(.exportFinished, properties: timedPayload())
+        let duration = Self.durationSeconds(since: started)
+        Task.detached(priority: .utility) { [self] in
+            guard Analytics.canCapture else { return }
+            var payload = basePayload()
+            payload["export_duration_seconds"] = duration
+            if let timelineInput {
+                payload.merge(ExportTimelineAnalyticsSnapshot.analyticsProperties(from: timelineInput)) {
+                    current, _ in current
+                }
+            }
+            Analytics.capture(.exportFinished, properties: payload)
+        }
     }
 
     func fail(reason: String = "other") {
@@ -72,9 +84,19 @@ private struct ExportAnalyticsRun {
     }
 
     private func timedPayload() -> [String: Any] {
-        var payload = basePayload
+        var payload = basePayload()
         payload["export_duration_seconds"] = Self.durationSeconds(since: started)
         return payload
+    }
+
+    private func basePayload() -> [String: Any] {
+        [
+            "source": source,
+            "project_id": projectId,
+            "mode": mode,
+            "format": format,
+            "resolution": resolution,
+        ]
     }
 
     private static func durationSeconds(since started: ContinuousClock.Instant) -> Double {

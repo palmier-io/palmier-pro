@@ -653,6 +653,7 @@ struct ExportView: View {
         if destination == .palmierProject { startPalmierExport(); return }
         submissionError = nil
         let format = exportFormat
+        Telemetry.beginOperation("save_panel", data: ["flow": "video_export", "format": format.fileExtension])
         let panel = NSSavePanel()
         let contentType: UTType = switch format {
         case .xml:
@@ -668,6 +669,7 @@ struct ExportView: View {
         panel.nameFieldStringValue = "\(exportTimeline.name).\(format.fileExtension)"
 
         panel.begin { response in
+            Telemetry.endOperation("save_panel")
             guard response == .OK, let url = panel.url else { return }
             do {
                 try exportQueue.enqueueVideo(
@@ -692,12 +694,14 @@ struct ExportView: View {
 
     private func startPalmierExport() {
         submissionError = nil
+        Telemetry.beginOperation("save_panel", data: ["flow": "project_export"])
         let panel = NSSavePanel()
         panel.allowedContentTypes = [UTType(Project.typeIdentifier) ?? .package]
         let base = editor.projectURL?.deletingPathExtension().lastPathComponent ?? Project.defaultProjectName
         panel.nameFieldStringValue = "\(base).\(Project.fileExtension)"
 
         panel.begin { response in
+            Telemetry.endOperation("save_panel")
             guard response == .OK, let url = panel.url else { return }
             do {
                 try exportQueue.enqueuePalmierProject(

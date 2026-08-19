@@ -1,5 +1,5 @@
 {
-  "originHash" : "c80b49489eef7850fa92dd9d2f64d0fe49f300786831e32d9439f9efb1ef17ab",
+  "originHash" : "1c41338131a6fcbf5dc9354df9b2ff8ad6288c14b07f488862acada172550b23",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/clerk/clerk-ios",
       "state" : {
-        "revision" : "9b6c83e780c48af3a5cb8c40305674d9d8cb0fc6",
-        "version" : "1.2.4"
+        "revision" : "32f7e0f08225845f086097e2a0a5d957557cf49b",
+        "version" : "1.3.9"
       }
     },
     {

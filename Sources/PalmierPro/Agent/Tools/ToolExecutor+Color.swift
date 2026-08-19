@@ -277,14 +277,14 @@ extension ToolExecutor {
             height: max(1, crop.visibleHeightFraction * e.height)))
     }
 
-    fileprivate static func applyingEffects(_ image: CIImage, clip: Clip, atOffset offset: Int) -> CIImage {
-        guard let effects = clip.effects else { return image }
-        var out = image
+    static func applyingEffects(_ image: CIImage, clip: Clip, atOffset offset: Int) -> CIImage {
+        guard let effects = clip.effects, !effects.isEmpty else { return image }
+        var out = image.unpremultiplyingAlpha()
         for effect in effects where effect.enabled {
             guard let descriptor = EffectRegistry.descriptor(id: effect.type) else { continue }
             out = descriptor.render(out, effect: effect, atOffset: offset)
         }
-        return out
+        return out.premultiplyingAlpha()
     }
 
     fileprivate static func encodeJPEG(_ image: CIImage) -> Data? {

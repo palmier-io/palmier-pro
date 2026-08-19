@@ -9,13 +9,14 @@ enum EditAction {
     case generateMusic
     case generateSFX
     case createVideo
+    case enhanceDraft
 
     static let editMaxDurationSeconds: Double = 10.0
 
     var requiresPaidPlan: Bool {
         switch self {
         case .upscale, .edit, .lipSync, .reframe: true
-        case .generateMusic, .generateSFX, .rerun, .createVideo: false
+        case .generateMusic, .generateSFX, .rerun, .createVideo, .enhanceDraft: false
         }
     }
 
@@ -25,7 +26,7 @@ enum EditAction {
             .audio
         case .rerun where mediaType == .audio:
             .audio
-        case .upscale, .edit, .rerun, .lipSync, .reframe, .createVideo:
+        case .upscale, .edit, .rerun, .lipSync, .reframe, .createVideo, .enhanceDraft:
             .enhance
         }
     }
@@ -35,9 +36,13 @@ enum EditAction {
         let candidates: [EditAction]
         switch asset.type {
         case .image: candidates = [.upscale, .edit, .rerun, .createVideo]
-        case .video: candidates = [.upscale, .edit, .rerun, .lipSync, .reframe, .generateMusic, .generateSFX]
+        case .video:
+            candidates = [
+                .upscale, .edit, .rerun, .lipSync, .reframe, .enhanceDraft,
+                .generateMusic, .generateSFX,
+            ]
         case .audio, .text: candidates = [.upscale, .edit, .rerun]
-        case .lottie, .sequence: candidates = []
+        case .lottie, .sequence, .subtitle: candidates = []
         }
         return candidates.filter {
             $0.availability(for: asset, effectiveDurationOverride: effectiveDurationOverride).isAvailable
@@ -47,6 +52,12 @@ enum EditAction {
     @MainActor
     func availability(for asset: MediaAsset, effectiveDurationOverride: Double? = nil) -> EditActionAvailability {
         switch self {
+        case .enhanceDraft:
+            guard asset.canEnhanceDraft else {
+                return .disabled(reason: L10n.string("Draft already enhanced or cache unavailable"))
+            }
+            return .available
+
         case .upscale:
             guard asset.type == .video || asset.type == .image else {
                 return .disabled(reason: L10n.string("Upscale only works on video or images"))
@@ -67,7 +78,7 @@ enum EditAction {
                 return .disabled(reason: L10n.string("Reframe model not available"))
             }
             let duration = effectiveDurationOverride ?? asset.resolvedDuration
-            if let error = model.validateSourceDuration(duration) {
+            if let error = model.validateReframeDuration(duration) {
                 return .disabled(reason: error)
             }
             return .available
@@ -113,6 +124,8 @@ enum EditAction {
                 return .disabled(reason: L10n.string("Edit doesn't support Lottie"))
             case .sequence:
                 return .disabled(reason: L10n.string("Edit doesn't support sequences"))
+            case .subtitle:
+                return .disabled(reason: L10n.string("Edit doesn't support subtitles"))
             }
             if asset.isGenerating {
                 return .disabled(reason: L10n.string("Generation in progress"))

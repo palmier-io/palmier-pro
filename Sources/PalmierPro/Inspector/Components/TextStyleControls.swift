@@ -27,11 +27,14 @@ struct TextStyleControls<AfterAlignment: View, AfterColor: View>: View {
     let selection: TextStyleSelection
     let defaults: TextStyle
     let styleExpanded: Binding<Bool>?
+    let showsColorControl: Bool
     let showsSolidFillControls: Bool
+    let keyframeClips: [Clip]
     let actions: TextStyleEditingActions
     @ViewBuilder let afterAlignment: () -> AfterAlignment
     @ViewBuilder let afterColor: () -> AfterColor
 
+    @Environment(EditorViewModel.self) private var editor
     @State private var outlineExpanded: Bool
     @State private var shadowExpanded: Bool
     @State private var backgroundExpanded: Bool
@@ -41,7 +44,9 @@ struct TextStyleControls<AfterAlignment: View, AfterColor: View>: View {
         defaults: TextStyle,
         styleExpanded: Binding<Bool>? = nil,
         groupsExpandedByDefault: Bool = true,
+        showsColorControl: Bool = true,
         showsSolidFillControls: Bool = true,
+        keyframeClips: [Clip] = [],
         actions: TextStyleEditingActions,
         @ViewBuilder afterAlignment: @escaping () -> AfterAlignment,
         @ViewBuilder afterColor: @escaping () -> AfterColor
@@ -49,7 +54,9 @@ struct TextStyleControls<AfterAlignment: View, AfterColor: View>: View {
         self.selection = selection
         self.defaults = defaults
         self.styleExpanded = styleExpanded
+        self.showsColorControl = showsColorControl
         self.showsSolidFillControls = showsSolidFillControls
+        self.keyframeClips = keyframeClips
         self.actions = actions
         self.afterAlignment = afterAlignment
         self.afterColor = afterColor
@@ -63,14 +70,18 @@ struct TextStyleControls<AfterAlignment: View, AfterColor: View>: View {
             EditorPanelGroup(L10n.string("Style"), isExpanded: styleExpanded) {
                 fontRow
                 traitsRow
-                numberRow(
-                    label: L10n.string("Size"),
-                    range: 12...300,
-                    format: "%.0f",
-                    suffix: " pt",
-                    fitToContent: true,
-                    keyPath: \.fontSize
-                )
+                if keyframeClips.isEmpty {
+                    numberRow(
+                        label: L10n.string("Size"),
+                        range: 12...300,
+                        format: "%.0f",
+                        suffix: " pt",
+                        fitToContent: true,
+                        keyPath: \.fontSize
+                    )
+                } else {
+                    textSizeRow
+                }
                 numberRow(
                     label: L10n.string("Width"),
                     range: TextStyle.axisScaleRange,
@@ -108,7 +119,7 @@ struct TextStyleControls<AfterAlignment: View, AfterColor: View>: View {
                 fontCaseRow
                 alignmentRow
                 afterAlignment()
-                if showsSolidFillControls {
+                if showsColorControl {
                     colorRow(
                         label: L10n.string("Color"),
                         debounceKey: "textColor",
@@ -116,6 +127,13 @@ struct TextStyleControls<AfterAlignment: View, AfterColor: View>: View {
                     )
                 }
                 afterColor()
+                numberRow(
+                    label: L10n.string("Blur"),
+                    range: 0...100,
+                    format: "%.0f",
+                    suffix: " px",
+                    keyPath: \.blur
+                )
             }
             if showsSolidFillControls {
                 outlineGroup
@@ -434,6 +452,23 @@ struct TextStyleControls<AfterAlignment: View, AfterColor: View>: View {
                     }
                 },
                 supportsOpacity: !preservesOpacity
+            )
+        }
+    }
+
+    private var textSizeRow: some View {
+        InspectorRow(
+            label: L10n.string("Size"),
+            onReset: {
+                editor.resetTextSize(
+                    clipIds: keyframeClips.map(\.id),
+                    defaultSize: defaults.fontSize
+                )
+            }
+        ) {
+            InspectorKeyframePropertyControl(
+                clips: keyframeClips,
+                property: .scale
             )
         }
     }

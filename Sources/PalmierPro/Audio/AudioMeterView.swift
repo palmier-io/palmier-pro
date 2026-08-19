@@ -119,34 +119,12 @@ struct AudioMeterView: View {
 
 private struct AudioMeterAccessibilityRepresentation: View {
     let meter: AudioMeterHub
-    @State private var description = L10n.string(
-        "Left \(Int(AudioMeterChannelState.floorDb)) dBFS, right \(Int(AudioMeterChannelState.floorDb)) dBFS"
-    )
 
     var body: some View {
         Text(L10n.string("Master Audio Meter"))
-            .accessibilityValue(description)
             .accessibilityAction(named: L10n.string("Reset Clipping Indicators")) {
                 meter.resetClipping()
             }
-            .task { await updateDescription() }
-    }
-
-    private func updateDescription() async {
-        let clock = ContinuousClock()
-        while !Task.isCancelled {
-            let value = value(for: meter.display())
-            if description != value { description = value }
-            do {
-                try await clock.sleep(for: AppTheme.AudioMeter.accessibilityRefreshInterval)
-            } catch {
-                return
-            }
-        }
-    }
-
-    private func value(for display: StereoAudioMeterDisplay) -> String {
-        L10n.string("Left \(Int(display.left.levelDb.rounded())) dBFS, right \(Int(display.right.levelDb.rounded())) dBFS")
     }
 }
 

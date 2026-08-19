@@ -32,12 +32,40 @@ extension EditorViewModel {
         return "\(type.trackLabelPrefix)\(n)"
     }
 
+    @discardableResult
+    func setTrackName(id: String, to rawName: String?) throws -> Bool {
+        let name = try TrackName.normalized(rawName)
+        return applyTrackName(id: id, name: name)
+    }
+
+    @discardableResult
+    private func applyTrackName(id: String, name: String?) -> Bool {
+        guard let index = timeline.tracks.firstIndex(where: { $0.id == id }) else { return false }
+        let previous = timeline.tracks[index].name
+        guard previous != name else { return false }
+        timeline.tracks[index].name = name
+        registerTimelineUndo(L10n.string("Rename Track")) { vm in
+            _ = vm.applyTrackName(id: id, name: previous)
+        }
+        return true
+    }
+
+    @discardableResult
+    func selectAllClips(onTrack trackId: String) -> Bool {
+        guard let track = timeline.tracks.first(where: { $0.id == trackId }),
+              !track.clips.isEmpty else { return false }
+        selectedGap = nil
+        selectedTimelineMarkerIds = []
+        selectedClipIds = Set(track.clips.map(\.id))
+        return true
+    }
+
     /// Clamp `requested` so that visual (video/image) tracks always sit above every audio track.
     private func partitionedInsertionIndex(for type: ClipType, requested: Int) -> Int {
         let z = zones
         let bounded = max(0, min(requested, z.trackCount))
         switch type {
-        case .video, .image, .text, .lottie, .sequence:
+        case .video, .image, .text, .lottie, .sequence, .subtitle:
             // Visual tracks must come at or before the first audio track.
             return min(bounded, z.firstAudioIndex)
         case .audio:

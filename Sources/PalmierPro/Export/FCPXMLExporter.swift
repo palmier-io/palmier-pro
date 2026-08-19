@@ -365,7 +365,7 @@ enum FCPXMLExporter {
                         return titleNode(for: item)
                     case .audio, .video, .image, .sequence:
                         return assetClipNode(for: item)
-                    case .lottie:
+                    case .lottie, .subtitle:
                         return nil
                     }
                 }
@@ -473,7 +473,7 @@ enum FCPXMLExporter {
                     FCPXMLNode(name: "text-style", attributes: textStyleAttributes(for: style)),
                 ]),
             ]
-            textNodes += titleTransformNodes(for: clip.transform, style: style)
+            textNodes += titleTransformNodes(for: clip, style: style)
             if let blend = blendNode(for: clip) { textNodes.append(blend) }
             return FCPXMLNode(name: "title", attributes: [
                 ("ref", titleEffectId),
@@ -804,7 +804,7 @@ enum FCPXMLExporter {
             switch clip.mediaType {
             case .text:
                 return clip.textContent?.isEmpty == false
-            case .lottie, .sequence:
+            case .lottie, .sequence, .subtitle:
                 return false
             case .audio, .video, .image:
                 return resolver.resolveURL(for: clip.mediaRef) != nil
@@ -893,14 +893,34 @@ enum FCPXMLExporter {
             return attrs
         }
 
-        private func titleTransformNodes(for transform: Transform, style: TextStyle) -> [FCPXMLNode] {
-            [
+        private func titleTransformNodes(for clip: Clip, style: TextStyle) -> [FCPXMLNode] {
+            let baseScale = "\(formatNumber(style.widthScale)) \(formatNumber(style.heightScale))"
+            let frames = clip.keyframeFrames(for: .scale)
+            var parameters: [FCPXMLNode] = []
+            if !frames.isEmpty {
+                let staticFontScale = style.fontScale.isFinite && style.fontScale > 0
+                    ? style.fontScale
+                    : TextStyle().fontScale
+                parameters.append(
+                    keyframeParam(
+                        name: "scale",
+                        base: baseScale,
+                        clip: clip,
+                        property: .scale,
+                        frames: frames
+                    ) { frame in
+                        let ratio = clip.textScaleAt(frame: frame) / staticFontScale
+                        return "\(self.formatNumber(style.widthScale * ratio)) \(self.formatNumber(style.heightScale * ratio))"
+                    }
+                )
+            }
+            return [
                 FCPXMLNode(name: "adjust-conform", attributes: [("type", "fit")]),
                 FCPXMLNode(name: "adjust-transform", attributes: [
-                    ("scale", "\(formatNumber(style.widthScale)) \(formatNumber(style.heightScale))"),
+                    ("scale", baseScale),
                     ("anchor", "0 0"),
-                    ("position", positionValue(for: transform)),
-                ]),
+                    ("position", positionValue(for: clip.transform)),
+                ], children: parameters),
             ]
         }
 

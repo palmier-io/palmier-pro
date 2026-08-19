@@ -36,4 +36,8 @@ struct ProviderLogoTests {
         #expect(!ProviderLogo.hasBundledLogo(for: "new-provider"))
         #expect(!ProviderLogo.hasBundledLogo(for: "../google"))
     }
+
+    @Test func bundlesBlackForestLabsLogo() {
+        #expect(ProviderLogo.hasBundledLogo(for: "blackforestlabs"))
+    }
 }

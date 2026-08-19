@@ -138,6 +138,7 @@ enum AppNotifications {
             case .image: return L10n.string("\(count) images are ready in Palmier Pro.")
             case .text: return L10n.string("\(count) text clips are ready in Palmier Pro.")
             case .lottie: return L10n.string("\(count) Lottie animations are ready in Palmier Pro.")
+            case .subtitle: return L10n.string("\(count) subtitle files are ready in Palmier Pro.")
             }
         }
         let name = assetName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -148,6 +149,7 @@ enum AppNotifications {
         case .image: return L10n.string("Your image is ready.")
         case .text: return L10n.string("Your text clip is ready.")
         case .lottie: return L10n.string("Your Lottie animation is ready.")
+        case .subtitle: return L10n.string("Your subtitle file is ready.")
         }
     }
 }

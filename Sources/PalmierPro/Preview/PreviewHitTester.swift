@@ -31,23 +31,22 @@ enum PreviewHitTester {
     }
 
     private static func textHit(_ clip: Clip, frame: Int, point: CGPoint, videoRect: CGRect) -> Bool {
-        transformedHit(clip, frame: frame, point: point, videoRect: videoRect, crop: nil)
+        let transform = clip.transformAt(frame: frame)
+        let rect = clipFrame(transform, videoRect: videoRect)
+        guard rect.width > 0, rect.height > 0 else { return false }
+        return TextTiltGeometry.corners(
+            of: rect,
+            around: CGPoint(x: rect.midX, y: rect.midY),
+            transform: transform,
+            canvasSize: videoRect.size
+        ).contains(point)
     }
 
     private static func videoHit(_ clip: Clip, frame: Int, point: CGPoint, videoRect: CGRect) -> Bool {
-        transformedHit(clip, frame: frame, point: point, videoRect: videoRect, crop: clip.cropAt(frame: frame))
-    }
-
-    private static func transformedHit(
-        _ clip: Clip,
-        frame: Int,
-        point: CGPoint,
-        videoRect: CGRect,
-        crop: Crop?
-    ) -> Bool {
         let t = clip.transformAt(frame: frame)
         let rect = clipFrame(t, videoRect: videoRect)
         guard rect.width > 0, rect.height > 0 else { return false }
+        let crop = clip.cropAt(frame: frame)
 
         // Move the point into the clip's unrotated local space (origin at clip center).
         let center = CGPoint(x: rect.midX, y: rect.midY)
@@ -58,10 +57,10 @@ enum PreviewHitTester {
         let ly = -dx * s + dy * c
 
         let halfW = rect.width / 2, halfH = rect.height / 2
-        let left = -halfW + (crop?.left ?? 0) * rect.width
-        let right = halfW - (crop?.right ?? 0) * rect.width
-        let top = -halfH + (crop?.top ?? 0) * rect.height
-        let bottom = halfH - (crop?.bottom ?? 0) * rect.height
+        let left = -halfW + crop.left * rect.width
+        let right = halfW - crop.right * rect.width
+        let top = -halfH + crop.top * rect.height
+        let bottom = halfH - crop.bottom * rect.height
         return lx >= left && lx <= right && ly >= top && ly <= bottom
     }
 

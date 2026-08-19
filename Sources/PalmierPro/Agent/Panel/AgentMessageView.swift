@@ -68,6 +68,16 @@ struct AgentMessageView: View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
             ForEach(Array(message.blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
+                case .thinking(let text, let signature):
+                    if !text.isEmpty {
+                        ThinkingSummaryView(text: text, isComplete: !signature.isEmpty)
+                    }
+                case .redactedThinking:
+                    EmptyView()
+                case .openAIReasoning(let summary, let encryptedContent, _, _):
+                    if !summary.isEmpty {
+                        ThinkingSummaryView(text: summary, isComplete: !encryptedContent.isEmpty)
+                    }
                 case .text(let text):
                     MarkdownText(text: text)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -86,6 +96,56 @@ struct AgentMessageView: View {
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .animation(.easeOut(duration: AppTheme.Anim.hover), value: isHovering)
+    }
+}
+
+private struct ThinkingSummaryView: View {
+    let text: String
+    let isComplete: Bool
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+            if isComplete {
+                Button {
+                    withAnimation(.easeOut(duration: AppTheme.Anim.hover)) {
+                        isExpanded.toggle()
+                    }
+                } label: {
+                    Image(systemName: isExpanded ? "brain.head.profile.fill" : "brain.head.profile")
+                        .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.medium))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        .frame(width: AppTheme.IconSize.xxs, height: AppTheme.IconSize.xxs)
+                }
+                .buttonStyle(.plain)
+                .help(toggleLabel)
+                .accessibilityLabel(toggleLabel)
+            }
+
+            if !isComplete || isExpanded {
+                summary
+                    .transition(.opacity)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var toggleLabel: String {
+        isExpanded ? L10n.string("Hide reasoning") : L10n.string("Show reasoning")
+    }
+
+    private var summary: some View {
+        Text(verbatim: text)
+            .font(.system(size: AppTheme.FontSize.xs))
+            .foregroundStyle(AppTheme.Text.tertiaryColor)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, AppTheme.Spacing.md)
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(AppTheme.Border.subtleColor)
+                    .frame(width: AppTheme.BorderWidth.medium)
+            }
+            .textSelection(.enabled)
     }
 }
 

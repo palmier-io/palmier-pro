@@ -51,6 +51,7 @@ struct ProjectRoundTripTests {
     @Test func clipTransformAndCropSurviveRoundTrip() throws {
         var clip = Fixtures.clip(start: 0, duration: 30)
         clip.transform = Transform(centerX: 0.4, centerY: 0.6, width: 0.5, height: 0.5, rotation: 45,
+                                   rotationX: 20, rotationY: -30,
                                    flipHorizontal: true, flipVertical: false)
         clip.crop = Crop(left: 0.1, top: 0.2, right: 0.3, bottom: 0.4)
         clip.edgeRounding = 0.35
@@ -62,6 +63,8 @@ struct ProjectRoundTripTests {
         #expect(dc.transform.centerX == 0.4)
         #expect(dc.transform.centerY == 0.6)
         #expect(dc.transform.rotation == 45)
+        #expect(dc.transform.rotationX == 20)
+        #expect(dc.transform.rotationY == -30)
         #expect(dc.transform.flipHorizontal == true)
         #expect(dc.crop == Crop(left: 0.1, top: 0.2, right: 0.3, bottom: 0.4))
         #expect(dc.edgeRounding == 0.35)
@@ -115,11 +118,13 @@ struct ProjectRoundTripTests {
     @Test func trackMutedAndHiddenFlagsSurviveRoundTrip() throws {
         var v = Fixtures.videoTrack()
         v.hidden = true
+        v.name = "B-roll"
         var a = Fixtures.audioTrack()
         a.muted = true
         let timeline = Fixtures.timeline(tracks: [v, a])
         let decoded = try roundTrip(timeline)
         #expect(decoded.tracks[0].hidden == true)
+        #expect(decoded.tracks[0].name == "B-roll")
         #expect(decoded.tracks[1].muted == true)
     }
 
@@ -139,6 +144,7 @@ struct ProjectRoundTripTests {
         #expect(track.muted == false)
         #expect(track.hidden == false)
         #expect(track.syncLocked == true)
+        #expect(track.name == nil)
     }
 
     @Test func clipMissingNewFieldsDecodesWithDefaults() throws {
@@ -234,6 +240,7 @@ struct ProjectRoundTripTests {
         #expect(style.heightScale == 1.0)
         #expect(style.tracking == 0)
         #expect(style.lineSpacing == 0)
+        #expect(style.blur == 0)
         #expect(style.fontCase == .mixed)
         #expect(!style.isUnderlined && !style.isStruckThrough && !style.isOverlined)
     }
@@ -267,6 +274,7 @@ struct ProjectRoundTripTests {
         var style = TextStyle()
         style.widthScale = 1.4
         style.heightScale = 0.75
+        style.blur = 24
         style.tracking = 8
         style.lineSpacing = 18
         style.fontCase = .uppercase

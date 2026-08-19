@@ -52,14 +52,9 @@ struct UpdateProjectBadge: View {
                 updater.checkForUpdates(nil)
             } label: {
                 Label(L10n.string("Update"), systemImage: "arrow.down.circle.fill")
-                    .font(.system(size: AppTheme.FontSize.sm, weight: .semibold))
-                    .foregroundStyle(AppTheme.Update.accent)
-                    .lineLimit(1)
-                    .padding(.horizontal, AppTheme.Spacing.smMd)
-                    .frame(height: AppTheme.IconSize.lg)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(AppTheme.Update.accent.opacity(AppTheme.Opacity.muted))
+                    .titlebarCapsule(
+                        fill: AppTheme.Update.accent.opacity(AppTheme.Opacity.muted),
+                        foreground: AppTheme.Update.accent
                     )
             }
             .buttonStyle(.plain)

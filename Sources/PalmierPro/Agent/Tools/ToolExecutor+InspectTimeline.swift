@@ -23,7 +23,7 @@ extension ToolExecutor {
         }
 
         let sampledFrames: [Int]
-        if let rawEnd = args.int("endFrame") {
+        if let rawEnd = args.int("endFrame"), rawEnd != 0 {
             let endFrame = min(rawEnd, totalFrames)
             guard endFrame > startFrame else {
                 throw ToolError("endFrame must be greater than startFrame (\(startFrame)).")

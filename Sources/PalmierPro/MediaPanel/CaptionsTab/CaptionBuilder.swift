@@ -22,25 +22,24 @@ enum CaptionBuilder {
         words: [TranscriptionWord] = [],
         fits: (String) -> Bool,
         maxWords: Int? = nil,
-        minDuration: Double
+        maxCharacters: Int? = nil
     ) -> [Phrase] {
-        // Only phrases that fit visually and within the word cap are accepted; else, keep splitting.
-        let pieces: [String]
-        if let limit = maxWords {
-            let cap = max(1, limit)
-            pieces = split(segment.text, fits: { fits($0) && wordCount($0) <= cap })
-        } else {
-            pieces = split(segment.text, fits: fits)
+        let wordCap = maxWords.map { max(1, $0) }
+        let characterCap = maxCharacters.map { max(1, $0) }
+        // Visual, word, and character limits must all accept a phrase.
+        let pieces = split(segment.text) { text in
+            fits(text)
+                && (wordCap.map { wordCount(text) <= $0 } ?? true)
+                && (characterCap.map { text.count <= $0 } ?? true)
         }
-        let timed = time(pieces, segment: segment, words: words)
-        return enforceMinDuration(timed, minDuration: minDuration)
+        return time(pieces, segment: segment, words: words)
     }
 
     static func phrases(
         fromTimedWords words: [TranscriptionWord],
         fits: (String) -> Bool,
         maxWords: Int? = nil,
-        minDuration: Double
+        maxCharacters: Int? = nil
     ) -> [Phrase] {
         let timed = words.filter { $0.start != nil && $0.end != nil }
         guard let first = timed.first, let last = timed.last, let start = first.start, let end = last.end, end > start else { return [] }
@@ -51,7 +50,7 @@ enum CaptionBuilder {
             words: timed,
             fits: fits,
             maxWords: maxWords,
-            minDuration: minDuration
+            maxCharacters: maxCharacters
         )
     }
 
@@ -149,21 +148,6 @@ enum CaptionBuilder {
             t += dur
         }
         return phrases
-    }
-
-    /// Give each phrase a floor duration without moving later phrases off their first word.
-    private static func enforceMinDuration(_ phrases: [Phrase], minDuration: Double) -> [Phrase] {
-        var out = phrases
-        for i in out.indices {
-            let targetEnd = max(out[i].end, out[i].start + minDuration)
-            if i + 1 < out.count {
-                out[i].end = min(targetEnd, out[i + 1].start)
-                if out[i].end < out[i].start { out[i].end = out[i].start }
-            } else {
-                out[i].end = targetEnd
-            }
-        }
-        return out
     }
 
     static func specs(

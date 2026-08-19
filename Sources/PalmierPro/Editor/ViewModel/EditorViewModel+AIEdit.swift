@@ -39,13 +39,14 @@ extension EditorViewModel {
     }
 
     func beginAIReframe(clipId: String) {
-        guard let (clip, asset) = aiEditClipAsset(clipId), clip.mediaType == .video,
-              let stored = EditSubmitter.reframeSeed(for: asset) else { return }
+        guard let (clip, asset) = aiEditClipAsset(clipId), clip.mediaType == .video else { return }
+        let trim = aiEditTrimmedSource(clipId: clipId)
+        guard let stored = EditSubmitter.reframeSeed(for: asset, trimmedSource: trim) else { return }
         seedGenerationPanel(
             asset: asset,
             stored: stored,
             replacementClipId: clipId,
-            trimmedSource: aiEditTrimmedSource(clipId: clipId)
+            trimmedSource: trim
         )
     }
 

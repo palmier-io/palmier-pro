@@ -14,6 +14,7 @@ struct ResolvedEffectParams: Sendable {
     let values: [String: Double]
     let strings: [String: String]
     var frame: Int = 0   // timeline frame, for effects that animate (e.g. grain)
+    var spatialScale: Double = 1
 
     func value(_ key: String) -> Double { values[key] ?? 0 }
     func string(_ key: String) -> String? { strings[key] }
@@ -48,7 +49,11 @@ struct EffectDescriptor: Identifiable, Sendable {
         })
     }
 
-    func resolve(_ effect: Effect, atOffset offset: Int) -> ResolvedEffectParams {
+    func resolve(
+        _ effect: Effect,
+        atOffset offset: Int,
+        spatialScale: Double = 1
+    ) -> ResolvedEffectParams {
         var values: [String: Double] = [:]
         for spec in params {
             let raw = effect.params[spec.key]?.resolved(at: offset, default: spec.defaultValue)
@@ -56,12 +61,22 @@ struct EffectDescriptor: Identifiable, Sendable {
             values[spec.key] = min(spec.range.upperBound, max(spec.range.lowerBound, raw))
         }
         let strings = effect.params.compactMapValues(\.string)
-        return ResolvedEffectParams(values: values, strings: strings, frame: offset)
+        return ResolvedEffectParams(
+            values: values,
+            strings: strings,
+            frame: offset,
+            spatialScale: spatialScale
+        )
     }
 
     /// Full application incl. optional linear-light wrapping.
-    func render(_ image: CIImage, effect: Effect, atOffset offset: Int) -> CIImage {
-        let params = resolve(effect, atOffset: offset)
+    func render(
+        _ image: CIImage,
+        effect: Effect,
+        atOffset offset: Int,
+        spatialScale: Double = 1
+    ) -> CIImage {
+        let params = resolve(effect, atOffset: offset, spatialScale: spatialScale)
         let extent = image.extent
         var working = image
         if linearizes {
@@ -217,11 +232,13 @@ enum EffectRegistry {
             params: [EffectParamSpec(key: "radius", label: "Radius", range: 0...100,
                                      defaultValue: 8, unit: "px")],
             apply: { image, p, extent in
-                let radius = p.value("radius")
+                let radius = p.value("radius") * p.spatialScale
                 guard radius > 0 else { return image }
-                return image.clampedToExtent()
+                return image.premultiplyingAlpha()
+                    .clampedToExtent()
                     .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: radius])
                     .cropped(to: extent)
+                    .unpremultiplyingAlpha()
             }
         ),
         EffectDescriptor(

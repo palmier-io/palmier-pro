@@ -14,6 +14,8 @@ struct TextClipLayoutTests {
             width: 1,
             height: 1,
             rotation: 37,
+            rotationX: 20,
+            rotationY: -30,
             flipHorizontal: true,
             flipVertical: true
         )
@@ -22,6 +24,8 @@ struct TextClipLayoutTests {
 
         #expect(changed)
         #expect(clip.transform.rotation == 37)
+        #expect(clip.transform.rotationX == 20)
+        #expect(clip.transform.rotationY == -30)
         #expect(clip.transform.flipHorizontal)
         #expect(clip.transform.flipVertical)
     }

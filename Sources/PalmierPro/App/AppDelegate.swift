@@ -30,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = Updater.shared
 
         HomeWindowController.shared.showWindow(nil)
+        SkillStore.shared.startSkillSync()
 
         AppNotifications.configure()
 
@@ -71,6 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         processID: ProcessInfo.processInfo.processIdentifier
                     )
                 }
+                await SkillStore.shared.prepareForTermination()
                 if !MLXRuntime.beginTermination() {
                     await MLXRuntime.waitUntilIdle()
                 }

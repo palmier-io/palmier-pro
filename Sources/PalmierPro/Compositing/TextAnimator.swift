@@ -10,7 +10,7 @@ enum TextAnimator {
         static let identity = ClipState()
     }
 
-    struct WordState: Equatable {
+    struct WordState: Equatable, Hashable {
         var opacity: Float = 1
         var scale: CGFloat = 1
         var dy: CGFloat = 0
@@ -23,8 +23,6 @@ enum TextAnimator {
         let dur = max(1, anim.perWordFrames)
         let t = progress(rel, start: 0, dur: dur)
         switch anim.preset {
-        case .fadeIn:
-            return ClipState(opacity: Float(t))
         case .popIn:
             return ClipState(opacity: Float(t), scale: 0.6 + 0.4 * CGFloat(t))
         case .slideUp:
@@ -35,7 +33,13 @@ enum TextAnimator {
     }
 
     /// Per-word state. `base` is the clip's static text color.
-    static func wordState(_ anim: TextAnimation, word: WordTiming, rel: Int, base: TextStyle.RGBA) -> WordState {
+    static func wordState(
+        _ anim: TextAnimation,
+        word: WordTiming,
+        nextWord: WordTiming?,
+        rel: Int,
+        base: TextStyle.RGBA
+    ) -> WordState {
         let highlight = anim.highlight ?? TextAnimation.defaultHighlight
         let hand = max(1, anim.perWordFrames)
         switch anim.preset {
@@ -45,18 +49,13 @@ enum TextAnimator {
         case .wordSlide:
             let t = progress(rel, start: word.startFrame, dur: hand)
             return WordState(opacity: Float(t), dy: 0.5 * (1 - CGFloat(t)), color: activeTint(anim, word, rel, base))
-        case .wordPop:
-            let u = linear(rel, start: word.startFrame, dur: hand)
-            return WordState(opacity: Float(smoothstep(u)), scale: 0.6 + 0.4 * overshoot(u),
-                             color: activeTint(anim, word, rel, base))
-        case .wordCycle:
-            let on = activeRamp(rel, word: word, ramp: hand)
-            return WordState(opacity: Float(on), color: activeTint(anim, word, rel, base))
         case .highlightPop:
-            let on = activeRamp(rel, word: word, ramp: min(hand, 4))
-            return WordState(scale: 1 + 0.15 * CGFloat(on), color: lerp(base, highlight, CGFloat(on)))
+            let ramp = min(hand, 4)
+            let on = heldHighlightAmount(rel, word: word, nextWord: nextWord, ramp: ramp)
+            return WordState(color: lerp(base, highlight, CGFloat(on)))
         case .highlightBlock:
-            let on = activeRamp(rel, word: word, ramp: min(hand, 4))
+            let ramp = min(hand, 4)
+            let on = heldHighlightAmount(rel, word: word, nextWord: nextWord, ramp: ramp)
             var bg = highlight; bg.a *= Double(on)
             return WordState(color: base, bgColor: bg)
         default:
@@ -69,6 +68,30 @@ enum TextAnimator {
         guard let hl = anim.highlight else { return base }
         let on = activeRamp(rel, word: word, ramp: max(1, anim.perWordFrames))
         return lerp(base, hl, CGFloat(on))
+    }
+
+    private static func heldHighlightAmount(
+        _ rel: Int,
+        word: WordTiming,
+        nextWord: WordTiming?,
+        ramp: Int
+    ) -> Double {
+        guard rel >= word.startFrame else { return 0 }
+        let rampIn: Double
+        if let duration = rampDuration(for: word, maximum: ramp) {
+            let elapsed = rel.subtractingReportingOverflow(word.startFrame)
+            guard !elapsed.overflow else { return 1 }
+            rampIn = smoothstep(min(1, Double(elapsed.partialValue) / Double(duration)))
+        } else {
+            rampIn = 1
+        }
+
+        guard let nextWord, rel >= nextWord.startFrame else { return rampIn }
+        guard let duration = rampDuration(for: nextWord, maximum: ramp) else { return 0 }
+        let elapsed = rel.subtractingReportingOverflow(nextWord.startFrame)
+        guard !elapsed.overflow else { return 0 }
+        let rampOut = smoothstep(1 - min(1, Double(elapsed.partialValue) / Double(duration)))
+        return min(rampIn, rampOut)
     }
 
     // MARK: - Helpers
@@ -85,21 +108,19 @@ enum TextAnimator {
         return Double(rel - start) / Double(dur)
     }
 
-    /// Back-ease that overshoots past 1 before settling — a spring/bounce on the way in.
-    private static func overshoot(_ t: Double) -> CGFloat {
-        let s = 1.70158, p = t - 1
-        return CGFloat(1 + (s + 1) * p * p * p + s * p * p)
-    }
-
     /// 0 outside the active span, with the ramp shortened so fast words reach 1.
     private static func activeRamp(_ rel: Int, word: WordTiming, ramp: Int) -> Double {
         guard rel >= word.startFrame, rel < word.endFrame else { return 0 }
-        let span = max(1, word.endFrame - word.startFrame)
-        guard span > 1 else { return 1 }
-        let r = min(max(1, ramp), max(1, span / 2))
+        guard let r = rampDuration(for: word, maximum: ramp) else { return 1 }
         let rampIn = smoothstep(min(1, Double(rel - word.startFrame) / Double(r)))
         let rampOut = smoothstep(min(1, Double(word.endFrame - rel) / Double(r)))
         return min(rampIn, rampOut)
+    }
+
+    private static func rampDuration(for word: WordTiming, maximum: Int) -> Int? {
+        let span = word.endFrame.subtractingReportingOverflow(word.startFrame)
+        guard !span.overflow, span.partialValue > 1 else { return nil }
+        return min(max(1, maximum), max(1, span.partialValue / 2))
     }
 
     private static func lerp(_ a: TextStyle.RGBA, _ b: TextStyle.RGBA, _ t: CGFloat) -> TextStyle.RGBA {

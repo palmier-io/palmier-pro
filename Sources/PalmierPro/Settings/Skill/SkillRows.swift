@@ -72,6 +72,7 @@ struct SkillRow: View {
     let primaryAction: Bool
     let working: Bool
     var summaryAction: (() -> Void)? = nil
+    var deleteAction: (() -> Void)? = nil
     let action: () -> Void
 
     var body: some View {
@@ -91,11 +92,26 @@ struct SkillRow: View {
                         .controlSize(.small)
                         .accessibilityLabel(L10n.string("Working on \(name)"))
                 } else {
-                    Button(actionTitle, action: action)
-                        .buttonStyle(.capsule(
-                            primaryAction ? .prominent : .secondary,
-                            fill: primaryAction ? nil : AnyShapeStyle(AppTheme.Background.raisedColor)
-                        ))
+                    HStack(spacing: AppTheme.Spacing.xs) {
+                        Button(actionTitle, action: action)
+                            .buttonStyle(.capsule(
+                                primaryAction ? .prominent : .secondary,
+                                fill: primaryAction ? nil : AnyShapeStyle(AppTheme.Background.raisedColor)
+                            ))
+
+                        if let deleteAction {
+                            Button(role: .destructive, action: deleteAction) {
+                                Image(systemName: "trash")
+                                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+                                    .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.md)
+                                    .padding(AppTheme.Spacing.xs)
+                                    .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(L10n.string("Delete Skill"))
+                            .help(L10n.string("Delete Skill"))
+                        }
+                    }
                 }
             }
             .frame(width: AppTheme.Settings.skillActionWidth, alignment: .trailing)

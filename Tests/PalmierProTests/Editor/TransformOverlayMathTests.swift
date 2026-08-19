@@ -40,4 +40,25 @@ struct TransformOverlayMathTests {
         #expect(result.guides.x)
         #expect(!result.guides.y)
     }
+
+    @Test func tiltedMoveDoesNotSnapUnprojectedCanvasEdges() {
+        let start = Transform(
+            centerX: 0.202,
+            centerY: 0.7,
+            width: 0.4,
+            height: 0.2,
+            rotationY: 30
+        )
+
+        let result = TransformOverlayMath.movedTransform(
+            start,
+            by: .zero,
+            in: CGRect(x: 0, y: 0, width: 1_000, height: 500)
+        )
+
+        #expect(result.transform.centerX == 0.202)
+        #expect(result.transform.rotationY == 30)
+        #expect(!result.guides.x)
+        #expect(!result.guides.y)
+    }
 }

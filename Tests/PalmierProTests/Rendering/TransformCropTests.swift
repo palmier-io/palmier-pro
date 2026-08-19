@@ -129,9 +129,37 @@ struct CropAspectLockTests {
         #expect(CropAspectLock.r21x9.pixelAspect == 21.0 / 9.0)
     }
 
-    @Test func allCasesAreEnumerable() {
-        // Pinning down the case list so anyone adding a case has to update label/pixelAspect too.
-        #expect(CropAspectLock.allCases.count == 8)
+    @Test func customAspectUsesEnteredComponents() throws {
+        let ratio = try #require(CropAspectRatio(horizontal: 2.39, vertical: 1))
+        let lock = CropAspectLock.locked(to: ratio)
+
+        #expect(lock == .fixed(ratio))
+        #expect(lock.pixelAspect == 2.39)
+        #expect(lock.label == "2.39:1")
+    }
+
+    @Test func customAspectMatchingPresetUsesPresetLock() throws {
+        let ratio = try #require(CropAspectRatio(horizontal: 16, vertical: 9))
+        #expect(CropAspectLock.locked(to: ratio) == .r16x9)
+    }
+
+}
+
+@Suite("CropAspectRatio")
+struct CropAspectRatioTests {
+
+    @Test func pixelDimensionsReduceToRatioComponents() throws {
+        let ratio = try #require(CropAspectRatio(pixelWidth: 3840, pixelHeight: 2160))
+        #expect(ratio.horizontal == 16)
+        #expect(ratio.vertical == 9)
+    }
+
+    @Test func invalidComponentsAreRejected() {
+        #expect(CropAspectRatio(horizontal: 0, vertical: 1) == nil)
+        #expect(CropAspectRatio(horizontal: -1, vertical: 1) == nil)
+        #expect(CropAspectRatio(horizontal: 1, vertical: 0) == nil)
+        #expect(CropAspectRatio(horizontal: .infinity, vertical: 1) == nil)
+        #expect(CropAspectRatio(horizontal: 1, vertical: .nan) == nil)
     }
 }
 

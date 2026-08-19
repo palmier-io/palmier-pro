@@ -44,8 +44,9 @@ final class SkillCatalog {
         entries = decoded
     }
 
-    func refresh() async {
-        guard !isLoading, let url = URL(string: "\(Self.base)/catalog.json") else { return }
+    @discardableResult
+    func refresh() async -> Bool {
+        guard !isLoading, let url = URL(string: "\(Self.base)/catalog.json") else { return false }
         isLoading = true
         defer { isLoading = false }
         do {
@@ -57,9 +58,11 @@ final class SkillCatalog {
             )
             try? data.write(to: Self.cacheURL)
             Log.agent.notice("skill catalog loaded \(self.entries.count) entries from \(Self.base)")
+            return true
         } catch {
             lastError = error.localizedDescription
             Log.agent.error("skill catalog refresh failed (\(Self.base)): \(error.localizedDescription)")
+            return false
         }
     }
 

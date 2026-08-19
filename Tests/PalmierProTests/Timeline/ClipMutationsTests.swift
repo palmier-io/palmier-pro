@@ -79,17 +79,17 @@ struct ApplyClipSpeedTests {
         clip.opacityTrack = KeyframeTrack(keyframes: [
             Keyframe(frame: 0, value: 1.0),
             Keyframe(frame: 30, value: 0.5),
-            Keyframe(frame: 60, value: 0.0),
+            Keyframe(frame: 59, value: 0.0),
         ])
-        clip.scaleTrack = KeyframeTrack(keyframes: [Keyframe(frame: 60, value: AnimPair(a: 2.0, b: 2.0))])
+        clip.scaleTrack = KeyframeTrack(keyframes: [Keyframe(frame: 59, value: AnimPair(a: 2.0, b: 2.0))])
         let e = editor([Fixtures.videoTrack(clips: [clip])])
 
         e.applyClipSpeed(clipId: "c1", newSpeed: 2.0)
         let updated = e.timeline.tracks[0].clips[0]
 
         #expect(updated.durationFrames == 30)
-        #expect(updated.opacityTrack?.keyframes.map(\.frame) == [0, 15, 30])
-        #expect(updated.scaleTrack?.keyframes.map(\.frame) == [30])
+        #expect(updated.opacityTrack?.keyframes.map(\.frame) == [0, 15, 29])
+        #expect(updated.scaleTrack?.keyframes.map(\.frame) == [29])
     }
 }
 
@@ -185,11 +185,16 @@ struct SplitClipTests {
             Keyframe(frame: 0, value: 0.0, interpolationOut: .linear),
             Keyframe(frame: 20, value: 20.0),
         ])
+        clip.setBlurKeyframeTrack(KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 0.0, interpolationOut: .linear),
+            Keyframe(frame: 20, value: 20.0),
+        ]))
         let e = editor([Fixtures.videoTrack(clips: [clip])])
         let rightId = e.splitClip(clipId: "c1", atFrame: 10)[0]
         let right = e.timeline.tracks[0].clips.first { $0.id == rightId }!
         #expect(right.opacityTrack?.sample(at: 5, fallback: 0.0) == 1.0)   // hold: still flat
         #expect(right.rotationTrack?.sample(at: 5, fallback: 0.0) == 15.0) // linear: 10°→20° at halfway
+        #expect(right.blurRadius(at: 15) == 15.0)
     }
 
     @Test func splitClipZerosOpacityFadesAcrossCut() {
@@ -527,6 +532,30 @@ struct ClipPropertyCommitTests {
         #expect(e.clipFor(id: clip.id)?.effects == nil)
     }
 
+    @Test func committingScaleResetCanReadActiveTimeline() {
+        var clip = Fixtures.clip(id: "clip", start: 0, duration: 30)
+        clip.transform.width = 0.5
+        clip.transform.height = 0.5
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        let asset = MediaAsset(
+            id: clip.mediaRef,
+            url: URL(fileURLWithPath: "/tmp/media.mov"),
+            type: .video,
+            name: "media",
+            duration: 1
+        )
+        asset.sourceWidth = 1_920
+        asset.sourceHeight = 1_080
+        e.mediaAssets = [asset]
+
+        e.commitClipProperties(clipIds: [clip.id], actionName: "Reset Scale") {
+            $0.transform = e.fitTransform(for: $0)
+        }
+
+        #expect(e.clipFor(id: clip.id)?.transform.width == 1)
+        #expect(e.clipFor(id: clip.id)?.transform.height == 1)
+    }
+
     @Test func commitClipPropertiesGroupsMultipleClipUndo() {
         var a = Fixtures.clip(id: "a", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
         var b = Fixtures.clip(id: "b", mediaRef: "text", mediaType: .text, start: 30, duration: 30)
@@ -537,15 +566,15 @@ struct ClipPropertyCommitTests {
         e.undo.attach(undoManager)
 
         e.commitClipProperties(clipIds: ["a", "b"]) {
-            $0.textAnimation = TextAnimation(preset: .wordPop)
+            $0.textAnimation = TextAnimation(preset: .wordSlide)
         }
 
-        #expect(e.timeline.tracks[0].clips.allSatisfy { $0.textAnimation?.preset == .wordPop })
+        #expect(e.timeline.tracks[0].clips.allSatisfy { $0.textAnimation?.preset == .wordSlide })
         undoManager.undo()
         #expect(e.timeline.tracks[0].clips.allSatisfy { $0.textAnimation == nil })
         #expect(undoManager.canUndo == false)
         undoManager.redo()
-        #expect(e.timeline.tracks[0].clips.allSatisfy { $0.textAnimation?.preset == .wordPop })
+        #expect(e.timeline.tracks[0].clips.allSatisfy { $0.textAnimation?.preset == .wordSlide })
         #expect(undoManager.canRedo == false)
     }
 

@@ -38,7 +38,7 @@ final class GenerationService {
         folderId: String? = nil,
         buildParams: @escaping ([String]) -> BackendGenerationParams,
         snapshotRefs: (@Sendable (inout GenerationInput, [String]) -> Void)? = nil,
-        preprocessRef: (@Sendable (Int, MediaAsset) async throws -> URL?)? = nil,
+        preprocessRef: (@Sendable (Int, MediaAsset, URL) async throws -> URL?)? = nil,
         preprocessSourceVideo: (@Sendable (URL) async throws -> URL?)? = nil,
         fileExtension: String,
         projectURL: URL?,
@@ -106,11 +106,17 @@ final class GenerationService {
 
                 await self.runJob(
                     placeholders: placeholders,
-                    params: params,
                     genInput: finalGenInput,
                     editor: editor,
                     onComplete: onComplete,
-                    onFailure: onFailure
+                    onFailure: onFailure,
+                    submit: {
+                        try await GenerationBackend.submit(
+                            model: finalGenInput.model,
+                            params: params,
+                            projectId: editor.projectId
+                        )
+                    }
                 )
             } catch {
                 let message = error.localizedDescription
@@ -147,7 +153,7 @@ final class GenerationService {
         references: [MediaAsset],
         trimmedSourceOverride: TrimmedSource?,
         preUploadedURLs: [String]?,
-        preprocessRef: (@Sendable (Int, MediaAsset) async throws -> URL?)?,
+        preprocessRef: (@Sendable (Int, MediaAsset, URL) async throws -> URL?)?,
         preprocessSourceVideo: (@Sendable (URL) async throws -> URL?)?
     ) async throws -> PreparedReferences {
         if let preUploadedURLs, !preUploadedURLs.isEmpty {
@@ -158,11 +164,14 @@ final class GenerationService {
         do {
             var urlsToUpload = references.map(\.url)
             let refTypes = references.map(\.type)
-            if let trim = trimmedSourceOverride, trim.hasTrim, !urlsToUpload.isEmpty {
-                Log.generation.notice("using trimmed source: frames \(trim.trimStartFrame)+\(trim.sourceFramesConsumed) of \(urlsToUpload[0].lastPathComponent)")
+            var trimmedIndex: Int?
+            if let trim = trimmedSourceOverride, trim.hasTrim,
+               let index = urlsToUpload.firstIndex(of: trim.sourceURL) {
+                Log.generation.notice("using trimmed source: frames \(trim.trimStartFrame)+\(trim.sourceFramesConsumed) of \(urlsToUpload[index].lastPathComponent)")
                 let extracted = try await VideoTrimExtractor.extract(trim)
-                urlsToUpload[0] = extracted
+                urlsToUpload[index] = extracted
                 tempFiles.append(extracted)
+                trimmedIndex = index
             }
             if let preprocessSourceVideo, let sourceURL = urlsToUpload.first,
                let processed = try await preprocessSourceVideo(sourceURL) {
@@ -170,7 +179,11 @@ final class GenerationService {
                 tempFiles.append(processed)
             }
             if let preprocessRef, !references.isEmpty {
-                let rewrites = try await preprocessedReferenceURLs(references: references, preprocessRef: preprocessRef)
+                let rewrites = try await preprocessedReferenceURLs(
+                    references: references,
+                    currentURLs: urlsToUpload,
+                    preprocessRef: preprocessRef
+                )
                 for (i, rewritten) in rewrites {
                     guard let rewritten else { continue }
                     urlsToUpload[i] = rewritten
@@ -182,7 +195,7 @@ final class GenerationService {
                 types: refTypes,
                 cacheKeys: uploadCacheKeys(
                     references: references,
-                    trimmedFirstReference: trimmedSourceOverride?.hasTrim == true,
+                    trimmedIndex: trimmedIndex,
                     hasPreprocess: preprocessRef != nil || preprocessSourceVideo != nil
                 ),
             )
@@ -195,11 +208,13 @@ final class GenerationService {
 
     private func preprocessedReferenceURLs(
         references: [MediaAsset],
-        preprocessRef: @escaping @Sendable (Int, MediaAsset) async throws -> URL?
+        currentURLs: [URL],
+        preprocessRef: @escaping @Sendable (Int, MediaAsset, URL) async throws -> URL?
     ) async throws -> [(Int, URL?)] {
         try await withThrowingTaskGroup(of: (Int, URL?).self) { group in
             for (i, asset) in references.enumerated() {
-                group.addTask { (i, try await preprocessRef(i, asset)) }
+                let currentURL = currentURLs[i]
+                group.addTask { (i, try await preprocessRef(i, asset, currentURL)) }
             }
             var results: [(Int, URL?)] = []
             for try await result in group { results.append(result) }
@@ -209,12 +224,12 @@ final class GenerationService {
 
     private func uploadCacheKeys(
         references: [MediaAsset],
-        trimmedFirstReference: Bool,
+        trimmedIndex: Int?,
         hasPreprocess: Bool
     ) -> [MediaAsset?] {
         references.enumerated().map { index, asset in
             if hasPreprocess { return nil }
-            if index == 0 && trimmedFirstReference { return nil }
+            if index == trimmedIndex { return nil }
             return asset
         }
     }
@@ -292,6 +307,52 @@ final class GenerationService {
         Task { @MainActor in
             await downloadAndFinalize(asset: asset, remoteURL: remoteURL, editor: editor)
         }
+    }
+
+    @discardableResult
+    func enhanceDraft(asset: MediaAsset, editor: EditorViewModel) -> String? {
+        guard asset.canEnhanceDraft,
+              let originalInput = asset.generationInput,
+              let sourceJobId = originalInput.backendJobId else { return nil }
+        var enhancedInput = originalInput
+        enhancedInput.draft = false
+        enhancedInput.resolution = "1080p"
+        enhancedInput.backendJobId = nil
+        enhancedInput.resultURLs = nil
+        enhancedInput.createdAt = Date()
+        let placeholder = createPlaceholder(
+            type: .video,
+            name: "\(asset.name) 1080p",
+            duration: asset.resolvedDuration,
+            genInput: enhancedInput,
+            folderId: asset.folderId,
+            destDir: Self.destinationDirectory(for: editor.projectURL),
+            fileExtension: "mp4",
+            editor: editor
+        )
+
+        Task { @MainActor in
+            await self.runJob(
+                placeholders: [placeholder],
+                genInput: enhancedInput,
+                editor: editor,
+                onComplete: { _ in
+                    editor.mediaPanelToast = MediaPanelToast(
+                        message: L10n.string("Enhanced with FLUX.3 at 1080p."),
+                        kind: .success
+                    )
+                },
+                onFailure: {
+                    if case .failed(let message) = placeholder.generationStatus {
+                        editor.mediaPanelToast = MediaPanelToast(message: message)
+                    }
+                },
+                submit: {
+                    try await GenerationBackend.enhanceDraft(sourceJobId: sourceJobId)
+                }
+            )
+        }
+        return placeholder.id
     }
 
     func resumePendingGenerations(editor: EditorViewModel) {
@@ -430,7 +491,7 @@ final class GenerationService {
             case .image: return "image/jpeg"
             case .video: return "video/mp4"
             case .audio: return "audio/mpeg"
-            case .text: return "application/octet-stream"
+            case .text, .subtitle: return "application/octet-stream"
             case .lottie: return "application/json"
             case .sequence: return "video/mp4"
             }
@@ -441,11 +502,11 @@ final class GenerationService {
 
     private func runJob(
         placeholders: [MediaAsset],
-        params: BackendGenerationParams,
         genInput: GenerationInput,
         editor: EditorViewModel,
         onComplete: (@MainActor (MediaAsset) -> Void)?,
-        onFailure: (@MainActor () -> Void)?
+        onFailure: (@MainActor () -> Void)?,
+        submit: () async throws -> String
     ) async {
         let runId = String(UUID().uuidString.prefix(8))
         Log.generation.notice("run \(runId) start model=\(genInput.model) placeholders=\(placeholders.count)")
@@ -453,11 +514,7 @@ final class GenerationService {
 
         let jobId: String
         do {
-            jobId = try await GenerationBackend.submit(
-                model: genInput.model,
-                params: params,
-                projectId: editor.projectId,
-            )
+            jobId = try await submit()
         } catch {
             let (code, message) = backendError(error)
             let expected: Set<String> = [
@@ -583,6 +640,7 @@ final class GenerationService {
             for placeholder in placeholders {
                 updateGenerationMetadata(placeholder, editor: editor, status: .failed(message)) { input in
                     input.backendJobId = backendJobId
+                    input.refundedCredits = job.refundedCredits
                 }
             }
             editor.onProjectCheckpointRequired?()

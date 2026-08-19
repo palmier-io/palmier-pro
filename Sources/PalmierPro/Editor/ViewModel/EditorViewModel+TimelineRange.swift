@@ -6,21 +6,16 @@ extension EditorViewModel {
 
     func markTimelineRangeStart(atFrame frame: Int? = nil) {
         let start = max(0, frame ?? activeFrame)
-        selectedTimelineRange = TimelineRangeSelection(
-            startFrame: start,
-            endFrame: selectedTimelineRange?.endFrame ?? start
-        )
+        setTimelineRange(startFrame: start, endFrame: selectedTimelineRange?.endFrame ?? start)
     }
 
     func markTimelineRangeEnd(atFrame frame: Int? = nil) {
         let end = max(0, frame ?? activeFrame)
-        selectedTimelineRange = TimelineRangeSelection(
-            startFrame: selectedTimelineRange?.startFrame ?? end,
-            endFrame: end
-        )
+        setTimelineRange(startFrame: selectedTimelineRange?.startFrame ?? end, endFrame: end)
     }
 
     func setTimelineRange(startFrame: Int, endFrame: Int) {
+        selectedTimelineMarkerIds = []
         selectedTimelineRange = TimelineRangeSelection(
             startFrame: max(0, startFrame),
             endFrame: max(0, endFrame)

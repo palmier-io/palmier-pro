@@ -107,6 +107,13 @@ final class SpeechMaskStore {
         }
     }
 
+    #if DEBUG
+    func installQuietNonSpeechMask(_ mask: [Bool], for mediaRef: String) {
+        quietNonSpeechMasks[mediaRef] = mask
+        deadAirMasks.removeValue(forKey: mediaRef)
+    }
+    #endif
+
     private func quietNonSpeechMaskIsolated(
         for mediaRef: String,
         samples: [Float]?

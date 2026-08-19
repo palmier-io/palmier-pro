@@ -50,6 +50,7 @@ final class MediaVisualCache {
     // MARK: - Redraw trigger
 
     weak var timelineView: NSView?
+    var onDeadAirCacheInvalidated: (() -> Void)?
 
     // MARK: - Sync lookups (safe for draw calls)
 
@@ -108,6 +109,7 @@ final class MediaVisualCache {
         beats.reset()
         videoThumbnails.removeAll()
         imageThumbnails.removeAll()
+        onDeadAirCacheInvalidated?()
         timelineView?.needsDisplay = true
     }
 
@@ -119,6 +121,7 @@ final class MediaVisualCache {
         beats.invalidate(mediaRef)
         videoThumbnails.removeValue(forKey: mediaRef)
         imageThumbnails.removeValue(forKey: mediaRef)
+        onDeadAirCacheInvalidated?()
     }
 
     func generateImageThumbnail(for asset: MediaAsset) {

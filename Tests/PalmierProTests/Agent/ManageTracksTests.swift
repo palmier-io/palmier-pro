@@ -83,6 +83,8 @@ struct ManageTracksTests {
         #expect(await h.runRaw("manage_tracks", args: ["remove": [1.5]]).isError)
         #expect(await h.runRaw("manage_tracks", args: ["reorder": [["index": 2, "to": 0]]]).isError)
         #expect(await h.runRaw("manage_tracks", args: ["reorder": [["index": 1, "to": 99]]]).isError)
+        #expect(await h.runRaw("manage_tracks", args: ["set": [["index": 0, "name": "Bad\nName"]]]).isError)
+        #expect(await h.runRaw("manage_tracks", args: ["set": [["index": 0, "name": 42]]]).isError)
         #expect(h.editor.timeline == before)
         #expect(await h.runRaw("manage_tracks", args: [:]).isError)
     }

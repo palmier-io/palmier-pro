@@ -99,6 +99,7 @@ final class AppState {
     func showEditor(for project: VideoProject) {
         activateProject(project)
         project.showWindows()
+        hideHomeIfEditorIsVisible(for: project)
     }
 
     func activateProject(_ project: VideoProject) {
@@ -107,6 +108,15 @@ final class AppState {
             project.editorViewModel.refreshProjectId()
             recordProjectActive(project)
         }
+    }
+
+    func projectWindowDidBecomeKey(_ project: VideoProject) {
+        activateProject(project)
+        hideHomeIfEditorIsVisible(for: project)
+    }
+
+    private func hideHomeIfEditorIsVisible(for project: VideoProject) {
+        guard project.windowControllers.contains(where: { $0.window?.isVisible == true }) else { return }
         HomeWindowController.shared.window?.orderOut(nil)
     }
 
@@ -135,9 +145,7 @@ final class AppState {
             return
         }
 
-        activeProject = project
-        HomeWindowController.shared.window?.orderOut(nil)
-        project.showWindows()
+        showEditor(for: project)
         project.windowControllers.first?.window?.makeKeyAndOrderFront(nil)
 
         guard let assetId,
@@ -178,8 +186,8 @@ final class AppState {
         doc.fileURL = url
         doc.fileType = VideoProject.typeIdentifier
         doc.makeWindowControllers()
-        doc.showWindows()
         NSDocumentController.shared.addDocument(doc)
+        showEditor(for: doc)
         return doc
     }
 
@@ -219,12 +227,14 @@ final class AppState {
     }
 
     func createProjectInteractively() {
+        Telemetry.beginOperation("save_panel", data: ["flow": "project_create"])
         let panel = NSSavePanel()
         panel.allowedContentTypes = [Self.projectContentType]
         panel.nameFieldStringValue = Project.defaultProjectName
         panel.directoryURL = Project.storageDirectory
         panel.title = L10n.string("New Project")
         panel.begin { [self] response in
+            Telemetry.endOperation("save_panel")
             guard response == .OK, let url = panel.url else { return }
             let doc = instantiateProject(at: url)
             doc.save(to: url, ofType: VideoProject.typeIdentifier, for: .saveOperation) { error in
@@ -249,6 +259,7 @@ final class AppState {
 
     @discardableResult
     func openProjectAsync(at url: URL, register: Bool = true, options: ProjectOpenOptions = .init()) async throws -> VideoProject {
+        try Task.checkCancellation()
         let resolved = url.standardizedFileURL
         guard !projectPathsBeingDeleted.contains(resolved.path) else {
             throw ProjectError.deletionInProgress(resolved)
@@ -265,6 +276,7 @@ final class AppState {
             }
         }
         let doc = try await VideoProject.load(from: resolved)
+        try Task.checkCancellation()
         guard !projectPathsBeingDeleted.contains(resolved.path) else {
             throw ProjectError.deletionInProgress(resolved)
         }
@@ -273,8 +285,8 @@ final class AppState {
         }
 
         doc.makeWindowControllers()
-        doc.showWindows()
         NSDocumentController.shared.addDocument(doc)
+        showEditor(for: doc)
         if register { ProjectRegistry.shared.register(resolved) }
         doc.editorViewModel.refreshProjectId()
         recordProjectOpened(doc)
@@ -348,6 +360,7 @@ final class AppState {
     }
 
     func openProjectFromPanel() {
+        Telemetry.beginOperation("open_panel", data: ["flow": "project_open"])
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [Self.projectContentType]
         panel.canChooseDirectories = false
@@ -355,6 +368,7 @@ final class AppState {
         panel.allowsMultipleSelection = false
         panel.title = L10n.string("Open Project")
         panel.begin { response in
+            Telemetry.endOperation("open_panel")
             guard response == .OK, let url = panel.url else { return }
             AppState.shared.openProject(at: url)
         }

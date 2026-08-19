@@ -1,17 +1,17 @@
 import SwiftUI
 
 struct CaptionTab: View {
+    private enum Output {
+        case captions((String?) -> Void)
+        case transcript((EditorViewModel.TimelineTranscriptDocument) -> Void)
+    }
+
     @Environment(EditorViewModel.self) var editor
     @Bindable private var account = AccountService.shared
+    private let output: Output
 
-    @State private var style: TextStyle = CaptionTab.defaultStyle
+    @State private var style: TextStyle = .caption
     @State private var center = AppTheme.Caption.defaultCenter
-
-    private static var defaultStyle: TextStyle {
-        var s = TextStyle(fontSize: AppTheme.Caption.defaultFontSize)
-        s.shadow.enabled = false
-        return s
-    }
     @State private var selectedTrackId: String?
     @State private var selectedClipTargets: [String] = []
     @State private var provider: TranscriptionProvider = .cloud
@@ -19,6 +19,8 @@ struct CaptionTab: View {
     @State private var animationHighlight: TextStyle.RGBA = TextAnimation.defaultHighlight
     @State private var censorProfanity = false
     @State private var maxWords: Int?
+    @State private var maxCharacters: Int?
+    @State private var maximumGapSeconds = CaptionGapSettings.default.maximumGapSeconds
     @State private var locale: Locale?
     @State private var supportedLocales: [Locale] = []
     @State private var isGenerating = false
@@ -28,11 +30,32 @@ struct CaptionTab: View {
     @State private var settingsExpanded = true
     @State private var styleExpanded = false
     @State private var animationExpanded = false
-    @State private var placementExpanded = true
 
     private static let previewText = L10n.key("Captions will look like this")
+    private static let maxWordRange = 0.0...50.0
+    private static let maxCharacterRange = 0.0...200.0
 
-    private var aspect: CGFloat { CGFloat(editor.timeline.width) / CGFloat(max(1, editor.timeline.height)) }
+    init(onGeneratedCaptions: @escaping (String?) -> Void) {
+        output = .captions(onGeneratedCaptions)
+    }
+
+    init(onGeneratedTranscript: @escaping (EditorViewModel.TimelineTranscriptDocument) -> Void) {
+        output = .transcript(onGeneratedTranscript)
+    }
+
+    private var isTranscriptOnly: Bool {
+        if case .transcript = output { true } else { false }
+    }
+
+    private var previewConfiguration: CaptionPreviewConfiguration {
+        CaptionPreviewConfiguration(
+            text: L10n.string(key: Self.previewText),
+            style: style,
+            center: center,
+            preset: animationPreset,
+            highlight: animationHighlight
+        )
+    }
 
     private var liveTargets: [String] {
         let sel = editor.selectedClipIds
@@ -107,15 +130,20 @@ struct CaptionTab: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
                         sourceSection
-                        settingsSection
-                        styleSection
-                        animationSection
-                        placementSection
+                        if isTranscriptOnly {
+                            generateBar
+                        } else {
+                            settingsSection
+                            styleSection
+                            animationSection
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
 
-                generateBar
+                if !isTranscriptOnly {
+                    generateBar
+                }
             }
             if isGenerating {
                 AppTheme.Background.surfaceColor.opacity(AppTheme.Opacity.prominent)
@@ -125,11 +153,24 @@ struct CaptionTab: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(AppTheme.Background.surfaceColor)
         .task {
+            guard !isTranscriptOnly else { return }
             guard supportedLocales.isEmpty else { return }
             supportedLocales = (await Transcription.supportedLocales())
                 .sorted { languageName($0) < languageName($1) }
         }
-        .onAppear { rememberSelectedClipTargets() }
+        .onAppear {
+            rememberSelectedClipTargets()
+            if !isTranscriptOnly {
+                editor.captionPreviewCenterChange = { center = $0 }
+                showCaptionPreview()
+            }
+        }
+        .onDisappear {
+            editor.captionPreviewConfiguration = nil
+            editor.captionPreviewCenterChange = nil
+        }
+        .onChange(of: previewConfiguration) { _, _ in showCaptionPreview() }
+        .onChange(of: editor.mediaPanelVisible) { _, _ in showCaptionPreview() }
         .onChange(of: editor.selectedClipIds) { _, _ in
             guard !editor.isMarqueeSelecting else { return }
             rememberSelectedClipTargets()
@@ -151,7 +192,15 @@ struct CaptionTab: View {
     }
 
     private var sourceSection: some View {
-        EditorPanelGroup(L10n.string("Source"), isExpanded: $sourceExpanded) {
+        EditorPanelGroup(
+            L10n.string("Source"),
+            isExpanded: $sourceExpanded,
+            headerAccessory: {
+                if !isTranscriptOnly {
+                    captionPreviewToggle
+                }
+            }
+        ) {
             InspectorRow(
                 label: L10n.string("Source"),
                 labelHelp: L10n.string("Uses selected clips when available, otherwise all captionable audio. Choose a track to limit captions."),
@@ -166,6 +215,27 @@ struct CaptionTab: View {
                 onReset: { provider = .cloud }
             ) { providerPicker }
         }
+    }
+
+    private var captionPreviewToggle: some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            Text(L10n.string("Preview"))
+                .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+            Toggle(
+                String(),
+                isOn: Binding(
+                    get: { editor.captionPreviewEnabled },
+                    set: { editor.captionPreviewEnabled = $0 }
+                )
+            )
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .tint(AppTheme.Text.primaryColor.opacity(AppTheme.Opacity.strong))
+            .accessibilityLabel(L10n.string("Preview"))
+        }
+        .help(L10n.string("Preview"))
     }
 
     private var settingsSection: some View {
@@ -188,14 +258,50 @@ struct CaptionTab: View {
                 labelHelp: L10n.string("Cap the words shown per caption. None fits each line to the box."),
                 onReset: { maxWords = nil }
             ) {
-                Menu {
-                    Button(L10n.string("None")) { maxWords = nil }
-                    ForEach(1...8, id: \.self) { n in
-                        Button(action: { maxWords = n }) { Text(verbatim: "\(n)") }
-                    }
-                } label: { EditorMenuValue(text: maxWords.map(String.init) ?? L10n.string("None"), expanded: true) }
-                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
-                .frame(maxWidth: .infinity)
+                ScrubbableNumberField(
+                    value: Double(maxWords ?? 0),
+                    range: Self.maxWordRange,
+                    dragValueAdjustment: { $0.rounded() },
+                    displayTextOverride: { $0 < 1 ? L10n.string("None") : nil },
+                    onChanged: updateMaxWords,
+                    onCommit: updateMaxWords
+                )
+                .accessibilityLabel(L10n.string("Max words"))
+            }
+            InspectorRow(
+                label: L10n.string("Max characters"),
+                labelHelp: L10n.string("Cap characters per caption, including spaces and punctuation. A single word may exceed the limit."),
+                onReset: { maxCharacters = nil }
+            ) {
+                ScrubbableNumberField(
+                    value: Double(maxCharacters ?? 0),
+                    range: Self.maxCharacterRange,
+                    dragValueAdjustment: { $0.rounded() },
+                    displayTextOverride: { $0 < 1 ? L10n.string("None") : nil },
+                    onChanged: updateMaxCharacters,
+                    onCommit: updateMaxCharacters
+                )
+                .accessibilityLabel(L10n.string("Max characters"))
+            }
+            InspectorRow(
+                label: L10n.string("Close gaps"),
+                labelHelp: L10n.string("Extends captions across short gaps and holds the final caption."),
+                onReset: {
+                    maximumGapSeconds = CaptionGapSettings.default.maximumGapSeconds
+                }
+            ) {
+                ScrubbableNumberField(
+                    value: maximumGapSeconds,
+                    range: CaptionGapSettings.maximumGapRange,
+                    displayMultiplier: 1_000,
+                    format: "%.0f",
+                    valueSuffix: " ms",
+                    dragSensitivity: 10,
+                    dragValueAdjustment: { ($0 / 0.05).rounded() * 0.05 },
+                    onChanged: { maximumGapSeconds = $0 },
+                    onCommit: { maximumGapSeconds = $0 }
+                )
+                .accessibilityLabel(L10n.string("Close gaps"))
             }
             InspectorRow(label: L10n.string("Censor profanity"), onReset: { censorProfanity = false }) {
                 Toggle(String(), isOn: $censorProfanity)
@@ -301,12 +407,56 @@ struct CaptionTab: View {
 
     private var styleSection: some View {
         TextStyleControls(
-            selection: TextStyleSelection(styles: [style], fallback: Self.defaultStyle),
-            defaults: Self.defaultStyle,
+            selection: TextStyleSelection(styles: [style], fallback: .caption),
+            defaults: .caption,
             styleExpanded: $styleExpanded,
             groupsExpandedByDefault: false,
-            actions: styleActions
+            actions: styleActions,
+            afterAlignment: { captionPositionRow },
+            afterColor: { EmptyView() }
         )
+    }
+
+    private var captionPositionRow: some View {
+        InspectorRow(
+            label: L10n.string("Position"),
+            onReset: { center = AppTheme.Caption.defaultCenter }
+        ) {
+            HStack(spacing: AppTheme.Spacing.sm) {
+                captionPositionField(
+                    value: center.x,
+                    canvasLength: max(1, editor.timeline.width),
+                    label: "X",
+                    onChange: { center.x = $0 }
+                )
+                captionPositionField(
+                    value: center.y,
+                    canvasLength: max(1, editor.timeline.height),
+                    label: "Y",
+                    onChange: { center.y = $0 }
+                )
+            }
+            .fixedSize()
+        }
+    }
+
+    private func captionPositionField(
+        value: CGFloat,
+        canvasLength: Int,
+        label: String,
+        onChange: @escaping (CGFloat) -> Void
+    ) -> some View {
+        ScrubbableNumberField(
+            value: Double(value),
+            range: -10...10,
+            displayMultiplier: Double(canvasLength),
+            format: "%.0f",
+            fieldWidth: AppTheme.EditorPanel.compactNumericFieldWidth,
+            trailingLabel: label,
+            onChanged: { onChange(CaptionPreviewPlacement.snappedCoordinate($0)) }
+        ) {
+            onChange(CaptionPreviewPlacement.snappedCoordinate($0))
+        }
     }
 
     private var styleActions: TextStyleEditingActions {
@@ -336,15 +486,21 @@ struct CaptionTab: View {
         }
     }
 
-    private var placementSection: some View {
-        EditorPanelGroup(L10n.string("Placement"), isExpanded: $placementExpanded) {
-            previewBox
-            HStack(spacing: AppTheme.Spacing.mdLg) {
-                Spacer(minLength: AppTheme.Spacing.xs)
-                posField("X", value: center.x) { center.x = $0 }
-                posField("Y", value: center.y) { center.y = $0 }
+    private var generateLabel: String {
+        if cloudModeUnavailableMessage == nil, provider == .cloud, let cost = estimatedCloudCost, cost > 0 {
+            if isTranscriptOnly {
+                return cost == 1
+                    ? L10n.string("Transcribe · 1 credit")
+                    : L10n.string("Transcribe · \(cost) credits")
             }
+            return CostEstimator.localizedGenerateLabel(cost)
         }
+        return isTranscriptOnly ? L10n.string("Transcribe") : L10n.string("Generate")
+    }
+
+    private var generateHelp: String {
+        if let cloudModeUnavailableMessage { return cloudModeUnavailableMessage }
+        return provider == .cloud ? costHelpText : String()
     }
 
     private var agentMenu: some View {
@@ -381,85 +537,23 @@ struct CaptionTab: View {
         editor.agentPanelVisible = true
     }
 
-    private var previewBox: some View {
-        ZStack {
-            AppTheme.Background.previewCanvasColor
-            centerGuides
-            GeometryReader { geo in
-                CaptionAnimatedPreview(
-                    text: L10n.string(key: Self.previewText), style: style, center: center,
-                    preset: animationPreset, highlight: animationHighlight,
-                    canvas: CGSize(width: max(1, editor.timeline.width), height: max(1, editor.timeline.height)),
-                    size: geo.size
-                )
-            }
-        }
-        .aspectRatio(aspect, contentMode: .fit)
-        .frame(maxWidth: .infinity, maxHeight: AppTheme.ComponentSize.captionPreviewMaxHeight)
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                .strokeBorder(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.hairline)
-        )
-    }
-
-    private var centerGuides: some View {
-        GeometryReader { geo in
-            let guide = AppTheme.Accent.timecodeColor.opacity(AppTheme.Opacity.prominent)
-            ZStack {
-                if center.x == AppTheme.Caption.centerSnapValue {
-                    Rectangle().fill(guide).frame(width: AppTheme.BorderWidth.hairline, height: geo.size.height)
-                }
-                if center.y == AppTheme.Caption.centerSnapValue {
-                    Rectangle().fill(guide).frame(width: geo.size.width, height: AppTheme.BorderWidth.hairline)
-                }
-            }
-            .position(x: geo.size.width / 2, y: geo.size.height / 2)
-        }
-        .allowsHitTesting(false)
-    }
-
-    private func snapCenter(_ v: Double) -> CGFloat {
-        let centerValue = Double(AppTheme.Caption.centerSnapValue)
-        return CGFloat(abs(v - centerValue) < AppTheme.Caption.centerSnapThreshold ? centerValue : v)
-    }
-
-    private func posField(_ label: String, value: CGFloat, onChange: @escaping (CGFloat) -> Void) -> some View {
-        HStack(spacing: AppTheme.Spacing.xxs) {
-            Text(label)
-                .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-            ScrubbableNumberField(
-                value: Double(value),
-                range: AppTheme.Caption.minPosition...AppTheme.Caption.maxPosition,
-                displayMultiplier: 100,
-                format: "%.0f",
-                valueSuffix: "%",
-                onChanged: { onChange(snapCenter($0)) }
-            ) { onChange(snapCenter($0)) }
-        }
-    }
-
     private var generateBar: some View {
-        EditorActionFooter(message: note) {
+        EditorActionFooter(message: note ?? cloudModeUnavailableMessage) {
             HStack(spacing: AppTheme.Spacing.sm) {
+                Spacer(minLength: AppTheme.Spacing.zero)
                 Button(action: generate) {
-                    HStack(spacing: AppTheme.Spacing.xs) {
-                        Text(cloudModeUnavailableMessage ?? L10n.string("Generate Captions"))
-                        if cloudModeUnavailableMessage == nil, provider == .cloud, let cost = estimatedCloudCost {
-                            Image(systemName: "dollarsign.circle.fill").font(.system(size: AppTheme.FontSize.xs))
-                            Text(verbatim: "\(cost)").monospacedDigit()
-                        }
-                    }
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity)
+                    Text(generateLabel)
+                        .lineLimit(1)
                 }
-                .buttonStyle(.editorPrimary)
+                .buttonStyle(.capsule(.prominent))
+                .fixedSize()
                 .focusable(false)
                 .disabled(!canGenerateCaptions)
-                .help(provider == .cloud ? costHelpText : String())
+                .help(generateHelp)
 
-                agentMenu
+                if !isTranscriptOnly {
+                    agentMenu
+                }
             }
         }
     }
@@ -479,6 +573,8 @@ struct CaptionTab: View {
             censorProfanity: provider == .local && censorProfanity,
             locale: locale,
             maxWords: maxWords,
+            maxCharacters: maxCharacters,
+            gapSettings: CaptionGapSettings(maximumGapSeconds: maximumGapSeconds) ?? .default,
             provider: provider,
             animation: TextAnimation(preset: animationPreset, highlight: animationHighlight)
         )
@@ -497,11 +593,48 @@ struct CaptionTab: View {
                         return
                     }
                 }
-                if try await editor.generateCaptions(for: request).isEmpty { note = L10n.string("No speech detected.") }
+                switch output {
+                case .transcript(let onGeneratedTranscript):
+                    let transcript = try await editor.timelineTranscript(
+                        for: request
+                    )
+                    if transcript.rows.isEmpty {
+                        note = L10n.string("No speech detected.")
+                    } else {
+                        onGeneratedTranscript(transcript)
+                    }
+                case .captions(let onGeneratedCaptions):
+                    let createdIds = try await editor.generateCaptions(for: request)
+                    if createdIds.isEmpty {
+                        note = L10n.string("No speech detected.")
+                    } else {
+                        let groupId = createdIds.lazy.compactMap {
+                            editor.clipFor(id: $0)?.captionGroupId
+                        }.first
+                        editor.captionPreviewEnabled = false
+                        onGeneratedCaptions(groupId)
+                    }
+                }
             } catch {
                 note = localizedCaptionError(error)
             }
         }
+    }
+
+    private func showCaptionPreview() {
+        editor.captionPreviewConfiguration = !isTranscriptOnly && editor.mediaPanelVisible
+            ? previewConfiguration
+            : nil
+    }
+
+    private func updateMaxCharacters(_ value: Double) {
+        let count = Int(value.rounded())
+        maxCharacters = count > 0 ? count : nil
+    }
+
+    private func updateMaxWords(_ value: Double) {
+        let count = Int(value.rounded())
+        maxWords = count > 0 ? count : nil
     }
 
     private func cloudUnavailableMessage(cost: Int?, provider mode: TranscriptionProvider? = nil) -> String? {

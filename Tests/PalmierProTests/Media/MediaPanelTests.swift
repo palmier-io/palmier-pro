@@ -632,14 +632,32 @@ struct MediaPanelInteractionTests {
     }
 
     @Test func orderIncludesVisibleSectionsAndDeduplicatesAssets() {
-        let ids = MediaTab.searchOrderedAssetIds(
+        let timelineKey = MediaPanelItemKey.timeline("tl-1")
+        let ids = MediaTab.searchOrderedItemIds(
             momentAssetIds: ["moment", "shared"],
             spokenAssetIds: ["spoken", "shared"],
+            timelineItemIds: [timelineKey],
             fileAssetIds: ["file", "shared"],
             collapsedSectionTitles: ["Spoken"]
         )
 
-        #expect(ids == ["moment", "shared", "file"])
+        #expect(ids == ["moment", "shared", timelineKey, "file"])
+    }
+
+    @Test func timelinesMatchingNameFiltersCaseInsensitively() {
+        let interview = Timeline(name: "Interview Cut")
+        let broll = Timeline(name: "B-Roll")
+        let coldOpen = Timeline(name: "Cold Open")
+
+        let matches = MediaTab.timelinesMatchingName(
+            [interview, broll, coldOpen],
+            query: " cut "
+        )
+
+        #expect(matches.map(\.id) == [interview.id])
+        #expect(MediaTab.timelinesMatchingName([interview, broll], query: "B-ROLL").map(\.id) == [broll.id])
+        #expect(MediaTab.timelinesMatchingName([interview], query: "   ").map(\.id) == [interview.id])
+        #expect(MediaTab.timelinesMatchingName([interview, broll], query: "missing").isEmpty)
     }
 
     @Test func creationSelectsAndRevealsFolderAndRestoresSelectionOnUndo() {
@@ -909,5 +927,30 @@ struct HandleClipboardPasteTests {
         await MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
 
         #expect(e.mediaAssets.isEmpty)
+    }
+}
+
+@Suite("EditorViewModel — media panel search")
+@MainActor
+struct MediaPanelSearchTests {
+
+    @Test func requestExpandsSearchAndCollapseClearsIt() {
+        let e = editor()
+        #expect(!e.isMediaPanelSearchExpanded)
+
+        e.requestMediaPanelSearch()
+        #expect(e.isMediaPanelSearchExpanded)
+        #expect(e.mediaPanelSearchFocusPending)
+
+        e.collapseMediaPanelSearch()
+        #expect(!e.isMediaPanelSearchExpanded)
+        #expect(!e.mediaPanelSearchFocusPending)
+    }
+
+    @Test func requestDoesNotStartMissingMediaRefresh() {
+        let e = editor()
+        #expect(e.missingMediaRefreshTask == nil)
+        e.requestMediaPanelSearch()
+        #expect(e.missingMediaRefreshTask == nil)
     }
 }

@@ -16,6 +16,7 @@ extension ToolExecutor {
     struct TimelineSnapshot {
         let placements: [String: ClipPlacement]
         let trackIds: [String]
+        let markers: [String: TimelineMarker]
     }
 
     private static let mutationClipLimit = 30
@@ -28,7 +29,11 @@ extension ToolExecutor {
                 placements[clip.id] = ClipPlacement(trackId: track.id, index: i, start: clip.startFrame, duration: clip.durationFrames)
             }
         }
-        return TimelineSnapshot(placements: placements, trackIds: editor.timeline.tracks.map(\.id))
+        return TimelineSnapshot(
+            placements: placements,
+            trackIds: editor.timeline.tracks.map(\.id),
+            markers: Dictionary(uniqueKeysWithValues: editor.timeline.markers.map { ($0.id, $0) })
+        )
     }
 
     func mutationResult(
@@ -87,6 +92,14 @@ extension ToolExecutor {
         let removedIds = snapshot.placements.keys.filter { after.placements[$0] == nil }.sorted()
         if !removedIds.isEmpty { payload["removedClipIds"] = removedIds }
 
+        let changedMarkers = editor.timeline.markers.filter { snapshot.markers[$0.id] != $0 }
+        if !changedMarkers.isEmpty {
+            payload["markers"] = changedMarkers.map(Self.timelineMarkerDict)
+        }
+        let remainingMarkerIds = Set(editor.timeline.markers.map(\.id))
+        let removedMarkerIds = snapshot.markers.keys.filter { !remainingMarkerIds.contains($0) }.sorted()
+        if !removedMarkerIds.isEmpty { payload["removedMarkerIds"] = removedMarkerIds }
+
         let created = after.trackIds.enumerated()
             .filter { !snapshot.trackIds.contains($0.element) }
             .map { i, _ -> [String: Any] in
@@ -122,7 +135,7 @@ extension ToolExecutor {
         guard !collapsedGids.isEmpty else { return [] }
         changed = changed.filter { gidByMember[$0].map { !collapsedGids.contains($0) } ?? true }
 
-        guard let rawTracks = Self.rawTimelineDict(editor.timeline)?["tracks"] as? [[String: Any]] else { return [] }
+        let rawTracks = Self.focusedRawTracks(editor, captionGroupIds: collapsedGids)
         var out: [[String: Any]] = []
         for track in Self.compactTracks(rawTracks, editor: editor, window: nil, captionDetail: false) {
             for var group in track["captionGroups"] as? [[String: Any]] ?? [] {
@@ -136,8 +149,8 @@ extension ToolExecutor {
 
     /// Returns clips in get_timeline shape with track index, folding audio and captions.
     private func readShapedClips(_ editor: EditorViewModel, ids: Set<String>) -> [[String: Any]] {
-        guard !ids.isEmpty,
-              let rawTracks = Self.rawTimelineDict(editor.timeline)?["tracks"] as? [[String: Any]] else { return [] }
+        guard !ids.isEmpty else { return [] }
+        let rawTracks = Self.focusedRawTracks(editor, clipIds: ids)
         let tracks = Self.compactTracks(rawTracks, editor: editor, window: nil, captionDetail: true)
 
         var byId: [String: [String: Any]] = [:]

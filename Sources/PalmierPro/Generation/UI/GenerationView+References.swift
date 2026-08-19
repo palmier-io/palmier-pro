@@ -27,8 +27,9 @@ extension GenerationView {
     var showsRefSections: Bool {
         switch selectedType {
         case .video:
-            guard videoModel.supportsReferences, !videoModel.requiresSourceVideo else { return false }
-            return !videoModel.framesAndReferencesExclusive || framesRefsMode == .reference
+            guard videoModel.supportsReferences, !usesSourceVideoInput else { return false }
+            return !videoModel.framesAndReferencesExclusive
+                || videoInputMode == .references
         case .audio:
             return audioModel.supportsReferences && !audioUsesSource
         case .image, .upscale:
@@ -38,25 +39,37 @@ extension GenerationView {
 
     var showsFrameStrip: Bool {
         guard selectedType == .video, videoModel.supportsFirstFrame else { return false }
-        if videoModel.requiresSourceVideo { return false }
+        if usesSourceVideoInput { return false }
         if videoModel.framesAndReferencesExclusive {
-            return framesRefsMode == .firstLast
+            return videoInputMode == .frames
         }
         return true
     }
 
-    var showsFramesRefsPicker: Bool {
-        selectedType == .video && videoModel.framesAndReferencesExclusive
+    var showsVideoInputModePicker: Bool {
+        selectedType == .video && availableVideoInputModes.count > 1
+    }
+
+    var availableVideoInputModes: [VideoInputMode] {
+        guard selectedType == .video else { return [] }
+        var modes: [VideoInputMode] = [.frames]
+        if videoModel.framesAndReferencesExclusive && videoModel.supportsReferences {
+            modes.append(.references)
+        }
+        if videoModel.supportsSourceVideo && !videoModel.requiresSourceVideo {
+            modes.append(.sourceVideo)
+        }
+        return modes
     }
 
     private var refGridColumns: [GridItem] {
-        [GridItem(.adaptive(minimum: AppTheme.GenerationPanel.referenceTileWidth), spacing: AppTheme.Spacing.xs)]
+        [GridItem(.adaptive(minimum: AppTheme.GenerationPanel.referenceTileWidth), spacing: AppTheme.Spacing.xxs)]
     }
 
     // MARK: - Video frame references
 
     var videoFrameStrip: some View {
-        HStack(spacing: AppTheme.Spacing.xs) {
+        HStack(spacing: AppTheme.Spacing.sm) {
             FrameSlot(label: L10n.string("First Frame"), asset: firstFrame, isTargeted: $firstFrameTargeted,
                       onDrop: { firstFrame = $0 }, onClear: { firstFrame = nil }, onError: flashDropError)
             if videoModel.supportsLastFrame {
@@ -66,19 +79,28 @@ extension GenerationView {
         }
     }
 
-    // MARK: - First/Last / Reference mode picker (Seedance, Grok)
+    // MARK: - Video input mode picker
 
-    var framesRefsModePicker: some View {
+    var videoInputModePicker: some View {
         Menu {
-            ForEach(FramesRefsMode.allCases, id: \.self) { mode in
+            ForEach(availableVideoInputModes, id: \.self) { mode in
                 Button {
-                    framesRefsMode = mode
+                    videoInputMode = mode
                     switch mode {
-                    case .firstLast: resetRefPools()
-                    case .reference: firstFrame = nil; lastFrame = nil
+                    case .frames:
+                        resetRefPools()
+                        sourceVideo = nil
+                    case .references:
+                        firstFrame = nil
+                        lastFrame = nil
+                        sourceVideo = nil
+                    case .sourceVideo:
+                        firstFrame = nil
+                        lastFrame = nil
+                        resetRefPools()
                     }
                 } label: {
-                    if framesRefsMode == mode {
+                    if videoInputMode == mode {
                         Label(L10n.string(key: mode.title), systemImage: "checkmark")
                     } else {
                         Text(L10n.string(key: mode.title))
@@ -87,10 +109,9 @@ extension GenerationView {
             }
         } label: {
             HStack(spacing: AppTheme.Spacing.xs) {
-                Text(L10n.string(key: framesRefsMode.title))
+                Text(L10n.string(key: videoInputMode.title))
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
-                    .lineLimit(1)
                 Image(systemName: "chevron.down")
                     .font(.system(size: AppTheme.FontSize.micro, weight: .semibold))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
@@ -106,7 +127,7 @@ extension GenerationView {
     // MARK: - Reference strip
 
     var referenceSections: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
             HStack(spacing: AppTheme.Spacing.xs) {
                 Text(L10n.string("References"))
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
@@ -120,7 +141,7 @@ extension GenerationView {
             LazyVGrid(
                 columns: refGridColumns,
                 alignment: .leading,
-                spacing: AppTheme.Spacing.xs
+                spacing: AppTheme.Spacing.xxs
             ) {
                 ForEach(allRefCardItems, id: \.asset.id) { item in
                     RefCard(asset: item.asset, tag: item.tag) {
@@ -147,7 +168,7 @@ extension GenerationView {
             case .image: assets = refImages
             case .video: assets = refVideos
             case .audio: assets = refAudios
-            case .text, .lottie, .sequence: assets = []
+            case .text, .lottie, .sequence, .subtitle: assets = []
             }
             let noun = tagNoun(for: type)
             return assets.enumerated().map {
@@ -163,14 +184,14 @@ extension GenerationView {
             switch type {
             case .image: return audioModel.maxReferenceImages
             case .audio: return audioModel.maxReferenceAudios
-            case .video, .text, .lottie, .sequence: return 0
+            case .video, .text, .lottie, .sequence, .subtitle: return 0
             }
         }
         return switch type {
         case .image: videoModel.maxReferenceImages
         case .video: videoModel.maxReferenceVideos
         case .audio: videoModel.maxReferenceAudios
-        case .text, .lottie, .sequence: 0
+        case .text, .lottie, .sequence, .subtitle: 0
         }
     }
 
@@ -179,7 +200,7 @@ extension GenerationView {
         case .image: refImages.count
         case .video: refVideos.count
         case .audio: refAudios.count
-        case .text, .lottie, .sequence: 0
+        case .text, .lottie, .sequence, .subtitle: 0
         }
     }
 
@@ -192,6 +213,7 @@ extension GenerationView {
         case .text: "Text"
         case .lottie: "Lottie"
         case .sequence: "Sequence"
+        case .subtitle: "Subtitle"
         }
     }
 
@@ -207,7 +229,7 @@ extension GenerationView {
             switch asset.type {
             case .image: selection.imageRefs.append(asset)
             case .audio: selection.audioRefs.append(asset)
-            case .video, .text, .lottie, .sequence:
+            case .video, .text, .lottie, .sequence, .subtitle:
                 flashDropError("\(audioModel.displayName) only accepts image or audio references.")
                 return
             }
@@ -221,12 +243,13 @@ extension GenerationView {
             case .image: selection.imageRefs.append(asset)
             case .video: selection.videoRefs.append(asset)
             case .audio: selection.audioRefs.append(asset)
-            case .text, .lottie, .sequence:
+            case .text, .lottie, .sequence, .subtitle:
                 let supported = activeReferenceTypes.map(\.rawValue).joined(separator: " and ")
                 flashDropError("\(videoModel.displayName) only accepts \(supported) references.")
                 return
             }
-            if let err = selection.validate(for: videoModel) {
+            let trim = pendingTrimmedSource(for: videoModel, inputAssets: selection)
+            if let err = selection.validate(for: videoModel, trimmedSource: trim) {
                 flashDropError(err)
                 return
             }
@@ -235,7 +258,7 @@ extension GenerationView {
         case .image: refImages.append(asset)
         case .video: refVideos.append(asset)
         case .audio: refAudios.append(asset)
-        case .text, .lottie, .sequence: break
+        case .text, .lottie, .sequence, .subtitle: break
         }
     }
 
@@ -253,7 +276,7 @@ extension GenerationView {
         case .image: refImages.removeAll { $0.id == id }
         case .video: refVideos.removeAll { $0.id == id }
         case .audio: refAudios.removeAll { $0.id == id }
-        case .text, .lottie, .sequence: break
+        case .text, .lottie, .sequence, .subtitle: break
         }
     }
 
@@ -276,7 +299,7 @@ extension GenerationView {
     private var refCounterLabel: String {
         let total = totalRefCount
         if selectedType == .video, let cap = videoModel.maxTotalReferences {
-            let shortLabel: (ClipType) -> String = { switch $0 { case .image: "img"; case .video: "vid"; case .audio: "aud"; case .text: "txt"; case .lottie: "lot"; case .sequence: "seq" } }
+            let shortLabel: (ClipType) -> String = { switch $0 { case .image: "img"; case .video: "vid"; case .audio: "aud"; case .text: "txt"; case .lottie: "lot"; case .sequence: "seq"; case .subtitle: "sub" } }
             let parts = activeReferenceTypes
                 .map { "\(refCount(for: $0)) \(shortLabel($0))" }
             return "\(total)/\(cap) · \(parts.joined(separator: " · "))"
@@ -288,7 +311,7 @@ extension GenerationView {
     // MARK: - Image references
 
     var imageReferenceStrip: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
             Text(L10n.string("References"))
                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
@@ -296,7 +319,7 @@ extension GenerationView {
             LazyVGrid(
                 columns: refGridColumns,
                 alignment: .leading,
-                spacing: AppTheme.Spacing.xs
+                spacing: AppTheme.Spacing.xxs
             ) {
                 ForEach(imageReferences) { asset in
                     RefCard(asset: asset) {

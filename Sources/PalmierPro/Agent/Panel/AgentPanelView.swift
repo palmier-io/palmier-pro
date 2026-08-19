@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct AgentPanelView: View {
@@ -58,13 +59,10 @@ struct AgentPanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ZStack(alignment: .top) {
-                messageList
-                floatingTabBar
-            }
+            floatingTabBar
+            messageList
             footer
         }
-        .background(AppTheme.Background.surfaceColor)
     }
 
     private var floatingTabBar: some View {
@@ -72,7 +70,7 @@ struct AgentPanelView: View {
             HStack(spacing: AppTheme.Spacing.xs) {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: AppTheme.Spacing.xxs) {
+                        HStack(spacing: AppTheme.Spacing.xs) {
                             ForEach(service.openSessions) { session in
                                 ChatTabView(
                                     session: session,
@@ -96,13 +94,9 @@ struct AgentPanelView: View {
             .padding(.horizontal, AppTheme.Spacing.sm)
             .frame(maxWidth: .infinity)
             .frame(height: Layout.panelHeaderHeight)
-            .glassEffect(.regular, in: Rectangle())
-            .overlay(alignment: .bottom) {
-                Rectangle()
-                    .fill(AppTheme.Border.subtleColor)
-                    .frame(height: AppTheme.BorderWidth.hairline)
-            }
+            .glassEffect(.regular, in: .rect(cornerRadius: AppTheme.Radius.lg))
         }
+        .padding(.horizontal, AppTheme.Spacing.mdLg)
     }
 
     private var newTabButton: some View {
@@ -143,36 +137,101 @@ struct AgentPanelView: View {
         }
     }
 
-    @ViewBuilder
     private var modelPicker: some View {
-        if service.hasApiKey {
-            Menu {
-                ForEach(service.availableModels, id: \.self) { m in
-                    Button(m.displayName) { service.model = m }
+        Menu {
+            ForEach(service.availableModels, id: \.self) { model in
+                Button {
+                    service.model = model
+                } label: {
+                    Text(verbatim: model.displayName)
                 }
-            } label: {
-                HStack(spacing: AppTheme.Spacing.xs) {
-                    Text(service.effectiveModel.displayName)
-                        .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
-                        .foregroundStyle(AppTheme.Text.secondaryColor)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: AppTheme.FontSize.micro, weight: .semibold))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .disabled(!service.canSelectModel(model))
+            }
+        } label: {
+            footerPickerLabel(service.model.displayName) {
+                switch service.model.provider {
+                case .anthropic:
+                    ExternalAgentLogo(agent: .claude, size: AppTheme.IconSize.xs)
+                case .openAI:
+                    ProviderLogo(iconKey: "openai", size: AppTheme.IconSize.xs)
                 }
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .layoutPriority(1)
+        .accessibilityLabel(L10n.string("Model"))
+        .accessibilityValue(Text(verbatim: service.model.displayName))
+        .help(L10n.string("Model"))
+    }
+
+    private var reasoningEffortPicker: some View {
+        Menu {
+            ForEach(service.model.supportedReasoningEfforts, id: \.self) { effort in
+                Button {
+                    service.reasoningEffort = effort
+                } label: {
+                    menuOptionLabel(
+                        L10n.string(key: effort.labelKey),
+                        selected: effort == service.reasoningEffort
+                    )
+                }
+            }
+        } label: {
+            footerPickerLabel(L10n.string(key: service.reasoningEffort.labelKey)) {
+                Image(systemName: "brain.head.profile")
+                    .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .frame(width: AppTheme.IconSize.xxs, height: AppTheme.IconSize.xxs)
+                    .accessibilityHidden(true)
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .accessibilityLabel(L10n.string("Reasoning effort"))
+        .accessibilityValue(L10n.string(key: service.reasoningEffort.labelKey))
+        .help(L10n.string("Reasoning effort"))
+    }
+
+    private func footerPickerLabel<Artwork: View>(
+        _ title: String,
+        @ViewBuilder artwork: () -> Artwork
+    ) -> some View {
+        HStack(spacing: AppTheme.Spacing.xs) {
+            Text(verbatim: title)
+                .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            artwork()
+                .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
+                .clipped()
+        }
+    }
+
+    @ViewBuilder
+    private func menuOptionLabel(_ title: String, selected: Bool) -> some View {
+        if selected {
+            Label {
+                Text(verbatim: title)
+            } icon: {
+                Image(systemName: "checkmark")
+            }
+        } else {
+            Text(verbatim: title)
         }
     }
 
     @ViewBuilder
     private var byokIndicator: some View {
-        if service.hasApiKey {
-            Text(L10n.string("using API key"))
-                .font(.system(size: AppTheme.FontSize.xs).italic())
+        if let provider = service.activeBYOKProvider {
+            Image(systemName: "key")
+                .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .help(L10n.string("Streaming through your Anthropic API key (BYOK)"))
+                .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Text(verbatim: provider.chatPresentation.byokLabel))
+                .help(provider.chatPresentation.byokHelp)
         }
     }
 
@@ -219,12 +278,13 @@ struct AgentPanelView: View {
                         .padding(.top, AppTheme.Spacing.sm)
                 }
                 .padding(.horizontal, AppTheme.Spacing.lgXl)
-                .padding(.top, Layout.panelHeaderHeight + AppTheme.Spacing.sm)
+                .padding(.top, AppTheme.Spacing.mdLg)
                 .padding(.bottom, AppTheme.Spacing.smMd)
                 .frame(maxWidth: Layout.chatColumnMax)
                 .frame(maxWidth: .infinity)
+                .background(AgentOverlayScrollerStyle())
             }
-            .scrollIndicators(.never)
+            .scrollIndicators(.automatic)
             .scrollEdgeEffectStyle(.soft, for: .bottom)
             .onScrollGeometryChange(for: Bool.self) { geo in
                 let distance = geo.contentSize.height - geo.contentOffset.y - geo.containerSize.height
@@ -264,7 +324,7 @@ struct AgentPanelView: View {
     private var errorBanner: some View {
         if let err = service.streamError {
             HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
-                Text(err.localizedDescription)
+                Text(verbatim: errorMessage(err))
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(.red)
                     .multilineTextAlignment(.leading)
@@ -285,7 +345,7 @@ struct AgentPanelView: View {
         let action: () -> Void
     }
 
-    private func errorCTA(for error: PalmierClientError?) -> ErrorCTA? {
+    private func errorCTA(for error: AgentServiceError?) -> ErrorCTA? {
         guard let error else { return nil }
         switch error {
         case .unauthenticated:
@@ -296,8 +356,33 @@ struct AgentPanelView: View {
             return ErrorCTA(title: L10n.string("View plans")) {
                 SettingsWindowController.shared.show(tab: .account)
             }
-        case .upstream:
+        case .unavailable(let model) where model.requiresPaidHostedPlan && !AccountService.shared.isPaid:
+            return ErrorCTA(title: L10n.string("View plans")) {
+                SettingsWindowController.shared.show(tab: .account)
+            }
+        case .unavailable:
+            return ErrorCTA(title: L10n.string("Open Settings")) {
+                SettingsWindowController.shared.show(tab: .agent)
+            }
+        case .refusal, .upstream:
             return nil
+        }
+    }
+
+    private func errorMessage(_ error: AgentServiceError) -> String {
+        switch error {
+        case .unauthenticated:
+            L10n.string("Sign in to use AI chat.")
+        case .insufficientCredits(let message), .upstream(let message):
+            message
+        case .unavailable(let model):
+            if model.requiresPaidHostedPlan && !AccountService.shared.isPaid {
+                L10n.string("Subscribe or add your own API key to use this model.")
+            } else {
+                model.provider.chatPresentation.unavailableMessage
+            }
+        case .refusal:
+            L10n.string("The selected model refused this request. Revise the prompt and try again.")
         }
     }
 
@@ -332,7 +417,12 @@ struct AgentPanelView: View {
             Button {
                 missingKeyPrimaryAction(account: account)
             } label: {
-                Label(missingKeyPrimaryLabel(account: account), systemImage: missingKeyPrimaryIcon(account: account))
+                HStack(spacing: AppTheme.Spacing.sm) {
+                    if let icon = missingKeyPrimaryIcon(account: account) {
+                        Image(systemName: icon)
+                    }
+                    Text(missingKeyPrimaryLabel(account: account))
+                }
                     .font(.system(size: AppTheme.FontSize.mdLg, weight: .semibold))
             }
             .buttonStyle(.capsule(.prominent, size: .regular))
@@ -344,7 +434,7 @@ struct AgentPanelView: View {
             }
 
             Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
-                Text(L10n.string("or use your own Anthropic key"))
+                Text(missingKeyLinkLabel)
                     .underline()
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                     .padding(.horizontal, AppTheme.Spacing.sm)
@@ -356,15 +446,19 @@ struct AgentPanelView: View {
         }
     }
 
+    private var missingKeyLinkLabel: String {
+        service.model.provider.chatPresentation.missingKeyLinkTitle
+    }
+
     private func missingKeyPrimaryLabel(account: AccountService) -> String {
         if !account.isSignedIn { return L10n.string("Log in for 250 free credits") }
         if !account.isPaid { return L10n.string("Subscribe") }
         return L10n.string("Open Settings")
     }
 
-    private func missingKeyPrimaryIcon(account: AccountService) -> String {
+    private func missingKeyPrimaryIcon(account: AccountService) -> String? {
         if !account.isSignedIn { return "gift.fill" }
-        if !account.isPaid { return "sparkles" }
+        if !account.isPaid { return nil }
         return "gearshape"
     }
 
@@ -403,6 +497,7 @@ struct AgentPanelView: View {
                 onCancel: { service.cancel() }
             ) {
                 modelPicker
+                reasoningEffortPicker
                 byokIndicator
             }
         }
@@ -423,6 +518,35 @@ struct AgentPanelView: View {
     private func populatePrompt(_ prompt: String) {
         service.draft = prompt
         service.mentions.removeAll()
+    }
+}
+
+private struct AgentOverlayScrollerStyle: NSViewRepresentable {
+    func makeNSView(context: Context) -> AgentOverlayScrollerProbe {
+        AgentOverlayScrollerProbe()
+    }
+
+    func updateNSView(_ nsView: AgentOverlayScrollerProbe, context: Context) {
+        nsView.apply()
+    }
+}
+
+private final class AgentOverlayScrollerProbe: NSView {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        apply()
+    }
+
+    func apply() {
+        var ancestor = superview
+        while let current = ancestor {
+            if let scrollView = current as? NSScrollView {
+                scrollView.scrollerStyle = .overlay
+                scrollView.autohidesScrollers = true
+                return
+            }
+            ancestor = current.superview
+        }
     }
 }
 
@@ -453,15 +577,8 @@ private struct AgentStarterPromptButton: View {
             .padding(.horizontal, AppTheme.Spacing.md)
             .padding(.vertical, AppTheme.Spacing.xs)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
-            .background(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                    .fill(AppTheme.Background.raisedColor)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                    .strokeBorder(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.hairline)
-            )
+            .hoverHighlight(cornerRadius: AppTheme.Radius.lg)
+            .glassEffect(.regular, in: .rect(cornerRadius: AppTheme.Radius.lg))
         }
         .buttonStyle(.plain)
         .focusable(false)
@@ -474,43 +591,49 @@ private struct ChatTabView: View {
     let isActive: Bool
     let onSelect: () -> Void
     let onClose: () -> Void
-    @State private var hovering = false
 
     var body: some View {
         Button(action: onSelect) {
-            VStack(spacing: AppTheme.Spacing.xs) {
-                HStack(spacing: AppTheme.Spacing.xs) {
-                    Text(displayTitle)
-                        .font(.system(size: AppTheme.FontSize.xs, weight: isActive ? .semibold : .regular))
-                        .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.mutedColor)
-                        .lineLimit(1)
-                        .fixedSize()
-                    if hovering || isActive {
-                        Button(action: onClose) {
-                            Image(systemName: "xmark")
-                                .font(.system(size: AppTheme.FontSize.xxs, weight: .medium))
-                                .foregroundStyle(AppTheme.Text.mutedColor)
-                                .frame(width: AppTheme.Spacing.mdLg, height: AppTheme.Spacing.mdLg)
-                        }
-                        .buttonStyle(.plain)
-                        .focusable(false)
-                    }
-                }
-                Rectangle()
-                    .fill(isActive ? AppTheme.Text.primaryColor : Color.clear)
-                    .frame(height: AppTheme.BorderWidth.medium)
-            }
-            .padding(.horizontal, AppTheme.Spacing.sm)
-            .padding(.top, AppTheme.Spacing.xxs)
-            .contentShape(Rectangle())
+            Text(verbatim: displayTitle)
+                .font(.system(
+                    size: AppTheme.FontSize.xs,
+                    weight: isActive ? AppTheme.FontWeight.semibold : AppTheme.FontWeight.medium
+                ))
+                .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
+                .lineLimit(1)
         }
         .buttonStyle(.plain)
-        .focusable(false)
-        .onHover { hovering = $0 }
+        .documentTabChrome(isActive: isActive, isCloseable: true, onClose: onClose)
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 
     private var displayTitle: String {
         let t = session.title
         return t.count > 20 ? String(t.prefix(20)) + "…" : t
+    }
+}
+
+@MainActor
+private extension AgentProvider {
+    var chatPresentation: (
+        byokLabel: String, byokHelp: String,
+        unavailableMessage: String, missingKeyLinkTitle: String
+    ) {
+        switch self {
+        case .anthropic:
+            (
+                L10n.string("using Anthropic API key"),
+                L10n.string("Streaming through your Anthropic API key (BYOK)"),
+                L10n.string("Add an Anthropic API key or credits to use this model."),
+                L10n.string("or add your own Anthropic key")
+            )
+        case .openAI:
+            (
+                L10n.string("using OpenAI API key"),
+                L10n.string("Streaming through your OpenAI API key (BYOK)"),
+                L10n.string("Add an OpenAI API key or credits to use this model."),
+                L10n.string("or add your own OpenAI key")
+            )
+        }
     }
 }

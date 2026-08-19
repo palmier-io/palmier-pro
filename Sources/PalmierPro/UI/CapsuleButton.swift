@@ -59,6 +59,17 @@ struct CapsuleButtonStyle: ButtonStyle {
     }
 }
 
+extension View {
+    func titlebarCapsule(fill: Color, foreground: Color) -> some View {
+        font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.semibold))
+            .foregroundStyle(foreground)
+            .lineLimit(1)
+            .padding(.horizontal, AppTheme.Spacing.smMd)
+            .frame(height: AppTheme.IconSize.mdLg)
+            .background(Capsule(style: .continuous).fill(fill))
+    }
+}
+
 extension ButtonStyle where Self == CapsuleButtonStyle {
     static var capsule: CapsuleButtonStyle { .init() }
     static func capsule(_ variant: CapsuleButtonStyle.Variant = .secondary,

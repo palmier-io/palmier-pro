@@ -319,6 +319,129 @@ struct ApplyLayoutTests {
         #expect(approx(c.crop.left, (c.crop.left + c.crop.right) * 0.3))
     }
 
+    @Test func threeStackFillsHorizontalRows() async throws {
+        let h = ToolHarness()
+        for id in ["a", "b", "c"] { videoAsset(h, id: id) }
+        let r = await h.runRaw("apply_layout", args: [
+            "layout": "three_stack", "endFrame": 90,
+            "slots": [
+                ["slot": "top", "mediaRef": "a"],
+                ["slot": "middle", "mediaRef": "b"],
+                ["slot": "bottom", "mediaRef": "c"],
+            ],
+        ])
+        #expect(r.isError == false)
+        #expect(h.editor.timeline.tracks.count == 3)
+        let top = clips(h, mediaRef: "a")!
+        let middle = clips(h, mediaRef: "b")!
+        let bottom = clips(h, mediaRef: "c")!
+        let third = 1.0 / 3.0
+        for c in [top, middle, bottom] {
+            #expect(approx(c.transform.width * c.crop.visibleWidthFraction, 1.0))
+            #expect(approx(c.transform.height * c.crop.visibleHeightFraction, third))
+            #expect(approx(c.transform.centerX, 0.5))
+        }
+        #expect(approx(top.transform.centerY, third * 0.5))
+        #expect(approx(middle.transform.centerY, third * 1.5))
+        #expect(approx(bottom.transform.centerY, third * 2.5))
+    }
+
+    @Test func threeStackPlacesNestedTimelines() async throws {
+        let h = configured(1920, 1080)
+        var children: [Timeline] = []
+        for name in ["A", "B", "C"] {
+            var child = Fixtures.timeline(tracks: [
+                Fixtures.videoTrack(clips: [Fixtures.clip(start: 0, duration: 90)]),
+            ])
+            child.name = name
+            child.width = 1920
+            child.height = 1080
+            h.editor.timelines.append(child)
+            children.append(child)
+        }
+        let r = await h.runRaw("apply_layout", args: [
+            "layout": "three_stack", "endFrame": 90,
+            "slots": [
+                ["slot": "top", "mediaRef": children[0].id],
+                ["slot": "middle", "mediaRef": children[1].id],
+                ["slot": "bottom", "mediaRef": children[2].id],
+            ],
+        ])
+        #expect(r.isError == false, "\(ToolHarness.textOf(r))")
+        let carriers = h.editor.timeline.tracks
+            .filter { $0.type == .video }
+            .flatMap(\.clips)
+            .filter { $0.mediaType == .sequence }
+        #expect(carriers.count == 3)
+        let third = 1.0 / 3.0
+        for (index, child) in children.enumerated() {
+            let clip = try #require(carriers.first { $0.mediaRef == child.id })
+            #expect(approx(clip.transform.width * clip.crop.visibleWidthFraction, 1.0))
+            #expect(approx(clip.transform.height * clip.crop.visibleHeightFraction, third))
+            #expect(approx(clip.transform.centerY, third * (Double(index) + 0.5)))
+        }
+    }
+
+    @Test func threeStackRelayoutsExistingSequenceClips() async throws {
+        let h = configured(1920, 1080)
+        var carriers: [Clip] = []
+        for (i, name) in ["A", "B", "C"].enumerated() {
+            var child = Fixtures.timeline(tracks: [
+                Fixtures.videoTrack(clips: [Fixtures.clip(start: 0, duration: 60)]),
+            ])
+            child.name = name
+            child.width = 1920
+            child.height = 1080
+            h.editor.timelines.append(child)
+            var carrier = Clip(
+                mediaRef: child.id,
+                mediaType: .sequence,
+                sourceClipType: .sequence,
+                startFrame: 0,
+                durationFrames: 60
+            )
+            carrier.id = "seq-\(i)"
+            carriers.append(carrier)
+            let idx = h.editor.insertTrack(at: 0, type: .video)
+            h.editor.timeline.tracks[idx].clips = [carrier]
+        }
+        let r = await h.runRaw("apply_layout", args: [
+            "layout": "three_stack",
+            "slots": [
+                ["slot": "top", "clipIds": ["seq-0"]],
+                ["slot": "middle", "clipIds": ["seq-1"]],
+                ["slot": "bottom", "clipIds": ["seq-2"]],
+            ],
+        ])
+        #expect(r.isError == false, "\(ToolHarness.textOf(r))")
+        let third = 1.0 / 3.0
+        for i in 0..<3 {
+            let placed = try #require(clip(h, id: "seq-\(i)"))
+            #expect(placed.mediaType == .sequence)
+            #expect(approx(placed.transform.width * placed.crop.visibleWidthFraction, 1.0))
+            #expect(approx(placed.transform.height * placed.crop.visibleHeightFraction, third))
+            #expect(approx(placed.transform.centerY, third * (Double(i) + 0.5)))
+            #expect(placed.startFrame == 0 && placed.durationFrames == 60)
+        }
+    }
+
+    @Test func applyLayoutRejectsEmptyAndCyclicTimelineNests() async throws {
+        let h = configured(1920, 1080)
+        let empty = Fixtures.timeline()
+        h.editor.timelines.append(empty)
+        let emptyNest = await h.runRaw("apply_layout", args: [
+            "layout": "full", "endFrame": 30,
+            "slots": [["slot": "main", "mediaRef": empty.id]],
+        ])
+        #expect(emptyNest.isError)
+
+        let selfNest = await h.runRaw("apply_layout", args: [
+            "layout": "full", "endFrame": 30,
+            "slots": [["slot": "main", "mediaRef": h.editor.activeTimelineId]],
+        ])
+        #expect(selfNest.isError)
+    }
+
     @Test func anchorBiasesCropContinuously() async throws {
         let h = configured(1920, 1080)
         for id in ["c", "p", "t"] { videoAsset(h, id: id, w: 1080, ht: 1920) }
