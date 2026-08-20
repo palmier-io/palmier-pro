@@ -143,6 +143,7 @@ extension InspectorView {
     private func maskLabel(_ mask: ObjectMask) -> String {
         switch mask.seed {
         case .text(let prompt): prompt
+        case .point: L10n.string("Point selection")
         }
     }
 }
@@ -164,6 +165,14 @@ private struct MaskPromptField: View {
                     .font(.system(size: AppTheme.FontSize.xs))
                     .disabled(prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
+            Button(
+                editor.maskPointSelectionClipId == clipId
+                    ? L10n.string("Cancel Selection")
+                    : L10n.string("Select in Viewer")
+            ) {
+                editor.beginMaskPointSelection(clipId: clipId)
+            }
+            .font(.system(size: AppTheme.FontSize.xs))
             if let errorMessage {
                 Text(verbatim: errorMessage)
                     .font(.system(size: AppTheme.FontSize.xxs))

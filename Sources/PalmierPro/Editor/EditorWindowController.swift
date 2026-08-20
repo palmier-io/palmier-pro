@@ -216,6 +216,10 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
                 editorViewModel.cancelMediaSwap()
                 return true
             }
+            if editorViewModel.maskPointSelectionClipId != nil {
+                editorViewModel.cancelMaskPointSelection()
+                return true
+            }
             if editorViewModel.chromaKeySamplingClipId != nil {
                 editorViewModel.cancelChromaKeySampling()
                 return true

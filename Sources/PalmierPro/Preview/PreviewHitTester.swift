@@ -64,6 +64,35 @@ enum PreviewHitTester {
         return lx >= left && lx <= right && ly >= top && ly <= bottom
     }
 
+    static func sourceNormalizedPoint(
+        at point: CGPoint,
+        viewSize: CGSize,
+        clip: Clip,
+        frame: Int,
+        timeline: Timeline
+    ) -> CGPoint? {
+        let videoRect = videoContentRect(in: viewSize, timeline: timeline)
+        let transform = clip.transformAt(frame: frame)
+        guard !transform.hasTiltRotation else { return nil }
+        let rect = clipFrame(transform, videoRect: videoRect)
+        guard rect.width > 0, rect.height > 0 else { return nil }
+
+        let radians = transform.rotation * .pi / 180
+        let dx = point.x - rect.midX
+        let dy = point.y - rect.midY
+        var x = (dx * cos(radians) + dy * sin(radians)) / rect.width + 0.5
+        var y = (-dx * sin(radians) + dy * cos(radians)) / rect.height + 0.5
+        if transform.flipHorizontal { x = 1 - x }
+        if transform.flipVertical { y = 1 - y }
+
+        let crop = clip.cropAt(frame: frame)
+        guard x.isFinite, y.isFinite,
+              x >= crop.left, x <= 1 - crop.right,
+              y >= crop.top, y <= 1 - crop.bottom
+        else { return nil }
+        return CGPoint(x: x, y: y)
+    }
+
     static func videoContentRect(in viewSize: CGSize, timeline: Timeline) -> CGRect {
         guard viewSize.width > 0, viewSize.height > 0 else { return .zero }
         let videoAspect = CGFloat(timeline.width) / CGFloat(timeline.height)

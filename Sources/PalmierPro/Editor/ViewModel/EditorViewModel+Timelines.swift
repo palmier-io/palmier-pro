@@ -109,6 +109,7 @@ extension EditorViewModel {
         timelineMarkerPreview = nil
         pendingSwapClipId = nil
         pendingSwapTargetClipIds = []
+        cancelMaskPointSelection()
         clearAgentActivity()
         dragBefore = [:]
         preDragTimeline = nil

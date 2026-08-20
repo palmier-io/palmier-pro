@@ -32,6 +32,7 @@ struct PreviewContainerView: View {
         .background(AppTheme.Background.surfaceColor)
         .onChange(of: editor.activePreviewTabId) { _, _ in
             editor.cancelChromaKeySampling()
+            editor.cancelMaskPointSelection()
         }
     }
 
@@ -58,11 +59,16 @@ struct PreviewContainerView: View {
                 } else if case .generating(let label) = timelineState {
                     generatingPreview(label: label)
                 }
+                if let marker = editor.maskPointMarker, marker.frame == editor.activeFrame {
+                    MaskPointMarkerView(marker: marker)
+                }
                 if let overlay = offlineOverlay(timelineState: timelineState) {
                     offlinePreview(assetId: overlay.assetId, path: overlay.path, isUnprocessable: overlay.isUnprocessable)
                 }
                 CanvasViewingOverlay(selection: canvasOverlays)
-                if editor.chromaKeySamplingClipId != nil {
+                if editor.maskPointSelectionClipId != nil {
+                    MaskPointSelectionOverlayView()
+                } else if editor.chromaKeySamplingClipId != nil {
                     ChromaKeySamplerOverlayView()
                 } else if editor.cropEditingActive {
                     CropOverlayView()
@@ -90,6 +96,7 @@ struct PreviewContainerView: View {
                         guard isTimeline,
                               captionPreview == nil,
                               !editor.cropEditingActive,
+                              editor.maskPointSelectionClipId == nil,
                               editor.chromaKeySamplingClipId == nil,
                               let id = PreviewHitTester.clipID(
                                 at: value.location,

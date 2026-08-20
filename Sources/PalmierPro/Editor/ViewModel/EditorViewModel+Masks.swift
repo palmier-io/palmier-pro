@@ -1,4 +1,12 @@
+import CoreGraphics
 import Foundation
+
+struct MaskPointMarker {
+    let maskId: String
+    let clipId: String
+    let frame: Int
+    let canvasPoint: CGPoint
+}
 
 enum MaskTrackingStatus: Equatable {
     case running
@@ -9,13 +17,71 @@ extension EditorViewModel {
     enum ObjectMaskError: LocalizedError {
         case unavailable
         case emptyPrompt
+        case invalidPoint
 
         var errorDescription: String? {
             switch self {
             case .unavailable: "The selected video or project is unavailable."
             case .emptyPrompt: "Enter what to mask, like “person” or “the red car”."
+            case .invalidPoint: "Select a point inside the visible clip."
             }
         }
+    }
+
+    func beginMaskPointSelection(clipId: String) {
+        if maskPointSelectionClipId == clipId {
+            cancelMaskPointSelection()
+            return
+        }
+        guard activePreviewTab == .timeline,
+              let clip = clipFor(id: clipId),
+              clip.mediaType == .video,
+              clip.masks?.isEmpty != false
+        else { return }
+        cancelChromaKeySampling()
+        cropEditingActive = false
+        pause()
+        maskPointMarker = nil
+        maskPointSelectionClipId = clipId
+    }
+
+    func cancelMaskPointSelection() {
+        maskPointSelectionClipId = nil
+        maskPointMarker = nil
+    }
+
+    func commitMaskPointSelection(
+        clipId: String,
+        sourcePoint: CGPoint,
+        canvasPoint: CGPoint
+    ) throws {
+        guard maskPointSelectionClipId == clipId,
+              sourcePoint.x.isFinite, sourcePoint.y.isFinite,
+              (0...1).contains(sourcePoint.x), (0...1).contains(sourcePoint.y),
+              canvasPoint.x.isFinite, canvasPoint.y.isFinite,
+              (0...1).contains(canvasPoint.x), (0...1).contains(canvasPoint.y),
+              let clip = clipFor(id: clipId)
+        else { throw ObjectMaskError.invalidPoint }
+        let frame = activeFrame
+        let sourceTime = try MaskPointMapper.sourceTime(
+            clip: clip,
+            timelineFrame: frame,
+            timelineFPS: timeline.fps
+        )
+        let mask = ObjectMask(seed: .point(MaskPointSeed(
+            x: sourcePoint.x,
+            y: sourcePoint.y,
+            sourceTime: sourceTime
+        )))
+        maskPointSelectionClipId = nil
+        insertObjectMask(mask, clipId: clipId)
+        maskPointMarker = MaskPointMarker(
+            maskId: mask.id,
+            clipId: clipId,
+            frame: frame,
+            canvasPoint: canvasPoint
+        )
+        startTracking(clipId: clipId, maskId: mask.id)
     }
 
     func addObjectMask(clipId: String, prompt: String) throws {
@@ -25,15 +91,12 @@ extension EditorViewModel {
             throw ObjectMaskError.unavailable
         }
         let mask = ObjectMask(seed: .text(trimmed))
-        commitClipProperty(clipId: clipId, actionName: L10n.string("Add Mask")) { clip in
-            clip.masks = (clip.masks ?? []) + [mask]
-        }
+        insertObjectMask(mask, clipId: clipId)
         startTracking(clipId: clipId, maskId: mask.id)
     }
 
     func removeObjectMask(clipId: String, maskId: String) {
-        maskTrackingTasks.removeValue(forKey: maskId)?.cancel()
-        maskTrackingStatus[maskId] = nil
+        cancelMaskWork(maskId: maskId)
         commitClipProperty(clipId: clipId, actionName: L10n.string("Remove Mask")) { clip in
             clip.masks?.removeAll { $0.id == maskId }
             if clip.masks?.isEmpty == true { clip.masks = nil }
@@ -147,6 +210,51 @@ extension EditorViewModel {
         guard installed else { throw CancellationError() }
     }
 
+    private func insertObjectMask(_ mask: ObjectMask, clipId: String) {
+        guard let loc = findClip(id: clipId) else { return }
+        let before = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+        var after = before
+        after.masks = [mask]
+        timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = after
+        registerMaskSwap(
+            clipId: clipId,
+            maskId: mask.id,
+            undoTarget: before,
+            redoTarget: after
+        )
+        notifyTimelineChanged()
+    }
+
+    private func registerMaskSwap(
+        clipId: String,
+        maskId: String,
+        undoTarget: Clip,
+        redoTarget: Clip
+    ) {
+        registerTimelineUndo(L10n.string("Add Mask")) { vm in
+            guard let loc = vm.findClip(id: clipId) else { return }
+            vm.timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = undoTarget
+            if undoTarget.masks?.contains(where: { $0.id == maskId }) != true {
+                vm.cancelMaskWork(maskId: maskId)
+            }
+            vm.registerMaskSwap(
+                clipId: clipId,
+                maskId: maskId,
+                undoTarget: redoTarget,
+                redoTarget: undoTarget
+            )
+            vm.notifyTimelineChanged()
+        }
+    }
+
+    private func cancelMaskWork(maskId: String) {
+        maskTrackingTasks.removeValue(forKey: maskId)?.cancel()
+        maskTrackingStatus[maskId] = nil
+        if maskPointMarker?.maskId == maskId {
+            maskPointMarker = nil
+        }
+    }
+
     private func attachMaskTrack(clipId: String, maskId: String, track: MaskTrack) {
         maskTrackingTasks[maskId] = nil
         guard let loc = findClip(id: clipId),
@@ -158,9 +266,13 @@ extension EditorViewModel {
         }
         masks[index].track = track
         timeline.tracks[loc.trackIndex].clips[loc.clipIndex].masks = masks
+        if maskPointMarker?.maskId == maskId {
+            maskPointMarker = nil
+        }
         maskTrackingStatus[maskId] = nil
         notifyTimelineChanged()
     }
+
 }
 
 extension Clip {

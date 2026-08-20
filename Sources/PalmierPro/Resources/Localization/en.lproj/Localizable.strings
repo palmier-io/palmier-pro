@@ -150,6 +150,7 @@
 "Cancel" = "Cancel";
 "Cancel Export" = "Cancel Export";
 "Cancel Key Color Sampling" = "Cancel Key Color Sampling";
+"Cancel Selection" = "Cancel Selection";
 "Cancel key color sampling" = "Cancel key color sampling";
 "Canceled" = "Canceled";
 "Canceling" = "Canceling";
@@ -720,6 +721,7 @@
 "Playback Speed" = "Playback Speed";
 "Playback previews, waveforms, filmstrip thumbnails, and transcripts. Safe to clear; files rebuild as needed." = "Playback previews, waveforms, filmstrip thumbnails, and transcripts. Safe to clear; files rebuild as needed.";
 "Podcast" = "Podcast";
+"Point selection" = "Point selection";
 "Pointer (V)" = "Pointer (V)";
 "Pop In" = "Pop In";
 "Portrait (9:16)" = "Portrait (9:16)";
@@ -854,6 +856,7 @@
 "Select Forward on Track" = "Select Forward on Track";
 "Select Range" = "Select Range";
 "Select compatible clips and paste settings again." = "Select compatible clips and paste settings again.";
+"Select in Viewer" = "Select in Viewer";
 "Select media files or folders to import" = "Select media files or folders to import";
 "Select the timeline to add a marker." = "Select the timeline to add a marker.";
 "Selected" = "Selected";

@@ -96,13 +96,17 @@ struct InspectorView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onChange(of: editor.selectedClipIds) { _, _ in
             editor.cancelChromaKeySampling()
+            editor.cancelMaskPointSelection()
             if !editor.isMarqueeSelecting { resolvePreferredTab() }
         }
         .onChange(of: editor.isMarqueeSelecting) { _, selecting in
             if !selecting { resolvePreferredTab() }
         }
         .onChange(of: preferredTab) { _, newTab in
-            if newTab != .video { editor.cropEditingActive = false }
+            if newTab != .video {
+                editor.cropEditingActive = false
+                editor.cancelMaskPointSelection()
+            }
         }
         .onChange(of: editor.inspectorClipTabRequest) { _, request in
             guard let request else { return }
