@@ -46,6 +46,7 @@ enum FrameCaptureRenderer {
         frame: Int,
         mediaURLs: [String: URL],
         resolveTimeline: @escaping @Sendable (String) -> Timeline?,
+        resolveMaskURL: @escaping @Sendable (String) -> URL? = { _ in nil },
         missingMediaRefs: Set<String>
     ) async throws -> RenderedFrame {
         try await renderGate.wait()
@@ -57,6 +58,7 @@ enum FrameCaptureRenderer {
             timeline: timeline,
             resolveURL: { mediaURLs[$0] },
             resolveTimeline: resolveTimeline,
+            resolveMaskURL: resolveMaskURL,
             missingMediaRefs: missingMediaRefs,
             renderSize: canvas
         )

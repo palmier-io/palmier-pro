@@ -94,7 +94,8 @@ enum FrameRenderer {
             case .track(let id):
                 guard let buffer = sourceFrame(id) else { continue }
                 image = composedLayer(layer, buffer: buffer, frame: frame,
-                                      renderSize: renderSize, bakeOpacity: isNormal)
+                                      renderSize: renderSize, bakeOpacity: isNormal,
+                                      mattes: matteBuffers(for: layer, sourceFrame: sourceFrame))
             case .text:
                 image = composedTextLayer(layer, frame: frame, renderSize: renderSize,
                                           bakeOpacity: isNormal)
@@ -249,12 +250,26 @@ enum FrameRenderer {
                               kCVImageBufferYCbCrMatrix_ITU_R_709_2, .shouldPropagate)
     }
 
+    private static func matteBuffers(
+        for layer: LayerPlan,
+        sourceFrame: (CMPersistentTrackID) -> CVPixelBuffer?
+    ) -> [(mask: ObjectMask, buffer: CVPixelBuffer, showsOverlay: Bool)] {
+        guard !layer.masks.isEmpty, let clipMasks = layer.clip.masks else { return [] }
+        return layer.masks.compactMap { plan in
+            guard let mask = clipMasks.first(where: { $0.id == plan.maskId }), mask.enabled,
+                  let buffer = sourceFrame(plan.trackID)
+            else { return nil }
+            return (mask, buffer, plan.showsOverlay)
+        }
+    }
+
     private static func composedLayer(
         _ layer: LayerPlan,
         buffer: CVPixelBuffer,
         frame: Int,
         renderSize: CGSize,
-        bakeOpacity: Bool = true
+        bakeOpacity: Bool = true,
+        mattes: [(mask: ObjectMask, buffer: CVPixelBuffer, showsOverlay: Bool)] = []
     ) -> CIImage? {
         let alpha = min(1.0, max(0.0, layer.clip.opacityAt(frame: frame)))
         guard alpha > 0 else { return nil }
@@ -267,11 +282,12 @@ enum FrameRenderer {
             .unpremultiplyingAlpha()
         return applyClipPipeline(
             image: image, srcHeight: CGFloat(CVPixelBufferGetHeight(buffer)), layer: layer,
-            frame: frame, renderSize: renderSize, alpha: alpha, bakeOpacity: bakeOpacity
+            frame: frame, renderSize: renderSize, alpha: alpha, bakeOpacity: bakeOpacity,
+            mattes: mattes
         )
     }
 
-    /// Crop → effects → corner mask → transform → opacity, sampled from `layer.clip` at `frame`.
+    /// Crop → effects → object masks → corner mask → transform → opacity, sampled from `layer.clip` at `frame`.
     private static func applyClipPipeline(
         image input: CIImage,
         srcHeight: CGFloat,
@@ -279,10 +295,12 @@ enum FrameRenderer {
         frame: Int,
         renderSize: CGSize,
         alpha: Double,
-        bakeOpacity: Bool
+        bakeOpacity: Bool,
+        mattes: [(mask: ObjectMask, buffer: CVPixelBuffer, showsOverlay: Bool)] = []
     ) -> CIImage? {
         let clip = layer.clip
         var image = input
+        var sourceCropRect: CGRect?
 
         let crop = clip.cropAt(frame: frame)
         if !crop.isIdentity {
@@ -293,12 +311,14 @@ enum FrameRenderer {
                 width: max(1, crop.visibleWidthFraction * layer.natSize.width),
                 height: max(1, crop.visibleHeightFraction * layer.natSize.height)
             ).applying(layer.preferredTransform.inverted())
-            image = image.cropped(to: CGRect(
+            let rect = CGRect(
                 x: avRect.origin.x,
                 y: srcHeight - avRect.origin.y - avRect.height,
                 width: avRect.width,
                 height: avRect.height
-            ))
+            )
+            sourceCropRect = rect
+            image = image.cropped(to: rect)
         }
 
         // Effects apply in source-pixel space: after crop, before placement.
@@ -307,6 +327,34 @@ enum FrameRenderer {
             for effect in effects where effect.enabled {
                 guard let descriptor = EffectRegistry.descriptor(id: effect.type) else { continue }
                 image = descriptor.render(image, effect: effect, atOffset: offset)
+            }
+        }
+
+        for matte in mattes {
+            guard let matteImage = matteImage(
+                buffer: matte.buffer,
+                mask: matte.mask,
+                layer: layer,
+                sourceExtent: input.extent,
+                cropRect: sourceCropRect,
+                outputExtent: image.extent
+            ) else { continue }
+            if matte.mask.removesBackground {
+                image = image.applyingFilter("CIBlendWithMask", parameters: [
+                    kCIInputBackgroundImageKey: CIImage(color: .clear).cropped(to: image.extent),
+                    kCIInputMaskImageKey: matteImage,
+                ]).cropped(to: image.extent).unpremultiplyingAlpha()
+            } else if matte.showsOverlay {
+                let tint = CIImage(color: CIColor(
+                    cgColor: AppTheme.Status.error
+                        .withAlphaComponent(CGFloat(AppTheme.Opacity.medium))
+                        .cgColor
+                )).cropped(to: image.extent)
+                let tinted = tint.composited(over: image)
+                image = tinted.applyingFilter("CIBlendWithMask", parameters: [
+                    kCIInputBackgroundImageKey: image,
+                    kCIInputMaskImageKey: matteImage,
+                ]).cropped(to: image.extent)
             }
         }
 
@@ -332,6 +380,55 @@ enum FrameRenderer {
             ])
         }
         return image
+    }
+
+    /// Matte buffer → mask image in source-pixel space, honoring the mask's
+    /// invert/expansion/feather. Returns nil when the matte can't align.
+    private static func matteImage(
+        buffer: CVPixelBuffer,
+        mask: ObjectMask,
+        layer: LayerPlan,
+        sourceExtent: CGRect,
+        cropRect: CGRect?,
+        outputExtent: CGRect
+    ) -> CIImage? {
+        var matte = CIImage(cvPixelBuffer: buffer, options: [.colorSpace: NSNull()])
+        guard matte.extent.width > 0, matte.extent.height > 0 else { return nil }
+
+        // Mattes are rendered in display orientation; rotated sources store
+        // pixels pre-transform, so map the matte back into storage orientation.
+        let transposed = abs(matte.extent.width - sourceExtent.height) < abs(matte.extent.width - sourceExtent.width)
+            && matte.extent.width != matte.extent.height
+        if transposed {
+            matte = matte.transformed(by: layer.preferredTransform.inverted())
+            matte = matte.transformed(by: CGAffineTransform(
+                translationX: -matte.extent.origin.x,
+                y: -matte.extent.origin.y
+            ))
+        }
+        if matte.extent.size != sourceExtent.size {
+            matte = matte.transformed(by: CGAffineTransform(
+                scaleX: sourceExtent.width / matte.extent.width,
+                y: sourceExtent.height / matte.extent.height
+            ))
+        }
+        if let cropRect { matte = matte.cropped(to: cropRect) }
+
+        if mask.inverted {
+            matte = matte.applyingFilter("CIColorInvert")
+        }
+        if mask.expansion != 0 {
+            let filter = mask.expansion > 0 ? "CIMorphologyMaximum" : "CIMorphologyMinimum"
+            matte = matte.clampedToExtent()
+                .applyingFilter(filter, parameters: [kCIInputRadiusKey: abs(mask.expansion)])
+                .cropped(to: outputExtent)
+        }
+        if mask.feather > 0 {
+            matte = matte.clampedToExtent()
+                .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: mask.feather])
+                .cropped(to: outputExtent)
+        }
+        return matte
     }
 
     /// Text renders in place; effects run before rotation and opacity, matching visual clips.

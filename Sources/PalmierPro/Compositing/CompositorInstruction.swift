@@ -2,6 +2,12 @@ import AVFoundation
 
 /// Immutable per-clip snapshot read on the render queue — never the live timeline.
 struct LayerPlan: Sendable {
+    struct MaskPlan: Sendable {
+        let maskId: String
+        let trackID: CMPersistentTrackID
+        let showsOverlay: Bool
+    }
+
     enum Source: Sendable {
         case track(CMPersistentTrackID)
         case text
@@ -12,6 +18,7 @@ struct LayerPlan: Sendable {
     let clip: Clip
     let natSize: CGSize
     let preferredTransform: CGAffineTransform
+    var masks: [MaskPlan] = []
 
     var trackID: CMPersistentTrackID? {
         if case .track(let id) = source { return id }
@@ -19,6 +26,7 @@ struct LayerPlan: Sendable {
     }
 
     func collectTrackIDs(into ids: inout [CMPersistentTrackID]) {
+        for mask in masks { ids.append(mask.trackID) }
         switch source {
         case .track(let id): ids.append(id)
         case .text: break

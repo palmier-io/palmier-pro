@@ -23,6 +23,7 @@ struct CompositionResult {
     let trackMappings: [TrackMapping]
     let clipNaturalSizes: [String: CGSize]
     let clipTransforms: [String: CGAffineTransform]
+    let maskPlans: [String: [LayerPlan.MaskPlan]]
     let offlineMediaRefs: Set<String>
     let unprocessableMediaRefs: Set<String>
 }
@@ -40,6 +41,8 @@ enum CompositionBuilder {
         resolveURL: @escaping @Sendable (String) -> URL?,
         resolveSourceSize: @escaping @Sendable (String) -> CGSize? = { _ in nil },
         resolveTimeline: @escaping @Sendable (String) -> Timeline? = { _ in nil },
+        resolveMaskURL: @escaping @Sendable (String) -> URL? = { _ in nil },
+        showMaskOverlay: Bool = false,
         missingMediaRefs: Set<String> = [],
         renderSize: CGSize,
         makeAsset: @escaping @Sendable (URL) -> AVURLAsset = { AVURLAsset(url: $0) },
@@ -59,6 +62,8 @@ enum CompositionBuilder {
             resolveURL: resolveURL,
             resolveSourceSize: resolveSourceSize,
             resolveTimeline: resolveTimeline,
+            resolveMaskURL: resolveMaskURL,
+            showMaskOverlay: showMaskOverlay,
             missingMediaRefs: missingMediaRefs,
             makeAsset: makeAsset,
             loadTracks: loadTracks
@@ -98,6 +103,7 @@ enum CompositionBuilder {
             trackMappings: ctx.trackMappings,
             clipNaturalSizes: ctx.clipNaturalSizes,
             clipTransforms: ctx.clipTransforms,
+            maskPlans: ctx.maskPlans,
             resolveTimeline: resolveTimeline,
             compositionDuration: ctx.composition.duration,
             renderSize: renderSize
@@ -110,6 +116,7 @@ enum CompositionBuilder {
             trackMappings: ctx.trackMappings,
             clipNaturalSizes: ctx.clipNaturalSizes,
             clipTransforms: ctx.clipTransforms,
+            maskPlans: ctx.maskPlans,
             offlineMediaRefs: ctx.offlineMediaRefs,
             unprocessableMediaRefs: ctx.unprocessableMediaRefs
         )
@@ -123,12 +130,15 @@ enum CompositionBuilder {
         let resolveURL: @Sendable (String) -> URL?
         let resolveSourceSize: @Sendable (String) -> CGSize?
         let resolveTimeline: @Sendable (String) -> Timeline?
+        let resolveMaskURL: @Sendable (String) -> URL?
+        let showMaskOverlay: Bool
         let missingMediaRefs: Set<String>
         let makeAsset: @Sendable (URL) -> AVURLAsset
         let loadTracks: @Sendable (AVURLAsset, AVMediaType) async throws -> [AVAssetTrack]
         var trackMappings: [TrackMapping] = []
         var clipNaturalSizes: [String: CGSize] = [:]
         var clipTransforms: [String: CGAffineTransform] = [:]
+        var maskPlans: [String: [LayerPlan.MaskPlan]] = [:]
         var offlineMediaRefs: Set<String> = []
         var unprocessableMediaRefs: Set<String> = []
         var sourceAssetsByURL: [URL: AVURLAsset] = [:]
@@ -143,6 +153,8 @@ enum CompositionBuilder {
             resolveURL: @escaping @Sendable (String) -> URL?,
             resolveSourceSize: @escaping @Sendable (String) -> CGSize?,
             resolveTimeline: @escaping @Sendable (String) -> Timeline?,
+            resolveMaskURL: @escaping @Sendable (String) -> URL?,
+            showMaskOverlay: Bool,
             missingMediaRefs: Set<String>,
             makeAsset: @escaping @Sendable (URL) -> AVURLAsset,
             loadTracks: @escaping @Sendable (AVURLAsset, AVMediaType) async throws -> [AVAssetTrack]
@@ -153,6 +165,8 @@ enum CompositionBuilder {
             self.resolveURL = resolveURL
             self.resolveSourceSize = resolveSourceSize
             self.resolveTimeline = resolveTimeline
+            self.resolveMaskURL = resolveMaskURL
+            self.showMaskOverlay = showMaskOverlay
             self.missingMediaRefs = missingMediaRefs
             self.makeAsset = makeAsset
             self.loadTracks = loadTracks
@@ -309,6 +323,7 @@ enum CompositionBuilder {
                                 into: track, cursor: &cursor, timescale: ctx.timescale) {
                 inserted.append(clip)
                 previousEndFrame = clip.endFrame
+                await insertMatteTracks(for: clip, ctx: ctx)
             }
         }
         guard let compTrack else { return }
@@ -495,6 +510,77 @@ enum CompositionBuilder {
         return true
     }
 
+    /// Inserts one hidden matte track per enabled, tracked object mask.
+    /// Matte frame `i` covers source frame `firstSourceFrame + i` — source
+    /// position is timeline-fps frames, matte duration runs at the segment fps.
+    private static func insertMatteTracks(for clip: Clip, ctx: BuildContext) async {
+        guard let masks = clip.masks, !masks.isEmpty,
+              clip.speed.isFinite, clip.speed > 0
+        else { return }
+        for mask in masks {
+            guard mask.enabled,
+                  mask.removesBackground || ctx.showMaskOverlay,
+                  let track = mask.track,
+                  track.mediaRef == clip.mediaRef,
+                  track.fps > 0,
+                  let matteURL = ctx.resolveMaskURL(track.id)
+            else { continue }
+
+            let visibleStart = CMTime(value: CMTimeValue(clip.trimStartFrame), timescale: ctx.timescale)
+            let clipDuration = CMTime(value: CMTimeValue(clip.durationFrames), timescale: ctx.timescale)
+            let visibleRange = CMTimeRange(
+                start: visibleStart,
+                duration: CMTimeMultiplyByFloat64(clipDuration, multiplier: clip.speed)
+            )
+            let matteStart = CMTime(
+                value: CMTimeValue(track.firstSourceFrame),
+                timescale: ctx.timescale
+            )
+            let matteDuration = CMTime(
+                seconds: Double(track.frameCount) / track.fps,
+                preferredTimescale: 600_000
+            )
+            let overlap = CMTimeRangeGetIntersection(
+                visibleRange,
+                otherRange: CMTimeRange(start: matteStart, duration: matteDuration)
+            )
+            guard overlap.isValid, !overlap.isEmpty, overlap.duration > .zero else { continue }
+
+            let asset = ctx.makeAsset(matteURL)
+            guard let sourceTrack = try? await ctx.loadTracks(asset, .video).first,
+                  let compTrack = ctx.composition.addMutableTrack(
+                      withMediaType: .video,
+                      preferredTrackID: kCMPersistentTrackID_Invalid
+                  )
+            else { continue }
+
+            let artifactRange = CMTimeRange(start: overlap.start - matteStart, duration: overlap.duration)
+            let clipStart = CMTime(value: CMTimeValue(clip.startFrame), timescale: ctx.timescale)
+            let timelineStart = clipStart
+                + CMTimeMultiplyByFloat64(overlap.start - visibleStart, multiplier: 1 / clip.speed)
+            let timelineDuration = CMTimeMultiplyByFloat64(overlap.duration, multiplier: 1 / clip.speed)
+            do {
+                try compTrack.insertTimeRange(artifactRange, of: sourceTrack, at: timelineStart)
+                if artifactRange.duration != timelineDuration {
+                    compTrack.scaleTimeRange(
+                        CMTimeRange(start: timelineStart, duration: artifactRange.duration),
+                        toDuration: timelineDuration
+                    )
+                }
+                ctx.maskPlans[clip.id, default: []].append(
+                    LayerPlan.MaskPlan(
+                        maskId: mask.id,
+                        trackID: compTrack.trackID,
+                        showsOverlay: ctx.showMaskOverlay
+                    )
+                )
+            } catch {
+                ctx.composition.removeTrack(compTrack)
+                Log.preview.warning("matte insert failed clipId=\(clip.id) maskId=\(mask.id): \(error.localizedDescription)")
+            }
+        }
+    }
+
     private static func insertBlackBackground(
         composition: AVMutableComposition,
         size: CGSize,
@@ -565,6 +651,7 @@ enum CompositionBuilder {
         trackMappings: [TrackMapping],
         clipNaturalSizes: [String: CGSize] = [:],
         clipTransforms: [String: CGAffineTransform] = [:],
+        maskPlans: [String: [LayerPlan.MaskPlan]] = [:],
         resolveTimeline: @Sendable (String) -> Timeline? = { _ in nil },
         compositionDuration: CMTime,
         renderSize: CGSize
@@ -623,6 +710,7 @@ enum CompositionBuilder {
             trackMappings: trackMappings,
             clipNaturalSizes: clipNaturalSizes,
             clipTransforms: clipTransforms,
+            maskPlans: maskPlans,
             resolveTimeline: resolveTimeline,
             compositionDuration: compositionDuration,
             renderSize: renderSize
@@ -636,6 +724,7 @@ enum CompositionBuilder {
         trackMappings: [TrackMapping],
         clipNaturalSizes: [String: CGSize],
         clipTransforms: [String: CGAffineTransform],
+        maskPlans: [String: [LayerPlan.MaskPlan]] = [:],
         resolveTimeline: @Sendable (String) -> Timeline? = { _ in nil },
         compositionDuration: CMTime,
         renderSize: CGSize
@@ -698,7 +787,8 @@ enum CompositionBuilder {
                         guard clip.startFrame >= prevEnd, let slot = media[clip.id] else { continue }
                         prevEnd = clip.endFrame
                         guard overlapsWindow else { continue }
-                        children.append(LayerPlan(source: .track(slot.trackID), clip: clip, natSize: slot.natSize, preferredTransform: slot.transform))
+                        children.append(LayerPlan(source: .track(slot.trackID), clip: clip, natSize: slot.natSize,
+                                                  preferredTransform: slot.transform, masks: maskPlans[clip.id] ?? []))
                     }
                 }
             }
@@ -748,7 +838,8 @@ enum CompositionBuilder {
                     continue
                 } else {
                     guard clip.startFrame >= prevEndFrame, let slot = media[clip.id] else { continue }
-                    plan = LayerPlan(source: .track(slot.trackID), clip: clip, natSize: slot.natSize, preferredTransform: slot.transform)
+                    plan = LayerPlan(source: .track(slot.trackID), clip: clip, natSize: slot.natSize,
+                                     preferredTransform: slot.transform, masks: maskPlans[clip.id] ?? [])
                     prevEndFrame = clip.endFrame
                 }
                 entries.append(Entry(start: cmTime(clip.startFrame), end: cmTime(clip.endFrame), plan: plan))

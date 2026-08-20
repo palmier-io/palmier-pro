@@ -75,6 +75,7 @@ extension EditorViewModel {
                 frame: frame,
                 mediaURLs: mediaURLs,
                 resolveTimeline: resolveTimeline,
+                resolveMaskURL: mediaResolver.maskURLResolver(),
                 missingMediaRefs: missingMediaRefs
             )
 

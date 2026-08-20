@@ -46,6 +46,7 @@ final class VideoEngine {
     }
 
     private var trackMappings: [TrackMapping] = []
+    private var maskPlans: [String: [LayerPlan.MaskPlan]] = [:]
     private var clipNaturalSizes: [String: CGSize] = [:]
     private var clipTransforms: [String: CGAffineTransform] = [:]
     private var compositionDuration: CMTime = .zero
@@ -306,6 +307,7 @@ final class VideoEngine {
         let startingVisualRefreshGeneration = visualRefreshGeneration
 
         let mediaURLs = editor.mediaResolver.expectedURLMap()
+        let resolveMaskURL = editor.mediaResolver.maskURLResolver()
         let missingMediaRefs = editor.missingMediaRefs
         let assetSizes: [String: CGSize] = Dictionary(
             uniqueKeysWithValues: editor.mediaAssets.compactMap { asset in
@@ -345,6 +347,8 @@ final class VideoEngine {
                     resolveURL: { mediaURLs[$0] },
                     resolveSourceSize: { assetSizes[$0] },
                     resolveTimeline: resolveTimeline,
+                    resolveMaskURL: resolveMaskURL,
+                    showMaskOverlay: true,
                     missingMediaRefs: missingMediaRefs,
                     renderSize: CGSize(width: snapshot.width, height: snapshot.height)
                 )
@@ -370,6 +374,7 @@ final class VideoEngine {
                     trackMappings: result.trackMappings,
                     clipNaturalSizes: result.clipNaturalSizes,
                     clipTransforms: result.clipTransforms,
+                    maskPlans: result.maskPlans,
                     resolveTimeline: appliedTimelineResolver,
                     compositionDuration: result.composition.duration,
                     renderSize: CGSize(width: editor.timeline.width, height: editor.timeline.height)
@@ -411,6 +416,7 @@ final class VideoEngine {
         trackMappings = result.trackMappings
         clipNaturalSizes = result.clipNaturalSizes
         clipTransforms = result.clipTransforms
+        maskPlans = result.maskPlans
         compositionDuration = result.composition.duration
         editor.offlineMediaRefs = result.offlineMediaRefs
         editor.unprocessableMediaRefs = result.unprocessableMediaRefs
@@ -444,6 +450,7 @@ final class VideoEngine {
             trackMappings: trackMappings,
             clipNaturalSizes: clipNaturalSizes,
             clipTransforms: clipTransforms,
+            maskPlans: maskPlans,
             resolveTimeline: editor.timelineResolver(),
             compositionDuration: compositionDuration,
             renderSize: CGSize(width: editor.timeline.width, height: editor.timeline.height)

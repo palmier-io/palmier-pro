@@ -316,8 +316,13 @@ class VideoProject: NSDocument {
         }
         try writeChatDirectory(snapshot.chatSessionFiles, to: packageURL, fm: fm)
         try copyMediaDirectoryIfNeeded(from: sourceURL, to: packageURL, fm: fm)
+        try copyDirectoryIfNeeded(named: Project.maskDirectoryName, from: sourceURL, to: packageURL, fm: fm)
         try fm.createDirectory(
             at: packageURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        try fm.createDirectory(
+            at: packageURL.appendingPathComponent(Project.maskDirectoryName, isDirectory: true),
             withIntermediateDirectories: true
         )
     }
@@ -354,9 +359,18 @@ class VideoProject: NSDocument {
     }
 
     private nonisolated static func copyMediaDirectoryIfNeeded(from sourceURL: URL?, to packageURL: URL, fm: FileManager) throws {
+        try copyDirectoryIfNeeded(named: Project.mediaDirectoryName, from: sourceURL, to: packageURL, fm: fm)
+    }
+
+    private nonisolated static func copyDirectoryIfNeeded(
+        named name: String,
+        from sourceURL: URL?,
+        to packageURL: URL,
+        fm: FileManager
+    ) throws {
         guard let sourceURL, !sameFile(sourceURL, packageURL) else { return }
-        let source = sourceURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
-        let destination = packageURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
+        let source = sourceURL.appendingPathComponent(name, isDirectory: true)
+        let destination = packageURL.appendingPathComponent(name, isDirectory: true)
         if fm.fileExists(atPath: destination.path) {
             try fm.removeItem(at: destination)
         }

@@ -24,6 +24,19 @@ final class MediaResolver: @unchecked Sendable {
         Self.expectedURLMap(entries: manifest().entries, projectURL: projectURL())
     }
 
+    func maskURLResolver() -> @Sendable (String) -> URL? {
+        let projectURL = projectURL()
+        return { trackId in
+            Self.expectedMatteURL(forTrackId: trackId, projectURL: projectURL)
+        }
+    }
+
+    static func expectedMatteURL(forTrackId trackId: String, projectURL: URL?) -> URL? {
+        projectURL?
+            .appendingPathComponent(Project.maskDirectoryName, isDirectory: true)
+            .appendingPathComponent("\(trackId).mov", isDirectory: false)
+    }
+
     func snapshot() -> MediaResolver {
         let manifest = manifest()
         let projectURL = projectURL()

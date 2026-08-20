@@ -438,6 +438,7 @@ final class ExportService {
             let result = try await CompositionBuilder.build(
                 timeline: timeline,
                 resolveURL: { resolver.resolveURL(for: $0) },
+                resolveMaskURL: resolver.maskURLResolver(),
                 missingMediaRefs: missingMediaRefs,
                 renderSize: renderSize
             )
@@ -581,6 +582,7 @@ final class ExportService {
             timeline: timeline,
             resolveURL: { mediaURLs[$0] },
             resolveTimeline: resolveTimeline,
+            resolveMaskURL: resolver.maskURLResolver(),
             missingMediaRefs: missingMediaRefs,
             renderSize: renderSize
         )

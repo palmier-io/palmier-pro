@@ -93,6 +93,7 @@ enum Project {
     static let manifestFilename = "media.json"
     static let thumbnailFilename = "thumbnail.jpg"
     static let mediaDirectoryName = "media"
+    static let maskDirectoryName = "masks"
 
     static var storageDirectory: URL {
         FileManager.default.homeDirectoryForCurrentUser
