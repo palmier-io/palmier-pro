@@ -35,7 +35,8 @@ actor MaskingService {
 
         let segmentURL = try await VideoTrimExtractor.extract(
             request.trim,
-            maxLongSide: Self.maxSegmentLongSide
+            maxLongSide: Self.maxSegmentLongSide,
+            includeAudio: false
         )
         defer { try? FileManager.default.removeItem(at: segmentURL) }
         let segment = try await probeSegment(at: segmentURL)

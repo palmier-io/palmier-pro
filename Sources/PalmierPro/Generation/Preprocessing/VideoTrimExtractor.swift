@@ -11,7 +11,11 @@ enum VideoTrimExtractor {
     /// Returns a URL to a temp mp4 containing frames
     /// `[trimStartFrame, trimStartFrame + sourceFramesConsumed)` of `sourceURL`.
     /// Caller owns the temp file and should delete it once upload completes.
-    static func extract(_ trim: TrimmedSource, maxLongSide: Int? = nil) async throws -> URL {
+    static func extract(
+        _ trim: TrimmedSource,
+        maxLongSide: Int? = nil,
+        includeAudio: Bool = true
+    ) async throws -> URL {
         guard trim.fps > 0 else {
             throw ExtractionError(reason: "invalid fps \(trim.fps)")
         }
@@ -24,8 +28,6 @@ enum VideoTrimExtractor {
         guard let videoTrack = videoTracks.first else {
             throw ExtractionError(reason: "no video track in source")
         }
-        let audioTracks = try await asset.loadTracks(withMediaType: .audio)
-
         let composition = AVMutableComposition()
         guard let compVideo = composition.addMutableTrack(
             withMediaType: .video,
@@ -37,7 +39,8 @@ enum VideoTrimExtractor {
         try compVideo.insertTimeRange(trim.timeRange, of: videoTrack, at: .zero)
         compVideo.preferredTransform = try await videoTrack.load(.preferredTransform)
 
-        if let audioTrack = audioTracks.first,
+        if includeAudio,
+           let audioTrack = try await asset.loadTracks(withMediaType: .audio).first,
            let compAudio = composition.addMutableTrack(
                withMediaType: .audio,
                preferredTrackID: kCMPersistentTrackID_Invalid
