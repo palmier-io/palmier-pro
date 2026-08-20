@@ -11,7 +11,7 @@ enum VideoTrimExtractor {
     /// Returns a URL to a temp mp4 containing frames
     /// `[trimStartFrame, trimStartFrame + sourceFramesConsumed)` of `sourceURL`.
     /// Caller owns the temp file and should delete it once upload completes.
-    static func extract(_ trim: TrimmedSource) async throws -> URL {
+    static func extract(_ trim: TrimmedSource, maxLongSide: Int? = nil) async throws -> URL {
         guard trim.fps > 0 else {
             throw ExtractionError(reason: "invalid fps \(trim.fps)")
         }
@@ -66,11 +66,56 @@ enum VideoTrimExtractor {
         )
         var videoConfig = videoComposition.palmierConfiguration()
         videoConfig.frameDuration = CMTime(value: 1, timescale: targetFps)
-        session.videoComposition = AVVideoComposition(configuration: videoConfig)
+        if let maxLongSide,
+           let scaled = scaledComposition(
+               renderSize: videoConfig.renderSize,
+               maxLongSide: maxLongSide,
+               track: compVideo,
+               transform: compVideo.preferredTransform,
+               duration: composition.duration,
+               frameDuration: CMTime(value: 1, timescale: targetFps)
+           ) {
+            session.videoComposition = scaled
+        } else {
+            session.videoComposition = AVVideoComposition(configuration: videoConfig)
+        }
 
         Log.generation.notice("trim-extract start frames=\(trim.trimStartFrame)..<\(trim.trimStartFrame + trim.sourceFramesConsumed) timelineFps=\(trim.fps) sourceFps=\(nominal) outFps=\(targetFps)")
         try await session.export(to: outputURL, as: .mp4)
         Log.generation.notice("trim-extract ok url=\(outputURL.lastPathComponent)")
         return outputURL
+    }
+
+    private static func scaledComposition(
+        renderSize: CGSize,
+        maxLongSide: Int,
+        track: AVCompositionTrack,
+        transform: CGAffineTransform,
+        duration: CMTime,
+        frameDuration: CMTime
+    ) -> AVVideoComposition? {
+        let longSide = max(renderSize.width, renderSize.height)
+        guard longSide > CGFloat(maxLongSide), longSide > 0 else { return nil }
+        let scale = CGFloat(maxLongSide) / longSide
+        let even = { (value: CGFloat) in max(2, Int((value * scale / 2).rounded()) * 2) }
+        let scaledSize = CGSize(width: even(renderSize.width), height: even(renderSize.height))
+
+        let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
+        layer.setTransform(
+            transform.concatenating(CGAffineTransform(
+                scaleX: scaledSize.width / renderSize.width,
+                y: scaledSize.height / renderSize.height
+            )),
+            at: .zero
+        )
+        let instruction = AVMutableVideoCompositionInstruction()
+        instruction.timeRange = CMTimeRange(start: .zero, duration: duration)
+        instruction.layerInstructions = [layer]
+
+        let scaled = AVMutableVideoComposition()
+        scaled.renderSize = scaledSize
+        scaled.frameDuration = frameDuration
+        scaled.instructions = [instruction]
+        return scaled
     }
 }
