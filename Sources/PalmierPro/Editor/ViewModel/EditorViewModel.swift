@@ -186,6 +186,8 @@ final class EditorViewModel {
     @ObservationIgnored var agentActivityClearTask: Task<Void, Never>?
     var cropEditingActive: Bool = false
     var chromaKeySamplingClipId: String?
+    var maskTrackingStatus: [String: MaskTrackingStatus] = [:]
+    @ObservationIgnored var maskTrackingTasks: [String: Task<Void, Never>] = [:]
     /// Two-up in/out frames shown in the viewer while a slip drag is active.
     var slipPreview: SlipPreviewState?
     var captionPreviewConfiguration: CaptionPreviewConfiguration?

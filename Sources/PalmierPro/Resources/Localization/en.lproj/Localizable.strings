@@ -66,6 +66,7 @@
 "Action Safe" = "Action Safe";
 "Activity unavailable" = "Activity unavailable";
 "Add Marker (M)" = "Add Marker (M)";
+"Add Mask" = "Add Mask";
 "Add Range to Chat" = "Add Range to Chat";
 "Add Text" = "Add Text";
 "Add a comment" = "Add a comment";
@@ -91,6 +92,7 @@
 "Add video to the timeline, then mark a range to score only part of it." = "Add video to the timeline, then mark a range to score only part of it.";
 "Added to %@" = "Added to %@";
 "Adjust" = "Adjust";
+"Adjust Mask" = "Adjust Mask";
 "Adjust Range" = "Adjust Range";
 "Adobe Premiere Pro" = "Adobe Premiere Pro";
 "Ads and branded content" = "Ads and branded content";
@@ -297,6 +299,7 @@
 "Describe the sound" = "Describe the sound";
 "Describe the sound (minimum %lld characters)" = "Describe the sound (minimum %lld characters)";
 "Describe the video" = "Describe the video";
+"Describe what to mask" = "Describe what to mask";
 "Descript" = "Descript";
 "Description" = "Description";
 "Deselect & Reset Tool" = "Deselect & Reset Tool";
@@ -310,6 +313,7 @@
 "Detecting speech…" = "Detecting speech…";
 "Difference" = "Difference";
 "Dimensions" = "Dimensions";
+"Disable Mask" = "Disable Mask";
 "Discard Changes" = "Discard Changes";
 "Dismiss" = "Dismiss";
 "Documentation" = "Documentation";
@@ -351,6 +355,7 @@
 "Effects" = "Effects";
 "Email (optional)" = "Email (optional)";
 "Empty" = "Empty";
+"Enable Mask" = "Enable Mask";
 "Enable: %@" = "Enable: %@";
 "Enhance" = "Enhance";
 "Enhance resolution or frame rate with AI" = "Enhance resolution or frame rate with AI";
@@ -504,7 +509,9 @@
 "Integration with your own agent" = "Integration with your own agent";
 "Integrations" = "Integrations";
 "Intensity" = "Intensity";
+"Invert" = "Invert";
 "Invert Colors" = "Invert Colors";
+"Invert Mask" = "Invert Mask";
 "Inverted" = "Inverted";
 "Italic" = "Italic";
 "Jump to Playhead" = "Jump to Playhead";
@@ -575,6 +582,7 @@
 "Marker name" = "Marker name";
 "Markers" = "Markers";
 "Marketer" = "Marketer";
+"Mask" = "Mask";
 "Master Audio Meter" = "Master Audio Meter";
 "Master — defines the group's clock and transcript." = "Master — defines the group's clock and transcript.";
 "Match Timeline" = "Match Timeline";
@@ -660,6 +668,7 @@
 "Normal" = "Normal";
 "Not selected" = "Not selected";
 "Not synced — unusable as an angle." = "Not synced — unusable as an angle.";
+"Not tracked" = "Not tracked";
 "Notifications" = "Notifications";
 "OK" = "OK";
 "Off" = "Off";
@@ -760,13 +769,16 @@
 "Remove" = "Remove";
 "Remove %@" = "Remove %@";
 "Remove API key" = "Remove API key";
+"Remove Background" = "Remove Background";
 "Remove Dead Air" = "Remove Dead Air";
 "Remove Marker" = "Remove Marker";
+"Remove Mask" = "Remove Mask";
 "Remove background sound and keep speech" = "Remove background sound and keep speech";
 "Remove filler words" = "Remove filler words";
 "Remove from Queue" = "Remove from Queue";
 "Remove from Recents" = "Remove from Recents";
 "Remove horizontal flip" = "Remove horizontal flip";
+"Remove mask" = "Remove mask";
 "Remove model" = "Remove model";
 "Remove vertical flip" = "Remove vertical flip";
 "Removes background noise from this audio using an on-device model." = "Removes background noise from this audio using an on-device model.";
@@ -999,6 +1011,7 @@
 "Top / Bottom" = "Top / Bottom";
 "Track Name" = "Track Name";
 "Tracking" = "Tracking";
+"Tracking object…" = "Tracking object…";
 "Transcribe" = "Transcribe";
 "Transcribe · %lld credits" = "Transcribe · %lld credits";
 "Transcribe · 1 credit" = "Transcribe · 1 credit";
