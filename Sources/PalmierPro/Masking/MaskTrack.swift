@@ -28,25 +28,26 @@ enum MaskRLE {
     }
 
     static func runs(from string: String, width: Int, height: Int) throws(DecodeError) -> [Run] {
+        guard width > 0, height > 0, width <= Int.max / height else { throw .outOfBounds }
         let area = width * height
-        var values: [Int] = []
-        for token in string.split(separator: " ") {
-            guard let value = Int(token), value >= 0 else { throw .malformedToken }
-            values.append(value)
-        }
-        guard values.count.isMultiple(of: 2) else { throw .oddPairCount }
+        let tokens = string.split(separator: " ")
+        guard tokens.count.isMultiple(of: 2) else { throw .oddPairCount }
 
         var runs: [Run] = []
-        runs.reserveCapacity(values.count / 2)
+        runs.reserveCapacity(tokens.count / 2)
         var previousEnd = -1
-        for i in stride(from: 0, to: values.count, by: 2) {
-            var run = Run(start: values[i], length: values[i + 1])
+        for i in stride(from: 0, to: tokens.count, by: 2) {
+            guard let start = Int(tokens[i]), start >= 0,
+                  let length = Int(tokens[i + 1]), length >= 0
+            else { throw .malformedToken }
+            var run = Run(start: start, length: length)
             guard run.length > 0 else { throw .nonPositiveLength }
             guard run.start > previousEnd else { throw .overlappingRuns }
-            let overrun = run.start + run.length - area
-            if overrun > 0 {
-                guard overrun <= width, run.start < area else { throw .outOfBounds }
-                run.length -= overrun
+            guard run.start < area else { throw .outOfBounds }
+            let available = area - run.start
+            if run.length > available {
+                guard run.length - available <= width else { throw .outOfBounds }
+                run.length = available
             }
             previousEnd = run.start + run.length - 1
             runs.append(run)

@@ -55,6 +55,9 @@ struct MaskRLETests {
         #expect(throws: MaskRLE.DecodeError.outOfBounds) {
             try MaskRLE.runs(from: "10000 1", width: 100, height: 100)
         }
+        #expect(throws: MaskRLE.DecodeError.outOfBounds) {
+            try MaskRLE.runs(from: "\(Int.max) 1", width: 100, height: 100)
+        }
         // Exactly reaching the last pixel is valid.
         #expect(throws: Never.self) {
             try MaskRLE.runs(from: "9998 2", width: 100, height: 100)
