@@ -86,9 +86,27 @@ enum MaskTrackingBackend {
     }
 }
 
-struct BackendMaskSeed: Encodable, ConvexEncodable, Sendable {
-    let type = "text"
-    let prompt: String
+enum BackendMaskSeed: Encodable, ConvexEncodable, Sendable {
+    case text(prompt: String)
+    case point(x: Int, y: Int, frameIndex: Int)
+
+    private enum CodingKeys: String, CodingKey {
+        case type, prompt, x, y, frameIndex
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .text(let prompt):
+            try c.encode("text", forKey: .type)
+            try c.encode(prompt, forKey: .prompt)
+        case .point(let x, let y, let frameIndex):
+            try c.encode("point", forKey: .type)
+            try c.encode(Double(x), forKey: .x)
+            try c.encode(Double(y), forKey: .y)
+            try c.encode(Double(frameIndex), forKey: .frameIndex)
+        }
+    }
 }
 
 enum BackendMaskStatus: String, Decodable, Sendable {

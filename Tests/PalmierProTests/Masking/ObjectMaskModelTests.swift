@@ -1,3 +1,4 @@
+import CoreMedia
 import Foundation
 import Testing
 @testable import PalmierPro
@@ -25,6 +26,15 @@ struct ObjectMaskModelTests {
             )
         )
         #expect(try roundTrip(mask) == mask)
+    }
+
+    @Test func pointSeedRoundTripsThroughJSON() throws {
+        let seed = MaskSeed.point(MaskPointSeed(
+            x: 0.25,
+            y: 0.75,
+            sourceTime: MaskSourceTime(CMTime(value: 1_001, timescale: 600))
+        ))
+        #expect(try roundTrip(seed) == seed)
     }
 
     @Test func decodingToleratesMissingOptionalFields() throws {

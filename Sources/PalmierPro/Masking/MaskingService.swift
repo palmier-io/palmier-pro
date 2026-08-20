@@ -45,17 +45,29 @@ actor MaskingService {
             fileURL: segmentURL,
             contentType: "video/mp4"
         )
-        let seed: BackendMaskSeed = switch request.seed {
-        case .text(let prompt): BackendMaskSeed(prompt: prompt)
+        let seed: BackendMaskSeed
+        switch request.seed {
+        case .text(let prompt):
+            seed = .text(prompt: prompt)
+        case .point(let point):
+            let mapped = try MaskPointMapper.map(
+                point,
+                trim: request.trim,
+                segmentWidth: segment.width,
+                segmentHeight: segment.height,
+                segmentFPS: segment.fps,
+                segmentFrameCount: segment.frameCount
+            )
+            seed = .point(x: mapped.x, y: mapped.y, frameIndex: mapped.frameIndex)
         }
         let submit = try await MaskTrackingBackend.submit(
             videoStorageId: videoStorageId,
-            frameCount: request.trim.sourceFramesConsumed,
+            frameCount: segment.frameCount,
             seed: seed,
             projectId: request.projectId
         )
         Log.masking.notice(
-            "mask-track submitted job=\(submit.jobId) mask=\(request.maskId) frames=\(request.trim.sourceFramesConsumed)"
+            "mask-track submitted job=\(submit.jobId) mask=\(request.maskId) frames=\(segment.frameCount)"
         )
 
         try await MaskTrackingBackend.waitForCompletion(jobId: submit.jobId)
@@ -91,19 +103,32 @@ actor MaskingService {
         return StagedTrack(track: track, matteURL: matteURL)
     }
 
-    private func probeSegment(at url: URL) async throws -> (width: Int, height: Int, fps: Double) {
+    private func probeSegment(
+        at url: URL
+    ) async throws -> (width: Int, height: Int, fps: Double, frameCount: Int) {
         let asset = AVURLAsset(url: url)
         guard let track = try await asset.loadTracks(withMediaType: .video).first else {
             throw ServiceError.invalidPayload
         }
-        let (size, nominalFrameRate) = try await track.load(.naturalSize, .nominalFrameRate)
-        guard size.width > 0, size.height > 0, nominalFrameRate > 0 else {
+        let (size, nominalFrameRate, timeRange) = try await track.load(
+            .naturalSize,
+            .nominalFrameRate,
+            .timeRange
+        )
+        let frameCountValue = timeRange.duration.seconds * Double(nominalFrameRate)
+        guard size.width > 0, size.height > 0,
+              nominalFrameRate > 0,
+              frameCountValue.isFinite,
+              frameCountValue >= 1,
+              frameCountValue <= Double(Int.max)
+        else {
             throw ServiceError.invalidPayload
         }
         return (
             Int(size.width.rounded()),
             Int(size.height.rounded()),
-            Double(nominalFrameRate)
+            Double(nominalFrameRate),
+            Int(frameCountValue.rounded())
         )
     }
 }

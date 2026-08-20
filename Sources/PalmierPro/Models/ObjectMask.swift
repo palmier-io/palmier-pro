@@ -1,3 +1,4 @@
+import CoreMedia
 import Foundation
 
 struct ObjectMask: Codable, Sendable, Equatable, Identifiable {
@@ -51,11 +52,32 @@ struct ObjectMask: Codable, Sendable, Equatable, Identifiable {
 
 enum MaskSeed: Sendable, Equatable {
     case text(String)
+    case point(MaskPointSeed)
+}
+
+struct MaskPointSeed: Codable, Sendable, Equatable {
+    var x: Double
+    var y: Double
+    var sourceTime: MaskSourceTime
+}
+
+struct MaskSourceTime: Codable, Sendable, Equatable {
+    var value: Int64
+    var timescale: Int32
+
+    init(_ time: CMTime) {
+        value = time.value
+        timescale = max(1, time.timescale)
+    }
+
+    var cmTime: CMTime {
+        CMTime(value: value, timescale: timescale)
+    }
 }
 
 extension MaskSeed: Codable {
     private enum CodingKeys: String, CodingKey {
-        case type, text
+        case type, text, point
     }
 
     init(from decoder: Decoder) throws {
@@ -63,6 +85,8 @@ extension MaskSeed: Codable {
         switch try c.decode(String.self, forKey: .type) {
         case "text":
             self = .text(try c.decode(String.self, forKey: .text))
+        case "point":
+            self = .point(try c.decode(MaskPointSeed.self, forKey: .point))
         case let type:
             throw DecodingError.dataCorruptedError(
                 forKey: .type, in: c, debugDescription: "Unsupported mask seed type: \(type)"
@@ -76,6 +100,9 @@ extension MaskSeed: Codable {
         case .text(let text):
             try c.encode("text", forKey: .type)
             try c.encode(text, forKey: .text)
+        case .point(let point):
+            try c.encode("point", forKey: .type)
+            try c.encode(point, forKey: .point)
         }
     }
 }
