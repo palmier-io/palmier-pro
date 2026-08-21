@@ -18,14 +18,51 @@ extension EditorViewModel {
         var animation: TextAnimation = TextAnimation()
     }
 
+    struct TimelineTranscriptWord: Sendable, Equatable {
+        let text: String
+        let startFrame: Int
+        let endFrame: Int
+
+        static func mapped(
+            from timings: [WordTiming]?,
+            timelineStartFrame: Int
+        ) -> [TimelineTranscriptWord] {
+            guard let timings, !timings.isEmpty else { return [] }
+            return timings.compactMap { timing in
+                let text = timing.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                let start = timelineStartFrame + timing.startFrame
+                let end = timelineStartFrame + timing.endFrame
+                guard !text.isEmpty, end > start else { return nil }
+                return TimelineTranscriptWord(text: text, startFrame: start, endFrame: end)
+            }
+        }
+    }
+
     struct TimelineTranscriptRow: Identifiable, Sendable, Equatable {
         let id: String
         let clipId: String
         let text: String
         let startFrame: Int
         let endFrame: Int
+        let words: [TimelineTranscriptWord]
 
         var durationFrames: Int { endFrame - startFrame }
+
+        init(
+            id: String,
+            clipId: String,
+            text: String,
+            startFrame: Int,
+            endFrame: Int,
+            words: [TimelineTranscriptWord] = []
+        ) {
+            self.id = id
+            self.clipId = clipId
+            self.text = text
+            self.startFrame = startFrame
+            self.endFrame = endFrame
+            self.words = words
+        }
     }
 
     struct TimelineTranscriptDocument: Sendable {
@@ -383,7 +420,11 @@ extension EditorViewModel {
                     clipId: target.clip.id,
                     text: spec.content,
                     startFrame: spec.startFrame,
-                    endFrame: spec.startFrame + spec.durationFrames
+                    endFrame: spec.startFrame + spec.durationFrames,
+                    words: TimelineTranscriptWord.mapped(
+                        from: spec.words,
+                        timelineStartFrame: spec.startFrame
+                    )
                 )
             }
         }

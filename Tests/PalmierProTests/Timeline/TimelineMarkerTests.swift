@@ -112,6 +112,25 @@ struct TimelineMarkerTests {
         #expect((first?.startFrame, first?.name) == (10, L10n.string("Marker 1")))
         #expect(second?.name == L10n.string("Marker 2"))
     }
+
+    @Test func markerFromTimelineRangeKeepsQuotedComment() {
+        let editor = EditorViewModel()
+        editor.setTimelineRange(startFrame: 12, endFrame: 40)
+        let marker = editor.addTimelineMarkerAtSelection(comment: "  Hello there  ")
+        #expect(marker?.startFrame == 12)
+        #expect(marker?.durationFrames == 28)
+        #expect(marker?.comment == "Hello there")
+        #expect(editor.selectedTimelineRange == nil)
+        #expect(marker.map { editor.selectedTimelineMarkerIds == [$0.id] } == true)
+    }
+
+    @Test func markerCommentIsClampedToTheMaximumLength() {
+        let editor = EditorViewModel()
+        editor.currentFrame = 8
+        let oversized = String(repeating: "a", count: TimelineMarker.maximumCommentLength + 8)
+        let marker = editor.addTimelineMarkerAtSelection(comment: oversized)
+        #expect(marker?.comment.count == TimelineMarker.maximumCommentLength)
+    }
     @Test func marqueeCrossingRulerSelectsMarkers() {
         let geometry = TimelineGeometry(pixelsPerFrame: 1, trackHeights: [50])
         let markers = [

@@ -22,16 +22,21 @@ extension EditorViewModel {
     }
 
     @discardableResult
-    func addTimelineMarkerAtSelection() -> TimelineMarker? {
+    func addTimelineMarkerAtSelection(comment: String = "") -> TimelineMarker? {
         guard case .timeline = activePreviewTab else {
             refuseWithToast(L10n.string("Select the timeline to add a marker."))
             return nil
         }
         let range = validSelectedTimelineRange
+        let clippedComment = String(
+            comment.trimmingCharacters(in: .whitespacesAndNewlines)
+                .prefix(TimelineMarker.maximumCommentLength)
+        )
         let marker = TimelineMarker(
             name: nextMarkerName(),
             startFrame: range?.startFrame ?? activeFrame,
-            durationFrames: range.map { $0.endFrame - $0.startFrame } ?? 0
+            durationFrames: range.map { $0.endFrame - $0.startFrame } ?? 0,
+            comment: clippedComment
         )
         do {
             let created = try changeTimelineMarkers(
