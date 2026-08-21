@@ -1379,6 +1379,28 @@ struct ToolExecutorClipTests {
         #expect(clip.cropTrack == nil)
     }
 
+    @Test func setClipPropertiesCropKeepsPlayheadMergeWhenTimingClampsCropTrack() async throws {
+        let (h, clipId) = await setupClipForKeyframes()
+        h.editor.currentFrame = 20
+        _ = await h.runRaw("set_keyframes", args: [
+            "clipId": clipId, "property": "crop",
+            "keyframes": [
+                [0, 0, 0, 0, 0, "linear"],
+                [40, 0.5, 0.5, 0.5, 0.5, "linear"],
+            ],
+        ])
+        let result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clipId],
+            "durationFrames": 30,
+            "crop": ["left": 0.2],
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let clip = try #require(h.editor.clipFor(id: clipId))
+        #expect(clip.crop == Crop(left: 0.2, top: 0.25, right: 0.25, bottom: 0.25))
+        #expect(clip.cropTrack == nil)
+        #expect(clip.durationFrames == 30)
+    }
+
     @Test func setClipPropertiesCropAllZerosRestoresFullSource() async throws {
         let (h, asset) = await setupWithVideoTrack()
         let clipId = await addedClip(in: h, asset: asset)

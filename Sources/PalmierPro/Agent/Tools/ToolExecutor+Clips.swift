@@ -202,16 +202,6 @@ struct ParsedCrop: Decodable {
         }
         return out
     }
-
-    func apply(to clip: inout Clip, at frame: Int) {
-        var out = clip.cropAt(frame: frame)
-        if let left { out.left = left }
-        if let top { out.top = top }
-        if let right { out.right = right }
-        if let bottom { out.bottom = bottom }
-        clip.crop = out
-        clip.cropTrack = nil
-    }
 }
 
 fileprivate struct AddClipSpec {
@@ -730,7 +720,8 @@ extension ToolExecutor {
                 throw ToolError("edgeRounding and edgeSoftness only apply to non-text visual clips: \(unsupported.joined(separator: ", "))")
             }
         }
-        if input.crop?.hasAnyField == true {
+        var crops: [String: Crop] = [:]
+        if let parsedCrop = input.crop, parsedCrop.hasAnyField {
             let unsupported = targetClips.filter {
                 $0.value.mediaType == .audio || $0.value.mediaType == .text
             }.map(\.key).sorted()
@@ -739,7 +730,10 @@ extension ToolExecutor {
             }
             for id in clipIds {
                 guard let clip = targetClips[id] else { continue }
-                _ = try input.crop?.merged(onto: clip.cropAt(frame: editor.activeFrame), path: "set_clip_properties.crop")
+                crops[id] = try parsedCrop.merged(
+                    onto: clip.cropAt(frame: editor.activeFrame),
+                    path: "set_clip_properties.crop"
+                )
             }
         }
 
@@ -787,7 +781,7 @@ extension ToolExecutor {
                     edgeRounding: input.edgeRounding,
                     edgeSoftness: input.edgeSoftness,
                     transform: input.transform,
-                    crop: input.crop,
+                    crop: crops[id],
                     blendMode: blendMode,
                     setBlendMode: setBlendMode,
                     clipId: id,
@@ -837,7 +831,7 @@ extension ToolExecutor {
         edgeRounding: Double?,
         edgeSoftness: Double?,
         transform: ParsedTransform?,
-        crop: ParsedCrop?,
+        crop: Crop?,
         blendMode: BlendMode?,
         setBlendMode: Bool,
         clipId: String,
@@ -876,8 +870,9 @@ extension ToolExecutor {
                 t.apply(to: &clip)
                 changed.append("transform")
             }
-            if let crop, crop.hasAnyField {
-                crop.apply(to: &clip, at: editor.activeFrame)
+            if let crop {
+                clip.crop = crop
+                clip.cropTrack = nil
                 changed.append("crop")
             }
         }
