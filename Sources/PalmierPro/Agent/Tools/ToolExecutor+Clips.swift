@@ -81,6 +81,7 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
     let edgeRounding: Double?
     let edgeSoftness: Double?
     let transform: ParsedTransform?
+    let crop: ParsedCrop?
     let blendMode: String?
 
     static let allowedKeys: Set<String> = Set([
@@ -89,7 +90,7 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
         "volumeDb", "opacity",
         "fadeInFrames", "fadeOutFrames", "fadeInInterpolation", "fadeOutInterpolation",
         "edgeRounding", "edgeSoftness",
-        "transform",
+        "transform", "crop",
         "blendMode",
     ])
 
@@ -100,6 +101,7 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
             || fadeInInterpolation != nil || fadeOutInterpolation != nil
             || edgeRounding != nil || edgeSoftness != nil
             || transform?.hasAnyField == true
+            || crop?.hasAnyField == true
             || blendMode != nil
     }
 }
@@ -162,6 +164,43 @@ struct ParsedTransform: Decodable {
         if let rotation { clip.transform.rotation = rotation; clip.rotationTrack = nil }
         if let flipHorizontal { clip.transform.flipHorizontal = flipHorizontal }
         if let flipVertical { clip.transform.flipVertical = flipVertical }
+    }
+}
+
+/// Partial source crop for generic clip property updates. Insets are 0–1 of the source.
+struct ParsedCrop: Decodable {
+    var left: Double?
+    var top: Double?
+    var right: Double?
+    var bottom: Double?
+
+    static let allowedKeys: Set<String> = ["left", "top", "right", "bottom"]
+
+    var hasAnyField: Bool {
+        left != nil || top != nil || right != nil || bottom != nil
+    }
+
+    func merged(onto crop: Crop, path: String) throws -> Crop {
+        func inset(_ value: Double?, name: String) throws -> Double? {
+            guard let value else { return nil }
+            guard value >= 0 else {
+                throw ToolError("\(path).\(name) must be >= 0 (got \(value))")
+            }
+            return value
+        }
+        var out = crop
+        if let left = try inset(left, name: "left") { out.left = left }
+        if let top = try inset(top, name: "top") { out.top = top }
+        if let right = try inset(right, name: "right") { out.right = right }
+        if let bottom = try inset(bottom, name: "bottom") { out.bottom = bottom }
+        guard out.visibleWidthFraction >= Crop.minimumVisibleFraction,
+              out.visibleHeightFraction >= Crop.minimumVisibleFraction else {
+            throw ToolError(
+                "\(path) must leave at least \(Crop.minimumVisibleFraction) of the source visible on each axis "
+                    + "(got width \(out.visibleWidthFraction), height \(out.visibleHeightFraction))"
+            )
+        }
+        return out
     }
 }
 
@@ -564,6 +603,16 @@ extension ToolExecutor {
                 path: "set_clip_properties.transform"
             )
         }
+        if let rawCrop = args["crop"] {
+            guard let crop = rawCrop as? [String: Any] else {
+                throw ToolError("set_clip_properties.crop: expected object")
+            }
+            try validateUnknownKeys(
+                crop,
+                allowed: ParsedCrop.allowedKeys,
+                path: "set_clip_properties.crop"
+            )
+        }
         let input: SetClipPropertiesInput = try decodeToolArgs(args, path: "set_clip_properties")
         let clipIds = input.clipIds ?? []
         guard !clipIds.isEmpty else { throw ToolError("Provide a non-empty 'clipIds' array") }
@@ -621,7 +670,7 @@ extension ToolExecutor {
 
         if clipIds.contains(where: { editor.clipFor(id: $0)?.multicamGroupId != nil }),
            input.trimStartFrame != nil || input.trimEndFrame != nil || input.durationFrames != nil || input.speed != nil {
-            throw ToolError("Timing fields would slip a multicam clip out of sync — switch angles with change_cam; split/delete and property fields (volumeDb, opacity, edgeRounding, edgeSoftness, transform) stay editable.")
+            throw ToolError("Timing fields would slip a multicam clip out of sync — switch angles with change_cam; split/delete and property fields (volumeDb, opacity, edgeRounding, edgeSoftness, transform, crop) stay editable.")
         }
 
         if input.fadeInFrames != nil || input.fadeOutFrames != nil {
@@ -671,6 +720,22 @@ extension ToolExecutor {
                 throw ToolError("edgeRounding and edgeSoftness only apply to non-text visual clips: \(unsupported.joined(separator: ", "))")
             }
         }
+        var crops: [String: Crop] = [:]
+        if let parsedCrop = input.crop, parsedCrop.hasAnyField {
+            let unsupported = targetClips.filter {
+                $0.value.mediaType == .audio || $0.value.mediaType == .text
+            }.map(\.key).sorted()
+            if !unsupported.isEmpty {
+                throw ToolError("crop only applies to non-text visual clips: \(unsupported.joined(separator: ", "))")
+            }
+            for id in clipIds {
+                guard let clip = targetClips[id] else { continue }
+                crops[id] = try parsedCrop.merged(
+                    onto: clip.cropAt(frame: editor.activeFrame),
+                    path: "set_clip_properties.crop"
+                )
+            }
+        }
 
         // Expand timing fields to linked partners via the shared model helper.
         // Partners drop trim/speed when they're text — handled per-partner below.
@@ -687,6 +752,7 @@ extension ToolExecutor {
             return (input.volumeDb != nil && clip.volumeTrack != nil)
                 || (input.opacity != nil && clip.opacityTrack != nil)
                 || (input.transform?.rotation != nil && clip.rotationTrack != nil)
+                || (input.crop?.hasAnyField == true && clip.cropTrack != nil)
         }
         if !clearedKeyframes.isEmpty {
             notes.append("Setting a static value cleared existing keyframes on: \(clearedKeyframes.joined(separator: ", ")).")
@@ -715,6 +781,7 @@ extension ToolExecutor {
                     edgeRounding: input.edgeRounding,
                     edgeSoftness: input.edgeSoftness,
                     transform: input.transform,
+                    crop: crops[id],
                     blendMode: blendMode,
                     setBlendMode: setBlendMode,
                     clipId: id,
@@ -733,7 +800,7 @@ extension ToolExecutor {
                     volumeDb: nil, opacity: nil,
                     fadeInFrames: nil, fadeOutFrames: nil,
                     fadeInInterpolation: nil, fadeOutInterpolation: nil,
-                    edgeRounding: nil, edgeSoftness: nil, transform: nil,
+                    edgeRounding: nil, edgeSoftness: nil, transform: nil, crop: nil,
                     blendMode: nil, setBlendMode: false,
                     clipId: partnerId,
                     editor: editor
@@ -764,6 +831,7 @@ extension ToolExecutor {
         edgeRounding: Double?,
         edgeSoftness: Double?,
         transform: ParsedTransform?,
+        crop: Crop?,
         blendMode: BlendMode?,
         setBlendMode: Bool,
         clipId: String,
@@ -801,6 +869,11 @@ extension ToolExecutor {
             if let t = transform {
                 t.apply(to: &clip)
                 changed.append("transform")
+            }
+            if let crop {
+                clip.crop = crop
+                clip.cropTrack = nil
+                changed.append("crop")
             }
         }
         return changed
