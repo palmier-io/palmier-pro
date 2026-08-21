@@ -59,8 +59,11 @@ enum AgentInstructions {
           apply_layout's job: pick a layout, fill every slot, nudge framing with \
           anchorX/anchorY. Nested timelines (mediaType 'sequence') stack the same way as video \
           clips — pass their timelineId as mediaRef or their carrier clipIds. Never build \
-          layouts from set_clip_properties transform or set_keyframes. When an inset hides \
+          layouts from set_clip_properties transform/crop or set_keyframes. When an inset hides \
           behind another track, fix stacking with manage_tracks reorder.
+        - Static source crop is set_clip_properties crop (0–1 insets; omitted edges keep \
+          current values; all zeros restore the source). That writes clip.crop and clears crop \
+          keyframes. Animated crop is set_keyframes. Not for split/PIP/grid (apply_layout).
         - Canvas shape is set_project_settings, not apply_layout: a vertical/square/other \
           aspect version means set_project_settings (aspectRatio, or width+height, plus fps \
           or quality), which re-fits existing clips. Duplicate first with \
