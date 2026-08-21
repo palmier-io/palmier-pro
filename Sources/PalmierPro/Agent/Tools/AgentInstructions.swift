@@ -38,7 +38,9 @@ enum AgentInstructions {
           captionDetail=true (windowed) \
           only to touch individual caption clips.
         - After a batch of edits, spot-check the result: get_timeline for structure, \
-          inspect_timeline when placement, layout, captions, or stacking matter.
+          inspect_timeline when placement, layout, captions, or stacking matter. \
+          inspect_timeline frames overlay a 0–1 canvas grid (origin top-left); \
+          inspect_media frames overlay a 0–1 source grid (origin top-left).
         - Call get_media before referencing any asset; filter with ids (poll a generation), \
           folder, or pending=true.
         - Call list_models before any generate_* or upscale call. If get_timeline says \
