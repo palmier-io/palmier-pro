@@ -39,12 +39,19 @@ struct InspectFrameOverlayTests {
     @Test func encodePreservesAlphaAsPNGAndOpaqueAsJPEG() throws {
         let transparent = try #require(InspectFrameOverlay.encode(checker(200, 200)))
         #expect(transparent.mime == "image/png")
+        #expect(transparent.data.count <= ImageEncoder.maxBytes)
         let png = try #require(NSBitmapImageRep(data: transparent.data))
         let clear = try #require(png.colorAt(x: 35, y: 75))
         #expect(clear.alphaComponent < 0.05)
 
         let opaque = try #require(InspectFrameOverlay.encode(solid(200, 200)))
         #expect(opaque.mime == "image/jpeg")
+        #expect(opaque.data.count <= ImageEncoder.maxBytes)
+    }
+
+    @Test func encodeKeepsLargeAlphaStillsWithinInspectBudget() throws {
+        let encoded = try #require(InspectFrameOverlay.encode(noisyRGBA(ImageEncoder.maxLongestEdge, ImageEncoder.maxLongestEdge)))
+        #expect(encoded.data.count <= ImageEncoder.maxBytes)
     }
 
     @Test func captionMarksTopLeft() {
@@ -89,6 +96,28 @@ struct InspectFrameOverlayTests {
         ctx.setFillColor(CGColor(srgbRed: 1, green: 0, blue: 0, alpha: 1))
         ctx.fill(CGRect(x: 0, y: 0, width: 40, height: 40))
         return ctx.makeImage()!
+    }
+
+    /// High-entropy RGBA so PNG of a max-edge still would exceed the inspect budget.
+    private func noisyRGBA(_ width: Int, _ height: Int) -> CGImage {
+        let bytesPerRow = width * 4
+        var pixels = Data(count: bytesPerRow * height)
+        return pixels.withUnsafeMutableBytes { raw in
+            let buf = raw.bindMemory(to: UInt8.self)
+            for i in stride(from: 0, to: buf.count, by: 4) {
+                buf[i] = UInt8(truncatingIfNeeded: i &* 131)
+                buf[i + 1] = UInt8(truncatingIfNeeded: i &* 67)
+                buf[i + 2] = UInt8(truncatingIfNeeded: i / 17)
+                buf[i + 3] = 255
+            }
+            let ctx = CGContext(
+                data: buf.baseAddress, width: width, height: height,
+                bitsPerComponent: 8, bytesPerRow: bytesPerRow,
+                space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            )!
+            return ctx.makeImage()!
+        }
     }
 
     private func isLit(_ pixels: NSBitmapImageRep, x: Int, y: Int) -> Bool {

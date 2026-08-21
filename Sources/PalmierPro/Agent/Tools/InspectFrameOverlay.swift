@@ -11,15 +11,11 @@ enum InspectFrameOverlay: Sendable {
         overlay(on: image, caption: caption) ?? image
     }
 
-    /// Grid overlay encoded as PNG when the source has alpha, JPEG otherwise.
-    nonisolated static func encode(_ image: CGImage, caption: String? = nil, jpegQuality: CGFloat = 0.85) -> (data: Data, mime: String)? {
+    /// Grid overlay encoded within `ImageEncoder.maxBytes`. PNG when the source has alpha and fits.
+    nonisolated static func encode(_ image: CGImage, caption: String? = nil) -> (data: Data, mime: String)? {
         let overlaid = apply(image, caption: caption)
-        if hasAlpha(image) {
-            guard let data = ImageEncoder.encodePNG(overlaid) else { return nil }
-            return (data, "image/png")
-        }
-        guard let data = ImageEncoder.encodeJPEG(overlaid, quality: jpegQuality) else { return nil }
-        return (data, "image/jpeg")
+        guard let output = ImageEncoder.encodeWithinBudget(overlaid, preferPNG: hasAlpha(image)) else { return nil }
+        return (output.data, output.mime)
     }
 
     nonisolated static func hasAlpha(_ image: CGImage) -> Bool {
