@@ -84,7 +84,6 @@ struct InspectFrameOverlayTests {
         return ctx.makeImage()!
     }
 
-    /// Opaque red square on a fully transparent field.
     private func checker(_ width: Int, _ height: Int) -> CGImage {
         let ctx = CGContext(
             data: nil, width: width, height: height,
@@ -98,7 +97,6 @@ struct InspectFrameOverlayTests {
         return ctx.makeImage()!
     }
 
-    /// High-entropy RGBA so PNG of a max-edge still would exceed the inspect budget.
     private func noisyRGBA(_ width: Int, _ height: Int) -> CGImage {
         let bytesPerRow = width * 4
         var pixels = Data(count: bytesPerRow * height)

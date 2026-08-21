@@ -2,16 +2,13 @@ import CoreGraphics
 import CoreText
 import Foundation
 
-/// 0–1 coordinate grid burned into inspect screenshots (origin top-left).
 enum InspectFrameOverlay: Sendable {
     static let metadataNote = "0-1, origin top-left"
 
-    /// Falls back to the source image if overlay drawing fails.
     nonisolated static func apply(_ image: CGImage, caption: String? = nil) -> CGImage {
         overlay(on: image, caption: caption) ?? image
     }
 
-    /// Grid overlay encoded within `ImageEncoder.maxBytes`. PNG when the source has alpha and fits.
     nonisolated static func encode(_ image: CGImage, caption: String? = nil) -> (data: Data, mime: String)? {
         let overlaid = apply(image, caption: caption)
         guard let output = ImageEncoder.encodeWithinBudget(overlaid, preferPNG: hasAlpha(image)) else { return nil }
@@ -82,7 +79,6 @@ enum InspectFrameOverlay: Sendable {
             let textW = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
             let x = t * w
             let y = (1 - t) * h
-            // X ticks along the bottom; Y ticks along the right. Skip duplicate 1 at the corner.
             if t != 1 {
                 fillChip(in: ctx, x: min(max(0, x - textW / 2), w - textW - 2), y: 2, width: textW + 4, height: fontSize + 3)
                 ctx.textPosition = CGPoint(x: min(max(2, x - textW / 2), w - textW - 2) + 2, y: 4)

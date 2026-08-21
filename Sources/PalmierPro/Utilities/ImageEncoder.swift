@@ -44,7 +44,6 @@ enum ImageEncoder {
         return CGImageDestinationFinalize(dest) ? buffer as Data : nil
     }
 
-    /// PNG when `preferPNG` and the result fits `maxBytes`; otherwise JPEG down the quality ladder.
     nonisolated static func encodeWithinBudget(_ image: CGImage, preferPNG: Bool = false) -> Output? {
         if preferPNG, let png = encodePNG(image), png.count <= maxBytes {
             return Output(data: png, mime: "image/png")
