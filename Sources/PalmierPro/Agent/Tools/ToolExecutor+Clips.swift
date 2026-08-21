@@ -203,11 +203,13 @@ struct ParsedCrop: Decodable {
         return out
     }
 
-    func apply(to clip: inout Clip) {
-        if let left { clip.crop.left = left }
-        if let top { clip.crop.top = top }
-        if let right { clip.crop.right = right }
-        if let bottom { clip.crop.bottom = bottom }
+    func apply(to clip: inout Clip, at frame: Int) {
+        var out = clip.cropAt(frame: frame)
+        if let left { out.left = left }
+        if let top { out.top = top }
+        if let right { out.right = right }
+        if let bottom { out.bottom = bottom }
+        clip.crop = out
         clip.cropTrack = nil
     }
 }
@@ -737,7 +739,7 @@ extension ToolExecutor {
             }
             for id in clipIds {
                 guard let clip = targetClips[id] else { continue }
-                _ = try input.crop?.merged(onto: clip.crop, path: "set_clip_properties.crop")
+                _ = try input.crop?.merged(onto: clip.cropAt(frame: editor.activeFrame), path: "set_clip_properties.crop")
             }
         }
 
@@ -875,7 +877,7 @@ extension ToolExecutor {
                 changed.append("transform")
             }
             if let crop, crop.hasAnyField {
-                crop.apply(to: &clip)
+                crop.apply(to: &clip, at: editor.activeFrame)
                 changed.append("crop")
             }
         }

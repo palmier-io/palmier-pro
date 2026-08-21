@@ -1364,6 +1364,21 @@ struct ToolExecutorClipTests {
         #expect(clip.crop == Crop(left: 0.25, top: 0.2, right: 0.3, bottom: 0.4))
     }
 
+    @Test func setClipPropertiesCropMergesOmittedEdgesFromKeyedCrop() async throws {
+        let (h, clipId) = await setupClipForKeyframes()
+        _ = await h.runRaw("set_keyframes", args: [
+            "clipId": clipId, "property": "crop",
+            "keyframes": [[0, 0.1, 0.2, 0.3, 0.15]],
+        ])
+        let result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clipId], "crop": ["left": 0.25],
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let clip = try #require(h.editor.clipFor(id: clipId))
+        #expect(clip.crop == Crop(left: 0.25, top: 0.1, right: 0.2, bottom: 0.3))
+        #expect(clip.cropTrack == nil)
+    }
+
     @Test func setClipPropertiesCropAllZerosRestoresFullSource() async throws {
         let (h, asset) = await setupWithVideoTrack()
         let clipId = await addedClip(in: h, asset: asset)
