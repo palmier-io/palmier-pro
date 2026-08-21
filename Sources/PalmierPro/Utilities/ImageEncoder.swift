@@ -44,6 +44,18 @@ enum ImageEncoder {
         return CGImageDestinationFinalize(dest) ? buffer as Data : nil
     }
 
+    nonisolated static func encodeWithinBudget(_ image: CGImage, preferPNG: Bool = false) -> Output? {
+        if preferPNG, let png = encodePNG(image), png.count <= maxBytes {
+            return Output(data: png, mime: "image/png")
+        }
+        for quality in jpegQualities {
+            if let data = encodeJPEG(image, quality: quality), data.count <= maxBytes {
+                return Output(data: data, mime: "image/jpeg")
+            }
+        }
+        return nil
+    }
+
     nonisolated static func metadata(url: URL, thumbnailMaxPixelSize: Int? = nil) -> ImageMetadata {
         guard let source = imageSource(url: url) else {
             return ImageMetadata(width: nil, height: nil, thumbnail: nil)
@@ -86,14 +98,11 @@ enum ImageEncoder {
         return Output(data: data, mime: mime)
     }
 
+    private static let jpegQualities: [CGFloat] = [0.85, 0.7, 0.55, 0.4]
+
     private static func downscaled(url: URL) -> Output? {
         guard let image = thumbnail(url: url, maxPixelSize: maxLongestEdge) else { return nil }
-        for quality in [0.85, 0.7, 0.55, 0.4] as [CGFloat] {
-            if let data = encodeJPEG(image, quality: quality), data.count <= maxBytes {
-                return Output(data: data, mime: "image/jpeg")
-            }
-        }
-        return nil
+        return encodeWithinBudget(image)
     }
 
     // MARK: - Cache
