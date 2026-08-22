@@ -24,8 +24,25 @@ extension EditorViewModel {
         let text: String
         let startFrame: Int
         let endFrame: Int
+        let words: [WordTiming]
 
         var durationFrames: Int { endFrame - startFrame }
+
+        init(
+            id: String,
+            clipId: String,
+            text: String,
+            startFrame: Int,
+            endFrame: Int,
+            words: [WordTiming] = []
+        ) {
+            self.id = id
+            self.clipId = clipId
+            self.text = text
+            self.startFrame = startFrame
+            self.endFrame = endFrame
+            self.words = words
+        }
     }
 
     struct TimelineTranscriptDocument: Sendable {
@@ -383,7 +400,8 @@ extension EditorViewModel {
                     clipId: target.clip.id,
                     text: spec.content,
                     startFrame: spec.startFrame,
-                    endFrame: spec.startFrame + spec.durationFrames
+                    endFrame: spec.startFrame + spec.durationFrames,
+                    words: spec.words?.compactMap { $0.shifted(by: spec.startFrame) } ?? []
                 )
             }
         }

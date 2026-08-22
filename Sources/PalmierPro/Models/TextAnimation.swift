@@ -4,6 +4,12 @@ struct WordTiming: Codable, Sendable, Equatable, Hashable {
     var text: String
     var startFrame: Int
     var endFrame: Int
+
+    func shifted(by frames: Int) -> WordTiming? {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, endFrame > startFrame else { return nil }
+        return WordTiming(text: text, startFrame: frames + startFrame, endFrame: frames + endFrame)
+    }
 }
 
 struct TextAnimation: Codable, Sendable, Equatable {
