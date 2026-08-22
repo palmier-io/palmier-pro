@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct TranscriptBrowser: View {
@@ -9,6 +10,10 @@ struct TranscriptBrowser: View {
 
     @State private var searchQuery = ""
     @State private var jumpTargetId: String?
+    @State private var selectedWords: ClosedRange<Int>?
+    @State private var selectionAnchor: Int?
+    @State private var dragAnchor: Int?
+    @State private var wordFrames: [Int: CGRect] = [:]
     @FocusState private var isSearchFocused: Bool
 
     var body: some View {
@@ -17,6 +22,8 @@ struct TranscriptBrowser: View {
             document.rows,
             matching: query
         )
+        let words = TranscriptBrowserNavigation.words(from: rows)
+        let selected: Set<Int> = selectedWords.map { Set($0) } ?? []
         let timelineIndex = TranscriptBrowserTimelineIndex(
             sortedRows: document.rows
         )
@@ -43,11 +50,21 @@ struct TranscriptBrowser: View {
                                 TranscriptBrowserRow(
                                     row: row,
                                     fps: document.fps,
-                                    playheadState: editor.playheadState
+                                    playheadFrame: editor.playheadState.timelineFrame,
+                                    words: words,
+                                    selectedWords: selected,
+                                    onSelectRow: { selectRow(row.id, words: words) },
+                                    onDragChanged: { updateDrag($0, words: words, seek: false) },
+                                    onDragEnded: {
+                                        updateDrag($0, words: words, seek: true)
+                                        dragAnchor = nil
+                                    }
                                 )
                                 .id(row.id)
                             }
                         }
+                        .coordinateSpace(name: "transcript")
+                        .onPreferenceChange(TranscriptWordFramesKey.self) { wordFrames = $0 }
                     }
                 }
             }
@@ -62,6 +79,61 @@ struct TranscriptBrowser: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onChange(of: source) { _, _ in
+            selectedWords = nil
+            selectionAnchor = nil
+            dragAnchor = nil
+        }
+        .onChange(of: searchQuery) { _, _ in
+            selectedWords = nil
+            selectionAnchor = nil
+            dragAnchor = nil
+        }
+    }
+
+    private func updateDrag(
+        _ value: DragGesture.Value,
+        words: [TranscriptWord],
+        seek: Bool
+    ) {
+        let start = TranscriptBrowserNavigation.wordIndex(at: value.startLocation, frames: wordFrames)
+        let hit = TranscriptBrowserNavigation.wordIndex(at: value.location, frames: wordFrames) ?? start
+        guard let start, let hit else { return }
+        if dragAnchor == nil {
+            if NSEvent.modifierFlags.contains(.shift), let selectionAnchor {
+                dragAnchor = selectionAnchor
+            } else {
+                dragAnchor = start
+                selectionAnchor = start
+            }
+        }
+        applySelection(from: dragAnchor ?? start, to: hit, words: words, seek: seek)
+    }
+
+    private func selectRow(_ rowId: String, words: [TranscriptWord]) {
+        let indices = words.indices.filter { words[$0].rowId == rowId }
+        guard let first = indices.first, let last = indices.last else { return }
+        selectionAnchor = first
+        applySelection(from: first, to: last, words: words, seek: true)
+    }
+
+    private func applySelection(
+        from start: Int,
+        to end: Int,
+        words: [TranscriptWord],
+        seek: Bool
+    ) {
+        guard let range = TranscriptBrowserNavigation.timelineRange(
+            from: words,
+            startIndex: start,
+            endIndex: end
+        ) else { return }
+        selectedWords = min(start, end)...max(start, end)
+        editor.selectPreviewTab(id: PreviewTab.timeline.id)
+        editor.selectedClipIds.removeAll()
+        editor.selectedGap = nil
+        editor.setTimelineRange(startFrame: range.startFrame, endFrame: range.endFrame)
+        if seek { editor.seekToFrame(range.startFrame) }
     }
 
     private func controls(
@@ -188,10 +260,14 @@ private struct TranscriptJumpToPlayheadButton: View {
 }
 
 private struct TranscriptBrowserRow: View {
-    @Environment(EditorViewModel.self) private var editor
     let row: EditorViewModel.TimelineTranscriptRow
     let fps: Int
-    let playheadState: PreviewPlayheadState
+    let playheadFrame: Int
+    let words: [TranscriptWord]
+    let selectedWords: Set<Int>
+    let onSelectRow: () -> Void
+    let onDragChanged: (DragGesture.Value) -> Void
+    let onDragEnded: (DragGesture.Value) -> Void
 
     var body: some View {
         let startTimecode = formatTimecode(frame: row.startFrame, fps: fps)
@@ -199,58 +275,82 @@ private struct TranscriptBrowserRow: View {
             durationFrames: row.durationFrames,
             fps: fps
         )
+        let rowWords = Array(words.enumerated().filter { $0.element.rowId == row.id })
 
-        Button(action: select) {
-            HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
-                HStack(spacing: AppTheme.Spacing.xxs) {
-                    Text(verbatim: startTimecode)
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
-                        .monospacedDigit()
-                        .frame(
-                            width: AppTheme.MediaPanel.captionIndexTimecodeWidth,
-                            alignment: .leading
+        HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
+            HStack(spacing: AppTheme.Spacing.xxs) {
+                Text(verbatim: startTimecode)
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .monospacedDigit()
+                    .frame(
+                        width: AppTheme.MediaPanel.captionIndexTimecodeWidth,
+                        alignment: .leading
+                    )
+                Text(verbatim: durationLabel ?? "")
+                    .foregroundStyle(AppTheme.Text.mutedColor)
+                    .monospacedDigit()
+                    .frame(
+                        width: AppTheme.MediaPanel.captionIndexDurationWidth,
+                        alignment: .leading
+                    )
+            }
+            .font(.system(
+                size: AppTheme.FontSize.xs,
+                weight: AppTheme.FontWeight.medium
+            ))
+            .lineLimit(1)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onSelectRow)
+
+            TranscriptWordWrap(spacing: AppTheme.Spacing.zero) {
+                ForEach(rowWords, id: \.offset) { index, word in
+                    Text(verbatim: word.text + (index == rowWords.last?.offset ? "" : " "))
+                        .foregroundStyle(
+                            word.startFrame <= playheadFrame && playheadFrame < word.endFrame
+                                ? AppTheme.Accent.timecodeColor
+                                : AppTheme.Text.primaryColor
                         )
-                    Text(verbatim: durationLabel ?? "")
-                        .foregroundStyle(AppTheme.Text.mutedColor)
-                        .monospacedDigit()
-                        .frame(
-                            width: AppTheme.MediaPanel.captionIndexDurationWidth,
-                            alignment: .leading
+                        .padding(.vertical, AppTheme.Spacing.xxs)
+                        .background(
+                            RoundedRectangle(cornerRadius: AppTheme.Radius.xs, style: .continuous)
+                                .fill(
+                                    selectedWords.contains(index)
+                                        ? AppTheme.Interaction.fill(AppTheme.Opacity.muted)
+                                        : Color.clear
+                                )
+                        )
+                        .background(
+                            GeometryReader { geometry in
+                                Color.clear.preference(
+                                    key: TranscriptWordFramesKey.self,
+                                    value: [index: geometry.frame(in: .named("transcript"))]
+                                )
+                            }
                         )
                 }
-                .font(.system(
-                    size: AppTheme.FontSize.xs,
-                    weight: AppTheme.FontWeight.medium
-                ))
-                .lineLimit(1)
-
-                TranscriptBrowserPlayheadText(
-                    content: row.text,
-                    startFrame: row.startFrame,
-                    endFrame: row.endFrame,
-                    playheadState: playheadState
-                )
-                .font(.system(size: AppTheme.FontSize.smMd))
-                .lineSpacing(AppTheme.Spacing.zero)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, AppTheme.Spacing.sm)
-            .padding(.vertical, AppTheme.Spacing.sm)
+            .font(.system(size: AppTheme.FontSize.smMd))
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .named("transcript"))
+                    .onChanged(onDragChanged)
+                    .onEnded(onDragEnded)
+            )
         }
-        .buttonStyle(.plain)
-        .hoverHighlight(
-            cornerRadius: AppTheme.Radius.xs,
-            isActive: editor.selectedClipIds.contains(row.clipId)
-        )
+        .padding(.horizontal, AppTheme.Spacing.sm)
+        .padding(.vertical, AppTheme.Spacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .hoverHighlight(cornerRadius: AppTheme.Radius.xs)
         .padding(.horizontal, AppTheme.Spacing.xxs)
         .accessibilityLabel(Text(verbatim: row.text))
         .accessibilityValue(Text(verbatim: accessibilityValue(
             startTimecode: startTimecode,
             durationLabel: durationLabel
         )))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction(named: L10n.string("Select"), onSelectRow)
     }
 
     private func accessibilityValue(startTimecode: String, durationLabel: String?) -> String {
@@ -259,46 +359,56 @@ private struct TranscriptBrowserRow: View {
         }
         return startTimecode
     }
-
-    private func select() {
-        editor.selectPreviewTab(id: PreviewTab.timeline.id)
-        editor.selectedGap = nil
-        editor.selectedTimelineRange = nil
-        editor.selectedTimelineMarkerIds = []
-        editor.selectedClipIds = Set(
-            [row.clipId] + editor.linkedPartnerIds(of: row.clipId)
-        )
-        editor.seekToFrame(row.startFrame)
-    }
 }
 
-private struct TranscriptBrowserPlayheadText: View {
-    let content: String
-    let startFrame: Int
-    let endFrame: Int
-    let playheadState: PreviewPlayheadState
+private struct TranscriptWordWrap: SwiftUI.Layout {
+    let spacing: CGFloat
 
-    var body: some View {
-        let frame = playheadState.timelineFrame
-        TranscriptBrowserCurrentText(
-            content: content,
-            isCurrent: startFrame <= frame && frame < endFrame
-        )
-        .equatable()
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: LayoutSubviews,
+        cache: inout ()
+    ) -> CGSize {
+        arrangement(width: proposal.width ?? .greatestFiniteMagnitude, subviews: subviews).size
     }
-}
 
-private struct TranscriptBrowserCurrentText: View, Equatable {
-    let content: String
-    let isCurrent: Bool
-
-    var body: some View {
-        Text(verbatim: content)
-            .foregroundStyle(
-                isCurrent
-                    ? AppTheme.Accent.timecodeColor
-                    : AppTheme.Text.primaryColor
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: LayoutSubviews,
+        cache: inout ()
+    ) {
+        for (subview, frame) in zip(subviews, arrangement(width: bounds.width, subviews: subviews).frames) {
+            subview.place(
+                at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+                proposal: ProposedViewSize(frame.size)
             )
+        }
+    }
+
+    private func arrangement(width: CGFloat, subviews: LayoutSubviews) -> (size: CGSize, frames: [CGRect]) {
+        var frames: [CGRect] = []
+        var cursor = CGPoint.zero
+        var rowHeight: CGFloat = 0
+        var contentWidth: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(ProposedViewSize.unspecified)
+            let nextX = cursor.x == 0 ? 0 : cursor.x + spacing
+            if nextX + size.width > width, cursor.x > 0 {
+                cursor.x = 0
+                cursor.y += rowHeight + spacing
+                rowHeight = 0
+            } else {
+                cursor.x = nextX
+            }
+            frames.append(CGRect(origin: cursor, size: size))
+            cursor.x += size.width
+            rowHeight = max(rowHeight, size.height)
+            contentWidth = max(contentWidth, cursor.x)
+        }
+
+        return (CGSize(width: contentWidth, height: cursor.y + rowHeight), frames)
     }
 }
 
@@ -370,13 +480,14 @@ enum TranscriptBrowserNavigation {
                     $0.mediaType == .text && $0.captionGroupId == groupId
                 }
                 .sorted { ($0.startFrame, $0.id) < ($1.startFrame, $1.id) }
-                .map {
+                .map { clip in
                     EditorViewModel.TimelineTranscriptRow(
-                        id: $0.id,
-                        clipId: $0.id,
-                        text: $0.textContent ?? "",
-                        startFrame: $0.startFrame,
-                        endFrame: $0.endFrame
+                        id: clip.id,
+                        clipId: clip.id,
+                        text: clip.textContent ?? "",
+                        startFrame: clip.startFrame,
+                        endFrame: clip.endFrame,
+                        words: clip.wordTimings?.compactMap { $0.shifted(by: clip.startFrame) } ?? []
                     )
                 }
                 documents.append(EditorViewModel.TimelineTranscriptDocument(
@@ -398,5 +509,69 @@ enum TranscriptBrowserNavigation {
         return rows.filter {
             query.isEmpty || $0.text.localizedCaseInsensitiveContains(query)
         }
+    }
+
+    static func words(from rows: [EditorViewModel.TimelineTranscriptRow]) -> [TranscriptWord] {
+        rows.flatMap { row in
+            let timings = row.words.isEmpty
+                ? [WordTiming(text: row.text, startFrame: row.startFrame, endFrame: row.endFrame)]
+                : row.words
+            return timings.map {
+                TranscriptWord(
+                    rowId: row.id,
+                    text: $0.text,
+                    startFrame: $0.startFrame,
+                    endFrame: $0.endFrame
+                )
+            }
+        }
+    }
+
+    static func timelineRange(
+        from words: [TranscriptWord],
+        startIndex: Int,
+        endIndex: Int
+    ) -> TimelineRangeSelection? {
+        guard words.indices.contains(startIndex), words.indices.contains(endIndex) else {
+            return nil
+        }
+        let lower = min(startIndex, endIndex)
+        let upper = max(startIndex, endIndex)
+        let start = words[lower...upper].map(\.startFrame).min() ?? words[lower].startFrame
+        let end = words[lower...upper].map(\.endFrame).max() ?? words[upper].endFrame
+        let range = TimelineRangeSelection(startFrame: start, endFrame: max(start + 1, end))
+        return range.isValid ? range : nil
+    }
+
+    static func wordIndex(at point: CGPoint, frames: [Int: CGRect]) -> Int? {
+        if let exact = frames.first(where: { $0.value.contains(point) }) {
+            return exact.key
+        }
+        let rowHits = frames.filter { $0.value.minY <= point.y && point.y < $0.value.maxY }
+        let candidates = rowHits.isEmpty ? frames : rowHits
+        return candidates.min { lhs, rhs in
+            distance(point, lhs.value) < distance(point, rhs.value)
+        }?.key
+    }
+
+    private static func distance(_ point: CGPoint, _ rect: CGRect) -> CGFloat {
+        let dx = max(rect.minX - point.x, 0, point.x - rect.maxX)
+        let dy = max(rect.minY - point.y, 0, point.y - rect.maxY)
+        return dx * dx + dy * dy
+    }
+}
+
+struct TranscriptWord: Equatable {
+    let rowId: String
+    let text: String
+    let startFrame: Int
+    let endFrame: Int
+}
+
+enum TranscriptWordFramesKey: PreferenceKey {
+    static let defaultValue: [Int: CGRect] = [:]
+
+    static func reduce(value: inout [Int: CGRect], nextValue: () -> [Int: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }
