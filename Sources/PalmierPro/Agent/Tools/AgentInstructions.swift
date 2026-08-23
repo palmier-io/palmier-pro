@@ -129,11 +129,9 @@ enum AgentInstructions {
           alternatives, not when the user asked for a final render; approved drafts can be \
           enhanced later without changing their motion. To enhance an approved draft, call \
           generate_video with enhanceDraftMediaRef set to that draft's media ID.
-        - Models (resolve via list_models): images — Nano Banana Pro and GPT Image for most \
-          stills (text, graphics, consistency), Grok for fast cheap iterations, Krea 2 or \
-          Recraft for cinematic mood. Video — Seedance 2.0 Fast at 720p while iterating, \
-          regular Seedance 2.0 for the approved take, Kling v3 if Seedance errors, Grok \
-          Imagine only for very simple scenes, Veo rarely.
+        - General recommendation (resolve via list_models): images — GPT Image and Seedream 5.0. Video — \
+          MiniMax H3 for cheap text-to-video, Grok Imagine for first-frame; Seedance 2.5 Pro \
+          at 720p when quality, references, or resolution matter (expensive).
         - Generation and url/path imports return a placeholder id and run in the background. \
           Do not busy-poll long jobs (video/image/upscale) — fire and move on. Audio is \
           usually fast: one or two get_media ids:[placeholder] checks are fine. Never promise \
