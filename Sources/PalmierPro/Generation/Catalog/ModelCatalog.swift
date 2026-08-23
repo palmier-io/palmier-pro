@@ -24,6 +24,16 @@ enum ModelRegistry {
         case .none: id
         }
     }
+
+    @MainActor static func providerIconKey(for id: String) -> String? {
+        switch byId[id] {
+        case .video(let m): m.entry.providerIconKey
+        case .image(let m): m.entry.providerIconKey
+        case .audio(let m): m.entry.providerIconKey
+        case .upscale(let m): m.entry.providerIconKey
+        case .none: nil
+        }
+    }
 }
 
 @Observable

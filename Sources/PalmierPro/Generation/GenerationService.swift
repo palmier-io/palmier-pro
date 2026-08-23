@@ -319,6 +319,8 @@ final class GenerationService {
         enhancedInput.resolution = "1080p"
         enhancedInput.backendJobId = nil
         enhancedInput.resultURLs = nil
+        enhancedInput.costCredits = nil
+        enhancedInput.refundedCredits = nil
         enhancedInput.createdAt = Date()
         let placeholder = createPlaceholder(
             type: .video,
@@ -622,6 +624,7 @@ final class GenerationService {
             if updateBackendJobMetadata(
                 placeholders,
                 backendJobId: backendJobId,
+                costCredits: job.costCredits,
                 editor: editor
             ) {
                 editor.onProjectCheckpointRequired?()
@@ -640,6 +643,9 @@ final class GenerationService {
             for placeholder in placeholders {
                 updateGenerationMetadata(placeholder, editor: editor, status: .failed(message)) { input in
                     input.backendJobId = backendJobId
+                    if let costCredits = job.costCredits {
+                        input.costCredits = costCredits
+                    }
                     input.refundedCredits = job.refundedCredits
                 }
             }
@@ -650,6 +656,7 @@ final class GenerationService {
             if updateBackendJobMetadata(
                 placeholders,
                 backendJobId: backendJobId,
+                costCredits: job.costCredits,
                 editor: editor
             ) {
                 editor.onProjectCheckpointRequired?()
@@ -662,17 +669,22 @@ final class GenerationService {
     private func updateBackendJobMetadata(
         _ placeholders: [MediaAsset],
         backendJobId: String,
+        costCredits: Int?,
         editor: EditorViewModel
     ) -> Bool {
         var changed = false
         for placeholder in placeholders {
-            guard placeholder.generationStatus != .downloading,
-                    placeholder.generationStatus != .generating ||
-                    placeholder.generationInput?.backendJobId != backendJobId else {
-                continue
-            }
+            guard placeholder.generationStatus != .downloading else { continue }
+            let input = placeholder.generationInput
+            let metadataUnchanged = placeholder.generationStatus == .generating
+                && input?.backendJobId == backendJobId
+                && (costCredits == nil || input?.costCredits == costCredits)
+            guard !metadataUnchanged else { continue }
             updateGenerationMetadata(placeholder, editor: editor, status: .generating) { input in
                 input.backendJobId = backendJobId
+                if let costCredits {
+                    input.costCredits = costCredits
+                }
             }
             changed = true
         }
