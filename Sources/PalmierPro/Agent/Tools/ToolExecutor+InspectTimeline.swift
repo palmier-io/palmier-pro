@@ -1,5 +1,5 @@
 import AVFoundation
-import CoreText
+import CoreGraphics
 import Foundation
 
 extension ToolExecutor {
@@ -65,7 +65,7 @@ extension ToolExecutor {
             let time = CMTime(value: CMTimeValue(frame), timescale: timescale)
             guard let videoCG = try? await generator.image(at: time).image else { continue }
             // videoComposition already composites text via CustomVideoCompositor.
-            let labeled = Self.burnLabel("f\(frame)", into: videoCG) ?? videoCG
+            let labeled = InspectFrameOverlay.apply(videoCG, caption: "f\(frame)")
             guard let jpeg = ImageEncoder.encodeJPEG(labeled, quality: Self.inspectTimelineJPEGQuality) else { continue }
             imageBlocks.append(.image(base64: jpeg.base64EncodedString(), mediaType: "image/jpeg"))
             renderedFrames.append(frame)
@@ -77,6 +77,7 @@ extension ToolExecutor {
             "width": Int(renderSize.width),
             "height": Int(renderSize.height),
             "totalFrames": totalFrames,
+            "coordinateGrid": InspectFrameOverlay.metadataNote,
             "frames": renderedFrames.map { frame -> [String: Any] in
                 ["frame": frame, "clips": Self.visibleClips(at: frame, in: timeline)]
             },
@@ -99,31 +100,6 @@ extension ToolExecutor {
             }
         }
         return ids
-    }
-
-    /// Draws a small frame-number chip in the top-left so each image self-identifies.
-    private static func burnLabel(_ text: String, into image: CGImage) -> CGImage? {
-        guard let ctx = CGContext(
-            data: nil, width: image.width, height: image.height,
-            bitsPerComponent: 8, bytesPerRow: 0,
-            space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return nil }
-        ctx.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
-
-        let attrs: [NSAttributedString.Key: Any] = [
-            kCTFontAttributeName as NSAttributedString.Key: CTFontCreateWithName("Helvetica-Bold" as CFString, 12, nil),
-            kCTForegroundColorAttributeName as NSAttributedString.Key: CGColor(gray: 1, alpha: 1),
-        ]
-        let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attrs))
-        let textWidth = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
-        let chipHeight: CGFloat = 16
-        let chipTop = CGFloat(image.height)
-        ctx.setFillColor(CGColor(gray: 0, alpha: 0.65))
-        ctx.fill(CGRect(x: 0, y: chipTop - chipHeight, width: textWidth + 10, height: chipHeight))
-        ctx.textPosition = CGPoint(x: 5, y: chipTop - chipHeight + 4)
-        CTLineDraw(line, ctx)
-        return ctx.makeImage()
     }
 
     /// Aspect-preserving size whose longest edge is at most `longestEdge`.
