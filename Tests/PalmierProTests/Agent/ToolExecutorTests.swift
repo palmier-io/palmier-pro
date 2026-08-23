@@ -1336,6 +1336,133 @@ struct ToolExecutorClipTests {
         #expect(h.editor.clipFor(id: clipId)?.edgeSoftness == 0.25)
     }
 
+    @Test func setClipPropertiesSetsStaticCropAndClearsCropTrack() async throws {
+        let (h, clipId) = await setupClipForKeyframes()
+        _ = await h.runRaw("set_keyframes", args: [
+            "clipId": clipId, "property": "crop",
+            "keyframes": [[0, 0.1, 0.1, 0.1, 0.1]],
+        ])
+        let result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clipId],
+            "crop": ["left": 0.2, "top": 0.1, "right": 0.15, "bottom": 0.05],
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let clip = try #require(h.editor.clipFor(id: clipId))
+        #expect(clip.crop == Crop(left: 0.2, top: 0.1, right: 0.15, bottom: 0.05))
+        #expect(clip.cropTrack == nil)
+        #expect(clip.cropAt(frame: clip.startFrame) == clip.crop)
+    }
+
+    @Test func setClipPropertiesCropMergesOmittedEdges() async throws {
+        let (h, asset) = await setupWithVideoTrack()
+        let clipId = await addedClip(in: h, asset: asset)
+        h.editor.timeline.tracks[0].clips[0].crop = Crop(left: 0.1, top: 0.2, right: 0.3, bottom: 0.4)
+        _ = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clipId], "crop": ["left": 0.25],
+        ])
+        let clip = try #require(h.editor.clipFor(id: clipId))
+        #expect(clip.crop == Crop(left: 0.25, top: 0.2, right: 0.3, bottom: 0.4))
+    }
+
+    @Test func setClipPropertiesCropMergesOmittedEdgesFromKeyedCrop() async throws {
+        let (h, clipId) = await setupClipForKeyframes()
+        _ = await h.runRaw("set_keyframes", args: [
+            "clipId": clipId, "property": "crop",
+            "keyframes": [[0, 0.1, 0.2, 0.3, 0.15]],
+        ])
+        let result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clipId], "crop": ["left": 0.25],
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let clip = try #require(h.editor.clipFor(id: clipId))
+        #expect(clip.crop == Crop(left: 0.25, top: 0.1, right: 0.2, bottom: 0.3))
+        #expect(clip.cropTrack == nil)
+    }
+
+    @Test func setClipPropertiesCropKeepsPlayheadMergeWhenTimingClampsCropTrack() async throws {
+        let (h, clipId) = await setupClipForKeyframes()
+        h.editor.currentFrame = 20
+        _ = await h.runRaw("set_keyframes", args: [
+            "clipId": clipId, "property": "crop",
+            "keyframes": [
+                [0, 0, 0, 0, 0, "linear"],
+                [40, 0.5, 0.5, 0.5, 0.5, "linear"],
+            ],
+        ])
+        let result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clipId],
+            "durationFrames": 30,
+            "crop": ["left": 0.2],
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let clip = try #require(h.editor.clipFor(id: clipId))
+        #expect(clip.crop == Crop(left: 0.2, top: 0.25, right: 0.25, bottom: 0.25))
+        #expect(clip.cropTrack == nil)
+        #expect(clip.durationFrames == 30)
+    }
+
+    @Test func setClipPropertiesCropAllZerosRestoresFullSource() async throws {
+        let (h, asset) = await setupWithVideoTrack()
+        let clipId = await addedClip(in: h, asset: asset)
+        h.editor.timeline.tracks[0].clips[0].crop = Crop(left: 0.2, top: 0.1, right: 0.2, bottom: 0.1)
+        _ = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clipId],
+            "crop": ["left": 0, "top": 0, "right": 0, "bottom": 0],
+        ])
+        #expect(h.editor.clipFor(id: clipId)?.crop.isIdentity == true)
+    }
+
+    @Test func setClipPropertiesRejectsCropOnNonVisualClips() async {
+        let clip = Fixtures.clip(id: "audio", mediaType: .audio, start: 0, duration: 30)
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.audioTrack(clips: [clip])]))
+        let result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clip.id], "crop": ["left": 0.2],
+        ])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("visual clips"))
+        #expect(h.editor.clipFor(id: clip.id)?.crop.isIdentity == true)
+    }
+
+    @Test func setClipPropertiesRejectsCropThatHidesTheSource() async throws {
+        let (h, asset) = await setupWithVideoTrack()
+        let clipId = await addedClip(in: h, asset: asset)
+        let result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clipId], "crop": ["left": 0.5, "right": 0.5],
+        ])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("visible"))
+        #expect(h.editor.clipFor(id: clipId)?.crop.isIdentity == true)
+    }
+
+    @Test func setClipPropertiesRejectsNegativeCropInset() async throws {
+        let (h, asset) = await setupWithVideoTrack()
+        let clipId = await addedClip(in: h, asset: asset)
+        let result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clipId], "crop": ["top": -0.1],
+        ])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("top"))
+    }
+
+    @Test func setClipPropertiesRejectsUnknownCropKey() async throws {
+        let (h, asset) = await setupWithVideoTrack()
+        let clipId = await addedClip(in: h, asset: asset)
+        let result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clipId], "crop": ["anchorX": 0.5],
+        ])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("anchorX"))
+    }
+
+    @Test func setClipPropertiesCropDoesNotPropagateToLinkedPartner() async throws {
+        let (h, videoId, audioId) = await setupLinkedPair()
+        _ = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [videoId], "crop": ["left": 0.2],
+        ])
+        #expect(h.editor.clipFor(id: videoId)?.crop.left == 0.2)
+        #expect(h.editor.clipFor(id: audioId)?.crop.isIdentity == true)
+    }
+
     @Test func setClipPropertiesSetsFadesWithoutClearingKeyframes() async throws {
         let (h, clipId) = await setupClipForKeyframes()
         _ = await h.runRaw("set_keyframes", args: [
