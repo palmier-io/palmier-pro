@@ -1005,13 +1005,7 @@ struct InspectorView: View {
                             .frame(height: AppTheme.BorderWidth.hairline)
                     }
                     if !metadata.isEmpty {
-                        Text(verbatim: metadata)
-                            .font(.system(size: AppTheme.FontSize.xs))
-                            .foregroundStyle(AppTheme.Text.tertiaryColor)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .textSelection(.enabled)
-                            .help(Text(verbatim: metadata))
+                        generationMetadataRow(gen, metadata: metadata)
                     }
                 }
                 .padding(.horizontal, AppTheme.Spacing.smMd)
@@ -1043,6 +1037,40 @@ struct InspectorView: View {
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func generationMetadataRow(_ gen: GenerationInput, metadata: String) -> some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            if let iconKey = ModelRegistry.providerIconKey(for: gen.model) {
+                ProviderLogo(iconKey: iconKey, size: AppTheme.IconSize.xs)
+            } else {
+                Image(systemName: "sparkles")
+                    .font(.system(size: AppTheme.FontSize.xxs))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
+                    .accessibilityHidden(true)
+            }
+            Text(verbatim: metadata)
+                .font(.system(size: AppTheme.FontSize.xs))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .textSelection(.enabled)
+                .help(Text(verbatim: metadata))
+            Spacer(minLength: AppTheme.Spacing.xs)
+            if let cost = gen.costCredits {
+                HStack(spacing: AppTheme.Spacing.xxs) {
+                    Image(systemName: "dollarsign.circle.fill")
+                    Text(verbatim: cost.formatted())
+                }
+                .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
+                .monospacedDigit()
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .fixedSize()
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(CostEstimator.localizedUsedCredits(cost))
+            }
         }
     }
 

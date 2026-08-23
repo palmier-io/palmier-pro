@@ -51,6 +51,7 @@ import Testing
             prompt: "Fail", model: "flux-3", duration: 5,
             aspectRatio: "16:9", resolution: "720p"
         )
+        input.costCredits = 12
         input.refundedCredits = 12
         let generated = MediaAsset(
             url: URL(fileURLWithPath: "/tmp/failed.mp4"),
@@ -64,6 +65,7 @@ import Testing
             entry: try JSONDecoder().decode(MediaManifestEntry.self, from: data),
             resolvedURL: generated.url
         )
+        #expect(asset.generationInput?.costCredits == 12)
         #expect(asset.generationInput?.refundedCredits == 12)
         #expect(asset.wasGenerationRefunded)
         asset.generationInput?.refundedCredits = 0
