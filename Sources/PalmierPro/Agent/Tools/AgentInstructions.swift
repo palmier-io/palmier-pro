@@ -130,8 +130,9 @@ enum AgentInstructions {
           enhanced later without changing their motion. To enhance an approved draft, call \
           generate_video with enhanceDraftMediaRef set to that draft's media ID.
         - General recommendation (resolve via list_models): images — GPT Image and Seedream 5.0. Video — \
-          MiniMax H3 for cheap text-to-video, Grok Imagine for first-frame; Seedance 2.5 Pro \
-          at 720p when quality, references, or resolution matter (expensive).
+          MiniMax H3 for cheap text-to-video, Grok Imagine for first-frame and simple low-motion shots; \
+          Seedance 2.5 for overall quality and references (720p; 1080p is the best available but \
+          extremely expensive — do not use it by default).
         - Generation and url/path imports return a placeholder id and run in the background. \
           Do not busy-poll long jobs (video/image/upscale) — fire and move on. Audio is \
           usually fast: one or two get_media ids:[placeholder] checks are fine. Never promise \
