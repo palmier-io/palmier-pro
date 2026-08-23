@@ -51,10 +51,10 @@ enum TimelineExportFormat: String, CaseIterable, Identifiable {
         }
     }
 
-    var compatibilityLabel: String {
+    var compatibleEditors: [ExportEditorApplication] {
         switch self {
-        case .xmeml: "Premiere Pro and DaVinci Resolve"
-        case .fcpxml: "DaVinci Resolve and Final Cut Pro"
+        case .xmeml: [.davinciResolve, .premierePro]
+        case .fcpxml: [.davinciResolve, .finalCutPro]
         }
     }
 }
@@ -71,6 +71,7 @@ struct ExportView: View {
     @State private var submissionError: String?
     @State private var palmierSummary: (collect: Int, missing: Int, bytes: Int64) = (0, 0, 0)
     @State private var selectedTimelineId: String?
+    @State private var installedEditorIcons: [ExportEditorApplication: NSImage] = [:]
 
     private var exportTimeline: Timeline {
         selectedTimelineId.flatMap { editor.timeline(for: $0) } ?? editor.timeline
@@ -106,6 +107,11 @@ struct ExportView: View {
             }.value
             guard !Task.isCancelled else { return }
             palmierSummary = summary
+        }
+        .task {
+            let iconData = await EditorIconLoader.loadIconData()
+            guard !Task.isCancelled else { return }
+            installedEditorIcons = iconData.compactMapValues(NSImage.init(data:))
         }
     }
 
@@ -582,10 +588,7 @@ struct ExportView: View {
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text(L10n.string("Compatibility: \(format.compatibilityLabel)"))
-                        .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
-                        .foregroundStyle(AppTheme.Text.secondaryColor)
-                        .fixedSize(horizontal: false, vertical: true)
+                    timelineCompatibility(format)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -605,6 +608,44 @@ struct ExportView: View {
             RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
                 .strokeBorder(selected ? AppTheme.Border.primaryColor : AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
         }
+    }
+
+    private func timelineCompatibility(_ format: TimelineExportFormat) -> some View {
+        let label = L10n.string("Compatibility: \("")")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return HStack(spacing: AppTheme.Spacing.xs) {
+            Text(label)
+                .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+
+            ForEach(format.compatibleEditors) { application in
+                HStack(spacing: AppTheme.Spacing.xxs) {
+                    exportEditorIcon(application)
+                    Text(verbatim: application.displayName)
+                        .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
+                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func exportEditorIcon(_ application: ExportEditorApplication) -> some View {
+        Group {
+            if let image = installedEditorIcons[application] {
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+            } else {
+                Image(systemName: "app")
+                    .font(.system(size: AppTheme.FontSize.sm))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+            }
+        }
+        .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.xs, style: .continuous))
+        .accessibilityHidden(true)
     }
 
     private var estimatedFileSize: String {
