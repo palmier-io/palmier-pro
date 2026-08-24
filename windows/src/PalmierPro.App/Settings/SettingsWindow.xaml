@@ -1,0 +1,32 @@
+<Window
+    x:Class="PalmierPro.App.Settings.SettingsWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Settings">
+
+    <Grid Background="{ThemeResource BackgroundBaseBrush}" Padding="20">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="180" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <ListView
+            x:Name="NavList"
+            Grid.Column="0"
+            SelectionChanged="OnNavChanged"
+            Margin="0,0,16,0">
+            <!-- Selection is applied in code after init — IsSelected here can fire
+                 SelectionChanged before PaneHost exists and crash the window. -->
+            <ListViewItem Tag="general" Content="General" />
+            <ListViewItem Tag="appearance" Content="Appearance" />
+            <ListViewItem Tag="privacy" Content="Privacy" />
+            <ListViewItem Tag="agent" Content="Agent" />
+            <ListViewItem Tag="storage" Content="Storage" />
+            <ListViewItem Tag="updates" Content="Updates" />
+        </ListView>
+
+        <ScrollViewer Grid.Column="1">
+            <StackPanel x:Name="PaneHost" Spacing="14" MaxWidth="480" />
+        </ScrollViewer>
+    </Grid>
+</Window>

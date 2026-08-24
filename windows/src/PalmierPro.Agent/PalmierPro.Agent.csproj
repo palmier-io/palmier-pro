@@ -1,0 +1,10 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>PalmierPro.Agent</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\PalmierPro.Core\PalmierPro.Core.csproj" />
+    <ProjectReference Include="..\PalmierPro.Cloud\PalmierPro.Cloud.csproj" />
+  </ItemGroup>
+</Project>
