@@ -308,6 +308,9 @@ final class EditorViewModel {
     var mediaPanelSearchFocusPending = false
     var isMediaPanelSearchExpanded = false
     var mediaPanelToast: MediaPanelToast?
+    /// Non-nil while a reel is being analyzed into a template; drives the media panel progress UI.
+    var templateGeneration: TemplateGenerationState?
+    @ObservationIgnored var templateGenerationTask: Task<Void, Never>?
     @ObservationIgnored var mediaImportTail: Task<MediaImportSummary, Error>?
     @ObservationIgnored var mediaImportSequence: Int = 0
     @ObservationIgnored var frameCaptureTask: Task<Void, Never>?

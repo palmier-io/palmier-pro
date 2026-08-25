@@ -192,6 +192,10 @@ enum ClipRenderer {
             context.strokePath()
         }
 
+        if clip.isUnfilledTemplateSlot {
+            drawTemplateSlot(clip: clip, in: rect, cornerRadius: cornerRadius, fps: fps, context: context)
+        }
+
         let showDetailChrome = rect.width >= AppTheme.ComponentSize.timelineClipDetailMinWidth
         let showLabel = showsLabel(isSelected: isSelected, in: rect)
 
@@ -220,6 +224,47 @@ enum ClipRenderer {
         if opacity < 1.0 {
             context.restoreGState()
         }
+    }
+
+    // MARK: - Template slots
+
+    private static func drawTemplateSlot(
+        clip: Clip,
+        in rect: NSRect,
+        cornerRadius: CGFloat,
+        fps: Int,
+        context: CGContext
+    ) {
+        let outline = rect.insetBy(dx: AppTheme.Spacing.xxs, dy: AppTheme.Spacing.xxs)
+        guard outline.width > 0, outline.height > 0 else { return }
+
+        context.saveGState()
+        context.setStrokeColor(
+            clip.sourceClipType.themeForegroundColor.withAlphaComponent(AppTheme.Opacity.strong).cgColor
+        )
+        context.setLineWidth(AppTheme.BorderWidth.thin)
+        context.setLineDash(phase: 0, lengths: [4, 3])
+        context.addPath(CGPath(
+            roundedRect: outline,
+            cornerWidth: cornerRadius,
+            cornerHeight: cornerRadius,
+            transform: nil
+        ))
+        context.strokePath()
+        context.restoreGState()
+
+        guard rect.width >= AppTheme.ComponentSize.timelineClipDetailMinWidth else { return }
+        let summary = NSAttributedString(string: clip.templateSlotSummary(fps: fps), attributes: [
+            .font: NSFont.systemFont(ofSize: AppTheme.FontSize.xs, weight: .semibold),
+            .foregroundColor: clip.sourceClipType.themeForegroundColor,
+        ])
+        let size = summary.size()
+        let body = clipBodyRect(in: rect)
+        guard size.width <= body.width, size.height <= body.height else { return }
+        context.saveGState()
+        context.clip(to: body)
+        summary.draw(at: NSPoint(x: body.midX - size.width / 2, y: body.midY - size.height / 2))
+        context.restoreGState()
     }
 
     // MARK: - Keyframe markers

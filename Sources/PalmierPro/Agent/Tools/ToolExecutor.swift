@@ -325,6 +325,8 @@ final class ToolExecutor {
         case .captureFrame:  return try await captureFrame(editor, args)
         case .getTranscript: return try await getTranscript(editor, args)
         case .detectBeats:   return try await detectBeats(editor, args)
+        case .createTemplateFromReel: return try await createTemplateFromReel(editor, args)
+        case .fillTemplateSlot: return try fillTemplateSlot(editor, args)
         case .inspectTimeline: return try await inspectTimeline(editor, args)
         case .searchMedia:   return try await searchMedia(editor, args)
         case .applyColor:    return try applyColor(editor, args)

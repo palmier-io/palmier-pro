@@ -115,6 +115,17 @@ enum CompositionBuilder {
         )
     }
 
+    /// A text-layer twin of an unfilled template slot, so the existing text path renders its slate.
+    private static func slateClip(for clip: Clip, fps: Int) -> Clip {
+        var slate = clip
+        slate.textContent = clip.templateSlateText(fps: fps)
+        var style = TextStyle()
+        style.fontSize = 64
+        style.color = TextStyle.RGBA(r: 0.92, g: 0.92, b: 0.92, a: 1)
+        slate.textStyle = style
+        return slate
+    }
+
     /// Everything a build pass threads through insertion: inputs plus accumulators.
     private final class BuildContext {
         let composition: AVMutableComposition
@@ -289,6 +300,7 @@ enum CompositionBuilder {
         for clip in clips {
             guard clip.durationFrames > 0, clip.startFrame >= previousEndFrame else { continue }
             if clip.mediaType == .text { continue }   // text renders in instructions, nests render it in groups
+            if clip.isUnfilledTemplateSlot { continue }   // slots render as slates in instructions, never as media
             if clip.mediaType == .sequence {
                 try await expandNestVideo(carrier: clip, parentTrackIndex: parentTrackIndex, depth: depth, ctx: ctx)
                 previousEndFrame = clip.endFrame
@@ -689,6 +701,11 @@ enum CompositionBuilder {
                     if clip.mediaType == .text {
                         guard overlapsWindow, !(clip.textContent ?? "").isEmpty else { continue }
                         children.append(LayerPlan(source: .text, clip: clip, natSize: flat.childCanvas, preferredTransform: .identity))
+                    } else if clip.isUnfilledTemplateSlot {
+                        guard clip.startFrame >= prevEnd else { continue }
+                        prevEnd = clip.endFrame
+                        guard overlapsWindow else { continue }
+                        children.append(LayerPlan(source: .text, clip: slateClip(for: clip, fps: timeline.fps), natSize: flat.childCanvas, preferredTransform: .identity))
                     } else if clip.mediaType == .sequence {
                         guard clip.startFrame >= prevEnd else { continue }
                         prevEnd = clip.endFrame
@@ -731,6 +748,10 @@ enum CompositionBuilder {
                 if clip.mediaType == .text {
                     guard !(clip.textContent ?? "").isEmpty else { continue }
                     plan = LayerPlan(source: .text, clip: clip, natSize: renderSize, preferredTransform: .identity)
+                } else if clip.isUnfilledTemplateSlot {
+                    guard clip.startFrame >= prevEndFrame else { continue }
+                    prevEndFrame = clip.endFrame
+                    plan = LayerPlan(source: .text, clip: slateClip(for: clip, fps: timeline.fps), natSize: renderSize, preferredTransform: .identity)
                 } else if clip.mediaType == .sequence {
                     guard clip.startFrame >= prevEndFrame else { continue }
                     prevEndFrame = clip.endFrame

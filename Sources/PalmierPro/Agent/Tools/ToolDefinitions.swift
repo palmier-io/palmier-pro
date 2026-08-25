@@ -51,6 +51,10 @@ enum ToolName: String, CaseIterable, Sendable {
     case removeSilence = "remove_silence"
     case detectBeats = "detect_beats"
 
+    // Templates
+    case createTemplateFromReel = "create_template_from_reel"
+    case fillTemplateSlot = "fill_template_slot"
+
     // Text & captions
     case addTexts = "add_texts"
     case updateText = "update_text"
@@ -842,6 +846,28 @@ enum ToolDefinitions {
                     "endSeconds": ["type": "number", "description": "Optional. Return only beats at or before this source-media second."],
                 ],
                 required: ["mediaRef"]
+            )
+        ),
+        AgentTool(
+            name: .createTemplateFromReel,
+            description: "Analyze a video asset (a reel or similar edited piece) on-device and turn its edit into a NEW timeline: cuts are detected and become clips, and the reel's own audio is laid out as separate Music and Voice lanes. In 'placeholders' mode (default) each detected shot becomes a fillable slot carrying that shot's exact duration, detected motion energy, and a suggested playback speed — fill_template_slot (or the user) then drops footage into slots to recreate the reel's rhythm. In 'originalCuts' mode the timeline instead holds the reel split into its detected shots, still referencing the original media.\n\nThe template is appended as a new timeline and activated; the current timeline is untouched. Creating it is one undoable action. Analysis runs locally and is cached per asset revision, so re-running on the same unchanged file is fast. Only one analysis runs at a time — the call fails while one is in progress; wait and retry. Use get_media first to find the asset id.",
+            inputSchema: objectSchema(
+                properties: [
+                    "mediaRef": ["type": "string", "description": "Video asset id from get_media. Must have a video track; audio lanes are only generated when the file has audio."],
+                    "mode": ["type": "string", "enum": ["placeholders", "originalCuts"], "description": "placeholders (default) = fillable slots preserving the reel's timing. originalCuts = the reel split into its detected shots with the original media."],
+                ],
+                required: ["mediaRef"]
+            )
+        ),
+        AgentTool(
+            name: .fillTemplateSlot,
+            description: "Place a video asset into one template slot created by create_template_from_reel. The slot's timeline position and duration are preserved; its suggested speed is applied only when the source is long enough at that speed, otherwise the clip plays at 1x. Calling it on an already filled slot replaces that slot's footage. Fails if the clip is not a slot on the active timeline or the asset is not a video. One undoable action per call. Slot clip ids come from create_template_from_reel's response or get_timeline.",
+            inputSchema: objectSchema(
+                properties: [
+                    "clipId": ["type": "string", "description": "Template slot clip id on the active timeline."],
+                    "mediaRef": ["type": "string", "description": "Video asset id from get_media to place into the slot."],
+                ],
+                required: ["clipId", "mediaRef"]
             )
         ),
         AgentTool(
