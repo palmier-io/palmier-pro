@@ -3,6 +3,7 @@
 "$%lld/mo" = "$%lld/mo";
 "$%lld–$%lld · Credits expire at renewal." = "$%lld–$%lld · Credits expire at renewal.";
 "%@ (Paid)" = "%@ (Paid)";
+"%@ Template" = "%@ Template";
 "%@ could not be exported." = "%@ could not be exported.";
 "%@ does not accept this media" = "%@ does not accept this media";
 "%@ does not support this media type." = "%@ does not support this media type.";
@@ -189,6 +190,7 @@
 "Choose…" = "Choose…";
 "Chroma Key" = "Chroma Key";
 "Clarity" = "Clarity";
+"Classifying audio…" = "Classifying audio…";
 "Clean Up Voice…" = "Clean Up Voice…";
 "Clear Filters" = "Clear Filters";
 "Clear Finished" = "Clear Finished";
@@ -248,10 +250,12 @@
 "Create AI Transition" = "Create AI Transition";
 "Create Matte" = "Create Matte";
 "Create Nested Timeline" = "Create Nested Timeline";
+"Create Template from Reel" = "Create Template from Reel";
 "Create Video" = "Create Video";
 "Create Video only works on images" = "Create Video only works on images";
 "Create a skill or browse the Community collection." = "Create a skill or browse the Community collection.";
 "Create matching sound for the video" = "Create matching sound for the video";
+"Creating template from \"%@\"…" = "Creating template from \"%@\"…";
 "Creating…" = "Creating…";
 "Credits" = "Credits";
 "Credits cover AI generation and chat." = "Credits cover AI generation and chat.";
@@ -306,6 +310,7 @@
 "Detect Beats" = "Detect Beats";
 "Detected %lld beats at %lld BPM." = "Detected %lld beats at %lld BPM.";
 "Detected %lld beats." = "Detected %lld beats.";
+"Detecting cuts… %lld%%" = "Detecting cuts… %lld%%";
 "Detecting speech in %lld files…" = "Detecting speech in %lld files…";
 "Detecting speech…" = "Detecting speech…";
 "Difference" = "Difference";
@@ -333,6 +338,7 @@
 "Duplicate Clips to New Track" = "Duplicate Clips to New Track";
 "Duration" = "Duration";
 "Duration (%lld-%lld seconds)" = "Duration (%lld-%lld seconds)";
+"Dynamic" = "Dynamic";
 "Edge Rounding" = "Edge Rounding";
 "Edge Softness" = "Edge Softness";
 "Edit" = "Edit";
@@ -389,6 +395,7 @@
 "Filmmaker" = "Filmmaker";
 "Filter markers by status" = "Filter markers by status";
 "Final Cut Pro" = "Final Cut Pro";
+"Finding beats…" = "Finding beats…";
 "First Frame" = "First Frame";
 "First-time sign-ups only" = "First-time sign-ups only";
 "First/Last" = "First/Last";
@@ -437,6 +444,7 @@
 "Generation complete" = "Generation complete";
 "Generation in progress" = "Generation in progress";
 "Generation panel" = "Generation panel";
+"Gentle" = "Gentle";
 "Get Anthropic API key" = "Get Anthropic API key";
 "Get OpenAI API key" = "Get OpenAI API key";
 "Get a notification when a generation finishes." = "Get a notification when a generation finishes.";
@@ -637,6 +645,7 @@
 "No audio selected." = "No audio selected.";
 "No beats detected." = "No beats detected.";
 "No conversations yet" = "No conversations yet";
+"No cuts were detected; the template has a single slot covering the whole reel." = "No cuts were detected; the template has a single slot covering the whole reel.";
 "No exports yet" = "No exports yet";
 "No generations yet" = "No generations yet";
 "No images" = "No images";
@@ -649,6 +658,7 @@
 "No media yet" = "No media yet";
 "No models match \"%@\"." = "No models match \"%@\".";
 "No music models available." = "No music models available.";
+"No music was detected in the reel's audio." = "No music was detected in the reel's audio.";
 "No projects found" = "No projects found";
 "No prompt needed" = "No prompt needed";
 "No speech detected." = "No speech detected.";
@@ -777,6 +787,8 @@
 "Rename Track" = "Rename Track";
 "Rendering" = "Rendering";
 "Rendering…" = "Rendering…";
+"Replace Slot with \"%@\"" = "Replace Slot with \"%@\"";
+"Replace Slot with Selected Media" = "Replace Slot with Selected Media";
 "Replace clip source" = "Replace clip source";
 "Replacement Audio" = "Replacement Audio";
 "Report a Problem" = "Report a Problem";
@@ -843,6 +855,7 @@
 "Select Range" = "Select Range";
 "Select compatible clips and paste settings again." = "Select compatible clips and paste settings again.";
 "Select media files or folders to import" = "Select media files or folders to import";
+"Select one video in the media panel first." = "Select one video in the media panel first.";
 "Select the timeline to add a marker." = "Select the timeline to add a marker.";
 "Selected" = "Selected";
 "Selected Clips · %lld" = "Selected Clips · %lld";
@@ -890,6 +903,7 @@
 "Sign-in couldn’t be completed. Try again." = "Sign-in couldn’t be completed. Try again.";
 "Signed in" = "Signed in";
 "Signed out" = "Signed out";
+"Silence" = "Silence";
 "Silence Detection" = "Silence Detection";
 "Size" = "Size";
 "Skill actions" = "Skill actions";
@@ -928,6 +942,7 @@
 "Step %lld of %lld" = "Step %lld of %lld";
 "Step Backward" = "Step Backward";
 "Step Forward" = "Step Forward";
+"Still" = "Still";
 "Stop" = "Stop";
 "Stop editing crop on canvas" = "Stop editing crop on canvas";
 "Stopped" = "Stopped";
@@ -970,6 +985,7 @@
 "The export" = "The export";
 "The marker comment changed while you were editing. Review it and try again." = "The marker comment changed while you were editing. Review it and try again.";
 "The project will be moved to the Trash." = "The project will be moved to the Trash.";
+"The reel has no audio track; no audio lanes were generated." = "The reel has no audio track; no audio lanes were generated.";
 "The selected model refused this request. Revise the prompt and try again." = "The selected model refused this request. Revise the prompt and try again.";
 "The selected projects will be moved to the Trash." = "The selected projects will be moved to the Trash.";
 "The timeline settings changed. Close this sheet and try again." = "The timeline settings changed. Close this sheet and try again.";
@@ -1090,6 +1106,7 @@
 "What interests you most about Palmier Pro?" = "What interests you most about Palmier Pro?";
 "What's New in v%@" = "What's New in v%@";
 "Which editors did you use before?" = "Which editors did you use before?";
+"Whip" = "Whip";
 "White Balance" = "White Balance";
 "Whites" = "Whites";
 "Whole timeline · %@" = "Whole timeline · %@";

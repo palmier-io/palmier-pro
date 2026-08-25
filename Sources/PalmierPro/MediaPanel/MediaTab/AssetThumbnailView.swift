@@ -89,6 +89,10 @@ struct AssetThumbnailView: View {
             }
             Button(L10n.string("Rename")) { beginRename() }
             AIEditMenu(asset: asset)
+            if asset.type == .video, !isMissing {
+                Button(L10n.string("Create Template from Reel")) { createTemplate() }
+                    .disabled(editor.templateGeneration != nil)
+            }
             Divider()
         }
         if ids.contains(where: { id in
@@ -114,6 +118,20 @@ struct AssetThumbnailView: View {
                 .map(\.id)
         }
         return [asset.id]
+    }
+
+    private func createTemplate() {
+        let assetId = asset.id
+        editor.templateGenerationTask = Task { [editor] in
+            defer { editor.templateGenerationTask = nil }
+            do {
+                try await editor.createTemplateFromReel(assetId: assetId)
+            } catch is CancellationError {
+                return
+            } catch {
+                editor.mediaPanelToast = MediaPanelToast(message: error.localizedDescription)
+            }
+        }
     }
 
     private func relinkFile() {

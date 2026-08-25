@@ -124,9 +124,15 @@ struct MediaTab: View {
                     if let toast = editor.mediaPanelToast {
                         toastBanner(toast)
                             .transition(.move(edge: .bottom).combined(with: .opacity))
+                    } else if let generation = editor.templateGeneration {
+                        TemplateGenerationBanner(state: generation) {
+                            editor.cancelTemplateGeneration()
+                        }
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
                 .animation(.easeInOut(duration: AppTheme.Anim.transition), value: editor.mediaPanelToast)
+                .animation(.easeInOut(duration: AppTheme.Anim.transition), value: editor.templateGeneration)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .layoutPriority(1)
 

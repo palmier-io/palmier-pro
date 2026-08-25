@@ -1576,7 +1576,9 @@ final class TimelineView: NSView, NSPopoverDelegate {
             multicamItems.append(ungroupItem)
         }
 
-        for group in [timelineItems, aiItems, nestItems, mediaItems, syncItems, multicamItems] where !group.isEmpty {
+        let templateSlotItems = templateSlotMenuItems(for: clip)
+
+        for group in [templateSlotItems, timelineItems, aiItems, nestItems, mediaItems, syncItems, multicamItems] where !group.isEmpty {
             if !menu.items.isEmpty { menu.addItem(.separator()) }
             group.forEach { menu.addItem($0) }
         }
