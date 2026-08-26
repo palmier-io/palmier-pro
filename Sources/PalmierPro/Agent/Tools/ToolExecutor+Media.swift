@@ -155,10 +155,10 @@ extension ToolExecutor {
 
     private func readImage(asset: MediaAsset, args: [String: Any]) async throws -> ToolResult {
         let url = asset.url
-        let encoded = await Task.detached(priority: .userInitiated) {
-            ImageEncoder.encode(url: url).map {
-                (base64: $0.data.base64EncodedString(), mime: $0.mime, encodedByteSize: $0.data.count)
-            }
+        let encoded = await Task.detached(priority: .userInitiated) { () -> (base64: String, mime: String, encodedByteSize: Int)? in
+            guard let image = ImageEncoder.thumbnail(url: url, maxPixelSize: ImageEncoder.maxLongestEdge) else { return nil }
+            guard let encoded = InspectFrameOverlay.encode(image) else { return nil }
+            return (base64: encoded.data.base64EncodedString(), mime: encoded.mime, encodedByteSize: encoded.data.count)
         }.value
         guard let encoded else {
             throw ToolError("Failed to read or decode image file")
@@ -169,6 +169,7 @@ extension ToolExecutor {
         meta["mimeType"] = encoded.mime
         meta["byteSize"] = fileSize
         meta["encodedByteSize"] = encoded.encodedByteSize
+        meta["coordinateGrid"] = InspectFrameOverlay.metadataNote
         if let props = Self.imagePropertiesSummary(at: url) {
             meta["imageProperties"] = props
         }
@@ -216,6 +217,7 @@ extension ToolExecutor {
             imageBlocks = [.image(base64: jpeg.base64EncodedString(), mediaType: "image/jpeg")]
         case .frames(let frames):
             meta["frameTimestamps"] = frames.map { $0.timestamp.jsonRounded(toPlaces: 3) }
+            meta["coordinateGrid"] = InspectFrameOverlay.metadataNote
             imageBlocks = frames.map { .image(base64: $0.jpeg.base64EncodedString(), mediaType: "image/jpeg") }
         }
 
@@ -275,7 +277,8 @@ extension ToolExecutor {
             let t = start + (end - start) * (Double(i) + 0.5) / Double(frameCount)
             let cmTime = CMTime(seconds: t, preferredTimescale: 600)
             guard let cgImage = try? await generator.image(at: cmTime).image else { continue }
-            guard let jpeg = ImageEncoder.encodeJPEG(cgImage, quality: readVideoJPEGQuality) else { continue }
+            let overlaid = InspectFrameOverlay.apply(cgImage)
+            guard let jpeg = ImageEncoder.encodeJPEG(overlaid, quality: readVideoJPEGQuality) else { continue }
             frames.append((timestamp: t, jpeg: jpeg))
         }
         guard !frames.isEmpty else { throw ToolError("Failed to extract frames from \(name)") }
@@ -292,6 +295,7 @@ extension ToolExecutor {
         meta["frameCount"] = lottieMeta.frameCount
         meta["durationSeconds"] = lottieMeta.duration
         meta["sampledFrameIndices"] = frames.map(\.frameIndex)
+        meta["coordinateGrid"] = InspectFrameOverlay.metadataNote
         meta["note"] = "Lottie frames sampled evenly across the animation; transparent areas composited over gray."
 
         let imageBlocks: [ToolResult.Block] = frames.compactMap { frame in
@@ -316,7 +320,8 @@ extension ToolExecutor {
         context.setFillColor(gray: 0.5, alpha: 1)
         context.fill(rect)
         context.draw(image, in: rect)
-        return context.makeImage().flatMap { ImageEncoder.encodeJPEG($0, quality: quality) }
+        guard let composited = context.makeImage() else { return nil }
+        return ImageEncoder.encodeJPEG(InspectFrameOverlay.apply(composited), quality: quality)
     }
 
     private func readAudio(editor: EditorViewModel, asset: MediaAsset, args: [String: Any], mapping: (clip: Clip, fps: Int)? = nil, preferredLocale: Locale? = nil) async throws -> ToolResult {

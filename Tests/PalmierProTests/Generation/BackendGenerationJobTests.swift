@@ -10,7 +10,9 @@ struct BackendGenerationJobTests {
         let withoutRefund = try JSONDecoder().decode(BackendGenerationJob.self, from: Data("""
         {"_id":"j2","status":"succeeded","resultUrls":["https://example.com/out.mp4"],"costCredits":10,"completedAt":1}
         """.utf8))
+        #expect(withRefund.costCredits == 27)
         #expect(withRefund.refundedCredits == 27)
+        #expect(withoutRefund.costCredits == 10)
         #expect(withoutRefund.refundedCredits == nil)
     }
 }

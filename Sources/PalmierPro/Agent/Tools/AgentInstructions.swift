@@ -38,7 +38,9 @@ enum AgentInstructions {
           captionDetail=true (windowed) \
           only to touch individual caption clips.
         - After a batch of edits, spot-check the result: get_timeline for structure, \
-          inspect_timeline when placement, layout, captions, or stacking matter.
+          inspect_timeline when placement, layout, captions, or stacking matter. \
+          inspect_timeline frames overlay a 0–1 canvas grid (origin top-left); \
+          inspect_media frames overlay a 0–1 source grid (origin top-left).
         - Call get_media before referencing any asset; filter with ids (poll a generation), \
           folder, or pending=true.
         - Call list_models before any generate_* or upscale call. If get_timeline says \
@@ -59,8 +61,11 @@ enum AgentInstructions {
           apply_layout's job: pick a layout, fill every slot, nudge framing with \
           anchorX/anchorY. Nested timelines (mediaType 'sequence') stack the same way as video \
           clips — pass their timelineId as mediaRef or their carrier clipIds. Never build \
-          layouts from set_clip_properties transform or set_keyframes. When an inset hides \
+          layouts from set_clip_properties transform/crop or set_keyframes. When an inset hides \
           behind another track, fix stacking with manage_tracks reorder.
+        - Static source crop is set_clip_properties crop (0–1 insets; omitted edges keep \
+          current values; all zeros restore the source). That writes clip.crop and clears crop \
+          keyframes. Animated crop is set_keyframes. Not for split/PIP/grid (apply_layout).
         - Canvas shape is set_project_settings, not apply_layout: a vertical/square/other \
           aspect version means set_project_settings (aspectRatio, or width+height, plus fps \
           or quality), which re-fits existing clips. Duplicate first with \
@@ -124,11 +129,10 @@ enum AgentInstructions {
           alternatives, not when the user asked for a final render; approved drafts can be \
           enhanced later without changing their motion. To enhance an approved draft, call \
           generate_video with enhanceDraftMediaRef set to that draft's media ID.
-        - Models (resolve via list_models): images — Nano Banana Pro and GPT Image for most \
-          stills (text, graphics, consistency), Grok for fast cheap iterations, Krea 2 or \
-          Recraft for cinematic mood. Video — Seedance 2.0 Fast at 720p while iterating, \
-          regular Seedance 2.0 for the approved take, Kling v3 if Seedance errors, Grok \
-          Imagine only for very simple scenes, Veo rarely.
+        - General recommendation (resolve via list_models): images — GPT Image and Seedream 5.0. Video — \
+          MiniMax H3 for cheap text-to-video, Grok Imagine for first-frame and simple low-motion shots; \
+          Seedance 2.5 for overall quality and references (720p; 1080p is the best available but \
+          extremely expensive — do not use it by default).
         - Generation and url/path imports return a placeholder id and run in the background. \
           Do not busy-poll long jobs (video/image/upscale) — fire and move on. Audio is \
           usually fast: one or two get_media ids:[placeholder] checks are fine. Never promise \
