@@ -16,7 +16,6 @@
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="انضم إلى Discord" /></a>
 <a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 <br />
-<a href="https://trendshift.io/repositories/41342?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-41342" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/41342" alt="palmier-io%2Fpalmier-pro | Trendshift" width="250" height="55"/></a>
 
 <p>
   <a href="../../README.md">English</a> ·
@@ -42,7 +41,10 @@
 
 ---
 
-بالمي برو (Palmier Pro) هو محرر فيديو مفتوح المصدر لنظام macOS. يتيح لك العمل جنبًا إلى جنب مع المساعد الذكي الخاص بك لإنشاء الفيديوهات وتحريرها داخل الخط الزمني (Timeline) نفسه.
+> [!IMPORTANT]
+> نُشرت إصدارات Palmier Pro حتى v0.7.6 بموجب GPLv3. آخر لقطة عامة من الشفرة المصدرية هي [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source). الإصدارات اللاحقة لـ v0.7.6 احتكارية، ولا تُنشر شفرتها المصدرية هنا.
+
+بالمي برو (Palmier Pro) هو محرر فيديو لنظام macOS. يتيح لك العمل جنبًا إلى جنب مع المساعد الذكي الخاص بك لإنشاء الفيديوهات وتحريرها داخل الخط الزمني (Timeline) نفسه.
 
 ### محرر فيديو Swift-native
 
@@ -90,9 +92,9 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 
 ## FAQ
 
-**هل Palmier Pro بالكامل open source؟**
+**ما إصدارات Palmier Pro مفتوحة المصدر؟**
 
-محرر الفيديو، بدون ميزات generative AI، مفتوح المصدر بالكامل. MCP server وagent chat مفتوحا المصدر أيضًا. الجزء الوحيد closed source هو معالجة generative AI.
+تظل الإصدارات حتى v0.7.6 والشفرة المصدرية حتى [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) خاضعة لـ GPLv3، أما الإصدارات اللاحقة فهي احتكارية.
 
 **هل هو مجاني؟**
 
@@ -106,21 +108,19 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 * macOS 26 (Tahoe)
 * أجهزة Apple Silicon فقط
   
-راجع [FAQ.md](../../FAQ.md) للمزيد.
+## المساهمة
 
-## Development
-
-راجع [CONTRIBUTING.md](../../CONTRIBUTING.md).
+لم يعد هذا المستودع يقبل مساهمات برمجية. تظل الشفرة المصدرية المنشورة متاحة للاستخدام والتعديل وإعادة التوزيع بموجب GPLv3.
 
 ## Community والدعم
 
 - **Discord:** انضم إلى المجتمع على **[Discord](https://discord.com/invite/SMVW6pKYmg)**.
 - **Twitter / X:** تابع **[@Palmier_io](https://x.com/Palmier_io)** للحصول على التحديثات والإعلانات.
 - **Instagram:** تابع [@palmier.io](https://www.instagram.com/palmier.io).
-- **Feedback والدعم:** افتح [GitHub Issue](https://github.com/palmier-io/palmier-pro/issues) أو راسلنا على founders@palmier.io.
+- **Feedback والدعم:** راسلنا على founders@palmier.io.
 
 ## License
 
 Copyright (C) 2026 Palmier, Inc.
 
-Palmier Pro مفتوح المصدر بموجب [GPLv3](../../LICENSE).
+تظل الشفرة المصدرية المنشورة في هذا المستودع خاضعة لـ [GPLv3](../../LICENSE). الإصدارات الثنائية اللاحقة لـ v0.7.6 احتكارية وخاضعة لـ [BINARY_LICENSE.md](../../BINARY_LICENSE.md).

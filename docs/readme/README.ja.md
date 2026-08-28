@@ -16,7 +16,6 @@
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Discord に参加" /></a>
 <a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 <br />
-<a href="https://trendshift.io/repositories/41342?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-41342" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/41342" alt="palmier-io%2Fpalmier-pro | Trendshift" width="250" height="55"/></a>
 
 <p>
   <a href="../../README.md">English</a> ·
@@ -42,7 +41,10 @@
 
 ---
 
-Palmier Pro は Mac 向けのオープンソース動画エディタです。ユーザーと agent がタイムライン上で一緒に動画を生成、編集できます。
+> [!IMPORTANT]
+> Palmier Pro の v0.7.6 までのリリースは GPLv3 で公開されました。最後の公開ソーススナップショットは [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) です。v0.7.6 より後のリリースはプロプライエタリであり、そのソースコードはここでは公開されません。
+
+Palmier Pro は Mac 向けの動画エディタです。ユーザーと agent がタイムライン上で一緒に動画を生成、編集できます。
 
 ### Swift ネイティブ動画エディタ
 
@@ -91,9 +93,9 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 
 ## FAQ
 
-**Palmier Pro は完全にオープンソースですか？**
+**Palmier Pro のどのバージョンがオープンソースですか？**
 
-動画エディタは、生成 AI 機能を除いて完全にオープンソースです。MCP サーバーと agent チャットもオープンソースです。クローズドソースなのは生成 AI 処理だけです。
+v0.7.6 までのリリースと [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) までのソースコードは GPLv3 のままです。それ以降のリリースはプロプライエタリです。
 
 **無料ですか？**
 
@@ -105,21 +107,19 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 
 Apple Silicon 搭載の macOS 26 (Tahoe) のみです。
 
-詳細は [FAQ.md](../../FAQ.md) を参照してください。
+## コントリビューション
 
-## 開発
-
-[CONTRIBUTING.md](../../CONTRIBUTING.md) を参照してください。
+このリポジトリでは、コードのコントリビューションを受け付けていません。公開済みのソースコードは、GPLv3 のもとで引き続き利用、変更、再配布できます。
 
 ## コミュニティとサポート
 
 - **Discord:** **[Discord](https://discord.com/invite/SMVW6pKYmg)** でコミュニティに参加できます。
 - **Twitter / X:** 更新と告知は **[@Palmier_io](https://x.com/Palmier_io)** をフォローしてください。
 - **Instagram:** [@palmier.io](https://www.instagram.com/palmier.io) をフォローしてください。
-- **フィードバックとサポート:** [GitHub Issue](https://github.com/palmier-io/palmier-pro/issues) を作成するか、founders@palmier.io にメールしてください。
+- **フィードバックとサポート:** founders@palmier.io にメールしてください。
 
 ## ライセンス
 
 Copyright (C) 2026 Palmier, Inc.
 
-Palmier Pro は [GPLv3](../../LICENSE) のもとでオープンソースとして公開されています。
+このリポジトリで公開されているソースコードは引き続き [GPLv3](../../LICENSE) のもとにあります。v0.7.6 より後のバイナリリリースはプロプライエタリであり、[BINARY_LICENSE.md](../../BINARY_LICENSE.md) が適用されます。

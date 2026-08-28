@@ -16,7 +16,6 @@
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Entrar no Discord" /></a>
 <a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 <br />
-<a href="https://trendshift.io/repositories/41342?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-41342" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/41342" alt="palmier-io%2Fpalmier-pro | Trendshift" width="250" height="55"/></a>
 
 <p>
   <a href="../../README.md">English</a> ·
@@ -42,7 +41,10 @@
 
 ---
 
-Palmier Pro é um editor de vídeo open source para Mac. Você e seu agente podem gerar e editar vídeos juntos dentro da linha do tempo.
+> [!IMPORTANT]
+> As versões do Palmier Pro até v0.7.6 foram publicadas sob a GPLv3. O snapshot público final do código-fonte é [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source). As versões posteriores a v0.7.6 são proprietárias e seu código-fonte não é publicado aqui.
+
+Palmier Pro é um editor de vídeo para Mac. Você e seu agente podem gerar e editar vídeos juntos dentro da linha do tempo.
 
 ### Editor de vídeo nativo em Swift
 
@@ -91,9 +93,9 @@ Incluímos um pacote [mcpb](https://github.com/modelcontextprotocol/mcpb) no app
 
 ## FAQ
 
-**O Palmier Pro é totalmente open source?**
+**Quais versões do Palmier Pro são open source?**
 
-O editor de vídeo, sem os recursos de IA generativa, é totalmente open source. O servidor MCP e o chat do agente também são open source. A única parte proprietária é o processamento de IA generativa.
+As versões até v0.7.6 e o código-fonte até [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) permanecem sob a GPLv3; as versões posteriores são proprietárias.
 
 **É gratuito?**
 
@@ -105,21 +107,19 @@ Os recursos de IA generativa exigem login e assinatura.
 
 Requer macOS 26 (Tahoe) em Macs com Apple Silicon
 
-Veja [FAQ.md](../../FAQ.md) para mais detalhes.
+## Contribuições
 
-## Desenvolvimento
-
-Veja [CONTRIBUTING.md](../../CONTRIBUTING.md).
+Este repositório não aceita mais contribuições de código. O código-fonte publicado continua disponível para uso, modificação e redistribuição sob a GPLv3.
 
 ## Comunidade e suporte
 
 - **Discord:** Entre na comunidade no **[Discord](https://discord.com/invite/SMVW6pKYmg)**.
 - **Twitter / X:** Siga **[@Palmier_io](https://x.com/Palmier_io)** para atualizações e anúncios.
 - **Instagram:** Siga [@palmier.io](https://www.instagram.com/palmier.io).
-- **Feedback e suporte:** Crie uma [GitHub Issue](https://github.com/palmier-io/palmier-pro/issues) ou envie um email para founders@palmier.io.
+- **Feedback e suporte:** Envie um email para founders@palmier.io.
 
 ## Licença
 
 Copyright (C) 2026 Palmier, Inc.
 
-Palmier Pro é open source sob a licença [GPLv3](../../LICENSE).
+O código-fonte publicado neste repositório permanece sob a [GPLv3](../../LICENSE). As versões binárias posteriores a v0.7.6 são proprietárias sob a [BINARY_LICENSE.md](../../BINARY_LICENSE.md).

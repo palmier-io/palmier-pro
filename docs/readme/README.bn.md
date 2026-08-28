@@ -16,7 +16,6 @@
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Discord-এ যোগ দিন" /></a>
 <a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 <br />
-<a href="https://trendshift.io/repositories/41342?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-41342" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/41342" alt="palmier-io%2Fpalmier-pro | Trendshift" width="250" height="55"/></a>
 
 <p>
   <a href="../../README.md">English</a> ·
@@ -42,7 +41,10 @@
 
 ---
 
-Palmier Pro Mac-এর জন্য একটি open source ভিডিও এডিটর। আপনি এবং আপনার agent timeline-এর ভিতরে একসঙ্গে ভিডিও generate ও edit করতে পারেন।
+> [!IMPORTANT]
+> Palmier Pro-এর v0.7.6 পর্যন্ত releases GPLv3-এর অধীনে প্রকাশিত হয়েছিল। সর্বশেষ public source snapshot হলো [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source)। v0.7.6-এর পরের releases proprietary এবং তাদের source এখানে প্রকাশ করা হয় না।
+
+Palmier Pro Mac-এর জন্য একটি ভিডিও এডিটর। আপনি এবং আপনার agent timeline-এর ভিতরে একসঙ্গে ভিডিও generate ও edit করতে পারেন।
 
 ### Swift-native ভিডিও এডিটর
 
@@ -91,9 +93,9 @@ App-এর সঙ্গে আমরা একটি [mcpb](https://github.com/m
 
 ## FAQ
 
-**Palmier Pro কি পুরোপুরি open source?**
+**Palmier Pro-এর কোন versions open source?**
 
-Generative AI features ছাড়া ভিডিও এডিটরটি পুরোপুরি open source। MCP server এবং agent chat-ও open source। শুধু generative AI processing closed source।
+v0.7.6 পর্যন্ত releases এবং [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) পর্যন্ত source GPLv3-এর অধীনে থাকবে; পরবর্তী releases proprietary।
 
 **এটি কি free?**
 
@@ -105,21 +107,19 @@ Generative AI features-এর জন্য login এবং subscription প্�
 
 শুধু Apple Silicon-এ macOS 26 (Tahoe)।
 
-আরও জানতে [FAQ.md](../../FAQ.md) দেখুন।
+## অবদান
 
-## Development
-
-[CONTRIBUTING.md](../../CONTRIBUTING.md) দেখুন।
+এই repository আর code contributions গ্রহণ করে না। প্রকাশিত source GPLv3-এর অধীনে ব্যবহার, পরিবর্তন ও পুনর্বিতরণের জন্য উপলভ্য থাকবে।
 
 ## Community এবং support
 
 - **Discord:** **[Discord](https://discord.com/invite/SMVW6pKYmg)**-এ community-তে যোগ দিন।
 - **Twitter / X:** Updates এবং announcements-এর জন্য **[@Palmier_io](https://x.com/Palmier_io)** follow করুন।
 - **Instagram:** [@palmier.io](https://www.instagram.com/palmier.io) follow করুন।
-- **Feedback এবং support:** একটি [GitHub Issue](https://github.com/palmier-io/palmier-pro/issues) তৈরি করুন অথবা founders@palmier.io-এ email করুন।
+- **Feedback এবং support:** founders@palmier.io-এ email করুন।
 
 ## License
 
 Copyright (C) 2026 Palmier, Inc.
 
-Palmier Pro [GPLv3](../../LICENSE)-এর অধীনে open source।
+এই repository-তে প্রকাশিত source [GPLv3](../../LICENSE)-এর অধীনে থাকবে। v0.7.6-এর পরের binary releases [BINARY_LICENSE.md](../../BINARY_LICENSE.md)-এর অধীনে proprietary।

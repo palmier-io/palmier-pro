@@ -16,7 +16,6 @@
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="加入 Discord" /></a>
 <a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 <br />
-<a href="https://trendshift.io/repositories/41342?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-41342" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/41342" alt="palmier-io%2Fpalmier-pro | Trendshift" width="250" height="55"/></a>
 
 <p>
   <a href="../../README.md">English</a> ·
@@ -42,7 +41,10 @@
 
 ---
 
-Palmier Pro 是面向 Mac 的开源视频编辑器。你和你的 Agent 可以在时间线中一起生成和编辑视频。
+> [!IMPORTANT]
+> Palmier Pro v0.7.6 及之前的版本以 GPLv3 发布。最终的公开源代码快照是 [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source)。v0.7.6 之后的版本为专有软件，其源代码不在此发布。
+
+Palmier Pro 是面向 Mac 的视频编辑器。你和你的 Agent 可以在时间线中一起生成和编辑视频。
 
 ### 基于 Swift 原生开发的剪辑工具
 
@@ -91,9 +93,9 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 
 ## FAQ
 
-**Palmier Pro 是否完全开源？**
+**哪些 Palmier Pro 版本是开源的？**
 
-视频编辑器本身完全开源，不包括生成式 AI 功能。MCP 服务器和 Agent 聊天也开源。唯一闭源的是生成式 AI 处理部分。
+Palmier Pro v0.7.6 及之前的版本，以及截至 [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) 的源代码，仍采用 GPLv3 许可；之后的版本为专有软件。
 
 **是否免费？**
 
@@ -105,21 +107,19 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 
 仅支持搭载 Apple Silicon 的 macOS 26 (Tahoe)。
 
-更多内容请查看 [FAQ.md](../../FAQ.md)。
+## 贡献
 
-## 开发
-
-查看 [CONTRIBUTING.md](../../CONTRIBUTING.md)。
+此仓库不再接受代码贡献。已发布的源代码仍可依据 GPLv3 使用、修改和再分发。
 
 ## 社区与支持
 
 - **Discord:** 在 **[Discord](https://discord.com/invite/SMVW6pKYmg)** 加入社区。
 - **Twitter / X:** 关注 **[@Palmier_io](https://x.com/Palmier_io)** 获取更新和公告。
 - **Instagram:** 关注 [@palmier.io](https://www.instagram.com/palmier.io)。
-- **反馈与支持:** 创建 [GitHub Issue](https://github.com/palmier-io/palmier-pro/issues) 或发送邮件至 founders@palmier.io。
+- **反馈与支持:** 发送邮件至 founders@palmier.io。
 
 ## 许可证
 
 Copyright (C) 2026 Palmier, Inc.
 
-Palmier Pro 基于 [GPLv3](../../LICENSE) 开源。
+此仓库中发布的源代码仍采用 [GPLv3](../../LICENSE) 许可。v0.7.6 之后的二进制版本为专有软件，受 [BINARY_LICENSE.md](../../BINARY_LICENSE.md) 约束。
