@@ -72,6 +72,9 @@ final class ToolExecutor {
 
     var feedbackState = FeedbackState()
     var lastTranscriptSession: TranscriptSession?
+    #if DEBUG
+    var executionHook: ((ToolName) async throws -> Void)?
+    #endif
 
     func execute(
         name: String,
@@ -165,11 +168,23 @@ final class ToolExecutor {
             data: ["tool": tool.rawValue, "projectId": editor.projectId ?? "unknown"]
         )
         do {
+            try Task.checkCancellation()
+            await Task.yield()
             let resolved = try expandingIdPrefixes(in: args, editor: editor)
+            try Task.checkCancellation()
+            await Task.yield()
+            #if DEBUG
+            try await executionHook?(tool)
+            try Task.checkCancellation()
+            await Task.yield()
+            #endif
             readRevision = editor.beginAgentTimelineRead(
                 timelineReadActivity(for: tool, args: resolved, editor: editor)
             )
             result = try await run(tool, editor, resolved)
+            await Task.yield()
+        } catch is CancellationError {
+            result = .error("Cancelled")
         } catch let err as ToolError {
             result = .error(err.message)
         } catch {
@@ -318,6 +333,8 @@ final class ToolExecutor {
     }
 
     private func run(_ tool: ToolName, _ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
+        try Task.checkCancellation()
+        await Task.yield()
         switch tool {
         case .getTimeline:   return try getTimeline(editor, args)
         case .getMedia:      return try getMedia(editor, args)
