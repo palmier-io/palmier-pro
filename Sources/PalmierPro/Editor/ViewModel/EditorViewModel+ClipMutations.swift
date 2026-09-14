@@ -222,32 +222,50 @@ extension EditorViewModel {
         return true
     }
 
-    func applyClipSpeed(clipId: String, newSpeed: Double) {
-        guard !refusesMulticamRetime(clipIds: [clipId], quiet: true) else { return }
-        guard let loc = findClip(id: clipId) else { return }
-        guard timeline.tracks[loc.trackIndex].clips[loc.clipIndex].supportsRetiming else { return }
+    /// Retiming a clip must retime its linked partners. Otherwise the untouched side keeps its old
+    /// length and speed, drifting out of sync and overlapping whatever follows it on its own track.
+    /// Ordered by track then start frame so each track's ripple runs deterministically.
+    func retimeTargets(_ ids: [String], propagateToLinked: Bool) -> [String] {
+        let candidates = propagateToLinked ? expandToLinkGroup(Set(ids)) : Set(ids)
+        return candidates
+            .compactMap { id -> (id: String, track: Int, start: Int)? in
+                guard let loc = findClip(id: id) else { return nil }
+                let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+                guard clip.supportsRetiming else { return nil }
+                return (id, loc.trackIndex, clip.startFrame)
+            }
+            .sorted { ($0.track, $0.start) < ($1.track, $1.start) }
+            .map(\.id)
+    }
+
+    func applyClipSpeed(ids: [String], newSpeed: Double, propagateToLinked: Bool = true) {
+        let targets = retimeTargets(ids, propagateToLinked: propagateToLinked)
+        guard !targets.isEmpty, !refusesMulticamRetime(clipIds: targets, quiet: true) else { return }
         if preDragTimeline == nil {
             preDragTimeline = timeline
         }
-        if dragBefore[clipId] == nil {
-            dragBefore[clipId] = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+        for id in targets {
+            guard let loc = findClip(id: id) else { continue }
+            if dragBefore[id] == nil {
+                dragBefore[id] = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            }
+            setClipSpeed(at: loc, newSpeed: newSpeed)
         }
-        setClipSpeed(at: loc, newSpeed: newSpeed)
     }
 
-    func commitClipSpeed(ids: [String], newSpeed: Double, ripple: Bool = true) {
-        guard !refusesMulticamRetime(clipIds: ids) else { return }
+    func commitClipSpeed(ids: [String], newSpeed: Double, ripple: Bool = true, propagateToLinked: Bool = true) {
+        let targets = retimeTargets(ids, propagateToLinked: propagateToLinked)
+        guard !refusesMulticamRetime(clipIds: targets) else { return }
         let before: Timeline = preDragTimeline ?? timeline
-        for id in ids {
+        for id in targets {
             guard let loc = findClip(id: id) else { continue }
-            guard timeline.tracks[loc.trackIndex].clips[loc.clipIndex].supportsRetiming else { continue }
             if timeline.tracks[loc.trackIndex].clips[loc.clipIndex].speed != newSpeed {
                 setClipSpeed(at: loc, newSpeed: newSpeed, ripple: ripple)
             }
         }
         let after = timeline
         preDragTimeline = nil
-        for id in ids { dragBefore.removeValue(forKey: id) }
+        for id in targets { dragBefore.removeValue(forKey: id) }
         guard before != after else { return }
         registerTimelineSwap(undoState: before, redoState: after, actionName: "Change Speed")
     }

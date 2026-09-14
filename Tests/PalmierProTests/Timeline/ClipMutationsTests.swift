@@ -17,7 +17,7 @@ struct ApplyClipSpeedTests {
     @Test func applyClipSpeedDoublesScalesDurationDownByHalf() {
         let clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
         let e = editor([Fixtures.videoTrack(clips: [clip])])
-        e.applyClipSpeed(clipId: "c1", newSpeed: 2.0)
+        e.applyClipSpeed(ids: ["c1"], newSpeed: 2.0)
         let updated = e.timeline.tracks[0].clips[0]
         #expect(updated.speed == 2.0)
         // sourceFrames=60*1=60; newDuration = 60/2 = 30.
@@ -27,7 +27,7 @@ struct ApplyClipSpeedTests {
     @Test func applyClipSpeedHalfDoublesDuration() {
         let clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
         let e = editor([Fixtures.videoTrack(clips: [clip])])
-        e.applyClipSpeed(clipId: "c1", newSpeed: 0.5)
+        e.applyClipSpeed(ids: ["c1"], newSpeed: 0.5)
         #expect(e.timeline.tracks[0].clips[0].durationFrames == 120)
     }
 
@@ -37,7 +37,7 @@ struct ApplyClipSpeedTests {
         let c1 = Fixtures.clip(id: "c1", start: 0, duration: 60)
         let c2 = Fixtures.clip(id: "c2", start: 60, duration: 30)
         let e = editor([Fixtures.videoTrack(clips: [c1, c2])])
-        e.applyClipSpeed(clipId: "c1", newSpeed: 2.0)
+        e.applyClipSpeed(ids: ["c1"], newSpeed: 2.0)
         let updated = e.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
         #expect(updated[0].durationFrames == 30)
         #expect(updated[1].startFrame == 30)
@@ -48,7 +48,7 @@ struct ApplyClipSpeedTests {
         let c1 = Fixtures.clip(id: "c1", start: 0, duration: 60)
         let c2 = Fixtures.clip(id: "c2", start: 100, duration: 30)
         let e = editor([Fixtures.videoTrack(clips: [c1, c2])])
-        e.applyClipSpeed(clipId: "c1", newSpeed: 2.0)
+        e.applyClipSpeed(ids: ["c1"], newSpeed: 2.0)
         let updated = e.timeline.tracks[0].clips.first { $0.id == "c2" }!
         #expect(updated.startFrame == 100)
     }
@@ -84,12 +84,94 @@ struct ApplyClipSpeedTests {
         clip.scaleTrack = KeyframeTrack(keyframes: [Keyframe(frame: 59, value: AnimPair(a: 2.0, b: 2.0))])
         let e = editor([Fixtures.videoTrack(clips: [clip])])
 
-        e.applyClipSpeed(clipId: "c1", newSpeed: 2.0)
+        e.applyClipSpeed(ids: ["c1"], newSpeed: 2.0)
         let updated = e.timeline.tracks[0].clips[0]
 
         #expect(updated.durationFrames == 30)
         #expect(updated.opacityTrack?.keyframes.map(\.frame) == [0, 15, 29])
         #expect(updated.scaleTrack?.keyframes.map(\.frame) == [29])
+    }
+
+    @Test func retimeCarriesToLinkedAudioPartner() {
+        // Regression: speeding a video clip whose audio lives on a linked audio track left the audio
+        // at 1x and full length, so it ran past the picture and overlapped the following clip.
+        var video = Fixtures.clip(id: "v1", start: 0, duration: 60)
+        video.linkGroupId = "g1"
+        var audio = Fixtures.clip(id: "a1", mediaType: .audio, start: 0, duration: 60)
+        audio.linkGroupId = "g1"
+        let nextVideo = Fixtures.clip(id: "v2", start: 60, duration: 30)
+        let nextAudio = Fixtures.clip(id: "a2", mediaType: .audio, start: 60, duration: 30)
+        let e = editor([
+            Fixtures.videoTrack(clips: [video, nextVideo]),
+            Fixtures.audioTrack(clips: [audio, nextAudio]),
+        ])
+
+        e.commitClipSpeed(ids: ["v1"], newSpeed: 1.5)
+
+        let v = e.timeline.tracks[0].clips.first { $0.id == "v1" }!
+        let a = e.timeline.tracks[1].clips.first { $0.id == "a1" }!
+        #expect(v.speed == 1.5)
+        #expect(a.speed == 1.5)
+        #expect(a.durationFrames == v.durationFrames)
+        #expect(a.endFrame == v.endFrame)
+        // Both tracks ripple, so picture and sound stay aligned at the next cut.
+        #expect(e.timeline.tracks[0].clips.first { $0.id == "v2" }!.startFrame == 40)
+        #expect(e.timeline.tracks[1].clips.first { $0.id == "a2" }!.startFrame == 40)
+    }
+
+    @Test func liveRetimeDragCarriesToLinkedAudioPartner() {
+        var video = Fixtures.clip(id: "v1", start: 0, duration: 60)
+        video.linkGroupId = "g1"
+        var audio = Fixtures.clip(id: "a1", mediaType: .audio, start: 0, duration: 60)
+        audio.linkGroupId = "g1"
+        let e = editor([
+            Fixtures.videoTrack(clips: [video]),
+            Fixtures.audioTrack(clips: [audio]),
+        ])
+
+        e.applyClipSpeed(ids: ["v1"], newSpeed: 2.0)
+
+        #expect(e.timeline.tracks[1].clips[0].speed == 2.0)
+        #expect(e.timeline.tracks[1].clips[0].durationFrames == 30)
+    }
+
+    @Test func retimeWithLinkPropagationOffLeavesPartnerUntouched() {
+        // Sync resolves its own retime unit and must not have partners folded back in.
+        var video = Fixtures.clip(id: "v1", start: 0, duration: 60)
+        video.linkGroupId = "g1"
+        var audio = Fixtures.clip(id: "a1", mediaType: .audio, start: 0, duration: 60)
+        audio.linkGroupId = "g1"
+        let e = editor([
+            Fixtures.videoTrack(clips: [video]),
+            Fixtures.audioTrack(clips: [audio]),
+        ])
+
+        e.commitClipSpeed(ids: ["v1"], newSpeed: 2.0, propagateToLinked: false)
+
+        #expect(e.timeline.tracks[0].clips[0].speed == 2.0)
+        #expect(e.timeline.tracks[1].clips[0].speed == 1.0)
+        #expect(e.timeline.tracks[1].clips[0].durationFrames == 60)
+    }
+
+    @Test func retimeUndoRestoresBothSidesOfTheLinkGroup() {
+        var video = Fixtures.clip(id: "v1", start: 0, duration: 60)
+        video.linkGroupId = "g1"
+        var audio = Fixtures.clip(id: "a1", mediaType: .audio, start: 0, duration: 60)
+        audio.linkGroupId = "g1"
+        let e = editor([
+            Fixtures.videoTrack(clips: [video]),
+            Fixtures.audioTrack(clips: [audio]),
+        ])
+        let undo = UndoManager()
+        e.undo.attach(undo)
+
+        e.commitClipSpeed(ids: ["v1"], newSpeed: 2.0)
+        undo.undo()
+
+        #expect(e.timeline.tracks[0].clips[0].speed == 1.0)
+        #expect(e.timeline.tracks[0].clips[0].durationFrames == 60)
+        #expect(e.timeline.tracks[1].clips[0].speed == 1.0)
+        #expect(e.timeline.tracks[1].clips[0].durationFrames == 60)
     }
 }
 
