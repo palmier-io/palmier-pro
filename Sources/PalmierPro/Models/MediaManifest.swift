@@ -33,6 +33,14 @@ struct MediaManifestEntry: Codable, Sendable, Equatable, Identifiable {
     var cachedRemoteURLExpiresAt: Date?
     var generationStatus: String?
     var importInput: MediaImportInput?
+    var sourceMarks: SourceMarks?
+}
+
+/// User-marked in/out points on a media asset, in source seconds. Raw values;
+/// readers clamp via `MediaAsset.markedSegment`.
+struct SourceMarks: Codable, Sendable, Equatable {
+    var inSeconds: Double?
+    var outSeconds: Double?
 }
 
 struct MediaImportInput: Codable, Sendable, Equatable {

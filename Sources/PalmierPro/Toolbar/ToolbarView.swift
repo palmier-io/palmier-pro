@@ -34,6 +34,14 @@ struct ToolbarView: View {
             toolbarDivider
 
             HStack(spacing: AppTheme.Spacing.md) {
+                toolbarButton("text.append", help: L10n.string("Append to End (E)"), action: editor.appendSourceToEnd)
+                toolbarButton("arrow.down.to.line.compact", help: L10n.string("Insert at Playhead (⇧E)"), action: editor.insertSourceAtPlayhead)
+                toolbarButton("square.fill.on.square", help: L10n.string("Overwrite at Playhead (D)"), action: editor.overwriteSourceAtPlayhead)
+            }
+
+            toolbarDivider
+
+            HStack(spacing: AppTheme.Spacing.md) {
                 textGlyphButton("T", help: L10n.string("Add Text"), action: { _ = editor.addTextClip() })
                 markerButton
             }
