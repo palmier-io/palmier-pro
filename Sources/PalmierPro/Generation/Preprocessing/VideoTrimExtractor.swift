@@ -45,7 +45,7 @@ enum VideoTrimExtractor {
             try? compAudio.insertTimeRange(trim.timeRange, of: audioTrack, at: .zero)
         }
 
-        let outputURL = FileManager.default.temporaryDirectory
+        let outputURL = StorageLocations.temporaryDirectory
             .appendingPathComponent("trim-\(UUID().uuidString).mp4")
 
         guard let session = AVAssetExportSession(

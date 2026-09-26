@@ -29,9 +29,8 @@ struct EmbeddingStore {
 
     private static let magic = Data("PALMEMB1".utf8)
 
-    static let directory = FileManager.default
-        .urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("\(Log.subsystem)/Embeddings", isDirectory: true)
+    static let directory = StorageLocations.subsystemCacheDirectory
+        .appendingPathComponent("Embeddings", isDirectory: true)
 
     static func key(for url: URL) -> String? {
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),

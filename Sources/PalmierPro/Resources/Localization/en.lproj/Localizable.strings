@@ -3,6 +3,7 @@
 "$%lld/mo" = "$%lld/mo";
 "$%lld–$%lld · Credits expire at renewal." = "$%lld–$%lld · Credits expire at renewal.";
 "%@ (Paid)" = "%@ (Paid)";
+"%@ and $TMPDIR" = "%@ and $TMPDIR";
 "%@ could not be exported." = "%@ could not be exported.";
 "%@ does not accept this media" = "%@ does not accept this media";
 "%@ does not support this media type." = "%@ does not support this media type.";
@@ -10,6 +11,7 @@
 "%@ exported with 1 warning." = "%@ exported with 1 warning.";
 "%@ is ready." = "%@ is ready.";
 "%@ model not available" = "%@ model not available";
+"%@ unavailable. Using the default location until the folder is back." = "%@ unavailable. Using the default location until the folder is back.";
 "%@ · %@" = "%@ · %@";
 "%@ · %lld" = "%@ · %lld";
 "%@, %lld skills" = "%@, %lld skills";
@@ -145,6 +147,7 @@
 "Can't paste \"%@\" here — it would nest this timeline inside itself." = "Can't paste \"%@\" here — it would nest this timeline inside itself.";
 "Can't relink \"%@\". Required media type: %@. Selected media type: %@." = "Can't relink \"%@\". Required media type: %@. Selected media type: %@.";
 "Can't unlock sync on a multicam track — \"%@\" stays aligned through it." = "Can't unlock sync on a multicam track — \"%@\" stays aligned through it.";
+"Can't write to that folder. Choose another." = "Can't write to that folder. Choose another.";
 "Cancel" = "Cancel";
 "Cancel Export" = "Cancel Export";
 "Cancel Key Color Sampling" = "Cancel Key Color Sampling";
@@ -174,6 +177,7 @@
 "Chat with your agent! It can generate content, edit clips, organize your assets, and much more. Start by signing in, or bring your own Anthropic API key." = "Chat with your agent! It can generate content, edit clips, organize your assets, and much more. Start by signing in, or bring your own Anthropic API key.";
 "Check for Updates…" = "Check for Updates…";
 "Check the marker name, position, and duration." = "Check the marker name, position, and duration.";
+"Choose" = "Choose";
 "Choose a .cube LUT file" = "Choose a .cube LUT file";
 "Choose a crop aspect" = "Choose a crop aspect";
 "Choose animation clip color" = "Choose animation clip color";
@@ -553,6 +557,7 @@
 "Local" = "Local";
 "Local runs with Apple's SpeechAnalyzer." = "Local runs with Apple's SpeechAnalyzer.";
 "Local runs with Apple's SpeechAnalyzer. Cloud uses credits and a more accurate model with more capabilities." = "Local runs with Apple's SpeechAnalyzer. Cloud uses credits and a more accurate model with more capabilities.";
+"Locations" = "Locations";
 "Log in for 250 free credits" = "Log in for 250 free credits";
 "Low" = "Low";
 "Luma" = "Luma";
@@ -726,6 +731,7 @@
 "Project" = "Project";
 "Project Activity" = "Project Activity";
 "Project Settings" = "Project Settings";
+"Projects" = "Projects";
 "Projects Couldn’t Be Deleted" = "Projects Couldn’t Be Deleted";
 "Prompt" = "Prompt";
 "Quality" = "Quality";
@@ -753,6 +759,7 @@
 "Refresh Community Skills" = "Refresh Community Skills";
 "Refresh to check for available skills." = "Refresh to check for available skills.";
 "Regenerate with the same parameters" = "Regenerate with the same parameters";
+"Relaunch Palmier Pro to use the new locations. Cached files and downloaded models at the previous location are removed." = "Relaunch Palmier Pro to use the new locations. Cached files and downloaded models at the previous location are removed.";
 "Relink Folder…" = "Relink Folder…";
 "Relinked %lld of %lld offline clips." = "Relinked %lld of %lld offline clips.";
 "Relink…" = "Relink…";
@@ -775,6 +782,7 @@
 "Rename" = "Rename";
 "Rename Skill" = "Rename Skill";
 "Rename Track" = "Rename Track";
+"Render previews, waveforms, thumbnails, transcripts, staged media, and downloaded models. Put this on a fast drive." = "Render previews, waveforms, thumbnails, transcripts, staged media, and downloaded models. Put this on a fast drive.";
 "Rendering" = "Rendering";
 "Rendering…" = "Rendering…";
 "Replace clip source" = "Replace clip source";
@@ -826,6 +834,7 @@
 "Scale" = "Scale";
 "Scope (2.39:1)" = "Scope (2.39:1)";
 "Score my timeline" = "Score my timeline";
+"Scratch and cache" = "Scratch and cache";
 "Screen" = "Screen";
 "Screenshot a frame" = "Screenshot a frame";
 "Scroll Horizontally" = "Scroll Horizontally";
@@ -1045,6 +1054,7 @@
 "Upscale source media" = "Upscale source media";
 "Upscale…" = "Upscale…";
 "Upscale… (Paid)" = "Upscale… (Paid)";
+"Use Default" = "Use Default";
 "Use Freeform" = "Use Freeform";
 "Use Freeform to edit individual crop insets." = "Use Freeform to edit individual crop insets.";
 "Use an aspect ratio with two positive numbers, such as 3:2." = "Use an aspect ratio with two positive numbers, such as 3:2.";
@@ -1089,6 +1099,7 @@
 "What do you make?" = "What do you make?";
 "What interests you most about Palmier Pro?" = "What interests you most about Palmier Pro?";
 "What's New in v%@" = "What's New in v%@";
+"Where new projects are created. Existing projects stay where they are." = "Where new projects are created. Existing projects stay where they are.";
 "Which editors did you use before?" = "Which editors did you use before?";
 "White Balance" = "White Balance";
 "Whites" = "Whites";

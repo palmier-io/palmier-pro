@@ -13,7 +13,7 @@ enum FileIOError: LocalizedError {
 
 enum FileIO {
     nonisolated static func temporaryFileURL(pathExtension: String) -> URL {
-        FileManager.default.temporaryDirectory
+        StorageLocations.temporaryDirectory
             .appendingPathComponent("palmier-stage-\(UUID().uuidString)")
             .appendingPathExtension(pathExtension)
     }
