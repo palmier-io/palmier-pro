@@ -42,6 +42,8 @@ enum CompositionBuilder {
         resolveTimeline: @escaping @Sendable (String) -> Timeline? = { _ in nil },
         missingMediaRefs: Set<String> = [],
         renderSize: CGSize,
+        resolveBreathRanges: @escaping @Sendable (String) -> [BreathDetector.Region]? = { _ in nil },
+        resolveDeessRanges: @escaping @Sendable (String) -> [DeEsser.Region]? = { _ in nil },
         makeAsset: @escaping @Sendable (URL) -> AVURLAsset = { AVURLAsset(url: $0) },
         loadTracks: @escaping @Sendable (AVURLAsset, AVMediaType) async throws -> [AVAssetTrack] = {
             try await $0.loadTracks(withMediaType: $1)
@@ -100,7 +102,9 @@ enum CompositionBuilder {
             clipTransforms: ctx.clipTransforms,
             resolveTimeline: resolveTimeline,
             compositionDuration: ctx.composition.duration,
-            renderSize: renderSize
+            renderSize: renderSize,
+            resolveBreathRanges: resolveBreathRanges,
+            resolveDeessRanges: resolveDeessRanges
         )
 
         return CompositionResult(
@@ -382,7 +386,8 @@ enum CompositionBuilder {
     }
 
     private static func insertDenoisedTwin(_ clip: Clip, parentTrackIndex: Int, ctx: BuildContext) async -> Bool {
-        guard clip.hasDenoiseEnabled, clip.denoiseAmount > 0,
+        let enhanceActive = clip.hasEnhanceEnabled && clip.enhanceAmount > 0
+        guard (clip.hasDenoiseEnabled && clip.denoiseAmount > 0) || enhanceActive,
               let resolved = ctx.resolveURL(clip.mediaRef),
               let wetURL = AudioEnhancer.cachedDenoisedURL(for: resolved, mediaRef: clip.mediaRef)
         else { return false }
@@ -567,7 +572,9 @@ enum CompositionBuilder {
         clipTransforms: [String: CGAffineTransform] = [:],
         resolveTimeline: @Sendable (String) -> Timeline? = { _ in nil },
         compositionDuration: CMTime,
-        renderSize: CGSize
+        renderSize: CGSize,
+        resolveBreathRanges: @Sendable (String) -> [BreathDetector.Region]? = { _ in nil },
+        resolveDeessRanges: @Sendable (String) -> [DeEsser.Region]? = { _ in nil }
     ) -> (audioMix: AVMutableAudioMix, videoComposition: AVVideoComposition) {
         let timescale = CMTimeScale(timeline.fps)
 
@@ -587,7 +594,10 @@ enum CompositionBuilder {
                 // Prefer the live carrier so nest volume/fade edits apply on refresh.
                 let liveCarrier = parentTrack.clips.first { $0.id == carrier.id } ?? carrier
                 for clip in clips {
-                    emitVolumeEnvelope(params: params, clip: clip, timescale: timescale, carrier: liveCarrier)
+                    let loudnessGain = clip.hasLoudnessMatchEnabled
+                        ? Float(VolumeScale.linearFromDb(clip.loudnessGainDB * (clip.hasEnhanceEnabled ? clip.enhanceAmount : 1)))
+                        : 1
+                    emitVolumeEnvelope(params: params, clip: clip, timescale: timescale, carrier: liveCarrier, gain: loudnessGain)
                 }
                 return params
             case .timeline(let trackIndex, let clipIds):
@@ -602,11 +612,38 @@ enum CompositionBuilder {
                 for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame }) {
                     if let clipIds, !clipIds.contains(clip.id) { continue }
                     guard clip.durationFrames > 0, clip.startFrame >= prevEndFrame else { continue }
-                    let strength = clip.hasDenoiseEnabled ? Float(min(1, max(0, clip.denoiseAmount))) : 0
-                    let gain: Float = mapping.wetAudio
+                    let enhanceActive = clip.hasEnhanceEnabled && clip.enhanceAmount > 0
+                    let denoiseAmount = enhanceActive ? clip.enhanceAmount : clip.denoiseAmount
+                    let wantsDenoise = (clip.hasDenoiseEnabled && clip.denoiseAmount > 0) || enhanceActive
+                    let strength = wantsDenoise ? Float(min(1, max(0, denoiseAmount))) : 0
+                    var gain: Float = mapping.wetAudio
                         ? strength
                         : (mapping.blendedClipIds.contains(clip.id) ? 1 - strength : 1)
+                    if clip.hasLoudnessMatchEnabled {
+                        let loudnessDB = clip.loudnessGainDB * (clip.hasEnhanceEnabled ? clip.enhanceAmount : 1)
+                        gain *= Float(VolumeScale.linearFromDb(loudnessDB))
+                    }
                     emitVolumeEnvelope(params: params, clip: clip, timescale: timescale, gain: gain)
+                    if enhanceActive {
+                        emitGainDips(
+                            params: params, clip: clip, timescale: timescale,
+                            regions: resolveBreathRanges(clip.mediaRef),
+                            depthDB: -24.0 * clip.enhanceAmount, fadeSeconds: 0.03
+                        )
+                        emitGainDips(
+                            params: params, clip: clip, timescale: timescale,
+                            regions: resolveDeessRanges(clip.mediaRef).map {
+                                $0.map { BreathDetector.Region(start: $0.start, end: $0.end) }
+                            },
+                            depthDB: -12.0 * clip.enhanceDeess, fadeSeconds: 0.01
+                        )
+                    } else if clip.hasDebreathEnabled {
+                        emitGainDips(
+                            params: params, clip: clip, timescale: timescale,
+                            regions: resolveBreathRanges(clip.mediaRef),
+                            depthDB: -24.0 * clip.debreathAmount, fadeSeconds: 0.03
+                        )
+                    }
                     prevEndFrame = clip.startFrame + clip.durationFrames
                 }
                 return params
@@ -904,6 +941,68 @@ enum CompositionBuilder {
                 params.setVolumeRamp(fromStartVolume: start, toEndVolume: end, timeRange: range)
             }
         )
+    }
+
+    /// Attenuates detected regions (breaths, sibilance) with smooth fades. Dips are
+    /// emitted after the base envelope so they override it inside each region.
+    private static func emitGainDips(
+        params: AVMutableAudioMixInputParameters,
+        clip: Clip,
+        timescale: CMTimeScale,
+        regions: [BreathDetector.Region]?,
+        depthDB: Double,
+        fadeSeconds: Double
+    ) {
+        guard depthDB < 0, let regions, !regions.isEmpty else { return }
+        let fps = Double(timescale)
+        let dipGain = Float(VolumeScale.linearFromDb(depthDB))
+        let fadeFrames = max(1, Int((fadeSeconds * fps).rounded()))
+        let loudnessGain = clip.hasLoudnessMatchEnabled
+            ? Float(VolumeScale.linearFromDb(clip.loudnessGainDB * (clip.hasEnhanceEnabled ? clip.enhanceAmount : 1)))
+            : 1
+        for region in regions {
+            let s0 = max(region.start, Double(clip.trimStartFrame))
+            let s1 = min(region.end, Double(clip.trimStartFrame + clip.sourceFramesConsumed))
+            guard s1 > s0, clip.speed > 0 else { continue }
+            let t0f = Double(clip.startFrame) + (s0 - Double(clip.trimStartFrame)) / clip.speed * fps
+            let t1f = Double(clip.startFrame) + (s1 - Double(clip.trimStartFrame)) / clip.speed * fps
+            let t0 = max(clip.startFrame, Int(t0f.rounded()))
+            let t1 = min(clip.endFrame, Int(t1f.rounded()))
+            guard t1 > t0 else { continue }
+            let center = (t0 + t1) / 2
+            let base = Float(clip.volumeAt(frame: center)) * loudnessGain
+            let f0 = min(t0 + fadeFrames, t1)
+            let f1 = max(t0, t1 - fadeFrames)
+            if f1 > f0 {
+                params.setVolumeRamp(
+                    fromStartVolume: base, toEndVolume: base * dipGain,
+                    timeRange: CMTimeRange(start: CMTime(value: CMTimeValue(t0), timescale: timescale),
+                                            end: CMTime(value: CMTimeValue(f0), timescale: timescale))
+                )
+                params.setVolumeRamp(
+                    fromStartVolume: base * dipGain, toEndVolume: base * dipGain,
+                    timeRange: CMTimeRange(start: CMTime(value: CMTimeValue(f0), timescale: timescale),
+                                            end: CMTime(value: CMTimeValue(f1), timescale: timescale))
+                )
+                params.setVolumeRamp(
+                    fromStartVolume: base * dipGain, toEndVolume: base,
+                    timeRange: CMTimeRange(start: CMTime(value: CMTimeValue(f1), timescale: timescale),
+                                            end: CMTime(value: CMTimeValue(t1), timescale: timescale))
+                )
+            } else {
+                let mid = (t0 + t1) / 2
+                params.setVolumeRamp(
+                    fromStartVolume: base, toEndVolume: base * dipGain,
+                    timeRange: CMTimeRange(start: CMTime(value: CMTimeValue(t0), timescale: timescale),
+                                            end: CMTime(value: CMTimeValue(mid), timescale: timescale))
+                )
+                params.setVolumeRamp(
+                    fromStartVolume: base * dipGain, toEndVolume: base,
+                    timeRange: CMTimeRange(start: CMTime(value: CMTimeValue(mid), timescale: timescale),
+                                            end: CMTime(value: CMTimeValue(t1), timescale: timescale))
+                )
+            }
+        }
     }
 
     /// Piecewise-linear envelope for the audio volume curve.

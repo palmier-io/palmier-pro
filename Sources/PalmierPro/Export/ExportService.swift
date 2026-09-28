@@ -582,7 +582,15 @@ final class ExportService {
             resolveURL: { mediaURLs[$0] },
             resolveTimeline: resolveTimeline,
             missingMediaRefs: missingMediaRefs,
-            renderSize: renderSize
+            renderSize: renderSize,
+            resolveBreathRanges: { mediaRef in
+                guard let url = mediaURLs[mediaRef] else { return nil }
+                return BreathDetector.cachedAnalysis(for: url, mediaRef: mediaRef)?.regions
+            },
+            resolveDeessRanges: { mediaRef in
+                guard let url = mediaURLs[mediaRef] else { return nil }
+                return DeEsser.cachedAnalysis(for: url, mediaRef: mediaRef)?.regions
+            }
         )
         try Task.checkCancellation()
 

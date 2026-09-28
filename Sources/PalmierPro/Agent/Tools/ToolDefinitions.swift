@@ -61,6 +61,9 @@ enum ToolName: String, CaseIterable, Sendable {
     case applyEffect = "apply_effect"
     case inspectColor = "inspect_color"
     case denoiseAudio = "denoise_audio"
+    case debreatheAudio = "debreath_audio"
+    case enhanceVoice = "enhance_voice"
+    case matchLoudness = "match_loudness"
 
     // Generation
     case listModels = "list_models"
@@ -1055,6 +1058,41 @@ enum ToolDefinitions {
                     "clipIds": ["type": "array", "items": ["type": "string"], "description": "Audio clip ids from get_timeline."],
                     "strength": ["type": "number", "description": "Dry/wet mix, 0–1 (default 0.6). Lower it if voices sound thin or over-compressed."],
                     "enabled": ["type": "boolean", "description": "Default true. false removes the denoise effect from the clips."],
+                ],
+                required: ["clipIds"]
+            )
+        ),
+        AgentTool(
+            name: .debreatheAudio,
+            description: "Lower the volume of detected breath sounds in audio clips. Detection is spectral (low-band energy with a quiet consonant band), runs in the background, and the preview updates automatically when it finishes. strength scales the attenuation 0-1 (0 = untouched, 1 = breaths lowered by 24 dB); default 0.8. Pass enabled:false to turn it off. Undoable.",
+            inputSchema: objectSchema(
+                properties: [
+                    "clipIds": ["type": "array", "items": ["type": "string"], "description": "Audio clip ids from get_timeline."],
+                    "strength": ["type": "number", "description": "Attenuation scale, 0–1 (default 0.8)."],
+                    "enabled": ["type": "boolean", "description": "Default true. false removes the de-breath effect from the clips."],
+                ],
+                required: ["clipIds"]
+            )
+        ),
+        AgentTool(
+            name: .enhanceVoice,
+            description: "One-click voice enhancement for audio clips: chains denoise, de-breath, de-esser, and loudness match (BS.1770-4) so clips sit at a common -16 LUFS. amount scales the whole chain 0-1 (default 0.7); deess scales only the sibilance stage 0-1 (default 0.6). Denoise bakes and detection run in the background — the timeline updates automatically when each stage finishes. Replaces any standalone denoise or de-breath effects on the clips. Undoable.",
+            inputSchema: objectSchema(
+                properties: [
+                    "clipIds": ["type": "array", "items": ["type": "string"], "description": "Audio clip ids from get_timeline."],
+                    "amount": ["type": "number", "description": "Chain strength, 0–1 (default 0.7)."],
+                    "deess": ["type": "number", "description": "De-esser stage strength, 0–1 (default 0.6)."],
+                ],
+                required: ["clipIds"]
+            )
+        ),
+        AgentTool(
+            name: .matchLoudness,
+            description: "Measure each audio clip's integrated loudness (BS.1770-4, K-weighted, gated) and apply a volume offset that lands it on targetLUFS, so all selected clips sit at the same perceived level. Measurement runs in the background and is cached per source file. Typical voice target is -16 LUFS. Undoable.",
+            inputSchema: objectSchema(
+                properties: [
+                    "clipIds": ["type": "array", "items": ["type": "string"], "description": "Audio clip ids from get_timeline."],
+                    "targetLUFS": ["type": "number", "description": "Target integrated loudness, -30…14 (default -16)."],
                 ],
                 required: ["clipIds"]
             )

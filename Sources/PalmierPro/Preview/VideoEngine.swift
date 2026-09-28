@@ -346,7 +346,15 @@ final class VideoEngine {
                     resolveSourceSize: { assetSizes[$0] },
                     resolveTimeline: resolveTimeline,
                     missingMediaRefs: missingMediaRefs,
-                    renderSize: CGSize(width: snapshot.width, height: snapshot.height)
+                    renderSize: CGSize(width: snapshot.width, height: snapshot.height),
+                    resolveBreathRanges: { mediaRef in
+                        guard let url = mediaURLs[mediaRef] else { return nil }
+                        return BreathDetector.cachedAnalysis(for: url, mediaRef: mediaRef)?.regions
+                    },
+                    resolveDeessRanges: { mediaRef in
+                        guard let url = mediaURLs[mediaRef] else { return nil }
+                        return DeEsser.cachedAnalysis(for: url, mediaRef: mediaRef)?.regions
+                    }
                 )
             } catch {
                 guard generation == rebuildGeneration else { return }

@@ -93,6 +93,11 @@ final class EditorViewModel {
     var denoiseInFlight: Set<String> = []
     var denoiseFailed: Set<String> = []
     var denoiseBaked: Set<String> = []
+    var breathBaked: Set<String> = []
+    var breathFailed: Set<String> = []
+    var deessBaked: Set<String> = []
+    var deessFailed: Set<String> = []
+    var loudnessInFlight: Set<String> = []
     var speechAnalyzingCount: Int = 0
     var speakerRegistry: [SpeakerRegistryEntry] = []
     var multicamGroups: [MulticamSource] = [] {
@@ -524,7 +529,7 @@ final class EditorViewModel {
     func notifyTimelineChanged(refreshVisuals: Bool = true) {
         selectedTimelineMarkerIds.formIntersection(timeline.markers.map(\.id))
         guard undo.isRegistrationEnabled else { return }
-        enhancePendingDenoises()
+        enhancePendingEnhancements()
         pendingRebuildTask?.cancel()
         pendingRebuildTask = nil
         if isPlaying {

@@ -451,7 +451,7 @@ class VideoProject: NSDocument {
             loadedManifest = nil
             restoreAssetsFromManifest()
         }
-        editorViewModel.enhancePendingDenoises()
+        editorViewModel.enhancePendingEnhancements()
         if editorViewModel.markSpeakers { editorViewModel.identifySpeakers() }
 
         let editorView = EditorView()

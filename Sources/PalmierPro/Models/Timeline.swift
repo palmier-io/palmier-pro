@@ -339,6 +339,43 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     static let denoiseEffectType = "audio.denoise"
     static let defaultDenoiseAmount: Double = 0.6
 
+    var hasDebreathEnabled: Bool {
+        effects?.contains { $0.type == Clip.debreathEffectType && $0.enabled } ?? false
+    }
+
+    var debreathAmount: Double {
+        effects?.first { $0.type == Clip.debreathEffectType }?.params["amount"]?.value ?? Clip.defaultDebreathAmount
+    }
+
+    static let debreathEffectType = "audio.debreath"
+    static let defaultDebreathAmount: Double = 0.8
+
+    var hasLoudnessMatchEnabled: Bool {
+        effects?.contains { $0.type == Clip.loudnessEffectType && $0.enabled } ?? false
+    }
+
+    var loudnessGainDB: Double {
+        effects?.first { $0.type == Clip.loudnessEffectType }?.params["gainDB"]?.value ?? 0
+    }
+
+    static let loudnessEffectType = "audio.loudness"
+
+    var hasEnhanceEnabled: Bool {
+        effects?.contains { $0.type == Clip.enhanceEffectType && $0.enabled } ?? false
+    }
+
+    var enhanceAmount: Double {
+        effects?.first { $0.type == Clip.enhanceEffectType }?.params["amount"]?.value ?? Clip.defaultEnhanceAmount
+    }
+
+    var enhanceDeess: Double {
+        effects?.first { $0.type == Clip.enhanceEffectType }?.params["deess"]?.value ?? Clip.defaultEnhanceDeess
+    }
+
+    static let enhanceEffectType = "audio.enhance"
+    static let defaultEnhanceAmount: Double = 0.7
+    static let defaultEnhanceDeess: Double = 0.6
+
     func rawVolumeAt(frame: Int) -> Double {
         let kfGain: Double
         if let track = volumeTrack, track.isActive {
