@@ -64,6 +64,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case debreatheAudio = "debreath_audio"
     case enhanceVoice = "enhance_voice"
     case matchLoudness = "match_loudness"
+    case generateDrone = "generate_drone"
 
     // Generation
     case listModels = "list_models"
@@ -1095,6 +1096,22 @@ enum ToolDefinitions {
                     "targetLUFS": ["type": "number", "description": "Target integrated loudness, -30…14 (default -16)."],
                 ],
                 required: ["clipIds"]
+            )
+        ),
+        AgentTool(
+            name: .generateDrone,
+            description: "Render a tanpura/shruti-style tonal drone locally on this Mac (Karplus-Strong plucked-string synthesis — no server, no sign-in, no credits) and place it on its own audio track. Use to lay a drone bed under a vocal: set tonic to the vocal's key, scale to the maqam flavor (rast/hijaz/bayati/major/minor/sustain), pattern to the playing style (tanpura = Pa-Sa-Sa-Sa cycle, shrut = slow Sa+Pa sustain, sustain = single long ring). Pass placeUnder with an audio clipId to span that clip's full length; otherwise the drone starts at the playhead. levelDB sets the clip volume (default -18 dB, roughly 18-24 dB under a typical vocal). Returns the new clip and track ids.",
+            inputSchema: objectSchema(
+                properties: [
+                    "tonic": ["type": "string", "description": "Drone key as a note name, e.g. \"C\", \"C#\", \"Eb\", \"A\"."],
+                    "octave": ["type": "integer", "description": "Tonic octave 1-5 (default 3)."],
+                    "scale": ["type": "string", "enum": DroneSynthesizer.Scale.allCases.map(\.rawValue), "description": "Maqam flavor: which note the dominant sits on (default rast)."],
+                    "pattern": ["type": "string", "enum": DroneSynthesizer.Pattern.allCases.map(\.rawValue), "description": "Playing style (default tanpura)."],
+                    "duration": ["type": "number", "description": "Length in seconds, 1-120 (default 30). Ignored when placeUnder is given."],
+                    "placeUnder": ["type": "string", "description": "Audio clip id to span with the drone bed."],
+                    "levelDB": ["type": "number", "description": "Clip volume in dB, -40…0 (default -18)."],
+                ],
+                required: ["tonic"]
             )
         ),
         AgentTool(

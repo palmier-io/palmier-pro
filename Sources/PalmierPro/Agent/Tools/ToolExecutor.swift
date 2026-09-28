@@ -336,6 +336,7 @@ final class ToolExecutor {
         case .debreatheAudio: return try debreatheAudio(editor, args)
         case .enhanceVoice: return try enhanceVoice(editor, args)
         case .matchLoudness: return try matchLoudness(editor, args)
+        case .generateDrone: return try await generateDrone(editor, args)
         case .inspectColor:  return try await inspectColor(editor, args)
         case .addClips:         return try addClips(editor, args)
         case .insertClips:      return try insertClips(editor, args)
