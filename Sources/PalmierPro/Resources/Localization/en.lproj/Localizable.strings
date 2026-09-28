@@ -63,6 +63,7 @@
 "About Palmier Pro" = "About Palmier Pro";
 "Account" = "Account";
 "Account settings" = "Account settings";
+"Accurate" = "Accurate";
 "Action Safe" = "Action Safe";
 "Activity unavailable" = "Activity unavailable";
 "Add Marker (M)" = "Add Marker (M)";
@@ -123,8 +124,10 @@
 "Available" = "Available";
 "Back" = "Back";
 "Background" = "Background";
+"Balanced" = "Balanced";
 "Basic Correction" = "Basic Correction";
 "Beat detection failed. Check that the media file is reachable, then retry." = "Beat detection failed. Check that the media file is reachable, then retry.";
+"Best" = "Best";
 "Blacks" = "Blacks";
 "Blend" = "Blend";
 "Blends denoised and original audio — lower this if voices sound thin or over-compressed." = "Blends denoised and original audio — lower this if voices sound thin or over-compressed.";
@@ -435,6 +438,7 @@
 "Generate SFX" = "Generate SFX";
 "Generate SFX only works on video" = "Generate SFX only works on video";
 "Generate SFX…" = "Generate SFX…";
+"Generate a drone" = "Generate a drone";
 "Generate a lower-cost 720p preview that can be enhanced later." = "Generate a lower-cost 720p preview that can be enhanced later.";
 "Generate audio" = "Generate audio";
 "Generate music for the timeline" = "Generate music for the timeline";
@@ -1160,3 +1164,6 @@
 "using OpenAI API key" = "using OpenAI API key";
 "using your custom endpoint" = "using your custom endpoint";
 "you@example.com — so we can reply" = "you@example.com — so we can reply";
+"~1.5 GB, slower, better accuracy" = "~1.5 GB, slower, better accuracy";
+"~3 GB, slowest, highest accuracy" = "~3 GB, slowest, highest accuracy";
+"~500 MB, fast, good accuracy" = "~500 MB, fast, good accuracy";

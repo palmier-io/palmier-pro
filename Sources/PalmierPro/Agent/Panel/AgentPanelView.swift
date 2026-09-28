@@ -47,6 +47,12 @@ struct AgentPanelView: View {
             systemImage: "rectangle.portrait",
             prompt: "Find the strongest moments in this video and turn each into a short-form vertical clip. Create multiple 9:16 timelines, reframe for vertical, and keep every clip tight and self-contained."
         ),
+        AgentStarterPrompt(
+            id: "generate_drone",
+            title: L10n.string("Generate a drone"),
+            systemImage: "waveform.path",
+            prompt: "Lay a tonal drone bed under the vocal. Ask me for the tonic (Sa) and the maqam flavor if I don't state them, then generate it locally on this Mac and place it on its own track under the vocal, leveled to sit beneath it."
+        ),
     ]
 
     private var service: AgentService { editor.agentService }
