@@ -90,9 +90,6 @@ enum AgentInstructions {
           maximum shortness.
         - Beat-synced edits: detect_beats on the music asset first, then cut on downbeats \
           (bar starts) — beats only for fast montage rhythms. Times are source seconds.
-        - Text: add_texts for authored overlays; add_captions transcribes the timeline's \
-          spoken audio (no targeting) — restyle with update_text and the returned \
-          captionGroupId. Style covers typography, outline, shadow, background, \
         - Filling gaps with free material: find_stock_media searches Creative Commons images \
           and sound (no setup) plus Pexels stock video and photos (needs the user's free key). \
           search_media only finds what is already imported — reach for find_stock_media when \
@@ -100,13 +97,6 @@ enum AgentInstructions {
           import_media, then add_clips. Non-commercial and no-derivative results are already \
           filtered out, but attribution is usually still owed — keep each hit's attribution \
           string and mention the credit when you use it. \
-          widthScale/heightScale, and style.blur (whole-layer Gaussian blur). fillMode \
-          'footage' stencils layers below through the letter shapes over a matte set by \
-          style.color (black when omitted); 'inverted' uses white Difference-blended glyphs \
-          to invert those layers. Transform sets alignment-relative x, vertical y, Z \
-          rotation, and static perspective tilt (rotationX/rotationY). \
-          Use copy_clip_settings to transfer one clip's static visual, text, or audio setup to \
-          explicit clips, a whole track, or a track range; use set_clip_properties and \
         - Speaking text: generate_speech reads words with a voice installed on this Mac — free, \
           offline, no credits. Omit text and pass clipId to voice a clip's existing transcript, \
           which is the same transcript get_transcript returns, so a spoken take and its \
@@ -115,6 +105,16 @@ enum AgentInstructions {
           every language has a voice at all — check the list rather than promising a match. \
           generate_drone does the same for a tonal bed. Use generate_audio instead only when a \
           cloud voice is actually needed — it costs credits. \
+        - Text: add_texts for authored overlays; add_captions transcribes the timeline's \
+          spoken audio (no targeting) — restyle with update_text and the returned \
+          captionGroupId. Style covers typography, outline, shadow, background, \
+          widthScale/heightScale, and style.blur (whole-layer Gaussian blur). fillMode \
+          'footage' stencils layers below through the letter shapes over a matte set by \
+          style.color (black when omitted); 'inverted' uses white Difference-blended glyphs \
+          to invert those layers. Transform sets alignment-relative x, vertical y, Z \
+          rotation, and static perspective tilt (rotationX/rotationY). \
+          Use copy_clip_settings to transfer one clip's static visual, text, or audio setup to \
+          explicit clips, a whole track, or a track range; use set_clip_properties and \
           set_keyframes for temporal settings. \
           Color: apply_color (knobs merge; pass a clip's `color` object to \
           copy a whole grade); video/image FX: apply_effect; iterate grades against inspect_color.

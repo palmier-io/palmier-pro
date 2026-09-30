@@ -41,8 +41,21 @@ enum Log {
 
     /// Call once at launch, before `NSApplication.run()`.
     static func bootstrap() {
+        DiagnosticLog.install()
         CrashHandler.install()
-        app.notice("launch pid=\(ProcessInfo.processInfo.processIdentifier)")
+        DiagnosticLog.activityObserver.register { CrashHandler.refreshActivity() }
+        app.notice("launch pid=\(ProcessInfo.processInfo.processIdentifier) version=\(Self.version)")
+    }
+
+    static var version: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+    }
+
+    /// The in-flight work at the moment of a crash, so a signal is not the end of the report.
+    static func crashContext() -> String {
+        let recent = DiagnosticLog.recentActivity()
+        guard !recent.isEmpty else { return "activity: (none recorded)" }
+        return "activity:\n" + recent.map { "  - \($0)" }.joined(separator: "\n")
     }
 }
 
@@ -62,9 +75,10 @@ struct CategoryLog {
         logger.debug("\(value, privacy: .public)")
         #endif
     }
-    func info(_ m: String) { logger.info("\(m, privacy: .public)") }
+    func info(_ m: String) { logger.info("\(m, privacy: .public)"); file("INFO", m) }
     func notice(_ m: String, telemetry: String? = nil, data: Telemetry.Payload? = nil) {
         mirror("NOTICE", m)
+        file("NOTICE", m)
         logger.notice("\(m, privacy: .public)")
         Telemetry.logInfo(m, category: category, data: data)
         if let telemetry {
@@ -73,18 +87,30 @@ struct CategoryLog {
     }
     func warning(_ m: String, telemetry: String? = nil, data: Telemetry.Payload? = nil) {
         mirror("WARN", m)
+        file("WARN", m)
         logger.warning("\(m, privacy: .public)")
         Telemetry.logWarning(telemetry ?? m, category: category, data: data)
     }
     func error(_ m: String, telemetry: String? = nil, data: Telemetry.Payload? = nil) {
         mirror("ERROR", m)
+        file("ERROR", m)
         logger.error("\(m, privacy: .public)")
         Telemetry.logError(telemetry ?? m, category: category, data: data)
     }
     func fault(_ m: String, telemetry: String? = nil, data: Telemetry.Payload? = nil) {
         mirror("FAULT", m)
+        file("FAULT", m)
         logger.fault("\(m, privacy: .public)")
         Telemetry.logFault(telemetry ?? m, category: category, data: data)
+    }
+
+    /// Marks work as in flight so a crash report can name it instead of showing a bare signal.
+    func activity(_ description: String) {
+        DiagnosticLog.noteActivity("\(category): \(DiagnosticLog.redact(description))")
+    }
+
+    private func file(_ level: String, _ message: String) {
+        DiagnosticLog.write(level: level, category: category, message: message)
     }
 
     private func mirror(_ level: String, _ msg: String) {
@@ -99,6 +125,9 @@ struct CategoryLog {
 private enum CrashHandler {
     /// File descriptor for `crash.log`, opened once at install. `-1` if unavailable.
     nonisolated(unsafe) static var fd: Int32 = -1
+    /// Pre-rendered activity block. A signal handler must not take a lock, so the text is
+    /// rebuilt on the main thread whenever the activity changes and read straight from here.
+    nonisolated(unsafe) static var cachedActivity: String = "activity: (none recorded)"
 
     static func install() {
         let url = Log.crashLogURL
@@ -106,11 +135,16 @@ private enum CrashHandler {
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true
         )
         fd = open(url.path, O_WRONLY | O_CREAT | O_APPEND, 0o644)
+        refreshActivity()
 
         NSSetUncaughtExceptionHandler(uncaughtExceptionHandler)
         for sig in [SIGSEGV, SIGABRT, SIGBUS, SIGILL, SIGFPE, SIGTRAP] {
             signal(sig, signalHandler)
         }
+    }
+
+    static func refreshActivity() {
+        cachedActivity = Log.crashContext()
     }
 }
 
@@ -119,6 +153,7 @@ private let uncaughtExceptionHandler: @convention(c) (NSException) -> Void = { e
     let message = """
     === \(Date()) UNCAUGHT \(exc.name.rawValue) ===
     reason: \(exc.reason ?? "(none)")
+    \(Log.crashContext())
     \(stack)
 
     """
@@ -129,10 +164,12 @@ private let uncaughtExceptionHandler: @convention(c) (NSException) -> Void = { e
         .fault("\(message, privacy: .public)")
 }
 
-/// Async-signal-safe: uses only `write`, `backtrace*`, `fsync`, `raise`.
+/// Async-signal-safe: uses only `write`, `backtrace*`, `fsync`, `raise`. The activity snapshot
+/// takes a lock, which is not signal-safe, so the context is snapshotted into a plain buffer
+/// whenever it changes instead of being read here.
 private let signalHandler: @convention(c) (Int32) -> Void = { sig in
     let target = CrashHandler.fd >= 0 ? CrashHandler.fd : STDERR_FILENO
-    let header = "\n*** FATAL SIGNAL ***\n"
+    let header = "\n*** FATAL SIGNAL ***\n\(CrashHandler.cachedActivity)\n"
     header.withCString { _ = write(target, $0, strlen($0)) }
     withUnsafeTemporaryAllocation(of: UnsafeMutableRawPointer?.self, capacity: 64) { frames in
         let count = backtrace(frames.baseAddress, 64)

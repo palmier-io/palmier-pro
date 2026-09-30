@@ -1119,8 +1119,6 @@ enum ToolDefinitions {
             )
         ),
         AgentTool(
-            name: .listModels,
-        AgentTool(
             name: .listSpeechVoices,
             description: "Lists the speech voices installed on this Mac, for use with generate_speech. Which voices exist varies per machine and per language, so call this before choosing a voice rather than guessing a name — an unknown name is refused. Filter by language to narrow the list (e.g. 'en-GB', 'hi-IN', 'ja-JP'); omit it for every installed voice. Returns name, identifier, language, gender, and whether the voice is an enhanced (downloaded) one, plus the full list of installed languages. Free and offline.",
             inputSchema: objectSchema(
@@ -1149,6 +1147,7 @@ enum ToolDefinitions {
                 ]
             )
         ),
+        AgentTool(
             name: .findStockMedia,
             description: "Searches free, openly-licensed sources for media to fill a gap in the cut — Creative Commons stills and sound effects with no setup at all, plus Pexels stock photography and video once the user has added their free Pexels key in Settings. Costs nothing and needs no account with Palmier.\n\nThis only searches; it never downloads. Each hit comes back with a direct `url` you pass to import_media (source.url), then place with add_clips. Use it when the library has no coverage of what the edit needs — search_media only finds what is already imported.\n\nEvery hit carries `license`, `licenseUrl`, `creator`, and a ready-made `attribution` line. Non-commercial and no-derivative results are filtered out, but attribution is still usually required, so read the license before publishing.\n\nOnly Pexels serves video, so kind='video' needs that key; 'providers' reports per-source status, including which source was skipped and why. Phrase the query as a subject ('rain on a window at night'), not a style.",
             inputSchema: objectSchema(
@@ -1163,6 +1162,7 @@ enum ToolDefinitions {
             )
         ),
         AgentTool(
+            name: .listModels,
             description: "Lists AI models with their capabilities (durations, aspect ratios, resolutions, draft mode, first/last frame support, reference support, voices/category for audio, and configurable settings for upscalers). Always call before generate_video, generate_image, generate_audio, or upscale_media so the model you pick actually supports the constraints you need. Returns { models, loaded } — if loaded=false the catalog hasn't synced yet (e.g. user not signed in); the models array may be empty even when models exist, so do not conclude no models are available. Retry after the user signs in.",
             inputSchema: objectSchema(
                 properties: [

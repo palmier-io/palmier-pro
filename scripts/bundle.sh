@@ -241,7 +241,16 @@ upload_dsyms() {
 
 if [ "$MODE" = "dev" ]; then
   echo "==> Ad-hoc signing dev app"
-  codesign --force --deep --sign - "$APP"
+  # Sign nested code first, then the bundle. `--deep` alone is unreliable for a large
+  # binary: it left the app half-signed and dyld killed it with "Code Signature Invalid".
+  if [ -d "$APP/Contents/Frameworks" ]; then
+    find "$APP/Contents/Frameworks" -maxdepth 2 -name "*.dylib" -print0 2>/dev/null \
+      | xargs -0 -r codesign --force --sign -
+    find "$APP/Contents/Frameworks" -maxdepth 1 -name "*.framework" -print0 2>/dev/null \
+      | xargs -0 -r codesign --force --sign -
+  fi
+  codesign --force --sign - "$APP/Contents/MacOS/PalmierPro"
+  codesign --force --sign - "$APP"
   codesign --verify --strict --verbose=2 "$APP"
   upload_dsyms
   echo "==> Done: $APP (ad-hoc signed)"

@@ -10,21 +10,27 @@ final class AgentService {
     private var endpointObserver: NSObjectProtocol?
     private let userDefaults: UserDefaults
     private var reasoningEfforts: [AgentModel: AgentReasoningEffort]
-    /// The user's own OpenAI-compatible endpoint, when one is configured.
-    private(set) var customEndpoint: CustomAgentEndpoint?
+    /// The user's own OpenAI-compatible models, each with its own endpoint and credential.
+    private(set) var customModels: [CustomAgentModel] = []
+    private var customKeys: [UUID: String] = [:]
+    /// Which of `customModels` the `.custom` model entry resolves to.
+    private(set) var selectedCustomModelID: UUID?
 
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
-        let endpoint = CustomAgentEndpointStore.load(defaults: userDefaults)
-        self.customEndpoint = endpoint
+        let models = CustomModelStore.load(defaults: userDefaults)
+        let selection = CustomModelStore.selectedID(defaults: userDefaults)
+        let selectedID = models.contains { $0.id == selection } ? selection : models.first?.id
+        self.customModels = models
+        self.selectedCustomModelID = selectedID
         self.reasoningEfforts = Dictionary(uniqueKeysWithValues: AgentModel.allCases.map {
             ($0, AgentReasoningPreferences.effort(for: $0, defaults: userDefaults))
         })
         let restored = userDefaults.string(forKey: "agentModel")
             .flatMap(AgentModel.persisted)
             ?? .defaultModel
-        // A saved custom model is only usable while an endpoint exists to call.
-        self.model = restored == .custom && endpoint == nil ? .defaultModel : restored
+        // A saved custom model is only usable while a model exists to call.
+        self.model = restored == .custom && selectedID == nil ? .defaultModel : restored
         reloadAPIKeys()
         apiKeyObserver = NotificationCenter.default.addObserver(
             forName: .agentAPIKeyChanged,
@@ -41,19 +47,41 @@ final class AgentService {
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.reloadCustomEndpoint()
+                self?.reloadCustomModels()
             }
         }
     }
 
-    private func reloadCustomEndpoint() {
-        updateCustomEndpoint(CustomAgentEndpointStore.load(defaults: userDefaults))
+    private func reloadCustomModels() {
+        let models = CustomModelStore.load(defaults: userDefaults)
+        let selection = CustomModelStore.selectedID(defaults: userDefaults)
+        customModels = models
+        if let selection, models.contains(where: { $0.id == selection }) {
+            selectedCustomModelID = selection
+        } else {
+            selectedCustomModelID = models.first?.id
+        }
+        if model == .custom, selectedCustomModelID == nil {
+            model = .defaultModel
+        }
+        let ids = Set(models.map(\.id))
+        customKeys = customKeys.filter { ids.contains($0.key) }
+        for model in models where customKeys[model.id] == nil {
+            Task { [weak self] in
+                let key = await CustomModelStore.loadKey(for: model.id)
+                self?.customKeys[model.id] = key
+            }
+        }
     }
 
     private func reloadAPIKeys() {
         Task { [weak self] in
             let credentials = await AgentCredentialSnapshot.loadFromKeychain()
             self?.credentials = credentials
+            for model in self?.customModels ?? [] {
+                let key = await CustomModelStore.loadKey(for: model.id)
+                self?.customKeys[model.id] = key
+            }
         }
     }
 
@@ -66,13 +94,20 @@ final class AgentService {
         }
     }
 
+    /// The `.custom` model entry resolves to the selected model in the list.
+    var customEndpoint: CustomAgentModel? {
+        guard let id = selectedCustomModelID else { return nil }
+        return customModels.first { $0.id == id }
+    }
+
     var route: AgentRoute {
         AgentRouting.route(
             model: model,
             credentials: credentials,
             hasHostedCredits: AccountService.shared.isSignedIn && AccountService.shared.hasCredits,
             hasPaidPlan: AccountService.shared.isPaid,
-            custom: customEndpoint
+            custom: customEndpoint,
+            customKey: customKey
         )
     }
 
@@ -80,10 +115,15 @@ final class AgentService {
         route != .unavailable
     }
 
-    /// The custom entry only appears once an endpoint exists, so the picker never offers a
+    /// The custom entry only appears once a model exists, so the picker never offers a
     /// model that cannot be called.
     var availableModels: [AgentModel] {
         AgentModel.allCases.filter { $0 != .custom || customEndpoint != nil }
+    }
+
+    /// Built-in catalog entries, rendered above the user's own models in the picker.
+    var builtInModels: [AgentModel] {
+        availableModels.filter { $0 != .custom }
     }
 
     func canSelectModel(_ candidate: AgentModel) -> Bool {
@@ -93,19 +133,31 @@ final class AgentService {
             || !credentials[candidate.provider].isEmpty
     }
 
-    /// Built-ins show their catalog name; the custom entry shows the configured model id.
+    /// Built-ins show their catalog name; the custom entry shows the selected model's name.
     func modelTitle(_ model: AgentModel) -> String {
         model == .custom ? (customEndpoint?.displayTitle ?? model.displayName) : model.displayName
     }
 
-    /// Called by Settings after the endpoint is saved or cleared.
-    func updateCustomEndpoint(_ endpoint: CustomAgentEndpoint?) {
-        customEndpoint = endpoint
-        if endpoint == nil, model == .custom {
-            model = .defaultModel
-        } else if let endpoint, case .unavailable = route {
+    private var customKey: String {
+        guard let id = selectedCustomModelID else { return "" }
+        return customKeys[id] ?? ""
+    }
+
+    /// Selects which configured model the `.custom` entry calls.
+    func selectCustomModel(_ id: UUID) {
+        guard customModels.contains(where: { $0.id == id }) else { return }
+        selectedCustomModelID = id
+        CustomModelStore.setSelectedID(id, defaults: userDefaults)
+        if case .unavailable = route {
+            streamError = .unavailable(model)
+        } else if case .some(.unavailable) = streamError {
             streamError = nil
         }
+    }
+
+    /// Called by Settings after the model list changes.
+    func updateCustomEndpoint(_ endpoint: CustomAgentModel?) {
+        reloadCustomModels()
     }
 
     var activeBYOKProvider: AgentProvider? {
@@ -129,17 +181,23 @@ final class AgentService {
         // Re-read keys so changes made mid-session affect the next send.
         let credentials = await AgentCredentialSnapshot.loadFromKeychain()
         self.credentials = credentials
+        var customKey = ""
+        if let custom = settings.custom {
+            customKey = await CustomModelStore.loadKey(for: custom.id)
+            customKeys[custom.id] = customKey
+        }
 
         switch AgentRouting.route(
             model: settings.model,
             credentials: credentials,
             hasHostedCredits: AccountService.shared.isSignedIn && AccountService.shared.hasCredits,
             hasPaidPlan: AccountService.shared.isPaid,
-            custom: settings.custom
+            custom: settings.custom,
+            customKey: customKey
         ) {
         case .direct:
             return BYOKClient(
-                apiKey: credentials[settings.model.provider],
+                apiKey: settings.model == .custom ? customKey : credentials[settings.model.provider],
                 settings: settings
             )
         case .hosted:
@@ -461,6 +519,14 @@ final class AgentService {
         settings: AgentRunSettings
     ) async {
         let chosenModel = settings.model
+        let turnID = String(traceID.uuidString.prefix(8))
+        AgentDiagnostics.currentTurnID = turnID
+        AgentDiagnostics.beginTurn(
+            id: turnID,
+            settings: settings,
+            messageCount: messages.count,
+            toolCount: ToolDefinitions.all.count
+        )
         guard let client = await selectClient(for: settings) else {
             streamError = .unavailable(chosenModel)
             return
@@ -501,7 +567,8 @@ final class AgentService {
 
                 let finalSnapshot = try await presentAgentStream(
                     stream,
-                    model: chosenModel
+                    model: chosenModel,
+                    turnID: String(traceID.uuidString.prefix(8))
                 ) { [weak self] snapshot in
                     await self?.applyStreamSnapshot(
                         snapshot,

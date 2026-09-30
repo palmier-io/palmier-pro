@@ -136,9 +136,9 @@ struct AgentRunSettings: Equatable, Sendable {
     let model: AgentModel
     let reasoningEffort: AgentReasoningEffort
     /// Required when `model == .custom`, ignored otherwise.
-    var custom: CustomAgentEndpoint?
+    var custom: CustomAgentModel?
 
-    init(model: AgentModel, reasoningEffort: AgentReasoningEffort, custom: CustomAgentEndpoint? = nil) {
+    init(model: AgentModel, reasoningEffort: AgentReasoningEffort, custom: CustomAgentModel? = nil) {
         self.model = model
         self.reasoningEffort = reasoningEffort
         self.custom = model == .custom ? custom : nil
@@ -175,13 +175,15 @@ enum AgentRouting {
         credentials: AgentCredentialSnapshot,
         hasHostedCredits: Bool,
         hasPaidPlan: Bool,
-        custom: CustomAgentEndpoint? = nil
+        custom: CustomAgentModel? = nil,
+        customKey: String = ""
     ) -> AgentRoute {
         if model == .custom {
-            // A configured endpoint is always called directly, and only a loopback host may go
+            // A configured model is always called directly, and only a loopback host may go
             // without a credential — a remote host must never be called unauthenticated.
+            // Each custom model holds its own key, so it cannot come from the provider snapshot.
             guard let custom else { return .unavailable }
-            if credentials[model.provider].isEmpty && !custom.allowsMissingAPIKey { return .unavailable }
+            if customKey.isEmpty && !custom.allowsMissingAPIKey { return .unavailable }
             return .direct
         }
         if !credentials[model.provider].isEmpty { return .direct }
@@ -327,6 +329,14 @@ enum AgentHTTP {
         }
         var body = ""
         for try await line in bytes.lines { body += line + "\n" }
+        // The body is the only place a gateway says *why* it refused — wrong key, unknown model,
+        // bad request shape. Without it a 401 and a 400 look identical from the outside.
+        AgentDiagnostics.httpFailure(
+            id: await AgentDiagnostics.currentTurnID,
+            host: request.url?.host ?? "unknown",
+            status: response.statusCode,
+            body: body
+        )
         throw makeError(response.statusCode, body)
     }
 }

@@ -11,7 +11,7 @@ struct CustomEndpointTransportTests {
     @Test func keylessLoopbackEndpointStreamsFromChatCompletions() async throws {
         let server = try await LoopbackServer { _ in Self.sseResponse }
         defer { server.cancel() }
-        let endpoint = try #require(CustomAgentEndpointStore.normalizedBaseURL(server.baseURL))
+        let endpoint = try #require(CustomModelStore.normalizedBaseURL(server.baseURL))
         let client = Self.client(modelID: "qwen3-coder:30b", endpoint: endpoint, apiKey: "")
 
         var events: [AgentStreamEvent] = []
@@ -43,7 +43,7 @@ struct CustomEndpointTransportTests {
             "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\ndata: [DONE]\n\n"
         }
         defer { server.cancel() }
-        let endpoint = try #require(CustomAgentEndpointStore.normalizedBaseURL(server.baseURL))
+        let endpoint = try #require(CustomModelStore.normalizedBaseURL(server.baseURL))
         let client = Self.client(modelID: "m", endpoint: endpoint, apiKey: "sk-local")
 
         for try await _ in client.stream(system: "", tools: [], messages: [], context: Self.context) {}
@@ -75,7 +75,7 @@ struct CustomEndpointTransportTests {
             "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\n\r\n{\"error\":\"no such model\"}"
         }
         defer { server.cancel() }
-        let endpoint = try #require(CustomAgentEndpointStore.normalizedBaseURL(server.baseURL))
+        let endpoint = try #require(CustomModelStore.normalizedBaseURL(server.baseURL))
         let client = Self.client(modelID: "missing", endpoint: endpoint, apiKey: "")
 
         do {
@@ -102,7 +102,7 @@ struct CustomEndpointTransportTests {
             settings: AgentRunSettings(
                 model: .custom,
                 reasoningEffort: .none,
-                custom: CustomAgentEndpoint(baseURL: endpoint, modelID: modelID)
+                custom: CustomAgentModel(baseURL: endpoint, modelID: modelID)
             )
         )
     }
@@ -123,6 +123,66 @@ struct CustomEndpointTransportTests {
     """
 }
 
+/// Replays a capture of the provider's real SSE through the actual client, so a framing or
+/// line-splitting fault between socket and parser fails here instead of being inferred from
+/// a log line. Shape copied from a live OpenRouter stream for this model.
+@Suite("Custom endpoint provider stream replay")
+struct CustomEndpointStreamReplayTests {
+
+    @Test func capturedProviderStreamYieldsToolCallsAndToolUseStop() async throws {
+        let server = try await LoopbackServer { _ in Self.providerStream }
+        defer { server.cancel() }
+        let endpoint = try #require(CustomModelStore.normalizedBaseURL(server.baseURL))
+        let client = BYOKClient(
+            apiKey: "",
+            settings: AgentRunSettings(
+                model: .custom,
+                reasoningEffort: .none,
+                custom: CustomAgentModel(baseURL: endpoint, modelID: "stealth/space-bunny-alpha")
+            )
+        )
+
+        let prompt = AgentRequestMessage(role: .user, content: [.content(.text("Add captions"))])
+        var events: [AgentStreamEvent] = []
+        for try await event in client.stream(
+            system: "s", tools: [], messages: [prompt], context: .replay
+        ) {
+            events.append(event)
+        }
+
+        #expect(events.contains(.textDelta("I'll start by reviewing")))
+        let names = events.compactMap { event -> String? in
+            guard case .toolUseComplete(_, let name, _) = event else { return nil }
+            return name
+        }
+        #expect(names.contains("get_timeline"))
+        #expect(names.contains("get_transcript"))
+        #expect(events.contains(.messageStop(stopReason: .toolUse)))
+    }
+
+    private static let providerStream = """
+    HTTP/1.1 200 OK\r
+    Content-Type: text/event-stream\r
+    \r
+    data: {"id":"gen-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"I'll start by reviewing"},"finish_reason":null}]}\n
+    data: {"id":"gen-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":" the timeline and transcript."},"finish_reason":null}]}\n
+    data: {"id":"gen-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_a","type":"function","function":{"name":"get_timeline","arguments":""}}]},"finish_reason":null}]}\n
+    data: {"id":"gen-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{}"}}]},"finish_reason":null}]}\n
+    data: {"id":"gen-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"call_b","type":"function","function":{"name":"get_transcript","arguments":""}}]},"finish_reason":null}]}\n
+    data: {"id":"gen-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"function":{"arguments":"{}"}}]},"finish_reason":"tool_calls"}]}\n
+    data: [DONE]\n
+    """
+}
+
+extension AgentRequestContext {
+    static var replay: AgentRequestContext {
+        AgentRequestContext(
+            conversationID: UUID(), traceID: UUID(), spanID: UUID(),
+            inputMessageID: UUID(), outputMessageID: UUID(), projectID: nil
+        )
+    }
+}
+
 /// One-shot HTTP/1.1 loopback server. `BYOKClient` sends `Content-Length` framing, so reading
 /// the head plus that many body bytes is the whole request; the handler sees it raw.
 private final class LoopbackServer: @unchecked Sendable {
@@ -134,7 +194,10 @@ private final class LoopbackServer: @unchecked Sendable {
     var baseURL: String { "http://127.0.0.1:\(port)/v1" }
     var request: String? { received.value }
 
-    init(response: @escaping @Sendable (String) -> String) async throws {
+    init(
+        response: @escaping @Sendable (String) -> String,
+        receivedRequest: (@Sendable (String) -> Void)? = nil
+    ) async throws {
         let listener = try NWListener(using: .tcp, on: .any)
         self.listener = listener
         let received = Locked<String?>(nil)
@@ -151,6 +214,7 @@ private final class LoopbackServer: @unchecked Sendable {
             connection.start(queue: .global())
             Self.readRequest(on: connection) { raw in
                 received.value = raw
+                receivedRequest?(raw)
                 connection.send(
                     content: Data(response(raw).utf8),
                     completion: .contentProcessed { _ in connection.cancel() }

@@ -194,7 +194,8 @@ struct AgentProviderTests {
         _ summary: String, encrypted: String, id: String, model: AgentModel
     ) -> AgentRequestBlock {
         .content(.openAIReasoning(
-            summary: summary, encryptedContent: encrypted, itemID: id, model: model))
+            summary: summary, encryptedContent: encrypted, itemID: id, model: model,
+            isComplete: true))
     }
 }
 
@@ -248,7 +249,7 @@ struct AgentProviderPersistenceTests {
     @Test func encryptedReasoningRoundTripsWithoutExposingOpaqueContent() throws {
         let block = AgentContentBlock.openAIReasoning(
             summary: "Inspected the timeline", encryptedContent: "opaque-encrypted-data",
-            itemID: "rs_123", model: .sol
+            itemID: "rs_123", model: .sol, isComplete: true
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys

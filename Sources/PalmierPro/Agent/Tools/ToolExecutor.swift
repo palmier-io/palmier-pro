@@ -15,6 +15,9 @@ final class ToolExecutor {
     private weak var boundProject: VideoProject?
     private var mcpClientInfo: MCPClientInfo?
     private(set) var mcpSessionActivation = Analytics.SessionActivation()
+    /// Correlates every tool call of one agent turn. Set by the chat loop; nil for MCP calls,
+    /// which get their own session identity from the transport.
+    private(set) var currentTurnID: String?
     private let analyticsSessionID = UUID().uuidString
     let exportQueue: ExportQueue
     let skillStore: SkillStore
@@ -168,6 +171,7 @@ final class ToolExecutor {
             if let badPath = firstOutOfFrameRangePath(in: args, path: tool.rawValue) {
                 throw ToolError("\(badPath): integer must be between -\(maxFrameArg) and \(maxFrameArg)")
             }
+            AgentDiagnostics.toolBegan(id: currentTurnID ?? "-", name: tool.rawValue)
             let resolved = try expandingIdPrefixes(in: args, editor: editor)
             readRevision = editor.beginAgentTimelineRead(
                 timelineReadActivity(for: tool, args: resolved, editor: editor)
@@ -197,6 +201,14 @@ final class ToolExecutor {
         feedbackState.record(result, for: tool)
         let elapsed = started.duration(to: .now).seconds
         let telemetry = result.isError ? "Agent tool failed" : "Agent tool finished"
+        // Recorded outside the success log so an operation that never returns still leaves a
+        // trace: the "in flight" line stands alone in the file when nothing follows it.
+        AgentDiagnostics.toolFinished(
+            id: currentTurnID ?? "-",
+            name: tool.rawValue,
+            elapsed: elapsed,
+            isError: result.isError
+        )
         let payload: Telemetry.Payload = [
             "tool": tool.rawValue,
             "durationSeconds": elapsed,
@@ -338,6 +350,9 @@ final class ToolExecutor {
         case .enhanceVoice: return try enhanceVoice(editor, args)
         case .matchLoudness: return try matchLoudness(editor, args)
         case .generateDrone: return try await generateDrone(editor, args)
+        case .listSpeechVoices: return try listSpeechVoices(args)
+        case .generateSpeech: return try await generateSpeech(editor, args)
+        case .findStockMedia: return try await findStockMedia(editor, args)
         case .inspectColor:  return try await inspectColor(editor, args)
         case .addClips:         return try addClips(editor, args)
         case .insertClips:      return try insertClips(editor, args)
@@ -350,12 +365,9 @@ final class ToolExecutor {
         case .setClipProperties: return try setClipProperties(editor, args)
         case .copyClipSettings: return try copyClipSettings(editor, args)
         case .setKeyframes:     return try setKeyframes(editor, args)
-        case .listSpeechVoices: return try listSpeechVoices(args)
-        case .generateSpeech: return try await generateSpeech(editor, args)
         case .splitClips:       return try splitClips(editor, args)
         case .rippleDeleteRanges: return try rippleDeleteRanges(editor, args)
         case .removeWords:   return try await removeWords(editor, args)
-        case .findStockMedia: return try await findStockMedia(editor, args)
         case .removeSilence: return try removeSilence(editor, args)
         case .syncClips:     return try await syncClips(editor, args)
         case .manageMulticam: return try await manageMulticam(editor, args)

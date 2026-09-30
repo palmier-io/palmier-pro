@@ -189,6 +189,7 @@ private func milliseconds(since start: ContinuousClock.Instant) -> Int {
 func presentAgentStream(
     _ source: AsyncThrowingStream<AgentStreamEvent, Error>,
     model: AgentModel,
+    turnID: String = "-",
     onSnapshot: @escaping @Sendable (AgentStreamSnapshot) async -> Void
 ) async throws -> AgentStreamSnapshot {
     let buffer = AgentStreamPresentationBuffer(model: model)
@@ -225,6 +226,10 @@ func presentAgentStream(
         if final.revision != lastRevision {
             await onSnapshot(final)
         }
+        AgentDiagnostics.turnFailed(
+            id: turnID, stage: "stream", error: error,
+            elapsed: Double(milliseconds(since: started)) / 1000
+        )
         Log.agent.error(
             "chat stream failed model=\(model.rawValue) provider=\(model.provider.rawValue) "
                 + "after=\(milliseconds(since: started))ms firstOutput=\(firstOutputMs.map { "\($0)ms" } ?? "none") "
@@ -240,6 +245,11 @@ func presentAgentStream(
     if final.revision != lastRevision {
         await onSnapshot(final)
     }
+    AgentDiagnostics.turnCompleted(
+        id: turnID, turns: 1,
+        elapsed: Double(milliseconds(since: started)) / 1000,
+        stopReason: final.stopReason
+    )
     Log.agent.notice(
         "chat stream done model=\(model.rawValue) provider=\(model.provider.rawValue) "
             + "firstOutput=\(firstOutputMs.map { "\($0)ms" } ?? "none") "

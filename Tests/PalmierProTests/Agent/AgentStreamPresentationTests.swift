@@ -31,7 +31,7 @@ struct AgentStreamPresentationTests {
         #expect(final.stopReason == .toolUse)
         #expect(final.blocks.count == 4)
         guard case .thinking(let thinking, let signature) = final.blocks[0],
-              case .openAIReasoning(let summary, let encrypted, _, _) = final.blocks[1],
+              case .openAIReasoning(let summary, let encrypted, _, _, _) = final.blocks[1],
               case .text(let text) = final.blocks[2],
               case .toolUse(let id, let name, _) = final.blocks[3] else {
             Issue.record("Unexpected final block order")
@@ -44,6 +44,23 @@ struct AgentStreamPresentationTests {
         #expect(text == "Done")
         #expect(id == "tool_1")
         #expect(name == "get_timeline")
+    }
+
+    /// A whole turn can arrive inside one 50ms coalescing window. The terminal event must
+    /// still reach the caller, or the agent exits as if the model merely finished talking.
+    @Test func shortTurnEndingInToolUseIsNotLostToCoalescing() async throws {
+        let final = try await presentAgentStream(stream([
+            .textDelta("I'll start by reviewing"),
+            .toolUseComplete(id: "call_1", name: "get_timeline", inputJSON: "{}"),
+            .messageStop(stopReason: .toolUse),
+        ]), model: .custom) { _ in }
+
+        #expect(final.stopReason == .toolUse)
+        #expect(text(in: final.blocks) == "I'll start by reviewing")
+        #expect(final.blocks.contains { block in
+            guard case .toolUse(let id, let name, _) = block else { return false }
+            return id == "call_1" && name == "get_timeline"
+        })
     }
 
     @Test func upstreamErrorFlushesPartialText() async {

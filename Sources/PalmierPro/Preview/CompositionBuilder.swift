@@ -621,17 +621,21 @@ enum CompositionBuilder {
                         : (mapping.blendedClipIds.contains(clip.id) ? 1 - strength : 1)
                     if clip.hasLoudnessMatchEnabled {
                         let loudnessDB = clip.loudnessGainDB * (clip.hasEnhanceEnabled ? clip.enhanceAmount : 1)
-                        gain *= Float(VolumeScale.linearFromDb(loudnessDB))
+                        // linearFromDb allows up to +15 dB, which would push the ramp volume
+                        // past 1 and abort the process inside AVFoundation.
+                        gain = min(1, max(0, gain * Float(VolumeScale.linearFromDb(loudnessDB))))
                     }
                     emitVolumeEnvelope(params: params, clip: clip, timescale: timescale, gain: gain)
                     if enhanceActive {
                         emitGainDips(
-                            params: params, clip: clip, timescale: timescale,
+                            params: params, track: mapping.compositionTrack,
+                            clip: clip, timescale: timescale,
                             regions: resolveBreathRanges(clip.mediaRef),
                             depthDB: -24.0 * clip.enhanceAmount, fadeSeconds: 0.03
                         )
                         emitGainDips(
-                            params: params, clip: clip, timescale: timescale,
+                            params: params, track: mapping.compositionTrack,
+                            clip: clip, timescale: timescale,
                             regions: resolveDeessRanges(clip.mediaRef).map {
                                 $0.map { BreathDetector.Region(start: $0.start, end: $0.end) }
                             },
@@ -639,7 +643,8 @@ enum CompositionBuilder {
                         )
                     } else if clip.hasDebreathEnabled {
                         emitGainDips(
-                            params: params, clip: clip, timescale: timescale,
+                            params: params, track: mapping.compositionTrack,
+                            clip: clip, timescale: timescale,
                             regions: resolveBreathRanges(clip.mediaRef),
                             depthDB: -24.0 * clip.debreathAmount, fadeSeconds: 0.03
                         )
@@ -947,6 +952,7 @@ enum CompositionBuilder {
     /// emitted after the base envelope so they override it inside each region.
     private static func emitGainDips(
         params: AVMutableAudioMixInputParameters,
+        track: AVAssetTrack,
         clip: Clip,
         timescale: CMTimeScale,
         regions: [BreathDetector.Region]?,
@@ -966,11 +972,24 @@ enum CompositionBuilder {
             guard s1 > s0, clip.speed > 0 else { continue }
             let t0f = Double(clip.startFrame) + (s0 - Double(clip.trimStartFrame)) / clip.speed * fps
             let t1f = Double(clip.startFrame) + (s1 - Double(clip.trimStartFrame)) / clip.speed * fps
-            let t0 = max(clip.startFrame, Int(t0f.rounded()))
-            let t1 = min(clip.endFrame, Int(t1f.rounded()))
+            var t0 = max(clip.startFrame, Int(t0f.rounded()))
+            var t1 = min(clip.endFrame, Int(t1f.rounded()))
+            guard t1 > t0 else { continue }
+            // A ramp outside the track's time range makes AVFoundation throw an exception Swift
+            // cannot catch, so the range is trimmed to the track and dropped when it cannot fit.
+            let trackRange = track.timeRange
+            let trackStart = CMTimeGetSeconds(trackRange.start)
+            let trackEnd = CMTimeGetSeconds(trackRange.end)
+            let startSeconds = Double(t0) / fps
+            let endSeconds = Double(t1) / fps
+            guard trackEnd > trackStart, endSeconds > trackStart, startSeconds < trackEnd else { continue }
+            t0 = max(t0, Int((max(startSeconds, trackStart) * fps).rounded()))
+            t1 = min(t1, Int((min(endSeconds, trackEnd) * fps).rounded()))
             guard t1 > t0 else { continue }
             let center = (t0 + t1) / 2
-            let base = Float(clip.volumeAt(frame: center)) * loudnessGain
+            // AVFoundation throws an uncatchable exception when a ramp volume leaves [0, 1],
+            // and loudnessGain can reach 5.62 because linearFromDb allows up to +15 dB.
+            let base = min(1, max(0, Float(clip.volumeAt(frame: center)) * loudnessGain))
             let f0 = min(t0 + fadeFrames, t1)
             let f1 = max(t0, t1 - fadeFrames)
             if f1 > f0 {
