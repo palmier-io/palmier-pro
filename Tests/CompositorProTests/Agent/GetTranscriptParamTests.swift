@@ -242,11 +242,17 @@ struct GetTranscriptParamTests {
         #expect(json?["words"] == nil)
     }
 
+    /// `hostedEnabled` is passed explicitly so cloud-transcription routing stays covered even
+    /// though this build ships with hosted services off.
     @Test func cloudTranscriptionRequiresCoveredUncachedCost() {
-        #expect(ToolExecutor.canUseCloudTranscription(isSignedIn: true, remainingCredits: 5, estimatedCost: 6) == false)
-        #expect(ToolExecutor.canUseCloudTranscription(isSignedIn: true, remainingCredits: 6, estimatedCost: 6) == true)
-        #expect(ToolExecutor.canUseCloudTranscription(isSignedIn: true, remainingCredits: 0, estimatedCost: 0) == true)
-        #expect(ToolExecutor.canUseCloudTranscription(isSignedIn: false, remainingCredits: 100, estimatedCost: 1) == false)
+        #expect(ToolExecutor.canUseCloudTranscription(isSignedIn: true, remainingCredits: 5, estimatedCost: 6, hostedEnabled: true) == false)
+        #expect(ToolExecutor.canUseCloudTranscription(isSignedIn: true, remainingCredits: 6, estimatedCost: 6, hostedEnabled: true) == true)
+        #expect(ToolExecutor.canUseCloudTranscription(isSignedIn: true, remainingCredits: 0, estimatedCost: 0, hostedEnabled: true) == true)
+        #expect(ToolExecutor.canUseCloudTranscription(isSignedIn: false, remainingCredits: 100, estimatedCost: 1, hostedEnabled: true) == false)
+
+        // With hosted services off, cloud transcription is never offered regardless of credits.
+        #expect(ToolExecutor.canUseCloudTranscription(isSignedIn: true, remainingCredits: 100, estimatedCost: 1) == false)
+        #expect(ToolExecutor.canUseCloudTranscription(isSignedIn: true, remainingCredits: 6, estimatedCost: 6) == false)
     }
 
     @Test func wordRowsSpeakerRunsAndSegments() async throws {

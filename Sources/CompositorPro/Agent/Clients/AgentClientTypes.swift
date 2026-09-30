@@ -177,7 +177,8 @@ enum AgentRouting {
         hasHostedCredits: Bool,
         hasPaidPlan: Bool,
         custom: CustomAgentModel? = nil,
-        customKey: String = ""
+        customKey: String = "",
+        hostedEnabled: Bool = HostedServices.enabled
     ) -> AgentRoute {
         if model == .custom {
             // A configured model is always called directly, and only a loopback host may go
@@ -188,6 +189,8 @@ enum AgentRouting {
             return .direct
         }
         if !credentials[model.provider].isEmpty { return .direct }
+        // Everything left would be served by Palmier's own backend, which this build does not offer.
+        guard hostedEnabled else { return .unavailable }
         if model.requiresPaidHostedPlan && !hasPaidPlan { return .unavailable }
         return hasHostedCredits ? .hosted : .unavailable
     }

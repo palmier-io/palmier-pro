@@ -300,8 +300,13 @@ extension ToolExecutor {
         )
     }
 
-    static func canUseCloudTranscription(isSignedIn: Bool, remainingCredits: Int, estimatedCost: Int) -> Bool {
-        guard isSignedIn else { return false }
+    static func canUseCloudTranscription(
+        isSignedIn: Bool,
+        remainingCredits: Int,
+        estimatedCost: Int,
+        hostedEnabled: Bool = HostedServices.enabled
+    ) -> Bool {
+        guard hostedEnabled, isSignedIn else { return false }
         guard estimatedCost > 0 else { return true }
         return remainingCredits >= estimatedCost
     }
@@ -319,7 +324,7 @@ extension ToolExecutor {
         guard request.provider == .cloud else { return }
         let cost = await editor.captionCloudCreditCost(for: request)
         let account = AccountService.shared
-        guard account.isSignedIn else { throw ToolError("Sign in to use Cloud transcription.") }
+        guard HostedServices.enabled, account.isSignedIn else { throw ToolError(HostedServices.unavailableMessage) }
         guard cost > 0 else { return }
         let remaining = account.remainingCredits
         guard remaining > 0 else { throw ToolError("Add credits to use Cloud transcription.") }

@@ -50,6 +50,18 @@ struct AgentProviderTests {
         #expect(route(.sol, hasCredits: true, isPaid: true) == .hosted)
     }
 
+    /// With hosted services switched off, nothing may route to Palmier's own backend, and a
+    /// bring-your-own-key or custom endpoint must keep working.
+    @Test func hostedRoutingIsUnavailableWhenTheBuildDoesNotOfferIt() {
+        #expect(HostedServices.enabled == false)
+        for model in AgentModel.allCases {
+            #expect(route(model, hasCredits: true, isPaid: true, hosted: false) == .unavailable)
+        }
+        // BYOK and a custom endpoint are not hosted, so they survive the switch.
+        #expect(route(.fable5, key: .anthropic, hosted: false) == .direct)
+        #expect(route(.custom, hosted: false) == .unavailable)
+    }
+
     @Test func anthropicReasoningUsesMediumDefaultAndExplicitEffort() throws {
         for model in AgentModel.allCases.filter({ $0.provider == .anthropic }) {
             let body = AnthropicRequestBody.build(
@@ -173,14 +185,18 @@ struct AgentProviderTests {
         }
     }
 
+    /// `hosted` defaults to the build switch, so hosted routing is exercised explicitly here and
+    /// still covered on a build that ships with hosted services switched off.
     private func route(
         _ model: AgentModel,
-        key: AgentProvider? = nil, hasCredits: Bool = false, isPaid: Bool = false
+        key: AgentProvider? = nil, hasCredits: Bool = false, isPaid: Bool = false,
+        hosted: Bool = true
     ) -> AgentRoute {
         AgentRouting.route(
             model: model,
             credentials: AgentCredentialSnapshot(key.map { [$0: "key"] } ?? [:]),
-            hasHostedCredits: hasCredits, hasPaidPlan: isPaid
+            hasHostedCredits: hasCredits, hasPaidPlan: isPaid,
+            hostedEnabled: hosted
         )
     }
 

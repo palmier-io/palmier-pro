@@ -403,12 +403,14 @@ struct AgentPanelView: View {
     private func errorMessage(_ error: AgentServiceError) -> String {
         switch error {
         case .unauthenticated:
-            L10n.string("Sign in to use AI chat.")
+            HostedServices.enabled
+                ? L10n.string("Sign in to use AI chat.")
+                : L10n.string("This model needs a hosted Palmier account, which this build does not use. Add your own API key in Settings, or pick a custom endpoint.")
         case .insufficientCredits(let message), .upstream(let message):
             message
         case .unavailable(let model):
-            if model.requiresPaidHostedPlan && !AccountService.shared.isPaid {
-                L10n.string("Subscribe or add your own API key to use this model.")
+            if !HostedServices.enabled || (model.requiresPaidHostedPlan && !AccountService.shared.isPaid) {
+                L10n.string("Add your own API key, or set up a custom endpoint, to use this model.")
             } else {
                 model.provider.chatPresentation.unavailableMessage
             }

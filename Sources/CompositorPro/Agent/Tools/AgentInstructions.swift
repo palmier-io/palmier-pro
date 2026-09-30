@@ -44,8 +44,8 @@ enum AgentInstructions {
         - Call get_media before referencing any asset; filter with ids (poll a generation), \
           folder, or pending=true.
         - Call list_models before any generate_* or upscale call. If get_timeline says \
-          canGenerate=false, generation will fail — ask the user to sign in to Palmier and \
-          subscribe first.
+          canGenerate=false, server-side generation and cloud transcription are \
+          unavailable in this build and no sign-in or subscription will change that.
         - Never describe an asset from its filename — inspect_media first. inspect_media does not
           transcribe video unless you pass transcript:true; that costs a full audio decode and
           on-device recognition, so look at a shot's frames first and ask for words only when the
