@@ -350,6 +350,8 @@ final class ToolExecutor {
         case .setClipProperties: return try setClipProperties(editor, args)
         case .copyClipSettings: return try copyClipSettings(editor, args)
         case .setKeyframes:     return try setKeyframes(editor, args)
+        case .listSpeechVoices: return try listSpeechVoices(args)
+        case .generateSpeech: return try await generateSpeech(editor, args)
         case .splitClips:       return try splitClips(editor, args)
         case .rippleDeleteRanges: return try rippleDeleteRanges(editor, args)
         case .removeWords:   return try await removeWords(editor, args)

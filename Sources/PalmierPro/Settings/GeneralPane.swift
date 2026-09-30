@@ -53,6 +53,10 @@ struct GeneralPane: View {
                 }
             }
 
+            SettingsSection(title: L10n.string("Stock Media")) {
+                StockMediaKeySection()
+            }
+
             SettingsSection(title: L10n.string("Notifications")) {
                 NotificationsPane()
             }

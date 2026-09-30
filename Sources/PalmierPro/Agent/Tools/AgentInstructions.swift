@@ -90,6 +90,13 @@ enum AgentInstructions {
         - Text: add_texts for authored overlays; add_captions transcribes the timeline's \
           spoken audio (no targeting) — restyle with update_text and the returned \
           captionGroupId. Style covers typography, outline, shadow, background, \
+        - Filling gaps with free material: find_stock_media searches Creative Commons images \
+          and sound (no setup) plus Pexels stock video and photos (needs the user's free key). \
+          search_media only finds what is already imported — reach for find_stock_media when \
+          the library has no coverage. It returns candidates, not files: pass a hit's url to \
+          import_media, then add_clips. Non-commercial and no-derivative results are already \
+          filtered out, but attribution is usually still owed — keep each hit's attribution \
+          string and mention the credit when you use it. \
           widthScale/heightScale, and style.blur (whole-layer Gaussian blur). fillMode \
           'footage' stencils layers below through the letter shapes over a matte set by \
           style.color (black when omitted); 'inverted' uses white Difference-blended glyphs \

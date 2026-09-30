@@ -67,6 +67,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case generateDrone = "generate_drone"
     case listSpeechVoices = "list_speech_voices"
     case generateSpeech = "generate_speech"
+    case findStockMedia = "find_stock_media"
 
     // Generation
     case listModels = "list_models"
@@ -1145,6 +1146,19 @@ enum ToolDefinitions {
                     "placeAtFrame": ["type": "integer", "description": "Also place the clip on a new audio track at this frame. Omit for library only."],
                     "trackName": ["type": "string", "description": "Name for the new audio track (default Voiceover)."],
                 ]
+            )
+        ),
+            name: .findStockMedia,
+            description: "Searches free, openly-licensed sources for media to fill a gap in the cut — Creative Commons stills and sound effects with no setup at all, plus Pexels stock photography and video once the user has added their free Pexels key in Settings. Costs nothing and needs no account with Palmier.\n\nThis only searches; it never downloads. Each hit comes back with a direct `url` you pass to import_media (source.url), then place with add_clips. Use it when the library has no coverage of what the edit needs — search_media only finds what is already imported.\n\nEvery hit carries `license`, `licenseUrl`, `creator`, and a ready-made `attribution` line. Non-commercial and no-derivative results are filtered out, but attribution is still usually required, so read the license before publishing.\n\nOnly Pexels serves video, so kind='video' needs that key; 'providers' reports per-source status, including which source was skipped and why. Phrase the query as a subject ('rain on a window at night'), not a style.",
+            inputSchema: objectSchema(
+                properties: [
+                    "query": ["type": "string", "description": "What to look for, as a plain subject description."],
+                    "kind": ["type": "string", "enum": StockMediaKind.allCases.map(\.rawValue), "description": "What to search for (default image)."],
+                    "orientation": ["type": "string", "enum": ["landscape", "portrait", "square"], "description": "Pexels only; defaults to landscape. Openverse ignores it."],
+                    "maxDurationSeconds": ["type": "integer", "description": "Skip Pexels videos longer than this. Ignored for images and audio."],
+                    "limit": ["type": "integer", "description": "Hits to return, 1–20 (default 8)."],
+                ],
+                required: ["query"]
             )
         ),
         AgentTool(
