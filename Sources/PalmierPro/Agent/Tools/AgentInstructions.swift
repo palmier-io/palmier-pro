@@ -97,6 +97,14 @@ enum AgentInstructions {
           rotation, and static perspective tilt (rotationX/rotationY). \
           Use copy_clip_settings to transfer one clip's static visual, text, or audio setup to \
           explicit clips, a whole track, or a track range; use set_clip_properties and \
+        - Speaking text: generate_speech reads words with a voice installed on this Mac — free, \
+          offline, no credits. Omit text and pass clipId to voice a clip's existing transcript, \
+          which is the same transcript get_transcript returns, so a spoken take and its \
+          captions cannot disagree. Call list_speech_voices before naming a voice: the \
+          installed set differs per Mac and per language, and a guessed name is refused. Not \
+          every language has a voice at all — check the list rather than promising a match. \
+          generate_drone does the same for a tonal bed. Use generate_audio instead only when a \
+          cloud voice is actually needed — it costs credits. \
           set_keyframes for temporal settings. \
           Color: apply_color (knobs merge; pass a clip's `color` object to \
           copy a whole grade); video/image FX: apply_effect; iterate grades against inspect_color.

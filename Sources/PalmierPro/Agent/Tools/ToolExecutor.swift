@@ -257,7 +257,8 @@ final class ToolExecutor {
     private static func canReadInactiveProject(_ tool: ToolName) -> Bool {
         switch tool {
         case .getTimeline, .inspectTimeline, .getMedia, .inspectMedia, .searchMedia,
-             .getMulticam, .getTranscript, .detectBeats, .inspectColor, .listModels, .sendFeedback:
+             .getMulticam, .getTranscript, .detectBeats, .inspectColor, .listModels,
+             .listSpeechVoices, .sendFeedback:
             true
         default:
             false
@@ -352,6 +353,7 @@ final class ToolExecutor {
         case .splitClips:       return try splitClips(editor, args)
         case .rippleDeleteRanges: return try rippleDeleteRanges(editor, args)
         case .removeWords:   return try await removeWords(editor, args)
+        case .findStockMedia: return try await findStockMedia(editor, args)
         case .removeSilence: return try removeSilence(editor, args)
         case .syncClips:     return try await syncClips(editor, args)
         case .manageMulticam: return try await manageMulticam(editor, args)

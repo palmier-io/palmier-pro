@@ -65,6 +65,8 @@ enum ToolName: String, CaseIterable, Sendable {
     case enhanceVoice = "enhance_voice"
     case matchLoudness = "match_loudness"
     case generateDrone = "generate_drone"
+    case listSpeechVoices = "list_speech_voices"
+    case generateSpeech = "generate_speech"
 
     // Generation
     case listModels = "list_models"
@@ -1116,6 +1118,36 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .listModels,
+        AgentTool(
+            name: .listSpeechVoices,
+            description: "Lists the speech voices installed on this Mac, for use with generate_speech. Which voices exist varies per machine and per language, so call this before choosing a voice rather than guessing a name — an unknown name is refused. Filter by language to narrow the list (e.g. 'en-GB', 'hi-IN', 'ja-JP'); omit it for every installed voice. Returns name, identifier, language, gender, and whether the voice is an enhanced (downloaded) one, plus the full list of installed languages. Free and offline.",
+            inputSchema: objectSchema(
+                properties: [
+                    "language": ["type": "string", "description": "Optional BCP-47 tag. Matches that language and its base language, so 'en' reaches en-GB, en-US and en-AU."],
+                    "limit": ["type": "integer", "description": "Maximum voices to return, 1–200 (default 50)."],
+                ]
+            )
+        ),
+        AgentTool(
+            name: .generateSpeech,
+            description: "Speaks text — or a clip's own transcript — with a voice installed on this Mac, adds it to the media library, and optionally places it on the timeline. Free and offline: no server, no sign-in, no credits, and unlike generate_audio it never spends anything.\n\nUse it to voice a narration, to read a script, or to turn existing dialogue into a new take. Omit text and pass clipId (or trackIndex) to speak that audio's transcript — the words come from the same transcript get_transcript and add_captions use, so a spoken take and its captions cannot disagree. startFrame/endFrame narrow which part of the transcript to read.\n\nvoice takes a name or identifier from list_speech_voices — which voices exist varies per Mac, so never guess one; omit it to use the best voice for language. language is a BCP-47 tag and picks the voice when voice is omitted — use it when the words are not in the system language. rate and pitch are multipliers (1.0 = normal). Pass placeAtFrame to also drop the clip on a new audio track at that frame; otherwise the audio only joins the media library.\n\nNot every language has an installed voice — notably Malayalam has none on macOS, so Malayalam text is read badly. Check the voice's language in the result before promising a language match.",
+            inputSchema: objectSchema(
+                properties: [
+                    "text": ["type": "string", "description": "Words to speak. Omit to speak a clip's transcript instead. Max \(SpeechSynthesizer.maxCharacters) characters."],
+                    "clipId": ["type": "string", "description": "Speak this clip's transcript. Mutually exclusive with trackIndex."],
+                    "trackIndex": ["type": "integer", "description": "Speak every audio clip on this track. Mutually exclusive with clipId."],
+                    "startFrame": ["type": "integer", "description": "Only read transcript words overlapping this timeline frame or later."],
+                    "endFrame": ["type": "integer", "description": "Only read transcript words overlapping this timeline frame or earlier. 0 or omitted means to the end."],
+                    "voice": ["type": "string", "description": "Name or identifier from list_speech_voices. Omit to choose by language."],
+                    "language": ["type": "string", "description": "BCP-47 tag used to pick a voice, e.g. 'en-GB', 'hi-IN', 'ja-JP'."],
+                    "rate": ["type": "number", "description": "Speaking rate multiplier, 0.5–2.0 (default 1.0)."],
+                    "pitch": ["type": "number", "description": "Pitch multiplier, 0.5–2.0 (default 1.0)."],
+                    "placeAtFrame": ["type": "integer", "description": "Also place the clip on a new audio track at this frame. Omit for library only."],
+                    "trackName": ["type": "string", "description": "Name for the new audio track (default Voiceover)."],
+                ]
+            )
+        ),
+        AgentTool(
             description: "Lists AI models with their capabilities (durations, aspect ratios, resolutions, draft mode, first/last frame support, reference support, voices/category for audio, and configurable settings for upscalers). Always call before generate_video, generate_image, generate_audio, or upscale_media so the model you pick actually supports the constraints you need. Returns { models, loaded } — if loaded=false the catalog hasn't synced yet (e.g. user not signed in); the models array may be empty even when models exist, so do not conclude no models are available. Retry after the user signs in.",
             inputSchema: objectSchema(
                 properties: [
