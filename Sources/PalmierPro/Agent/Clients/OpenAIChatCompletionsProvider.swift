@@ -178,8 +178,20 @@ struct OpenAIChatCompletionsStreamParser {
 
         var events: [AgentStreamEvent] = []
         if let delta = choice["delta"] as? [String: Any] {
-            if let reasoning = delta["reasoning_content"] as? String, !reasoning.isEmpty {
+            // Gateways spell reasoning three ways, and reading only one leaves the panel showing
+            // anonymous activity dots for the whole time a reasoning model thinks. OpenRouter
+            // streams `reasoning`, or `reasoning_details` when the model returns structured
+            // blocks; `reasoning_content` is the DeepSeek spelling. Prefer the plain string and
+            // fall back to the details so a gateway that sends both is not rendered twice.
+            if let reasoning = (delta["reasoning"] as? String) ?? (delta["reasoning_content"] as? String),
+               !reasoning.isEmpty {
                 events.append(.reasoningSummaryDelta(reasoning))
+            } else {
+                for detail in delta["reasoning_details"] as? [[String: Any]] ?? [] {
+                    if let text = detail["text"] as? String, !text.isEmpty {
+                        events.append(.reasoningSummaryDelta(text))
+                    }
+                }
             }
             if let content = delta["content"] as? String, !content.isEmpty {
                 events.append(.textDelta(content))
@@ -207,26 +219,34 @@ struct OpenAIChatCompletionsStreamParser {
     }
 
     private mutating func finishEvents(finishReason: String? = nil) -> [AgentStreamEvent] {
+        // Providers repeat `finish_reason` on a trailing usage-only chunk, and `[DONE]` adds a
+        // third pass with no reason. Re-terminating would emit a second stop reason and lose
+        // the one that matters, so only the first terminal chunk counts.
+        guard !didTerminate else { return [] }
         didTerminate = true
         var events: [AgentStreamEvent] = []
+        var hasToolCall = false
         for (_, call) in pending.sorted(by: { $0.key < $1.key }) where !call.name.isEmpty {
             events.append(.toolUseComplete(
                 id: call.id.isEmpty ? "call_\(UUID().uuidString)" : call.id,
                 name: call.name,
                 inputJSON: call.arguments.isEmpty ? "{}" : call.arguments
             ))
+            hasToolCall = true
         }
         pending.removeAll()
-        events.append(.messageStop(stopReason: stopReason(for: finishReason)))
+        // A gateway may close with a generic reason while the deltas still carried calls, and
+        // `[DONE]` arrives with no reason at all. The accumulated calls are the ground truth.
+        events.append(.messageStop(stopReason: stopReason(for: finishReason, hasToolCall: hasToolCall)))
         return events
     }
 
-    private func stopReason(for raw: String?) -> AgentStopReason {
+    private func stopReason(for raw: String?, hasToolCall: Bool) -> AgentStopReason {
         switch raw {
         case "tool_calls", "function_call": .toolUse
         case "length": .maxTokens
         case "content_filter": .refusal
-        default: .endTurn
+        default: hasToolCall ? .toolUse : .endTurn
         }
     }
 

@@ -9,7 +9,35 @@ extension ToolExecutor {
 
     private static let inspectMediaAllowedKeys: Set<String> = [
         "mediaRef", "clipId", "maxFrames", "startSeconds", "endSeconds", "wordTimestamps", "overview", "language",
+        "transcript",
     ]
+    /// Ceiling on a requested transcription. Long media is a legitimate request, so the budget
+    /// is generous — but it must be finite, or one stalled decoder holds the whole turn open
+    /// until the transport's much longer stream timeout fires.
+    private static let transcriptionBudgetSeconds: Double = 300
+
+    /// Fails with a timeout error if `work` outlives `seconds`, cancelling it. Used where the
+    /// underlying call has no deadline of its own and would otherwise hang the agent turn.
+    static func withinSeconds<T: Sendable>(
+        _ seconds: Double,
+        _ work: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await work() }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw ToolError("""
+                    Transcription exceeded \(Int(seconds))s and was cancelled. Narrow the request \
+                    with startSeconds/endSeconds, or import an SRT/VTT with the real text.
+                    """)
+            }
+            guard let first = try await group.next() else {
+                throw ToolError("Transcription produced no result.")
+            }
+            group.cancelAll()
+            return first
+        }
+    }
     private static let defaultReadVideoFrames = 6
     private static let readVideoMaxFrames = 12
     private nonisolated static let readVideoFrameMaxDimension: CGFloat = 512
@@ -198,6 +226,9 @@ extension ToolExecutor {
         let url = asset.url
         let hasAudio = asset.hasAudio
         let wantsOverview = args.bool("overview") == true
+        // Transcription costs a full audio decode plus on-device recognition, which is minutes of
+        // work for a long clip. Looking at a shot must not pay for it, so it is opt-in.
+        let wantsTranscript = args.bool("transcript") == true
         let requested = args.int("maxFrames") ?? Self.defaultReadVideoFrames
         let frameCount = max(1, min(requested, Self.readVideoMaxFrames))
         async let visualTask = Self.extractVisual(
@@ -205,9 +236,16 @@ extension ToolExecutor {
             frameCount: frameCount, start: windowStart, end: windowEnd
         )
         async let transcriptTask: Result<TranscriptionResult, Error>? = {
-            guard hasAudio else { return nil }
-            do { return .success(try await TranscriptCache.shared.transcript(for: url, isVideo: true, range: range, preferredLocale: preferredLocale)) }
-            catch { return .failure(error) }
+            guard wantsTranscript, hasAudio else { return nil }
+            do {
+                return .success(try await Self.withinSeconds(Self.transcriptionBudgetSeconds) {
+                    try await TranscriptCache.shared.transcript(
+                        for: url, isVideo: true, range: range, preferredLocale: preferredLocale
+                    )
+                })
+            } catch {
+                return .failure(error)
+            }
         }()
 
         var imageBlocks: [ToolResult.Block] = []
@@ -328,7 +366,11 @@ extension ToolExecutor {
         let range = try Self.sourceRange(args, duration: asset.duration)
         let transcript: TranscriptionResult
         do {
-            transcript = try await TranscriptCache.shared.transcript(for: asset.url, isVideo: false, range: range, preferredLocale: preferredLocale)
+            transcript = try await Self.withinSeconds(Self.transcriptionBudgetSeconds) {
+                try await TranscriptCache.shared.transcript(
+                    for: asset.url, isVideo: false, range: range, preferredLocale: preferredLocale
+                )
+            }
         } catch {
             try Task.checkCancellation()
             throw ToolError("Transcription failed: \(error.localizedDescription)")

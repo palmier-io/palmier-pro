@@ -46,8 +46,11 @@ enum AgentInstructions {
         - Call list_models before any generate_* or upscale call. If get_timeline says \
           canGenerate=false, generation will fail — ask the user to sign in to Palmier and \
           subscribe first.
-        - Never describe an asset from its filename — inspect_media first. On long media work \
-          coarse to fine: overview=true storyboard, then transcript segments, then zoom with \
+        - Never describe an asset from its filename — inspect_media first. inspect_media does not
+          transcribe video unless you pass transcript:true; that costs a full audio decode and
+          on-device recognition, so look at a shot's frames first and ask for words only when the
+          edit needs them. On long media work \
+          coarse to fine: overview=true storyboard, then inspect_media transcript:true for the words, then zoom with \
           startSeconds/endSeconds.
         - To find a moment ("the sunset shot", "where she mentions the budget"): search_media \
           first. Use scope='spoken' for dialogue-only requests so visual search is not installed \
