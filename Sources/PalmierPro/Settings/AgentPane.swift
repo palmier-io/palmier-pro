@@ -277,68 +277,136 @@ private extension AgentProvider {
 /// Owns its own draft state so the settings list stays cheap to type-check, and so a failed
 /// save never leaves the agent service holding a half-applied endpoint.
 private struct CustomEndpointSettingSection: View {
+    @State private var models: [CustomAgentModel] = []
+    @State private var editing: CustomAgentModel?
+    @State private var isAdding = false
+    @State private var name = ""
     @State private var baseURL = ""
     @State private var modelID = ""
-    @State private var isConfigured = false
+    @State private var apiKey = ""
+    /// The key as last read from the Keychain, so an untouched field can be told apart from a
+    /// deliberately emptied one.
+    @State private var loadedKey = ""
     @State private var error: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
             title
             explanation
-            baseURLField
-            modelIDField
-            APIKeySettingRow(provider: .custom)
-            actions
+            if !models.isEmpty { existingModels }
+            if isAdding || editing != nil { editor }
+            addButton
             errorMessage
         }
         .onAppear(perform: load)
     }
 
     private var title: some View {
-        Text(L10n.string("Custom Endpoint"))
+        Text(L10n.string("Custom Models"))
             .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.medium))
             .foregroundStyle(AppTheme.Text.primaryColor)
     }
 
     private var explanation: some View {
-        Text(L10n.string("Use any OpenAI-compatible server. The URL and model id stay on this Mac; the key goes in the Keychain."))
+        Text(L10n.string("Add any OpenAI-compatible model. Each keeps its own URL and key, so a local model and a hosted gateway can run side by side."))
             .font(.system(size: AppTheme.FontSize.sm))
             .foregroundStyle(AppTheme.Text.tertiaryColor)
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    private var baseURLField: some View {
-        field(placeholder: "http://localhost:11434/v1", text: $baseURL)
+    private var existingModels: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+            ForEach(models) { model in
+                HStack(spacing: AppTheme.Spacing.sm) {
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
+                        Text(verbatim: model.displayTitle)
+                            .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+                            .foregroundStyle(AppTheme.Text.primaryColor)
+                        if let subtitle = model.displaySubtitle {
+                            Text(verbatim: subtitle)
+                                .font(.system(size: AppTheme.FontSize.xs))
+                                .foregroundStyle(AppTheme.Text.secondaryColor)
+                        }
+                        Text(verbatim: model.baseURL.absoluteString)
+                            .font(.system(size: AppTheme.FontSize.xs, design: .monospaced))
+                            .foregroundStyle(AppTheme.Text.tertiaryColor)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    Spacer(minLength: AppTheme.Spacing.sm)
+                    Button(action: { beginEdit(model) }) {
+                        Image(systemName: "pencil")
+                            .font(.system(size: AppTheme.FontSize.md))
+                            .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.md)
+                    }
+                    .buttonStyle(.capsule(.secondary, size: .regular))
+                    .help(L10n.string("Edit model"))
+                    Button(action: { remove(model) }) {
+                        Image(systemName: "trash")
+                            .font(.system(size: AppTheme.FontSize.md))
+                            .foregroundStyle(AppTheme.Text.secondaryColor)
+                            .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.md)
+                    }
+                    .buttonStyle(.capsule(.secondary, size: .regular))
+                    .help(L10n.string("Remove model"))
+                }
+            }
+        }
     }
 
-    private var modelIDField: some View {
-        field(placeholder: "qwen3-coder:30b", text: $modelID)
-    }
-
-    private var actions: some View {
-        HStack(spacing: AppTheme.Spacing.sm) {
-            Button(L10n.string("Save"), action: save)
-                .buttonStyle(.capsule(.prominent, size: .regular))
-                .controlSize(.large)
-                .disabled(!canSave)
-            removeButton
+    private var editor: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+            field(placeholder: L10n.string("Name (optional)"), text: $name)
+            field(placeholder: "http://localhost:11434/v1", text: $baseURL)
+            field(placeholder: "qwen3-coder:30b", text: $modelID)
+            apiKeyField
+            HStack(spacing: AppTheme.Spacing.sm) {
+                Button(editing == nil ? L10n.string("Add Model") : L10n.string("Save"), action: save)
+                    .buttonStyle(.capsule(.prominent, size: .regular))
+                    .controlSize(.large)
+                    .disabled(!canSave)
+                Button(L10n.string("Cancel")) { cancel() }
+                    .buttonStyle(.capsule(.secondary, size: .regular))
+                    .controlSize(.large)
+            }
         }
     }
 
     @ViewBuilder
-    private var removeButton: some View {
-        if isConfigured {
-            Button(action: clear) {
-                Image(systemName: "trash")
-                    .font(.system(size: AppTheme.FontSize.md))
-                    .foregroundStyle(AppTheme.Text.secondaryColor)
-                    .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.md)
+    private var apiKeyField: some View {
+        let isLoopback = CustomModelStore.normalizedBaseURL(baseURL)
+            .map { CustomAgentModel(baseURL: $0, modelID: "").allowsMissingAPIKey } ?? false
+        Group {
+            if isLoopback {
+                Text(L10n.string("No key needed for a local server."))
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+            } else {
+                SecureField(L10n.string("API key"), text: $apiKey)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
+                    .padding(.horizontal, AppTheme.Spacing.md)
+                    .padding(.vertical, AppTheme.Spacing.smMd)
+                    .background(
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                            .fill(AppTheme.Background.baseColor.opacity(AppTheme.Opacity.medium))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                            .strokeBorder(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
+                    )
             }
-            .buttonStyle(.capsule(.secondary, size: .regular))
-            .controlSize(.large)
-            .help(L10n.string("Remove custom endpoint"))
         }
+    }
+
+    private var addButton: some View {
+        Button(action: beginAdd) {
+            Label(L10n.string("Add Model"), systemImage: "plus")
+        }
+        .buttonStyle(.capsule(.secondary, size: .regular))
+        .controlSize(.large)
+        .disabled(isAdding || editing != nil)
     }
 
     @ViewBuilder
@@ -374,28 +442,90 @@ private struct CustomEndpointSettingSection: View {
     }
 
     private func load() {
-        guard let endpoint = CustomAgentEndpointStore.load() else { return }
-        baseURL = endpoint.baseURL.absoluteString
-        modelID = endpoint.modelID
-        isConfigured = true
+        models = CustomModelStore.load()
+    }
+
+    private func beginAdd() {
+        editing = nil
+        isAdding = true
+        name = ""
+        baseURL = ""
+        modelID = ""
+        apiKey = ""
+        loadedKey = ""
+        error = nil
+    }
+
+    private func beginEdit(_ model: CustomAgentModel) {
+        editing = model
+        isAdding = false
+        name = model.name
+        baseURL = model.baseURL.absoluteString
+        modelID = model.modelID
+        apiKey = ""
+        loadedKey = ""
+        error = nil
+        let id = model.id
+        Task { @MainActor in
+            let stored = await CustomModelStore.loadKey(for: id)
+            // Only fill a field the user has not already typed into: a late write would
+            // otherwise replace a freshly typed key with the stored one.
+            if apiKey.isEmpty {
+                apiKey = stored
+                loadedKey = stored
+            }
+        }
+    }
+
+    private func cancel() {
+        editing = nil
+        isAdding = false
+        name = ""
+        baseURL = ""
+        modelID = ""
+        apiKey = ""
+        loadedKey = ""
+        error = nil
     }
 
     private func save() {
-        if let failure = CustomAgentEndpointStore.save(baseURL: baseURL, modelID: modelID) {
-            error = failure
-            return
-        }
+        // Snapshot the form: the reset below clears these, and a detached write that read the
+        // live state would store empty values — deleting the key it had just been given.
+        let pendingName = name
+        let pendingBaseURL = baseURL
+        let pendingModelID = modelID
+        let pendingID = editing?.id
+        let pendingKey: CustomKeyUpdate = apiKey == loadedKey
+            ? .unchanged
+            : (apiKey.isEmpty ? .clear : .set(apiKey))
         error = nil
-        isConfigured = true
-        NotificationCenter.default.post(name: .agentCustomEndpointChanged, object: nil)
+        cancel()
+        load()
+        Task { @MainActor in
+            let result = await CustomModelStore.upsert(
+                id: pendingID,
+                name: pendingName,
+                baseURL: pendingBaseURL,
+                modelID: pendingModelID,
+                key: pendingKey,
+                defaults: .standard
+            )
+            if case .failed(let message) = result {
+                error = message
+                return
+            }
+            load()
+            // Announced only after the credential is readable, so the agent does not cache an
+            // empty key for a model that has one.
+            NotificationCenter.default.post(name: .agentCustomEndpointChanged, object: nil)
+        }
     }
 
-    private func clear() {
-        CustomAgentEndpointStore.clear()
-        baseURL = ""
-        modelID = ""
-        isConfigured = false
-        error = nil
+    private func remove(_ model: CustomAgentModel) {
+        CustomModelStore.remove(id: model.id)
+        Task { await CustomModelStore.setKey(nil, for: model.id) }
+        if editing?.id == model.id { cancel() }
+        load()
         NotificationCenter.default.post(name: .agentCustomEndpointChanged, object: nil)
     }
 }

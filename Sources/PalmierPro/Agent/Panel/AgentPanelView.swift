@@ -145,13 +145,34 @@ struct AgentPanelView: View {
 
     private var modelPicker: some View {
         Menu {
-            ForEach(service.availableModels, id: \.self) { model in
+            ForEach(service.builtInModels, id: \.self) { model in
                 Button {
                     service.model = model
                 } label: {
                     Text(verbatim: service.modelTitle(model))
                 }
                 .disabled(!service.canSelectModel(model))
+            }
+            if !service.customModels.isEmpty {
+                Divider()
+                ForEach(service.customModels) { model in
+                    Button {
+                        service.selectCustomModel(model.id)
+                        service.model = .custom
+                    } label: {
+                        // Model id first: two models on one gateway are otherwise
+                        // indistinguishable, since the nickname is usually the provider.
+                        VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
+                            Text(verbatim: model.displayTitle)
+                            if let subtitle = model.displaySubtitle {
+                                Text(verbatim: subtitle)
+                                    .font(.system(size: AppTheme.FontSize.xs))
+                                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                            }
+                        }
+                    }
+                    .disabled(!service.canSelectModel(.custom))
+                }
             }
         } label: {
             footerPickerLabel(service.modelTitle(service.model)) {
