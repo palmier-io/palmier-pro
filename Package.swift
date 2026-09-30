@@ -3,11 +3,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "PalmierPro",
+    name: "CompositorPro",
     defaultLocalization: "en",
     platforms: [.macOS(.v26)],
     products: [
-        .executable(name: "PalmierPro", targets: ["PalmierPro"]),
+        .executable(name: "CompositorPro", targets: ["CompositorPro"]),
     ],
     traits: [
         .trait(name: "BundledSpeech", description: "Include on-device speech models and MLX."),
@@ -28,7 +28,7 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "PalmierPro",
+            name: "CompositorPro",
             dependencies: [
                 .product(name: "MCP", package: "swift-sdk"),
                 .product(name: "Sparkle", package: "Sparkle"),
@@ -63,7 +63,7 @@ let package = Package(
                     condition: .when(traits: ["BundledSpeech"])
                 ),
             ],
-            path: "Sources/PalmierPro",
+            path: "Sources/CompositorPro",
             exclude: [
                 "Resources/Info.plist",
                 "Resources/AppIcon.icon",
@@ -72,7 +72,7 @@ let package = Package(
             ],
             resources: [
                 .copy("Resources/Fonts"),
-                .copy("Resources/MCPB/palmier-pro.mcpb"),
+                .copy("Resources/MCPB/compositor-pro.mcpb"),
                 .copy("Resources/Images"),
                 .copy("Resources/Changelog"),
                 .process("Resources/Localization"),
@@ -86,12 +86,12 @@ let package = Package(
         ),
         .plugin(name: "MetalCIKernelPlugin", capability: .buildTool()),
         .testTarget(
-            name: "PalmierProTests",
+            name: "CompositorProTests",
             dependencies: [
-                "PalmierPro",
+                "CompositorPro",
                 .product(name: "MCP", package: "swift-sdk"),
             ],
-            path: "Tests/PalmierProTests"
+            path: "Tests/CompositorProTests"
         ),
     ]
 )

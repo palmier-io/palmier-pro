@@ -2,12 +2,12 @@
 
 <div align="center">
 
-# Palmier Pro
+# Compositor Pro
 
 **Trình biên tập video được xây dựng cho AI.**
 
-<a href="https://github.com/palmier-io/palmier-pro/releases/latest/download/PalmierPro.dmg">
-  <img src="../../assets/macos-badge.png" alt="Tải Palmier Pro cho macOS" width="180" />
+<a href="https://github.com/palmier-io/compositor-pro/releases/latest/download/CompositorPro.dmg">
+  <img src="../../assets/macos-badge.png" alt="Tải Compositor Pro cho macOS" width="180" />
 </a>
 
 <sub><i>Yêu cầu macOS 26 (Tahoe) trên Apple Silicon</i></sub>
@@ -37,18 +37,18 @@
 
 </div>
 
-<img src="../../assets/palmier-ui.png" alt="Giao diện Palmier Pro" width="900" />
+<img src="../../assets/compositor-ui.png" alt="Giao diện Compositor Pro" width="900" />
 
 ---
 
 > [!IMPORTANT]
-> Các bản phát hành Palmier Pro đến hết v0.7.6 được phát hành theo GPLv3. Ảnh chụp mã nguồn công khai cuối cùng là [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source). Các bản phát hành sau v0.7.6 là phần mềm độc quyền và mã nguồn của chúng không được công bố tại đây.
+> Các bản phát hành Compositor Pro đến hết v0.7.6 được phát hành theo GPLv3. Ảnh chụp mã nguồn công khai cuối cùng là [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source). Các bản phát hành sau v0.7.6 là phần mềm độc quyền và mã nguồn của chúng không được công bố tại đây.
 
-Palmier Pro là trình biên tập video cho Mac. Bạn và agent của bạn có thể cùng tạo và chỉnh sửa video ngay trong timeline.
+Compositor Pro là trình biên tập video cho Mac. Bạn và agent của bạn có thể cùng tạo và chỉnh sửa video ngay trong timeline.
 
 ### Trình biên tập video thuần Swift
 
-Chúng tôi xây dựng Palmier Pro từ đầu bằng Swift. Mốc tham chiếu là Premiere Pro, với cách riêng của chúng tôi để tích hợp AI vào quy trình làm việc.
+Chúng tôi xây dựng Compositor Pro từ đầu bằng Swift. Mốc tham chiếu là Premiere Pro, với cách riêng của chúng tôi để tích hợp AI vào quy trình làm việc.
 
 ### AI tạo sinh tích hợp sẵn
 
@@ -60,16 +60,16 @@ Kết nối Claude, Codex hoặc Cursor qua MCP, hoặc dùng agent trong app đ
 
 ## MCP server
 
-Khi app đang mở, Palmier Pro cung cấp MCP server tại `http://127.0.0.1:19789/mcp` qua HTTP. Cách kết nối:
+Khi app đang mở, Compositor Pro cung cấp MCP server tại `http://127.0.0.1:19789/mcp` qua HTTP. Cách kết nối:
 
 **Claude Code**
 ```bash
-claude mcp add --transport http palmier-pro http://127.0.0.1:19789/mcp
+claude mcp add --transport http compositor-pro http://127.0.0.1:19789/mcp
 ```
 
 **Codex**
 ```bash
-codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
+codex mcp add compositor-pro --url http://127.0.0.1:19789/mcp
 ```
 
 **Cursor**
@@ -93,9 +93,9 @@ Chúng tôi đóng gói một [mcpb](https://github.com/modelcontextprotocol/mcp
 
 ## FAQ
 
-**Những phiên bản Palmier Pro nào là mã nguồn mở?**
+**Những phiên bản Compositor Pro nào là mã nguồn mở?**
 
-Các bản phát hành đến hết v0.7.6 và mã nguồn đến [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) vẫn theo GPLv3; các bản phát hành sau đó là phần mềm độc quyền.
+Các bản phát hành đến hết v0.7.6 và mã nguồn đến [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source) vẫn theo GPLv3; các bản phát hành sau đó là phần mềm độc quyền.
 
 **Có miễn phí không?**
 

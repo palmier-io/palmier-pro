@@ -2,12 +2,12 @@
 
 <div align="center">
 
-# Palmier Pro
+# Compositor Pro
 
 **محرر فيديو مصمم لعصر الذكاء الاصطناعي.**
 
-<a href="https://github.com/palmier-io/palmier-pro/releases/latest/download/PalmierPro.dmg">
-  <img src="../../assets/macos-badge.png" alt="تنزيل Palmier Pro لنظام macOS" width="180" />
+<a href="https://github.com/palmier-io/compositor-pro/releases/latest/download/CompositorPro.dmg">
+  <img src="../../assets/macos-badge.png" alt="تنزيل Compositor Pro لنظام macOS" width="180" />
 </a>
 
 <sub><i>يتطلب macOS 26 (Tahoe) على Apple Silicon لتحميله</i></sub>
@@ -37,18 +37,18 @@
 
 </div>
 
-<img src="../../assets/palmier-ui.png" alt="واجهة Palmier Pro" width="900" />
+<img src="../../assets/compositor-ui.png" alt="واجهة Compositor Pro" width="900" />
 
 ---
 
 > [!IMPORTANT]
-> نُشرت إصدارات Palmier Pro حتى v0.7.6 بموجب GPLv3. آخر لقطة عامة من الشفرة المصدرية هي [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source). الإصدارات اللاحقة لـ v0.7.6 احتكارية، ولا تُنشر شفرتها المصدرية هنا.
+> نُشرت إصدارات Compositor Pro حتى v0.7.6 بموجب GPLv3. آخر لقطة عامة من الشفرة المصدرية هي [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source). الإصدارات اللاحقة لـ v0.7.6 احتكارية، ولا تُنشر شفرتها المصدرية هنا.
 
-بالمي برو (Palmier Pro) هو محرر فيديو لنظام macOS. يتيح لك العمل جنبًا إلى جنب مع المساعد الذكي الخاص بك لإنشاء الفيديوهات وتحريرها داخل الخط الزمني (Timeline) نفسه.
+بالمي برو (Compositor Pro) هو محرر فيديو لنظام macOS. يتيح لك العمل جنبًا إلى جنب مع المساعد الذكي الخاص بك لإنشاء الفيديوهات وتحريرها داخل الخط الزمني (Timeline) نفسه.
 
 ### محرر فيديو Swift-native
 
-تم تطوير بالمي برو (Palmier Pro) من الصفر باستخدام Swift. استلهمنا تجربة الاستخدام من Premiere Pro، مع إعادة تصميمها لتناسب أدوات الذكاء الاصطناعي الحديثة وسير العمل المعتمد عليها.
+تم تطوير بالمي برو (Compositor Pro) من الصفر باستخدام Swift. استلهمنا تجربة الاستخدام من Premiere Pro، مع إعادة تصميمها لتناسب أدوات الذكاء الاصطناعي الحديثة وسير العمل المعتمد عليها.
 
 ### ذكاء اصطناعي توليدي مدمج (Generative AI)
 
@@ -63,12 +63,12 @@
 
 **Claude Code**
 ```bash
-claude mcp add --transport http palmier-pro http://127.0.0.1:19789/mcp
+claude mcp add --transport http compositor-pro http://127.0.0.1:19789/mcp
 ```
 
 **Codex**
 ```bash
-codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
+codex mcp add compositor-pro --url http://127.0.0.1:19789/mcp
 ```
 
 **Cursor**
@@ -92,9 +92,9 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 
 ## FAQ
 
-**ما إصدارات Palmier Pro مفتوحة المصدر؟**
+**ما إصدارات Compositor Pro مفتوحة المصدر؟**
 
-تظل الإصدارات حتى v0.7.6 والشفرة المصدرية حتى [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) خاضعة لـ GPLv3، أما الإصدارات اللاحقة فهي احتكارية.
+تظل الإصدارات حتى v0.7.6 والشفرة المصدرية حتى [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source) خاضعة لـ GPLv3، أما الإصدارات اللاحقة فهي احتكارية.
 
 **هل هو مجاني؟**
 
@@ -104,7 +104,7 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 
 **ما المنصات المدعومة؟**
 
-يدعم Palmier Pro حاليًا:
+يدعم Compositor Pro حاليًا:
 * macOS 26 (Tahoe)
 * أجهزة Apple Silicon فقط
   

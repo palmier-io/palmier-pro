@@ -2,12 +2,12 @@
 
 <div align="center">
 
-# Palmier Pro
+# Compositor Pro
 
 **Видеоредактор, созданный для AI.**
 
-<a href="https://github.com/palmier-io/palmier-pro/releases/latest/download/PalmierPro.dmg">
-  <img src="../../assets/macos-badge.png" alt="Скачать Palmier Pro для macOS" width="180" />
+<a href="https://github.com/palmier-io/compositor-pro/releases/latest/download/CompositorPro.dmg">
+  <img src="../../assets/macos-badge.png" alt="Скачать Compositor Pro для macOS" width="180" />
 </a>
 
 <sub><i>Требуется macOS 26 (Tahoe) на Apple Silicon</i></sub>
@@ -37,18 +37,18 @@
 
 </div>
 
-<img src="../../assets/palmier-ui.png" alt="Интерфейс Palmier Pro" width="900" />
+<img src="../../assets/compositor-ui.png" alt="Интерфейс Compositor Pro" width="900" />
 
 ---
 
 > [!IMPORTANT]
-> Релизы Palmier Pro до v0.7.6 включительно были опубликованы под лицензией GPLv3. Финальный общедоступный снимок исходного кода — [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source). Релизы после v0.7.6 являются проприетарными, и их исходный код здесь не публикуется.
+> Релизы Compositor Pro до v0.7.6 включительно были опубликованы под лицензией GPLv3. Финальный общедоступный снимок исходного кода — [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source). Релизы после v0.7.6 являются проприетарными, и их исходный код здесь не публикуется.
 
-Palmier Pro — видеоредактор для Mac. Вы и ваш agent можете вместе генерировать и редактировать видео прямо на таймлайне.
+Compositor Pro — видеоредактор для Mac. Вы и ваш agent можете вместе генерировать и редактировать видео прямо на таймлайне.
 
 ### Видеоредактор, нативный для Swift
 
-Мы построили Palmier Pro с нуля на Swift. Ориентир — Premiere Pro, но с нашим подходом к интеграции AI в рабочий процесс.
+Мы построили Compositor Pro с нуля на Swift. Ориентир — Premiere Pro, но с нашим подходом к интеграции AI в рабочий процесс.
 
 ### Встроенный generative AI
 
@@ -64,12 +64,12 @@ Palmier Pro — видеоредактор для Mac. Вы и ваш agent мо
 
 **Claude Code**
 ```bash
-claude mcp add --transport http palmier-pro http://127.0.0.1:19789/mcp
+claude mcp add --transport http compositor-pro http://127.0.0.1:19789/mcp
 ```
 
 **Codex**
 ```bash
-codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
+codex mcp add compositor-pro --url http://127.0.0.1:19789/mcp
 ```
 
 **Cursor**
@@ -93,9 +93,9 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 
 ## FAQ
 
-**Какие версии Palmier Pro являются open source?**
+**Какие версии Compositor Pro являются open source?**
 
-Релизы до v0.7.6 включительно и исходный код вплоть до [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) остаются под GPLv3; более поздние релизы являются проприетарными.
+Релизы до v0.7.6 включительно и исходный код вплоть до [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source) остаются под GPLv3; более поздние релизы являются проприетарными.
 
 **Это бесплатно?**
 

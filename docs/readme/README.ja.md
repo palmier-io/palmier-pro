@@ -2,12 +2,12 @@
 
 <div align="center">
 
-# Palmier Pro
+# Compositor Pro
 
 **AI のために作られた動画エディタ。**
 
-<a href="https://github.com/palmier-io/palmier-pro/releases/latest/download/PalmierPro.dmg">
-  <img src="../../assets/macos-badge.png" alt="Palmier Pro for macOS をダウンロード" width="180" />
+<a href="https://github.com/palmier-io/compositor-pro/releases/latest/download/CompositorPro.dmg">
+  <img src="../../assets/macos-badge.png" alt="Compositor Pro for macOS をダウンロード" width="180" />
 </a>
 
 <sub><i>Apple Silicon 搭載の macOS 26 (Tahoe) が必要</i></sub>
@@ -37,18 +37,18 @@
 
 </div>
 
-<img src="../../assets/palmier-ui.png" alt="Palmier Pro の UI" width="900" />
+<img src="../../assets/compositor-ui.png" alt="Compositor Pro の UI" width="900" />
 
 ---
 
 > [!IMPORTANT]
-> Palmier Pro の v0.7.6 までのリリースは GPLv3 で公開されました。最後の公開ソーススナップショットは [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) です。v0.7.6 より後のリリースはプロプライエタリであり、そのソースコードはここでは公開されません。
+> Compositor Pro の v0.7.6 までのリリースは GPLv3 で公開されました。最後の公開ソーススナップショットは [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source) です。v0.7.6 より後のリリースはプロプライエタリであり、そのソースコードはここでは公開されません。
 
-Palmier Pro は Mac 向けの動画エディタです。ユーザーと agent がタイムライン上で一緒に動画を生成、編集できます。
+Compositor Pro は Mac 向けの動画エディタです。ユーザーと agent がタイムライン上で一緒に動画を生成、編集できます。
 
 ### Swift ネイティブ動画エディタ
 
-Palmier Pro は Swift でゼロから構築しました。目指す基準は Premiere Pro で、AI をワークフローに統合する独自の形をとっています。
+Compositor Pro は Swift でゼロから構築しました。目指す基準は Premiere Pro で、AI をワークフローに統合する独自の形をとっています。
 
 ### 内蔵の生成 AI
 
@@ -64,12 +64,12 @@ MCP で Claude、Codex、Cursor と接続できます。アプリ内 agent を�
 
 **Claude Code**
 ```bash
-claude mcp add --transport http palmier-pro http://127.0.0.1:19789/mcp
+claude mcp add --transport http compositor-pro http://127.0.0.1:19789/mcp
 ```
 
 **Codex**
 ```bash
-codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
+codex mcp add compositor-pro --url http://127.0.0.1:19789/mcp
 ```
 
 **Cursor**
@@ -93,9 +93,9 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 
 ## FAQ
 
-**Palmier Pro のどのバージョンがオープンソースですか？**
+**Compositor Pro のどのバージョンがオープンソースですか？**
 
-v0.7.6 までのリリースと [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) までのソースコードは GPLv3 のままです。それ以降のリリースはプロプライエタリです。
+v0.7.6 までのリリースと [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source) までのソースコードは GPLv3 のままです。それ以降のリリースはプロプライエタリです。
 
 **無料ですか？**
 

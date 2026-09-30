@@ -2,12 +2,12 @@
 
 <div align="center">
 
-# Palmier Pro
+# Compositor Pro
 
 **O editor de vídeo criado para IA.**
 
-<a href="https://github.com/palmier-io/palmier-pro/releases/latest/download/PalmierPro.dmg">
-  <img src="../../assets/macos-badge.png" alt="Baixar Palmier Pro para macOS" width="180" />
+<a href="https://github.com/palmier-io/compositor-pro/releases/latest/download/CompositorPro.dmg">
+  <img src="../../assets/macos-badge.png" alt="Baixar Compositor Pro para macOS" width="180" />
 </a>
 
 <sub><i>Requer macOS 26 (Tahoe) em Macs com Apple Silicon</i></sub>
@@ -37,18 +37,18 @@
 
 </div>
 
-<img src="../../assets/palmier-ui.png" alt="Interface do Palmier Pro" width="900" />
+<img src="../../assets/compositor-ui.png" alt="Interface do Compositor Pro" width="900" />
 
 ---
 
 > [!IMPORTANT]
-> As versões do Palmier Pro até v0.7.6 foram publicadas sob a GPLv3. O snapshot público final do código-fonte é [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source). As versões posteriores a v0.7.6 são proprietárias e seu código-fonte não é publicado aqui.
+> As versões do Compositor Pro até v0.7.6 foram publicadas sob a GPLv3. O snapshot público final do código-fonte é [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source). As versões posteriores a v0.7.6 são proprietárias e seu código-fonte não é publicado aqui.
 
-Palmier Pro é um editor de vídeo para Mac. Você e seu agente podem gerar e editar vídeos juntos dentro da linha do tempo.
+Compositor Pro é um editor de vídeo para Mac. Você e seu agente podem gerar e editar vídeos juntos dentro da linha do tempo.
 
 ### Editor de vídeo nativo em Swift
 
-Construímos o Palmier Pro do zero com Swift. Inspirado no Premiere Pro, mas com a nossa própria forma de integrar IA ao fluxo de trabalho.
+Construímos o Compositor Pro do zero com Swift. Inspirado no Premiere Pro, mas com a nossa própria forma de integrar IA ao fluxo de trabalho.
 
 ### IA generativa integrada
 
@@ -64,12 +64,12 @@ Quando o app está aberto, ele expõe um servidor MCP em `http://127.0.0.1:19789
 
 **Claude Code**
 ```bash
-claude mcp add --transport http palmier-pro http://127.0.0.1:19789/mcp
+claude mcp add --transport http compositor-pro http://127.0.0.1:19789/mcp
 ```
 
 **Codex**
 ```bash
-codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
+codex mcp add compositor-pro --url http://127.0.0.1:19789/mcp
 ```
 
 **Cursor**
@@ -93,9 +93,9 @@ Incluímos um pacote [mcpb](https://github.com/modelcontextprotocol/mcpb) no app
 
 ## FAQ
 
-**Quais versões do Palmier Pro são open source?**
+**Quais versões do Compositor Pro são open source?**
 
-As versões até v0.7.6 e o código-fonte até [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) permanecem sob a GPLv3; as versões posteriores são proprietárias.
+As versões até v0.7.6 e o código-fonte até [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source) permanecem sob a GPLv3; as versões posteriores são proprietárias.
 
 **É gratuito?**
 

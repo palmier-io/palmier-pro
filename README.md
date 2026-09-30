@@ -1,14 +1,14 @@
 > [!IMPORTANT]
-> Palmier Pro releases through v0.7.6, and source code through [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source), were published under GPLv3. Later binary releases are proprietary, and their corresponding source is not published. This repository preserves the historical source and hosts current binary releases and update metadata.
+> Compositor Pro releases through v0.7.6, and source code through [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source), were published under GPLv3. Later binary releases are proprietary, and their corresponding source is not published. This repository preserves the historical source and hosts current binary releases and update metadata.
 
 <div align="center">
 
-# Palmier Pro
+# Compositor Pro
 
 **The video editor built for AI.**
 
-<a href="https://github.com/palmier-io/palmier-pro/releases/latest/download/PalmierPro.dmg">
-  <img src="./assets/macos-badge.png" alt="Download Palmier Pro for macOS" width="180" />
+<a href="https://github.com/palmier-io/compositor-pro/releases/latest/download/CompositorPro.dmg">
+  <img src="./assets/macos-badge.png" alt="Download Compositor Pro for macOS" width="180" />
 </a>
 
 <sub><i>Requires macOS 26 (Tahoe) on Apple Silicon</i></sub>
@@ -37,15 +37,15 @@
 
 </div>
 
-<img src="./assets/palmier-ui.png" alt="Palmier Pro UI" width="900" />
+<img src="./assets/compositor-ui.png" alt="Compositor Pro UI" width="900" />
 
 ---
 
-Palmier Pro is a macOS video editor with built-in AI generation and MCP support, allowing agents to create and edit directly on the timeline.
+Compositor Pro is a macOS video editor with built-in AI generation and MCP support, allowing agents to create and edit directly on the timeline.
 
 ### Swift-native video editor
 
-We built Palmier Pro from scratch with Swift. The north star is Premiere Pro, with our take on integrating AI into the workflow.
+We built Compositor Pro from scratch with Swift. The north star is Premiere Pro, with our take on integrating AI into the workflow.
 
 ### Built-in Generative AI
 
@@ -61,12 +61,12 @@ When the app is open, it exposes an MCP server at `http://127.0.0.1:19789/mcp` v
 
 **Claude Code**
 ```bash
-claude mcp add --transport http palmier-pro http://127.0.0.1:19789/mcp
+claude mcp add --transport http compositor-pro http://127.0.0.1:19789/mcp
 ```
 
 **Codex**
 ```bash
-codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
+codex mcp add compositor-pro --url http://127.0.0.1:19789/mcp
 ```
 
 **Cursor**
@@ -90,7 +90,7 @@ We bundle a [mcpb](https://github.com/modelcontextprotocol/mcpb) with the app th
 
 ## FAQ
 
-**Which versions of Palmier Pro are open source?**
+**Which versions of Compositor Pro are open source?**
 
 Releases through v0.7.6 and source through `last-gpl-source` remain available under GPLv3. Later releases are proprietary.
 
@@ -115,4 +115,4 @@ Copyright (C) 2026 Palmier, Inc.
 
 The source code published in this repository remains available under [GPLv3](LICENSE).
 
-Palmier Pro binary releases after v0.7.6 are proprietary and subject to the [binary license](BINARY_LICENSE.md).
+Compositor Pro binary releases after v0.7.6 are proprietary and subject to the [binary license](BINARY_LICENSE.md).

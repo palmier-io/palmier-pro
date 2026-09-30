@@ -1,4 +1,4 @@
-# PalmierPro
+# CompositorPro
 
 AI-native macOS video editor. Swift 6.2, SwiftUI + AppKit, AVFoundation. macOS 26 only, arm64 only. Non-sandboxed Developer ID app.
 
@@ -39,7 +39,7 @@ Use `swift build --traits BundledSpeech` for changes that touch MLX, speech anal
 - Prefer precise names, small types, and extracted operations over explanatory comments.
 - Complex logic must have a single source of truth. Never copy a calculation or business rule into another file or surface.
 - Remove dead code, unused state, obsolete compatibility paths, and temporary diagnostics before finishing.
-- Do not add compatibility code for OS versions or architectures Palmier Pro does not support.
+- Do not add compatibility code for OS versions or architectures Compositor Pro does not support.
 
 ## Concurrency and the main actor
 
@@ -120,7 +120,7 @@ Use `swift build --traits BundledSpeech` for changes that touch MLX, speech anal
 - Design tools from user intent, not from internal APIs, database operations, view models, or service method boundaries.
 - Start with representative user requests and define the desired outcome, success criteria, warnings, failure behavior, cancellation behavior, retry behavior, idempotency, and undo semantics before defining the schema.
 - A tool should perform one coherent filmmaker action. One call should normally complete one atomic, understandable, and undoable workflow.
-- Do not force the Agent to reproduce application orchestration by chaining low-level tools when Palmier Pro can safely perform the workflow itself.
+- Do not force the Agent to reproduce application orchestration by chaining low-level tools when Compositor Pro can safely perform the workflow itself.
 - Do not create a broad “god tool” with unrelated modes. Group operations only when they share one user goal, validation model, and result shape.
 - Express parameters in filmmaking and user-facing domain concepts. Hide storage layout, framework objects, UI state, and incidental implementation details.
 - Use stable entity IDs for automation. Positional indexes and display labels may be returned for context but must not be the only durable identity after edits.
@@ -157,7 +157,7 @@ Use `swift build --traits BundledSpeech` for changes that touch MLX, speech anal
 
 ## Design System
 
-All UI styling MUST use `AppTheme` constants from `Sources/PalmierPro/UI/AppTheme.swift`. Never use hardcoded numeric values for:
+All UI styling MUST use `AppTheme` constants from `Sources/CompositorPro/UI/AppTheme.swift`. Never use hardcoded numeric values for:
 
 - **Spacing/padding** → `AppTheme.Spacing.*` (xxs through xxl)
 - **Font sizes** → `AppTheme.FontSize.*` (xxs through display)
@@ -176,7 +176,7 @@ If a needed value doesn't exist in AppTheme, add it there first — don't hardco
 
 SwiftUI `.onDrop` on a parent view shadows every drop target inside its layout area on macOS 26 — even AppKit `NSDraggingDestination` children registered directly with the window. Inner `.onDrop` modifiers silently never fire while a parent `.onDrop` is active.
 
-Rule: **any drop target that spans an area containing other drop targets must use native AppKit** (see `MediaPanelDropArea` in `Sources/PalmierPro/MediaPanel/`). Inner / leaf drops can stay SwiftUI `.onDrop`. Do not stack SwiftUI `.onDrop` modifiers in parent/child layouts.
+Rule: **any drop target that spans an area containing other drop targets must use native AppKit** (see `MediaPanelDropArea` in `Sources/CompositorPro/MediaPanel/`). Inner / leaf drops can stay SwiftUI `.onDrop`. Do not stack SwiftUI `.onDrop` modifiers in parent/child layouts.
 
 ## Resources and configuration
 
@@ -285,7 +285,7 @@ Rule: **any drop target that spans an area containing other drop targets must us
 
 ## Voice
 
-Palmier Pro speaks like a quietly capable native Mac app for filmmakers: direct, technical, calm, and confident. Prefer Apple HIG-style terseness over warmth. Never chatty or cute. Never marketing. When the product needs to ask for action, lead with the action verb; when it reports state, name the thing.
+Compositor Pro speaks like a quietly capable native Mac app for filmmakers: direct, technical, calm, and confident. Prefer Apple HIG-style terseness over warmth. Never chatty or cute. Never marketing. When the product needs to ask for action, lead with the action verb; when it reports state, name the thing.
 
 ## Primary references
 

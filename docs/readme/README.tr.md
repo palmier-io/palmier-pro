@@ -2,12 +2,12 @@
 
 <div align="center">
 
-# Palmier Pro
+# Compositor Pro
 
 **Yapay zeka için tasarlanmış video editörü.**
 
-<a href="https://github.com/palmier-io/palmier-pro/releases/latest/download/PalmierPro.dmg">
-  <img src="../../assets/macos-badge.png" alt="Palmier Pro'yu macOS için indir" width="180" />
+<a href="https://github.com/palmier-io/compositor-pro/releases/latest/download/CompositorPro.dmg">
+  <img src="../../assets/macos-badge.png" alt="Compositor Pro'yu macOS için indir" width="180" />
 </a>
 
 <sub><i>Apple Silicon işlemcili cihazlarda macOS 26 (Tahoe) sürümü gerektirir</i></sub>
@@ -37,18 +37,18 @@
 
 </div>
 
-<img src="../../assets/palmier-ui.png" alt="Palmier Pro arayüzü" width="900" />
+<img src="../../assets/compositor-ui.png" alt="Compositor Pro arayüzü" width="900" />
 
 ---
 
 > [!IMPORTANT]
-> Palmier Pro'nun v0.7.6 ve önceki sürümleri GPLv3 kapsamında yayımlandı. Herkese açık son kaynak kodu anlık görüntüsü [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) dalıdır. v0.7.6'dan sonraki sürümler tescilli yazılımdır ve kaynak kodları burada yayımlanmaz.
+> Compositor Pro'nun v0.7.6 ve önceki sürümleri GPLv3 kapsamında yayımlandı. Herkese açık son kaynak kodu anlık görüntüsü [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source) dalıdır. v0.7.6'dan sonraki sürümler tescilli yazılımdır ve kaynak kodları burada yayımlanmaz.
 
-Palmier Pro, Mac için bir video editörüdür. Siz ve yapay zeka ajanınız, zaman çizelgesi (timeline) üzerinde videoları birlikte üretebilir ve düzenleyebilirsiniz.
+Compositor Pro, Mac için bir video editörüdür. Siz ve yapay zeka ajanınız, zaman çizelgesi (timeline) üzerinde videoları birlikte üretebilir ve düzenleyebilirsiniz.
 
 ### Swift ile yerel (native) geliştirilmiş video editörü
 
-Palmier Pro'yu sıfırdan Swift ile geliştirdik. Kutup yıldızımız (temel hedefimiz) Premiere Pro olsa da, yapay zekayı iş akışına entegre etme konusunda kendimize özgü bir yaklaşım benimsiyoruz.
+Compositor Pro'yu sıfırdan Swift ile geliştirdik. Kutup yıldızımız (temel hedefimiz) Premiere Pro olsa da, yapay zekayı iş akışına entegre etme konusunda kendimize özgü bir yaklaşım benimsiyoruz.
 
 ### Yerleşik Üretken Yapay Zeka
 
@@ -65,13 +65,13 @@ Uygulama açık olduğunda, HTTP protokolü üzerinden `http://127.0.0.1:19789/m
 **Claude Code**
 
 ```bash
-claude mcp add --transport http palmier-pro http://127.0.0.1:19789/mcp
+claude mcp add --transport http compositor-pro http://127.0.0.1:19789/mcp
 ```
 
 **Codex**
 
 ```bash
-codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
+codex mcp add compositor-pro --url http://127.0.0.1:19789/mcp
 ```
 
 **Cursor**
@@ -95,9 +95,9 @@ Claude Desktop üzerinde tek tıkla Masaüstü Eklentisi (Desktop Extension) kur
 
 ## Sıkça Sorulan Sorular (SSS)
 
-**Palmier Pro'nun hangi sürümleri açık kaynaklıdır?**
+**Compositor Pro'nun hangi sürümleri açık kaynaklıdır?**
 
-v0.7.6'ya kadar olan sürümler ve [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) dalına kadar olan kaynak kodu GPLv3 kapsamında kalır; sonraki sürümler tescillidir.
+v0.7.6'ya kadar olan sürümler ve [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source) dalına kadar olan kaynak kodu GPLv3 kapsamında kalır; sonraki sürümler tescillidir.
 
 **Ücretsiz mi?**
 

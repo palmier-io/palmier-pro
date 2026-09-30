@@ -2,12 +2,12 @@
 
 <div align="center">
 
-# Palmier Pro
+# Compositor Pro
 
 **AI-এর জন্য তৈরি ভিডিও এডিটর।**
 
-<a href="https://github.com/palmier-io/palmier-pro/releases/latest/download/PalmierPro.dmg">
-  <img src="../../assets/macos-badge.png" alt="macOS-এর জন্য Palmier Pro ডাউনলোড করুন" width="180" />
+<a href="https://github.com/palmier-io/compositor-pro/releases/latest/download/CompositorPro.dmg">
+  <img src="../../assets/macos-badge.png" alt="macOS-এর জন্য Compositor Pro ডাউনলোড করুন" width="180" />
 </a>
 
 <sub><i>Apple Silicon-এ macOS 26 (Tahoe) প্রয়োজন</i></sub>
@@ -37,18 +37,18 @@
 
 </div>
 
-<img src="../../assets/palmier-ui.png" alt="Palmier Pro UI" width="900" />
+<img src="../../assets/compositor-ui.png" alt="Compositor Pro UI" width="900" />
 
 ---
 
 > [!IMPORTANT]
-> Palmier Pro-এর v0.7.6 পর্যন্ত releases GPLv3-এর অধীনে প্রকাশিত হয়েছিল। সর্বশেষ public source snapshot হলো [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source)। v0.7.6-এর পরের releases proprietary এবং তাদের source এখানে প্রকাশ করা হয় না।
+> Compositor Pro-এর v0.7.6 পর্যন্ত releases GPLv3-এর অধীনে প্রকাশিত হয়েছিল। সর্বশেষ public source snapshot হলো [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source)। v0.7.6-এর পরের releases proprietary এবং তাদের source এখানে প্রকাশ করা হয় না।
 
-Palmier Pro Mac-এর জন্য একটি ভিডিও এডিটর। আপনি এবং আপনার agent timeline-এর ভিতরে একসঙ্গে ভিডিও generate ও edit করতে পারেন।
+Compositor Pro Mac-এর জন্য একটি ভিডিও এডিটর। আপনি এবং আপনার agent timeline-এর ভিতরে একসঙ্গে ভিডিও generate ও edit করতে পারেন।
 
 ### Swift-native ভিডিও এডিটর
 
-আমরা Swift দিয়ে Palmier Pro একদম শুরু থেকে তৈরি করেছি। আমাদের উত্তর তারা Premiere Pro, তবে workflow-তে AI যুক্ত করার নিজস্ব পদ্ধতি নিয়ে।
+আমরা Swift দিয়ে Compositor Pro একদম শুরু থেকে তৈরি করেছি। আমাদের উত্তর তারা Premiere Pro, তবে workflow-তে AI যুক্ত করার নিজস্ব পদ্ধতি নিয়ে।
 
 ### Built-in Generative AI
 
@@ -64,12 +64,12 @@ App খোলা থাকলে, এটি HTTP-এর মাধ্যমে `h
 
 **Claude Code**
 ```bash
-claude mcp add --transport http palmier-pro http://127.0.0.1:19789/mcp
+claude mcp add --transport http compositor-pro http://127.0.0.1:19789/mcp
 ```
 
 **Codex**
 ```bash
-codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
+codex mcp add compositor-pro --url http://127.0.0.1:19789/mcp
 ```
 
 **Cursor**
@@ -93,9 +93,9 @@ App-এর সঙ্গে আমরা একটি [mcpb](https://github.com/m
 
 ## FAQ
 
-**Palmier Pro-এর কোন versions open source?**
+**Compositor Pro-এর কোন versions open source?**
 
-v0.7.6 পর্যন্ত releases এবং [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) পর্যন্ত source GPLv3-এর অধীনে থাকবে; পরবর্তী releases proprietary।
+v0.7.6 পর্যন্ত releases এবং [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source) পর্যন্ত source GPLv3-এর অধীনে থাকবে; পরবর্তী releases proprietary।
 
 **এটি কি free?**
 

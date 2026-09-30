@@ -1,4 +1,4 @@
-# Palmier Pro review policy
+# Compositor Pro review policy
 
 Use the root `AGENTS.md` as the canonical engineering guide. Review for actionable regressions introduced by the PR or made reachable or more severe by it.
 

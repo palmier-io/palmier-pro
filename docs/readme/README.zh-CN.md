@@ -2,12 +2,12 @@
 
 <div align="center">
 
-# Palmier Pro
+# Compositor Pro
 
 **专为 AI 打造的视频编辑器。**
 
-<a href="https://github.com/palmier-io/palmier-pro/releases/latest/download/PalmierPro.dmg">
-  <img src="../../assets/macos-badge.png" alt="下载 macOS 版 Palmier Pro" width="180" />
+<a href="https://github.com/palmier-io/compositor-pro/releases/latest/download/CompositorPro.dmg">
+  <img src="../../assets/macos-badge.png" alt="下载 macOS 版 Compositor Pro" width="180" />
 </a>
 
 <sub><i>需要搭载 Apple Silicon 的 macOS 26 (Tahoe)</i></sub>
@@ -37,14 +37,14 @@
 
 </div>
 
-<img src="../../assets/palmier-ui.png" alt="Palmier Pro 界面" width="900" />
+<img src="../../assets/compositor-ui.png" alt="Compositor Pro 界面" width="900" />
 
 ---
 
 > [!IMPORTANT]
-> Palmier Pro v0.7.6 及之前的版本以 GPLv3 发布。最终的公开源代码快照是 [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source)。v0.7.6 之后的版本为专有软件，其源代码不在此发布。
+> Compositor Pro v0.7.6 及之前的版本以 GPLv3 发布。最终的公开源代码快照是 [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source)。v0.7.6 之后的版本为专有软件，其源代码不在此发布。
 
-Palmier Pro 是面向 Mac 的视频编辑器。你和你的 Agent 可以在时间线中一起生成和编辑视频。
+Compositor Pro 是面向 Mac 的视频编辑器。你和你的 Agent 可以在时间线中一起生成和编辑视频。
 
 ### 基于 Swift 原生开发的剪辑工具
 
@@ -64,12 +64,12 @@ Palmier Pro 是面向 Mac 的视频编辑器。你和你的 Agent 可以在时�
 
 **Claude Code**
 ```bash
-claude mcp add --transport http palmier-pro http://127.0.0.1:19789/mcp
+claude mcp add --transport http compositor-pro http://127.0.0.1:19789/mcp
 ```
 
 **Codex**
 ```bash
-codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
+codex mcp add compositor-pro --url http://127.0.0.1:19789/mcp
 ```
 
 **Cursor**
@@ -93,9 +93,9 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 
 ## FAQ
 
-**哪些 Palmier Pro 版本是开源的？**
+**哪些 Compositor Pro 版本是开源的？**
 
-Palmier Pro v0.7.6 及之前的版本，以及截至 [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) 的源代码，仍采用 GPLv3 许可；之后的版本为专有软件。
+Compositor Pro v0.7.6 及之前的版本，以及截至 [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source) 的源代码，仍采用 GPLv3 许可；之后的版本为专有软件。
 
 **是否免费？**
 

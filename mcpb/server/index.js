@@ -13,7 +13,7 @@ let reconnecting = null;     // shared promise; concurrent failures trigger one 
 let internalId = 0;
 let getStreamAbort = null;
 
-const log = (...a) => console.error('[palmier-shim]', ...a);
+const log = (...a) => console.error('[compositor-shim]', ...a);
 const writeOut = (msg) => process.stdout.write(JSON.stringify(msg) + '\n');
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
@@ -187,7 +187,7 @@ process.stdin.on('data', (chunk) => {
     handleClientMessage(msg).catch((err) => {
       log('unhandled error:', err.message);
       if (msg.id !== undefined) {
-        writeOut({ jsonrpc: '2.0', id: msg.id, error: { code: -32603, message: `Palmier Pro unreachable: ${err.message}` } });
+        writeOut({ jsonrpc: '2.0', id: msg.id, error: { code: -32603, message: `Compositor Pro unreachable: ${err.message}` } });
       }
     });
   }

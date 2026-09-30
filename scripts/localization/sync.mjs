@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const scriptPath = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(scriptPath), "../..");
-const sourceRoot = path.join(root, "Sources", "PalmierPro");
+const sourceRoot = path.join(root, "Sources", "CompositorPro");
 
 function filesUnder(directory, suffix) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {

@@ -3,8 +3,8 @@
 set -euo pipefail
 
 repo_root="${0:A:h:h:h}"
-source_strings="$repo_root/Sources/PalmierPro/Resources/Localization/en.lproj/Localizable.strings"
-temporary_directory="$(mktemp -d /private/tmp/palmier-localization.XXXXXX)"
+source_strings="$repo_root/Sources/CompositorPro/Resources/Localization/en.lproj/Localizable.strings"
+temporary_directory="$(mktemp -d /private/tmp/compositor-localization.XXXXXX)"
 trap 'rm -rf "$temporary_directory"' EXIT
 
 cd "$repo_root"

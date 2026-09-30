@@ -2,12 +2,12 @@
 
 <div align="center">
 
-# Palmier Pro
+# Compositor Pro
 
 **專為 AI 打造的影片剪輯器。**
 
-<a href="https://github.com/palmier-io/palmier-pro/releases/latest/download/PalmierPro.dmg">
-  <img src="../../assets/macos-badge.png" alt="下載 macOS 版 Palmier Pro" width="180" />
+<a href="https://github.com/palmier-io/compositor-pro/releases/latest/download/CompositorPro.dmg">
+  <img src="../../assets/macos-badge.png" alt="下載 macOS 版 Compositor Pro" width="180" />
 </a>
 
 <sub><i>需要搭載 Apple Silicon 的 macOS 26 (Tahoe)</i></sub>
@@ -37,18 +37,18 @@
 
 </div>
 
-<img src="../../assets/palmier-ui.png" alt="Palmier Pro 介面" width="900" />
+<img src="../../assets/compositor-ui.png" alt="Compositor Pro 介面" width="900" />
 
 ---
 
 > [!IMPORTANT]
-> Palmier Pro v0.7.6 及之前的版本以 GPLv3 發布。最終的公開原始碼快照是 [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source)。v0.7.6 之後的版本為專有軟體，其原始碼不會在此發布。
+> Compositor Pro v0.7.6 及之前的版本以 GPLv3 發布。最終的公開原始碼快照是 [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source)。v0.7.6 之後的版本為專有軟體，其原始碼不會在此發布。
 
-Palmier Pro 是 Mac 的影片剪輯器。你和你的 agent 可以在時間軸中一起生成和剪輯影片。
+Compositor Pro 是 Mac 的影片剪輯器。你和你的 agent 可以在時間軸中一起生成和剪輯影片。
 
 ### Swift 原生影片剪輯器
 
-我們用 Swift 從零打造 Palmier Pro。參考目標是 Premiere Pro，並以我們自己的方式把 AI 融入工作流程。
+我們用 Swift 從零打造 Compositor Pro。參考目標是 Premiere Pro，並以我們自己的方式把 AI 融入工作流程。
 
 ### 內建生成式 AI
 
@@ -64,12 +64,12 @@ app 開啟時，會透過 HTTP 在 `http://127.0.0.1:19789/mcp` 暴露 MCP 伺�
 
 **Claude Code**
 ```bash
-claude mcp add --transport http palmier-pro http://127.0.0.1:19789/mcp
+claude mcp add --transport http compositor-pro http://127.0.0.1:19789/mcp
 ```
 
 **Codex**
 ```bash
-codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
+codex mcp add compositor-pro --url http://127.0.0.1:19789/mcp
 ```
 
 **Cursor**
@@ -93,9 +93,9 @@ app 內建一個 [mcpb](https://github.com/modelcontextprotocol/mcpb)，可在 C
 
 ## FAQ
 
-**哪些 Palmier Pro 版本是開源的？**
+**哪些 Compositor Pro 版本是開源的？**
 
-Palmier Pro v0.7.6 及之前的版本，以及截至 [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) 的原始碼，仍採用 GPLv3 授權；之後的版本為專有軟體。
+Compositor Pro v0.7.6 及之前的版本，以及截至 [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source) 的原始碼，仍採用 GPLv3 授權；之後的版本為專有軟體。
 
 **是否免費？**
 
