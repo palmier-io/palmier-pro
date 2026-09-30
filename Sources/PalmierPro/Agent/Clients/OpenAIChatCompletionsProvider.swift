@@ -8,13 +8,22 @@ enum OpenAIChatCompletionsRequestBody {
         modelID: String,
         system: String,
         tools: [AgentToolSchema],
-        messages: [AgentRequestMessage]
+        messages: [AgentRequestMessage],
+        reasoningEffort: AgentReasoningEffort = .none
     ) -> [String: Any] {
         var body: [String: Any] = [
             "model": modelID,
             "stream": true,
             "messages": chatMessages(system: system, messages: messages),
         ]
+        if reasoningEffort != .none {
+            // Two spellings because OpenAI-compatible gateways disagree: OpenRouter normalises
+            // to `reasoning.effort`, while OpenAI-style `/chat/completions` servers read the flat
+            // `reasoning_effort`. Gateways that support neither ignore the field they do not
+            // know, so sending both reaches whichever convention the user's endpoint follows.
+            body["reasoning"] = ["effort": reasoningEffort.rawValue]
+            body["reasoning_effort"] = reasoningEffort.rawValue
+        }
         if !tools.isEmpty {
             body["tools"] = tools.map {
                 [

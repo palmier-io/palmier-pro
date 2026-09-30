@@ -47,3 +47,38 @@ struct OpenAIStreamParserTests {
         #expect(try parser.consume(line: "data: [DONE]") == [])
     }
 }
+
+/// Reasoning effort reaches an OpenAI-compatible gateway. `.custom` used to offer only
+/// `none`, so the picker had a single option and nothing was ever sent.
+@Suite("OpenAI-compatible request body")
+struct OpenAIChatCompletionsBodyTests {
+    private func body(effort: AgentReasoningEffort) -> [String: Any] {
+        OpenAIChatCompletionsRequestBody.build(
+            modelID: "some/model",
+            system: "",
+            tools: [],
+            messages: [],
+            reasoningEffort: effort
+        )
+    }
+
+    @Test func noEffortMeansNoReasoningFieldsAtAll() {
+        let body = body(effort: .none)
+        #expect(body["reasoning"] == nil)
+        #expect(body["reasoning_effort"] == nil)
+    }
+
+    @Test func effortIsSentInBothGatewayDialects() {
+        for effort in [AgentReasoningEffort.low, .medium, .high] {
+            let body = body(effort: effort)
+            #expect((body["reasoning"] as? [String: String])?["effort"] == effort.rawValue)
+            #expect(body["reasoning_effort"] as? String == effort.rawValue)
+        }
+    }
+
+    @Test func customModelsAdvertiseSelectableEfforts() {
+        #expect(AgentModel.custom.supportedReasoningEfforts == [.low, .medium, .high])
+        // The picker must never offer an effort the run settings will reject.
+        #expect(AgentModel.custom.supportedReasoningEfforts.contains(AgentReasoningEffort.xHigh) == false)
+    }
+}

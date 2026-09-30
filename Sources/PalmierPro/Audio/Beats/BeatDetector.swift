@@ -102,15 +102,7 @@ final class BeatDetector: @unchecked Sendable {
     }
 
     private static func modelURL() -> URL? {
-        var candidates = [
-            Bundle.main.resourceURL?.appendingPathComponent("Models/BeatThis.mlmodelc"),
-            Bundle.main.resourceURL?.appendingPathComponent("PalmierPro_PalmierPro.bundle/Models/BeatThis.mlmodelc"),
-        ].compactMap { $0 }
-        if Bundle.main.bundleURL.pathExtension != "app" {
-            let buildDir = Bundle(for: BeatDetectorBundleToken.self).bundleURL.deletingLastPathComponent()
-            candidates.append(buildDir.appendingPathComponent("PalmierPro_PalmierPro.bundle/Models/BeatThis.mlmodelc"))
-        }
-        return candidates.first { FileManager.default.fileExists(atPath: $0.path) }
+        BundledResource.url("Models/BeatThis.mlmodelc")
     }
 
     /// MLModel.prediction isn't safe to call concurrently; the actor serializes model use.

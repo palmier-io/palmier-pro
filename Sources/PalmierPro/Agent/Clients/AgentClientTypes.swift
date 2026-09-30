@@ -125,8 +125,9 @@ enum AgentModel: String, CaseIterable, Codable, Sendable {
         case .openAI:
             AgentReasoningEffort.allCases
         case .custom:
-            // Chat/completions has no portable reasoning knob, so nothing is sent.
-            [.none]
+            // A gateway that does not support reasoning ignores the field, and one that does
+            // now honours the same low/medium/high the built-in providers offer.
+            [.low, .medium, .high]
         }
     }
 
@@ -370,7 +371,8 @@ extension AgentRunSettings {
                 modelID: custom.modelID,
                 system: system,
                 tools: tools,
-                messages: messages
+                messages: messages,
+                reasoningEffort: reasoningEffort
             )
         }
     }

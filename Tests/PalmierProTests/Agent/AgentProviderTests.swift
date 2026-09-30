@@ -31,10 +31,13 @@ struct AgentProviderTests {
         #expect(openAIEfforts == [.none, .minimal, .low, .medium, .high, .xHigh, .max])
     }
 
-    @Test func customModelIsNotAPaidHostedModelAndSendsNoReasoningKnob() {
+    /// `.custom` used to expose only `none` on the grounds that chat/completions has no
+    /// portable reasoning knob. Gateways do read one, so the same low/medium/high the built-in
+    /// providers offer is now selectable and sent.
+    @Test func customModelIsNotAPaidHostedModelAndOffersGatewayEfforts() {
         #expect(AgentModel.custom.provider == .custom)
         #expect(AgentModel.custom.requiresPaidHostedPlan == false)
-        #expect(AgentModel.custom.supportedReasoningEfforts == [.none])
+        #expect(AgentModel.custom.supportedReasoningEfforts == [.low, .medium, .high])
         #expect(AgentModel.persisted("custom") == .custom)
     }
 

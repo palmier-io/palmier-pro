@@ -74,9 +74,16 @@ extension ToolExecutor {
         let wavURL = try await Task.detached(priority: .utility) {
             try DroneSynthesizer.renderWAV(spec: spec)
         }.value
-        defer { try? FileManager.default.removeItem(at: wavURL) }
 
-        guard let asset = editor.addMediaAsset(from: wavURL) else {
+        // Commit into the project package: finalize only reads metadata in place, so pointing
+        // the asset at the render's temporary file left a reference to something already deleted
+        // by the time the clip was placed. This also removes the staged file.
+        let committed = try await editor.commitStagedProjectMedia(
+            wavURL,
+            filename: "drone-\(UUID().uuidString.prefix(8)).wav"
+        )
+
+        guard let asset = editor.addMediaAsset(from: committed) else {
             throw ToolError("The rendered drone could not be imported as media.")
         }
 
