@@ -625,30 +625,30 @@ enum CompositionBuilder {
                         // past 1 and abort the process inside AVFoundation.
                         gain = min(1, max(0, gain * Float(VolumeScale.linearFromDb(loudnessDB))))
                     }
-                    emitVolumeEnvelope(params: params, clip: clip, timescale: timescale, gain: gain)
+                    var dips: [AudioGainDip] = []
                     if enhanceActive {
-                        emitGainDips(
-                            params: params, track: mapping.compositionTrack,
-                            clip: clip, timescale: timescale,
+                        dips += gainDips(
+                            track: mapping.compositionTrack, clip: clip, timescale: timescale,
                             regions: resolveBreathRanges(clip.mediaRef),
                             depthDB: -24.0 * clip.enhanceAmount, fadeSeconds: 0.03
                         )
-                        emitGainDips(
-                            params: params, track: mapping.compositionTrack,
-                            clip: clip, timescale: timescale,
+                        dips += gainDips(
+                            track: mapping.compositionTrack, clip: clip, timescale: timescale,
                             regions: resolveDeessRanges(clip.mediaRef).map {
                                 $0.map { BreathDetector.Region(start: $0.start, end: $0.end) }
                             },
                             depthDB: -12.0 * clip.enhanceDeess, fadeSeconds: 0.01
                         )
                     } else if clip.hasDebreathEnabled {
-                        emitGainDips(
-                            params: params, track: mapping.compositionTrack,
-                            clip: clip, timescale: timescale,
+                        dips += gainDips(
+                            track: mapping.compositionTrack, clip: clip, timescale: timescale,
                             regions: resolveBreathRanges(clip.mediaRef),
                             depthDB: -24.0 * clip.debreathAmount, fadeSeconds: 0.03
                         )
                     }
+                    emitVolumeEnvelope(
+                        params: params, clip: clip, timescale: timescale, gain: gain, dips: dips
+                    )
                     prevEndFrame = clip.startFrame + clip.durationFrames
                 }
                 return params
@@ -880,12 +880,102 @@ enum CompositionBuilder {
     }
 
     /// Linear-ramp volume envelope; a nest `carrier` multiplies its envelope in.
+    /// Attenuation over a detected region, in clip-relative frames. AVFoundation forbids two
+    /// overlapping ramps on one parameters object and raises an Objective-C exception Swift
+    /// cannot catch when they do, so a dip is folded into the envelope's own ramp run instead
+    /// of being layered on top of it. Sampling the multiplier at the dip boundaries reproduces
+    /// the same fade shape while keeping the emitted ranges contiguous and disjoint.
+    struct AudioGainDip: Sendable {
+        var start: Int
+        var fadeInEnd: Int
+        var fadeOutStart: Int
+        var end: Int
+        var gain: Float
+
+        func multiplier(at frame: Int) -> Float {
+            if frame <= start || frame >= end { return 1 }
+            if frame < fadeInEnd {
+                let t = Float(frame - start) / Float(max(1, fadeInEnd - start))
+                return 1 + (gain - 1) * t
+            }
+            if frame <= fadeOutStart { return gain }
+            let t = Float(frame - fadeOutStart) / Float(max(1, end - fadeOutStart))
+            return gain + (1 - gain) * t
+        }
+    }
+
+    /// Resolves detected regions to dip ranges, clipped to both the clip and the track, since a
+    /// ramp outside the track's time range is itself an uncatchable AVFoundation exception.
+    private static func gainDips(
+        track: AVAssetTrack,
+        clip: Clip,
+        timescale: CMTimeScale,
+        regions: [BreathDetector.Region]?,
+        depthDB: Double,
+        fadeSeconds: Double
+    ) -> [AudioGainDip] {
+        guard depthDB < 0, let regions, !regions.isEmpty, clip.speed > 0 else { return [] }
+        let fps = Double(timescale)
+        let dipGain = Float(VolumeScale.linearFromDb(depthDB))
+        let fadeFrames = max(1, Int((fadeSeconds * fps).rounded()))
+        let trackRange = track.timeRange
+        let trackStart = CMTimeGetSeconds(trackRange.start)
+        let trackEnd = CMTimeGetSeconds(trackRange.end)
+        guard trackEnd > trackStart else { return [] }
+
+        var dips: [AudioGainDip] = []
+        for region in regions {
+            let s0 = max(region.start, Double(clip.trimStartFrame))
+            let s1 = min(region.end, Double(clip.trimStartFrame + clip.sourceFramesConsumed))
+            guard s1 > s0 else { continue }
+            let t0f = Double(clip.startFrame) + (s0 - Double(clip.trimStartFrame)) / clip.speed * fps
+            let t1f = Double(clip.startFrame) + (s1 - Double(clip.trimStartFrame)) / clip.speed * fps
+            let startSeconds = Double(max(clip.startFrame, Int(t0f.rounded()))) / fps
+            let endSeconds = Double(min(clip.endFrame, Int(t1f.rounded()))) / fps
+            guard endSeconds > max(startSeconds, trackStart), startSeconds < trackEnd else { continue }
+            let from = max(startSeconds, trackStart)
+            let to = min(endSeconds, trackEnd)
+            let t0 = Int((from * fps).rounded())
+            let t1 = Int((to * fps).rounded())
+            guard t1 > t0 else { continue }
+            let fadeInEnd = min(t0 + fadeFrames, t1)
+            let fadeOutStart = max(t0, t1 - fadeFrames)
+            dips.append(AudioGainDip(
+                start: t0, fadeInEnd: fadeInEnd, fadeOutStart: fadeOutStart, end: t1, gain: dipGain
+            ))
+        }
+        return dips
+    }
+
+    /// A single planned volume ramp, in composition time.
+    struct PlannedRamp: Sendable {
+        let range: CMTimeRange
+        let from: Float
+        let to: Float
+    }
+
+    static func planVolumeRamps(
+        clip: Clip,
+        timescale: CMTimeScale,
+        gain: Float = 1,
+        dips: [AudioGainDip] = []
+    ) -> [PlannedRamp] {
+        var out: [PlannedRamp] = []
+        emitVolumeEnvelope(
+            params: nil, clip: clip, timescale: timescale, gain: gain, dips: dips,
+            collect: { range, from, to in out.append(PlannedRamp(range: range, from: from, to: to)) }
+        )
+        return out
+    }
+
     private static func emitVolumeEnvelope(
-        params: AVMutableAudioMixInputParameters,
+        params: AVMutableAudioMixInputParameters?,
         clip: Clip,
         timescale: CMTimeScale,
         carrier: Clip? = nil,
-        gain: Float = 1
+        gain: Float = 1,
+        dips: [AudioGainDip] = [],
+        collect: ((CMTimeRange, Float, Float) -> Void)? = nil
     ) {
         let kfs = normalizedKeyframes(clip.volumeTrack?.keyframes ?? [], duration: clip.durationFrames)
         let hasFade = clip.fadeInFrames > 0 || clip.fadeOutFrames > 0
@@ -895,16 +985,16 @@ enum CompositionBuilder {
         let gainAt: (Int) -> Double = { absFrame in
             carrier.map { $0.volumeAt(frame: absFrame) } ?? 1
         }
-        if kfs.isEmpty && !hasFade && !carrierVaries {
-            let volume = Float(clip.volumeAt(frame: clip.startFrame) * gainAt(clip.startFrame)) * gain
+        if kfs.isEmpty && !hasFade && !carrierVaries && dips.isEmpty {
+            // AVFoundation throws an uncatchable exception when a ramp volume leaves [0, 1],
+            // and a caller-supplied gain can exceed it, so the constant path clamps too.
+            let volume = min(1, max(0, Float(clip.volumeAt(frame: clip.startFrame) * gainAt(clip.startFrame)) * gain))
             let start = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
             let end = CMTime(value: CMTimeValue(clip.endFrame), timescale: timescale)
             guard volume.isFinite, end > start else { return }
-            params.setVolumeRamp(
-                fromStartVolume: volume,
-                toEndVolume: volume,
-                timeRange: CMTimeRange(start: start, end: end)
-            )
+            let range = CMTimeRange(start: start, end: end)
+            collect?(range, volume, volume)
+            params?.setVolumeRamp(fromStartVolume: volume, toEndVolume: volume, timeRange: range)
             return
         }
 
@@ -936,93 +1026,31 @@ enum CompositionBuilder {
             extraOffsets = extraOffsets.filter { $0 > 0 && $0 < clip.durationFrames }
         }
 
+        for dip in dips {
+            extraOffsets.append(dip.start - clip.startFrame)
+            extraOffsets.append(dip.fadeInEnd - clip.startFrame)
+            extraOffsets.append(dip.fadeOutStart - clip.startFrame)
+            extraOffsets.append(dip.end - clip.startFrame)
+        }
+
         emitEnvelopeRamps(
             clip: clip,
             kfs: kfs,
             timescale: timescale,
             extraOffsets: extraOffsets,
-            sampleAt: { Float(clip.volumeAt(frame: clip.startFrame + $0) * gainAt(clip.startFrame + $0)) * gain },
+            sampleAt: { offset in
+                let absolute = clip.startFrame + offset
+                let base = Float(clip.volumeAt(frame: absolute) * gainAt(absolute)) * gain
+                let attenuation = dips.reduce(1 as Float) { $0 * $1.multiplier(at: absolute) }
+                return min(1, max(0, base * attenuation))
+            },
             emit: { start, end, range in
-                params.setVolumeRamp(fromStartVolume: start, toEndVolume: end, timeRange: range)
+                collect?(range, start, end)
+                params?.setVolumeRamp(fromStartVolume: start, toEndVolume: end, timeRange: range)
             }
         )
     }
 
-    /// Attenuates detected regions (breaths, sibilance) with smooth fades. Dips are
-    /// emitted after the base envelope so they override it inside each region.
-    private static func emitGainDips(
-        params: AVMutableAudioMixInputParameters,
-        track: AVAssetTrack,
-        clip: Clip,
-        timescale: CMTimeScale,
-        regions: [BreathDetector.Region]?,
-        depthDB: Double,
-        fadeSeconds: Double
-    ) {
-        guard depthDB < 0, let regions, !regions.isEmpty else { return }
-        let fps = Double(timescale)
-        let dipGain = Float(VolumeScale.linearFromDb(depthDB))
-        let fadeFrames = max(1, Int((fadeSeconds * fps).rounded()))
-        let loudnessGain = clip.hasLoudnessMatchEnabled
-            ? Float(VolumeScale.linearFromDb(clip.loudnessGainDB * (clip.hasEnhanceEnabled ? clip.enhanceAmount : 1)))
-            : 1
-        for region in regions {
-            let s0 = max(region.start, Double(clip.trimStartFrame))
-            let s1 = min(region.end, Double(clip.trimStartFrame + clip.sourceFramesConsumed))
-            guard s1 > s0, clip.speed > 0 else { continue }
-            let t0f = Double(clip.startFrame) + (s0 - Double(clip.trimStartFrame)) / clip.speed * fps
-            let t1f = Double(clip.startFrame) + (s1 - Double(clip.trimStartFrame)) / clip.speed * fps
-            var t0 = max(clip.startFrame, Int(t0f.rounded()))
-            var t1 = min(clip.endFrame, Int(t1f.rounded()))
-            guard t1 > t0 else { continue }
-            // A ramp outside the track's time range makes AVFoundation throw an exception Swift
-            // cannot catch, so the range is trimmed to the track and dropped when it cannot fit.
-            let trackRange = track.timeRange
-            let trackStart = CMTimeGetSeconds(trackRange.start)
-            let trackEnd = CMTimeGetSeconds(trackRange.end)
-            let startSeconds = Double(t0) / fps
-            let endSeconds = Double(t1) / fps
-            guard trackEnd > trackStart, endSeconds > trackStart, startSeconds < trackEnd else { continue }
-            t0 = max(t0, Int((max(startSeconds, trackStart) * fps).rounded()))
-            t1 = min(t1, Int((min(endSeconds, trackEnd) * fps).rounded()))
-            guard t1 > t0 else { continue }
-            let center = (t0 + t1) / 2
-            // AVFoundation throws an uncatchable exception when a ramp volume leaves [0, 1],
-            // and loudnessGain can reach 5.62 because linearFromDb allows up to +15 dB.
-            let base = min(1, max(0, Float(clip.volumeAt(frame: center)) * loudnessGain))
-            let f0 = min(t0 + fadeFrames, t1)
-            let f1 = max(t0, t1 - fadeFrames)
-            if f1 > f0 {
-                params.setVolumeRamp(
-                    fromStartVolume: base, toEndVolume: base * dipGain,
-                    timeRange: CMTimeRange(start: CMTime(value: CMTimeValue(t0), timescale: timescale),
-                                            end: CMTime(value: CMTimeValue(f0), timescale: timescale))
-                )
-                params.setVolumeRamp(
-                    fromStartVolume: base * dipGain, toEndVolume: base * dipGain,
-                    timeRange: CMTimeRange(start: CMTime(value: CMTimeValue(f0), timescale: timescale),
-                                            end: CMTime(value: CMTimeValue(f1), timescale: timescale))
-                )
-                params.setVolumeRamp(
-                    fromStartVolume: base * dipGain, toEndVolume: base,
-                    timeRange: CMTimeRange(start: CMTime(value: CMTimeValue(f1), timescale: timescale),
-                                            end: CMTime(value: CMTimeValue(t1), timescale: timescale))
-                )
-            } else {
-                let mid = (t0 + t1) / 2
-                params.setVolumeRamp(
-                    fromStartVolume: base, toEndVolume: base * dipGain,
-                    timeRange: CMTimeRange(start: CMTime(value: CMTimeValue(t0), timescale: timescale),
-                                            end: CMTime(value: CMTimeValue(mid), timescale: timescale))
-                )
-                params.setVolumeRamp(
-                    fromStartVolume: base * dipGain, toEndVolume: base,
-                    timeRange: CMTimeRange(start: CMTime(value: CMTimeValue(mid), timescale: timescale),
-                                            end: CMTime(value: CMTimeValue(t1), timescale: timescale))
-                )
-            }
-        }
-    }
 
     /// Piecewise-linear envelope for the audio volume curve.
     private static func emitEnvelopeRamps(
