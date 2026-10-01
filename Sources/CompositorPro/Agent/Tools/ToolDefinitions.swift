@@ -43,6 +43,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case applyLayout = "apply_layout"
     case crossfadeAudio = "crossfade_audio"
     case setClipSpeedRamp = "set_clip_speed_ramp"
+    case qcTimeline = "qc_timeline"
     case duckAudio = "duck_audio"
     case applyTransition = "apply_transition"
     case removeTransition = "remove_transition"
@@ -745,6 +746,16 @@ enum ToolDefinitions {
                     ],
                 ],
                 required: ["clipId", "property", "keyframes"]
+            )
+        ),
+        AgentTool(
+            name: .qcTimeline,
+            description: "Checks the whole timeline for problems and returns them as a list. Read-only: it never changes anything. Run it before declaring an edit done, and after any large batch of changes. It finds missing or unreadable media, clips that overlap on one track, gaps at a track's head or tail, audio that cuts in or out without a fade, speed that reads past the end of the media, transitions left over from deleted clips, and tracks hidden from the render. Each finding carries the clipId, the frames it applies to, and the tool that would fix it. It does not judge creative intent — a cut that is too fast, a grade that is too flat, or a music bed that is too loud are not findings, judge those yourself from a preview. pass is true only when nothing was found at the requested severity.",
+            inputSchema: objectSchema(
+                properties: [
+                    "severity": ["type": "string", "enum": ["error", "warning"], "description": "Lowest severity to report. Default warning, which reports both. Pass error to see only what will actually break."],
+                ],
+                required: []
             )
         ),
         AgentTool(

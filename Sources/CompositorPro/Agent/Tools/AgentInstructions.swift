@@ -94,6 +94,12 @@ enum AgentInstructions {
           and push are correct when the cut should feel like one continuous scene or a move; \
           dipToBlack is correct for a real time jump or a chapter break. Delete either clip and \
           the transition goes with it.
+        - Before you call an edit finished, run qc_timeline. It is read-only and finds the things \
+          that silently ruin a render: media that went missing, clips overlapping on one track, \
+          gaps, audio cutting in or out without a fade, a speed ramp reading past the end of the \
+          media, a transition left behind by a deleted clip, a track hidden from the render. Fix \
+          what it reports, then re-run it. It cannot judge pacing, grading or loudness — those are \
+          yours to assess from a preview.
         - Pacing and emphasis over a clip's length: set_clip_speed_ramp. A ramp holds the clip's \
           timeline length and changes how much source it reads, so nothing after the cut moves — \
           that is what makes it right for the slow-into-fast push on a highlight, a snap into \

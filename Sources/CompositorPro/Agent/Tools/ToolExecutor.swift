@@ -362,6 +362,7 @@ final class ToolExecutor {
         case .manageTracks:     return try manageTracks(editor, args)
         case .moveClips:        return try moveClips(editor, args)
         case .applyLayout:      return try applyLayout(editor, args)
+        case .qcTimeline:       return try qcTimeline(editor, args)
         case .setClipSpeedRamp: return try setClipSpeedRamp(editor, args)
         case .crossfadeAudio:   return try crossfadeAudio(editor, args)
         case .duckAudio:        return try await duckAudio(editor, args)
