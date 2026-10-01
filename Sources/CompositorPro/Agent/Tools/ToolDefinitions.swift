@@ -41,6 +41,8 @@ enum ToolName: String, CaseIterable, Sendable {
     case copyClipSettings = "copy_clip_settings"
     case setKeyframes = "set_keyframes"
     case applyLayout = "apply_layout"
+    case crossfadeAudio = "crossfade_audio"
+    case duckAudio = "duck_audio"
     case applyTransition = "apply_transition"
     case removeTransition = "remove_transition"
     case syncClips = "sync_clips"
@@ -742,6 +744,36 @@ enum ToolDefinitions {
                     ],
                 ],
                 required: ["clipId", "property", "keyframes"]
+            )
+        ),
+        AgentTool(
+            name: .crossfadeAudio,
+            description: "Crossfades two adjacent audio clips on the same track, as one undo step. Use for dialogue-to-dialogue and music-to-music edits at a cut, and to kill a click on a butt splice. curve 'smooth' (default) and 'linear' write the clips' own fade ramps, so the UI keeps showing fade handles; 'equalPower' writes a sampled volume envelope instead, which holds perceived loudness through the overlap where a linear fade dips about 3 dB. The two clips must meet exactly — no gap, no overlap. Duration must fit inside both clips. equalPower refuses if either clip already has a fade on the edge it needs; clear that with set_clip_properties or use smooth. Set fadeInFrames/fadeOutFrames to 0 beforehand if the clips should end hard instead.",
+            inputSchema: objectSchema(
+                properties: [
+                    "outgoingClipId": ["type": "string", "description": "Clip that plays first; its tail is faded out."],
+                    "incomingClipId": ["type": "string", "description": "Clip that plays second; it must start exactly where the outgoing clip ends."],
+                    "durationFrames": ["type": "integer", "description": "Crossfade length in frames (default 12). Fits inside both clips."],
+                    "curve": ["type": "string", "enum": ["linear", "smooth", "equalPower"], "description": "Ramp shape. Default smooth."],
+                ],
+                required: ["outgoingClipId", "incomingClipId"]
+            )
+        ),
+        AgentTool(
+            name: .duckAudio,
+            description: "Lowers a music or ambience bed under whatever dialogue is playing, as one undo step. Speech regions are found with on-device voice-activity detection on the source clips, then written as a volume envelope on the bed with attack, hold and release ramps. This is how you get a mix a viewer can follow: bed down while people talk, back up in the gaps. bedClipId is the clip to duck — a music bed, ambience or a room tone. sourceClipIds defaults to every other audio clip overlapping the bed; list them to duck under specific dialogue only, for example one speaker. Refuses when the bed already has volume keyframes, so pass overwrite:true to replace an existing envelope rather than silently stacking on it. When speech detection is unavailable the whole source clip is treated as speech and the receipt says speechDetection:unavailable — check it, because the bed then stays down across all of that clip. The envelope is baked keyframes: later dialogue edits do not re-derive it, re-run duck_audio to re-fit. Undo removes the whole envelope in one step.",
+            inputSchema: objectSchema(
+                properties: [
+                    "bedClipId": ["type": "string", "description": "The clip whose volume is lowered: music bed, ambience or room tone."],
+                    "sourceClipIds": ["type": "array", "items": ["type": "string"], "description": "Dialogue clips that trigger the duck. Defaults to every other audio clip overlapping the bed."],
+                    "duckDb": ["type": "number", "description": "Gain below the bed's own level while speech plays. Negative; -12 is a natural default."],
+                    "attackFrames": ["type": "integer", "description": "Frames from speech onset to full duck (default 6)."],
+                    "holdFrames": ["type": "integer", "description": "Extra frames held down after speech ends (default 6)."],
+                    "releaseFrames": ["type": "integer", "description": "Frames from speech offset back to bed level (default 18)."],
+                    "mergeGapFrames": ["type": "integer", "description": "Speech closer than this is one span, so a pause between words does not pump the bed (default 12)."],
+                    "overwrite": ["type": "boolean", "description": "Replace an existing volume envelope on the bed instead of refusing."],
+                ],
+                required: ["bedClipId"]
             )
         ),
         AgentTool(

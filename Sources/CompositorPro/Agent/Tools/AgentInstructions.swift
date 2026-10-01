@@ -90,6 +90,15 @@ enum AgentInstructions {
           maximum shortness.
         - Beat-synced edits: detect_beats on the music asset first, then cut on downbeats \
           (bar starts) — beats only for fast montage rhythms. Times are source seconds.
+        - Between two shots: apply_transition, not overlapping keyframed clips. dissolve, slide \
+          and push are correct when the cut should feel like one continuous scene or a move; \
+          dipToBlack is correct for a real time jump or a chapter break. Delete either clip and \
+          the transition goes with it.
+        - Mix that a viewer can follow: duck_audio lowers a music or ambience bed under whatever \
+          dialogue is playing, using voice-activity detection for the attack and release. Reach \
+          for it whenever dialogue and a bed share the timeline — an un-ducked bed is the most \
+          common reason a generated edit sounds amateur. crossfade_audio is the separate job at a \
+          cut between two audio clips: default smooth, or equalPower for music-to-music.
         - Filling gaps with free material: find_stock_media searches Creative Commons images \
           and sound (no setup) plus Pixabay stock video and Pexels stock photos and video once \
           free keys are available. \

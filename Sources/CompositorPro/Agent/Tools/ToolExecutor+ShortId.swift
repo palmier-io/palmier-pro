@@ -10,7 +10,7 @@ extension ToolExecutor {
         "sourceVideoMediaRef", "videoSourceMediaRef", "sourceMediaRef", "subtitleMediaRef",
         "captionGroupId", "timelineId", "trackId", "item", "from", "reference",
         "groupId", "memberId", "markerId", "planId", "sectionId", "shotId",
-        "transitionId", "outgoingClipId", "incomingClipId",
+        "transitionId", "outgoingClipId", "incomingClipId", "bedClipId", "sourceClipIds",
     ]
     private static let arrayIdKeys: Set<String> = [
         "clipIds", "targetClipIds", "items", "ids", "deletes",

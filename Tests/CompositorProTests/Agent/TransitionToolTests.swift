@@ -220,10 +220,8 @@ struct TransitionToolTests {
             ])
             #expect(applied.isError != true)
             #expect(harness.editor.timeline.transitions.count == 1)
-            print("UNDO-DBG2 canUndo=\(undoManager.canUndo) action=\(undoManager.undoActionName)")
 
             let undone = try await client.callTool(name: "undo", arguments: [:])
-            for item in undone.content { if case .text(let t, _, _) = item { print("UNDO-DBG text=\(t.prefix(200))") } }
             #expect(undone.isError != true)
             #expect(harness.editor.timeline.transitions.isEmpty)
         } catch {
