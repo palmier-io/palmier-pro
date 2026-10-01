@@ -94,6 +94,12 @@ enum AgentInstructions {
           and push are correct when the cut should feel like one continuous scene or a move; \
           dipToBlack is correct for a real time jump or a chapter break. Delete either clip and \
           the transition goes with it.
+        - Pacing and emphasis over a clip's length: set_clip_speed_ramp. A ramp holds the clip's \
+          timeline length and changes how much source it reads, so nothing after the cut moves — \
+          that is what makes it right for the slow-into-fast push on a highlight, a snap into \
+          time-lapse, or easing a timelapse off a dead stop. set_clip_properties speed is the \
+          separate job for one constant rate, and it rescales the length instead. Frames are \
+          clip-relative and the last row lands on the clip's final frame.
         - Mix that a viewer can follow: duck_audio lowers a music or ambience bed under whatever \
           dialogue is playing, using voice-activity detection for the attack and release. Reach \
           for it whenever dialogue and a bed share the timeline — an un-ducked bed is the most \

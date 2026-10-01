@@ -467,11 +467,13 @@ enum CompositionBuilder {
             compTrack.insertEmptyTimeRange(CMTimeRange(start: cursor, duration: gap))
         }
 
-        let sourceFrames = clip.speed == 1.0
-            ? clip.durationFrames
-            : max(1, Int(Double(clip.durationFrames) * clip.speed))
-        let durationSeconds = Double(sourceFrames) / Double(timescale)
-        var sourceDuration = CMTime(seconds: durationSeconds, preferredTimescale: sourceTimescale)
+        // A ramp is inserted as one contiguous source range scaled piecewise, so a speed change
+        // costs a few scaleTimeRange calls rather than a second composition track.
+        let map = clip.timeMap
+        let segments = map.segments
+        guard !segments.isEmpty else { return false }
+        let totalSourceSeconds = Double(map.sourceFramesConsumed) / Double(timescale)
+        var sourceDuration = CMTime(seconds: totalSourceSeconds, preferredTimescale: sourceTimescale)
         // Baked sources can be a hair shorter than the original; clamp instead of throwing.
         if let assetDuration = try? await sourceAsset.load(.duration), assetDuration.isNumeric {
             sourceDuration = CMTimeMinimum(sourceDuration, assetDuration - trimStart)
@@ -492,8 +494,34 @@ enum CompositionBuilder {
                 """)
             return false
         }
-        if clip.speed != 1.0 {
-            compTrack.scaleTimeRange(CMTimeRange(start: clipStart, duration: sourceDuration), toDuration: clipDuration)
+
+        if map.isConstantSpeed {
+            if abs(map.averageSpeed - 1) > 0.0001 {
+                compTrack.scaleTimeRange(
+                    CMTimeRange(start: clipStart, duration: sourceDuration),
+                    toDuration: clipDuration
+                )
+            }
+        } else {
+            // scaleTimeRange rewrites the span it is given and shifts everything after it, so
+            // walk back to front: scaling a later segment leaves earlier source offsets intact.
+            for segment in segments.reversed() {
+                let consumedBefore = map.sourceOffset(atTimelineOffset: segment.timelineRange.lowerBound)
+                let sourceLength = CMTime(
+                    seconds: segment.sourceSpan / Double(timescale),
+                    preferredTimescale: timescale
+                )
+                let target = CMTime(
+                    value: CMTimeValue(segment.timelineRange.count), timescale: timescale
+                )
+                guard sourceLength > .zero, target > .zero else { continue }
+                // Media for this segment still sits where insertTimeRange put it: 1:1 from clipStart.
+                let compStart = clipStart
+                    + CMTime(seconds: consumedBefore / Double(timescale), preferredTimescale: timescale)
+                let span = CMTimeRange(start: compStart, duration: sourceLength)
+                guard compTrack.timeRange.intersection(span).duration > .zero else { continue }
+                compTrack.scaleTimeRange(span, toDuration: target)
+            }
         }
 
         cursor = clipStart + clipDuration
@@ -914,7 +942,7 @@ enum CompositionBuilder {
         depthDB: Double,
         fadeSeconds: Double
     ) -> [AudioGainDip] {
-        guard depthDB < 0, let regions, !regions.isEmpty, clip.speed > 0 else { return [] }
+        guard depthDB < 0, let regions, !regions.isEmpty else { return [] }
         let fps = Double(timescale)
         let dipGain = Float(VolumeScale.linearFromDb(depthDB))
         let fadeFrames = max(1, Int((fadeSeconds * fps).rounded()))
@@ -928,10 +956,13 @@ enum CompositionBuilder {
             let s0 = max(region.start, Double(clip.trimStartFrame))
             let s1 = min(region.end, Double(clip.trimStartFrame + clip.sourceFramesConsumed))
             guard s1 > s0 else { continue }
-            let t0f = Double(clip.startFrame) + (s0 - Double(clip.trimStartFrame)) / clip.speed * fps
-            let t1f = Double(clip.startFrame) + (s1 - Double(clip.trimStartFrame)) / clip.speed * fps
-            let startSeconds = Double(max(clip.startFrame, Int(t0f.rounded()))) / fps
-            let endSeconds = Double(min(clip.endFrame, Int(t1f.rounded()))) / fps
+            let map = clip.timeMap
+            let startFrame = max(clip.startFrame, clip.startFrame
+                + map.timelineOffset(forSourceOffset: s0 - Double(clip.trimStartFrame)))
+            let endFrame = min(clip.endFrame, clip.startFrame
+                + map.timelineOffset(forSourceOffset: s1 - Double(clip.trimStartFrame)))
+            let startSeconds = Double(startFrame) / fps
+            let endSeconds = Double(endFrame) / fps
             guard endSeconds > max(startSeconds, trackStart), startSeconds < trackEnd else { continue }
             let from = max(startSeconds, trackStart)
             let to = min(endSeconds, trackEnd)

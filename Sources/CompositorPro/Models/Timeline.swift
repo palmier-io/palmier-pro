@@ -201,6 +201,9 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var rotationTrack: KeyframeTrack<Double>?
     var cropTrack: KeyframeTrack<Crop>?
     var volumeTrack: KeyframeTrack<Double>?
+    /// Clip-relative speed envelope. Nil means constant `speed`; a ramp is authoritative here
+    /// and `speed` stays the anchor value at offset 0.
+    var speedTrack: KeyframeTrack<Double>?
 
     var effects: [Effect]?
 
@@ -215,6 +218,7 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         case linkGroupId, captionGroupId, multicamGroupId, textContent, textStyle, textAnimation, wordTimings
         case textFillMode
         case opacityTrack, positionTrack, scaleTrack, rotationTrack, cropTrack, volumeTrack
+        case speedTrack
         case effects, blendMode
     }
 
@@ -223,8 +227,12 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
 
     var supportsRetiming: Bool { sourceClipType != .sequence }
 
+    /// Source↔timeline conversion. The only place `speed` is integrated, so a ramp stays
+    /// consistent across ripple, slip, sync, regions, captions, render and export.
+    var timeMap: SourceTimeMap { SourceTimeMap(durationFrames: durationFrames, speed: speed, track: speedTrack) }
+
     /// Source frames consumed by the visible portion
-    var sourceFramesConsumed: Int { Int((Double(durationFrames) * speed).rounded()) }
+    var sourceFramesConsumed: Int { timeMap.sourceFramesConsumed }
 
     /// Total source frames the clip references, including both trims.
     var sourceDurationFrames: Int { sourceFramesConsumed + trimStartFrame + trimEndFrame }
@@ -411,7 +419,7 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         let sourceFrame = t * Double(fps)
         let offsetFromTrim = sourceFrame - Double(trimStartFrame)
         guard offsetFromTrim >= 0 else { return nil }
-        let frame = Int((Double(startFrame) + offsetFromTrim / max(speed, 0.0001)).rounded())
+        let frame = startFrame + timeMap.timelineOffset(forSourceOffset: offsetFromTrim)
         guard frame >= startFrame && frame < endFrame else { return nil }
         return frame
     }
@@ -442,6 +450,7 @@ extension Clip {
         rotationTrack = clampedKeyframeTrack(rotationTrack)
         cropTrack = clampedKeyframeTrack(cropTrack)
         volumeTrack = clampedKeyframeTrack(volumeTrack)
+        speedTrack = clampedKeyframeTrack(speedTrack)
         setBlurKeyframeTrack(clampedKeyframeTrack(blurKeyframeTrack))
     }
 
@@ -452,6 +461,7 @@ extension Clip {
         rotationTrack = rescaledKeyframeTrack(rotationTrack, by: scale)
         cropTrack = rescaledKeyframeTrack(cropTrack, by: scale)
         volumeTrack = rescaledKeyframeTrack(volumeTrack, by: scale)
+        speedTrack = rescaledKeyframeTrack(speedTrack, by: scale)
         setBlurKeyframeTrack(rescaledKeyframeTrack(blurKeyframeTrack, by: scale))
     }
 
@@ -576,6 +586,7 @@ extension Clip {
             rotationTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .rotationTrack),
             cropTrack: try? c.decode(KeyframeTrack<Crop>.self, forKey: .cropTrack),
             volumeTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .volumeTrack),
+            speedTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .speedTrack),
             effects: try? c.decode([Effect].self, forKey: .effects),
             blendMode: try? c.decode(BlendMode.self, forKey: .blendMode)
         )

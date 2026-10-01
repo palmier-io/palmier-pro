@@ -209,7 +209,7 @@ enum FCPXMLExporter {
                 let v = pair.videos[0], a = pair.audios[0]
                 guard v.clip.mediaRef == a.clip.mediaRef, v.enabled == a.enabled,
                       v.clip.startFrame == a.clip.startFrame, v.clip.durationFrames == a.clip.durationFrames,
-                      v.clip.trimStartFrame == a.clip.trimStartFrame, abs(v.clip.speed - a.clip.speed) < 0.0001
+                      v.clip.trimStartFrame == a.clip.trimStartFrame, v.clip.timeMap == a.clip.timeMap
                 else { continue }
                 linkedAudioForVideo[v.clip.id] = a.clip
                 redundantAudioClipIds.insert(a.clip.id)
@@ -564,9 +564,16 @@ enum FCPXMLExporter {
         }
 
         /// Offsets retimed keyframes into the time map's output axis.
+        ///
+        /// A keyframe animation is evaluated against the element's own output time, so only the
+        /// start term depends on speed. The elapsed term stays output-relative, which is why this
+        /// stays correct for a ramp without consulting its source offsets.
         private func keyframeTime(_ f: Int, clip: Clip) -> String {
-            guard abs(clip.speed - 1.0) > 0.001 else { return time(frames: f - clip.startFrame) }
-            let (p, q) = rationalSpeed(clip.speed)
+            let map = clip.timeMap
+            guard !map.isConstantSpeed || abs(map.averageSpeed - 1.0) > 0.001 else {
+                return time(frames: f - clip.startFrame)
+            }
+            let (p, q) = rationalSpeed(map.averageSpeed)
             let num = clip.trimStartFrame * q + (f - clip.startFrame) * p
             return rationalTime(num: num, den: fps * p)
         }
@@ -605,25 +612,57 @@ enum FCPXMLExporter {
 
         /// Uses the time-map output axis for retimed clips and the source origin otherwise.
         private func clipStart(for clip: Clip, origin: (num: Int, den: Int) = (0, 1)) -> String {
-            guard abs(clip.speed - 1.0) > 0.001 else { return time(frames: clip.trimStartFrame, from: origin) }
-            let (p, q) = rationalSpeed(clip.speed)
+            let map = clip.timeMap
+            guard !map.isConstantSpeed || abs(map.averageSpeed - 1.0) > 0.001 else {
+                return time(frames: clip.trimStartFrame, from: origin)
+            }
+            let (p, q) = rationalSpeed(map.averageSpeed)
             return rationalTime(num: clip.trimStartFrame * q, den: fps * p)
         }
 
         /// Maps the full asset so retimed clips do not end on black frames.
+        ///
+        /// A constant speed needs two points. A speed ramp needs one per segment boundary,
+        /// because a two-point linear timeMap cannot describe a changing rate.
         private func timeMapNode(for clip: Clip, mediaFrames: Int, origin: (num: Int, den: Int) = (0, 1)) -> FCPXMLNode? {
-            guard abs(clip.speed - 1.0) > 0.001, mediaFrames > 0 else { return nil }
-            let (p, q) = rationalSpeed(clip.speed)
-            return FCPXMLNode(name: "timeMap", attributes: [("frameSampling", "floor")], children: [
+            let map = clip.timeMap
+            guard !map.isConstantSpeed || abs(map.averageSpeed - 1.0) > 0.001, mediaFrames > 0 else { return nil }
+            if map.isConstantSpeed {
+                let (p, q) = rationalSpeed(map.averageSpeed)
+                return FCPXMLNode(name: "timeMap", attributes: [("frameSampling", "floor")], children: [
+                    FCPXMLNode(name: "timept", attributes: [
+                        ("time", "0s"), ("value", rationalTime(num: origin.num, den: origin.den)), ("interp", "linear"),
+                    ]),
+                    FCPXMLNode(name: "timept", attributes: [
+                        ("time", rationalTime(num: mediaFrames * q, den: fps * p)),
+                        ("value", time(frames: mediaFrames, from: origin)),
+                        ("interp", "linear"),
+                    ]),
+                ])
+            }
+            var points: [FCPXMLNode] = [
                 FCPXMLNode(name: "timept", attributes: [
                     ("time", "0s"), ("value", rationalTime(num: origin.num, den: origin.den)), ("interp", "linear"),
                 ]),
-                FCPXMLNode(name: "timept", attributes: [
-                    ("time", rationalTime(num: mediaFrames * q, den: fps * p)),
-                    ("value", time(frames: mediaFrames, from: origin)),
+            ]
+            for segment in map.segments {
+                let outputFrames = segment.timelineRange.upperBound
+                let sourceFrames = clip.trimStartFrame
+                    + Int(map.sourceOffset(atTimelineOffset: segment.timelineRange.lowerBound).rounded())
+                points.append(FCPXMLNode(name: "timept", attributes: [
+                    ("time", time(frames: outputFrames)),
+                    ("value", time(frames: sourceFrames, from: origin)),
                     ("interp", "linear"),
-                ]),
-            ])
+                ]))
+            }
+            // The map's last value must cover the whole asset, not stop at the ramp's end.
+            let tailStart = map.segments.last?.timelineRange.upperBound ?? clip.durationFrames
+            points.append(FCPXMLNode(name: "timept", attributes: [
+                ("time", time(frames: max(tailStart, clip.durationFrames))),
+                ("value", time(frames: mediaFrames, from: origin)),
+                ("interp", "linear"),
+            ]))
+            return FCPXMLNode(name: "timeMap", attributes: [("frameSampling", "floor")], children: points)
         }
 
         /// Approximates user-entered speed with a small exact fraction.

@@ -581,7 +581,7 @@ final class EditorViewModel {
         let applyTrim: (inout Clip) -> Void = { clip in
             if sourceSegment != nil {
                 // tail trim is what's left after head trim and visible span
-                let consumed = Int((Double(durationFrames) * clip.speed).rounded())
+                let consumed = clip.timeMap.sourceFramesConsumed
                 clip.trimStartFrame = trimStart
                 clip.trimEndFrame = max(0, totalSourceFrames - trimStart - consumed)
             } else {
@@ -589,7 +589,7 @@ final class EditorViewModel {
                 clip.trimStartFrame = start
                 if totalSourceFrames > 0 {
                     // Use actual remaining source for tail trim if not set; clamp to available.
-                    let consumed = Int((Double(durationFrames) * clip.speed).rounded())
+                    let consumed = clip.timeMap.sourceFramesConsumed
                     let remainingTail = max(0, totalSourceFrames - start - consumed)
                     clip.trimEndFrame = min(trimEndFrame ?? remainingTail, remainingTail)
                 } else if let t = trimEndFrame {

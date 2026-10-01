@@ -42,6 +42,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case setKeyframes = "set_keyframes"
     case applyLayout = "apply_layout"
     case crossfadeAudio = "crossfade_audio"
+    case setClipSpeedRamp = "set_clip_speed_ramp"
     case duckAudio = "duck_audio"
     case applyTransition = "apply_transition"
     case removeTransition = "remove_transition"
@@ -744,6 +745,25 @@ enum ToolDefinitions {
                     ],
                 ],
                 required: ["clipId", "property", "keyframes"]
+            )
+        ),
+        AgentTool(
+            name: .setClipSpeedRamp,
+            description: "Ramps a clip's speed over its duration, as one undo step. Use it for the slow-into-fast push at the end of a highlight, the freeze-then-accelerate snap, or easing a time-lapse so it does not start at a dead stop. A ramp keeps the clip's timeline length and changes how much source it reads, so everything after the cut stays where it is — unlike set_clip_properties speed, which rescales the length to keep the same source. Frames are clip-relative and must increase; the first point is the clip's start rate. This is the tool for pacing and emphasis. set_clip_properties speed remains the right tool for a constant rate. Not for nested timelines, which have no source to re-time. pass clear:true to drop the ramp and go back to one constant speed.",
+            inputSchema: objectSchema(
+                properties: [
+                    "clipId": ["type": "string", "description": "Clip to re-time."],
+                    "points": [
+                        "type": "array",
+                        "description": "Speed ramp, at least 2 points, frames increasing and within 0…durationFrames.",
+                        "items": ["type": "object", "properties": [
+                            "frame": ["type": "integer", "description": "Clip-relative timeline frame."],
+                            "speed": ["type": "number", "description": "Rate at that frame. >1 speeds up, <1 slows down."],
+                        ], "required": ["frame", "speed"]],
+                    ],
+                    "clear": ["type": "boolean", "description": "Remove the ramp and return to one constant speed."],
+                ],
+                required: ["clipId"]
             )
         ),
         AgentTool(

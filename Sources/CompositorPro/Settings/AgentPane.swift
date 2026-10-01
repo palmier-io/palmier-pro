@@ -283,6 +283,7 @@ private struct CustomEndpointSettingSection: View {
     @State private var name = ""
     @State private var baseURL = ""
     @State private var modelID = ""
+    @State private var supportsImages: Bool?
     @State private var apiKey = ""
     /// The key as last read from the Keychain, so an untouched field can be told apart from a
     /// deliberately emptied one.
@@ -359,6 +360,13 @@ private struct CustomEndpointSettingSection: View {
             field(placeholder: L10n.string("Name (optional)"), text: $name)
             field(placeholder: "http://localhost:11434/v1", text: $baseURL)
             field(placeholder: "qwen3-coder:30b", text: $modelID)
+            Picker(L10n.string("Image input"), selection: $supportsImages) {
+                Text(L10n.string("Unspecified")).tag(nil as Bool?)
+                Text(L10n.string("Supported")).tag(true as Bool?)
+                Text(L10n.string("Unsupported")).tag(false as Bool?)
+            }
+            .font(.system(size: AppTheme.FontSize.sm))
+            .help(L10n.string("Unspecified sends images to the endpoint. Unsupported blocks image requests instead of discarding inspection results."))
             apiKeyField
             HStack(spacing: AppTheme.Spacing.sm) {
                 Button(editing == nil ? L10n.string("Add Model") : L10n.string("Save"), action: save)
@@ -451,6 +459,7 @@ private struct CustomEndpointSettingSection: View {
         name = ""
         baseURL = ""
         modelID = ""
+        supportsImages = nil
         apiKey = ""
         loadedKey = ""
         error = nil
@@ -462,6 +471,7 @@ private struct CustomEndpointSettingSection: View {
         name = model.name
         baseURL = model.baseURL.absoluteString
         modelID = model.modelID
+        supportsImages = model.supportsImages
         apiKey = ""
         loadedKey = ""
         error = nil
@@ -483,6 +493,7 @@ private struct CustomEndpointSettingSection: View {
         name = ""
         baseURL = ""
         modelID = ""
+        supportsImages = nil
         apiKey = ""
         loadedKey = ""
         error = nil
@@ -494,6 +505,7 @@ private struct CustomEndpointSettingSection: View {
         let pendingName = name
         let pendingBaseURL = baseURL
         let pendingModelID = modelID
+        let pendingSupportsImages = supportsImages
         let pendingID = editing?.id
         let pendingKey: CustomKeyUpdate = apiKey == loadedKey
             ? .unchanged
@@ -508,6 +520,7 @@ private struct CustomEndpointSettingSection: View {
                 baseURL: pendingBaseURL,
                 modelID: pendingModelID,
                 key: pendingKey,
+                supportsImages: pendingSupportsImages,
                 defaults: .standard
             )
             if case .failed(let message) = result {

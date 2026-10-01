@@ -44,69 +44,96 @@ enum OpenAIChatCompletionsRequestBody {
         messages: [AgentRequestMessage]
     ) -> [[String: Any]] {
         var out: [[String: Any]] = []
+        var pendingToolCalls = Set<String>()
+        var imageResults: [ToolResult.Block] = []
+
+        func appendImageResults() {
+            guard !imageResults.isEmpty else { return }
+            out.append(turn(role: "user", content: imageResults, toolCalls: []))
+            imageResults.removeAll(keepingCapacity: true)
+        }
+
         if !system.isEmpty {
             out.append(["role": "system", "content": system])
         }
         for message in messages {
-            var text = ""
-            var parts: [[String: Any]] = []
+            var content: [ToolResult.Block] = []
             var toolCalls: [[String: Any]] = []
             let role = message.role.rawValue
+
+            func appendMessage() {
+                guard !content.isEmpty || !toolCalls.isEmpty else { return }
+                out.append(turn(role: role, content: content, toolCalls: toolCalls))
+                content.removeAll(keepingCapacity: true)
+                toolCalls.removeAll(keepingCapacity: true)
+            }
 
             for block in message.content {
                 switch block {
                 case .image(let base64, let mediaType):
-                    parts.append([
-                        "type": "image_url",
-                        "image_url": ["url": "data:\(mediaType);base64,\(base64)"],
-                    ])
+                    content.append(.image(base64: base64, mediaType: mediaType))
                 case .content(let block):
                     switch block {
                     // No portable way to replay reasoning state; dropping it is correct.
                     case .thinking, .redactedThinking, .openAIReasoning:
                         continue
                     case .text(let value):
-                        text += value
+                        if !value.isEmpty { content.append(.text(value)) }
                     case .toolUse(let id, let name, let inputJSON):
+                        pendingToolCalls.insert(id)
                         toolCalls.append([
                             "id": id,
                             "type": "function",
                             "function": ["name": name, "arguments": nonEmptyJSONObject(inputJSON)],
                         ])
                     case .toolResult(let toolUseID, let output, let isError):
-                        if !text.isEmpty || !parts.isEmpty || !toolCalls.isEmpty {
-                            out.append(turn(role: role, text: text, parts: parts, toolCalls: toolCalls))
-                            text = ""
-                            parts = []
-                            toolCalls = []
+                        appendMessage()
+                        let reply: String
+                        if output.contains(where: \.isImage) {
+                            let label = isError ? "Tool error" : "Tool result"
+                            reply = "\(label) includes images. Full content follows in a user message after this tool batch."
+                            imageResults.append(.text("\(label) for tool call \(toolUseID):"))
+                            imageResults.append(contentsOf: output)
+                        } else {
+                            reply = toolResultText(output, isError: isError)
                         }
                         out.append([
                             "role": "tool",
                             "tool_call_id": toolUseID,
-                            "content": toolResultText(output, isError: isError),
+                            "content": reply,
                         ])
+                        pendingToolCalls.remove(toolUseID)
+                        // Chat Completions tool messages are text-only; images follow the complete tool batch.
+                        if pendingToolCalls.isEmpty { appendImageResults() }
                     }
                 }
             }
-            guard !text.isEmpty || !parts.isEmpty || !toolCalls.isEmpty else { continue }
-            out.append(turn(role: role, text: text, parts: parts, toolCalls: toolCalls))
+            appendMessage()
         }
+        appendImageResults()
         return out
     }
 
     private static func turn(
         role: String,
-        text: String,
-        parts: [[String: Any]],
+        content: [ToolResult.Block],
         toolCalls: [[String: Any]]
     ) -> [String: Any] {
         var message: [String: Any] = ["role": role]
-        if parts.isEmpty {
-            message["content"] = text
+        if content.contains(where: \.isImage) {
+            message["content"] = content.map { block -> [String: Any] in
+                switch block {
+                case .text(let text):
+                    ["type": "text", "text": text]
+                case .image(let base64, let mediaType):
+                    ["type": "image_url", "image_url": ["url": "data:\(mediaType);base64,\(base64)"]]
+                }
+            }
         } else {
-            var content = parts
-            if !text.isEmpty { content.insert(["type": "text", "text": text], at: 0) }
-            message["content"] = content
+            message["content"] = content.compactMap { block -> String? in
+                if case .text(let text) = block { return text }
+                return nil
+            }.joined()
         }
         if !toolCalls.isEmpty { message["tool_calls"] = toolCalls }
         return message

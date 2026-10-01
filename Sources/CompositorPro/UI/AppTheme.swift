@@ -470,6 +470,8 @@ enum AppTheme {
         static let fieldMinHeight: CGFloat = 22
         static let numericFieldWidth: CGFloat = 56
         static let compactNumericFieldWidth: CGFloat = 36
+        static let rampLabelWidth: CGFloat = 34
+        static let rampCurveHeight: CGFloat = 28
         static let fontMenuWidth: CGFloat = 160
         static let textEditorMinHeight: CGFloat = 96
         static let contentInsets = EdgeInsets(

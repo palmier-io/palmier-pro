@@ -46,7 +46,7 @@ enum NestFlattener {
         var c = clip
         let headCut = start - clip.startFrame
         if headCut > 0 {
-            c.trimStartFrame += Int((Double(headCut) * c.speed).rounded())
+            c.trimStartFrame += c.timeMap.sourceDelta(forTimelineDelta: headCut)
             c.fadeInFrames = 0
             shiftKeyframeTracks(&c, by: headCut)
         }

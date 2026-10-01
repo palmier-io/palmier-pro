@@ -381,6 +381,11 @@ extension ToolExecutor {
         }
         out = strippingDefaults(out, clipDefaults)
         if let id = out["id"] as? String, let grade = grades[id] { out["color"] = grade }
+        // A ramp's own keyframes are what matters, so surface them where a rate would be read.
+        if let track = out["speedTrack"] as? [String: Any], !(track["keyframes"] as? [Any] ?? []).isEmpty {
+            out.removeValue(forKey: "speedTrack")
+            out["speedRamp"] = track
+        }
         if let fx = out["effects"] as? [[String: Any]] {
             let isText = out["mediaType"] as? String == ClipType.text.rawValue
             let cleaned = compactEffects(fx).filter {

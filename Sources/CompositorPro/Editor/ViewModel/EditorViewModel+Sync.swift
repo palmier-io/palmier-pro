@@ -108,6 +108,7 @@ extension EditorViewModel {
                 seedWindowHops: seedWindow, maxLagHops: maxLag, minOverlapHops: minOverlap,
                 minConfidence: minConfidence
             ) else { return nil }
+            // anchor.clip is the audio sample holder, not a timeline Clip, so this stays scalar.
             let lagFrames = result.exactLagHops * hop * fps / max(anchor.clip.speed, SyncDefaults.minSpeed)
             var retimedSpeed: Double?
             if result.driftRatio != 0 {
@@ -398,7 +399,7 @@ extension EditorViewModel {
     private func envelope(of clip: Clip, fps: Double) async -> AudioEnvelope? {
         guard let url = mediaResolver.resolveURL(for: clip.mediaRef) else { return nil }
         let start = Double(clip.trimStartFrame) / fps
-        let end = start + Double(clip.durationFrames) * max(clip.speed, SyncDefaults.minSpeed) / fps
+        let end = start + Double(clip.timeMap.sourceFramesConsumed) / fps
         return try? await AudioEnvelopeExtractor.extract(from: url, range: start...max(start + AudioEnvelopeExtractor.hopSeconds, end))
     }
 }

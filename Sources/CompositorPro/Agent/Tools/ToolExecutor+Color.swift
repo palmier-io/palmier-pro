@@ -220,7 +220,8 @@ extension ToolExecutor {
         let offset: Int   // clip-relative frame (0…durationFrames-1), drives keyframed/animated effects
         if let f = atFrame {
             offset = max(0, min(clip.durationFrames - 1, f - clip.startFrame))
-            sourceFrame = Double(clip.trimStartFrame) + Double(offset) * clip.speed
+            sourceFrame = Double(clip.trimStartFrame)
+                + clip.timeMap.sourceOffset(atTimelineOffset: offset)
         } else {
             offset = clip.durationFrames / 2
             sourceFrame = Double(clip.trimStartFrame) + Double(clip.sourceFramesConsumed) / 2

@@ -99,7 +99,7 @@ final class TimelineInputController {
             display = partner
         }
         guard let url = editor.mediaResolver.expectedURL(for: display.mediaRef) else { return nil }
-        let sourceDelta = Int((Double(deltaFrames) * display.speed).rounded())
+        let sourceDelta = display.timeMap.sourceDelta(forTimelineDelta: deltaFrames)
         let applied = max(-display.trimEndFrame, min(display.trimStartFrame, sourceDelta))
         let inFrame = display.trimStartFrame - applied
         let outFrame = inFrame + max(0, display.sourceFramesConsumed - 1)

@@ -149,8 +149,10 @@ extension EditorViewModel {
     nonisolated static func splitValues(of clip: Clip, atFrame: Int) -> (left: Clip, right: Clip)? {
         guard atFrame > clip.startFrame && atFrame < clip.endFrame else { return nil }
         let splitOffset = atFrame - clip.startFrame
-        let leftSource = Int((Double(splitOffset) * clip.speed).rounded())
-        let rightSource = Int((Double(clip.durationFrames - splitOffset) * clip.speed).rounded())
+        let map = clip.timeMap
+        let leftSource = Int(map.sourceOffset(atTimelineOffset: splitOffset).rounded())
+        let rightSource = Int((map.sourceOffset(atTimelineOffset: clip.durationFrames)
+            - map.sourceOffset(atTimelineOffset: splitOffset)).rounded())
 
         var left = clip
         left.durationFrames = splitOffset
@@ -726,8 +728,7 @@ extension EditorViewModel {
             guard let loc = findClip(id: id) else { continue }
             let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
             guard currentFrame > clip.startFrame && currentFrame < clip.endFrame else { continue }
-            let delta = currentFrame - clip.startFrame
-            let sourceDelta = Int((Double(delta) * clip.speed).rounded())
+            let sourceDelta = clip.timeMap.sourceDelta(forTimelineDelta: currentFrame - clip.startFrame)
             trimClips([(clipId: id, trimStartFrame: clip.trimStartFrame + sourceDelta, trimEndFrame: clip.trimEndFrame)])
         }
     }
@@ -737,8 +738,7 @@ extension EditorViewModel {
             guard let loc = findClip(id: id) else { continue }
             let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
             guard currentFrame > clip.startFrame && currentFrame < clip.endFrame else { continue }
-            let delta = clip.endFrame - currentFrame
-            let sourceDelta = Int((Double(delta) * clip.speed).rounded())
+            let sourceDelta = clip.timeMap.sourceDelta(forTimelineDelta: clip.endFrame - currentFrame)
             trimClips([(clipId: id, trimStartFrame: clip.trimStartFrame, trimEndFrame: clip.trimEndFrame + sourceDelta)])
         }
     }
@@ -788,7 +788,9 @@ extension EditorViewModel {
             case .trimEnd(let clipId, let newDuration):
                 if let loc = findClip(id: clipId) {
                     let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-                    let sourceDelta = Int((Double(clip.durationFrames - newDuration) * clip.speed).rounded())
+                    let sourceDelta = clip.timeMap.sourceDelta(
+                        forTimelineDelta: clip.durationFrames - newDuration
+                    )
                     let newTrimEnd = clip.trimEndFrame + sourceDelta
                     mutateClips(ids: [clipId], actionName: "Trim Clip") {
                         $0.trimEndFrame = newTrimEnd

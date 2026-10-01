@@ -403,7 +403,7 @@ struct CompositionBuildAudioTrackTests {
         #expect(mappings[2].target.start == CMTime(value: 48, timescale: ts))
     }
 
-    @Test func fractionalSpeedAudioUsesTruncatedSourceFramesForCompositionInsertion() async throws {
+    @Test func fractionalSpeedAudioInsertsTheFullRoundedSourceSpan() async throws {
         let audioURL = try makeSilentWav(durationSeconds: 4)
         defer { try? FileManager.default.removeItem(at: audioURL) }
         let sourceAsset = AVURLAsset(url: audioURL)
@@ -432,7 +432,10 @@ struct CompositionBuildAudioTrackTests {
 
         let audioMapping = try #require(result.trackMappings.first { !$0.isVideo })
         let mediaSegment = try #require(audioMapping.compositionTrack.segments.first { !$0.isEmpty })
-        let expectedSourceSeconds = Double(13) / Double(timeline.fps)
+        // sourceFramesConsumed rounds to 14, and 13*1.053 = 13.69. Truncating here would
+        // silently drop the clip's last source frame, so the composition uses the model's
+        // rounded span and relies on the asset-duration clamp for safety.
+        let expectedSourceSeconds = Double(14) / Double(timeline.fps)
         #expect(abs(mediaSegment.timeMapping.source.duration.seconds - expectedSourceSeconds) <= 1.0 / Double(sourceTimescale))
         #expect(mediaSegment.timeMapping.source.duration.timescale == sourceTimescale)
         #expect(mediaSegment.timeMapping.target.duration == CMTime(value: 13, timescale: 24))

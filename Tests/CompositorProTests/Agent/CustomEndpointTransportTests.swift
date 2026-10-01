@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Network
 import Testing
@@ -94,15 +95,122 @@ struct CustomEndpointTransportTests {
         }
     }
 
+    @Test(arguments: [nil, true] as [Bool?])
+    func inspectionImageReachesTheCustomEndpoint(supportsImages: Bool?) async throws {
+        let context = try #require(CGContext(
+            data: nil, width: 8, height: 8, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+        ))
+        context.setFillColor(CGColor(srgbRed: 1, green: 0, blue: 0, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        let image = try #require(context.makeImage())
+        let jpeg = try #require(ImageEncoder.encodeJPEG(image, quality: 1))
+        let metadata = #"{"mediaRef":"asset-1","name":"blue-frame.jpg","frameTimestamps":[1.25]}"#
+        let output = ToolResult(content: [
+            .image(base64: jpeg.base64EncodedString(), mediaType: "image/jpeg"), .text(metadata),
+        ], isError: false)
+        let server = try await LoopbackServer { _ in Self.sseResponse }
+        defer { server.cancel() }
+        let endpoint = try #require(CustomModelStore.normalizedBaseURL(server.baseURL))
+        let client = Self.client(modelID: "vision-model", endpoint: endpoint, apiKey: "", supportsImages: supportsImages)
+        let messages = [
+            AgentRequestMessage(role: .assistant, content: [
+                .content(.toolUse(id: "inspect-1", name: "inspect_media", inputJSON: #"{"mediaRef":"asset-1"}"#)),
+            ]),
+            AgentRequestMessage(role: .user, content: [
+                .content(.toolResult(toolUseId: "inspect-1", content: output.content, isError: output.isError)),
+            ]),
+        ]
+
+        for try await _ in client.stream(system: "", tools: [], messages: messages, context: Self.context) {}
+
+        let request = try #require(server.request)
+        let separator = try #require(request.range(of: "\r\n\r\n"))
+        let body = try #require(JSONSerialization.jsonObject(with: Data(request[separator.upperBound...].utf8)) as? [String: Any])
+        let wire = try #require(body["messages"] as? [[String: Any]])
+        #expect(wire.compactMap { $0["role"] as? String } == ["assistant", "tool", "user"])
+        let attachment = try #require(wire.last?["content"] as? [[String: Any]])
+        let texts = attachment.compactMap { $0["text"] as? String }
+        #expect(texts.first?.contains("inspect-1") == true)
+        #expect(texts.last == metadata)
+        let imageURL = try #require(attachment.compactMap { $0["image_url"] as? [String: String] }.first?["url"])
+        #expect(imageURL == "data:image/jpeg;base64,\(jpeg.base64EncodedString())")
+    }
+
+    @Test(arguments: [false, true])
+    func textOnlyModelRefusesImagesBeforeSendingRequest(inToolResult: Bool) async throws {
+        let server = try await LoopbackServer { _ in Self.sseResponse }
+        defer { server.cancel() }
+        let endpoint = try #require(CustomModelStore.normalizedBaseURL(server.baseURL))
+        let client = Self.client(modelID: "text-model", endpoint: endpoint, apiKey: "", supportsImages: false)
+        let block: AgentRequestBlock = inToolResult
+            ? .content(.toolResult(toolUseId: "inspect", content: [.image(base64: "YQ==", mediaType: "image/png")], isError: false))
+            : .image(base64: "YQ==", mediaType: "image/png")
+        do {
+            for try await _ in client.stream(
+                system: "", tools: [], messages: [AgentRequestMessage(role: .user, content: [block])], context: Self.context
+            ) {}
+            Issue.record("Expected image input to be refused")
+        } catch let error as AgentClientTransportError {
+            guard case .imageInputUnsupported(let model) = error else {
+                Issue.record("Expected imageInputUnsupported, got \(error)")
+                return
+            }
+            #expect(model == "text-model")
+        }
+        #expect(server.request == nil)
+    }
+
+    @Test func textOnlyModelStillAcceptsTextRequests() async throws {
+        let server = try await LoopbackServer { _ in Self.sseResponse }
+        defer { server.cancel() }
+        let endpoint = try #require(CustomModelStore.normalizedBaseURL(server.baseURL))
+        let client = Self.client(modelID: "text-model", endpoint: endpoint, apiKey: "", supportsImages: false)
+        var text = ""
+        for try await event in client.stream(
+            system: "", tools: [], messages: [AgentRequestMessage(role: .user, content: [.content(.text("Read the timeline"))])],
+            context: Self.context
+        ) {
+            if case .textDelta(let value) = event { text += value }
+        }
+        #expect(text == "Hello")
+        #expect(server.request != nil)
+    }
+
+    @Test func undeclaredImageSupportSurfacesProviderRejection() async throws {
+        let server = try await LoopbackServer { _ in
+            "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"error\":\"This model does not support image input\"}"
+        }
+        defer { server.cancel() }
+        let endpoint = try #require(CustomModelStore.normalizedBaseURL(server.baseURL))
+        let client = Self.client(modelID: "unknown-model", endpoint: endpoint, apiKey: "")
+        do {
+            for try await _ in client.stream(
+                system: "", tools: [],
+                messages: [AgentRequestMessage(role: .user, content: [.image(base64: "YQ==", mediaType: "image/png")])],
+                context: Self.context
+            ) {}
+            Issue.record("Expected the provider's image rejection")
+        } catch let error as AgentClientTransportError {
+            guard case .httpError(.custom, let status, let body) = error else {
+                Issue.record("Expected custom HTTP error, got \(error)")
+                return
+            }
+            #expect(status == 400)
+            #expect(body.contains("does not support image input"))
+        }
+        #expect(server.request?.replacingOccurrences(of: "\\/", with: "/").contains("data:image/png;base64,YQ==") == true)
+    }
+
     // MARK: - Fixtures
 
-    private static func client(modelID: String, endpoint: URL, apiKey: String) -> BYOKClient {
+    private static func client(modelID: String, endpoint: URL, apiKey: String, supportsImages: Bool? = nil) -> BYOKClient {
         BYOKClient(
             apiKey: apiKey,
             settings: AgentRunSettings(
                 model: .custom,
                 reasoningEffort: .none,
-                custom: CustomAgentModel(baseURL: endpoint, modelID: modelID)
+                custom: CustomAgentModel(baseURL: endpoint, modelID: modelID, supportsImages: supportsImages)
             )
         )
     }

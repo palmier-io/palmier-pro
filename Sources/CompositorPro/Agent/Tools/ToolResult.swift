@@ -5,6 +5,11 @@ struct ToolResult: Sendable {
     enum Block: Sendable {
         case text(String)
         case image(base64: String, mediaType: String)
+
+        var isImage: Bool {
+            if case .image = self { return true }
+            return false
+        }
     }
 
     let content: [Block]

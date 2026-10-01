@@ -33,6 +33,9 @@ struct BYOKClient: AgentClient {
                 throw AgentClientTransportError.missingAPIKey(provider)
             }
         }
+        if settings.supportsImages == false, messages.contains(where: \.containsImages) {
+            throw AgentClientTransportError.imageInputUnsupported(model: settings.custom?.modelID ?? settings.model.rawValue)
+        }
 
         var request = URLRequest(url: try endpoint())
         request.httpMethod = "POST"

@@ -87,7 +87,7 @@ extension EditorViewModel {
                 throw ClipMediaSwapError(message: "Replacement media has no valid duration.")
             }
             for clip in targets {
-                let rawConsumed = (Double(clip.durationFrames) * clip.speed).rounded()
+                let rawConsumed = Double(clip.timeMap.sourceFramesConsumed)
                 guard let consumed = Int(exactly: rawConsumed), consumed >= 0 else {
                     throw ClipMediaSwapError(message: "Clip has invalid source timing.")
                 }

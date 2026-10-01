@@ -65,10 +65,7 @@ extension EditorViewModel {
             }
         }
         if type != .dipToBlack {
-            guard incoming.speed.isFinite, incoming.speed > 0 else {
-                throw TransitionValidationError.insufficientHandles(frames: durationFrames / 2)
-            }
-            let need = Int((Double(durationFrames / 2) * incoming.speed).rounded())
+            let need = incoming.timeMap.sourceDelta(forTimelineDelta: durationFrames / 2)
             guard incoming.trimStartFrame >= need else {
                 throw TransitionValidationError.insufficientHandles(frames: need)
             }
@@ -130,7 +127,8 @@ extension EditorViewModel {
                 timeline.tracks.insert(Track(type: .video), at: overlayIndex)
                 let asset = overlayAsset!
                 let overlayStart = plan.boundary - plan.half
-                let trimStart = plan.incoming.trimStartFrame - Int((Double(plan.half) * plan.incoming.speed).rounded())
+                let trimStart = plan.incoming.trimStartFrame
+                    - plan.incoming.timeMap.sourceDelta(forTimelineDelta: plan.half)
                 let placed = placeClip(
                     asset: asset,
                     trackIndex: overlayIndex,

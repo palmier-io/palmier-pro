@@ -164,10 +164,13 @@ extension EditorViewModel {
     }
 
     /// Timeline delta from a ripple trim of `clip` by `delta` frames.
+    ///
+    /// For a ramped clip the source-to-timeline ratio varies across the span, so the delta is
+    /// measured from offset 0 — the span's average rate, and exact for constant speed.
     private func rippleTrimDurationDelta(for clip: Clip, edge: TrimEdge, delta: Int) -> Int {
         let fields = trimValues(for: clip, edge: edge, delta: delta)
         let sourceShift = (fields.trimStart - clip.trimStartFrame) + (fields.trimEnd - clip.trimEndFrame)
-        return -Int((Double(sourceShift) / clip.speed).rounded())
+        return -clip.timeMap.timelineDelta(forSourceDelta: Double(sourceShift))
     }
 
     /// Ripple delete: remove selected clips and shift sync-locked tracks to keep them aligned.
@@ -552,8 +555,9 @@ extension EditorViewModel {
         // into timeline frames before applying to `startFrame` / `durationFrames`.
         let deltaStartSource = trimStartFrame - prevStart
         let deltaEndSource = trimEndFrame - prevEnd
-        let deltaStartTimeline = Int((Double(deltaStartSource) / clip.speed).rounded())
-        let deltaEndTimeline = Int((Double(deltaEndSource) / clip.speed).rounded())
+        let map = clip.timeMap
+        let deltaStartTimeline = map.timelineDelta(forSourceDelta: Double(deltaStartSource))
+        let deltaEndTimeline = map.timelineDelta(forSourceDelta: Double(deltaEndSource))
         let newDuration = prevDuration - deltaStartTimeline - deltaEndTimeline
         let newStartFrame = clip.startFrame + deltaStartTimeline
 

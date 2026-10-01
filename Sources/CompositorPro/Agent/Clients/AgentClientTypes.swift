@@ -144,6 +144,10 @@ struct AgentRunSettings: Equatable, Sendable {
         self.reasoningEffort = reasoningEffort
         self.custom = model == .custom ? custom : nil
     }
+
+    var supportsImages: Bool? {
+        model == .custom ? custom?.supportsImages : true
+    }
 }
 
 enum AgentReasoningPreferences {
@@ -229,6 +233,16 @@ struct AgentRequestMessage: Sendable {
     enum Role: String, Sendable { case user, assistant }
     let role: Role
     let content: [AgentRequestBlock]
+
+    var containsImages: Bool {
+        content.contains { block in
+            switch block {
+            case .image: true
+            case .content(.toolResult(_, let output, _)): output.contains(where: \.isImage)
+            default: false
+            }
+        }
+    }
 }
 
 enum AgentRequestBlock: Sendable {
@@ -276,6 +290,7 @@ enum AgentStreamEvent: Equatable, Sendable {
 
 enum AgentClientTransportError: LocalizedError {
     case missingAPIKey(AgentProvider)
+    case imageInputUnsupported(model: String)
     case httpError(provider: AgentProvider, status: Int, body: String)
     case streamError(provider: AgentProvider, message: String)
 
@@ -283,6 +298,8 @@ enum AgentClientTransportError: LocalizedError {
         switch self {
         case .missingAPIKey(let provider):
             "No \(provider.displayName) API key is set."
+        case .imageInputUnsupported(let model):
+            "Model '\(model)' is configured without image input. Use a vision-capable model for this conversation or start a text-only chat."
         case .httpError(let provider, let status, let body):
             "\(provider.displayName) API error (\(status)): \(body.prefix(500))"
         case .streamError(let provider, let message):

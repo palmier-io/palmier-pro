@@ -18,12 +18,15 @@ struct CustomAgentModel: Identifiable, Equatable, Sendable, Codable {
     var baseURL: URL
     /// Wire model identifier, e.g. `qwen3-coder:30b` or `anthropic/claude-sonnet-5`.
     var modelID: String
+    // Nil leaves image support undeclared; the endpoint must accept or reject image requests.
+    var supportsImages: Bool?
 
-    init(id: UUID = UUID(), name: String = "", baseURL: URL, modelID: String) {
+    init(id: UUID = UUID(), name: String = "", baseURL: URL, modelID: String, supportsImages: Bool? = nil) {
         self.id = id
         self.name = name
         self.baseURL = baseURL
         self.modelID = modelID
+        self.supportsImages = supportsImages
     }
 
     var chatCompletionsURL: URL { baseURL.appending(path: "chat/completions") }
@@ -101,6 +104,7 @@ enum CustomModelStore {
         name: String,
         baseURL rawBase: String,
         modelID rawModelID: String,
+        supportsImages: Bool? = nil,
         defaults: UserDefaults = .standard
     ) -> CustomModelSaveResult {
         let base = rawBase.trimmingCharacters(in: .whitespaces)
@@ -115,7 +119,8 @@ enum CustomModelStore {
             id: id ?? UUID(),
             name: trimmedName,
             baseURL: url,
-            modelID: modelID
+            modelID: modelID,
+            supportsImages: supportsImages
         )
         var models = load(defaults: defaults)
         if let index = models.firstIndex(where: { $0.id == model.id }) {
@@ -146,9 +151,13 @@ enum CustomModelStore {
         baseURL: String,
         modelID: String,
         key: CustomKeyUpdate,
+        supportsImages: Bool? = nil,
         defaults: UserDefaults = .standard
     ) async -> CustomModelSaveResult {
-        let result = upsert(id: id, name: name, baseURL: baseURL, modelID: modelID, defaults: defaults)
+        let result = upsert(
+            id: id, name: name, baseURL: baseURL, modelID: modelID,
+            supportsImages: supportsImages, defaults: defaults
+        )
         guard case .saved(let savedID) = result else { return result }
         switch key {
         case .unchanged:

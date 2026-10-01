@@ -901,7 +901,7 @@ extension ToolExecutor {
                 changed.append("speed skipped (nested timelines don't support retiming)")
             } else {
                 if durationFrames == nil, v > 0 {
-                    let sourceConsumed = Double(clip.durationFrames) * clip.speed
+                    let sourceConsumed = Double(clip.timeMap.sourceFramesConsumed)
                     clip.setDuration(max(1, safeInt((sourceConsumed / v).rounded()) ?? clip.durationFrames))
                     changed.append("durationFrames")
                 }

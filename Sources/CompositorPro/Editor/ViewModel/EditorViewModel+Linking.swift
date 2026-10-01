@@ -217,9 +217,9 @@ extension EditorViewModel {
         // Clamp the shared timeline delta to the tightest headroom in the group.
         var delta = deltaFrames
         for t in targets {
-            let speed = max(t.speed, 0.001)
-            delta = min(delta, Int((Double(t.trimStartFrame) / speed).rounded(.down)))
-            delta = max(delta, -Int((Double(effectiveTrimEnd(for: t)) / speed).rounded(.down)))
+            let map = t.timeMap
+            delta = min(delta, map.timelineOffset(forSourceOffset: Double(t.trimStartFrame)))
+            delta = max(delta, -map.timelineOffset(forSourceOffset: Double(effectiveTrimEnd(for: t))))
         }
         guard delta != 0 else { return }
 
@@ -227,7 +227,7 @@ extension EditorViewModel {
         // tail room, not stale trimEndFrame) so rounding through speed never drives a
         // trim negative. Slow-motion clips can round a non-zero delta to zero here.
         func appliedSourceDelta(for c: Clip) -> Int {
-            let sourceDelta = Int((Double(delta) * c.speed).rounded())
+            let sourceDelta = c.timeMap.sourceDelta(forTimelineDelta: delta)
             return max(-effectiveTrimEnd(for: c), min(c.trimStartFrame, sourceDelta))
         }
         guard targets.contains(where: { appliedSourceDelta(for: $0) != 0 }) else { return }
@@ -241,7 +241,7 @@ extension EditorViewModel {
     }
 
     func trimValues(for clip: Clip, edge: TrimEdge, delta: Int) -> (trimStart: Int, trimEnd: Int) {
-        let sourceDelta = Int((Double(delta) * clip.speed).rounded())
+        let sourceDelta = clip.timeMap.sourceDelta(forTimelineDelta: delta)
         // Image/Text clips have no source-material bound, so their trim fields can go negative
         let unbounded = clip.mediaType == .image || clip.mediaType == .text
         switch edge {

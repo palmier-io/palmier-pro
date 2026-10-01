@@ -254,13 +254,17 @@ extension EditorViewModel {
         let requests: [(clip: Clip, url: URL, mediaRef: String)] = sources.compactMap { source in
             return (source.clip, source.asset.url, source.asset.id)
         }
-        let detected = await Task.detached(priority: .userInitiated) { () -> [Int: [Range<Double>]] in
-            var result: [Int: [Range<Double>]] = [:]
+        let detected = await Task.detached(priority: .userInitiated) { () -> [Int: [Range<Int>]] in
+            var result: [Int: [Range<Int>]] = [:]
             for (index, request) in requests.enumerated() {
                 if let analysis = try? await VoiceActivity.analysis(
                     for: request.url, mediaRef: request.mediaRef
                 ) {
-                    result[index] = analysis.segments.map { $0.start ..< $0.end }
+                    result[index] = analysis.segments.map { span in
+                        let lower = Int((span.start * fps).rounded())
+                        let upper = Int((span.end * fps).rounded())
+                        return lower ..< max(lower + 1, upper)
+                    }
                 }
             }
             return result
@@ -270,24 +274,26 @@ extension EditorViewModel {
         for (index, request) in requests.enumerated() {
             let clip = request.clip
             let fallback = detected[index] == nil
-            let seconds = detected[index]
-                ?? [0 ..< (Double(clip.durationFrames) * clip.speed / fps)]
-            spans.append(contentsOf: Self.timelineFrames(from: seconds, clip: clip, fps: fps)
+            let sourceFrames = detected[index]
+                ?? [0 ..< clip.timeMap.sourceFramesConsumed]
+            spans.append(contentsOf: Self.timelineFrames(from: sourceFrames, clip: clip, fps: fps)
                 .map { SpeechSpan(timeline: $0, wholeClipFallback: fallback) })
         }
         return spans
     }
 
-    /// Source seconds → absolute timeline frames through the clip's own speed and start.
+    /// Source frames → absolute timeline frames through the clip's own mapping and start.
     nonisolated static func timelineFrames(
-        from seconds: [Range<Double>],
+        from frames: [Range<Int>],
         clip: Clip,
         fps: Double
     ) -> [Range<Int>] {
-        let rate = clip.speed > 0 ? clip.speed : 1
-        return seconds.compactMap { span in
-            let lower = clip.startFrame + Int((span.lowerBound * fps / rate).rounded())
-            let upper = clip.startFrame + Int((span.upperBound * fps / rate).rounded())
+        let map = clip.timeMap
+        return frames.compactMap { span in
+            let lower = clip.startFrame
+                + map.timelineOffset(forSourceOffset: Double(span.lowerBound))
+            let upper = clip.startFrame
+                + map.timelineOffset(forSourceOffset: Double(span.upperBound))
             return lower < upper ? lower ..< upper : nil
         }
     }

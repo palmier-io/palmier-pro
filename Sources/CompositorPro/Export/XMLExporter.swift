@@ -269,7 +269,7 @@ enum XMLExporter {
                 leaf("out", outPoint),
                 fileNode(for: clip.mediaRef, isAudio: isAudio),
             ]
-            if let remap = timeRemapFilter(speed: clip.speed, isAudio: isAudio) { children.append(remap) }
+            if let remap = timeRemapFilter(clip: clip, isAudio: isAudio) { children.append(remap) }
             children += isAudio ? volumeFilters(clip) : videoFilters(clip)
             children += linkNodes(for: clip)
             return el("clipitem", attrs: [("id", "clipitem-\(clip.id)")], children)
@@ -425,14 +425,40 @@ enum XMLExporter {
         // MARK: - Filters
 
         /// Premiere needs this to apply speed; it won't infer it from the in/out vs start/end ratio.
-        private func timeRemapFilter(speed: Double, isAudio: Bool) -> XMLNode? {
-            guard speed != 1.0 else { return nil }
-            return filter(effect(name: "Time Remap", id: "timeremap", type: "motion", mediatype: isAudio ? "audio" : "video", body: [
-                parameter(id: "variablespeed", name: "variablespeed", min: "0", max: "1", value: leaf("value", 0)),
-                parameter(id: "speed", name: "speed", min: "-100000", max: "100000", value: leaf("value", String(format: "%.4f", speed * 100))),
+        ///
+        /// A speed ramp additionally needs `variablespeed` 1 with a `speed` keyframe curve, which
+        /// Premiere evaluates against the clip's own output time.
+        private func timeRemapFilter(clip: Clip, isAudio: Bool) -> XMLNode? {
+            let map = clip.timeMap
+            guard !map.isConstantSpeed || map.averageSpeed != 1.0 else { return nil }
+            var body: [XMLNode] = [
+                parameter(id: "variablespeed", name: "variablespeed", min: "0", max: "1",
+                          value: leaf("value", map.isConstantSpeed ? 0 : 1)),
                 parameter(id: "reverse", name: "reverse", value: bool("value", false)),
                 parameter(id: "frameblending", name: "frameblending", value: bool("value", false)),
-            ]))
+            ]
+            body.append(speedParameter(map.averageSpeed, isVariable: !map.isConstantSpeed, clip: clip))
+            return filter(effect(name: "Time Remap", id: "timeremap", type: "motion", mediatype: isAudio ? "audio" : "video", body: body))
+        }
+
+        /// The `speed` parameter, as a flat value or a keyframed curve in percent.
+        private func speedParameter(_ speed: Double, isVariable: Bool, clip: Clip) -> XMLNode {
+            let value = String(format: "%.4f", speed * 100)
+            guard isVariable, let track = clip.speedTrack, track.isActive else {
+                return parameter(id: "speed", name: "speed", min: "-100000", max: "100000", value: leaf("value", value))
+            }
+            let rows: [XMLNode] = track.keyframes.map { keyframe in
+                let percent = String(format: "%.4f", SourceTimeMap.SpeedPoint.clamped(keyframe.value) * 100)
+                return el("keyframe", attrs: [("time", String(keyframe.frame))], [
+                    leaf("value", percent),
+                ])
+            }
+            return parameter(
+                id: "speed", name: "speed", min: "-100000", max: "100000",
+                value: el("value", attrs: [("edom", "clipitem-\(clip.id)")], [
+                    el("keyframesequence", rows),
+                ])
+            )
         }
 
         /// Exports fade-independent linear gain, clamped to Premiere's maximum.

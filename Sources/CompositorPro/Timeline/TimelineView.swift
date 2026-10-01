@@ -685,7 +685,7 @@ final class TimelineView: NSView, NSPopoverDelegate {
                         previewClip.trimEndFrame = resize.trimEnd
                         previewClip.durationFrames = resize.duration
                     } else {
-                        let sourceDelta = Int((Double(drag.deltaFrames) * clip.speed).rounded())
+                        let sourceDelta = clip.timeMap.sourceDelta(forTimelineDelta: drag.deltaFrames)
                         if isLeft {
                             previewClip.startFrame = clip.startFrame + drag.deltaFrames
                             previewClip.trimStartFrame = clip.trimStartFrame + sourceDelta
@@ -717,7 +717,7 @@ final class TimelineView: NSView, NSPopoverDelegate {
 
                 if let drag = slipDrag, clip.id == drag.clipId || slipPartnerIds.contains(clip.id) {
                     var previewClip = clip
-                    let sourceDelta = Int((Double(drag.deltaFrames) * clip.speed).rounded())
+                    let sourceDelta = clip.timeMap.sourceDelta(forTimelineDelta: drag.deltaFrames)
                     let applied = max(-clip.trimEndFrame, min(clip.trimStartFrame, sourceDelta))
                     previewClip.trimStartFrame = clip.trimStartFrame - applied
                     previewClip.trimEndFrame = clip.trimEndFrame + applied

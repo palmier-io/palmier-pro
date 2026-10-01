@@ -464,25 +464,52 @@ struct InspectorView: View {
     @ViewBuilder
     func speedSection(clips: [Clip]) -> some View {
         if !clips.isEmpty {
+            let ramped = clips.contains { $0.speedTrack?.isActive == true }
             EditorPanelGroup(L10n.string("Playback"), contentSpacing: AppTheme.Spacing.smMd) {
-                propertyRow(
-                    label: L10n.string("Speed"),
-                    onReset: { editor.commitClipSpeed(ids: clips.map(\.id), newSpeed: 1) }
-                ) {
-                    ScrubbableNumberField(
-                        value: sharedClipValue(clips) { $0.speed },
-                        range: 0.25...4.0,
-                        format: "%.2f",
-                        valueSuffix: "x",
-                        dragSensitivity: 0.01,
-                        fieldWidth: AppTheme.EditorPanel.numericFieldWidth,
-                        onChanged: { newVal in
-                            for c in clips { editor.applyClipSpeed(clipId: c.id, newSpeed: newVal) }
+                if !ramped {
+                    propertyRow(
+                        label: L10n.string("Speed"),
+                        onReset: { editor.commitClipSpeed(ids: clips.map(\.id), newSpeed: 1) }
+                    ) {
+                        ScrubbableNumberField(
+                            value: sharedClipValue(clips) { $0.speed },
+                            range: 0.25...4.0,
+                            format: "%.2f",
+                            valueSuffix: "x",
+                            dragSensitivity: 0.01,
+                            fieldWidth: AppTheme.EditorPanel.numericFieldWidth,
+                            onChanged: { newVal in
+                                for c in clips { editor.applyClipSpeed(clipId: c.id, newSpeed: newVal) }
+                            }
+                        ) { newVal in
+                            editor.commitClipSpeed(ids: clips.map(\.id), newSpeed: newVal)
                         }
-                    ) { newVal in
-                        editor.commitClipSpeed(ids: clips.map(\.id), newSpeed: newVal)
                     }
                 }
+                if let clip = clips.first(where: { $0.speedTrack?.isActive == true }) {
+                    speedRampRow(clip)
+                }
+            }
+        }
+    }
+
+    /// Ramped clips have no single speed to show, so the constant field is replaced by the
+    /// ramp's own shape and a way back to one rate.
+    private func speedRampRow(_ clip: Clip) -> some View {
+        propertyRow(label: L10n.string("Speed Ramp")) {
+            HStack(spacing: AppTheme.Spacing.sm) {
+                SpeedRampField(clip: clip) { points in
+                    try? editor.applySpeedRamp(
+                        clipId: clip.id,
+                        points: points.map { .init(frame: $0.frame, speed: $0.speed) }
+                    )
+                }
+                Button {
+                    try? editor.clearSpeedRamp(clipId: clip.id)
+                } label: {
+                    Text(verbatim: L10n.string("Clear"))
+                }
+                .buttonStyle(.borderless)
             }
         }
     }
