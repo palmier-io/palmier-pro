@@ -91,6 +91,7 @@ enum Project {
     static let defaultProjectName = "Untitled Project"
     static let timelineFilename = "project.json"
     static let manifestFilename = "media.json"
+    static let plansFilename = "plans.json"
     static let thumbnailFilename = "thumbnail.jpg"
     static let mediaDirectoryName = "media"
 

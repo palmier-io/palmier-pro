@@ -1,8 +1,7 @@
 import Foundation
 
-/// Pexels — free stock photography and, uniquely among the sources here, stock *video*.
-/// Needs a free API key; without one the provider reports that it needs one rather than
-/// failing the whole search.
+/// Pexels — stock photography and video for accounts that already hold a free API key. Without
+/// one the provider reports that it needs one rather than failing the whole search.
 struct PexelsProvider: StockMediaProvider {
     let id = "pexels"
     let displayName = "Pexels"

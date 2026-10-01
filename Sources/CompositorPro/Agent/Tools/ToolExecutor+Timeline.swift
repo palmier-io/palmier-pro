@@ -40,6 +40,16 @@ extension ToolExecutor {
         if editor.timelines.count > 1 {
             dict["timelines"] = timelineEntries(editor)
         }
+        let transitions = editor.timeline.transitions.map { record -> [String: Any] in
+            var entry = record.receipt
+            entry["stale"] = record.boundary(in: editor.timeline) == nil
+            return entry
+        }
+        if transitions.isEmpty {
+            dict.removeValue(forKey: "transitions")
+        } else {
+            dict["transitions"] = transitions
+        }
         guard let json = Self.jsonString(roundJSONFloatingPointNumbers(dict, toPlaces: 3)) else {
             throw ToolError("Failed to encode timeline")
         }

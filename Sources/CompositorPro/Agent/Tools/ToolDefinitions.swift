@@ -15,6 +15,10 @@ enum ToolName: String, CaseIterable, Sendable {
     case exportProject = "export_project"
     case manageExports = "manage_exports"
 
+    // Planning
+    case planEdit = "plan_edit"
+    case applyPlan = "apply_plan"
+
     // Media library
     case getMedia = "get_media"
     case inspectMedia = "inspect_media"
@@ -37,6 +41,8 @@ enum ToolName: String, CaseIterable, Sendable {
     case copyClipSettings = "copy_clip_settings"
     case setKeyframes = "set_keyframes"
     case applyLayout = "apply_layout"
+    case applyTransition = "apply_transition"
+    case removeTransition = "remove_transition"
     case syncClips = "sync_clips"
     case undo = "undo"
 
@@ -68,6 +74,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case listSpeechVoices = "list_speech_voices"
     case generateSpeech = "generate_speech"
     case findStockMedia = "find_stock_media"
+    case findShotCandidates = "find_shot_candidates"
 
     // Generation
     case listModels = "list_models"
@@ -179,13 +186,116 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .manageExports,
-            description: "Lists or cancels exports for the current project. action=list returns newest first with jobId, filename, path, status, progress percent, and any warnings/result. action=cancel requires the exact jobId returned by export_project or list; a waiting job is removed from the queue and an active job begins canceling. Cancel only when the user asks, or to undo an export just queued with incorrect settings. Never infer that an export is stuck from elapsed time alone.",
+            description: "Lists or cancels exports for the current project. action=list returns newest first with jobId, filename, path, status, progress percent, and any warnings/result. action=cancel requires the exact jobId returned by export_project or manage_exports list; a waiting job is removed from the queue and an active job begins canceling. Cancel only when the user asks, or to undo an export just queued with incorrect settings. Never infer that an export is stuck from elapsed time alone.",
             inputSchema: objectSchema(
                 properties: [
                     "action": ["type": "string", "enum": ["list", "cancel"]],
                     "jobId": ["type": "string", "description": "Required for cancel. Exact jobId from export_project or manage_exports list."],
                 ],
                 required: ["action"]
+            )
+        ),
+        AgentTool(
+            name: .planEdit,
+            description: "Maintains one persistent, reviewable edit plan for the active timeline: proposed structure, B-roll shots, timing, and source provenance. It stores and revises the plan, and changes its review status, but performs no timeline edits. New plans start as proposed and belong to the active timeline; timeline identity and geometry cannot change afterward. A web candidate must have an HTTPS candidateURL, license, and attribution. plan_edit can mark approved, proposed, or superseded; only apply_plan can reserve ready, and only a future assembly operation can mark applied.",
+            inputSchema: objectSchema(
+                properties: [
+                    "action": ["type": "string", "enum": ["create", "read", "update", "status", "delete"], "description": "Plan operation."],
+                    "planId": ["type": "string", "description": "Exact plan id from a plan_edit receipt. Required for update, status, delete, and single-plan reads."],
+                    "plan": [
+                        "type": "object",
+                        "description": "Create only. A plan draft.",
+                        "properties": [
+                            "planId": ["type": "string", "description": "Optional stable plan id. Omit for a generated id."],
+                            "name": ["type": "string", "description": "Plan name."],
+                            "goal": ["type": "string", "description": "Optional filmmaking goal."],
+                            "timelineId": ["type": "string", "description": "Optional. Must be the active timeline. Omitted means the active timeline."],
+                            "sections": [
+                                "type": "array",
+                                "description": "Optional structural sections.",
+                                "items": objectSchema(properties: [
+                                    "sectionId": ["type": "string", "description": "Optional stable section id. Omit for a generated id."],
+                                    "title": ["type": "string", "description": "Section title."],
+                                    "summary": ["type": "string", "description": "Optional section summary."],
+                                    "startFrame": ["type": "integer", "description": "Timeline frame, inclusive."],
+                                    "endFrame": ["type": "integer", "description": "Timeline frame, exclusive. Must be greater than startFrame."],
+                                ]),
+                            ],
+                            "shots": [
+                                "type": "array",
+                                "description": "Optional B-roll or coverage shots.",
+                                "items": objectSchema(properties: [
+                                    "shotId": ["type": "string", "description": "Optional stable shot id. Omit for a generated id."],
+                                    "title": ["type": "string", "description": "Shot title."],
+                                    "startFrame": ["type": "integer", "description": "Timeline frame, inclusive."],
+                                    "endFrame": ["type": "integer", "description": "Timeline frame, exclusive. Must be greater than startFrame."],
+                                    "trackId": ["type": "string", "description": "Optional existing track id."],
+                                    "mediaRef": ["type": "string", "description": "Optional imported asset id. Mutually exclusive with candidateURL."],
+                                    "candidateURL": ["type": "string", "description": "Optional HTTPS source that has not been imported yet. Mutually exclusive with mediaRef."],
+                                    "license": ["type": "string", "description": "Required with candidateURL."],
+                                    "attribution": ["type": "string", "description": "Required with candidateURL."],
+                                    "sourceStartSeconds": ["type": "number", "description": "Optional selected source span, with sourceEndSeconds."],
+                                    "sourceEndSeconds": ["type": "number", "description": "Optional selected source span, with sourceStartSeconds."],
+                                    "notes": ["type": "string", "description": "Optional shot note."],
+                                ]),
+                            ],
+                            "notes": ["type": "string", "description": "Optional plan notes."],
+                        ],
+                    ],
+                    "patch": [
+                        "type": "object",
+                        "description": "Update only. Full replacement values for supplied name, goal, sections, shots, and notes.",
+                        "properties": [
+                            "name": ["type": "string", "description": "Replacement plan name."],
+                            "goal": ["type": "string", "description": "Replacement goal."],
+                            "sections": [
+                                "type": "array",
+                                "description": "Complete replacement sections. Preserve existing sectionIds to keep them; omitted ids become new sections.",
+                                "items": objectSchema(properties: [
+                                    "sectionId": ["type": "string", "description": "Existing section id to preserve, or omit for a new section."],
+                                    "title": ["type": "string", "description": "Section title."],
+                                    "summary": ["type": "string", "description": "Optional section summary."],
+                                    "startFrame": ["type": "integer", "description": "Timeline frame, inclusive."],
+                                    "endFrame": ["type": "integer", "description": "Timeline frame, exclusive. Must be greater than startFrame."],
+                                ]),
+                            ],
+                            "shots": [
+                                "type": "array",
+                                "description": "Complete replacement shots. Preserve existing shotIds to keep them; omitted ids become new shots.",
+                                "items": objectSchema(properties: [
+                                    "shotId": ["type": "string", "description": "Existing shot id to preserve, or omit for a new shot."],
+                                    "title": ["type": "string", "description": "Shot title."],
+                                    "startFrame": ["type": "integer", "description": "Timeline frame, inclusive."],
+                                    "endFrame": ["type": "integer", "description": "Timeline frame, exclusive. Must be greater than startFrame."],
+                                    "trackId": ["type": "string", "description": "Optional existing track id."],
+                                    "mediaRef": ["type": "string", "description": "Optional imported asset id. Mutually exclusive with candidateURL."],
+                                    "candidateURL": ["type": "string", "description": "Optional HTTPS source that has not been imported yet. Mutually exclusive with mediaRef."],
+                                    "license": ["type": "string", "description": "Required with candidateURL."],
+                                    "attribution": ["type": "string", "description": "Required with candidateURL."],
+                                    "sourceStartSeconds": ["type": "number", "description": "Optional selected source span, with sourceEndSeconds."],
+                                    "sourceEndSeconds": ["type": "number", "description": "Optional selected source span, with sourceStartSeconds."],
+                                    "notes": ["type": "string", "description": "Optional shot note."],
+                                ]),
+                            ],
+                            "notes": ["type": "string", "description": "Replacement plan notes."],
+                        ]
+                    ],
+                    "status": ["type": "string", "enum": ["proposed", "approved", "ready", "applied", "superseded"], "description": "Status action only. plan_edit cannot set ready or applied."],
+                    "filterStatus": ["type": "string", "enum": ["proposed", "approved", "ready", "applied", "superseded"], "description": "Read only. List only plans with this status."],
+                    "limit": ["type": "integer", "description": "Read only. Plans to return, 1–100 (default 20)."],
+                ],
+                required: ["action"]
+            )
+        ),
+        AgentTool(
+            name: .applyPlan,
+            description: "Validates an approved plan against the current timeline and referenced media, and optionally reserves it as ready. It performs no timeline edits. Use commit:false to inspect blockers; use commit:true only when the readiness check has no blockers. Only assembly operations can later mark a ready plan applied.",
+            inputSchema: objectSchema(
+                properties: [
+                    "planId": ["type": "string", "description": "Exact plan id from a plan_edit receipt."],
+                    "commit": ["type": "boolean", "description": "Reserve an approved, fully ready plan as ready. Defaults to false."],
+                ],
+                required: ["planId"]
             )
         ),
         AgentTool(
@@ -679,6 +789,30 @@ enum ToolDefinitions {
             )
         ),
         AgentTool(
+            name: .applyTransition,
+            description: "Applies a first-class transition between two adjacent clips on the same track, as one undoable action. Dissolve, slide and push render their overlap through an upper-track copy of the incoming clip; dip-to-black needs no overlap and is expressed as opacity keyframes. The incoming clip needs enough unused source before its start to cover half the duration. Audio crossfades as matched fades on the linked clips, not equal-power. Deleting a clip in a transition removes the transition and its overlays with it.",
+            inputSchema: objectSchema(
+                properties: [
+                    "outgoingClipId": ["type": "string", "description": "Clip that plays first; the transition is centered on its end frame."],
+                    "incomingClipId": ["type": "string", "description": "Clip that plays second; must start exactly where the outgoing clip ends."],
+                    "type": ["type": "string", "enum": ["dissolve", "dipToBlack", "slide", "push"], "description": "Transition style."],
+                    "direction": ["type": "string", "enum": ["left", "right", "up", "down"], "description": "Required for slide and push: the direction of motion. Forbidden otherwise."],
+                    "durationFrames": ["type": "integer", "description": "Total transition length in frames, at least 2, fitting inside both clips."],
+                ],
+                required: ["outgoingClipId", "incomingClipId", "type", "durationFrames"]
+            )
+        ),
+        AgentTool(
+            name: .removeTransition,
+            description: "Removes a transition by id: deletes its overlay clips, clears the keyframes it wrote, restores the previous audio fades, and drops the record. One undo step. Works on stale transitions too.",
+            inputSchema: objectSchema(
+                properties: [
+                    "transitionId": ["type": "string", "description": "Transition id from an apply_transition receipt or get_timeline."],
+                ],
+                required: ["transitionId"]
+            )
+        ),
+        AgentTool(
             name: .syncClips,
             description: "Align one or more clips to a reference clip by shifting targets on the timeline — use for dual-system sound (camera + external audio) or multicam. Default mode 'auto' aligns by embedded source timecode when both files carry one (exact, confidence 1.0), falling back to audio cross-correlation otherwise (seeded by capture dates when present); force a method with mode. referenceClipId stays put unless a target would land before frame 0, in which case the whole group shifts right together (reported as shiftedFrames). Returns offsetFrames, confidence (0–1), and method (timecode|audio) per target; refuses weak audio matches. Refused on multicam clips — a group's members are already aligned by its sync maps (manage_multicam).",
             inputSchema: objectSchema(
@@ -1149,16 +1283,34 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .findStockMedia,
-            description: "Searches free, openly-licensed sources for media to fill a gap in the cut — Creative Commons stills and sound effects with no setup at all, plus Pexels stock photography and video once the user has added their free Pexels key in Settings. Costs nothing and needs no account with Palmier.\n\nThis only searches; it never downloads. Each hit comes back with a direct `url` you pass to import_media (source.url), then place with add_clips. Use it when the library has no coverage of what the edit needs — search_media only finds what is already imported.\n\nEvery hit carries `license`, `licenseUrl`, `creator`, and a ready-made `attribution` line. Non-commercial and no-derivative results are filtered out, but attribution is still usually required, so read the license before publishing.\n\nOnly Pexels serves video, so kind='video' needs that key; 'providers' reports per-source status, including which source was skipped and why. Phrase the query as a subject ('rain on a window at night'), not a style.",
+            description: "Searches free, openly-licensed sources for media to fill a gap in the cut — Creative Commons stills and sound effects with no setup at all, plus Pixabay stock video and Pexels stock photography and video once free API keys are added in Settings. Costs nothing and needs no account with Palmier.\n\nThis only searches; it never downloads. Each hit comes back with a direct `url` you pass to import_media (source.url), then place with add_clips. Use it when the library has no coverage of what the edit needs — search_media only finds what is already imported.\n\nEvery hit carries `license`, `licenseUrl`, `creator`, and a ready-made `attribution` line. Non-commercial and no-derivative results are filtered out, but attribution is still usually required, so read the license before publishing.\n\nVideo needs a configured keyed source; 'providers' reports per-source status, including which source was skipped and why. Phrase the query as a subject ('rain on a window at night'), not a style.",
             inputSchema: objectSchema(
                 properties: [
                     "query": ["type": "string", "description": "What to look for, as a plain subject description."],
                     "kind": ["type": "string", "enum": StockMediaKind.allCases.map(\.rawValue), "description": "What to search for (default image)."],
-                    "orientation": ["type": "string", "enum": ["landscape", "portrait", "square"], "description": "Pexels only; defaults to landscape. Openverse ignores it."],
-                    "maxDurationSeconds": ["type": "integer", "description": "Skip Pexels videos longer than this. Ignored for images and audio."],
+                    "orientation": ["type": "string", "enum": ["landscape", "portrait", "square"], "description": "Pexels only; defaults to landscape. Openverse and Pixabay ignore it."],
+                    "maxDurationSeconds": ["type": "integer", "description": "Skip stock videos longer than this. Ignored for images and audio."],
                     "limit": ["type": "integer", "description": "Hits to return, 1–20 (default 8)."],
                 ],
                 required: ["query"]
+            )
+        ),
+        AgentTool(
+            name: .findShotCandidates,
+            description: "Find footage worth cutting by combining ready library evidence with downloadable stock catalog rows. It normalizes local visual score and spoken matches with remote license, span, dimension, and duration metadata, ranks usable local matches first, and reports skipped rows with reasons. It never downloads, imports, or places media: import a remote url with import_media, then place mediaRef with add_clips. Query visual captions or exact spoken words; kind is required because visual and spoken evidence differ.",
+            inputSchema: objectSchema(
+                properties: [
+                    "query": ["type": "string", "description": "Subject caption for visual search or exact words for spoken matching."],
+                    "kind": ["type": "string", "enum": StockMediaKind.allCases.map(\.rawValue), "description": "Required media kind."],
+                    "scope": ["type": "string", "enum": ["visual", "spoken", "both"], "description": "Library evidence to use. Images need visual; audio needs spoken."],
+                    "mediaRef": ["type": "string", "description": "Optional. Restrict library matches to one asset. Remote stock is unrestricted."],
+                    "includeLibrary": ["type": "boolean", "description": "Include imported media (default true)."],
+                    "includeRemote": ["type": "boolean", "description": "Include downloadable stock (default true)."],
+                    "orientation": ["type": "string", "enum": ["landscape", "portrait", "square"], "description": "Pexels only; defaults to landscape. Openverse and Pixabay ignore it."],
+                    "maxDurationSeconds": ["type": "integer", "description": "Skip remote videos longer than this. Ignored for images and audio."],
+                    "limit": ["type": "integer", "description": "Usable candidates to return, 1–20 (default 8)."],
+                ],
+                required: ["query", "kind"]
             )
         ),
         AgentTool(

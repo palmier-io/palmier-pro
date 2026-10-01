@@ -18,9 +18,103 @@ struct StockMediaTests {
         #expect(!provider.supportedKinds.contains(.video))
     }
 
-    @Test func pexelsIsTheOnlyVideoSource() {
-        #expect(PexelsProvider().supportedKinds.contains(.video))
-        #expect(!OpenverseProvider().supportedKinds.contains(.video))
+    @Test func pexelsOffersVideoAndPhotography() {
+        #expect(PexelsProvider().supportedKinds == [.image, .video])
+    }
+
+    @Test func pixabayOffersVideoWithoutKeylessImageOrAudioSupport() {
+        #expect(PixabayProvider().supportedKinds == [.video])
+    }
+
+    @Test func providerOutcomesKeepTheirDisplayNames() {
+        let outcome = StockProviderOutcome(
+            id: "pixabay",
+            displayName: "Pixabay",
+            status: .needsAPIKey,
+            count: 0,
+            message: "Pixabay needs a free API key."
+        )
+        #expect(outcome.receipt["displayName"] as? String == "Pixabay")
+    }
+
+    @Test func pixabayRequestUsesKeySafeSearchAndDocumentedPageBounds() throws {
+        let query = StockMediaQuery(text: "harbor & sunset", kind: .video, orientation: nil, maxDurationSeconds: nil, limit: 1)
+        let url = try #require(PixabayProvider.searchURL(query, key: "key-1"))
+        let items = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
+        let values = Dictionary(uniqueKeysWithValues: items.compactMap { item in item.value.map { (item.name, $0) } })
+        #expect(values["key"] == "key-1")
+        #expect(values["q"] == "harbor & sunset")
+        #expect(values["per_page"] == "3")
+        #expect(values["safesearch"] == "true")
+    }
+
+    @Test func pixabayPrefersDocumentedMediumFile() {
+        let files = [
+            "tiny": PixabayProvider.VideoResponse.Rendition(url: "https://cdn.pixabay.com/tiny.mp4", width: 640, height: 360, size: 1, thumbnail: nil),
+            "medium": PixabayProvider.VideoResponse.Rendition(url: "https://cdn.pixabay.com/medium.mp4", width: 1280, height: 720, size: 10, thumbnail: "https://cdn.pixabay.com/medium.jpg"),
+            "large": PixabayProvider.VideoResponse.Rendition(url: "https://cdn.pixabay.com/large.mp4", width: 3840, height: 2160, size: 100, thumbnail: nil),
+        ]
+        #expect(PixabayProvider.bestRendition(files)?.url == "https://cdn.pixabay.com/medium.mp4")
+    }
+
+    @Test func pixabayFallsBackOnlyToDownloadableProgressiveFiles() {
+        let files = [
+            "large": PixabayProvider.VideoResponse.Rendition(url: "", width: 3840, height: 2160, size: 100, thumbnail: nil),
+            "medium": PixabayProvider.VideoResponse.Rendition(url: "https://cdn.pixabay.com/medium.mp4", width: nil, height: nil, size: 10, thumbnail: nil),
+            "tiny": PixabayProvider.VideoResponse.Rendition(url: "https://cdn.pixabay.com/tiny.mp4", width: 640, height: 360, size: 1, thumbnail: nil),
+        ]
+        #expect(PixabayProvider.bestRendition(files)?.url == "https://cdn.pixabay.com/tiny.mp4")
+        #expect(PixabayProvider.bestRendition([:]) == nil)
+    }
+
+    @Test func pixabayMapsLicensesAttributionDimensionsAndDuration() throws {
+        let response = try JSONDecoder().decode(PixabayProvider.VideoResponse.self, from: Data(
+            """
+            {"hits": [{
+              "id": 125,
+              "pageURL": "https://pixabay.com/videos/id-125/",
+              "tags": "harbor, sunset",
+              "duration": 12,
+              "videos": {"medium": {
+                "url": "https://cdn.pixabay.com/video/medium.mp4",
+                "width": 1280, "height": 720, "size": 10,
+                "thumbnail": "https://cdn.pixabay.com/video/medium.jpg"
+              }},
+              "user": "Example Filmmaker"
+            }]}
+            """.utf8
+        ))
+        let query = StockMediaQuery(text: "harbor sunset", kind: .video, orientation: nil, maxDurationSeconds: 30, limit: 5)
+        let hit = try #require(PixabayProvider.hit(response.hits[0], query: query))
+        #expect(hit.id == "pixabay-video-125")
+        #expect(hit.title == "harbor, sunset")
+        #expect(hit.license == "Pixabay Content License")
+        #expect(hit.licenseURL == "https://pixabay.com/service/license-summary/")
+        #expect(hit.creator == "Example Filmmaker")
+        #expect(hit.attribution == "Video by Example Filmmaker via Pixabay")
+        #expect(hit.durationSeconds == 12)
+        #expect(hit.width == 1280)
+        #expect(hit.height == 720)
+
+        let tooLong = StockMediaQuery(text: "harbor sunset", kind: .video, orientation: nil, maxDurationSeconds: 5, limit: 5)
+        #expect(PixabayProvider.hit(response.hits[0], query: tooLong) == nil)
+    }
+
+    @Test func pixabayRejectsNonDownloadableLinksAndMissingCredentialsWithoutNetwork() async {
+        await #expect(throws: StockMediaError.needsAPIKey(provider: "Pixabay")) {
+            _ = try await PixabayProvider(apiKey: "").search(
+                StockMediaQuery(text: "harbor", kind: .video, orientation: nil, maxDurationSeconds: nil, limit: 3)
+            )
+        }
+        let bad = PixabayProvider.VideoResponse.Video(
+            id: 1, pageURL: nil, tags: nil, duration: nil,
+            videos: ["medium": PixabayProvider.VideoResponse.Rendition(
+                url: "http://cdn.pixabay.com/medium.mp4", width: 1280, height: 720, size: 1, thumbnail: nil
+            )],
+            user: nil
+        )
+        let query = StockMediaQuery(text: "harbor", kind: .video, orientation: nil, maxDurationSeconds: nil, limit: 3)
+        #expect(PixabayProvider.hit(bad, query: query) == nil)
     }
 
     @Test func bestFileSkipsStreamsAndPicksTheSmallestHD() {

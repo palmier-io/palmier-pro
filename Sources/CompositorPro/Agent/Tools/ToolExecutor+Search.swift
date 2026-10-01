@@ -37,56 +37,8 @@ extension ToolExecutor {
     private func visualResults(
         _ editor: EditorViewModel, query: String, limit: Int, restrict: Set<String>?
     ) async -> (moments: [[String: Any]], index: [String: Any]?) {
-        let coordinator = editor.searchIndex
-        let indexable = editor.mediaAssets.filter {
-            ($0.type == .video || $0.type == .image) && (restrict?.contains($0.id) ?? true)
-        }
-        if !indexable.isEmpty, visualSearchModel.enabled, visualSearchModel.state == .unknown {
-            await visualSearchModel.prepare()
-        }
-        if !indexable.isEmpty, visualSearchModel.enabled, visualSearchModel.state == .notInstalled {
-            visualSearchModel.download()
-        }
-
-        let status = Self.visualStatus(coordinator, model: visualSearchModel)
-        var indexed: Int?
-        if let spec = visualSearchModel.embedder?.spec {
-            let urls = indexable.map(\.url)
-            indexed = await Task.detached {
-                urls.filter { !VisualIndexer.needsIndex(url: $0, spec: spec) }.count
-            }.value
-        }
-
-        var index: [String: Any]?
-        if !indexable.isEmpty, status != "ready" || (indexed ?? indexable.count) < indexable.count {
-            var info: [String: Any] = ["status": status, "indexableAssets": indexable.count]
-            if let indexed { info["indexedAssets"] = indexed }
-            if case .downloading(let progress) = visualSearchModel.state {
-                info["modelDownloadProgress"] = progress
-            }
-            if case .failed(let reason) = visualSearchModel.state {
-                info["modelDownloadError"] = reason
-            }
-            index = info
-        }
-
-        let hits = await coordinator.search(query: query, limit: limit, within: restrict)
-        let moments = hits.map { hit -> [String: Any] in
-            let asset = editor.mediaAssets.first { $0.id == hit.assetID }
-            var entry: [String: Any] = [
-                "mediaRef": hit.assetID,
-                "name": asset?.name ?? "",
-                "score": Double(hit.score),
-            ]
-            if asset?.type == .image {
-                entry["type"] = "image"
-            } else {
-                entry["startSeconds"] = hit.shotStart
-                entry["endSeconds"] = hit.shotEnd
-            }
-            return entry
-        }
-        return (moments, index)
+        let fetch = await fetchVisualCandidates(editor, query: query, limit: limit, restrict: restrict)
+        return (fetch.moments, fetch.index)
     }
 
     private func spokenResults(
@@ -104,20 +56,6 @@ extension ToolExecutor {
                 "endSeconds": hit.end,
                 "text": hit.text,
             ]
-        }
-    }
-
-    private static func visualStatus(
-        _ coordinator: SearchIndexCoordinator,
-        model: any VisualSearchModelLoading
-    ) -> String {
-        guard model.enabled else { return "disabled" }
-        switch model.state {
-        case .ready: return coordinator.indexingActive ? "indexing" : "ready"
-        case .notInstalled: return "modelNotInstalled"
-        case .downloading: return "downloadingModel"
-        case .preparing, .unknown: return "preparing"
-        case .failed: return "failed"
         }
     }
 }

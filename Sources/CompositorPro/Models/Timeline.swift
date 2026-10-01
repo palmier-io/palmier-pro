@@ -23,6 +23,7 @@ struct Timeline: Codable, Sendable, Equatable, Identifiable {
     var folderId: String?
     var tracks: [Track] = []
     var markers: [TimelineMarker] = []
+    var transitions: [TimelineTransition] = []
 
     var totalFrames: Int {
         var maxFrame = 0
@@ -67,7 +68,7 @@ struct Timeline: Codable, Sendable, Equatable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, fps, width, height, settingsConfigured, folderId, tracks, markers
+        case id, name, fps, width, height, settingsConfigured, folderId, tracks, markers, transitions
     }
 }
 
@@ -83,7 +84,8 @@ extension Timeline {
             settingsConfigured: (try? c.decode(Bool.self, forKey: .settingsConfigured)) ?? false,
             folderId: try? c.decode(String.self, forKey: .folderId),
             tracks: try c.decode([Track].self, forKey: .tracks),
-            markers: (try? c.decode([TimelineMarker].self, forKey: .markers)) ?? []
+            markers: (try? c.decode([TimelineMarker].self, forKey: .markers)) ?? [],
+            transitions: (try? c.decode([TimelineTransition].self, forKey: .transitions)) ?? []
         )
     }
 }

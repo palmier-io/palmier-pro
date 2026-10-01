@@ -7,11 +7,14 @@ struct ProjectPackageContents: Sendable {
     var projectFile: ProjectFile
     var manifest: MediaManifest?
     var manifestUnreadable: Bool = false
+    var plans: [EditPlan]?
+    var plansUnreadable: Bool = false
 }
 
 struct ProjectPackageSnapshot: Sendable {
     var timeline: Data
     var manifest: Data?
+    var plans: Data?
     var thumbnail: Data?
     var chatSessionFiles: [(name: String, data: Data)]
 }
@@ -42,13 +45,17 @@ class VideoProject: NSDocument {
     /// Decoded off-main in read(), applied on main in makeWindowControllers.
     private nonisolated(unsafe) var loadedProjectFile: ProjectFile?
     private nonisolated(unsafe) var loadedManifest: MediaManifest?
+    private nonisolated(unsafe) var loadedPlans: [EditPlan]?
+    private nonisolated(unsafe) var loadedPlansUnreadable = false
 
     /// Set when media.json existed but failed to decode, so saves preserve it instead of clobbering.
     private nonisolated(unsafe) var manifestLoadFailed = false
+    private nonisolated(unsafe) var plansLoadFailed = false
 
     /// Captured on main thread as cheap value copies; encoded off-main in write().
     private nonisolated(unsafe) var snapshotProjectFile: ProjectFile?
     private nonisolated(unsafe) var snapshotManifest: MediaManifest?
+    private nonisolated(unsafe) var snapshotPlans: Data?
     private nonisolated(unsafe) var snapshotThumbnail: Data?
     private nonisolated(unsafe) var snapshotChatSessionFiles: [(name: String, data: Data)] = []
     private nonisolated(unsafe) var snapshotSourceProjectURL: URL?
@@ -86,6 +93,8 @@ class VideoProject: NSDocument {
         loadedProjectFile = contents.projectFile
         loadedManifest = contents.manifest
         manifestLoadFailed = contents.manifestUnreadable
+        loadedPlans = contents.plans
+        plansLoadFailed = contents.plansUnreadable
         let timelines = loadedProjectFile?.timelines ?? []
         Log.project.notice(
             "read ok timelines=\(timelines.count)",
@@ -126,10 +135,13 @@ class VideoProject: NSDocument {
             manifestUnreadable = false
         }
 
+        let plans = try EditPlanStore.readPackageFile(at: url)
         return ProjectPackageContents(
             projectFile: projectFile,
             manifest: manifest,
-            manifestUnreadable: manifestUnreadable
+            manifestUnreadable: manifestUnreadable,
+            plans: plans.plans,
+            plansUnreadable: plans.unreadable
         )
     }
 
@@ -239,6 +251,7 @@ class VideoProject: NSDocument {
 
         let file = snapshotProjectFile
         let manifest = snapshotManifest
+        let plans = snapshotPlans
         let thumbnail = snapshotThumbnail
         let chatSessionFiles = snapshotChatSessionFiles
         let sourceURL = snapshotSourceProjectURL
@@ -256,6 +269,7 @@ class VideoProject: NSDocument {
             ProjectPackageSnapshot(
                 timeline: data,
                 manifest: manifest.flatMap { try? JSONEncoder().encode($0) },
+                plans: plans,
                 thumbnail: thumbnail,
                 chatSessionFiles: chatSessionFiles
             ),
@@ -270,6 +284,7 @@ class VideoProject: NSDocument {
         editorViewModel.flushPendingManifestMetadataUpdates()
         snapshotProjectFile = editorViewModel.projectFileSnapshot()
         snapshotManifest = Self.manifestSnapshot(manifest: editorViewModel.mediaManifest, loadFailed: manifestLoadFailed)
+        snapshotPlans = Self.plansSnapshotData(plans: editorViewModel.editPlans, loadFailed: plansLoadFailed)
         snapshotThumbnail = captureThumbnail()
         snapshotChatSessionFiles = editorViewModel.agentService.sessions
             .filter { !$0.messages.isEmpty }
@@ -283,6 +298,18 @@ class VideoProject: NSDocument {
         // If the manifest failed to load, don't overwrite the (recoverable) original with an empty one.
         if loadFailed && manifest.entries.isEmpty && manifest.folders.isEmpty { return nil }
         return manifest
+    }
+
+    nonisolated static func plansSnapshotData(plans: [EditPlan], loadFailed: Bool) -> Data? {
+        // If saved plans are unreadable, preserve the recoverable original instead of replacing
+        // it with whatever happens to be in memory.
+        if loadFailed { return nil }
+        do {
+            return try EditPlanStore.encode(plans)
+        } catch {
+            Log.project.error("save: plans encode failed; preserving the previous plans file")
+            return nil
+        }
     }
 
     private nonisolated static func requiredData(_ name: String, in packageURL: URL) throws -> Data {
@@ -308,6 +335,11 @@ class VideoProject: NSDocument {
             try manifest.write(to: packageURL.appendingPathComponent(Project.manifestFilename), options: .atomic)
         } else {
             try copyPreservedFile(Project.manifestFilename, from: sourceURL, to: packageURL, fm: fm)
+        }
+        if let plans = snapshot.plans {
+            try plans.write(to: packageURL.appendingPathComponent(Project.plansFilename), options: .atomic)
+        } else {
+            try copyPreservedFile(Project.plansFilename, from: sourceURL, to: packageURL, fm: fm)
         }
         if let thumbnail = snapshot.thumbnail {
             try thumbnail.write(to: packageURL.appendingPathComponent(Project.thumbnailFilename), options: .atomic)
@@ -438,6 +470,9 @@ class VideoProject: NSDocument {
         }
         editorViewModel.undo.attach(undoManager)
         editorViewModel.projectURL = fileURL
+        editorViewModel.editPlans = loadedPlans ?? []
+        editorViewModel.editPlansLoadFailed = loadedPlansUnreadable
+        loadedPlans = nil
         editorViewModel.agentService.loadSessions(from: fileURL)
         editorViewModel.agentService.onSessionsChanged = { [weak self] in
             self?.updateChangeCount(.changeDone)

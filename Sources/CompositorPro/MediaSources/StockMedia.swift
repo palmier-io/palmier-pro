@@ -118,12 +118,18 @@ struct StockProviderOutcome: Sendable {
     }
 
     let id: String
+    let displayName: String
     let status: Status
     let count: Int
     let message: String?
 
     var receipt: [String: Any] {
-        var out: [String: Any] = ["provider": id, "status": status.rawValue, "count": count]
+        var out: [String: Any] = [
+            "provider": id,
+            "displayName": displayName,
+            "status": status.rawValue,
+            "count": count,
+        ]
         if let message { out["message"] = message }
         return out
     }
@@ -136,26 +142,42 @@ struct StockMediaResult: Sendable {
 }
 
 /// Free, openly-licensed media search. Openverse covers images and audio with no
-/// credentials; Pexels adds stock video and photography once the user supplies a free key.
+/// credentials. Pixabay carries free video search once the user supplies a key; Pexels remains
+/// available for photography and video on accounts that already hold a key.
 enum StockMediaSearch {
     static func search(_ query: StockMediaQuery) async throws -> StockMediaResult {
+        let (hits, outcomes, totals, scoped) = try await collect(query)
+        return try finalize(hits: hits, outcomes: outcomes, totals: totals, query: scoped)
+    }
+
+    /// Runs every provider against one normalized query and preserves each source's outcome.
+    /// Unlike `search`, this does not treat an empty aggregate as a failure; a unified caller
+    /// may still have local candidates and must see exactly which remote sources succeeded.
+    static func collect(_ query: StockMediaQuery) async throws -> (
+        hits: [StockMediaHit],
+        outcomes: [StockProviderOutcome],
+        totals: [Int],
+        query: StockMediaQuery
+    ) {
         let text = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw StockMediaError.emptyQuery }
 
         var scoped = query
         scoped.text = text
-        // Every provider is queried at once; there are only two, and a keyless source must not
-        // wait on a keyed one.
-        let providers: [any StockMediaProvider] = [OpenverseProvider(), PexelsProvider()]
+        // Every provider is queried at once; keyless and keyed sources both report their own
+        // availability, and a keyless source must not wait on a keyed one.
+        let providers: [any StockMediaProvider] = [OpenverseProvider(), PexelsProvider(), PixabayProvider()]
 
         var outcomes: [StockProviderOutcome] = []
         var collected: [StockMediaHit] = []
         var totals: [Int] = []
 
         for provider in providers {
+            try Task.checkCancellation()
             guard provider.supportedKinds.contains(scoped.kind) else {
                 outcomes.append(.init(
                     id: provider.id,
+                    displayName: provider.displayName,
                     status: .unsupportedKind,
                     count: 0,
                     message: "\(provider.displayName) does not provide \(scoped.kind.rawValue) media."
@@ -166,29 +188,48 @@ enum StockMediaSearch {
                 let hits = try await provider.search(scoped)
                 totals.append(hits.count)
                 collected.append(contentsOf: hits)
-                outcomes.append(.init(id: provider.id, status: .ok, count: hits.count, message: nil))
-            } catch let error as StockMediaError {
                 outcomes.append(.init(
                     id: provider.id,
-                    status: status(for: error),
-                    count: 0,
-                    message: error.errorDescription
+                    displayName: provider.displayName,
+                    status: .ok,
+                    count: hits.count,
+                    message: nil
                 ))
             } catch {
-                outcomes.append(.init(
-                    id: provider.id,
-                    status: .failed,
-                    count: 0,
-                    message: error.localizedDescription
-                ))
+                if error is CancellationError { throw error }
+                if let error = error as? StockMediaError {
+                    outcomes.append(.init(
+                        id: provider.id,
+                        displayName: provider.displayName,
+                        status: status(for: error),
+                        count: 0,
+                        message: error.errorDescription
+                    ))
+                } else {
+                    outcomes.append(.init(
+                        id: provider.id,
+                        displayName: provider.displayName,
+                        status: .failed,
+                        count: 0,
+                        message: error.localizedDescription
+                    ))
+                }
             }
         }
+        return (collected, outcomes, totals, scoped)
+    }
 
-        // Pexels is the only video source, so a video search that found nothing is a real
+    private static func finalize(
+        hits: [StockMediaHit],
+        outcomes: [StockProviderOutcome],
+        totals: [Int],
+        query: StockMediaQuery
+    ) throws -> StockMediaResult {
+        // A video search with at least one working provider and no usable hits is a real
         // absence; for images and audio an empty result may simply mean every source missed.
-        let usable = dedupe(collected).prefix(scoped.limit)
+        let usable = dedupe(hits).prefix(query.limit)
         guard !usable.isEmpty else {
-            if scoped.kind == .video, outcomes.contains(where: { $0.status == .ok }) {
+            if query.kind == .video, outcomes.contains(where: { $0.status == .ok }) {
                 throw StockMediaError.noUsableResults
             }
             return StockMediaResult(hits: [], outcomes: outcomes, totalResults: nil)

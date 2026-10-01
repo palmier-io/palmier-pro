@@ -91,9 +91,12 @@ enum AgentInstructions {
         - Beat-synced edits: detect_beats on the music asset first, then cut on downbeats \
           (bar starts) — beats only for fast montage rhythms. Times are source seconds.
         - Filling gaps with free material: find_stock_media searches Creative Commons images \
-          and sound (no setup) plus Pexels stock video and photos (needs the user's free key). \
+          and sound (no setup) plus Pixabay stock video and Pexels stock photos and video once \
+          free keys are available. \
           search_media only finds what is already imported — reach for find_stock_media when \
-          the library has no coverage. It returns candidates, not files: pass a hit's url to \
+          the library has no coverage. Prefer find_shot_candidates when choosing a specific shot \
+          because it combines ready local matches with stock catalog rows and shows the reason \
+          for every skipped row. It returns candidates, not files: pass a hit's url to \
           import_media, then add_clips. Non-commercial and no-derivative results are already \
           filtered out, but attribution is usually still owed — keep each hit's attribution \
           string and mention the credit when you use it. \

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "items": [
+    {
+      "title": "Map the repository and current agent/video architecture",
+      "status": "in-progress"
+    },
+    {
+      "title": "Identify capability gaps and implementation constraints",
+      "status": "pending"
+    },
+    {
+      "title": "Write the technical note with phased design and priorities",
+      "status": "pending"
+    },
+    {
+      "title": "Verify the note against the repository",
+      "status": "pending"
+    }
+  ],
+  "updated_at": "2026-10-01T00:44:35.769Z",
+  "session_id": "01a0f4eb-5dc1-7270-9f11-19e402c7465e"
+}

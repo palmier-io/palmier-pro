@@ -51,10 +51,15 @@ extension ToolExecutor {
             "Candidates only — nothing was downloaded. Pass a hit's url to import_media to bring it into the library, then add_clips to place it.",
             "Every hit carries its license and an attribution line. Most of these licenses require crediting the creator, so keep the attribution string with the asset.",
         ]
-        if kind == .video {
-            notes.append("Stock video comes from Pexels, which needs a free API key in Settings. Without it, video search returns nothing.")
-        }
         let unavailable = result.outcomes.filter { $0.status == .needsAPIKey }
+        if kind == .video, result.hits.isEmpty {
+            let missing = unavailable.map(\.displayName).sorted()
+            if !missing.isEmpty {
+                notes.append("No video results because \(missing.joined(separator: " and ")) \(missing.count == 1 ? "is" : "are") not configured. Add a free Pixabay key in Settings; an existing Pexels key also works.")
+            } else {
+                notes.append("Video search did not return usable results; providers report why.")
+            }
+        }
         for outcome in unavailable {
             notes.append(outcome.message ?? "\(outcome.id) is not configured.")
         }

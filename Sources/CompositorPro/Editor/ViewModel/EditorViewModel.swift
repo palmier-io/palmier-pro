@@ -88,6 +88,8 @@ final class EditorViewModel {
         }
     }
     var mediaManifest = MediaManifest()
+    var editPlans: [EditPlan] = []
+    var editPlansLoadFailed = false
     // MARK: - Denoise bake state (session-scoped, keyed by mediaRef)
 
     var denoiseInFlight: Set<String> = []

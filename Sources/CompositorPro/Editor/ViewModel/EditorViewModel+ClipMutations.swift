@@ -208,8 +208,26 @@ extension EditorViewModel {
             for i in timeline.tracks.indices {
                 timeline.tracks[i].clips.removeAll { ids.contains($0.id) }
             }
+            dropTransitionsReferencingRemovedClips(ids)
             if prune { pruneEmptyTracks() }
         }
+    }
+
+    /// A transition whose outgoing, incoming, or overlay clip was deleted cannot render as
+    /// designed, so the record and its overlays go with the deletion in the same undo step.
+    private func dropTransitionsReferencingRemovedClips(_ ids: Set<String>) {
+        let doomed = timeline.transitions.filter { record in
+            ids.contains(record.outgoingClipId) || ids.contains(record.incomingClipId)
+                || !Set(record.overlayClipIds).isDisjoint(with: ids)
+        }
+        guard !doomed.isEmpty else { return }
+        let overlayIds = Set(doomed.flatMap(\.overlayClipIds))
+        for i in timeline.tracks.indices {
+            timeline.tracks[i].clips.removeAll {
+                overlayIds.contains($0.id) || ids.contains($0.id)
+            }
+        }
+        timeline.transitions.removeAll { record in doomed.contains { $0.id == record.id } }
     }
 
     // MARK: - Speed
