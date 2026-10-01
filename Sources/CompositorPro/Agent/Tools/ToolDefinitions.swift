@@ -45,6 +45,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case setClipSpeedRamp = "set_clip_speed_ramp"
     case qcTimeline = "qc_timeline"
     case applyStylePreset = "apply_style_preset"
+    case manageProxies = "manage_proxies"
     case duckAudio = "duck_audio"
     case applyTransition = "apply_transition"
     case removeTransition = "remove_transition"
@@ -747,6 +748,19 @@ enum ToolDefinitions {
                     ],
                 ],
                 required: ["clipId", "property", "keyframes"]
+            )
+        ),
+        AgentTool(
+            name: .manageProxies,
+            description: "Builds preview proxies for large source media, or clears them. Reach for this when the user says the timeline is stuttery, scrubbing lags, or the machine is struggling with 4K/8K footage — not for editing quality, because a proxy is a preview stand-in and never touches a master render. Call it with no arguments first to see which assets are large enough to be worth proxying and which already have one, then pass generate for the ones that matter. Each entry names a mediaRef or the clipIds that use it. Transcoding is off the main thread, writes to a staging file, and is reported per asset, so a failure on one does not hide the others. Sources smaller than the threshold are refused rather than wasted on. Remove clears a proxy; the original is always still the source of truth. Long-running: one large file can take minutes.",
+            inputSchema: objectSchema(
+                properties: [
+                    "generate": ["type": "array", "description": "Proxies to build. Each entry needs mediaRef or clipIds.", "items": ["type": "object", "properties": ["mediaRef": ["type": "string"], "clipIds": ["type": "array", "items": ["type": "string"]]]]],
+                    "remove": ["type": "array", "description": "Proxies to delete. Each entry needs mediaRef or clipIds.", "items": ["type": "object", "properties": ["mediaRef": ["type": "string"], "clipIds": ["type": "array", "items": ["type": "string"]]]]],
+                    "list": ["type": "boolean", "description": "Report existing proxies and the assets large enough to be worth one. Default true when neither generate nor remove is given."],
+                    "longEdge": ["type": "integer", "enum": [480, 540, 720, 1080], "description": "Proxy long edge. 540 is the default and the safest on a slow machine; 1080 is for high-resolution sources. Changing it rebuilds affected proxies."],
+                ],
+                required: []
             )
         ),
         AgentTool(

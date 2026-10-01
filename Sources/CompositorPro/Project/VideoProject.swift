@@ -454,6 +454,7 @@ class VideoProject: NSDocument {
 
     override func close() {
         super.close()
+        editorViewModel.detachProxyStore()
         DispatchQueue.main.async {
             if AppState.shared.activeProject === self {
                 AppState.shared.showHome()
@@ -470,6 +471,11 @@ class VideoProject: NSDocument {
         }
         editorViewModel.undo.attach(undoManager)
         editorViewModel.projectURL = fileURL
+        // Proxies are a preview cache, not project state: an unsaved project has nowhere to put
+        // them, so preview falls back to the originals.
+        if let packageURL = fileURL {
+            editorViewModel.prepareProxyStore(projectDirectory: packageURL)
+        }
         editorViewModel.editPlans = loadedPlans ?? []
         editorViewModel.editPlansLoadFailed = loadedPlansUnreadable
         loadedPlans = nil

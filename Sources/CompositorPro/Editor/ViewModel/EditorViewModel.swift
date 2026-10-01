@@ -389,6 +389,13 @@ final class EditorViewModel {
 
     @ObservationIgnored let undo = EditorUndo()
     @ObservationIgnored let projectPackageCoordinator = ProjectPackageCoordinator()
+    // MARK: - Preview proxies (never consulted by export)
+
+    /// Preview-only proxy store for the open project; nil means "decode the originals".
+    @ObservationIgnored var proxyStore: ProxyStore?
+    /// mediaRef → proxy URL, refreshed whenever the store changes. The render path reads this
+    /// synchronously; re-checking freshness there would mean file I/O on the main actor.
+    @ObservationIgnored var proxyURLOverrides: [String: URL] = [:]
     @ObservationIgnored var onProjectCheckpointRequired: (() -> Void)?
     @ObservationIgnored var onCancelTimelineDrag: (() -> Void)?
     @ObservationIgnored var onPresentTimelineMarkerEditor: ((String) -> Void)?

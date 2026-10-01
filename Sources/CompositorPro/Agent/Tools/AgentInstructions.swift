@@ -94,6 +94,11 @@ enum AgentInstructions {
           and push are correct when the cut should feel like one continuous scene or a move; \
           dipToBlack is correct for a real time jump or a chapter break. Delete either clip and \
           the transition goes with it.
+        - Stuttery playback or slow scrubbing on big footage: manage_proxies, not a smaller \
+          export. Call it with no arguments to see which assets are large enough to be worth a \
+          proxy, then generate for those. A proxy only ever replaces the preview decode — export \
+          always reads the original, so never promise a proxy will change a render. Say so plainly \
+          if the user thought a proxy would fix export time; that is a different problem.
         - Making a whole cut look deliberate: apply_style_preset, one call, one undo step. \
           Reaches for the named look when the user describes a mood ("make it look like a \
           documentary", "warmer", "punchier for shorts") or when consistency across shots is the \

@@ -305,7 +305,8 @@ final class VideoEngine {
         let generation = invalidateRebuild()
         let startingVisualRefreshGeneration = visualRefreshGeneration
 
-        let mediaURLs = editor.mediaResolver.expectedURLMap()
+        let originalURLs = editor.mediaResolver.expectedURLMap()
+        let mediaURLs = editor.previewURLMap()
         let missingMediaRefs = editor.missingMediaRefs
         let assetSizes: [String: CGSize] = Dictionary(
             uniqueKeysWithValues: editor.mediaAssets.compactMap { asset in
@@ -347,12 +348,14 @@ final class VideoEngine {
                     resolveTimeline: resolveTimeline,
                     missingMediaRefs: missingMediaRefs,
                     renderSize: CGSize(width: snapshot.width, height: snapshot.height),
+                    // Breath and de-ess regions measure the real signal, so they read the
+                    // original even when preview decodes a proxy.
                     resolveBreathRanges: { mediaRef in
-                        guard let url = mediaURLs[mediaRef] else { return nil }
+                        guard let url = originalURLs[mediaRef] else { return nil }
                         return BreathDetector.cachedAnalysis(for: url, mediaRef: mediaRef)?.regions
                     },
                     resolveDeessRanges: { mediaRef in
-                        guard let url = mediaURLs[mediaRef] else { return nil }
+                        guard let url = originalURLs[mediaRef] else { return nil }
                         return DeEsser.cachedAnalysis(for: url, mediaRef: mediaRef)?.regions
                     }
                 )
