@@ -143,7 +143,7 @@ extension ToolExecutor {
             editor.mutateClips(ids: Set(input.clipIds), actionName: actionName) { clip in
                 let nonColor = (clip.effects ?? []).filter { !$0.type.hasPrefix("color.") }
                 if let pastedStack {
-                    clip.effects = nonColor + pastedStack
+                    writeCompleteGrade(&clip, stack: pastedStack)
                     return
                 }
                 let disabledColor = reset ? []
@@ -341,7 +341,7 @@ extension ToolExecutor {
 
 private func clamp3(_ v: Double) -> Double { (v * 1000).rounded() / 1000 }
 
-private struct GradeState {
+struct GradeState {
     var exposure, temperature, tint, contrast, highlights, shadows, blacks, whites: Double?
     var shadowsHue, shadowsAmount, shadowsLum: Double?
     var midsHue, midsAmount, midsGamma: Double?
@@ -417,7 +417,7 @@ private struct GradeState {
         }
     }
 
-    mutating func apply(_ i: ToolExecutor.ApplyColorInput, lutDestPath: String?) {
+    fileprivate mutating func apply(_ i: ToolExecutor.ApplyColorInput, lutDestPath: String?) {
         if let v = i.exposure { exposure = v }
         if let v = i.temperature { temperature = v }
         if let v = i.tint { tint = v }

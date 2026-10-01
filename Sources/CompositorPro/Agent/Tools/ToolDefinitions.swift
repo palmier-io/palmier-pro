@@ -44,6 +44,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case crossfadeAudio = "crossfade_audio"
     case setClipSpeedRamp = "set_clip_speed_ramp"
     case qcTimeline = "qc_timeline"
+    case applyStylePreset = "apply_style_preset"
     case duckAudio = "duck_audio"
     case applyTransition = "apply_transition"
     case removeTransition = "remove_transition"
@@ -746,6 +747,17 @@ enum ToolDefinitions {
                     ],
                 ],
                 required: ["clipId", "property", "keyframes"]
+            )
+        ),
+        AgentTool(
+            name: .applyStylePreset,
+            description: "Gives clips a named look in one undoable step, instead of you dialling in twenty knobs per shot. This is how a whole cut ends up looking like it was graded on purpose. Presets: documentary (honest and unobtrusive, for interviews and archival); cinematic (teal shadows against warm skin, soft S-curve, for narrative and trailers); travelVlog (bright, warm, open shadows, for travel and real estate); warmFilm (faded toe and warm whites, for nostalgia); noir (near-monochrome and hard, for stylised drama); cleanCorporate (neutral and even, so it never competes with on-screen text); socialPunch (saturated and contrasty, for short-form that has to win attention in a second). Defaults to every video and image clip; pass clipIds to grade a subset. It replaces each clip's existing grade, so read get_timeline first if a hand-made grade is already there. A look is COLOR ONLY — it does not add music, transitions, fades or pacing, so decide those separately. When one shot needs to differ, nudge it with apply_color rather than reaching for a second preset. The receipt returns each clip's resulting grade in apply_color's own vocabulary, so it is pasteable and adjustable.",
+            inputSchema: objectSchema(
+                properties: [
+                    "preset": ["type": "string", "enum": ["documentary", "cinematic", "travelVlog", "warmFilm", "noir", "cleanCorporate", "socialPunch"], "description": "The look to apply."],
+                    "clipIds": ["type": "array", "items": ["type": "string"], "description": "Clips to grade. Defaults to every video and image clip."],
+                ],
+                required: ["preset"]
             )
         ),
         AgentTool(

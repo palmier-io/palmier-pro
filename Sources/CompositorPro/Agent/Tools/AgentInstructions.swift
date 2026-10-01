@@ -94,6 +94,12 @@ enum AgentInstructions {
           and push are correct when the cut should feel like one continuous scene or a move; \
           dipToBlack is correct for a real time jump or a chapter break. Delete either clip and \
           the transition goes with it.
+        - Making a whole cut look deliberate: apply_style_preset, one call, one undo step. \
+          Reaches for the named look when the user describes a mood ("make it look like a \
+          documentary", "warmer", "punchier for shorts") or when consistency across shots is the \
+          whole job. Pick from the seven presets; do not hand-dial the same knobs onto every clip. \
+          A look is color only, so music, transitions and pacing stay separate calls. Then use \
+          apply_color to bring one stubborn shot back toward the rest.
         - Before you call an edit finished, run qc_timeline. It is read-only and finds the things \
           that silently ruin a render: media that went missing, clips overlapping on one track, \
           gaps, audio cutting in or out without a fade, a speed ramp reading past the end of the \
