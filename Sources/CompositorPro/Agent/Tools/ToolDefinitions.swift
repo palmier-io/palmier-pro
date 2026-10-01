@@ -46,6 +46,9 @@ enum ToolName: String, CaseIterable, Sendable {
     case qcTimeline = "qc_timeline"
     case applyStylePreset = "apply_style_preset"
     case manageProxies = "manage_proxies"
+    case offsetAudio = "offset_audio"
+    case freezeClip = "freeze_clip"
+    case syncToBeats = "sync_to_beats"
     case duckAudio = "duck_audio"
     case applyTransition = "apply_transition"
     case removeTransition = "remove_transition"
@@ -748,6 +751,44 @@ enum ToolDefinitions {
                     ],
                 ],
                 required: ["clipId", "property", "keyframes"]
+            )
+        ),
+        AgentTool(
+            name: .offsetAudio,
+            description: "Offsets a linked video and audio pair across their cut, in one undoable step. This is the J-cut and L-cut. A POSITIVE offsetFrames is a J-cut: the next shot's audio starts before its picture, so the viewer hears where you are going before they see it — use it to lead into a reveal, a location change, or a line that sets up the cutaway. A NEGATIVE offsetFrames is an L-cut: the outgoing audio runs on over the incoming picture, which carries the sentence across the cut and is the standard way to put B-roll under a talking head without losing the thought. Only works on a linked pair: add_clips creates one automatically for media that has audio, and manage_clip_links links a separately placed audio clip. The link stays intact, so the pair still travels together when you move it. Name only the video clip. clear:true locks picture and sound back together. Do not build a J-cut by unlinking, moving and relinking — that is three undo entries for one editorial idea and it leaves a broken pair if it fails part way.",
+            inputSchema: objectSchema(
+                properties: [
+                    "videoClipId": ["type": "string", "description": "The video clip of the linked pair."],
+                    "offsetFrames": ["type": "integer", "description": "Positive = J-cut (audio leads the picture). Negative = L-cut (audio holds past the picture). Must be shorter than the clip so both sides still overlap."],
+                    "clear": ["type": "boolean", "description": "Lock picture and sound back together."],
+                ],
+                required: ["videoClipId"]
+            )
+        ),
+        AgentTool(
+            name: .freezeClip,
+            description: "Holds one frame of a clip for a chosen number of frames, as one undoable step — the freeze frame that punctuates a joke, isolates a detail, or lets a graphic land. The hold sits at the clip's head, so this is the freeze-on-the-cut: put the clip at the beat and the picture stops there. Audio under the frozen picture keeps playing, which is what makes it usable over speech. This is the correct tool for a hold; do not fake it with an extremely slow speed ramp, which needs a hundred times the source and will not hold cleanly. It also freezes a still in place under a graphic: pass a clip on an upper track and it becomes a freeze over whatever is beneath.",
+            inputSchema: objectSchema(
+                properties: [
+                    "clipId": ["type": "string", "description": "Clip to freeze. Its picture holds; its audio continues."],
+                    "freezeFrames": ["type": "integer", "description": "How many frames to hold the picture for. 8-20 reads as a beat; more is a held tableau."],
+                    "atFrame": ["type": "integer", "description": "Which clip-relative source frame the hold shows. Defaults to 0. The hold itself always sits at the clip's head, so this picks the picture, not the position."],
+                ],
+                required: ["clipId", "freezeFrames"]
+            )
+        ),
+        AgentTool(
+            name: .syncToBeats,
+            description: "Places cut points and effects on the music's actual beats, with snapping — the montage and beat-sync operation. detect_beats reports beats; this acts on them, so the Agent does not have to convert seconds to frames itself or risk a cut landing between beats. Use downbeats (bar starts) for the structure of a montage and plain beats for fast cutting; cut on downbeats, not on every beat, or it reads mechanical. Each entry is placed at the Nth beat, and snapFrames (default 2) lets a requested beat fall slightly early or late when the music drifts. The receipt gives you the frame each one actually landed on, so a follow-up effect can sit exactly on the cut.",
+            inputSchema: objectSchema(
+                properties: [
+                    "mediaRef": ["type": "string", "description": "The music asset to read beats from, as returned by detect_beats."],
+                    "clipId": ["type": "string", "description": "Clip to cut at those beats. Split it into the resulting sections in one undoable step."],
+                    "beats": ["type": "array", "items": ["type": "integer"], "description": "Beat or downbeat indices within the clip, 0-based. Omit to cut on every downbeat in range."],
+                    "useDownbeats": ["type": "boolean", "description": "Treat the indices as downbeat (bar) numbers instead of beats. Default false."],
+                    "snapFrames": ["type": "integer", "description": "How far a beat may be moved to fit the clip's actual content. Default 2; 0 disables snapping so beats are used exactly."],
+                ],
+                required: ["mediaRef", "clipId"]
             )
         ),
         AgentTool(

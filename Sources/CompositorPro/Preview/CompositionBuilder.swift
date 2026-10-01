@@ -495,7 +495,9 @@ enum CompositionBuilder {
             return false
         }
 
-        if map.isConstantSpeed {
+        // A single segment is the ordinary case: one linear scale, no per-segment work. A freeze
+        // adds a segment even at constant speed, so segment count is the test, not constancy.
+        if segments.count == 1 {
             if abs(map.averageSpeed - 1) > 0.0001 {
                 compTrack.scaleTimeRange(
                     CMTimeRange(start: clipStart, duration: sourceDuration),

@@ -31,6 +31,11 @@ final class BeatStore {
         MainActor.assumeIsolated { analyses[mediaRef] }
     }
 
+    /// Installs an analysis without running the model. For tests that need a deterministic grid.
+    func seedForTesting(_ mediaRef: String, _ analysis: BeatAnalysis) {
+        analyses[mediaRef] = analysis
+    }
+
     /// Restores a prior session's analysis from the disk cache; never runs detection.
     @discardableResult
     func hydrate(for asset: MediaAsset) -> Task<Void, Never>? {

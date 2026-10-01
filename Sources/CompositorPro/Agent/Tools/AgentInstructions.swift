@@ -94,6 +94,13 @@ enum AgentInstructions {
           and push are correct when the cut should feel like one continuous scene or a move; \
           dipToBlack is correct for a real time jump or a chapter break. Delete either clip and \
           the transition goes with it.
+        - J-cuts and L-cuts are one call: offset_audio with a positive or negative frame count \
+          on a linked pair. Do not build one by unlinking, moving and relinking. Freeze frames are \
+          freeze_clip, not a very slow ramp. Cutting on music is sync_to_beats, which does the \
+          seconds-to-frames mapping — never convert detect_beats output yourself. The \
+          editing-techniques skill lists every technique with its tool, and — as importantly — the \
+          three this build genuinely cannot do (motion tracking, mask transitions, and sound \
+          design with a built-in SFX library). Read it before claiming an effect you cannot make.
         - Stuttery playback or slow scrubbing on big footage: manage_proxies, not a smaller \
           export. Call it with no arguments to see which assets are large enough to be worth a \
           proxy, then generate for those. A proxy only ever replaces the preview decode — export \

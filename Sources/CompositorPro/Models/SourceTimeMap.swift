@@ -13,6 +13,8 @@ import Foundation
 struct SourceTimeMap: Sendable, Equatable {
     /// Clip-relative timeline offset span the map covers.
     let durationFrames: Int
+    /// Leading frames that hold one source frame instead of advancing. A freeze, not a rate.
+    let frozenFrames: Int
     /// Speed at each clip-relative offset. Never empty; a constant-speed clip has one row.
     let profile: [SpeedPoint]
     /// Mean speed across the whole span, used where a single number is unavoidable.
@@ -34,13 +36,14 @@ struct SourceTimeMap: Sendable, Equatable {
     static let maximumSpeed: Double = 1000
 
     /// Constant-speed map. `durationFrames * speed` consumed source, matching the historical scalar.
-    init(durationFrames: Int, speed: Double) {
-        self.init(durationFrames: durationFrames, speed: speed, track: nil)
+    init(durationFrames: Int, speed: Double, frozenFrames: Int = 0) {
+        self.init(durationFrames: durationFrames, speed: speed, track: nil, frozenFrames: frozenFrames)
     }
 
     /// Piecewise-linear map from clip-relative speed keyframes. Unset track means constant `speed`.
-    init(durationFrames: Int, speed: Double, track: KeyframeTrack<Double>?) {
+    init(durationFrames: Int, speed: Double, track: KeyframeTrack<Double>?, frozenFrames: Int = 0) {
         let span = max(0, durationFrames)
+        self.frozenFrames = min(max(0, frozenFrames), span)
         let constant = SpeedPoint.clamped(speed)
         guard let track, track.keyframes.count > 1 else {
             self.profile = [SpeedPoint(offset: 0, speed: constant)]
@@ -61,8 +64,8 @@ struct SourceTimeMap: Sendable, Equatable {
         }
         self.profile = rows
         self.durationFrames = span
-        self.averageSpeed = span > 0
-            ? Self.integrate(rows, over: 0 ..< span) / Double(span)
+        self.averageSpeed = span > self.frozenFrames
+            ? Self.integrate(rows, over: 0 ..< (span - self.frozenFrames)) / Double(span - self.frozenFrames)
             : constant
     }
 
@@ -87,8 +90,12 @@ struct SourceTimeMap: Sendable, Equatable {
     }
 
     /// Source offset from trim start for a clip-relative timeline offset.
+    ///
+    /// A frozen lead consumes nothing, so every offset inside the hold maps to source frame 0.
     func sourceOffset(atTimelineOffset offset: Int) -> Double {
-        Self.integrate(profile, over: 0 ..< max(0, offset))
+        let elapsed = max(0, offset - frozenFrames)
+        guard elapsed > 0 else { return 0 }
+        return Self.integrate(profile, over: 0 ..< elapsed)
     }
 
     /// Source offset from trim start for an absolute timeline frame.
@@ -102,7 +109,7 @@ struct SourceTimeMap: Sendable, Equatable {
         if isConstantSpeed {
             return Int((Double(delta) * averageSpeed).rounded())
         }
-        let magnitude = Int(sourceOffset(atTimelineOffset: max(0, abs(delta))).rounded())
+        let magnitude = Int(sourceOffset(atTimelineOffset: frozenFrames + max(0, abs(delta))).rounded())
         return delta < 0 ? -magnitude : magnitude
     }
 
@@ -119,9 +126,16 @@ struct SourceTimeMap: Sendable, Equatable {
     /// Clip-relative timeline offset for a source offset, rounded to whole frames.
     func timelineOffset(forSourceOffset source: Double) -> Int {
         guard durationFrames > 0, let first = profile.first else { return 0 }
-        let target = min(max(source, 0), Self.integrate(profile, over: 0 ..< durationFrames))
+        let span = durationFrames - frozenFrames
+        guard span > 0 else { return 0 }
+        // Source frame 0 is the end of the hold and the first playable frame. Reporting the
+        // playable frame is the useful answer: it is where content actually starts.
+        guard source > 0 else { return frozenFrames }
+        let total = Self.integrate(profile, over: 0 ..< span)
+        let target = min(max(source, 0), total)
         if profile.count == 1 {
-            return min(max(Int((target / max(first.speed, 1e-12)).rounded()), 0), durationFrames)
+            let offset = Int((target / max(first.speed, 1e-12)).rounded())
+            return min(max(offset, 0), span) + frozenFrames
         }
         var consumed = 0.0
         for index in 0 ..< profile.count - 1 {
@@ -133,7 +147,7 @@ struct SourceTimeMap: Sendable, Equatable {
                 continue
             }
             let within = Self.segmentOffset(a: a, b: b, source: target - consumed)
-            return min(max(within, a.offset), min(b.offset, durationFrames))
+            return min(max(within, a.offset), span) + frozenFrames
         }
         return durationFrames
     }
@@ -158,10 +172,21 @@ struct SourceTimeMap: Sendable, Equatable {
 
     var segments: [Segment] {
         guard durationFrames > 0, let first = profile.first else { return [] }
+        let span = durationFrames - frozenFrames
+        let hold: [Segment] = frozenFrames > 0
+            // One source frame stretched across the hold: AVMutableComposition can express a
+            // freeze by scaling a single-frame slice, and nothing else can hold a frame.
+            ? [Segment(
+                timelineRange: 0 ..< frozenFrames,
+                sourceSpan: 1,
+                speed: 1 / Double(frozenFrames)
+            )]
+            : []
+        guard span > 0 else { return hold }
         guard profile.count > 1 else {
-            return [Segment(
-                timelineRange: 0 ..< durationFrames,
-                sourceSpan: Double(durationFrames) * first.speed,
+            return hold + [Segment(
+                timelineRange: frozenFrames ..< durationFrames,
+                sourceSpan: Double(span) * first.speed,
                 speed: first.speed
             )]
         }
@@ -169,10 +194,10 @@ struct SourceTimeMap: Sendable, Equatable {
         for index in 0 ..< profile.count - 1 {
             let a = profile[index]
             let b = profile[index + 1]
-            let start = min(a.offset, durationFrames)
-            let end = min(b.offset, durationFrames)
+            let start = frozenFrames + min(a.offset, span)
+            let end = frozenFrames + min(b.offset, span)
             guard start < end else { continue }
-            let sourceSpan = Self.integrate(profile, over: start ..< end)
+            let sourceSpan = Self.integrate(profile, over: a.offset ..< b.offset)
             result.append(Segment(
                 timelineRange: start ..< end,
                 sourceSpan: sourceSpan,
@@ -182,14 +207,14 @@ struct SourceTimeMap: Sendable, Equatable {
         // A ramp that ends before the clip does still has to play out its tail.
         if let last = result.last, last.timelineRange.upperBound < durationFrames {
             let start = last.timelineRange.upperBound
-            let sourceSpan = Self.integrate(profile, over: start ..< durationFrames)
+            let sourceSpan = Self.integrate(profile, over: (start - frozenFrames) ..< span)
             result.append(Segment(
                 timelineRange: start ..< durationFrames,
                 sourceSpan: sourceSpan,
                 speed: sourceSpan / Double(durationFrames - start)
             ))
         }
-        return result
+        return hold + result
     }
 
     // MARK: - Integration

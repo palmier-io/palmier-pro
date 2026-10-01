@@ -204,6 +204,9 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     /// Clip-relative speed envelope. Nil means constant `speed`; a ramp is authoritative here
     /// and `speed` stays the anchor value at offset 0.
     var speedTrack: KeyframeTrack<Double>?
+    /// Leading frames that hold one source frame instead of advancing. Audio still plays, which
+    /// is what makes a freeze usable over speech. Counted inside `durationFrames`.
+    var freezeFrames: Int = 0
 
     var effects: [Effect]?
 
@@ -218,7 +221,7 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         case linkGroupId, captionGroupId, multicamGroupId, textContent, textStyle, textAnimation, wordTimings
         case textFillMode
         case opacityTrack, positionTrack, scaleTrack, rotationTrack, cropTrack, volumeTrack
-        case speedTrack
+        case speedTrack, freezeFrames
         case effects, blendMode
     }
 
@@ -229,7 +232,12 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
 
     /// Source↔timeline conversion. The only place `speed` is integrated, so a ramp stays
     /// consistent across ripple, slip, sync, regions, captions, render and export.
-    var timeMap: SourceTimeMap { SourceTimeMap(durationFrames: durationFrames, speed: speed, track: speedTrack) }
+    var timeMap: SourceTimeMap {
+        SourceTimeMap(
+            durationFrames: durationFrames, speed: speed,
+            track: speedTrack, frozenFrames: freezeFrames
+        )
+    }
 
     /// Source frames consumed by the visible portion
     var sourceFramesConsumed: Int { timeMap.sourceFramesConsumed }
@@ -498,6 +506,11 @@ extension Clip {
     }
 
     /// Clamp fade ramps so head + tail can't exceed the clip's duration.
+    /// A hold can never be the whole clip: something has to move for an edit to read as one.
+    mutating func clampFreezeToDuration() {
+        freezeFrames = max(0, min(freezeFrames, max(0, durationFrames - 1)))
+    }
+
     mutating func clampFadesToDuration() {
         fadeInFrames = max(0, min(fadeInFrames, durationFrames))
         fadeOutFrames = max(0, min(fadeOutFrames, durationFrames - fadeInFrames))
@@ -542,6 +555,8 @@ extension Clip {
         let oldDuration = durationFrames
         durationFrames = newDuration
         rescaleWordTimings(from: oldDuration)
+        freezeFrames = Int((Double(freezeFrames) * Double(newDuration) / Double(oldDuration)).rounded())
+        clampFreezeToDuration()
         clampKeyframesToDuration()
         clampFadesToDuration()
     }
@@ -587,6 +602,7 @@ extension Clip {
             cropTrack: try? c.decode(KeyframeTrack<Crop>.self, forKey: .cropTrack),
             volumeTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .volumeTrack),
             speedTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .speedTrack),
+            freezeFrames: (try? c.decode(Int.self, forKey: .freezeFrames)) ?? 0,
             effects: try? c.decode([Effect].self, forKey: .effects),
             blendMode: try? c.decode(BlendMode.self, forKey: .blendMode)
         )

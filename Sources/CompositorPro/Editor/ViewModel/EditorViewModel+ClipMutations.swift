@@ -127,7 +127,9 @@ extension EditorViewModel {
     }
 
     @discardableResult
-    private func splitSingleClip(clipId: String, atFrame: Int) -> String? {
+    /// Splits one clip without touching its link partners. Internal so multi-cut operations
+    /// (beat sync) can drive it inside a single undo step.
+    func splitSingleClip(clipId: String, atFrame: Int) -> String? {
         guard let loc = findClip(id: clipId) else { return nil }
         let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
         guard let (left, right) = Self.splitValues(of: clip, atFrame: atFrame) else { return nil }
