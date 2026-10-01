@@ -53,6 +53,21 @@ if [ -f "$ROOT/$ENV_FILE" ]; then
 fi
 
 SIGNING_IDENTITY="${SIGNING_IDENTITY:-Developer ID Application: Palmier, Inc. (MMFLRC7562)}"
+
+# A machine without the release identity in its keychain cannot sign with it, and
+# install_name_tool has already invalidated whatever signature the build produced. Leaving the
+# bundle in that state makes dyld kill it on launch (SIGKILL / Code Signature Invalid), which
+# looks exactly like an instant crash. Fall back to an ad-hoc signature, which is enough to run
+# locally; only release builds actually need Developer ID.
+if ! security find-identity -v -p codesigning 2>/dev/null | grep -qF "$SIGNING_IDENTITY"; then
+  if [ "$CONFIG" = "release" ]; then
+    echo "!! $SIGNING_IDENTITY not found in the keychain." >&2
+    echo "!! Pass SIGNING_IDENTITY=<identity>, or put the certificate in the keychain." >&2
+    exit 1
+  fi
+  echo "==> $SIGNING_IDENTITY not in the keychain — signing ad-hoc so the app can still launch" >&2
+  SIGNING_IDENTITY="-"
+fi
 NOTARY_PROFILE="${NOTARY_PROFILE:-compositor-notary}"
 SENTRY_DSN="${SENTRY_DSN:-}"
 POSTHOG_PROJECT_TOKEN="${POSTHOG_PROJECT_TOKEN:-}"
