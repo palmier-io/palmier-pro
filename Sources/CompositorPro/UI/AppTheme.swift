@@ -568,6 +568,16 @@ enum AppTheme {
 
     // MARK: - Animation durations
 
+    /// The streaming activity dots. Values are preserved exactly from when these were hardcoded.
+    enum ActivityIndicator {
+        static let dotSize: CGFloat = 5
+        static let dotSpacing: CGFloat = 5
+        /// Opacity of a dot that is not the one currently pulsing.
+        static let dimmedOpacity: Double = 0.25
+        static let pulseDuration: Double = 0.25
+        static let pulseInterval: Double = 0.28
+    }
+
     enum Anim {
         static let hover: Double = 0.15
         static let transition: Double = 0.2

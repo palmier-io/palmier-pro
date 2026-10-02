@@ -653,12 +653,8 @@ final class AgentService {
 
     private static func isComplete(_ block: AgentContentBlock) -> Bool {
         switch block {
-        case .thinking(_, let signature):
-            !signature.isEmpty
-        case .redactedThinking(let data):
-            !data.isEmpty
-        case .openAIReasoning(_, _, _, _, let reasoningComplete):
-            reasoningComplete
+        case .thinking, .redactedThinking, .openAIReasoning:
+            AgentContentBlock.isReasoningComplete(block)
         case .text(let text):
             !text.isEmpty
         case .toolUse, .toolResult:
@@ -840,12 +836,42 @@ struct AgentMessage: Identifiable, Codable {
     var mentions: [AgentMention]
     var contextHint: String?
 
+    /// True while this message holds a reasoning block that has not finished arriving.
+    ///
+    /// The streaming indicator keys off this rather than off `isStreaming`, so a turn that answers
+    /// without reasoning is not presented as though the agent thought about it.
+    var hasIncompleteReasoning: Bool {
+        blocks.contains { !AgentContentBlock.isReasoningComplete($0) }
+    }
+
     init(id: UUID = UUID(), role: Role, blocks: [AgentContentBlock], mentions: [AgentMention] = [], contextHint: String? = nil) {
         self.id = id
         self.role = role
         self.blocks = blocks
         self.mentions = mentions
         self.contextHint = contextHint
+    }
+}
+
+extension AgentContentBlock {
+    /// Whether this block is one of the reasoning cases, which the indicator and the disclosure
+    /// treat as a group.
+    var isReasoning: Bool {
+        switch self {
+        case .thinking, .redactedThinking, .openAIReasoning: true
+        case .text, .toolUse, .toolResult: false
+        }
+    }
+
+    /// Completeness for the reasoning cases only. Text and tool blocks are complete by
+    /// construction and are not reasoning, so they never gate the streaming indicator.
+    static func isReasoningComplete(_ block: AgentContentBlock) -> Bool {
+        switch block {
+        case .thinking(_, let signature): !signature.isEmpty
+        case .redactedThinking(let data): !data.isEmpty
+        case .openAIReasoning(_, _, _, _, let reasoningComplete): reasoningComplete
+        case .text, .toolUse, .toolResult: true
+        }
     }
 }
 

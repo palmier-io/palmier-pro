@@ -63,10 +63,29 @@ struct AgentMessageView: View {
         // Tool-result user messages render merged into the preceding assistant row.
     }
 
+    /// A stable identity per block, so a row's own state stays with it while the block list grows.
+    ///
+    /// Reasoning and non-reasoning blocks are counted separately: reasoning blocks are appended as
+    /// they stream and never reordered, whereas a plain index shifts whenever a text block is added
+    /// ahead of one, which is what previously let expansion state attach to the wrong row.
+    private var renderedBlocks: [(key: String, block: AgentContentBlock)] {
+        var reasoning = 0
+        var other = 0
+        return message.blocks.map { block in
+            if block.isReasoning {
+                defer { reasoning += 1 }
+                return (key: "\(message.id.uuidString)#r\(reasoning)", block: block)
+            }
+            defer { other += 1 }
+            return (key: "\(message.id.uuidString)#o\(other)", block: block)
+        }
+    }
+
     @ViewBuilder
     private var assistantBody: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-            ForEach(Array(message.blocks.enumerated()), id: \.offset) { _, block in
+            ForEach(renderedBlocks, id: \.key) { entry in
+                let block = entry.block
                 switch block {
                 case .thinking(let text, let signature):
                     if !text.isEmpty {
@@ -102,7 +121,9 @@ struct AgentMessageView: View {
 private struct ThinkingSummaryView: View {
     let text: String
     let isComplete: Bool
-    @State private var isExpanded = false
+    /// One preference for all reasoning rows: someone who opens reasoning wants it open everywhere,
+    /// and a per-row choice was lost every time the panel was rebuilt.
+    @AppStorage("agent.reasoningExpanded") private var isExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
@@ -222,7 +243,7 @@ private struct ToolRunRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
             Button {
-                withAnimation(.easeOut(duration: 0.15)) { expanded.toggle() }
+                withAnimation(.easeOut(duration: AppTheme.Anim.hover)) { expanded.toggle() }
             } label: {
                 HStack(spacing: AppTheme.Spacing.sm) {
                     if isRunning {

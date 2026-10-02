@@ -302,7 +302,7 @@ struct AgentPanelView: View {
                         AgentMessageView(message: msg, toolResults: results)
                             .id(msg.id)
                     }
-                    if service.isStreaming {
+                    if service.isStreaming && service.messages.last?.hasIncompleteReasoning == true {
                         ThinkingDots().id("streaming-indicator")
                     }
                     errorBanner
