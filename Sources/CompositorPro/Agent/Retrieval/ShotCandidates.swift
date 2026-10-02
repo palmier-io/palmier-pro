@@ -149,7 +149,9 @@ enum ShotCandidateBuilder {
             let start = roundMilliseconds(input.startSeconds)
             let end = roundMilliseconds(input.endSeconds)
             let id = "library:\(asset.id):visual:\(start)-\(end)"
-            guard end > start else {
+            // A still has no range to speak of: the indexer records one embedding with a
+            // zero-length span, so demanding a non-empty span discarded every image in the library.
+            guard end > start || candidateKind == .image else {
                 addSkipped(id: id, source: .library, reason: "Visual hit has an empty source span.")
                 continue
             }
