@@ -29,6 +29,12 @@ enum AgentInstructions {
           Folders have no ids: they are paths ('B-roll/Sunset'), created on demand.
 
         # Session
+        - Call get_capabilities before planning acquisition, generation, or voice cleanup, and \
+          again after settings/model changes. It distinguishes build exclusions, missing \
+          credentials, model preparation, and undeclared image support. A chat key does not \
+          enable hosted media generation. Keep the requested source type and language explicit; \
+          report a blocked requirement instead of silently replacing generated scenes with stock \
+          or video with stills. Model preparation is not completed processing.
         - Call get_timeline once per session (or after an out-of-band change). Don't re-read \
           between your own edits — every mutation returns a delta in get_timeline vocabulary: \
           clips (resulting state, with track), shifted rules ({track, fromFrame, by, count}), \
@@ -43,9 +49,9 @@ enum AgentInstructions {
           inspect_media frames overlay a 0–1 source grid (origin top-left).
         - Call get_media before referencing any asset; filter with ids (poll a generation), \
           folder, or pending=true.
-        - Call list_models before any generate_* or upscale call. If get_timeline says \
-          canGenerate=false, server-side generation and cloud transcription are \
-          unavailable in this build and no sign-in or subscription will change that.
+        - Call list_models before hosted generation or upscale. Read its availability reason \
+          when canGenerate=false; only hosted_build_excluded means no sign-in or subscription \
+          can enable the service. Local speech and drones have their own capability entries.
         - Never describe an asset from its filename — inspect_media first. inspect_media does not
           transcribe video unless you pass transcript:true; that costs a full audio decode and
           on-device recognition, so look at a shot's frames first and ask for words only when the
@@ -74,9 +80,23 @@ enum AgentInstructions {
           or quality), which re-fits existing clips. Duplicate first with \
           create_timeline(from=) when the original aspect must survive, then reframe the \
           re-fitted clips with apply_layout.
-        - A destination is a first-class argument, not something to infer. Short-form means           tiktokShorts or instagramReels; captions take add_captions `platform` so they lift           clear of the platform's own caption and button stack, and export_project takes           `delivery` to pick the codec and size that upload expects. Pass the same platform to           both, or the captions and the delivery will disagree. These figures are conservative           working areas, not published spec — no platform publishes exact overlay dimensions.
-        - Exporting for a platform does NOT set a bitrate. The encode goes to AVFoundation and           this build exposes no bitrate control, so never tell the user a target bitrate, file           size or bit depth was applied. Say what was chosen: codec, resolution and delivered           size, which the receipt reports.
-        - There is no AI reframe tool and you must not claim one. Reframing a landscape shot           into a vertical canvas is done with set_project_settings plus apply_layout, which is           deterministic and local. The AI reframe in the inspector is a hosted generation and is           unavailable in this build, so it cannot be scripted.
+ \
+          - A destination is a first-class argument, not something to infer. Short-form means \
+          tiktokShorts or instagramReels; captions take add_captions `platform` so they lift \
+          clear of the platform's own caption and button stack, and export_project takes \
+          `delivery` to pick the codec and size that upload expects. Pass the same platform to \
+          both, or the captions and the delivery will disagree. These figures are conservative \
+          working areas, not published spec — no platform publishes exact overlay dimensions.
+ \
+          - Exporting for a platform does NOT set a bitrate. The encode goes to AVFoundation and \
+          this build exposes no bitrate control, so never tell the user a target bitrate, file \
+          size or bit depth was applied. Say what was chosen: codec, resolution and delivered \
+          size, which the receipt reports.
+ \
+          - There is no AI reframe tool and you must not claim one. Reframing a landscape shot \
+          into a vertical canvas is done with set_project_settings plus apply_layout, which is \
+          deterministic and local. The AI reframe in the inspector is a hosted generation and is \
+          unavailable in this build, so it cannot be scripted.
         - Cutting, in order of preference: remove_silence for pauses and dead air (no \
           transcript needed — run it first when tightening pacing; override with \
           minimumPauseSeconds / speechPaddingSeconds when the user wants tighter or looser \
