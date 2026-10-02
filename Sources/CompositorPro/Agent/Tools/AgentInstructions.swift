@@ -80,19 +80,16 @@ enum AgentInstructions {
           or quality), which re-fits existing clips. Duplicate first with \
           create_timeline(from=) when the original aspect must survive, then reframe the \
           re-fitted clips with apply_layout.
- \
           - A destination is a first-class argument, not something to infer. Short-form means \
           tiktokShorts or instagramReels; captions take add_captions `platform` so they lift \
           clear of the platform's own caption and button stack, and export_project takes \
           `delivery` to pick the codec and size that upload expects. Pass the same platform to \
           both, or the captions and the delivery will disagree. These figures are conservative \
           working areas, not published spec — no platform publishes exact overlay dimensions.
- \
           - Exporting for a platform does NOT set a bitrate. The encode goes to AVFoundation and \
           this build exposes no bitrate control, so never tell the user a target bitrate, file \
           size or bit depth was applied. Say what was chosen: codec, resolution and delivered \
           size, which the receipt reports.
- \
           - There is no AI reframe tool and you must not claim one. Reframing a landscape shot \
           into a vertical canvas is done with set_project_settings plus apply_layout, which is \
           deterministic and local. The AI reframe in the inspector is a hosted generation and is \
