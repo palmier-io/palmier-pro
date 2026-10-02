@@ -594,7 +594,7 @@ final class ExportService {
         )
         try Task.checkCancellation()
 
-        let presetName = exportPresetName(format: format, resolution: resolution)
+        let presetName = exportPresetName(format: format, resolution: resolution, renderSize: renderSize)
         guard let session = AVAssetExportSession(asset: result.composition, presetName: presetName) else {
             throw ExportError.unsupportedPreset
         }
@@ -605,15 +605,42 @@ final class ExportService {
 
     // MARK: - Export preset mapping
 
-    private func exportPresetName(format: ExportFormat, resolution: ExportResolution) -> String {
+    private func exportPresetName(
+        format: ExportFormat, resolution: ExportResolution, renderSize: CGSize
+    ) -> String {
+        Self.exportPresetName(format: format, resolution: resolution, renderSize: renderSize)
+    }
+
+    /// AVFoundation's size-named presets are landscape bounding boxes. On a portrait render they
+    /// fit the composition *inside* that box, so a 1080x1920 frame exported at "1080p" would be
+    /// squashed down to roughly 608x1080. The `HighestQuality` presets honour the composition's
+    /// own renderSize instead, so portrait always goes through them.
+    nonisolated static func exportPresetName(
+        format: ExportFormat, resolution: ExportResolution, renderSize: CGSize
+    ) -> String {
+        guard renderSize.height > renderSize.width else {
+            return landscapeExportPresetName(format: format, resolution: resolution)
+        }
+        switch format {
+        case .h264: return AVAssetExportPresetHighestQuality
+        case .h265: return AVAssetExportPresetHEVCHighestQuality
+        case .prores: return AVAssetExportPresetAppleProRes422LPCM
+        // unreachable — these return early upstream
+        case .xml, .fcpxml, .hevcHDR: return AVAssetExportPresetPassthrough
+        }
+    }
+
+    /// 2K and Match Timeline route to `HighestQuality` so they export at their true size rather
+    /// than being clamped by a named size.
+    private nonisolated static func landscapeExportPresetName(
+        format: ExportFormat, resolution: ExportResolution
+    ) -> String {
         switch format {
         case .h264:
             switch resolution {
             case .r720p: AVAssetExportPreset1280x720
             case .r1080p: AVAssetExportPreset1920x1080
             case .r4k: AVAssetExportPreset3840x2160
-            // Size-named presets clamp dimensions; HighestQuality honours the
-            // composition's renderSize, so 2K / Match Timeline export at their true size.
             case .r1440p, .matchTimeline: AVAssetExportPresetHighestQuality
             }
         case .h265:

@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreGraphics
 import Testing
 @testable import CompositorPro
@@ -45,6 +46,69 @@ struct ExportResolutionTests {
         // 1080×1920 → 2160×3840 at 4K.
         let size = ExportResolution.r4k.renderSize(for: CGSize(width: 1080, height: 1920))
         #expect(size == CGSize(width: 2160, height: 3840))
+    }
+
+    // MARK: - Preset selection
+
+    @Test(
+        "Portrait renders never use a landscape-named preset",
+        arguments: [
+            (ExportFormat.h264, AVAssetExportPresetHighestQuality),
+            (ExportFormat.h265, AVAssetExportPresetHEVCHighestQuality),
+        ]
+    )
+    func portraitAvoidsLandscapeNamedPreset(format: ExportFormat, expected: String) {
+        let portrait = CGSize(width: 1080, height: 1920)
+        for resolution in [ExportResolution.r720p, .r1080p, .r1440p, .r4k, .matchTimeline] {
+            let preset = ExportService.exportPresetName(
+                format: format, resolution: resolution, renderSize: portrait
+            )
+            #expect(preset == expected, "\(format)/\(resolution) must not clamp a portrait frame")
+        }
+    }
+
+    @Test("Landscape keeps its size-named presets, which match the render size")
+    func landscapeKeepsSizeNamedPresets() {
+        let landscape = CGSize(width: 1920, height: 1080)
+        #expect(
+            ExportService.exportPresetName(
+                format: .h264, resolution: .r1080p, renderSize: landscape
+            ) == AVAssetExportPreset1920x1080
+        )
+        #expect(
+            ExportService.exportPresetName(
+                format: .h264, resolution: .r4k, renderSize: landscape
+            ) == AVAssetExportPreset3840x2160
+        )
+        #expect(
+            ExportService.exportPresetName(
+                format: .h265, resolution: .r1080p, renderSize: landscape
+            ) == AVAssetExportPresetHEVC1920x1080
+        )
+    }
+
+    @Test("Square is treated as landscape, since the size-named boxes contain it")
+    func squareUsesLandscapePresets() {
+        let square = CGSize(width: 1080, height: 1080)
+        #expect(
+            ExportService.exportPresetName(
+                format: .h264, resolution: .r1080p, renderSize: square
+            ) == AVAssetExportPreset1920x1080
+        )
+    }
+
+    @Test("ProRes is resolution-independent on every orientation")
+    func proResIgnoresOrientation() {
+        let proRes = AVAssetExportPresetAppleProRes422LPCM
+        for size in [CGSize(width: 1080, height: 1920), CGSize(width: 1920, height: 1080)] {
+            for resolution in [ExportResolution.r720p, .r1080p, .r1440p, .r4k, .matchTimeline] {
+                #expect(
+                    ExportService.exportPresetName(
+                        format: .prores, resolution: resolution, renderSize: size
+                    ) == proRes
+                )
+            }
+        }
     }
 
     // MARK: - Square canvases
