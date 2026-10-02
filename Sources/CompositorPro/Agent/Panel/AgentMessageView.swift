@@ -107,19 +107,7 @@ private struct ThinkingSummaryView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
             if isComplete {
-                Button {
-                    withAnimation(.easeOut(duration: AppTheme.Anim.hover)) {
-                        isExpanded.toggle()
-                    }
-                } label: {
-                    Image(systemName: isExpanded ? "brain.head.profile.fill" : "brain.head.profile")
-                        .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.medium))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
-                        .frame(width: AppTheme.IconSize.xxs, height: AppTheme.IconSize.xxs)
-                }
-                .buttonStyle(.plain)
-                .help(toggleLabel)
-                .accessibilityLabel(toggleLabel)
+                header
             }
 
             if !isComplete || isExpanded {
@@ -130,8 +118,43 @@ private struct ThinkingSummaryView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var toggleLabel: String {
-        isExpanded ? L10n.string("Hide reasoning") : L10n.string("Show reasoning")
+    /// Same disclosure as `EditorPanelGroup`: a full-bleed hit target behind a chevron and a
+    /// label, so it reads as expandable rather than as an icon that might do something.
+    private var header: some View {
+        ZStack {
+            Button(action: toggleExpansion) {
+                Color.clear
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .focusable(false)
+            .help(isExpanded ? L10n.string("Hide reasoning") : L10n.string("Show reasoning"))
+            .accessibilityLabel(
+                Text(verbatim: "\(isExpanded ? L10n.string("Collapse") : L10n.string("Expand")) \(L10n.string("Reasoning"))")
+            )
+
+            HStack(spacing: AppTheme.Spacing.sm) {
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
+                Text(L10n.string("Reasoning"))
+                    .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
+                    .lineLimit(1)
+                Spacer(minLength: AppTheme.Spacing.sm)
+            }
+            .allowsHitTesting(false)
+        }
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+    }
+
+    private func toggleExpansion() {
+        withAnimation(.easeInOut(duration: AppTheme.Anim.transition)) {
+            isExpanded.toggle()
+        }
     }
 
     private var summary: some View {
