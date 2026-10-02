@@ -49,6 +49,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case offsetAudio = "offset_audio"
     case freezeClip = "freeze_clip"
     case syncToBeats = "sync_to_beats"
+    case generateThumbnail = "generate_thumbnail"
     case duckAudio = "duck_audio"
     case applyTransition = "apply_transition"
     case removeTransition = "remove_transition"
@@ -751,6 +752,24 @@ enum ToolDefinitions {
                     ],
                 ],
                 required: ["clipId", "property", "keyframes"]
+            )
+        ),
+        AgentTool(
+            name: .generateThumbnail,
+            description: "Renders a poster frame for the timeline and writes it as its own image file, for YouTube or social upload. This is NOT part of the video: nothing is added to the timeline, no clip is created, and the video is not modified in any way. The image is a separate JPEG you upload alongside the export.\n\nPresets carry each platform's real spec: youtube (1280x720, under 2 MB), vertical (1080x1920 for Shorts/Reels/TikTok), square (1080x1080), or timeline (the project's own canvas cropped to 16:9). A preset other than timeline crops the picture to fit and leaves the video untouched.\n\ntitle and subtitle are drawn ONTO THE IMAGE with a scrim, so the words stay legible over a busy frame — use a short punchy headline, not a sentence, and check the result before uploading. Pass title alone for a clean poster.\n\nOmit frame to have it pick one: it samples across the timeline and chooses the frame with the most contrast and the least clipping, because that is the most legible at a glance. That is a legibility heuristic, not a judgement about which shot tells the story best — pass frame when you already know. The receipt always says which frame was used and whether it was chosen.\n\nUse it whenever a video is going to be published somewhere with a poster image.",
+            inputSchema: objectSchema(
+                properties: [
+                    "preset": ["type": "string", "enum": ["youtube", "vertical", "square", "timeline"], "description": "Target shape and file budget. Default youtube."],
+                    "frame": ["type": "integer", "description": "Timeline frame to use. Omit to let it choose the most legible frame."],
+                    "title": ["type": "string", "description": "Headline drawn onto the image. Short — three to six words."],
+                    "subtitle": ["type": "string", "description": "Secondary line under the headline."],
+                    "placement": ["type": "string", "enum": ["bottomLeft", "bottomCenter", "centerLeft", "center"], "description": "Where the words sit. Default bottomLeft."],
+                    "titleScale": ["type": "number", "description": "Headline size as a fraction of the frame's long edge (default 0.11)."],
+                    "scrim": ["type": "boolean", "description": "Darken behind the words so light text stays legible. Default true."],
+                    "path": ["type": "string", "description": "Absolute directory to write into. Defaults to a thumbnails folder beside the project package."],
+                    "fileName": ["type": "string", "description": "File name, with or without a .jpg extension. Default thumbnail.jpg."],
+                ],
+                required: []
             )
         ),
         AgentTool(

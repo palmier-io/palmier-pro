@@ -94,6 +94,12 @@ enum AgentInstructions {
           and push are correct when the cut should feel like one continuous scene or a move; \
           dipToBlack is correct for a real time jump or a chapter break. Delete either clip and \
           the transition goes with it.
+        - A video bound for YouTube, Reels or TikTok also needs a poster. That is \
+          generate_thumbnail: it renders a frame, optionally with a short headline drawn onto the \
+          image, and writes a JPEG sized to the platform. It is a SEPARATE file — never put it on \
+          the timeline, and never suggest it changes the video. Omit frame and it picks the most \
+          legible frame; pass one when you know which shot it should be. Offer it once an export \
+          is destined for a platform, do not add it unprompted to a local edit.
         - J-cuts and L-cuts are one call: offset_audio with a positive or negative frame count \
           on a linked pair. Do not build one by unlinking, moving and relinking. Freeze frames are \
           freeze_clip, not a very slow ramp. Cutting on music is sync_to_beats, which does the \
