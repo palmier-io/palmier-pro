@@ -36,7 +36,24 @@ extension ToolExecutor {
                 ] as [String: Any]
             },
             "installedLanguages": SpeechSynthesizer.installedLanguages(),
-            "notes": ["Only voices listed here can be passed to generate_speech. Omit `voice` to use the best voice for the language."],
+            "piper": [
+                "available": PiperTTS.isAvailable,
+                "voiceDirectory": PiperTTS.voiceDirectory.path,
+                "voices": PiperTTS.installedModels().map { model in
+                    [
+                        "name": model.fileName,
+                        "language": model.languageTag,
+                        "quality": model.quality,
+                    ] as [String: Any]
+                },
+                "languages": PiperTTS.installedLanguages,
+            ],
+            "notes": [
+                "System voices are the `voices` list and work everywhere macOS has one.",
+                "Piper voices are a separate, higher-quality local engine; pass one as `voice` "
+                    + "with `engine: 'piper'`, or let generate_speech choose it automatically.",
+                "Only voices listed here can be passed to generate_speech. Omit `voice` to use the best voice for the language.",
+            ],
         ]) ?? "{}")
     }
 
@@ -50,11 +67,12 @@ extension ToolExecutor {
         let language: String?
         let rate: Double?
         let pitch: Double?
+        let engine: String?
         let placeAtFrame: Int?
         let trackName: String?
         static let allowedKeys: Set<String> = [
             "text", "clipId", "trackIndex", "startFrame", "endFrame",
-            "voice", "language", "rate", "pitch", "placeAtFrame", "trackName",
+            "voice", "language", "rate", "pitch", "engine", "placeAtFrame", "trackName",
         ]
     }
 
@@ -68,6 +86,20 @@ extension ToolExecutor {
         }
         if let pitch = input.pitch, !(0.5...2.0).contains(pitch) {
             throw ToolError("pitch must be 0.5–2.0 (got \(pitch))")
+        }
+        let requestedEngine: SpeechSynthesizer.Engine?
+        if let raw = input.engine {
+            guard let parsed = SpeechSynthesizer.Engine(rawValue: raw) else {
+                throw ToolError("engine must be piper or system.")
+            }
+            guard parsed == .piper, PiperTTS.isAvailable else {
+                throw ToolError(
+                    "Piper is not installed. Install it with: uv tool install piper-tts"
+                )
+            }
+            requestedEngine = parsed
+        } else {
+            requestedEngine = nil
         }
         if input.text == nil, input.clipId == nil, input.trackIndex == nil {
             throw ToolError("generate_speech: pass text to speak, or clipId/trackIndex to speak that audio's transcript.")
@@ -92,10 +124,12 @@ extension ToolExecutor {
             voiceIdentifier: input.voice,
             language: input.language,
             rate: input.rate ?? 1.0,
-            pitch: input.pitch ?? 1.0
+            pitch: input.pitch ?? 1.0,
+            engine: requestedEngine
         )
-        let voice = try SpeechSynthesizer.resolveVoice(spec: spec)
-        let wavURL = try await SpeechSynthesizer.render(spec: spec)
+        let (engine, model) = SpeechSynthesizer.resolveEngine(for: spec)
+        let result = try await SpeechSynthesizer.renderReportingEngine(spec: spec)
+        let wavURL = result.url
 
         // Commit into the project package rather than pointing the asset at the temp file:
         // finalize only reads metadata in place, so a temp path would leave a dead reference
@@ -110,19 +144,24 @@ extension ToolExecutor {
         }
 
         var notes = [
-            "Rendered locally with the '\(voice.name)' system voice — no server, no credits.",
+            "Rendered locally with \(engine.label) — no server, no sign-in, no credits.",
+            "Voice: \(result.voiceName).",
             "Read from \(source) (\(spoken.count) characters).",
         ]
-        if SpeechSynthesizer.installedLanguages().contains(where: { $0.hasPrefix("ml") }) == false {
-            notes.append("No Malayalam system voice is installed on this Mac, so Malayalam text will not be read correctly.")
+        if engine == .system {
+            notes.append(
+                "Install a Piper voice for this language for a more natural read: "
+                    + "uv tool install piper-tts, then drop a .onnx voice into \(PiperTTS.voiceDirectory.path)."
+            )
         }
 
         guard let placeAt = input.placeAtFrame else {
             return .ok(Self.jsonString([
                 "mediaRef": asset.id,
                 "status": "ready",
-                "voice": voice.name,
-                "language": voice.language,
+                "engine": engine.rawValue,
+                "voice": result.voiceName,
+                "language": model?.languageTag ?? input.language ?? "",
                 "characters": spoken.count,
                 "source": source,
                 "notes": notes + ["Added to the media library only. Pass placeAtFrame to also drop it on the timeline."],

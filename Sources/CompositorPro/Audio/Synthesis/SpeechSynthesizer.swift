@@ -13,6 +13,16 @@ enum SpeechSynthesizer {
     /// transcript this long is a sign the caller wants several clips, not one.
     static let maxCharacters = 20_000
 
+    /// Which synthesizer produced a render.
+    enum Engine: String, Sendable, Equatable {
+        /// macOS system voices. Always present, every language macOS ships.
+        case system
+        /// Piper, a local neural model. Far more natural, but only for installed voices.
+        case piper
+
+        var label: String { self == .system ? "macOS system voice" : "Piper (neural)" }
+    }
+
     struct Spec: Sendable {
         var text: String
         var voiceIdentifier: String?
@@ -21,6 +31,16 @@ enum SpeechSynthesizer {
         var rate: Double
         /// 1.0 is the voice's natural pitch.
         var pitch: Double
+        /// nil picks the engine: Piper when a voice exists for the language, system otherwise.
+        var engine: Engine?
+    }
+
+    /// What actually rendered a spec, so a caller never has to guess what it got.
+    struct RenderResult: Sendable, Equatable {
+        var url: URL
+        var engine: Engine
+        /// Piper voice name, or the system voice identifier.
+        var voiceName: String
     }
 
     struct Voice: Sendable, Hashable, Identifiable {
@@ -203,6 +223,12 @@ enum SpeechSynthesizer {
     /// Renders `spec` to a temporary WAV and returns its URL. The caller owns the file.
     /// Runs off the main actor on a private queue; the file is removed if anything fails.
     static func render(spec: Spec) async throws -> URL {
+        try await renderReportingEngine(spec: spec).url
+    }
+
+    /// Same render, but reports which engine and voice produced it so a caller never has to
+    /// guess what it got.
+    static func renderReportingEngine(spec: Spec) async throws -> RenderResult {
         let trimmed = spec.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw SpeechError.emptyText }
         guard trimmed.count <= maxCharacters else { throw SpeechError.textTooLong(maxCharacters) }
@@ -216,7 +242,8 @@ enum SpeechSynthesizer {
             try await withCheckedThrowingContinuation { continuation in
                 renderQueue.async {
                     do {
-                        continuation.resume(returning: try renderSync(spec: resolved, isCancelled: { gate.isCancelled }))
+                        let result = try renderSync(spec: resolved, isCancelled: { gate.isCancelled })
+                        continuation.resume(returning: result)
                     } catch {
                         continuation.resume(throwing: error)
                     }
@@ -227,13 +254,106 @@ enum SpeechSynthesizer {
         }
     }
 
+    /// Resolves the engine for a spec: an explicit choice wins, otherwise Piper is used when it
+    /// is installed and has a voice for the language. Never falls back silently past a choice
+    /// the caller made — that would render a different voice than the one asked for.
+    static func resolveEngine(for spec: Spec) -> (engine: Engine, model: PiperTTS.Model?) {
+        // A named voice is a promise about what will be heard, so a name that matches nothing must
+        // never quietly resolve to whatever engine happens to be installed. Resolving to `.system`
+        // here is deliberate: `resolveVoice` then refuses with its candidate list, instead of
+        // substituting a different voice.
+        let namedPiperModel = spec.voiceIdentifier.flatMap { PiperTTS.model(named: $0) }
+        let explicit = spec.engine
+        switch explicit {
+        case .system:
+            return (.system, nil)
+        case .piper:
+            return (.piper, namedPiperModel ?? PiperTTS.model(forLanguage: spec.language))
+        case nil:
+            if let namedPiperModel { return (.piper, namedPiperModel) }
+            // A named voice that is not a Piper voice is a system voice name, or a mistake. Either
+            // way it belongs to the system engine, so `resolveVoice` can match it or refuse it —
+            // falling through to "first Piper voice installed" would answer with a voice nobody
+            // asked for.
+            if spec.voiceIdentifier != nil { return (.system, nil) }
+            guard PiperTTS.isAvailable else { return (.system, nil) }
+            guard let model = PiperTTS.model(forLanguage: spec.language) else { return (.system, nil) }
+            return (.piper, model)
+        }
+    }
+
     /// Retries for a chunk that produced no audio. Concurrency in the suite and a busy machine
     /// can both starve the voice engine for a moment.
     private static let maxChunkAttempts = 3
 
     private static let renderQueue = DispatchQueue(label: "com.compositorpro.speech.render", qos: .utility)
 
-    private static func renderSync(spec: Spec, isCancelled: () -> Bool) throws -> URL {
+    private static func renderSync(spec: Spec, isCancelled: () -> Bool) throws -> RenderResult {
+        let (engine, model) = resolveEngine(for: spec)
+        if engine == .piper, let model {
+            return try renderWithPiper(spec: spec, model: model, isCancelled: isCancelled)
+        }
+        return RenderResult(
+            url: try renderWithSystemVoice(spec: spec, isCancelled: isCancelled),
+            engine: .system,
+            voiceName: try resolveVoice(spec: spec).identifier
+        )
+    }
+
+    /// Piper renders whole WAVs per chunk, so the chunks are concatenated sample-accurately
+    /// rather than byte-concatenated — a WAV header only describes one stream.
+    private static func renderWithPiper(
+        spec: Spec, model: PiperTTS.Model, isCancelled: () -> Bool
+    ) throws -> RenderResult {
+        let parts = chunks(of: spec.text)
+        guard !parts.isEmpty else { throw SpeechError.emptyText }
+        // Piper's length scale is the inverse of a rate multiplier.
+        let lengthScale = 1 / spec.rate.clamped(to: 0.5...2.0)
+        let rendered: [URL] = try parts.map { part in
+            if isCancelled() { throw CancellationError() }
+            return try PiperTTS.render(text: part, model: model, lengthScale: lengthScale, isCancelled: isCancelled)
+        }
+        let url = try concatenate(rendered)
+        return RenderResult(url: url, engine: .piper, voiceName: model.fileName)
+    }
+
+    /// Joins per-chunk WAVs into one file.
+    ///
+    /// A WAV header describes exactly one stream, so byte-concatenation would leave the reader
+    /// seeing only the first chunk. The first file's format wins and every chunk must match it;
+    /// Piper always renders 22050 Hz mono, so a mismatch means something went wrong upstream.
+    private static func concatenate(_ files: [URL]) throws -> URL {
+        guard let first = files.first else { throw SpeechError.emptyText }
+        // One chunk is already a complete WAV, and it is the file being returned, so it must not
+        // be swept up with the staging files.
+        guard files.count > 1 else { return first }
+        defer { for file in files { try? FileManager.default.removeItem(at: file) } }
+        let format = try AVAudioFile(forReading: first).processingFormat
+        let output = FileManager.default.temporaryDirectory
+            .appendingPathComponent("speech-\(UUID().uuidString).wav")
+        // Scoped, because AVAudioFile only writes a WAV header when it is released. Returning
+        // the URL while the writer is still alive hands back a file advertising no audio.
+        func write() throws {
+            let destination = try AVAudioFile(forWriting: output, settings: format.settings)
+            for file in files {
+                let source = try AVAudioFile(forReading: file)
+                if source.processingFormat.sampleRate != format.sampleRate
+                    || source.processingFormat.channelCount != format.channelCount {
+                    continue
+                }
+                guard let buffer = AVAudioPCMBuffer(
+                    pcmFormat: source.processingFormat,
+                    frameCapacity: AVAudioFrameCount(source.length)
+                ) else { continue }
+                try source.read(into: buffer)
+                if buffer.frameLength > 0 { try destination.write(from: buffer) }
+            }
+        }
+        try write()
+        return output
+    }
+
+    private static func renderWithSystemVoice(spec: Spec, isCancelled: () -> Bool) throws -> URL {
         let voice = try resolveVoice(spec: spec)
         let parts = chunks(of: spec.text)
         let url = FileManager.default.temporaryDirectory
