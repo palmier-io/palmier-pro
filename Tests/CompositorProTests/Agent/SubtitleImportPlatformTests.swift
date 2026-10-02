@@ -80,7 +80,7 @@ struct SubtitleImportPlatformTests {
         let allowed = await harness.runRaw("add_captions", args: [
             "subtitleMediaRef": "subs", "platform": "youtube",
         ])
-        #expect(allowed.isError == false, ToolHarness.textOf(allowed))
+        #expect(allowed.isError == false, "\(ToolHarness.textOf(allowed))")
 
         let refused = await harness.runRaw("add_captions", args: [
             "subtitleMediaRef": "subs", "maxWords": 4,
@@ -106,7 +106,7 @@ struct SubtitleImportPlatformTests {
         let harness = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack()]))
         let url = try await registerSubtitle(harness)
         defer { Task { try? FileManager.default.removeItem(at: url) } }
-        _ = try await harness.importCaptions(from: url)
+        _ = try await harness.editor.importCaptions(from: url)
         #expect(abs(try centreY(harness) - 0.90) < 1e-9)
     }
 }
