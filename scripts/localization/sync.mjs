@@ -48,9 +48,9 @@ function appStringsDataPaths(directory) {
   const expectedSources = new Set(sourceFiles);
   const foundSources = new Set();
   const dataPaths = [];
-  for (const entry of fs.readdirSync(directory)) {
-    if (!entry.endsWith(".stringsdata")) continue;
-    const dataPath = path.join(directory, entry);
+  // The build writes stringsdata into its own derived-sources tree rather than wherever the
+  // caller asked, so search recursively instead of trusting the directory's top level.
+  for (const dataPath of filesUnder(directory, ".stringsdata")) {
     const data = JSON.parse(fs.readFileSync(dataPath, "utf8"));
     const source = path.resolve(data.source);
     if (!expectedSources.has(source)) continue;
