@@ -363,6 +363,7 @@ final class ToolExecutor {
         case .moveClips:        return try moveClips(editor, args)
         case .applyLayout:      return try applyLayout(editor, args)
         case .generateThumbnail: return try await generateThumbnail(editor, args)
+        case .addOutro:          return try addOutro(editor, args)
         case .offsetAudio:        return try offsetAudio(editor, args)
         case .freezeClip:         return try freezeClip(editor, args)
         case .syncToBeats:        return try await syncToBeats(editor, args)

@@ -100,6 +100,15 @@ enum AgentInstructions {
           the timeline, and never suggest it changes the video. Omit frame and it picks the most \
           legible frame; pass one when you know which shot it should be. Offer it once an export \
           is destined for a platform, do not add it unprompted to a local edit.
+        - The end of the film is one call: add_outro. Give credits as name/role pairs and it \
+          builds the roll; give a channel and handle and it holds a subscribe card; give both and \
+          you get the card then the credits. It owns the off-frame start and exit positions, the \
+          fade envelope and the platform timing window, so never hand-build a roll out of add_texts \
+          plus position keyframes. Use background "freeze" to hold the last picture under the \
+          words, which is the conventional end-of-film treatment. Put stock and music \
+          attribution in as credits — that is where licensing strings belong. It draws the card \
+          only: YouTube's clickable subscribe and video elements are attached at upload in YouTube \
+          Studio, so say so rather than implying the render made them clickable.
         - J-cuts and L-cuts are one call: offset_audio with a positive or negative frame count \
           on a linked pair. Do not build one by unlinking, moving and relinking. Freeze frames are \
           freeze_clip, not a very slow ramp. Cutting on music is sync_to_beats, which does the \

@@ -50,6 +50,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case freezeClip = "freeze_clip"
     case syncToBeats = "sync_to_beats"
     case generateThumbnail = "generate_thumbnail"
+    case addOutro = "add_outro"
     case duckAudio = "duck_audio"
     case applyTransition = "apply_transition"
     case removeTransition = "remove_transition"
@@ -819,6 +820,23 @@ enum ToolDefinitions {
                     "remove": ["type": "array", "description": "Proxies to delete. Each entry needs mediaRef or clipIds.", "items": ["type": "object", "properties": ["mediaRef": ["type": "string"], "clipIds": ["type": "array", "items": ["type": "string"]]]]],
                     "list": ["type": "boolean", "description": "Report existing proxies and the assets large enough to be worth one. Default true when neither generate nor remove is given."],
                     "longEdge": ["type": "integer", "enum": [480, 540, 720, 1080], "description": "Proxy long edge. 540 is the default and the safest on a slow machine; 1080 is for high-resolution sources. Changing it rebuilds affected proxies."],
+                ],
+                required: []
+            )
+        ),
+        AgentTool(
+            name: .addOutro,
+            description: "Builds the end of the film — rolling end credits, a subscribe card, or both — in one undoable step. Use this instead of building the sequence out of text clips and keyframes by hand, because the roll has to start clear of the bottom edge and exit clear of the top one, fade in and out, and land inside the platform's end-screen window; that arithmetic belongs here, not in the Agent. Give credits as a list of name/role pairs and they become a single centred roll that travels upward at a constant rate with a fade envelope. Give subscribe with a channel and handle for a held call-to-action card, kind 'subscribe' to ask or 'thanks' to acknowledge an existing subscriber. The picture keeps playing under the words — there is no held-still option, because a freeze can only hold a lead-in, not a whole tail. Platform 'youtube' enforces the 5-20 second end-screen window and will refuse a duration outside it rather than quietly producing something YouTube rejects. The outro occupies the tail of the existing edit rather than extending past it, so nothing you have already cut moves. This draws the visual card only: YouTube's clickable subscribe and video elements are attached at upload in YouTube Studio, so tell the user to add the click targets there. If they want attribution for stock or music, pass it as credits.",
+            inputSchema: objectSchema(
+                properties: [
+                    "credits": ["type": "array", "description": "Credit lines for the roll. Each entry needs a name and may have a role. Omit for a subscribe card only."],
+                    "subscribe": ["type": "object", "description": "Subscribe card. Omit for credits only.", "properties": [
+                        "channel": ["type": "string", "description": "Channel or creator name shown on the card."],
+                        "handle": ["type": "string", "description": "Handle such as @name, shown after the channel."],
+                        "kind": ["type": "string", "enum": ["subscribe", "thanks"], "description": "'subscribe' asks for a subscription; 'thanks' acknowledges one. Default subscribe."],
+                    ]],
+                    "durationFrames": ["type": "integer", "description": "How long the outro runs. Default 300 (10s at 30fps). A roll needs roughly 12 frames per credit line; credits plus a card need at least 180. YouTube accepts only 150-600."],
+                    "platform": ["type": "string", "enum": ["generic", "youtube"], "description": "'youtube' enforces the 5-20 second end-screen window. Default generic."],
                 ],
                 required: []
             )
