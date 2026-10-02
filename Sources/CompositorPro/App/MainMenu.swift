@@ -179,6 +179,7 @@ enum MainMenuBuilder {
         let menu = NSMenu(title: L10n.string("Help"))
         menu.addItem(withTitle: L10n.string("Tutorial"), action: #selector(AppDelegate.showTutorial(_:)), keyEquivalent: "")
         menu.addItem(.separator())
+        menu.addItem(withTitle: L10n.string("Features"), action: #selector(AppDelegate.showFeatures(_:)), keyEquivalent: "")
         menu.addItem(withTitle: L10n.string("Keyboard Shortcuts"), action: #selector(AppDelegate.showKeyboardShortcuts(_:)), keyEquivalent: "?")
         menu.addItem(withTitle: L10n.string("MCP Instructions"), action: #selector(AppDelegate.showMCPInstructions(_:)), keyEquivalent: "")
         menu.addItem(.separator())

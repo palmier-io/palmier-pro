@@ -1,6 +1,7 @@
 import SwiftUI
 
 enum HelpTab: String, CaseIterable, Identifiable {
+    case features = "Features"
     case shortcuts = "Shortcuts"
     case mcp = "MCP"
 
@@ -8,6 +9,7 @@ enum HelpTab: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .features: L10n.key("Features")
         case .shortcuts: L10n.key("Shortcuts")
         case .mcp: "MCP"
         }
@@ -15,6 +17,7 @@ enum HelpTab: String, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
+        case .features: "square.grid.2x2"
         case .shortcuts: "keyboard"
         case .mcp: "network"
         }
@@ -24,7 +27,7 @@ enum HelpTab: String, CaseIterable, Identifiable {
 struct HelpView: View {
     @State private var selectedTab: HelpTab
 
-    init(initialTab: HelpTab = .shortcuts) {
+    init(initialTab: HelpTab = .features) {
         _selectedTab = State(initialValue: initialTab)
     }
 
@@ -89,6 +92,7 @@ struct HelpView: View {
             .padding(.bottom, AppTheme.Spacing.lgXl)
 
             switch selectedTab {
+            case .features: FeaturesPane()
             case .shortcuts: ShortcutsPane()
             case .mcp: MCPInstructionsPane()
             }
@@ -124,7 +128,7 @@ final class HelpWindowController: NSWindowController {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    func show(tab: HelpTab = .shortcuts) {
+    func show(tab: HelpTab = .features) {
         hosting?.rootView = AnyView(
             HelpView(initialTab: tab)
                 .id(UUID())

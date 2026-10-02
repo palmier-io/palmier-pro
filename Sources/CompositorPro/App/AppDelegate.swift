@@ -147,6 +147,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @MainActor
+    @objc func showFeatures(_ sender: Any?) {
+        HelpWindowController.shared.show(tab: .features)
+    }
+
+    @MainActor
     @objc func showKeyboardShortcuts(_ sender: Any?) {
         HelpWindowController.shared.show(tab: .shortcuts)
     }
