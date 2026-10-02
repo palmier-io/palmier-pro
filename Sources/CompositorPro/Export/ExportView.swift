@@ -607,19 +607,33 @@ struct ExportView: View {
         }
     }
 
+    /// Order-of-magnitude size for the export summary, shown with a leading `~`.
+    ///
+    /// Rates are typical for each encoder rather than read back from it: the SDR path hands the
+    /// encode to AVFoundation through a preset name and exposes no bitrate control, so an exact
+    /// figure is not knowable before exporting. ProRes is checked against AVAssetExportPreset
+    /// AppleProRes422LPCM (about 147 Mbps at 1080p, which this lands on); the compressed rates are
+    /// high-quality 1080p figures. Content complexity moves the real result, which is why it is
+    /// presented as an estimate.
     private var estimatedFileSize: String {
         let seconds = Double(exportTimeline.totalFrames) / Double(max(1, exportTimeline.fps))
-        // Bitrate scales with output pixel area, so any resolution (incl. 2K / native) is covered.
         let out = resolution.renderSize(for: CGSize(width: exportTimeline.width, height: exportTimeline.height))
         let megapixels = Double(out.width * out.height) / 1_000_000
-        let bytesPerSecPerMP: Double = switch codec {
-        case .h264:   0.63e6
-        case .h265:   0.32e6
+        let videoBytesPerSecPerMP: Double = switch codec {
+        case .h264: 0.63e6
+        case .h265: 0.32e6
         case .prores: 9.0e6
-        case .hdr:    0.45e6
+        case .hdr: 0.45e6
         }
-        let bytesPerSec = bytesPerSecPerMP * max(0.1, megapixels)
-        return ByteCountFormatter.string(fromByteCount: Int64(bytesPerSec * seconds), countStyle: .file)
+        let video = videoBytesPerSecPerMP * max(0.1, megapixels)
+        // Audio is a material share of a ProRes file, so leaving it out understated those by
+        // roughly a fifth. The compressed rate matches the 192 kbps AAC the HDR writer uses.
+        let audio: Double = switch codec {
+        case .h264, .h265, .hdr: 192_000.0 / 8
+        case .prores: 48_000.0 * 3 * 2 // LPCM, 24-bit stereo
+        }
+        let bytes = (video + audio) * seconds
+        return ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
     }
 
     private var exportFormat: ExportFormat {
