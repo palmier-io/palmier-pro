@@ -16,6 +16,12 @@ struct FeatureCatalogTests {
         #expect(Set(featureIDs).count == featureIDs.count, "duplicate feature id")
     }
 
+    @Test("No feature offers the same example request as another")
+    func howToIsDistinct() {
+        let requests = features.map(\.howTo)
+        #expect(Set(requests).count == requests.count, "duplicate example request")
+    }
+
     @Test("Every category has something in it")
     func categoriesArePopulated() {
         #expect(!categories.isEmpty)
@@ -34,6 +40,9 @@ struct FeatureCatalogTests {
                 feature.summary.count > 40,
                 "\(feature.id) summary is too short to be useful: \(feature.summary)"
             )
+            // A howTo that is not a request teaches nothing.
+            let howTo = feature.howTo
+            #expect(howTo.count > 20, "\(feature.id) has no usable example request")
         }
     }
 

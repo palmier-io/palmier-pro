@@ -57,8 +57,24 @@ struct FeaturesPane: View {
                 .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.leading, AppTheme.Spacing.xl)
+            howTo(feature)
         }
+    }
+
+    /// A concrete request, set apart from the description. This app is driven by asking for
+    /// things, so showing the shape of a good request is more useful than more prose.
+    private func howTo(_ feature: FeatureCatalog.Feature) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
+            Text(L10n.string("Ask the agent"))
+                .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+            Text(L10n.string(key: feature.howTo))
+                .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.top, AppTheme.Spacing.xxs)
+        .padding(.leading, AppTheme.Spacing.xl)
     }
 
     private var footer: some View {
