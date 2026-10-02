@@ -114,6 +114,7 @@
 "All Statuses" = "All Statuses";
 "All fonts" = "All fonts";
 "Amount" = "Amount";
+"An audible cue that a request is done, for when you look away." = "An audible cue that a request is done, for when you look away.";
 "Analyzing breaths…" = "Analyzing breaths…";
 "Analyzing media so you can search it." = "Analyzing media so you can search it.";
 "Angle" = "Angle";
@@ -844,6 +845,7 @@
 "Plan out a three-part edit for this documentary, then show me the plan." = "Plan out a three-part edit for this documentary, then show me the plan.";
 "Plans" = "Plans";
 "Play / Pause" = "Play / Pause";
+"Play a sound when the agent finishes" = "Play a sound when the agent finishes";
 "Playback" = "Playback";
 "Playback Speed" = "Playback Speed";
 "Playback previews, waveforms, filmstrip thumbnails, and transcripts. Safe to clear; files rebuild as needed." = "Playback previews, waveforms, filmstrip thumbnails, and transcripts. Safe to clear; files rebuild as needed.";

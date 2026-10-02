@@ -5,6 +5,8 @@ import UserNotifications
 @MainActor
 enum AppNotifications {
     private static let enabledKey = "io.compositor.pro.notifications.enabled"
+    private static let agentSoundEnabledKey = "io.compositor.pro.agent.sound.enabled"
+    private static var playingSound: NSSound?
 
     static var isEnabled: Bool {
         get {
@@ -15,6 +17,31 @@ enum AppNotifications {
         set {
             UserDefaults.standard.set(newValue, forKey: enabledKey)
         }
+    }
+
+    static var agentSoundEnabled: Bool {
+        get {
+            let defaults = UserDefaults.standard
+            if defaults.object(forKey: agentSoundEnabledKey) == nil { return true }
+            return defaults.bool(forKey: agentSoundEnabledKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: agentSoundEnabledKey)
+        }
+    }
+
+    /// An audible cue that an agent turn has stopped. Kept apart from notification banners so a
+    /// user who silenced banners still hears it, and so it needs no notification authorisation.
+    static func agentComplete() {
+        guard agentSoundEnabled else { return }
+        guard let sound = NSSound(named: "Ping") else {
+            NSSound.beep()
+            Log.app.notice("agent completion sound unavailable, used system beep")
+            return
+        }
+        // NSSound deallocates itself mid-play unless something holds it.
+        playingSound = sound
+        sound.play()
     }
 
     static func configure() {

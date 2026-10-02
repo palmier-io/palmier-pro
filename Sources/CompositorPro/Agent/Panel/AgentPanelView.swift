@@ -69,6 +69,10 @@ struct AgentPanelView: View {
             messageList
             footer
         }
+        .onChange(of: service.isStreaming) { _, streaming in
+            guard !streaming else { return }
+            AppNotifications.agentComplete()
+        }
     }
 
     private var floatingTabBar: some View {

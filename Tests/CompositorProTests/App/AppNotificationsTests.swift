@@ -1,7 +1,8 @@
+import Foundation
 import Testing
 @testable import CompositorPro
 
-@Suite("App notifications")
+@Suite("App notifications", .serialized)
 @MainActor
 struct AppNotificationsTests {
     @Test(arguments: [
@@ -26,5 +27,27 @@ struct AppNotificationsTests {
     ])
     func unnamedGeneratedAssetsUseCompleteMessages(type: ClipType, expected: String) {
         #expect(AppNotifications.generationBody(assetName: " ", assetType: type, count: 1) == expected)
+    }
+
+    @Test("The completion sound is on until the user turns it off")
+    func agentSoundDefaultsOnAndPersists() {
+        let key = "io.compositor.pro.agent.sound.enabled"
+        let existing = UserDefaults.standard.object(forKey: key)
+        defer {
+            if let existing {
+                UserDefaults.standard.set(existing, forKey: key)
+            } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+        }
+
+        UserDefaults.standard.removeObject(forKey: key)
+        #expect(AppNotifications.agentSoundEnabled)
+
+        AppNotifications.agentSoundEnabled = false
+        #expect(!AppNotifications.agentSoundEnabled)
+
+        AppNotifications.agentSoundEnabled = true
+        #expect(AppNotifications.agentSoundEnabled)
     }
 }
