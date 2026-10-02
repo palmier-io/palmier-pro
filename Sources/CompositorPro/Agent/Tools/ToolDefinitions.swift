@@ -53,6 +53,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case addOutro = "add_outro"
     case composeImage = "compose_image"
     case removeImageBackground = "remove_image_background"
+    case applyTextStyle = "apply_text_style"
     case duckAudio = "duck_audio"
     case applyTransition = "apply_transition"
     case removeTransition = "remove_transition"
@@ -825,6 +826,24 @@ enum ToolDefinitions {
                     "longEdge": ["type": "integer", "enum": [480, 540, 720, 1080], "description": "Proxy long edge. 540 is the default and the safest on a slow machine; 1080 is for high-resolution sources. Changing it rebuilds affected proxies."],
                 ],
                 required: []
+            )
+        ),
+        AgentTool(
+            name: .applyTextStyle,
+            description: "Restyles text with a named type style, in one undo step. This is how titles stop looking placed: font, weight, size, tracking, case, alignment and the legibility treatment are the decisions that should not vary between clips, and a preset fixes them once. Presets: title is a condensed poster face set once per piece, low in frame to clear a face; lowerThird is a small set-left name or role over an interview with a scrim behind it; caption is maximum legibility for burned-in subtitles; kicker is the small wide-tracked label above a title; credit is an end-credit line with a thin dark edge; elegant is a serif with ceremony; technical is monospaced for timecode and data, so digits do not shift; social is heavy all-caps for short-form hooks. Sizes are a fraction of canvas height, so one preset reads the same on 16:9 and 9:16. Pass clipIds, or captionGroupId to restyle a whole caption track as one unit — that is one undo step, not one per cue. fontName, fontSize, color and alignment override the preset where you need them to. applyPosition:true also places the text at the preset's position, clamped clear of the platform interface when you pass platform. A preset changes type only: it does not animate, add fill, or change timing.",
+            inputSchema: objectSchema(
+                properties: [
+                    "preset": ["type": "string", "enum": ["title", "lowerThird", "caption", "kicker", "credit", "elegant", "technical", "social"], "description": "The named type style to apply."],
+                    "clipIds": ["type": "array", "items": ["type": "string"], "description": "Text clips to style. Short ids from get_timeline are accepted."],
+                    "captionGroupId": ["type": "string", "description": "Restyle a whole caption track as one unit. Takes precedence over nothing; combine with clipIds if needed."],
+                    "fontName": ["type": "string", "description": "Override the preset's face. Every bundled face is safe."],
+                    "fontSize": ["type": "number", "minimum": 12, "maximum": 300, "description": "Absolute size in canvas points, overriding the preset's ratio."],
+                    "color": ["type": "string", "description": "Override the text colour, e.g. '#F5F5F5'."],
+                    "alignment": ["type": "string", "enum": ["left", "center", "right"], "description": "Override horizontal alignment."],
+                    "applyPosition": ["type": "boolean", "description": "Also place the text at the preset's position. Default false: moving type someone has already positioned is a separate decision."],
+                    "platform": ["type": "string", "enum": ["generic", "youtube", "tiktokShorts", "instagramReels"], "description": "Destination, so a requested position clears the platform's interface. Default generic."],
+                ],
+                required: ["preset"]
             )
         ),
         AgentTool(
