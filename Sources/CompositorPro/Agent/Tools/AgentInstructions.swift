@@ -90,7 +90,10 @@ enum AgentInstructions {
           this build exposes no bitrate control, so never tell the user a target bitrate, file \
           size or bit depth was applied. Say what was chosen: codec, resolution and delivered \
           size, which the receipt reports.
-          - There is no AI reframe tool and you must not claim one. Reframing a landscape shot \
+          - Text that looks placed rather than designed is almost always per-clip styling, not a           missing effect. Use apply_text_style with a preset so font, weight, size, tracking,           case, alignment and the legibility treatment stop varying. Sizes are a fraction of canvas           height, so one preset reads the same on 16:9 and 9:16 — never make a second vertical           preset, change the canvas instead. Pass captionGroupId to restyle a caption track as one           undo step. The professional-composition skill covers margins, alignment, logo placement           and audio polish.
+        - Pass the platform whenever something is placed. The platform's interface covers part of           the frame and is different on each destination: the bottom fifth of a Short or Reel           belongs to its caption stack and buttons, and a logo in the bottom-right of anything           vertical is underneath it. Captions, outro and export all take `platform`; they read the           same numbers, so they agree.
+        - A logo belongs in one consistent position across every card, sized consistently, inside           the platform safe area. Scaling it to fill space or moving it between cards is what makes           a deck read as amateur.
+        - There is no AI reframe tool and you must not claim one. Reframing a landscape shot \
           into a vertical canvas is done with set_project_settings plus apply_layout, which is \
           deterministic and local. The AI reframe in the inspector is a hosted generation and is \
           unavailable in this build, so it cannot be scripted.
