@@ -112,3 +112,73 @@ private extension Double {
         return Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
     }
 }
+/// What a platform's upload expects an export to look like.
+///
+/// Deliberately narrow: it bundles only the two knobs this build actually controls. Bitrate and
+/// audio settings are chosen by AVFoundation's export preset internals and cannot be set here,
+/// and a platform's own recommended bitrate is not a value this app can apply.
+struct ExportDelivery: Sendable, Equatable {
+    var codec: VideoCodec
+    var resolution: ExportResolution
+    /// Dimensions the export will actually produce for a given canvas.
+    var outputSize: CGSize
+    /// Set when the canvas orientation does not suit the destination.
+    var orientationWarning: String?
+}
+
+extension DeliveryPlatform {
+    /// Orientation a platform's audience expects. `generic` accepts either.
+    enum PreferredOrientation: String, Sendable, Equatable {
+        case landscape
+        case portrait
+        case either
+    }
+
+    var preferredOrientation: PreferredOrientation {
+        switch self {
+        case .generic: .either
+        case .youtube: .landscape
+        case .tiktokShorts, .instagramReels: .portrait
+        }
+    }
+
+    /// Resolves this platform's export settings against a canvas.
+    ///
+    /// This chooses codec and size only. It does not promise a bitrate, because the SDR export
+    /// path hands the encode to AVFoundation and exposes no bitrate control.
+    func exportDelivery(canvas: CGSize) -> ExportDelivery {
+        let codec: VideoCodec
+        let resolution: ExportResolution
+        switch self {
+        case .generic:
+            codec = .h264
+            resolution = .matchTimeline
+        case .youtube:
+            codec = .h264
+            resolution = .r1080p
+        case .tiktokShorts, .instagramReels:
+            codec = .h264
+            resolution = .r1080p
+        }
+        let canvasIsPortrait = canvas.height > canvas.width
+        var warning: String?
+        switch (preferredOrientation, canvasIsPortrait) {
+        case (.portrait, false):
+            warning = "\(canvas.width)x\(canvas.height) is landscape, but \(rawValue) is delivered "
+                + "portrait. Set the canvas to 9:16 with set_project_settings, or apply_layout, "
+                + "or the upload will letterbox."
+        case (.landscape, true):
+            warning = "\(canvas.width)x\(canvas.height) is portrait, but \(rawValue) is delivered "
+                + "landscape. Set the canvas with set_project_settings, or apply_layout, if that "
+                + "is not what you want."
+        case (.either, _), (.portrait, true), (.landscape, false):
+            warning = nil
+        }
+        return ExportDelivery(
+            codec: codec,
+            resolution: resolution,
+            outputSize: resolution.renderSize(for: canvas),
+            orientationWarning: warning
+        )
+    }
+}

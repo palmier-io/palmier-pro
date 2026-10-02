@@ -2,7 +2,7 @@
 
 Date: 2026-10-01. Inspected base commit: `75ef7d8`, plus active working-tree changes.
 
-This is a standalone technical backlog. Each issue explains the failure mechanism, the responsible code, the implementation work, and the evidence required to close it. All implementation checkboxes are pending.
+This is a standalone technical backlog. Each issue explains the failure mechanism, the responsible code, the implementation work, and the evidence required to close it. Checkboxes track implementation; verification limitations are recorded per ticket.
 
 ## 1. Engineering diagnosis
 
@@ -41,19 +41,25 @@ At the time of inspection, `apply_plan` checks readiness and returns `applied: f
 
 **Owner:** `Agent/Clients`. **Priority:** P0.
 
+**Status:** Implemented and verified by automated tests. Native UI interaction and live-model recognition await manual confirmation.
+
 **Code:** [`OpenAIChatCompletionsProvider.swift:76–87,129–135`](../Sources/CompositorPro/Agent/Clients/OpenAIChatCompletionsProvider.swift#L76); [`ToolResult.swift:5–8`](../Sources/CompositorPro/Agent/Tools/ToolResult.swift#L5).
 
-**Technical explanation:** Inspection tools correctly return `ToolResult.Block.image` alongside metadata. The custom Chat Completions adapter passes the result through `toolResultText`, which selects only `.text` blocks. The image never reaches the next model request. User-attached images use a different path and are preserved, which can hide this defect during basic vision testing. The built-in Anthropic and OpenAI Responses adapters preserve tool-result images.
+**Original mechanism:** Inspection tools returned `ToolResult.Block.image` alongside metadata, but the custom Chat Completions adapter passed the result through `toolResultText`, retaining only `.text` blocks. User-attached images used a different path and were preserved, hiding the defect during basic vision testing. The fix attaches complete ordered image-bearing results in a labeled user message after all tool replies in the batch. Original metadata stays with the images. Custom model settings now declare image input as unspecified, supported, or unsupported; unsupported configurations fail explicitly before sending an image request.
 
 **User impact:** The agent can call an inspection tool successfully and still choose or describe footage using metadata rather than the picture. Better reasoning cannot recover pixels removed by the adapter.
 
 **Implementation TODO:**
 
-- [ ] Preserve tool-result images using the endpoint's verified multimodal format. If images must be placed in a following user-content message, associate each with its tool-call ID, media ID, and frame time, and preserve valid tool-result ordering.
-- [ ] Declare vision support for each route; return an explicit capability limitation when the route cannot accept inspection images.
-- [ ] Preserve text, errors, images, and their ordering through multiple calls and conversation replay. Keep base64 image data out of text-only substitutions and logs.
+- [x] Preserve tool-result images using the endpoint's verified multimodal format. If images must be placed in a following user-content message, associate each with its tool-call ID, media ID, and frame time, and preserve valid tool-result ordering.
+- [x] Declare vision support for each route; return an explicit capability limitation when the route cannot accept inspection images.
+- [x] Preserve text, errors, images, and their ordering through multiple calls and conversation replay. Keep base64 image data out of text-only substitutions and logs.
 
 **Done when:** A loopback transport test receives actual image data from a tool result, including image-only and mixed results. A controlled recognition test selects the correct picture despite misleading filenames. Extend [`CustomAgentModelTests`](../Tests/CompositorProTests/Agent/CustomAgentModelTests.swift#L78), whose current image test covers a user attachment and a text-only tool result.
+
+**Verification performed:** The initial `swift test --filter CustomEndpointVisionTests` reproduced the defect. After the fix, `swift test --filter 'CustomEndpoint.*Tests|CustomAgentModel.*Tests|AgentProvider.*Tests|AgentThinkingTests'` passed 57 tests, including real JPEG transport, mixed/image-only results, batch associations, history replay, configuration persistence, and unsupported-image refusal. `swift build` passed. `scripts/localization/sync.sh` built successfully but failed to locate extraction output under this toolchain; the existing `sync.mjs` generator was run against `.build/out/Intermediates.noindex/CompositorPro.build/Debug/CompositorPro-p.build/Objects-normal/arm64`, and `node scripts/localization/check.mjs` passed with translation-coverage warnings.
+
+**Manual check:** In an isolated project, use two clearly different images with misleading filenames. Select a vision-capable custom model and inspect both; expect the answer to follow image content and preserve each image's identity after reopening chat. In Settings, save/cancel and reopen each image-input option using mouse and keyboard. With unsupported image input, expect an explicit refusal for image-bearing conversations while a new text-only conversation still works. No live provider recognition or UI pass is claimed by the transport tests.
 
 ### VQ-002 — Capabilities do not form one reliable planning contract
 

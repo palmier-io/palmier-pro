@@ -82,10 +82,11 @@ extension ToolExecutor {
             if input.resolution != nil {
                 throw ToolError("export_project: resolution only applies to video mode")
             }
+            if input.delivery != nil {
+                throw ToolError("export_project: delivery only applies to video mode")
+            }
         }
-
-        let format = try mode == .video ? ExportFormat.videoCodec(named: input.codec) : nil
-        let resolution = try mode == .video ? ExportResolution.exportPreset(named: input.resolution) : .matchTimeline
+        let platform = try deliveryPlatform(input.delivery, path: "export_project.delivery")
 
         let timeline: Timeline
         if let id = input.timelineId {
@@ -99,6 +100,30 @@ extension ToolExecutor {
         } else {
             timeline = editor.timeline
         }
+
+        // An explicit codec or resolution always wins; `delivery` only fills the gaps, and the
+        // receipt records which it did so the choice is never silent.
+        let preset = mode == .video
+            ? platform.exportDelivery(canvas: CGSize(width: timeline.width, height: timeline.height))
+            : nil
+        var deliveryNotes: [String] = []
+        if let preset {
+            if input.codec == nil, input.resolution == nil {
+                deliveryNotes.append(
+                    "delivery \(platform.rawValue) chose \(preset.codec.rawValue) at "
+                        + "\(Int(preset.outputSize.width))x\(Int(preset.outputSize.height))."
+                )
+            }
+            if let warning = preset.orientationWarning {
+                deliveryNotes.append(warning)
+            }
+        }
+        let format = try mode == .video
+            ? ExportFormat.videoCodec(named: input.codec) ?? preset?.codec.exportFormat
+            : nil
+        let resolution = try mode == .video
+            ? ExportResolution.exportPreset(named: input.resolution) ?? preset?.resolution ?? .matchTimeline
+            : .matchTimeline
 
         let outputURL = try exportDestination(
             outputPath: input.outputPath,
@@ -118,7 +143,11 @@ extension ToolExecutor {
             }
             return try enqueueExport(
                 editor, timeline: timeline, mode: mode, format: format,
-                resolution: resolution, target: .default, outputURL: outputURL
+                resolution: resolution, target: .default, outputURL: outputURL,
+                deliveryNotes: deliveryNotes,
+                deliveredSize: resolution.renderSize(
+                    for: CGSize(width: timeline.width, height: timeline.height)
+                )
             )
         case .xml:
             return try enqueueExport(
@@ -151,7 +180,9 @@ extension ToolExecutor {
         format: ExportFormat,
         resolution: ExportResolution,
         target: FCPXMLTarget,
-        outputURL: URL
+        outputURL: URL,
+        deliveryNotes: [String] = [],
+        deliveredSize: CGSize? = nil
     ) throws -> ToolResult {
         let warnings = format == .xml || format == .fcpxml
             ? nestExportWarnings(editor, timeline: timeline)
@@ -184,6 +215,10 @@ extension ToolExecutor {
             "fps": timeline.fps,
             "note": "The export is available in the Export dialog.",
         ]
+        if let deliveredSize {
+            payload["deliveredSize"] = "\(Int(deliveredSize.width))x\(Int(deliveredSize.height))"
+        }
+        if !deliveryNotes.isEmpty { payload["deliveryNotes"] = deliveryNotes }
         if !warnings.isEmpty { payload["warnings"] = warnings }
         return try jsonResult(payload)
     }
@@ -325,11 +360,15 @@ private extension CompositorProjectExporter.Report {
 }
 
 private struct ExportProjectArgs: DecodableToolArgs {
-    static let allowedKeys: Set<String> = ["mode", "codec", "resolution", "outputPath", "overwrite", "fcpxmlTarget", "timelineId"]
+    static let allowedKeys: Set<String> = [
+        "mode", "codec", "resolution", "delivery", "outputPath", "overwrite", "fcpxmlTarget",
+        "timelineId",
+    ]
 
     var mode: String?
     var codec: String?
     var resolution: String?
+    var delivery: String?
     var outputPath: String?
     var overwrite: Bool?
     var fcpxmlTarget: String?
