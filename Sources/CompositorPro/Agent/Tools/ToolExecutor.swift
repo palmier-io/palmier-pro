@@ -365,6 +365,7 @@ final class ToolExecutor {
         case .generateThumbnail: return try await generateThumbnail(editor, args)
         case .addOutro:          return try addOutro(editor, args)
         case .composeImage:      return try await composeImage(editor, args)
+        case .removeImageBackground: return try await removeImageBackground(editor, args)
         case .offsetAudio:        return try offsetAudio(editor, args)
         case .freezeClip:         return try freezeClip(editor, args)
         case .syncToBeats:        return try await syncToBeats(editor, args)

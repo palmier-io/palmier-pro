@@ -52,6 +52,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case generateThumbnail = "generate_thumbnail"
     case addOutro = "add_outro"
     case composeImage = "compose_image"
+    case removeImageBackground = "remove_image_background"
     case duckAudio = "duck_audio"
     case applyTransition = "apply_transition"
     case removeTransition = "remove_transition"
@@ -824,6 +825,21 @@ enum ToolDefinitions {
                     "longEdge": ["type": "integer", "enum": [480, 540, 720, 1080], "description": "Proxy long edge. 540 is the default and the safest on a slow machine; 1080 is for high-resolution sources. Changing it rebuilds affected proxies."],
                 ],
                 required: []
+            )
+        ),
+        AgentTool(
+            name: .removeImageBackground,
+            description: "Cuts a subject out of a still image, on this machine, and files the cutout in the library as a normal asset — a product shot on a plain backdrop, a person against a flat wall, a logo pulled off a mock-up. Vision runs entirely locally: no model is downloaded and nothing leaves the device. mode subject finds any distinct foreground subject; person uses a dedicated person model and usually gives a cleaner edge on people, refusing when no person is found. The background is left transparent so the cutout composites over anything; pass fillHex to flatten onto a solid colour instead, which is what you want for a product image on white. feather softens the cutout edge, 0 to 8, default 1.5. The result is placed with add_clips like any other image. Be honest about the limits: this is subject segmentation, not a matting network, so hair, fur and fine edges come out rough and it fails outright when there is no clear subject. For keyed footage or a green screen, use the chroma key effect instead — it is far more reliable. Report a low subjectCoverage as a sign the cutout is probably wrong rather than presenting it as clean.",
+            inputSchema: objectSchema(
+                properties: [
+                    "mediaRef": ["type": "string", "description": "The image to cut out. Must be a still image; use the chroma key effect for video."],
+                    "mode": ["type": "string", "enum": ["subject", "person"], "description": "subject finds any distinct foreground object; person uses the person model and gives a cleaner edge on people. Default subject."],
+                    "feather": ["type": "number", "minimum": 0, "maximum": 8, "description": "Softens the cutout edge. As a percentage of the image's long edge. Default 1.5; 0 leaves Vision's own edge."],
+                    "fillHex": ["type": "string", "description": "Flatten onto this solid colour, e.g. '#FFFFFF' for white. Omit to keep the background transparent."],
+                    "name": ["type": "string", "description": "Name for the cutout in the library."],
+                    "folderId": ["type": "string", "description": "Library folder to file it under."],
+                ],
+                required: ["mediaRef"]
             )
         ),
         AgentTool(
