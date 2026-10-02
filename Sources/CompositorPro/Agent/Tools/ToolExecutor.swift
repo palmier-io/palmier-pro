@@ -22,7 +22,6 @@ final class ToolExecutor {
     let exportQueue: ExportQueue
     let skillStore: SkillStore
     let visualSearchModel: any VisualSearchModelLoading
-    let capabilityInputLoader: @Sendable () async throws -> RuntimeCapabilities.LocalInputs
 
     var editor: EditorViewModel? {
         frontmostProjectProvider == nil ? inAppEditor : sessionProject?.editorViewModel
@@ -41,22 +40,19 @@ final class ToolExecutor {
         editor: EditorViewModel,
         exportQueue: ExportQueue = .shared,
         skillStore: SkillStore = .shared,
-        visualSearchModel: any VisualSearchModelLoading = VisualModelLoader.shared,
-        capabilityInputLoader: @escaping @Sendable () async throws -> RuntimeCapabilities.LocalInputs = RuntimeCapabilities.LocalInputs.load
+        visualSearchModel: any VisualSearchModelLoading = VisualModelLoader.shared
     ) {
         self.inAppEditor = editor
         self.frontmostProjectProvider = nil
         self.exportQueue = exportQueue
         self.skillStore = skillStore
         self.visualSearchModel = visualSearchModel
-        self.capabilityInputLoader = capabilityInputLoader
     }
 
     init(
         projectProvider: @escaping () -> VideoProject?,
         exportQueue: ExportQueue = .shared,
-        visualSearchModel: any VisualSearchModelLoading = VisualModelLoader.shared,
-        capabilityInputLoader: @escaping @Sendable () async throws -> RuntimeCapabilities.LocalInputs = RuntimeCapabilities.LocalInputs.load
+        visualSearchModel: any VisualSearchModelLoading = VisualModelLoader.shared
     ) {
         let project = projectProvider()
         self.inAppEditor = nil
@@ -65,7 +61,6 @@ final class ToolExecutor {
         self.exportQueue = exportQueue
         self.skillStore = .shared
         self.visualSearchModel = visualSearchModel
-        self.capabilityInputLoader = capabilityInputLoader
     }
 
     func bindProject(_ project: VideoProject?) {
@@ -122,8 +117,6 @@ final class ToolExecutor {
 
         // project tools act on AppState before editor is available
         switch tool {
-        case .getCapabilities:
-            return await getCapabilities(args, externalClient: origin.source == "mcp")
         case .manageProject:
             let result = await manageProject(args)
             captureToolAnalytics(
@@ -186,8 +179,6 @@ final class ToolExecutor {
             result = try await run(tool, editor, resolved)
         } catch let err as ToolError {
             result = .error(err.message)
-        } catch let error as RuntimeCapabilityError {
-            result = .error(Self.jsonString(error.capability.receipt) ?? "Capability unavailable.")
         } catch {
             result = .error(error.localizedDescription)
         }
@@ -344,7 +335,6 @@ final class ToolExecutor {
 
     private func run(_ tool: ToolName, _ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         switch tool {
-        case .getCapabilities: return await getCapabilities(args, externalClient: false)
         case .getTimeline:   return try getTimeline(editor, args)
         case .getMedia:      return try getMedia(editor, args)
         case .inspectMedia:  return try await inspectMedia(editor, args)
