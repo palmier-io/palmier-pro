@@ -273,23 +273,29 @@ extension EditorViewModel {
     }
 
     /// Parses a subtitle file into caption specs sized for the current timeline.
-    func subtitleCaptionSpecs(from url: URL) async throws -> [TextClipSpec] {
+    /// A subtitle file carries no position, so placement is the platform's to decide rather than
+    /// the file's to override. Text and timing still come from the file untouched.
+    func subtitleCaptionSpecs(
+        from url: URL, platform: DeliveryPlatform = .generic
+    ) async throws -> [TextClipSpec] {
         let preparationTimeline = timeline
         let cues = try await SubtitleFileParser.parseFile(at: url)
+        let placement = platform.defaultCaptionPlacement().clamped(into: platform.coveredArea)
         return try await CaptionSpecBuilder.build(
             cues: cues, fps: preparationTimeline.fps,
             canvasWidth: preparationTimeline.width, canvasHeight: preparationTimeline.height,
-            style: .caption, center: AppTheme.Caption.defaultCenter,
-            maxWidthRatio: DeliveryPlatform.generic.defaultCaptionPlacement().maxWidth
+            style: .caption,
+            center: CGPoint(x: CGFloat(placement.centerX), y: CGFloat(placement.centerY)),
+            maxWidthRatio: placement.maxWidth
         )
     }
 
     /// Imports an SRT or WebVTT file as one caption group on a new top track. One undo step.
     @discardableResult
-    func importCaptions(from url: URL) async throws -> [String] {
+    func importCaptions(from url: URL, platform: DeliveryPlatform = .generic) async throws -> [String] {
         let owningTimelineId = activeTimelineId
         let preparationTimeline = timeline
-        let specs = try await subtitleCaptionSpecs(from: url)
+        let specs = try await subtitleCaptionSpecs(from: url, platform: platform)
         try Task.checkCancellation()
         guard captionPreparationIsCurrent(timelineId: owningTimelineId, snapshot: preparationTimeline) else {
             throw CaptionError.timelineChanged

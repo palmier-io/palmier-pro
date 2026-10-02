@@ -14,14 +14,19 @@ extension ToolExecutor {
             guard let subtitleMediaRef = args.string("subtitleMediaRef"), !subtitleMediaRef.isEmpty else {
                 throw ToolError("add_captions: subtitleMediaRef must be a non-empty media asset id string.")
             }
-            let combined = Set(args.keys).subtracting(["subtitleMediaRef"])
+            // A subtitle file has no position of its own, so `platform` is allowed: it decides
+            // where the captions sit rather than overriding anything the file supplied.
+            let combined = Set(args.keys).subtracting(["subtitleMediaRef", "platform"])
             guard combined.isEmpty else {
                 throw ToolError(
                     "add_captions: subtitleMediaRef uses the file's text, timing, and default styling as-is; "
                     + "remove \(combined.sorted().joined(separator: ", "))."
                 )
             }
-            return try await addCaptions(fromSubtitle: subtitleMediaRef, editor: editor)
+            let platform = try deliveryPlatform(args.string("platform"), path: "add_captions.platform")
+            return try await addCaptions(
+                fromSubtitle: subtitleMediaRef, editor: editor, platform: platform
+            )
         }
 
         let stylePatch = try parseTextStylePatch(args, path: "add_captions")
@@ -120,7 +125,9 @@ extension ToolExecutor {
         return mutationResult(editor, since: snapshot)
     }
 
-    private func addCaptions(fromSubtitle mediaRef: String, editor: EditorViewModel) async throws -> ToolResult {
+    private func addCaptions(
+        fromSubtitle mediaRef: String, editor: EditorViewModel, platform: DeliveryPlatform
+    ) async throws -> ToolResult {
         guard let asset = editor.mediaAssets.first(where: { $0.id == mediaRef }) else {
             throw ToolError("add_captions: media asset not found: \(mediaRef)")
         }
@@ -132,7 +139,7 @@ extension ToolExecutor {
         }
         let snapshot = timelineSnapshot(editor)
         do {
-            let ids = try await editor.importCaptions(from: url)
+            let ids = try await editor.importCaptions(from: url, platform: platform)
             guard !ids.isEmpty else { throw ToolError("The subtitle file contains no captions.") }
             return mutationResult(editor, since: snapshot)
         } catch let error as SubtitleFileParser.ParseError {
