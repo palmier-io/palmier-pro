@@ -90,7 +90,8 @@ import Testing
     private func build(_ cues: [SubtitleCue]) async throws -> [EditorViewModel.TextClipSpec] {
         try await CaptionSpecBuilder.build(
             cues: cues, fps: 30, canvasWidth: 1920, canvasHeight: 1080,
-            style: .caption, center: CGPoint(x: 0.5, y: 0.9)
+            style: .caption, center: CGPoint(x: 0.5, y: 0.9),
+            maxWidthRatio: DeliveryPlatform.generic.defaultCaptionPlacement().maxWidth
         )
     }
 

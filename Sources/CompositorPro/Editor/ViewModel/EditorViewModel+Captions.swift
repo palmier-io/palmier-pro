@@ -7,6 +7,8 @@ extension EditorViewModel {
         var autoDetect: Bool = false
         var style: TextStyle = .caption
         var center: CGPoint = AppTheme.Caption.defaultCenter
+        /// Destination platform. Owns caption width and clamps placement clear of its interface.
+        var platform: DeliveryPlatform = .generic
         var textCase: CaptionCase = .auto
         var censorProfanity: Bool = false
         var locale: Locale? = nil
@@ -229,6 +231,7 @@ extension EditorViewModel {
             canvasHeight: preparationTimeline.height,
             style: request.style,
             center: request.center,
+            maxWidthRatio: request.platform.defaultCaptionPlacement().maxWidth,
             textCase: request.textCase,
             maxWords: request.maxWords,
             maxCharacters: request.maxCharacters,
@@ -276,7 +279,8 @@ extension EditorViewModel {
         return try await CaptionSpecBuilder.build(
             cues: cues, fps: preparationTimeline.fps,
             canvasWidth: preparationTimeline.width, canvasHeight: preparationTimeline.height,
-            style: .caption, center: AppTheme.Caption.defaultCenter
+            style: .caption, center: AppTheme.Caption.defaultCenter,
+            maxWidthRatio: DeliveryPlatform.generic.defaultCaptionPlacement().maxWidth
         )
     }
 

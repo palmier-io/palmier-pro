@@ -406,7 +406,7 @@ extension ToolExecutor {
         let natural = TextLayout.naturalSize(
             content: content,
             style: style,
-            maxWidth: CGFloat(canvas.w) * 0.9,
+            maxWidth: CGFloat(canvas.w) * Self.textMaxWidthRatio,
             canvasHeight: CGFloat(canvas.h)
         )
         let width = Double(natural.width) / canvas.w
@@ -428,6 +428,9 @@ extension ToolExecutor {
         case .right: centerX + width / 2
         }
     }
+
+    /// Widest a measured text block may run, as a fraction of canvas width.
+    static let textMaxWidthRatio = DeliveryPlatform.generic.defaultCaptionPlacement().maxWidth
 
     static func textCenterX(anchorX: Double, width: Double, alignment: TextStyle.Alignment) -> Double {
         switch alignment {

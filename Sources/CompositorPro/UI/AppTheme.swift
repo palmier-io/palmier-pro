@@ -406,7 +406,9 @@ enum AppTheme {
     }
 
     enum ComponentSize {
-        static let captionPreviewMaxTextWidthRatio: CGFloat = 0.9
+        static let captionPreviewMaxTextWidthRatio = CGFloat(
+            DeliveryPlatform.generic.defaultCaptionPlacement().maxWidth
+        )
         static let toolImagePreviewMaxHeight: CGFloat = 50
         static let projectCardWidth: CGFloat = 150
         static let projectCardHeight: CGFloat = 120
@@ -499,7 +501,8 @@ enum AppTheme {
         static let defaultFontSize: Double = 48
         static let centerSnapValue: CGFloat = 0.5
         static let centerSnapThreshold: Double = 0.02
-        static let defaultCenterY: CGFloat = 0.9
+        /// Derived from `DeliveryPlatform` so caption placement has exactly one owner.
+        static let defaultCenterY = CGFloat(DeliveryPlatform.generic.defaultCaptionPlacement().centerY)
         static let defaultCenter = CGPoint(x: centerSnapValue, y: defaultCenterY)
     }
 

@@ -496,6 +496,17 @@ protocol DecodableToolArgs: Decodable {
     static var allowedKeys: Set<String> { get }
 }
 
+/// Parses a delivery platform name, refusing unknown values rather than defaulting them: a
+/// silently-substituted platform would put captions under the wrong interface.
+func deliveryPlatform(_ raw: String?, path: String) throws -> DeliveryPlatform {
+    guard let raw, !raw.isEmpty else { return .generic }
+    guard let platform = DeliveryPlatform(rawValue: raw) else {
+        let known = DeliveryPlatform.allCases.map(\.rawValue).joined(separator: ", ")
+        throw ToolError("\(path): unknown platform '\(raw)'. Expected one of: \(known).")
+    }
+    return platform
+}
+
 func decodeToolArgs<T: DecodableToolArgs>(_ dict: [String: Any], path: String) throws -> T {
     try validateUnknownKeys(dict, allowed: T.allowedKeys, path: path)
     if let badPath = firstNonFiniteNumberPath(in: dict, path: path) {

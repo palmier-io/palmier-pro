@@ -4,7 +4,7 @@ import Foundation
 extension ToolExecutor {
     private static let addCaptionsAllowedKeys: Set<String> = Set([
         "style", "transform", "censorProfanity", "language", "animation", "highlightColor", "maxWords",
-        "maxCharacters", "trackIndex", "maximumGapSeconds", "subtitleMediaRef",
+        "maxCharacters", "trackIndex", "maximumGapSeconds", "subtitleMediaRef", "platform",
     ])
 
     func addCaptions(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
@@ -28,10 +28,18 @@ extension ToolExecutor {
         var style = TextStyle.caption
         if let stylePatch { Self.applyTextStylePatch(stylePatch, to: &style) }
 
+        let platform = try deliveryPlatform(args.string("platform"), path: "add_captions.platform")
         let transform = try parseTextTransform(args["transform"], path: "add_captions.transform")
-        var center = AppTheme.Caption.defaultCenter
+        // A caller-supplied position is honoured, but never left underneath the platform's
+        // own interface.
+        let placement = platform.defaultCaptionPlacement().clamped(into: platform.coveredArea)
+        var center = CGPoint(x: CGFloat(placement.centerX), y: CGFloat(placement.centerY))
         if let x = transform?.x { center.x = CGFloat(x) }
         if let y = transform?.y { center.y = CGFloat(y) }
+        let clamped = DeliveryPlatform.CaptionPlacement(
+            centerX: Double(center.x), centerY: Double(center.y), maxWidth: placement.maxWidth
+        ).clamped(into: platform.coveredArea)
+        center = CGPoint(x: CGFloat(clamped.centerX), y: CGFloat(clamped.centerY))
 
         let animation = try parseTextAnimation(preset: args.string("animation"), highlightColor: args.string("highlightColor"), path: "add_captions") ?? TextAnimation()
 
@@ -70,6 +78,7 @@ extension ToolExecutor {
         var request = scope.captionRequest(in: editor, provider: provider)
         request.style = style
         request.center = center
+        request.platform = platform
         request.censorProfanity = args.bool("censorProfanity") ?? false
         request.locale = context.preferredLocale
         request.maxWords = maxWords

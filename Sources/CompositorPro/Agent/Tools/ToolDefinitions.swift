@@ -1239,6 +1239,7 @@ enum ToolDefinitions {
                 ], textStyleProperties(detailed: false), [
                     "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Caption animation preset. Omit for static captions; set only when the user asks for animation."],
                     "highlightColor": ["type": "string", "description": "Active-word hex."],
+                    "platform": ["type": "string", "enum": ["generic", "youtube", "tiktokShorts", "instagramReels"], "description": "Where the video is going. The platform's own interface covers part of the picture, so captions are narrowed and lifted clear of it — tiktokShorts and instagramReels keep the bottom fifth free, where their caption and button stacks sit. Defaults to generic, which keeps captions where they always were. Explicit transform values are still honoured, but are clamped clear of the interface."],
                 ])
             )
         ),

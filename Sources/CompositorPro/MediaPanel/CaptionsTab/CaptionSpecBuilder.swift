@@ -15,6 +15,8 @@ enum CaptionSpecBuilder {
         let canvasHeight: Int
         let style: TextStyle
         let center: CGPoint
+        /// Widest a caption line may run, as a fraction of canvas width. Owned by `DeliveryPlatform`.
+        let maxWidthRatio: Double
         let textCase: EditorViewModel.CaptionCase
         let maxWords: Int?
         let maxCharacters: Int?
@@ -42,7 +44,8 @@ enum CaptionSpecBuilder {
                         text,
                         style: input.style,
                         canvasWidth: input.canvasWidth,
-                        canvasHeight: input.canvasHeight
+                        canvasHeight: input.canvasHeight,
+                        maxWidthRatio: input.maxWidthRatio
                     )
                 }
             )
@@ -72,7 +75,8 @@ enum CaptionSpecBuilder {
                         style: input.style,
                         center: input.center,
                         canvasWidth: input.canvasWidth,
-                        canvasHeight: input.canvasHeight
+                        canvasHeight: input.canvasHeight,
+                        maxWidthRatio: input.maxWidthRatio
                     )
                 }
             ))
@@ -90,7 +94,7 @@ enum CaptionSpecBuilder {
     @concurrent
     static func build(
         cues: [SubtitleCue], fps: Int, canvasWidth: Int, canvasHeight: Int,
-        style: TextStyle, center: CGPoint
+        style: TextStyle, center: CGPoint, maxWidthRatio: Double
     ) async throws -> [EditorViewModel.TextClipSpec] {
         let groupId = UUID().uuidString
         var specs: [EditorViewModel.TextClipSpec] = []
@@ -106,7 +110,8 @@ enum CaptionSpecBuilder {
                 style: style,
                 transform: transform(
                     for: cue.text, style: style, center: center,
-                    canvasWidth: canvasWidth, canvasHeight: canvasHeight
+                    canvasWidth: canvasWidth, canvasHeight: canvasHeight,
+                    maxWidthRatio: maxWidthRatio
                 ),
                 captionGroupId: groupId
             ))
@@ -264,7 +269,8 @@ enum CaptionSpecBuilder {
         _ text: String,
         style: TextStyle,
         canvasWidth: Int,
-        canvasHeight: Int
+        canvasHeight: Int,
+        maxWidthRatio: Double
     ) -> Bool {
         let size = TextLayout.naturalSize(
             content: text,
@@ -272,7 +278,7 @@ enum CaptionSpecBuilder {
             maxWidth: .greatestFiniteMagnitude,
             canvasHeight: CGFloat(canvasHeight)
         )
-        return size.width <= CGFloat(canvasWidth) * AppTheme.ComponentSize.captionPreviewMaxTextWidthRatio
+        return size.width <= CGFloat(Double(canvasWidth) * maxWidthRatio)
     }
 
     private static func transform(
@@ -280,14 +286,15 @@ enum CaptionSpecBuilder {
         style: TextStyle,
         center: CGPoint,
         canvasWidth: Int,
-        canvasHeight: Int
+        canvasHeight: Int,
+        maxWidthRatio: Double
     ) -> Transform {
         let width = Double(canvasWidth)
         let height = Double(canvasHeight)
         let natural = TextLayout.naturalSize(
             content: text,
             style: style,
-            maxWidth: CGFloat(width) * AppTheme.ComponentSize.captionPreviewMaxTextWidthRatio,
+            maxWidth: CGFloat(width * maxWidthRatio),
             canvasHeight: CGFloat(height)
         )
         return Transform(
