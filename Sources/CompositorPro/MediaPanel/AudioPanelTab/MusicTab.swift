@@ -253,7 +253,7 @@ struct MusicSection: View {
                 .fixedSize()
                 .focusable(false)
                 .disabled(!canGenerate || !account.aiAllowed)
-                .help(account.aiAllowed ? String() : L10n.string("Sign in to generate"))
+                .help(HostedServices.generationAvailability.localizedMessage)
 
                 agentMenu
             }

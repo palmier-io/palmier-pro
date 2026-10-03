@@ -2,7 +2,7 @@ import Foundation
 
 extension EditorViewModel {
     var aiEditAllowed: Bool {
-        AccountService.shared.isSignedIn && !AccountService.shared.isMisconfigured
+        AccountService.shared.aiAllowed
     }
 
     func aiEditActions(clipId: String) -> [EditAction] {

@@ -150,6 +150,10 @@ enum AgentInstructions {
           whole job. Pick from the seven presets; do not hand-dial the same knobs onto every clip. \
           A look is color only, so music, transitions and pacing stay separate calls. Then use \
           apply_color to bring one stubborn shot back toward the rest.
+        - Motivated clip motion is apply_motion_preset: fadeIn, slideUp, punchIn, or gentlePush. \
+          It writes ordinary editor keyframes and protects existing animation unless overwrite is \
+          explicit. Use one restrained treatment consistently; do not animate every shot or use it \
+          instead of a transition between adjacent clips.
         - Before you call an edit finished, run qc_timeline. It is read-only and finds the things \
           that silently ruin a render: media that went missing, clips overlapping on one track, \
           gaps, audio cutting in or out without a fade, a speed ramp reading past the end of the \

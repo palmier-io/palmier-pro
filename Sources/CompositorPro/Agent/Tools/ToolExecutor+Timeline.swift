@@ -57,7 +57,7 @@ extension ToolExecutor {
     }
 
     static var canGenerate: Bool {
-        HostedServices.enabled && AccountService.shared.isSignedIn && AccountService.shared.hasCredits
+        HostedServices.generationAvailability.canStart
     }
 
     static func rawTimelineDict(_ timeline: Timeline) -> [String: Any]? {

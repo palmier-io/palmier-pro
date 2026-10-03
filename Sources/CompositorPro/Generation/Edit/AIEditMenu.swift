@@ -10,6 +10,7 @@ struct AIEditMenu: View {
             EmptyView()
         } else if !aiAllowed {
             Button(L10n.string("AI Edit")) {}.disabled(true)
+                .help(HostedServices.generationAvailability.localizedMessage)
         } else {
             Menu(L10n.string("AI Edit")) {
                 if !enhanceActions.isEmpty {
@@ -65,8 +66,7 @@ struct AIEditMenu: View {
     }
 
     private var aiAllowed: Bool {
-        let account = AccountService.shared
-        return account.isSignedIn && !account.isMisconfigured
+        AccountService.shared.aiAllowed
     }
 
     private var availableActions: [EditAction] {

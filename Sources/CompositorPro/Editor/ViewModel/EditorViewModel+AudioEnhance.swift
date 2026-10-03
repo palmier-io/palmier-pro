@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 extension EditorViewModel {
@@ -13,7 +14,8 @@ extension EditorViewModel {
         enhancePendingEnhancements()
     }
 
-    func setDenoise(clipIds: Set<String>, enabled: Bool, amount: Double? = nil, actionName: String) {
+    func setDenoise(clipIds: Set<String>, enabled: Bool, amount: Double? = nil, actionName: String) throws {
+        if enabled { try AudioEnhancer.availability.requireAvailable() }
         let clamped = amount.map { min(1, max(0, $0)) }
         if enabled {
             for id in clipIds {
@@ -57,7 +59,8 @@ extension EditorViewModel {
 
     /// Enables the one-click chain. Enhance subsumes the standalone denoise and
     /// de-breath effects, so those are stripped to keep one owner per stage.
-    func setEnhance(clipIds: Set<String>, enabled: Bool, amount: Double? = nil, deess: Double? = nil, actionName: String) {
+    func setEnhance(clipIds: Set<String>, enabled: Bool, amount: Double? = nil, deess: Double? = nil, actionName: String) throws {
+        if enabled { try AudioEnhancer.availability.requireAvailable() }
         let clampedAmount = amount.map { min(1, max(0, $0)) }
         let clampedDeess = deess.map { min(1, max(0, $0)) }
         if enabled {
@@ -92,27 +95,26 @@ extension EditorViewModel {
 
     /// One-click voice enhance: measures source loudness, then applies the full chain
     /// (denoise + de-breath + de-esser + loudness match) as a single undoable action.
-    func enhanceVoice(clipIds: Set<String>, amount: Double, deess: Double, actionName: String) {
+    func enhanceVoice(clipIds: Set<String>, amount: Double, deess: Double, actionName: String) throws {
+        try AudioEnhancer.availability.requireAvailable()
         let ids = clipIds
         let clampedAmount = min(1, max(0, amount))
         let clampedDeess = min(1, max(0, deess))
         loudnessInFlight.formUnion(ids)
-        let targets: [(id: String, mediaRef: String, url: URL)] = ids.compactMap { id in
+        let fps = timeline.fps
+        let targets: [(id: String, mediaRef: String, url: URL, range: CMTimeRange)] = ids.compactMap { id in
             guard let clip = clipFor(id: id), clip.mediaType == .audio,
-                  let url = mediaResolver.resolveURL(for: clip.mediaRef)
+                  let url = mediaResolver.resolveURL(for: clip.mediaRef),
+                  let range = try? LoudnessAnalyzer.sourceRange(for: clip, fps: fps)
             else { return nil }
-            return (id, clip.mediaRef, url)
+            return (id, clip.mediaRef, url, range)
         }
         Task.detached(priority: .utility) { [weak self] in
             var gains: [String: Double] = [:]
             for item in targets {
-                let lufs: Double
-                if let cached = LoudnessAnalyzer.cachedLoudness(for: item.url, mediaRef: item.mediaRef) {
-                    lufs = cached
-                } else {
-                    do { lufs = try await LoudnessAnalyzer.integratedLoudness(for: item.url, mediaRef: item.mediaRef) }
-                    catch { continue }
-                }
+                guard let measurement = try? await LoudnessAnalyzer.integratedLoudness(
+                    for: item.url, mediaRef: item.mediaRef, range: item.range
+                ), let lufs = measurement.integratedLUFS else { continue }
                 gains[item.id] = min(24.0, max(-24.0, -16.0 - lufs))
             }
             await MainActor.run { [self] in
@@ -155,22 +157,20 @@ extension EditorViewModel {
         let ids = clipIds
         let target = min(14.0, max(-30.0, targetLUFS))
         loudnessInFlight.formUnion(ids)
-        let targets: [(id: String, mediaRef: String, url: URL)] = ids.compactMap { id in
+        let fps = timeline.fps
+        let targets: [(id: String, mediaRef: String, url: URL, range: CMTimeRange)] = ids.compactMap { id in
             guard let clip = clipFor(id: id), clip.mediaType == .audio,
-                  let url = mediaResolver.resolveURL(for: clip.mediaRef)
+                  let url = mediaResolver.resolveURL(for: clip.mediaRef),
+                  let range = try? LoudnessAnalyzer.sourceRange(for: clip, fps: fps)
             else { return nil }
-            return (id, clip.mediaRef, url)
+            return (id, clip.mediaRef, url, range)
         }
         Task.detached(priority: .utility) { [weak self] in
             var gains: [String: Double] = [:]
             for item in targets {
-                let lufs: Double
-                if let cached = LoudnessAnalyzer.cachedLoudness(for: item.url, mediaRef: item.mediaRef) {
-                    lufs = cached
-                } else {
-                    do { lufs = try await LoudnessAnalyzer.integratedLoudness(for: item.url, mediaRef: item.mediaRef) }
-                    catch { continue }
-                }
+                guard let measurement = try? await LoudnessAnalyzer.integratedLoudness(
+                    for: item.url, mediaRef: item.mediaRef, range: item.range
+                ), let lufs = measurement.integratedLUFS else { continue }
                 gains[item.id] = min(24.0, max(-24.0, target - lufs))
             }
             await MainActor.run { [self] in

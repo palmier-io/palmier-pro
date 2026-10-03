@@ -6,6 +6,10 @@ import SpeechEnhancement
 enum AudioEnhancer {
     static let cache = DiskCache(named: "EnhancedAudio")
 
+    static var availability: RuntimeCapability {
+        RuntimeCapabilities.denoising(bundledSpeech: RuntimeCapabilities.bundledSpeech, runtimeAvailable: MLXRuntime.isAvailable)
+    }
+
     enum EnhanceError: LocalizedError {
         case noAudioTrack
         case writeFailed
@@ -21,6 +25,7 @@ enum AudioEnhancer {
     static func denoisedAudio(for sourceURL: URL, mediaRef: String) async throws -> URL {
         let outputURL = denoisedURL(for: sourceURL, mediaRef: mediaRef)
         if FileManager.default.fileExists(atPath: outputURL.path) { return outputURL }
+        try availability.requireAvailable()
         #if BUNDLED_SPEECH
         let start = ContinuousClock.now
         var dry = try await readChannels(from: sourceURL)

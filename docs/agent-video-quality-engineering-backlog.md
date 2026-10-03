@@ -2,7 +2,7 @@
 
 Date: 2026-10-01. Inspected base commit: `75ef7d8`, plus active working-tree changes.
 
-This is a standalone technical backlog. Each issue explains the failure mechanism, the responsible code, the implementation work, and the evidence required to close it. All implementation checkboxes are pending.
+This is a standalone technical backlog. Each issue explains the failure mechanism, the responsible code, the implementation work, and the evidence required to close it. Checkboxes track implementation; verification limitations are recorded per ticket.
 
 ## 1. Engineering diagnosis
 
@@ -41,38 +41,58 @@ At the time of inspection, `apply_plan` checks readiness and returns `applied: f
 
 **Owner:** `Agent/Clients`. **Priority:** P0.
 
+**Status:** Implemented and verified by automated tests. Native UI interaction and live-model recognition await manual confirmation.
+
 **Code:** [`OpenAIChatCompletionsProvider.swift:76–87,129–135`](../Sources/CompositorPro/Agent/Clients/OpenAIChatCompletionsProvider.swift#L76); [`ToolResult.swift:5–8`](../Sources/CompositorPro/Agent/Tools/ToolResult.swift#L5).
 
-**Technical explanation:** Inspection tools correctly return `ToolResult.Block.image` alongside metadata. The custom Chat Completions adapter passes the result through `toolResultText`, which selects only `.text` blocks. The image never reaches the next model request. User-attached images use a different path and are preserved, which can hide this defect during basic vision testing. The built-in Anthropic and OpenAI Responses adapters preserve tool-result images.
+**Original mechanism:** Inspection tools returned `ToolResult.Block.image` alongside metadata, but the custom Chat Completions adapter passed the result through `toolResultText`, retaining only `.text` blocks. User-attached images used a different path and were preserved, hiding the defect during basic vision testing. The fix attaches complete ordered image-bearing results in a labeled user message after all tool replies in the batch. Original metadata stays with the images. Custom model settings now declare image input as unspecified, supported, or unsupported; unsupported configurations fail explicitly before sending an image request.
 
 **User impact:** The agent can call an inspection tool successfully and still choose or describe footage using metadata rather than the picture. Better reasoning cannot recover pixels removed by the adapter.
 
 **Implementation TODO:**
 
-- [ ] Preserve tool-result images using the endpoint's verified multimodal format. If images must be placed in a following user-content message, associate each with its tool-call ID, media ID, and frame time, and preserve valid tool-result ordering.
-- [ ] Declare vision support for each route; return an explicit capability limitation when the route cannot accept inspection images.
-- [ ] Preserve text, errors, images, and their ordering through multiple calls and conversation replay. Keep base64 image data out of text-only substitutions and logs.
+- [x] Preserve tool-result images using the endpoint's verified multimodal format. If images must be placed in a following user-content message, associate each with its tool-call ID, media ID, and frame time, and preserve valid tool-result ordering.
+- [x] Declare vision support for each route; return an explicit capability limitation when the route cannot accept inspection images.
+- [x] Preserve text, errors, images, and their ordering through multiple calls and conversation replay. Keep base64 image data out of text-only substitutions and logs.
 
 **Done when:** A loopback transport test receives actual image data from a tool result, including image-only and mixed results. A controlled recognition test selects the correct picture despite misleading filenames. Extend [`CustomAgentModelTests`](../Tests/CompositorProTests/Agent/CustomAgentModelTests.swift#L78), whose current image test covers a user attachment and a text-only tool result.
+
+**Verification performed:** The initial `swift test --filter CustomEndpointVisionTests` reproduced the defect. After the fix, `swift test --filter 'CustomEndpoint.*Tests|CustomAgentModel.*Tests|AgentProvider.*Tests|AgentThinkingTests'` passed 57 tests, including real JPEG transport, mixed/image-only results, batch associations, history replay, configuration persistence, and unsupported-image refusal. `swift build` passed. `scripts/localization/sync.sh` built successfully but failed to locate extraction output under this toolchain; the existing `sync.mjs` generator was run against `.build/out/Intermediates.noindex/CompositorPro.build/Debug/CompositorPro-p.build/Objects-normal/arm64`, and `node scripts/localization/check.mjs` passed with translation-coverage warnings.
+
+**Manual check:** In an isolated project, use two clearly different images with misleading filenames. Select a vision-capable custom model and inspect both; expect the answer to follow image content and preserve each image's identity after reopening chat. In Settings, save/cancel and reopen each image-input option using mouse and keyboard. With unsupported image input, expect an explicit refusal for image-bearing conversations while a new text-only conversation still works. No live provider recognition or UI pass is claimed by the transport tests.
 
 ### VQ-002 — Capabilities do not form one reliable planning contract
 
 **Owner:** `Backend`, `Generation`, `Audio`, and shared tool discovery. **Priority:** P0.
 
-**Code:** [`HostedServices.swift:14`](../Sources/CompositorPro/Backend/HostedServices.swift#L14), [`ToolExecutor+Generate.swift:35–42`](../Sources/CompositorPro/Agent/Tools/ToolExecutor+Generate.swift#L35), [`AudioEnhancer.swift:21–40`](../Sources/CompositorPro/Audio/AudioEnhancer.swift#L21), [`Package.swift`](../Package.swift).
+**Status:** Implemented. Default and speech-trait builds and automated verification passed; manual UI and live-provider behavior remain unverified.
 
-**Technical explanation:** Chat, media generation, and local DSP use different dependencies. Hosted generation is disabled with `HostedServices.enabled = false`. Denoising requires the `BundledSpeech` trait and its model/runtime. A custom chat endpoint supplies neither. The existing `canGenerate` flag helps describe hosted availability, but does not describe each local/remote operation's prerequisites.
+**Code:** [`RuntimeCapabilities.swift`](../Sources/CompositorPro/App/RuntimeCapabilities.swift), [`ToolExecutor+Capabilities.swift`](../Sources/CompositorPro/Agent/Tools/ToolExecutor+Capabilities.swift), [`HostedServices.swift`](../Sources/CompositorPro/Backend/HostedServices.swift), [`AudioEnhancer.swift`](../Sources/CompositorPro/Audio/AudioEnhancer.swift), [`CapabilityToolTests.swift`](../Tests/CompositorProTests/Agent/CapabilityToolTests.swift).
+
+**Original mechanism:** Chat, media generation, and local DSP use different dependencies. Hosted generation is disabled with `HostedServices.enabled = false`. Denoising requires the `BundledSpeech` trait and its model/runtime. A custom chat endpoint supplies neither, but discovery and UI did not consistently describe or enforce those distinctions.
+
+**Implementation:** `get_capabilities` works before a project is opened and reports per-operation availability, preparation/refusal reasons, configured stock providers, speech languages, and declared image support. Keychain, voice enumeration, and Piper filesystem checks execute off-main; volatile app/model state is read after that work finishes. Shared decisions now drive hosted generation/transcription checks, model discovery, generation UI, and voice-enhancement preflight. Blocked enhancement cannot create an edit or undo step, while disabling an existing effect remains possible. Readiness is explicitly distinct from permission to attempt preparation; remote providers and lazy denoising weights are not probed or downloaded by discovery.
 
 **User impact:** A plan can require capabilities that cannot complete in the current build, leading to repeated refusals, poor substitutions, or enabled effects that do not deliver the expected processing.
 
 **Implementation TODO:**
 
-- [ ] Derive a shared capability snapshot from build features, installed model state, provider configuration, and endpoint modalities.
-- [ ] Describe availability per operation, with stable reasons such as build exclusion, model unavailable, credential missing, or provider failure.
-- [ ] Use this snapshot in UI, tool descriptions/discovery, planning, and execution. Revalidate changed prerequisites at execution time.
-- [ ] Capture whether the brief requires stock footage, user footage, or synthesized scenes. Report any material change to that requirement.
+- [x] Derive a shared capability snapshot from build features, installed model state, provider configuration, and endpoint modalities.
+- [x] Describe availability per operation, with stable reasons such as build exclusion, model unavailable, credential missing, or provider failure.
+- [x] Use this snapshot in UI, tool descriptions/discovery, planning, and execution. Revalidate changed prerequisites at execution time.
+- [x] Require explicit source type and language in planning instructions and report material substitutions. Persistent structured brief fields remain VQ-009.
 
 **Done when:** Both speech-trait configurations report their actual capabilities. The agent cannot mistake a working chat credential for video-generation access. A disabled capability yields an actionable terminal result before dependent editing work starts.
+
+**Verification performed:**
+
+- `swift test --filter 'RuntimeCapabilityTests|CapabilityToolTests'`: 11 tests passed, including real MCP discovery/invocation/readback, distinct prerequisite reasons, cancellation, and refusal without mutation or undo.
+- `swift test`: 2,037 tests in 310 suites passed.
+- `swift build` and `swift build --traits BundledSpeech`: passed.
+- `swift test --traits BundledSpeech --filter 'RuntimeCapabilityTests|CapabilityToolTests'`: 11 tests passed.
+- `scripts/localization/sync.sh`: build passed; extraction-directory mismatch persisted in this toolchain. Regenerated English using the existing `sync.mjs` compiler-output workflow recorded under VQ-001. `node scripts/localization/check.mjs` passed with translation-coverage warnings.
+
+**Manual check:** Launch the rebuilt app with an isolated project. In a build without usable bundled speech, expect Denoise/Enhance Voice to show their prerequisite and refuse activation; an existing enabled effect can still be disabled. Confirm ordinary local audio controls remain available. Compare `get_capabilities`, `list_models`, and a refused hosted-generation request: each should report the same blocker, with no placeholder or undo entry. Change image-input declarations and stock credentials, then re-read capabilities and expect updated results. Verify mouse/keyboard, disabled and empty states, and cancellation. A packaged speech-enabled app's model download/inference and live-provider health were not exercised by these tests.
 
 ### VQ-003 — Loudness integration uses the wrong averaging domain
 

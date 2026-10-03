@@ -33,7 +33,8 @@ struct BYOKClient: AgentClient {
                 throw AgentClientTransportError.missingAPIKey(provider)
             }
         }
-        if settings.supportsImages == false, messages.contains(where: \.containsImages) {
+        if !RuntimeCapabilities.imageInput(supported: settings.supportsImages).canStart,
+           messages.contains(where: \.containsImages) {
             throw AgentClientTransportError.imageInputUnsupported(model: settings.custom?.modelID ?? settings.model.rawValue)
         }
 

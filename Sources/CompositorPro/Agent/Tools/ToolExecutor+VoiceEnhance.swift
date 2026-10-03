@@ -62,7 +62,7 @@ extension ToolExecutor {
         }
 
         let snapshot = timelineSnapshot(editor)
-        editor.enhanceVoice(
+        try editor.enhanceVoice(
             clipIds: Set(input.clipIds),
             amount: input.amount ?? Clip.defaultEnhanceAmount,
             deess: input.deess ?? Clip.defaultEnhanceDeess,

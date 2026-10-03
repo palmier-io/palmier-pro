@@ -306,9 +306,10 @@ extension ToolExecutor {
         estimatedCost: Int,
         hostedEnabled: Bool = HostedServices.enabled
     ) -> Bool {
-        guard hostedEnabled, isSignedIn else { return false }
-        guard estimatedCost > 0 else { return true }
-        return remainingCredits >= estimatedCost
+        RuntimeCapabilities.hostedGeneration(
+            enabled: hostedEnabled, configured: true, signedIn: isSignedIn,
+            hasCredits: estimatedCost <= 0 || remainingCredits >= estimatedCost, catalogLoaded: true
+        ).canStart
     }
 
     static func parseLocale(_ args: [String: Any], path: String) async throws -> Locale? {
@@ -324,7 +325,7 @@ extension ToolExecutor {
         guard request.provider == .cloud else { return }
         let cost = await editor.captionCloudCreditCost(for: request)
         let account = AccountService.shared
-        guard HostedServices.enabled, account.isSignedIn else { throw ToolError(HostedServices.unavailableMessage) }
+        try HostedServices.accessAvailability.requireAvailable()
         guard cost > 0 else { return }
         let remaining = account.remainingCredits
         guard remaining > 0 else { throw ToolError("Add credits to use Cloud transcription.") }

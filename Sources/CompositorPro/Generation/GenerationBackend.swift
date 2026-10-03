@@ -31,6 +31,7 @@ enum GenerationBackend {
         fileURL: URL,
         contentType: String,
     ) async throws -> String {
+        try HostedServices.accessAvailability.requireAvailable()
         guard let convex = AccountService.shared.convex else {
             throw BackendError.notConfigured
         }
@@ -47,6 +48,7 @@ enum GenerationBackend {
         params: BackendGenerationParams,
         projectId: String? = nil,
     ) async throws -> String {
+        try HostedServices.generationAvailability.requireAvailable()
         guard let convex = AccountService.shared.convex else {
             throw BackendError.notConfigured
         }
@@ -63,6 +65,7 @@ enum GenerationBackend {
     }
 
     static func enhanceDraft(sourceJobId: String) async throws -> String {
+        try HostedServices.generationAvailability.requireAvailable()
         guard let convex = AccountService.shared.convex else {
             throw BackendError.notConfigured
         }

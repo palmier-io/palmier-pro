@@ -24,8 +24,8 @@ extension ToolExecutor {
         let enabled = input.enabled ?? true
         let snapshot = timelineSnapshot(editor)
         let actionName = enabled ? "Denoise Audio (Agent)" : "Disable Denoise (Agent)"
-        editor.undo.perform(actionName) {
-            editor.setDenoise(
+        try editor.undo.perform(actionName) {
+            try editor.setDenoise(
                 clipIds: Set(input.clipIds),
                 enabled: enabled,
                 amount: input.strength,

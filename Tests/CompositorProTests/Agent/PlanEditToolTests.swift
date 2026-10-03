@@ -69,7 +69,7 @@ struct PlanEditToolTests {
         await client.disconnect()
     }
 
-    @Test func approveReserveUndoIsOneReversibleStatusChange() async throws {
+    @Test func approvedPlanAppliesAsOneReversibleTimelineChange() async throws {
         let harness = ToolHarness()
         let undoManager = UndoManager()
         harness.editor.undo.attach(undoManager)
@@ -83,13 +83,15 @@ struct PlanEditToolTests {
         ])
         let before = harness.editor.timeline
         _ = try await harness.runOK("apply_plan", args: ["planId": "plan-undo", "commit": true])
-        #expect(harness.editor.editPlan(id: "plan-undo")?.status == .ready)
-        #expect(harness.editor.timeline == before)
-        #expect(checkpoints == 3)
+        #expect(harness.editor.editPlan(id: "plan-undo")?.status == .applied)
+        #expect(harness.editor.timeline != before)
+        #expect(harness.editor.timeline.tracks.flatMap(\.clips).contains { $0.mediaRef == harnessed.id })
+        #expect(checkpoints >= 3)
 
         #expect(undoManager.canUndo)
         undoManager.undo()
         #expect(harness.editor.editPlan(id: "plan-undo")?.status == .approved)
+        #expect(harness.editor.timeline == before)
     }
 
     @Test func invalidRequestsDoNotCreatePlansOrUndoEntries() async throws {

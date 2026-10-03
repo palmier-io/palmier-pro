@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 extension InspectorView {
@@ -13,6 +14,11 @@ extension InspectorView {
                     debreathRow(audios: audioClips)
                 }
                 loudnessRow(audios: audioClips)
+                if !audioClips.isEmpty, !AudioEnhancer.availability.canStart {
+                    Text(AudioEnhancer.availability.localizedMessage)
+                        .font(.system(size: AppTheme.FontSize.xs))
+                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                }
             }
             if !hasNonTextVisualClips {
                 speedSection(clips: audioClips)
@@ -60,11 +66,11 @@ extension InspectorView {
                 propertyRow(
                     label: L10n.string("Denoise"),
                     onReset: {
-                        editor.setDenoise(
-                            clipIds: Set(audios.map(\.id)),
-                            enabled: false,
-                            actionName: "Reset Denoise"
-                        )
+                        changeAudioEnhancement {
+                            try editor.setDenoise(
+                                clipIds: Set(audios.map(\.id)), enabled: false, actionName: "Reset Denoise"
+                            )
+                        }
                     }
                 ) {
                     HStack(spacing: AppTheme.Spacing.sm) {
@@ -77,25 +83,28 @@ extension InspectorView {
                                 dragSensitivity: 0.5,
                                 fieldWidth: AppTheme.EditorPanel.numericFieldWidth
                             ) { percent in
-                                editor.setDenoise(
-                                    clipIds: Set(audios.map(\.id)),
-                                    enabled: true,
-                                    amount: percent / 100,
-                                    actionName: "Change Denoise Strength"
-                                )
+                                changeAudioEnhancement {
+                                    try editor.setDenoise(
+                                        clipIds: Set(audios.map(\.id)), enabled: true,
+                                        amount: percent / 100, actionName: "Change Denoise Strength"
+                                    )
+                                }
                             }
+                            .disabled(!AudioEnhancer.availability.canStart)
                             .help(L10n.string("Blends denoised and original audio — lower this if voices sound thin or over-compressed."))
                         }
                         Toggle(String(), isOn: Binding(
                             get: { allOn },
                             set: { enabled in
-                                editor.setDenoise(
-                                    clipIds: Set(audios.map(\.id)),
-                                    enabled: enabled,
-                                    actionName: enabled ? "Enable Denoise" : "Disable Denoise"
-                                )
+                                changeAudioEnhancement {
+                                    try editor.setDenoise(
+                                        clipIds: Set(audios.map(\.id)), enabled: enabled,
+                                        actionName: enabled ? "Enable Denoise" : "Disable Denoise"
+                                    )
+                                }
                             }
                         ))
+                        .disabled(!AudioEnhancer.availability.canStart && !allOn)
                         .toggleStyle(.switch)
                         .controlSize(.mini)
                         .labelsHidden()
@@ -132,11 +141,11 @@ extension InspectorView {
                 propertyRow(
                     label: L10n.string("Enhance Voice"),
                     onReset: {
-                        editor.setEnhance(
-                            clipIds: Set(audios.map(\.id)),
-                            enabled: false,
-                            actionName: "Reset Enhance Voice"
-                        )
+                        changeAudioEnhancement {
+                            try editor.setEnhance(
+                                clipIds: Set(audios.map(\.id)), enabled: false, actionName: "Reset Enhance Voice"
+                            )
+                        }
                     }
                 ) {
                     HStack(spacing: AppTheme.Spacing.sm) {
@@ -149,34 +158,36 @@ extension InspectorView {
                                 dragSensitivity: 0.5,
                                 fieldWidth: AppTheme.EditorPanel.numericFieldWidth
                             ) { percent in
-                                editor.setEnhance(
-                                    clipIds: Set(audios.map(\.id)),
-                                    enabled: true,
-                                    amount: percent / 100,
-                                    actionName: "Change Enhance Voice Amount"
-                                )
+                                changeAudioEnhancement {
+                                    try editor.setEnhance(
+                                        clipIds: Set(audios.map(\.id)), enabled: true,
+                                        amount: percent / 100, actionName: "Change Enhance Voice Amount"
+                                    )
+                                }
                             }
+                            .disabled(!AudioEnhancer.availability.canStart)
                             .help(L10n.string("Overall strength of the denoise, de-breath, de-esser, and loudness chain."))
                         }
                         Toggle(String(), isOn: Binding(
                             get: { allOn },
                             set: { enabled in
-                                if enabled {
-                                    editor.enhanceVoice(
-                                        clipIds: Set(audios.map(\.id)),
-                                        amount: (sharedClipValue(audios) { $0.enhanceAmount * 100 } ?? Clip.defaultEnhanceAmount * 100) / 100,
-                                        deess: (sharedClipValue(audios) { $0.enhanceDeess * 100 } ?? Clip.defaultEnhanceDeess * 100) / 100,
-                                        actionName: "Enable Enhance Voice"
-                                    )
-                                } else {
-                                    editor.setEnhance(
-                                        clipIds: Set(audios.map(\.id)),
-                                        enabled: false,
-                                        actionName: "Disable Enhance Voice"
-                                    )
+                                changeAudioEnhancement {
+                                    if enabled {
+                                        try editor.enhanceVoice(
+                                            clipIds: Set(audios.map(\.id)),
+                                            amount: (sharedClipValue(audios) { $0.enhanceAmount * 100 } ?? Clip.defaultEnhanceAmount * 100) / 100,
+                                            deess: (sharedClipValue(audios) { $0.enhanceDeess * 100 } ?? Clip.defaultEnhanceDeess * 100) / 100,
+                                            actionName: "Enable Enhance Voice"
+                                        )
+                                    } else {
+                                        try editor.setEnhance(
+                                            clipIds: Set(audios.map(\.id)), enabled: false, actionName: "Disable Enhance Voice"
+                                        )
+                                    }
                                 }
                             }
                         ))
+                        .disabled(!AudioEnhancer.availability.canStart && !allOn)
                         .toggleStyle(.switch)
                         .controlSize(.mini)
                         .labelsHidden()
@@ -188,12 +199,12 @@ extension InspectorView {
                     propertyRow(
                         label: L10n.string("De-Ess"),
                         onReset: {
-                            editor.setEnhance(
-                                clipIds: Set(audios.map(\.id)),
-                                enabled: true,
-                                deess: 0.6,
-                                actionName: "Reset De-Ess"
-                            )
+                            changeAudioEnhancement {
+                                try editor.setEnhance(
+                                    clipIds: Set(audios.map(\.id)), enabled: true,
+                                    deess: 0.6, actionName: "Reset De-Ess"
+                                )
+                            }
                         }
                     ) {
                         ScrubbableNumberField(
@@ -204,13 +215,14 @@ extension InspectorView {
                             dragSensitivity: 0.5,
                             fieldWidth: AppTheme.EditorPanel.numericFieldWidth
                         ) { percent in
-                            editor.setEnhance(
-                                clipIds: Set(audios.map(\.id)),
-                                enabled: true,
-                                deess: percent / 100,
-                                actionName: "Change De-Ess Amount"
-                            )
+                            changeAudioEnhancement {
+                                try editor.setEnhance(
+                                    clipIds: Set(audios.map(\.id)), enabled: true,
+                                    deess: percent / 100, actionName: "Change De-Ess Amount"
+                                )
+                            }
                         }
+                        .disabled(!AudioEnhancer.availability.canStart)
                         .help(L10n.string("How strongly sibilance (\"s\" and \"sh\" sounds) is lowered."))
                     }
                 }
@@ -224,6 +236,19 @@ extension InspectorView {
                     }
                 }
             }
+        }
+    }
+
+    private func changeAudioEnhancement(_ operation: () throws -> Void) {
+        do {
+            try operation()
+        } catch let error as RuntimeCapabilityError {
+            NSApp.presentError(NSError(
+                domain: "AudioEnhancement", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: error.capability.localizedMessage]
+            ))
+        } catch {
+            NSApp.presentError(error)
         }
     }
 

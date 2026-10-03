@@ -124,11 +124,13 @@ extension GenerationView {
     }
 
     var submitButton: some View {
-        Button {
+        let availability = HostedServices.generationAvailability
+        let canSignIn = availability.reason == .authenticationRequired && !account.isSigningIn
+        return Button {
             if aiAllowed { submitGeneration() }
-            else if !account.isMisconfigured { Task { await account.signInWithGoogle() } }
+            else if canSignIn { Task { await account.signInWithGoogle() } }
         } label: {
-            Image(systemName: aiAllowed ? "arrow.up" : "person.crop.circle")
+            Image(systemName: canSignIn ? "person.crop.circle" : "arrow.up")
                 .font(.system(size: AppTheme.FontSize.sm, weight: .bold))
                 .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
         }
@@ -136,16 +138,13 @@ extension GenerationView {
         .buttonBorderShape(.circle)
         .controlSize(.regular)
         .tint(AppTheme.Accent.primary)
-        .accessibilityLabel(aiAllowed
-            ? (selectedType == .upscale ? L10n.string("Upscale") : L10n.string("Generate"))
-            : L10n.string("Sign in"))
-        .disabled(aiAllowed ? !canSubmit : account.isMisconfigured || account.isSigningIn)
-        .opacity((aiAllowed ? canSubmit : !account.isMisconfigured && !account.isSigningIn) ? AppTheme.Opacity.opaque : AppTheme.Opacity.strong)
+        .accessibilityLabel(canSignIn ? L10n.string("Sign in")
+            : (selectedType == .upscale ? L10n.string("Upscale") : L10n.string("Generate")))
+        .disabled(aiAllowed ? !canSubmit : !canSignIn)
+        .opacity((aiAllowed ? canSubmit : canSignIn) ? AppTheme.Opacity.opaque : AppTheme.Opacity.strong)
         .help(aiAllowed
             ? (selectedType == .upscale ? L10n.string("Upscale source media") : String())
-            : (account.isMisconfigured
-                ? L10n.string("AI is unavailable")
-                : account.isSigningIn ? L10n.string("Opening Google") : L10n.string("Sign in to generate")))
+            : availability.localizedMessage)
     }
 
     // MARK: - Actions

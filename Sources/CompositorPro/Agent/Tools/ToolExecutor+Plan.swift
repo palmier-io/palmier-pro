@@ -94,8 +94,14 @@ extension ToolExecutor {
         guard plan.timelineId == editor.activeTimelineId else {
             throw ToolError("Plan '\(plan.id)' belongs to timeline '\(plan.timelineId)'. Switch to that timeline before applying it.")
         }
+        if plan.status == .applied {
+            return .ok(Self.jsonString(plan.receipt(includeDetails: true).merging(
+                ["applied": true, "ready": true, "noOp": true],
+                uniquingKeysWith: { _, new in new }
+            )) ?? "{}")
+        }
         guard plan.status == .approved || plan.status == .ready else {
-            throw ToolError("Only an approved plan can be reserved as ready. Mark it approved first.")
+            throw ToolError("Only an approved or ready plan can be applied. Mark it approved first.")
         }
         try Task.checkCancellation()
         guard plan.fps == editor.timeline.fps,
@@ -109,19 +115,32 @@ extension ToolExecutor {
             guard blockers.isEmpty else {
                 throw ToolError("Plan '\(plan.id)' is not ready: \(blockers.joined(separator: " "))")
             }
-            if plan.status == .ready {
-                return .ok(Self.jsonString(plan.receipt(includeDetails: true).merging(
-                    ["applied": false, "ready": true, "noOp": true],
-                    uniquingKeysWith: { _, new in new }
-                )) ?? "{}")
-            }
+            let entries = try assemblyEntries(plan: plan, editor: editor)
+            let clipIDsBefore = Set(editor.timeline.tracks.flatMap(\.clips).map(\.id))
             do {
-                let ready = try editor.changeEditPlanStatus(
-                    id: plan.id, to: .ready,
-                    actionName: "Reserve Plan (Agent)", permitReserved: true
-                )
-                return .ok(Self.jsonString(ready.receipt(includeDetails: true).merging(
-                    ["applied": false, "ready": true, "noOp": false],
+                try editor.undo.perform("Apply Plan (Agent)") {
+                    if plan.status == .approved {
+                        _ = try editor.changeEditPlanStatus(
+                            id: plan.id, to: .ready,
+                            actionName: "Apply Plan (Agent)", permitReserved: true
+                        )
+                    }
+                    let result = try addClips(editor, ["entries": entries])
+                    guard !result.isError else {
+                        throw ToolError(result.content.compactMap { block in
+                            if case .text(let text) = block { return text }
+                            return nil
+                        }.joined(separator: " "))
+                    }
+                    _ = try editor.changeEditPlanStatus(
+                        id: plan.id, to: .applied,
+                        actionName: "Apply Plan (Agent)", permitReserved: true
+                    )
+                }
+                let applied = editor.editPlan(id: plan.id) ?? plan
+                let addedClipIDs = editor.timeline.tracks.flatMap(\.clips).map(\.id).filter { !clipIDsBefore.contains($0) }
+                return .ok(Self.jsonString(applied.receipt(includeDetails: true).merging(
+                    ["applied": true, "ready": true, "noOp": false, "addedClipIds": addedClipIDs],
                     uniquingKeysWith: { _, new in new }
                 )) ?? "{}")
             } catch let error as EditPlanValidationError {
@@ -379,6 +398,31 @@ extension ToolExecutor {
         }
     }
 
+    private func assemblyEntries(plan: EditPlan, editor: EditorViewModel) throws -> [[String: Any]] {
+        let allOmitTracks = plan.shots.allSatisfy { $0.trackId == nil }
+        return try plan.shots.enumerated().map { index, shot in
+            guard let mediaRef = shot.mediaRef,
+                  let asset = editor.mediaAssetsById[mediaRef] else {
+                throw ToolError("Shot '\(shot.id)' has no ready mediaRef.")
+            }
+            var entry: [String: Any] = ["mediaRef": mediaRef, "startFrame": shot.startFrame]
+            if let sourceStart = shot.sourceStartSeconds, let sourceEnd = shot.sourceEndSeconds {
+                entry["source"] = [sourceStart, sourceEnd]
+            } else {
+                entry["endFrame"] = shot.endFrame
+            }
+            if !allOmitTracks {
+                let trackId = shot.trackId ?? editor.timeline.tracks.first(where: { asset.type.isCompatible(with: $0.type) })?.id
+                guard let trackId,
+                      let trackIndex = editor.timeline.tracks.firstIndex(where: { $0.id == trackId }) else {
+                    throw ToolError("Shot '\(shot.id)' has no compatible destination track.")
+                }
+                entry["trackIndex"] = trackIndex
+            }
+            return entry
+        }
+    }
+
     private func readinessBlockers(plan: EditPlan, editor: EditorViewModel) -> [String] {
         var blockers: [String] = []
         let timeline = editor.timeline
@@ -407,10 +451,20 @@ extension ToolExecutor {
                 default:
                     blockers.append("Shot '\(shot.id)' points at media '\(mediaRef)' that is still \(asset.generationStatus.serialized).")
                 }
-                if let sourceEnd = shot.sourceEndSeconds,
-                   asset.resolvedDuration > 0,
-                   sourceEnd > asset.resolvedDuration + 0.001 {
-                    blockers.append("Shot '\(shot.id)' selects source audio/video past the end of '\(mediaRef)'.")
+                if let trackId = shot.trackId,
+                   let track = timeline.tracks.first(where: { $0.id == trackId }),
+                   !asset.type.isCompatible(with: track.type) {
+                    blockers.append("Shot '\(shot.id)' media type '\(asset.type.rawValue)' is incompatible with track '\(trackId)'.")
+                }
+                if let sourceStart = shot.sourceStartSeconds, let sourceEnd = shot.sourceEndSeconds {
+                    if asset.resolvedDuration > 0, sourceEnd > asset.resolvedDuration + 0.001 {
+                        blockers.append("Shot '\(shot.id)' selects source audio/video past the end of '\(mediaRef)'.")
+                    }
+                    let sourceFrames = secondsToFrame(seconds: sourceEnd, fps: timeline.fps)
+                        - secondsToFrame(seconds: sourceStart, fps: timeline.fps)
+                    if sourceFrames != shot.endFrame - shot.startFrame {
+                        blockers.append("Shot '\(shot.id)' source span is \(sourceFrames) frames but its timeline range is \(shot.endFrame - shot.startFrame) frames.")
+                    }
                 }
             } else if let candidateURL = shot.candidateURL {
                 blockers.append("Shot '\(shot.id)' has candidate '\(candidateURL)' that has not been imported yet. Import it with import_media, then attach its mediaRef.")

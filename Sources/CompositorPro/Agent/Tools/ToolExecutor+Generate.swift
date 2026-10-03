@@ -34,12 +34,7 @@ extension ToolExecutor {
 
     func generate(_ editor: EditorViewModel, _ args: [String: Any], type: ClipType) throws -> ToolResult {
         let prompt = args["prompt"] == nil ? "" : try args.requireString("prompt")
-        guard HostedServices.enabled, AccountService.shared.isSignedIn else {
-            throw ToolError(HostedServices.unavailableMessage)
-        }
-        guard AccountService.shared.hasCredits else {
-            throw ToolError("Out of credits. Tell the user to add credits or subscribe to keep generating.")
-        }
+        try HostedServices.generationAvailability.requireAvailable()
         switch type {
         case .sequence:
             throw ToolError("Cannot generate a sequence. Sequences are timelines.")
@@ -300,12 +295,7 @@ extension ToolExecutor {
     }
 
     func generateAudio(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
-        guard HostedServices.enabled, AccountService.shared.isSignedIn else {
-            throw ToolError(HostedServices.unavailableMessage)
-        }
-        guard AccountService.shared.hasCredits else {
-            throw ToolError("Out of credits. Tell the user to add credits or subscribe to keep generating.")
-        }
+        try HostedServices.generationAvailability.requireAvailable()
         let modelId = try args.string("model") ?? defaultModelId(
             AudioModelConfig.allModels.map { (id: $0.id, paidOnly: $0.paidOnly) }, kind: "audio")
         guard let model = AudioModelConfig.allModels.first(where: { $0.id == modelId }) else {
@@ -486,12 +476,7 @@ extension ToolExecutor {
         guard asset.type != .video || asset.sourceFPS != nil else {
             throw ToolError("Source FPS is not available yet. Poll get_media until the asset is ready.")
         }
-        guard HostedServices.enabled, AccountService.shared.isSignedIn else {
-            throw ToolError(HostedServices.unavailableMessage)
-        }
-        guard AccountService.shared.hasCredits else {
-            throw ToolError("Out of credits. Tell the user to add credits or subscribe to keep generating.")
-        }
+        try HostedServices.generationAvailability.requireAvailable()
 
         let available = UpscaleModelConfig.models(for: asset.type)
         let model: UpscaleModelConfig
@@ -616,6 +601,7 @@ extension ToolExecutor {
         let body: [String: Any] = [
             "models": out,
             "loaded": ModelCatalog.shared.isLoaded,
+            "availability": HostedServices.generationAvailability.receipt,
         ]
         guard let json = Self.jsonString(roundJSONFloatingPointNumbers(body, toPlaces: 3)) else {
             return .error("Failed to encode model list")

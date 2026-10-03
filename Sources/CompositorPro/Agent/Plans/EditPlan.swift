@@ -266,7 +266,7 @@ extension EditPlan {
             (.ready, .approved),
             (.proposed, .superseded), (.approved, .superseded),
             (.ready, .superseded), (.applied, .superseded),
-            (.approved, .ready):
+            (.approved, .ready), (.ready, .applied):
             return
         default:
             throw EditPlanValidationError.invalidStatusTransition(from: from, to: to)

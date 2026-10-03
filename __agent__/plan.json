@@ -2,22 +2,26 @@
   "schema_version": 1,
   "items": [
     {
-      "title": "Map the repository and current agent/video architecture",
-      "status": "in-progress"
+      "title": "Audit current Phase 0 work and define the first safe slice",
+      "status": "done"
     },
     {
-      "title": "Identify capability gaps and implementation constraints",
-      "status": "pending"
+      "title": "Implement and verify Phase 0 capability/evidence improvements",
+      "status": "done"
     },
     {
-      "title": "Write the technical note with phased design and priorities",
-      "status": "pending"
+      "title": "Implement and verify Phase 1 stock/B-roll production workflow",
+      "status": "done"
     },
     {
-      "title": "Verify the note against the repository",
-      "status": "pending"
+      "title": "Implement and verify Phase 2 motion graphics and style system",
+      "status": "done"
+    },
+    {
+      "title": "Summarize completed work and remaining gaps",
+      "status": "done"
     }
   ],
-  "updated_at": "2026-10-01T00:44:35.769Z",
+  "updated_at": "2026-10-03T05:15:53.360Z",
   "session_id": "01a0f4eb-5dc1-7270-9f11-19e402c7465e"
 }
