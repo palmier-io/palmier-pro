@@ -76,8 +76,9 @@ extension ToolExecutor {
         ]
     }
 
-    /// Speaks text — or the timeline's own transcript — with a Mac system voice, imports the
-    /// result as media, and optionally places it. No server, no sign-in, no credits.
+    /// Speaks text — or the timeline's own transcript — locally, imports the result as media,
+    /// and optionally places it. Prefers the best installed Piper voice, falling back to a Mac
+    /// system voice. No server, no sign-in, no credits.
     func generateSpeech(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         let input: GenerateSpeechInput = try decodeToolArgs(args, path: "generate_speech")
 

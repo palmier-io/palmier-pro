@@ -77,7 +77,8 @@ enum PiperTTS {
 
     // MARK: - Voices
 
-    /// Installed voices, sorted best-quality-last so callers can take the first acceptable match.
+    /// Installed voices, best quality first so callers that take the first acceptable match
+    /// get the most natural voice installed rather than the smallest one.
     static func installedModels() -> [Model] {
         let fm = FileManager.default
         guard let names = try? fm.contentsOfDirectory(atPath: voiceDirectory.path) else { return [] }
@@ -89,7 +90,10 @@ enum PiperTTS {
                 return parseModel(fileName: name, modelURL: modelURL)
             }
             .sorted { lhs, rhs in
-                qualityRank(lhs.quality) < qualityRank(rhs.quality)
+                let left = qualityRank(lhs.quality)
+                let right = qualityRank(rhs.quality)
+                if left != right { return left > right }
+                return lhs.fileName < rhs.fileName
             }
     }
 

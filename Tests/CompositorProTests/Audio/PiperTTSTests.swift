@@ -67,6 +67,26 @@ struct PiperTTSDiscoveryTests {
         _ = PiperTTS.installedModels()
     }
 
+    /// The bug that made a good voice sound ignored: ranking ascending handed callers the
+    /// worst installed voice, so a downloaded `high` model never won automatic selection.
+    @Test func installedVoicesAreOrderedBestQualityFirst() throws {
+        let voices = PiperTTS.installedModels()
+        let ranks = voices.map { voice in
+            switch voice.quality.lowercased() {
+            case "x_low": return 0
+            case "low": return 1
+            case "medium": return 2
+            case "high": return 3
+            default: return 2
+            }
+        }
+        #expect(ranks == ranks.sorted(by: >))
+
+        guard let best = voices.first else { return }
+        let preferred = PiperTTS.model(forLanguage: best.languageTag)
+        #expect(preferred?.fileName == best.fileName)
+    }
+
     @Test func renderRefusesWhenPiperIsNotInstalled() {
         // Reported as an actionable install instruction rather than a crash.
         if !PiperTTS.isAvailable {
