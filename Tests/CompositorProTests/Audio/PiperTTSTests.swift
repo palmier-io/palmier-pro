@@ -25,15 +25,15 @@ struct PiperTTSDiscoveryTests {
     }
 
     /// The published voice filenames are the only contract between a downloaded model and the
-    /// app, so parsing them is pinned here rather than discovered at runtime.
+    /// app, so parsing them is pinned here against a fixture rather than against whatever voices
+    /// the machine running the test happens to have installed.
     @Test func parsesThePublishedFilenameConvention() throws {
         let (dir, cleanup) = try tempVoices()
         defer { cleanup() }
-        let url = try writeModel(dir, name: "en_US-amy-medium")
-        let model = try #require(PiperTTS.installedModels().first { $0.fileName == "en_US-amy-medium" }
-            ?? nil)
-        _ = url
-        // The store reads the real shared directory, so assert the parser through it directly.
+        try writeModel(dir, name: "en_US-amy-medium")
+
+        let model = try #require(PiperTTS.installedModels(in: dir).first)
+        #expect(model.fileName == "en_US-amy-medium")
         #expect(model.languageTag == "en-US")
         #expect(model.quality == "medium")
         #expect(FileManager.default.fileExists(atPath: model.modelURL.path))
@@ -43,8 +43,29 @@ struct PiperTTSDiscoveryTests {
         let (dir, cleanup) = try tempVoices()
         defer { cleanup() }
         try writeModel(dir, name: "custom-voice", language: "ml_IN")
+
         // Config-driven language is what rescues an unusually named file.
-        #expect(FileManager.default.fileExists(atPath: dir.appendingPathComponent("custom-voice.onnx").path))
+        let model = try #require(PiperTTS.installedModels(in: dir).first)
+        #expect(model.languageTag == "ml-IN")
+    }
+
+    /// Real Piper configs nest the locale under `language.code`, not as a bare string. Reading it
+    /// as a string silently yielded nil for every shipped model, so the filename was the only
+    /// thing identifying a voice's language.
+    @Test func readsTheNestedLocaleShapeUsedByShippedConfigs() throws {
+        let (dir, cleanup) = try tempVoices()
+        defer { cleanup() }
+        let url = dir.appendingPathComponent("unnamed.onnx")
+        try Data([0x01, 0x02]).write(to: url)
+        let config: [String: Any] = [
+            "language": ["code": "ml_IN", "family": "ml", "name_english": "Malayalam"],
+            "num_symbols": 256,
+        ]
+        try JSONSerialization.data(withJSONObject: config)
+            .write(to: dir.appendingPathComponent("unnamed.onnx.json"))
+
+        let model = try #require(PiperTTS.installedModels(in: dir).first)
+        #expect(model.languageTag == "ml-IN")
     }
 
     @Test func voiceDirectoryIsStableAndUserOwned() {
@@ -70,21 +91,15 @@ struct PiperTTSDiscoveryTests {
     /// The bug that made a good voice sound ignored: ranking ascending handed callers the
     /// worst installed voice, so a downloaded `high` model never won automatic selection.
     @Test func installedVoicesAreOrderedBestQualityFirst() throws {
-        let voices = PiperTTS.installedModels()
-        let ranks = voices.map { voice in
-            switch voice.quality.lowercased() {
-            case "x_low": return 0
-            case "low": return 1
-            case "medium": return 2
-            case "high": return 3
-            default: return 2
-            }
-        }
-        #expect(ranks == ranks.sorted(by: >))
+        let (dir, cleanup) = try tempVoices()
+        defer { cleanup() }
+        try writeModel(dir, name: "en_US-amy-medium")
+        try writeModel(dir, name: "en_US-lessac-high")
+        try writeModel(dir, name: "en_US-hfc_female-low")
 
-        guard let best = voices.first else { return }
-        let preferred = PiperTTS.model(forLanguage: best.languageTag)
-        #expect(preferred?.fileName == best.fileName)
+        let voices = PiperTTS.installedModels(in: dir)
+        #expect(voices.map(\.quality) == ["high", "medium", "low"])
+        #expect(voices.map(\.fileName) == ["en_US-lessac-high", "en_US-amy-medium", "en_US-hfc_female-low"])
     }
 
     @Test func renderRefusesWhenPiperIsNotInstalled() {

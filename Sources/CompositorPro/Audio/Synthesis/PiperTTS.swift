@@ -78,14 +78,17 @@ enum PiperTTS {
     // MARK: - Voices
 
     /// Installed voices, best quality first so callers that take the first acceptable match
-    /// get the most natural voice installed rather than the smallest one.
-    static func installedModels() -> [Model] {
+    /// get the most natural voice installed rather than the smallest one. `directory` is
+    /// injectable so discovery can be exercised against a fixture instead of whatever
+    /// happens to be installed on the machine running the tests.
+    static func installedModels(in directory: URL? = nil) -> [Model] {
+        let root = directory ?? voiceDirectory
         let fm = FileManager.default
-        guard let names = try? fm.contentsOfDirectory(atPath: voiceDirectory.path) else { return [] }
+        guard let names = try? fm.contentsOfDirectory(atPath: root.path) else { return [] }
         return names
             .filter { $0.hasSuffix(".onnx") }
             .compactMap { name in
-                let modelURL = voiceDirectory.appendingPathComponent(name)
+                let modelURL = root.appendingPathComponent(name)
                 guard fm.fileExists(atPath: modelURL.path) else { return nil }
                 return parseModel(fileName: name, modelURL: modelURL)
             }
@@ -118,21 +121,19 @@ enum PiperTTS {
     }
 
     /// Filenames follow the published convention `<language>_<name>-<quality>`, e.g.
-    /// `en_US-amy-medium`. Anything unrecognised still yields a usable model with the language
-    /// taken from its config, so an oddly named file is not silently invisible.
+    /// `en_US-amy-medium`. An oddly named file still yields a usable model because its language
+    /// comes from the config, so it is not silently invisible.
     private static func parseModel(fileName: String, modelURL: URL) -> Model {
         let stem = (fileName as NSString).deletingPathExtension
         let parts = stem.split(separator: "-").map(String.init)
-        var language = parts.first ?? "und"
         var quality = "medium"
         if parts.count >= 3 {
             quality = parts[parts.count - 1]
         } else if parts.count == 2, ["x_low", "low", "medium", "high"].contains(parts[1].lowercased()) {
             quality = parts[1]
         }
-        if let configured = configuredLanguage(modelURL: modelURL), language == "und" {
-            language = configured
-        }
+        // The model's own config is authoritative; the filename is only a fallback.
+        let language = configuredLanguage(modelURL: modelURL) ?? parts.first ?? "und"
         return Model(fileName: stem, language: language, quality: quality, modelURL: modelURL)
     }
 
@@ -142,8 +143,15 @@ enum PiperTTS {
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return nil
         }
-        // Piper writes an underscore locale under "language".
-        guard let code = object["language"] as? String else { return nil }
+        // Current Piper configs nest the locale under "code"; older ones use a bare string.
+        let code: String?
+        if let nested = object["language"] as? [String: Any] {
+            code = nested["code"] as? String
+        } else {
+            code = object["language"] as? String
+        }
+        guard let code, !code.isEmpty else { return nil }
+        // Piper writes an underscore locale.
         return code.replacingOccurrences(of: "_", with: "-")
     }
 
