@@ -50,17 +50,6 @@ struct ImageVideoGeneratorTests {
         #expect(abs(Int(b) - Int(src.2)) <= 6)
     }
 
-    /// The captured frame must be opaque — an alpha channel routes re-import to the untagged
-    /// ProRes 4444 path and shifts the colors.
-    @MainActor
-    @Test func compositeCaptureProducesOpaqueImage() throws {
-        let canvas = CGSize(width: 64, height: 64)
-        let video = try Self.solidCGImage(rgb: (30, 92, 158), size: canvas)
-        let result = try #require(EditorViewModel.compositeCapture(video: video, textRoot: CALayer(), canvas: canvas))
-        let alpha = result.alphaInfo
-        #expect(alpha == .none || alpha == .noneSkipLast || alpha == .noneSkipFirst)
-    }
-
     private static func centerPixel(of cg: CGImage) -> (UInt8, UInt8, UInt8) {
         var px = [UInt8](repeating: 0, count: 4)
         let ctx = CGContext(

@@ -34,13 +34,15 @@ struct CompositorRenderTests {
 
     static func render(
         _ timeline: Timeline, frame: Int,
-        renderSize: CGSize = size, imageURLs: [String: URL] = [:]
+        renderSize: CGSize = size, imageURLs: [String: URL] = [:],
+        timelines: [Timeline] = []
     ) async throws -> Frame {
         var urls = imageURLs
         if urls["pattern"] == nil { urls["pattern"] = try await CompositorFixtures.patternVideoURL() }
-        nonisolated(unsafe) let resolved = urls
+        let resolved = urls
+        let byId = Dictionary(uniqueKeysWithValues: timelines.map { ($0.id, $0) })
         let result = try await CompositionBuilder.build(
-            timeline: timeline, resolveURL: { resolved[$0] }, renderSize: renderSize
+            timeline: timeline, resolveURL: { resolved[$0] }, resolveTimeline: { byId[$0] }, renderSize: renderSize
         )
         let gen = AVAssetImageGenerator(asset: result.composition)
         gen.videoComposition = result.videoComposition
@@ -55,11 +57,11 @@ struct CompositorRenderTests {
 
 // MARK: - Color classification
 
-private func isRed(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.r > 140 && p.g < 100 && p.b < 100 }
-private func isGreen(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.g > 140 && p.r < 110 && p.b < 110 }
-private func isBlue(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.b > 140 && p.r < 100 && p.g < 100 }
-private func isWhite(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.r > 170 && p.g > 170 && p.b > 170 }
-private func isBlack(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.r < 45 && p.g < 45 && p.b < 45 }
+private let isRed = CompositorFixtures.isRed
+private let isGreen = CompositorFixtures.isGreen
+private let isBlue = CompositorFixtures.isBlue
+private let isWhite = CompositorFixtures.isWhite
+private let isBlack = CompositorFixtures.isBlack
 
 // MARK: - Tests
 
@@ -116,6 +118,52 @@ extension CompositorRenderTests {
         let f = try await Self.render(Self.timelineWith(Fixtures.videoTrack(clips: [clip])), frame: 15)
         #expect(isBlack(f.at(10, 90)), "cropped-away left strip should be black: \(f.at(10, 90))")
         #expect(!isBlack(f.at(300, 45)), "right side should still show content: \(f.at(300, 45))")
+    }
+
+    @Test func edgeRoundingRevealsBackgroundAndPreservesInterior() async throws {
+        var foreground = CompositorFixtures.patternClip(id: "foreground")
+        foreground.edgeRounding = 1
+        var background = CompositorFixtures.patternClip(id: "background")
+        background.transform.flipHorizontal = true
+
+        let frame = try await Self.render(Self.timelineWith(
+            Fixtures.videoTrack(clips: [foreground]),
+            Fixtures.videoTrack(clips: [background])
+        ), frame: 15)
+
+        #expect(isGreen(frame.at(5, 5)), "edge rounding should reveal background: \(frame.at(5, 5))")
+        #expect(isRed(frame.tl), "interior should preserve foreground: \(frame.tl)")
+    }
+
+    @Test func edgeRoundingUsesVisibleCropBounds() async throws {
+        var foreground = CompositorFixtures.patternClip(id: "foreground")
+        foreground.crop = Crop(left: 0.25)
+        foreground.edgeRounding = 1
+        var background = CompositorFixtures.patternClip(id: "background")
+        background.transform.flipHorizontal = true
+
+        let frame = try await Self.render(Self.timelineWith(
+            Fixtures.videoTrack(clips: [foreground]),
+            Fixtures.videoTrack(clips: [background])
+        ), frame: 15)
+
+        #expect(isGreen(frame.at(82, 5)), "edge-rounded crop should reveal background: \(frame.at(82, 5))")
+        #expect(isRed(frame.at(100, 45)), "edge-rounded crop interior should preserve foreground: \(frame.at(100, 45))")
+    }
+
+    @Test func edgeSoftnessFeathersAlphaAndPreservesInterior() async throws {
+        var foreground = CompositorFixtures.patternClip(id: "foreground")
+        foreground.edgeSoftness = 0.25
+        var background = CompositorFixtures.patternClip(id: "background")
+        background.transform.flipHorizontal = true
+
+        let frame = try await Self.render(Self.timelineWith(
+            Fixtures.videoTrack(clips: [foreground]),
+            Fixtures.videoTrack(clips: [background])
+        ), frame: 15)
+
+        #expect(isGreen(frame.at(2, 45)), "soft edge should reveal background: \(frame.at(2, 45))")
+        #expect(isRed(frame.tl), "interior should preserve foreground: \(frame.tl)")
     }
 
     @Test func cropKeyframedMidway() async throws {
@@ -216,7 +264,7 @@ extension CompositorRenderTests {
 
     @Test func topLayerWinsInStack() async throws {
         // Opaque full-frame top over a flipped bg → top wins everywhere.
-        var top = CompositorFixtures.patternClip(id: "top")
+        let top = CompositorFixtures.patternClip(id: "top")
         var bg = CompositorFixtures.patternClip(id: "bg")
         bg.transform = Transform(flipHorizontal: true)
         let f = try await Self.render(Self.timelineWith(
@@ -242,13 +290,33 @@ extension CompositorRenderTests {
             CGImageDestinationAddImage(dest, ctx.makeImage()!, nil)
             #expect(CGImageDestinationFinalize(dest))
         }
-        let overlay = Fixtures.clip(id: "ov", mediaRef: "alpha-img", mediaType: .image, start: 0, duration: 60)
+        var overlay = Fixtures.clip(id: "ov", mediaRef: "alpha-img", mediaType: .image, start: 0, duration: 60)
+        overlay.edgeRounding = 1
         let f = try await Self.render(Self.timelineWith(
             Fixtures.videoTrack(clips: [overlay]),
             Fixtures.videoTrack(clips: [CompositorFixtures.patternClip(id: "bg")])
         ), frame: 15, imageURLs: ["alpha-img": pngURL])
         #expect(isRed(f.tl), "opaque overlay region shows red: \(f.tl)")
         #expect(isWhite(f.br), "transparent overlay region shows bg through: \(f.br)")
+    }
+
+    @Test func chromaKeyRevealsBackground() async throws {
+        var keyed = CompositorFixtures.patternClip(id: "keyed")
+        keyed.effects = [Effect.make("key.chroma", [
+            "keyHue": 0.333,
+            "tolerance": 0.5,
+            "softness": 0.3,
+            "spill": 0,
+        ])]
+        var background = CompositorFixtures.patternClip(id: "background")
+        background.transform = Transform(flipHorizontal: true)
+
+        let f = try await Self.render(Self.timelineWith(
+            Fixtures.videoTrack(clips: [keyed]),
+            Fixtures.videoTrack(clips: [background])
+        ), frame: 15)
+
+        #expect(isRed(f.tr), "keyed green should reveal the red background: \(f.tr)")
     }
 
     @Test func adjacentClipsBothRender() async throws {
@@ -267,10 +335,5 @@ extension CompositorRenderTests {
 // MARK: - Fixture helper
 
 extension CompositorRenderTests {
-    static func timelineWith(_ tracks: Track...) -> Timeline {
-        var t = Fixtures.timeline(tracks: tracks)
-        t.width = Int(size.width)
-        t.height = Int(size.height)
-        return t
-    }
+    static func timelineWith(_ tracks: Track...) -> Timeline { CompositorFixtures.timeline(tracks) }
 }

@@ -9,6 +9,12 @@ import UniformTypeIdentifiers
 /// pattern (TL red, TR green, BL blue, BR white) so flips, rotations, and crops all
 /// produce measurably distinct frames, plus a still-video, clip, and timeline built on it.
 enum CompositorFixtures {
+    static func isRed(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.r > 140 && p.g < 100 && p.b < 100 }
+    static func isGreen(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.g > 140 && p.r < 110 && p.b < 110 }
+    static func isBlue(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.b > 140 && p.r < 100 && p.g < 100 }
+    static func isWhite(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.r > 170 && p.g > 170 && p.b > 170 }
+    static func isBlack(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.r < 45 && p.g < 45 && p.b < 45 }
+
     static let renderSize = CGSize(width: 320, height: 180)
 
     static func patternPNG(size: CGSize) throws -> URL {

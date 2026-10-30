@@ -44,9 +44,12 @@ extension ToolExecutor {
                 throw ToolError("Clip \(id) is a \(clip.mediaType.rawValue) clip; apply_effect needs a video or image clip.")
             }
         }
+        let clearsBlur = adds.contains { $0.type == Effect.gaussianBlurType && $0.params?[Effect.gaussianBlurRadiusKey] != nil }
+        let clearedBlurIds = clearsBlur ? input.clipIds.filter { editor.clipFor(id: $0)?.blurKeyframeTrack != nil } : []
 
+        let snapshot = timelineSnapshot(editor)
         let actionName = input.clipIds.count == 1 ? "Apply Effect (Agent)" : "Apply Effect ×\(input.clipIds.count) (Agent)"
-        withUndoGroup(editor, actionName: actionName) {
+        editor.undo.perform(actionName) {
             editor.mutateClips(ids: Set(input.clipIds), actionName: actionName) { clip in
                 var stack = clip.effects ?? []
                 for type in removes { stack.removeAll { $0.type == type } }
@@ -66,9 +69,7 @@ extension ToolExecutor {
                 clip.effects = stack.isEmpty ? nil : stack
             }
         }
-        var summary: [String] = []
-        if !adds.isEmpty { summary.append("set \(adds.map(\.type).joined(separator: ", "))") }
-        if !removes.isEmpty { summary.append("removed \(removes.joined(separator: ", "))") }
-        return .ok("Effects \(summary.joined(separator: "; ")) on \(input.clipIds.count) clip\(input.clipIds.count == 1 ? "" : "s"). Verify with inspect_timeline.")
+        let notes = clearedBlurIds.isEmpty ? [] : ["Static blur cleared existing blur keyframes on: \(clearedBlurIds.joined(separator: ", "))."]
+        return mutationResult(editor, since: snapshot, touched: input.clipIds, notes: notes)
     }
 }

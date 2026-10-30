@@ -12,14 +12,19 @@ func formatTimecode(frame: Int, fps: Int) -> String {
     return "\(sign)\(twoDigit(hh)):\(twoDigit(mm)):\(twoDigit(ss)):\(twoDigit(ff))"
 }
 
+func parseTimecode(_ value: String, fps: Int) -> Int? {
+    let fields = value.split(separator: ":", omittingEmptySubsequences: false)
+    guard (1...1_000).contains(fps), fields.count == 4,
+          let hours = Int(fields[0]), let minutes = Int(fields[1]),
+          let seconds = Int(fields[2]), let frames = Int(fields[3]),
+          (0..<1_000).contains(hours), (0..<60).contains(minutes), (0..<60).contains(seconds),
+          (0..<fps).contains(frames) else { return nil }
+    return (hours * 3_600 + minutes * 60 + seconds) * fps + frames
+}
+
 private func twoDigit(_ value: Int) -> String {
     guard value >= 0 && value < 10 else { return "\(value)" }
     return "0\(value)"
-}
-
-func frameToSeconds(frame: Int, fps: Int) -> Double {
-    guard fps > 0 else { return 0 }
-    return Double(frame) / Double(fps)
 }
 
 func secondsToFrame(seconds: Double, fps: Int) -> Int {
@@ -28,7 +33,7 @@ func secondsToFrame(seconds: Double, fps: Int) -> Int {
 
 extension Double {
     func rounded(toPlaces places: Int) -> Double {
-        let factor = pow(10.0, Double(places))
+        let factor = Foundation.pow(10.0, Double(places))
         return (self * factor).rounded() / factor
     }
 }

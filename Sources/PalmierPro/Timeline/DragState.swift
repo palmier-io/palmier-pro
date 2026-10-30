@@ -6,10 +6,22 @@ enum DragState {
     case moveClip(MoveClipDrag)
     case trimLeft(TrimDrag)
     case trimRight(TrimDrag)
+    case slip(SlipDrag)
+    case keyframe(KeyframeDrag)
     case audioVolumeKf(AudioVolumeKfDrag)
     case fadeKnee(FadeKneeDrag)
     case marquee(MarqueeDrag)
     case timelineRange(TimelineRangeDrag)
+    case timelineMarker(TimelineMarkerDrag)
+
+    struct KeyframeDrag {
+        let clipId: String
+        let trackIndex: Int
+        let property: AnimatableProperty
+        let originalFrame: Int
+        let grabFrame: Int
+        var currentFrame: Int
+    }
 
     struct AudioVolumeKfDrag {
         let clipId: String
@@ -47,8 +59,6 @@ enum DragState {
 
         var all: [Participant] { [lead] + companions }
 
-        func isLead(_ p: Participant) -> Bool { p.clipId == lead.clipId }
-
         var trackDelta: Int {
             if case .existingTrack(let idx) = dropTarget {
                 return idx - lead.originalTrack
@@ -80,6 +90,18 @@ enum DragState {
         let hasNoSourceMedia: Bool
         /// When true, trim applies to link-group partners too.
         let propagateToLinked: Bool
+        let isRipple: Bool
+        var deltaFrames: Int = 0
+    }
+
+    struct SlipDrag {
+        let clipId: String
+        let grabFrame: Int
+        /// Timeline-frame caps from source headroom across the slip group:
+        /// dragging right consumes head material, left consumes tail material.
+        let maxRightDelta: Int
+        let maxLeftDelta: Int
+        let propagateToLinked: Bool
         var deltaFrames: Int = 0
     }
 
@@ -87,9 +109,17 @@ enum DragState {
         let origin: NSPoint
         var current: NSRect = .zero
         var baseSelection: Set<String> = []
+        var baseMarkerSelection: Set<String> = []
     }
 
     struct TimelineRangeDrag {
         let anchorFrame: Int
+    }
+
+    struct TimelineMarkerDrag {
+        let original: TimelineMarker
+        let adjustsDuration: Bool
+        let grabFrame: Int
+        var value: TimelineMarker
     }
 }

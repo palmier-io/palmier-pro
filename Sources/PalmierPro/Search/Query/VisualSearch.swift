@@ -24,11 +24,13 @@ enum VisualSearch {
             guard dim == query.count, index.header.count > 0 else { continue }
             var scores = [Float](repeating: 0, count: index.header.count)
             // scores = vectors (count×dim) · query
-            cblas_sgemv(
-                CblasRowMajor, CblasNoTrans,
-                Int32(index.header.count), Int32(dim),
-                1, index.vectors, Int32(dim),
-                query, 1, 0, &scores, 1
+            vDSP_mmul(
+                index.vectors, 1,
+                query, 1,
+                &scores, 1,
+                vDSP_Length(index.header.count),
+                1,
+                vDSP_Length(dim)
             )
             // Keep only the best frame of each shot so one scene doesn't flood results.
             var bestPerShot: [Double: (row: Int, score: Float)] = [:]

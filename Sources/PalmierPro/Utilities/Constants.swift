@@ -1,35 +1,13 @@
 import Foundation
 
-enum LayoutPreset: String, CaseIterable {
-    case `default`
-    case media
-    case vertical
-
-    var label: String {
-        switch self {
-        case .default: "Default"
-        case .media: "Media"
-        case .vertical: "Vertical"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .default: "rectangle.split.3x1"
-        case .media: "sidebar.left"
-        case .vertical: "sidebar.right"
-        }
-    }
-}
-
 enum Layout {
     // Media panel
     static let mediaPanelDefault: CGFloat = 500
-    static let mediaPanelMin: CGFloat = 280
+    static let mediaPanelMin: CGFloat = 280 + AppTheme.GenerationPanel.minimumWidthAdjustment
 
     // Inspector
-    static let inspectorDefault: CGFloat = 260
-    static let inspectorMin: CGFloat = 150
+    static let inspectorDefault: CGFloat = AppTheme.EditorPanel.defaultWidth
+    static let inspectorMin: CGFloat = AppTheme.EditorPanel.minimumWidth
 
     // Agent panel
     static let agentPanelMin: CGFloat = 240
@@ -37,18 +15,21 @@ enum Layout {
     static let chatColumnMax: CGFloat = 640
 
     // Headers & toolbars
-    static let panelHeaderHeight: CGFloat = 28
-    static let toolbarHeight: CGFloat = 38
+    static let panelHeaderHeight: CGFloat = AppTheme.IconSize.xl
+    static let toolbarHeight: CGFloat = AppTheme.IconSize.mdLg + AppTheme.Spacing.sm * 2
 
     static let panelGap: CGFloat = 5
 
     // Timeline
     static let timelineMinHeight: CGFloat = 100
-    static let timelineMaxHeight: CGFloat = 700
-    static let trackHeight: CGFloat = 50
-    static let rulerHeight: CGFloat = 24
-    static let trackHeaderWidth: CGFloat = 100
-    static let dropZoneHeight: CGFloat = 60
+    static let timelineDefaultHeightFraction: CGFloat = 0.35
+    static let trackHeight: CGFloat = TrackSize.defaultHeight
+    static let rulerHeight: CGFloat = AppTheme.IconSize.lgXl
+    static let trackHeaderDefaultWidth = AppTheme.ComponentSize.timelineTrackHeaderDefaultWidth
+    static let trackHeaderMinimumWidth = AppTheme.ComponentSize.timelineTrackHeaderMinimumWidth
+    static let trackHeaderMaximumWidth = AppTheme.ComponentSize.timelineTrackHeaderMaximumWidth
+    static let trackHeaderResizeHitWidth = AppTheme.ComponentSize.timelineTrackHeaderResizeHitWidth
+    static let dropZoneHeight: CGFloat = TrackSize.minHeight
     static let insertThreshold: CGFloat = 10
     static let dragThreshold: CGFloat = 3
 
@@ -73,6 +54,7 @@ enum Snap {
 }
 
 enum TrackSize {
+    static let defaultHeight: CGFloat = 44
     static let minHeight: CGFloat = 32
     static let maxHeight: CGFloat = 200
     static let resizeHandleZone: CGFloat = 6
@@ -99,7 +81,7 @@ enum TimelineAutoScroll {
 
 enum Trim {
     static let handleWidth: CGFloat = 4.0
-    static let clipCornerRadius: CGFloat = 3.0
+    static let clipCornerRadius: CGFloat = AppTheme.Radius.xsSm
 }
 
 enum Project {
@@ -109,7 +91,6 @@ enum Project {
     static let defaultProjectName = "Untitled Project"
     static let timelineFilename = "project.json"
     static let manifestFilename = "media.json"
-    static let generationLogFilename = "generation-log.json"
     static let thumbnailFilename = "thumbnail.jpg"
     static let mediaDirectoryName = "media"
 

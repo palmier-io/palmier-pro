@@ -98,10 +98,6 @@ final class SampleProjectService {
             try fm.createDirectory(at: mediaDir, withIntermediateDirectories: true)
             try projectData.write(to: dest.appendingPathComponent(Project.timelineFilename))
             try manifestData.write(to: dest.appendingPathComponent(Project.manifestFilename))
-            if let log = root["generationLog"], !(log is NSNull) {
-                try JSONSerialization.data(withJSONObject: log)
-                    .write(to: dest.appendingPathComponent(Project.generationLogFilename))
-            }
 
             if let posterString = root["posterUrl"] as? String, let posterURL = URL(string: posterString) {
                 try? await Self.downloadFile(from: posterURL, to: dest.appendingPathComponent(Project.thumbnailFilename))

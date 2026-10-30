@@ -1,4 +1,4 @@
-> Bu çeviri yapay zeka tarafından oluşturulmuştur. Bir hata bulursanız PR açın.
+> Bu çeviri yapay zeka ile oluşturulmuş ve bir insan tarafından gözden geçirilip düzenlenmiştir. Bir hata tespit ederseniz katkıda bulunmak için lütfen bir PR (Pull Request) açın.
 
 <div align="center">
 
@@ -10,27 +10,28 @@
   <img src="../../assets/macos-badge.png" alt="Palmier Pro'yu macOS için indir" width="180" />
 </a>
 
-<sub><i>Apple Silicon üzerinde macOS 26 (Tahoe) gerektirir</i></sub>
+<sub><i>Apple Silicon işlemcili cihazlarda macOS 26 (Tahoe) sürümü gerektirir</i></sub>
 
-<a href="https://x.com/Palmier_io"><img src="https://img.shields.io/badge/Follow-%40Palmier__io-000000?style=flat&logo=x&logoColor=white" alt="X'te takip et" /></a>
-<a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Discord'a katıl" /></a>
+<a href="https://x.com/Palmier_io"><img src="https://img.shields.io/badge/Takip Et-%40Palmier__io-000000?style=flat&logo=x&logoColor=white" alt="X'te takip et" /></a>
+<a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Katıl -Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Discord'a katıl" /></a>
 <a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
+<br />
 
 <p>
-  <a href="../../README.md">English</a> ·
-  <a href="README.es.md">Español</a> ·
-  <a href="README.zh-CN.md">简体中文</a> ·
-  <a href="README.zh-TW.md">繁體中文</a> ·
-  <a href="README.ja.md">日本語</a> ·
-  <a href="README.ko.md">한국어</a> ·
-  <a href="README.vi.md">Tiếng Việt</a> ·
-  <a href="README.hi.md">हिन्दी</a> ·
-  <a href="README.bn.md">বাংলা</a> ·
-  <a href="README.ar.md">العربية</a> ·
-  <a href="README.it.md">Italiano</a> ·
-  <a href="README.pt-BR.md">Português (Brasil)</a> ·
-  <a href="README.fr.md">Français</a> ·
-  <a href="README.ru.md">Русский</a> ·
+  <a href="../../README.md">İngilizce</a> ·
+  <a href="README.es.md">İspanyolca</a> ·
+  <a href="README.zh-CN.md">Çince (Basitleştirilmiş)</a> ·
+  <a href="README.zh-TW.md">Çince (Geleneksel)</a> ·
+  <a href="README.ja.md">Japonca</a> ·
+  <a href="README.ko.md">Korece</a> ·
+  <a href="README.vi.md">Vietnamca</a> ·
+  <a href="README.hi.md">Hintçe</a> ·
+  <a href="README.bn.md">Bengalca</a> ·
+  <a href="README.ar.md">Arapça</a> ·
+  <a href="README.it.md">İtalyanca</a> ·
+  <a href="README.pt-BR.md">Portekizce (Brezilya)</a> ·
+  <a href="README.fr.md">Fransızca</a> ·
+  <a href="README.ru.md">Rusça</a> ·
   <strong>Türkçe</strong>
 </p>
 
@@ -40,37 +41,42 @@
 
 ---
 
-Palmier Pro, Mac için açık kaynaklı bir video editörüdür. Siz ve ajanınız, videoları zaman çizelgesi içinde birlikte üretip düzenleyebilirsiniz.
+> [!IMPORTANT]
+> Palmier Pro'nun v0.7.6 ve önceki sürümleri GPLv3 kapsamında yayımlandı. Herkese açık son kaynak kodu anlık görüntüsü [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) dalıdır. v0.7.6'dan sonraki sürümler tescilli yazılımdır ve kaynak kodları burada yayımlanmaz.
 
-### Swift ile yazılmış yerel video editörü
+Palmier Pro, Mac için bir video editörüdür. Siz ve yapay zeka ajanınız, zaman çizelgesi (timeline) üzerinde videoları birlikte üretebilir ve düzenleyebilirsiniz.
 
-Palmier Pro'yu sıfırdan Swift ile geliştirdik. Pusulamız Premiere Pro; yapay zekayı iş akışına entegre etmeye dair kendi yaklaşımımızla.
+### Swift ile yerel (native) geliştirilmiş video editörü
 
-### Yerleşik üretken yapay zeka
+Palmier Pro'yu sıfırdan Swift ile geliştirdik. Kutup yıldızımız (temel hedefimiz) Premiere Pro olsa da, yapay zekayı iş akışına entegre etme konusunda kendimize özgü bir yaklaşım benimsiyoruz.
 
-Seedance, Kling ve Nano Banana Pro gibi en gelişmiş modellerle videoları ve görselleri doğrudan zaman çizelgesi editörü içinde üretin.
+### Yerleşik Üretken Yapay Zeka
 
-### Ajanlarınızla entegre olur
+Seedance, Kling ve Nano Banana Pro gibi son teknoloji (SOTA) modellerle videoları ve görselleri doğrudan zaman çizelgesi editörü içinde üretin.
 
-Claude, Codex veya Cursor'ı MCP üzerinden bağlayın ya da uygulama içi ajanı kullanarak aynı proje üzerinde birlikte çalışın.
+### Yapay Zeka Ajanlarınızla Entegre Olur
 
-## MCP sunucusu
+Claude, Codex veya Cursor'ınızı MCP üzerinden bağlayın veya aynı proje üzerinde birlikte çalışmak için uygulama içi yapay zeka ajanını kullanın.
 
-Uygulama açıkken, HTTP üzerinden `http://127.0.0.1:19789/mcp` adresinde bir MCP sunucusu sunar. Bağlanmak için:
+## MCP Sunucusu
+
+Uygulama açık olduğunda, HTTP protokolü üzerinden `http://127.0.0.1:19789/mcp` adresinde bir MCP sunucusu yayınlar. Bağlanmak için:
 
 **Claude Code**
+
 ```bash
 claude mcp add --transport http palmier-pro http://127.0.0.1:19789/mcp
 ```
 
 **Codex**
+
 ```bash
 codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 ```
 
 **Cursor**
 
-En kolay yol, uygulama içinde `Help` -> `MCP Instructions` -> `Install in Cursor` adımlarını izlemektir; ya da `~/.cursor/mcp.json` dosyasına şunu ekleyerek elle kurabilirsiniz:
+En kolay yol, uygulama içinden `Help` -> `MCP Instructions` -> `Install in Cursor` adımlarını takip etmek veya `~/.cursor/mcp.json` dosyasına aşağıdakileri ekleyerek manuel olarak kurmaktır:
 
 ```
 {
@@ -85,49 +91,37 @@ En kolay yol, uygulama içinde `Help` -> `MCP Instructions` -> `Install in Curso
 
 **Claude Desktop**
 
-Uygulamayla birlikte, Claude Desktop üzerinde tek tıkla Desktop Extension kurulumu sağlayan bir [mcpb](https://github.com/modelcontextprotocol/mcpb) paketi sunuyoruz. `Help` -> `MCP Instructions` -> `Install in Claude Desktop` yolunu izleyin.
+Claude Desktop üzerinde tek tıkla Masaüstü Eklentisi (Desktop Extension) kurulumu yapabilmeniz için uygulama ile birlikte bir [mcpb](https://github.com/modelcontextprotocol/mcpb) paketi sunuyoruz. Uygulama içerisinden `Help` -> `MCP Instructions` -> `Install in Claude Desktop` yolunu takip edin.
 
-## SSS
+## Sıkça Sorulan Sorular (SSS)
 
-**Palmier Pro tamamen açık kaynaklı mı?**
+**Palmier Pro'nun hangi sürümleri açık kaynaklıdır?**
 
-Video editörü (üretken yapay zeka özellikleri hariç) tamamen açık kaynaklıdır. MCP sunucusu ve ajan sohbeti de açık kaynaklıdır. Kapalı kaynak olan tek şey üretken yapay zeka işlemesidir.
+v0.7.6'ya kadar olan sürümler ve [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) dalına kadar olan kaynak kodu GPLv3 kapsamında kalır; sonraki sürümler tescillidir.
 
 **Ücretsiz mi?**
 
-Editör ücretsizdir. Giriş yapmadan indirebilir ve CapCut ya da Adobe Premiere gibi bir video editörü olarak kullanabilirsiniz. MCP sunucusunu da ücretsiz kullanabilir; zaman çizelgesi editörünüzle etkileşmek için Claude Code/Desktop veya Cursor ile denemeler yapmaya başlayabilirsiniz.
+Editör ücretsizdir. Herhangi bir giriş (login) gerektirmeden indirebilir ve CapCut veya Adobe Premiere gibi bir video editörü olarak kullanabilirsiniz. MCP sunucusunu da ücretsiz olarak kullanabilir; Claude Code, Claude Desktop veya Cursor aracılığıyla zaman çizelgesi editörünüzle etkileşime geçmek için denemeler yapmaya başlayabilirsiniz.
 
-Üretken yapay zeka özellikleri giriş ve abonelik gerektirir.
+Üretken yapay zeka özellikleri giriş yapmayı ve abonelik almayı gerektirir.
 
 **Hangi platformları destekliyor?**
 
-Yalnızca Apple Silicon üzerinde macOS 26 (Tahoe).
+Yalnızca Apple Silicon işlemcili ve macOS 26 (Tahoe) işletim sistemli cihazlarda çalışır.
 
-Daha fazlası için [FAQ.md](../../FAQ.md) dosyasına bakın.
+## Katkıda Bulunma
 
-## Geliştirme
+Bu depo artık kod katkılarını kabul etmemektedir. Yayımlanan kaynak kodu GPLv3 kapsamında kullanılabilir, değiştirilebilir ve yeniden dağıtılabilir olmaya devam eder.
 
-[CONTRIBUTING.md](../../CONTRIBUTING.md) dosyasına bakın.
-
-## Topluluk ve Destek
+## Topluluk & Destek
 
 - **Discord:** Topluluğa **[Discord](https://discord.com/invite/SMVW6pKYmg)** üzerinden katılın.
 - **Twitter / X:** Güncellemeler ve duyurular için **[@Palmier_io](https://x.com/Palmier_io)** hesabını takip edin.
-- **Instagram:** [@palmier.io](https://www.instagram.com/palmier.io) hesabını takip edin.
-- **Geri Bildirim ve Destek:** Bir [GitHub Issue](https://github.com/palmier-io/palmier-pro/issues) oluşturun ya da founders@palmier.io adresinden bize e-posta gönderin.
-
-## Star History
-
-<a href="https://www.star-history.com/?type=date&repos=palmier-io%2Fpalmier-pro">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=palmier-io/palmier-pro&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=palmier-io/palmier-pro&type=date&legend=top-left" />
-   <img alt="Star History Grafiği" src="https://api.star-history.com/chart?repos=palmier-io/palmier-pro&type=date&legend=top-left" />
- </picture>
-</a>
+- **Instagram:** [@palmier.io](https://www.instagram.com/palmier.io) adresinden takip edin.
+- **Geri Bildirim & Destek:** founders@palmier.io adresine e-posta gönderin.
 
 ## Lisans
 
 Copyright (C) 2026 Palmier, Inc.
 
-Palmier Pro, [GPLv3](../../LICENSE) lisansı altında açık kaynaklıdır.
+Bu depoda yayımlanan kaynak kodu [GPLv3](../../LICENSE) kapsamında kalır. v0.7.6'dan sonraki ikili sürümler [BINARY_LICENSE.md](../../BINARY_LICENSE.md) kapsamında tescilli yazılımdır.

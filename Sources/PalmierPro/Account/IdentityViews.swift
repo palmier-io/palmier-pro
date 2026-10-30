@@ -29,7 +29,7 @@ struct UserAvatar: View {
         if account.isSignedIn {
             Circle().fill(AppTheme.Accent.primary.opacity(AppTheme.Opacity.medium))
         } else if signedOutStyle == .filledCircle {
-            Circle().fill(Color.white.opacity(AppTheme.Opacity.soft))
+            Circle().fill(AppTheme.Interaction.fill(AppTheme.Opacity.soft))
         }
     }
 
@@ -84,7 +84,7 @@ struct UserAvatarButton: View {
             .hoverHighlight()
         }
         .buttonStyle(.plain)
-        .help(account.isSignedIn ? "Account" : "Sign in")
+        .help(account.isSignedIn ? L10n.string("Account") : L10n.string("Sign in"))
         .popover(isPresented: $isPopoverPresented, arrowEdge: .bottom) {
             AccountPopoverCard()
         }

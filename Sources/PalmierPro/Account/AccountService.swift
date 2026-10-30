@@ -12,9 +12,9 @@ enum AccountTier: String, Decodable, Sendable {
 
     var planLabel: String {
         switch self {
-        case .none: return "Free"
-        case .pro: return "Pro plan"
-        case .max: return "Max plan"
+        case .none: return L10n.key("Free")
+        case .pro: return L10n.key("Pro plan")
+        case .max: return L10n.key("Max plan")
         }
     }
 
@@ -207,10 +207,15 @@ final class AccountService {
         guard let convex else { return }
 
         let user = Clerk.shared.user
-        Telemetry.setUser(id: user?.id)
         let name = [user?.firstName, user?.lastName]
             .compactMap { $0 }
             .joined(separator: " ")
+        Telemetry.setUser(
+            id: user?.id,
+            email: user?.primaryEmailAddress?.emailAddress,
+            username: name.isEmpty ? nil : name
+        )
+        Analytics.identifyUser(id: user?.id)
         let args: [String: ConvexEncodable?] = [
             "email": user?.primaryEmailAddress?.emailAddress,
             "name": name.isEmpty ? nil : name,
@@ -286,12 +291,17 @@ final class AccountService {
                 receiveValue: { [weak self] response in
                     self?.account = response
                     self?.lastError = nil
+                    Analytics.identifyUser(
+                        id: Clerk.shared.user?.id,
+                        properties: ["tier": response.user.tier.rawValue]
+                    )
                 }
             )
     }
 
     private func clearAccount() {
         Telemetry.setUser(id: nil)
+        Analytics.resetUser()
         accountSubscription?.cancel()
         accountSubscription = nil
         buyCreditsTask?.cancel()
@@ -438,9 +448,9 @@ final class AccountService {
 
 extension AccountService {
     var displayPrimaryText: String {
-        if !isSignedIn { return "Signed out" }
+        if !isSignedIn { return L10n.string("Signed out") }
         let user = account?.user
-        return user?.displayName ?? user?.email ?? "Signed in"
+        return user?.displayName ?? user?.email ?? L10n.string("Signed in")
     }
 
     var displaySecondaryText: String? {

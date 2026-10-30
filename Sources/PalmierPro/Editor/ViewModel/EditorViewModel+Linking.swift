@@ -93,9 +93,18 @@ extension EditorViewModel {
     /// Batch-compute out-of-sync offsets for every linked clip in a single
     /// pass. Clips in sync (or unlinked) are absent from the returned map.
     func linkGroupOffsets() -> [String: Int] {
+        let fps = timeline.fps
+        let membersByGroup: [String: [String: MulticamSource.Member]] = multicamGroups.reduce(into: [:]) {
+            $0[$1.id] = $1.members.reduce(into: [:]) { $0[$1.mediaRef] = $1 }
+        }
         var byGroup: [String: [(id: String, start: Int)]] = [:]
+        var mcByGroup: [String: [(id: String, start: Int, range: Range<Int>)]] = [:]
         for track in timeline.tracks {
             for clip in track.clips {
+                if let mcId = clip.multicamGroupId, let member = membersByGroup[mcId]?[clip.mediaRef] {
+                    mcByGroup[mcId, default: []].append(
+                        (clip.id, member.anchorFrame(of: clip, fps: fps), clip.startFrame..<clip.endFrame))
+                }
                 guard let gid = clip.linkGroupId else { continue }
                 byGroup[gid, default: []].append((clip.id, clip.startFrame - clip.trimStartFrame))
             }
@@ -103,10 +112,28 @@ extension EditorViewModel {
         var offsets: [String: Int] = [:]
         for (_, entries) in byGroup where entries.count > 1 {
             let ref = entries.lazy.map(\.start).min()!
-            for entry in entries {
-                let delta = entry.start - ref
-                if delta != 0 { offsets[entry.id] = delta }
+            for entry in entries where entry.start != ref {
+                offsets[entry.id] = entry.start - ref
             }
+        }
+        for (_, entries) in mcByGroup where entries.count > 1 {
+            var cluster: [(id: String, start: Int, range: Range<Int>)] = []
+            var clusterEnd = Int.min
+            func flush() {
+                guard cluster.count > 1, let ref = cluster.lazy.map(\.start).min() else { return }
+                for entry in cluster where entry.start != ref {
+                    offsets[entry.id] = entry.start - ref
+                }
+            }
+            for entry in entries.sorted(by: { $0.range.lowerBound < $1.range.lowerBound }) {
+                if entry.range.lowerBound >= clusterEnd {
+                    flush()
+                    cluster = []
+                }
+                cluster.append(entry)
+                clusterEnd = max(clusterEnd, entry.range.upperBound)
+            }
+            flush()
         }
         return offsets
     }
@@ -115,18 +142,14 @@ extension EditorViewModel {
 
     /// Stamp a new `linkGroupId` on every clip in `ids`, merging pre-existing sub-groups into the new group.
     func linkClips(ids: Set<String>) {
-        guard ids.count >= 2 else { return }
+        guard let ids = linkTargets(for: ids) else { return }
         let newGroup = UUID().uuidString
         mutateClips(ids: ids, actionName: "Link") { $0.linkGroupId = newGroup }
     }
 
     /// Clear `linkGroupId` on every clip that shares a group with any id in `ids`.
     func unlinkClips(ids: Set<String>) {
-        let expanded = expandToLinkGroup(ids).filter { id in
-            guard let loc = findClip(id: id) else { return false }
-            return timeline.tracks[loc.trackIndex].clips[loc.clipIndex].linkGroupId != nil
-        }
-        mutateClips(ids: Set(expanded), actionName: "Unlink") { $0.linkGroupId = nil }
+        mutateClips(ids: unlinkTargets(for: ids), actionName: "Unlink") { $0.linkGroupId = nil }
         selectedClipIds.removeAll()
     }
 
@@ -140,22 +163,84 @@ extension EditorViewModel {
     func commitTrim(clipId: String, edge: TrimEdge, deltaFrames: Int, propagateToLinked: Bool) {
         guard let loc = findClip(id: clipId) else { return }
         let leadClip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-        let leadNew = trimValues(for: leadClip, edge: edge, delta: deltaFrames)
-        var edits: [(clipId: String, trimStartFrame: Int, trimEndFrame: Int)] = [
-            (clipId, leadNew.trimStart, leadNew.trimEnd)
-        ]
+        var targets = [leadClip]
         if propagateToLinked {
-            for partnerId in linkedPartnerIds(of: clipId) {
-                guard let pLoc = findClip(id: partnerId) else { continue }
-                let partner = timeline.tracks[pLoc.trackIndex].clips[pLoc.clipIndex]
-                let p = trimValues(for: partner, edge: edge, delta: deltaFrames)
-                edits.append((partnerId, p.trimStart, p.trimEnd))
+            targets += linkedPartnerIds(of: clipId).compactMap { pid in
+                findClip(id: pid).map { timeline.tracks[$0.trackIndex].clips[$0.clipIndex] }
             }
+        }
+        var deltaFrames = deltaFrames
+        for target in targets {
+            guard let bounds = multicamTrimBounds(for: target) else { continue }
+            deltaFrames = edge == .left ? max(deltaFrames, -bounds.left) : min(deltaFrames, bounds.right)
+        }
+        let edits = targets.map { clip -> (clipId: String, trimStartFrame: Int, trimEndFrame: Int) in
+            let v = trimValues(for: clip, edge: edge, delta: deltaFrames)
+            return (clip.id, v.trimStart, v.trimEnd)
         }
         trimClips(edits)
     }
 
-    private func trimValues(for clip: Clip, edge: TrimEdge, delta: Int) -> (trimStart: Int, trimEnd: Int) {
+    /// Nest trim limits come from the child's live length, not creation time.
+    func effectiveTrimEnd(for clip: Clip) -> Int {
+        guard clip.sourceClipType == .sequence, let child = timeline(for: clip.mediaRef) else {
+            return clip.trimEndFrame
+        }
+        return max(0, child.totalFrames - clip.trimStartFrame - clip.durationFrames)
+    }
+
+    /// Slip: shift which source range plays without moving the clip on the timeline.
+    /// Positive delta (drag right) reveals earlier material: trimStart -= d, trimEnd += d.
+    /// A clip's trim can be slipped only if it has bounded source material and isn't part of a multicam group.
+    func isSlipEligible(_ clip: Clip) -> Bool {
+        clip.mediaType != .image && clip.mediaType != .text && clip.multicamGroupId == nil
+    }
+
+    /// Linked partners of `clipId` whose trim should slip along with it — the same
+    /// eligibility filter `commitSlip` applies, so live preview and commit agree.
+    func slipPropagationPartnerIds(of clipId: String) -> [String] {
+        linkedPartnerIds(of: clipId).filter { clipFor(id: $0).map(isSlipEligible) ?? false }
+    }
+
+    func commitSlip(clipId: String, deltaFrames: Int, propagateToLinked: Bool) {
+        guard let loc = findClip(id: clipId) else { return }
+        let lead = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+        var targets = [lead]
+        if propagateToLinked {
+            targets += slipPropagationPartnerIds(of: clipId).compactMap { pid in
+                findClip(id: pid).map { timeline.tracks[$0.trackIndex].clips[$0.clipIndex] }
+            }
+        }
+        targets = targets.filter(isSlipEligible)
+        guard !targets.isEmpty else { return }
+
+        // Clamp the shared timeline delta to the tightest headroom in the group.
+        var delta = deltaFrames
+        for t in targets {
+            let speed = max(t.speed, 0.001)
+            delta = min(delta, Int((Double(t.trimStartFrame) / speed).rounded(.down)))
+            delta = max(delta, -Int((Double(effectiveTrimEnd(for: t)) / speed).rounded(.down)))
+        }
+        guard delta != 0 else { return }
+
+        // Per-clip source shift, clamped to each clip's live trim headroom (nested
+        // tail room, not stale trimEndFrame) so rounding through speed never drives a
+        // trim negative. Slow-motion clips can round a non-zero delta to zero here.
+        func appliedSourceDelta(for c: Clip) -> Int {
+            let sourceDelta = Int((Double(delta) * c.speed).rounded())
+            return max(-effectiveTrimEnd(for: c), min(c.trimStartFrame, sourceDelta))
+        }
+        guard targets.contains(where: { appliedSourceDelta(for: $0) != 0 }) else { return }
+
+        mutateClips(ids: Set(targets.map(\.id)),
+                    actionName: targets.count == 1 ? "Slip Clip" : "Slip Clips") { c in
+            let applied = appliedSourceDelta(for: c)
+            c.trimStartFrame -= applied
+            c.trimEndFrame += applied
+        }
+    }
+
+    func trimValues(for clip: Clip, edge: TrimEdge, delta: Int) -> (trimStart: Int, trimEnd: Int) {
         let sourceDelta = Int((Double(delta) * clip.speed).rounded())
         // Image/Text clips have no source-material bound, so their trim fields can go negative
         let unbounded = clip.mediaType == .image || clip.mediaType == .text
@@ -274,6 +359,22 @@ extension EditorViewModel {
         let visualTarget: TrackDropTarget?
         let audioTarget: TrackDropTarget?
 
+        var visualAssets: [MediaAsset] {
+            placements.filter(\.hasVisual).map(\.asset)
+        }
+
+        var audioOnlyAssets: [MediaAsset] {
+            placements.filter { !$0.hasVisual && $0.hasAudio }.map(\.asset)
+        }
+
+        var visualDurationFrames: Int {
+            placements.filter(\.hasVisual).reduce(0) { $0 + $1.durationFrames }
+        }
+
+        var audioOnlyDurationFrames: Int {
+            placements.filter { !$0.hasVisual && $0.hasAudio }.reduce(0) { $0 + $1.durationFrames }
+        }
+
         struct Placement {
             let asset: MediaAsset
             let startFrame: Int
@@ -287,7 +388,7 @@ extension EditorViewModel {
     func resolveDropPlan(cursor: TrackDropTarget, assets: [MediaAsset], atFrame: Int, segments: [String: ClosedRange<Double>] = [:]) -> DropPlan {
         var placements: [DropPlan.Placement] = []
         var c = atFrame
-        for asset in assets {
+        for asset in assets where asset.type != .subtitle {
             let dur = clipDurationFrames(for: asset, segment: segments[asset.id])
             let hasVisual = asset.type.isVisual
             let hasAudio = asset.type == .audio || (asset.type == .video && asset.hasAudio)
@@ -304,13 +405,46 @@ extension EditorViewModel {
         return DropPlan(placements: placements, visualTarget: visualTarget, audioTarget: audioTarget)
     }
 
+    /// Shared placement for media dropped on the timeline (panel assets and Finder files).
+    func placeDroppedAssets(
+        _ assets: [MediaAsset],
+        cursor: TrackDropTarget,
+        atFrame: Int,
+        segments: [String: ClosedRange<Double>] = [:],
+        ripple: Bool
+    ) {
+        undo.perform("Add Clips") {
+            let plan = resolveDropPlan(cursor: cursor, assets: assets, atFrame: atFrame, segments: segments)
+            let (visualIdx, audioIdx) = materialize(plan: plan)
+
+            @MainActor func insert(_ assets: [MediaAsset], trackIndex: Int, linkedAudio: Int?) {
+                if ripple {
+                    rippleInsertClips(assets: assets, trackIndex: trackIndex, atFrame: atFrame, segments: segments)
+                } else {
+                    addClips(assets: assets, trackIndex: trackIndex, startFrame: atFrame, linkedAudioTrackIndex: linkedAudio, segments: segments)
+                }
+            }
+            let visualAssets = plan.visualAssets
+            if !visualAssets.isEmpty, let vIdx = visualIdx {
+                insert(visualAssets, trackIndex: vIdx, linkedAudio: audioIdx)
+            }
+            let audioOnlyAssets = plan.audioOnlyAssets
+            if !audioOnlyAssets.isEmpty, let aIdx = audioIdx {
+                insert(audioOnlyAssets, trackIndex: aIdx, linkedAudio: nil)
+            }
+        }
+    }
+
     func materialize(plan: DropPlan) -> (visual: Int?, audio: Int?) {
         let visualIdx = plan.visualTarget.map { materializeTrackIndex(target: $0, type: .video) }
-        let audioIdx: Int? = plan.audioTarget.map { audio in
-            let shifted = plan.visualTarget.map { shiftAfterVisualInsertion(audio: audio, visual: $0) } ?? audio
-            return materializeTrackIndex(target: shifted, type: .audio)
-        }
+        let audioIdx = audioTargetAfterVisualInsertion(plan: plan).map { materializeTrackIndex(target: $0, type: .audio) }
         return (visualIdx, audioIdx)
+    }
+
+    func audioTargetAfterVisualInsertion(plan: DropPlan) -> TrackDropTarget? {
+        plan.audioTarget.map { audio in
+            plan.visualTarget.map { shiftAfterVisualInsertion(audio: audio, visual: $0) } ?? audio
+        }
     }
 
     /// Resolve a `TrackDropTarget` into a concrete track index, creating a new track if needed.
@@ -330,30 +464,29 @@ extension EditorViewModel {
         return insertTrack(at: timeline.tracks.count, type: .audio)
     }
 
-    // MARK: - Context-menu enablement
+    // MARK: - Link eligibility
+
+    func unlinkTargets(for ids: Set<String>) -> Set<String> {
+        expandToLinkGroup(ids).filter { clipFor(id: $0)?.linkGroupId != nil }
+    }
+
+    func linkTargets(for ids: Set<String>) -> Set<String>? {
+        let ids = expandToLinkGroup(ids)
+        guard ids.count >= 2 else { return nil }
+        let clips = ids.compactMap(clipFor)
+        guard clips.count == ids.count, Set(clips.map(\.mediaType)).count >= 2 else { return nil }
+        let linkedGroups = clips.compactMap(\.linkGroupId)
+        let groups = Set(linkedGroups)
+        let ungrouped = clips.count - linkedGroups.count
+        guard groups.count != 1 || ungrouped != 0 else { return nil }
+        return ids
+    }
 
     var canUnlinkSelected: Bool {
-        for track in timeline.tracks {
-            for clip in track.clips where selectedClipIds.contains(clip.id) && clip.linkGroupId != nil {
-                return true
-            }
-        }
-        return false
+        !unlinkTargets(for: selectedClipIds).isEmpty
     }
 
     var canLinkSelected: Bool {
-        guard selectedClipIds.count >= 2 else { return false }
-        var types = Set<ClipType>()
-        var groups = Set<String>()
-        var ungrouped = 0
-        for track in timeline.tracks {
-            for clip in track.clips where selectedClipIds.contains(clip.id) {
-                types.insert(clip.mediaType)
-                if let gid = clip.linkGroupId { groups.insert(gid) } else { ungrouped += 1 }
-            }
-        }
-        guard types.count >= 2 else { return false }
-        // Already all in one group → nothing to do
-        return !(groups.count == 1 && ungrouped == 0)
+        linkTargets(for: selectedClipIds) != nil
     }
 }

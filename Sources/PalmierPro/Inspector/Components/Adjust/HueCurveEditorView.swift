@@ -21,8 +21,8 @@ struct HueCurveEditorView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-            Picker("", selection: $channel) {
-                ForEach(HueCurves.Channel.allCases) { Text($0.rawValue).tag($0) }
+            Picker(String(), selection: $channel) {
+                ForEach(HueCurves.Channel.allCases) { Text(channelTitle($0)).tag($0) }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -37,9 +37,9 @@ struct HueCurveEditorView: View {
                     Canvas { ctx, _ in
                         if hueHist.count > 1 {
                             ctx.fill(histogramPath(hueHist, size),
-                                     with: .color(.white.opacity(AppTheme.Opacity.muted)))
+                                     with: .color(AppTheme.MediaOverlay.primaryColor.opacity(AppTheme.Opacity.muted)))
                             ctx.stroke(histogramLine(hueHist, size),
-                                       with: .color(.white.opacity(AppTheme.Opacity.prominent)),
+                                       with: .color(AppTheme.MediaOverlay.primaryColor.opacity(AppTheme.Opacity.prominent)),
                                        lineWidth: AppTheme.BorderWidth.thin)
                         }
                         var grid = Path()
@@ -82,7 +82,7 @@ struct HueCurveEditorView: View {
             }
             .frame(height: AppTheme.Curve.editorHeight)
 
-            Text("Drag to add or shape a point · double-click to remove")
+            Text(L10n.string("Drag to add or shape a point · double-click to remove"))
                 .font(.system(size: AppTheme.FontSize.xxs))
                 .foregroundStyle(AppTheme.Text.mutedColor)
         }
@@ -129,6 +129,14 @@ struct HueCurveEditorView: View {
     }
 
     private var channelPoints: [CurvePoint] { curves.points(channel) }
+
+    private func channelTitle(_ channel: HueCurves.Channel) -> String {
+        switch channel {
+        case .hue: L10n.string("Hue")
+        case .sat: L10n.string("Sat")
+        case .lum: L10n.string("Luma")
+        }
+    }
 
     private var displayPoints: [CurvePoint] {
         (channelPoints.isEmpty ? HueCurves.defaultPoints : channelPoints).sorted { $0.x < $1.x }

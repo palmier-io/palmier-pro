@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> Palmier Pro releases through v0.7.6, and source code through [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source), were published under GPLv3. Later binary releases are proprietary, and their corresponding source is not published. This repository preserves the historical source and hosts current binary releases and update metadata.
+
 <div align="center">
 
 # Palmier Pro
@@ -38,7 +41,7 @@
 
 ---
 
-Palmier Pro is an open source video editor for Mac. You and your agent can generate and edit videos together inside the timeline.
+Palmier Pro is a macOS video editor with built-in AI generation and MCP support, allowing agents to create and edit directly on the timeline.
 
 ### Swift-native video editor
 
@@ -87,45 +90,29 @@ We bundle a [mcpb](https://github.com/modelcontextprotocol/mcpb) with the app th
 
 ## FAQ
 
-**Is Palmier Pro fully open source?**
+**Which versions of Palmier Pro are open source?**
 
-The video editor (without the generative AI features) is fully open source. The MCP server and the agent chat are also open source. The only thing that is closed source is the generative AI processing.
-
-**Is it free?**
-
-The editor is free. You can download it with no login required, and use it as a video editor like CapCut or Adobe Premiere. You can also use the MCP server for free, and start experimenting using Claude Code/Desktop or Cursor to interact with your timeline editor.
-
-Generative AI features require login and subscription.
+Releases through v0.7.6 and source through `last-gpl-source` remain available under GPLv3. Later releases are proprietary.
 
 **What platforms does it support?**
 
-macOS 26 (Tahoe) on Apple Silicon only.
+macOS 26 (Tahoe) or later on Apple Silicon (M series) only.
 
-See [FAQ.md](FAQ.md) for more.
+## Contributing
 
-## Development
-
-See [CONTRIBUTING.md](CONTRIBUTING.md)
+This repository no longer accepts code contributions. The published source remains available for use, modification, and redistribution under GPLv3.
 
 ## Community &amp; Support
 
 - **Discord:** Join the community on **[Discord](https://discord.com/invite/SMVW6pKYmg)**.
 - **Twitter / X:** Follow **[@Palmier_io](https://x.com/Palmier_io)** for updates and announcements.
 - **Instagram:** Follow [@palmier.io](https://www.instagram.com/palmier.io) 
-- **Feedback &amp; Support:** Create a [Github Issue](https://github.com/palmier-io/palmier-pro/issues) or email us at founders@palmier.io
-
-## Star History
-
-<a href="https://www.star-history.com/?type=date&repos=palmier-io%2Fpalmier-pro">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=palmier-io/palmier-pro&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=palmier-io/palmier-pro&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=palmier-io/palmier-pro&type=date&legend=top-left" />
- </picture>
-</a>
+- **Feedback &amp; Support:** Email founders@palmier.io.
 
 ## License
 
 Copyright (C) 2026 Palmier, Inc.
 
-Palmier Pro is open source under [GPLv3](LICENSE).
+The source code published in this repository remains available under [GPLv3](LICENSE).
+
+Palmier Pro binary releases after v0.7.6 are proprietary and subject to the [binary license](BINARY_LICENSE.md).

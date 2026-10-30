@@ -85,6 +85,18 @@ struct KeyframeTrackMutationTests {
         #expect(track.keyframes.count == 1)
         #expect(track.keyframes[0].value == 0.5)
     }
+
+    @Test func framesInRangeReturnsOnlyInclusiveWindow() {
+        let track = KeyframeTrack(keyframes: [
+            Keyframe(frame: 5, value: 0.5),
+            Keyframe(frame: 10, value: 1),
+            Keyframe(frame: 20, value: 2),
+            Keyframe(frame: 30, value: 3),
+        ])
+
+        #expect(track.frames(in: 10...20) == [10, 20])
+        #expect(track.frames(in: 21...29).isEmpty)
+    }
 }
 
 @Suite("KeyframeTrack.sample")
@@ -158,6 +170,41 @@ struct KeyframeTrackSampleTests {
         track.upsert(Keyframe(frame: 10, value: 10, interpolationOut: .hold))
         // Left kf is linear → linear lerp applies.
         #expect(track.sample(at: 5, fallback: 0) == 5.0)
+    }
+}
+
+@Suite("Clip transform sampling")
+struct ClipTransformSamplingTests {
+    @Test func sampledTransformPreservesStaticOrientation() {
+        var clip = Fixtures.clip(start: 10, duration: 60)
+        clip.transform = Transform(
+            centerX: 0.5,
+            centerY: 0.5,
+            width: 0.4,
+            height: 0.3,
+            rotation: 15,
+            flipHorizontal: true,
+            flipVertical: true
+        )
+        clip.positionTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 5, value: AnimPair(a: 0.2, b: 0.25)),
+        ])
+        clip.scaleTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 5, value: AnimPair(a: 0.5, b: 0.4)),
+        ])
+        clip.rotationTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 5, value: 90),
+        ])
+
+        let transform = clip.transformAt(frame: 15)
+
+        #expect(transform.centerX == 0.45)
+        #expect(transform.centerY == 0.45)
+        #expect(transform.width == 0.5)
+        #expect(transform.height == 0.4)
+        #expect(transform.rotation == 90)
+        #expect(transform.flipHorizontal)
+        #expect(transform.flipVertical)
     }
 }
 

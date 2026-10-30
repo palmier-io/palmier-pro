@@ -1,9 +1,19 @@
 import Foundation
 
+@MainActor
+protocol VisualSearchModelLoading: AnyObject {
+    var state: VisualModelLoader.State { get }
+    var enabled: Bool { get }
+    var embedder: VisualEmbedder? { get }
+
+    func prepare() async
+    func download()
+}
+
 /// App-level search model loader. Loads the SigLIP model on app launch.
 @MainActor
 @Observable
-final class VisualModelLoader {
+final class VisualModelLoader: VisualSearchModelLoading {
     static let shared = VisualModelLoader()
 
     enum State: Equatable {

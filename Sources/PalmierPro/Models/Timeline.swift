@@ -6,12 +6,23 @@ struct ClipLocation: Equatable, Sendable {
     let clipIndex: Int
 }
 
-struct Timeline: Codable, Sendable, Equatable {
+/// Written on tab switch and save, not live — playhead mutates every frame.
+struct TimelineViewState: Codable, Sendable, Equatable {
+    var playheadFrame: Int = 0
+    var zoomScale: Double = Defaults.pixelsPerFrame
+    var scrollOffsetX: Double = 0
+}
+
+struct Timeline: Codable, Sendable, Equatable, Identifiable {
+    var id: String = UUID().uuidString
+    var name: String = "Timeline 1"
     var fps: Int = 30
     var width: Int = 1920
     var height: Int = 1080
     var settingsConfigured: Bool = false
+    var folderId: String?
     var tracks: [Track] = []
+    var markers: [TimelineMarker] = []
 
     var totalFrames: Int {
         var maxFrame = 0
@@ -20,18 +31,91 @@ struct Timeline: Codable, Sendable, Equatable {
         }
         return maxFrame
     }
+
+    var displayFrames: Int {
+        markers.reduce(totalFrames) { result, marker in
+            max(result, marker.startFrame + max(1, marker.durationFrames))
+        }
+    }
+
+    var hasAudioClips: Bool {
+        tracks.contains { $0.type == .audio && !$0.clips.isEmpty }
+    }
+
+    /// Reachable nested timelines, breadth-first, deduped, excluding self and filtered by `include`.
+    func reachableTimelines(
+        resolve: (String) -> Timeline?,
+        maxDepth: Int = Int.max,
+        include: (Timeline) -> Bool = { _ in true }
+    ) -> [Timeline] {
+        var found: [Timeline] = []
+        var seen: Set<String> = [id]
+        var queue: [(t: Timeline, depth: Int)] = [(self, 0)]
+        var i = 0
+        while i < queue.count {
+            let (t, depth) = queue[i]
+            i += 1
+            guard depth < maxDepth else { continue }
+            for clip in t.tracks.flatMap(\.clips) where clip.sourceClipType == .sequence {
+                guard seen.insert(clip.mediaRef).inserted,
+                      let child = resolve(clip.mediaRef), include(child) else { continue }
+                found.append(child)
+                queue.append((child, depth + 1))
+            }
+        }
+        return found
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, fps, width, height, settingsConfigured, folderId, tracks, markers
+    }
+}
+
+extension Timeline {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: (try? c.decode(String.self, forKey: .id)) ?? UUID().uuidString,
+            name: (try? c.decode(String.self, forKey: .name)) ?? "Timeline 1",
+            fps: try c.decode(Int.self, forKey: .fps),
+            width: try c.decode(Int.self, forKey: .width),
+            height: try c.decode(Int.self, forKey: .height),
+            settingsConfigured: (try? c.decode(Bool.self, forKey: .settingsConfigured)) ?? false,
+            folderId: try? c.decode(String.self, forKey: .folderId),
+            tracks: try c.decode([Track].self, forKey: .tracks),
+            markers: (try? c.decode([TimelineMarker].self, forKey: .markers)) ?? []
+        )
+    }
+}
+
+enum TrackName {
+    static let maximumLength = 80
+
+    static func normalized(_ rawValue: String?) throws -> String? {
+        guard let rawValue else { return nil }
+        let value = rawValue.trimmingCharacters(in: .whitespaces)
+        guard rawValue.rangeOfCharacter(from: .controlCharacters.union(.newlines)) == nil,
+              value.count <= maximumLength else {
+            throw TrackNameValidationError.invalid
+        }
+        return value.isEmpty ? nil : value
+    }
+}
+
+enum TrackNameValidationError: Error, Equatable {
+    case invalid
 }
 
 struct Track: Codable, Sendable, Equatable, Identifiable {
     var id: String = UUID().uuidString
     var type: ClipType
+    var name: String?
     var muted: Bool = false
     var hidden: Bool = false
     var syncLocked: Bool = true
     var clips: [Clip] = []
 
-    /// Display-only height, not serialized. Reset to default on project open.
-    var displayHeight: CGFloat = 50
+    var displayHeight: CGFloat = TrackSize.defaultHeight
 
     var endFrame: Int {
         var maxFrame = 0
@@ -54,20 +138,24 @@ struct Track: Codable, Sendable, Equatable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, type, muted, hidden, syncLocked, clips
+        case id, type, name, muted, hidden, syncLocked, clips, displayHeight
     }
 }
 
 extension Track {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedName = try? c.decode(String.self, forKey: .name)
         self.init(
             id: (try? c.decode(String.self, forKey: .id)) ?? UUID().uuidString,
             type: try c.decode(ClipType.self, forKey: .type),
+            name: try? TrackName.normalized(decodedName),
             muted: (try? c.decode(Bool.self, forKey: .muted)) ?? false,
             hidden: (try? c.decode(Bool.self, forKey: .hidden)) ?? false,
             syncLocked: (try? c.decode(Bool.self, forKey: .syncLocked)) ?? true,
-            clips: (try? c.decode([Clip].self, forKey: .clips)) ?? []
+            clips: (try? c.decode([Clip].self, forKey: .clips)) ?? [],
+            displayHeight: (try? c.decode(CGFloat.self, forKey: .displayHeight))
+                .map { min(max($0, TrackSize.minHeight), TrackSize.maxHeight) } ?? TrackSize.defaultHeight
         )
     }
 }
@@ -91,12 +179,18 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var opacity: Double = 1.0
     var transform: Transform = Transform()
     var crop: Crop = Crop()
+    var edgeRounding: Double = 0
+    var edgeSoftness: Double = 0
     var linkGroupId: String?
     var captionGroupId: String?
+    var multicamGroupId: String?
 
     // Text clips only.
     var textContent: String?
     var textStyle: TextStyle?
+    var textAnimation: TextAnimation?
+    var wordTimings: [WordTiming]?
+    var textFillMode: TextFillMode?
 
     // Keyframe tracks for each animatable property. Nil when no animation exists.
     var opacityTrack: KeyframeTrack<Double>?
@@ -108,18 +202,24 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
 
     var effects: [Effect]?
 
+    /// How this clip composites over the tracks below it. nil = normal (source-over).
+    var blendMode: BlendMode?
+
     private enum CodingKeys: String, CodingKey {
         case id, mediaRef, mediaType, sourceClipType, startFrame, durationFrames
         case trimStartFrame, trimEndFrame, speed, volume
         case fadeInFrames, fadeOutFrames, fadeInInterpolation, fadeOutInterpolation
-        case opacity, transform, crop
-        case linkGroupId, captionGroupId, textContent, textStyle
+        case opacity, transform, crop, edgeRounding, edgeSoftness
+        case linkGroupId, captionGroupId, multicamGroupId, textContent, textStyle, textAnimation, wordTimings
+        case textFillMode
         case opacityTrack, positionTrack, scaleTrack, rotationTrack, cropTrack, volumeTrack
-        case effects
+        case effects, blendMode
     }
 
     /// Frame where this clip ends on the timeline
     var endFrame: Int { startFrame + durationFrames }
+
+    var supportsRetiming: Bool { sourceClipType != .sequence }
 
     /// Source frames consumed by the visible portion
     var sourceFramesConsumed: Int { Int((Double(durationFrames) * speed).rounded()) }
@@ -163,11 +263,39 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         return (s.a, s.b)
     }
 
+    func textScaleAt(frame: Int) -> Double {
+        let baseScale = textStyle?.fontScale ?? TextStyle().fontScale
+        guard mediaType == .text else { return baseScale }
+        guard baseScale.isFinite, baseScale > 0,
+              transform.width.isFinite, transform.width > 0,
+              transform.height.isFinite, transform.height > 0 else {
+            return TextStyle().fontScale
+        }
+        let size = sizeAt(frame: frame)
+        let widthRatio = size.width / transform.width
+        let heightRatio = size.height / transform.height
+        guard widthRatio.isFinite, widthRatio > 0,
+              heightRatio.isFinite, heightRatio > 0 else {
+            return baseScale
+        }
+        return baseScale * min(widthRatio, heightRatio)
+    }
+
+    func textStyleAt(frame: Int) -> TextStyle {
+        var style = textStyle ?? TextStyle()
+        style.fontScale = textScaleAt(frame: frame)
+        return style
+    }
+
     /// Resolve the full Transform at `frame`
     func transformAt(frame: Int) -> Transform {
         let tl = topLeftAt(frame: frame)
         let sz = sizeAt(frame: frame)
-        var t = Transform(topLeft: (tl.x, tl.y), width: sz.width, height: sz.height)
+        var t = transform
+        t.centerX = tl.x + sz.width / 2
+        t.centerY = tl.y + sz.height / 2
+        t.width = sz.width
+        t.height = sz.height
         t.rotation = rotationAt(frame: frame)
         return t
     }
@@ -199,6 +327,17 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         }
         return volume * kfGain * fadeMultiplier(at: frame)
     }
+
+    var hasDenoiseEnabled: Bool {
+        effects?.contains { $0.type == Clip.denoiseEffectType && $0.enabled } ?? false
+    }
+
+    var denoiseAmount: Double {
+        effects?.first { $0.type == Clip.denoiseEffectType }?.params["amount"]?.value ?? Clip.defaultDenoiseAmount
+    }
+
+    static let denoiseEffectType = "audio.denoise"
+    static let defaultDenoiseAmount: Double = 0.6
 
     func rawVolumeAt(frame: Int) -> Double {
         let kfGain: Double
@@ -242,12 +381,21 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
 enum FadeEdge { case left, right }
 
 extension Clip {
-    /// Drops volume keyframes outside `durationFrames`. Kept for callers that only touch volume.
-    mutating func clampVolumeKfsToDuration() {
-        volumeTrack = clampedKeyframeTrack(volumeTrack)
+    /// Fresh clip id; link/caption group ids remapped consistently via `groups`.
+    mutating func freshenIds(groups: inout [String: String]) {
+        func remap(_ old: String?) -> String? {
+            guard let old else { return nil }
+            if let new = groups[old] { return new }
+            let new = UUID().uuidString
+            groups[old] = new
+            return new
+        }
+        id = UUID().uuidString
+        linkGroupId = remap(linkGroupId)
+        captionGroupId = remap(captionGroupId)
     }
 
-    /// Drops kfs past `durationFrames`. Call after any mutation that shrinks the clip.
+    /// Normalizes the boundary keyframe and drops keyframes beyond the clip.
     mutating func clampKeyframesToDuration() {
         opacityTrack = clampedKeyframeTrack(opacityTrack)
         positionTrack = clampedKeyframeTrack(positionTrack)
@@ -255,6 +403,7 @@ extension Clip {
         rotationTrack = clampedKeyframeTrack(rotationTrack)
         cropTrack = clampedKeyframeTrack(cropTrack)
         volumeTrack = clampedKeyframeTrack(volumeTrack)
+        setBlurKeyframeTrack(clampedKeyframeTrack(blurKeyframeTrack))
     }
 
     mutating func rescaleKeyframes(by scale: Double) {
@@ -264,6 +413,7 @@ extension Clip {
         rotationTrack = rescaledKeyframeTrack(rotationTrack, by: scale)
         cropTrack = rescaledKeyframeTrack(cropTrack, by: scale)
         volumeTrack = rescaledKeyframeTrack(volumeTrack, by: scale)
+        setBlurKeyframeTrack(rescaledKeyframeTrack(blurKeyframeTrack, by: scale))
     }
 
     private func clampedKeyframeTrack<V: Codable & Sendable & Equatable>(
@@ -272,7 +422,9 @@ extension Clip {
         guard var track else { return nil }
         var normalized = KeyframeTrack<V>()
         for kf in track.keyframes where kf.frame >= 0 && kf.frame <= durationFrames {
-            normalized.upsert(kf)
+            var next = kf
+            next.frame = min(next.frame, max(0, durationFrames - 1))
+            normalized.upsert(next)
         }
         track.keyframes = normalized.keyframes
         return track.keyframes.isEmpty ? nil : track
@@ -287,7 +439,10 @@ extension Clip {
         var normalized = KeyframeTrack<V>()
         for kf in existing.keyframes {
             var next = kf
-            next.frame = Int((Double(kf.frame) * scale).rounded())
+            next.frame = min(
+                max(0, durationFrames - 1),
+                Int((Double(kf.frame) * scale).rounded())
+            )
             normalized.upsert(next)
         }
         return normalized.keyframes.isEmpty ? nil : normalized
@@ -297,6 +452,16 @@ extension Clip {
     mutating func clampFadesToDuration() {
         fadeInFrames = max(0, min(fadeInFrames, durationFrames))
         fadeOutFrames = max(0, min(fadeOutFrames, durationFrames - fadeInFrames))
+    }
+
+    mutating func rescaleWordTimings(from oldDuration: Int) {
+        guard mediaType == .text, let timings = wordTimings, oldDuration > 0, durationFrames > 0 else { return }
+        let scale = Double(durationFrames) / Double(oldDuration)
+        wordTimings = timings.map { timing in
+            let start = min(max(0, Int((Double(timing.startFrame) * scale).rounded())), max(0, durationFrames - 1))
+            let end = min(max(start + 1, Int((Double(timing.endFrame) * scale).rounded())), durationFrames)
+            return WordTiming(text: timing.text, startFrame: start, endFrame: end)
+        }
     }
 
     /// Set the fade length for one edge and clamp to fit.
@@ -325,13 +490,19 @@ extension Clip {
     }
 
     mutating func setDuration(_ newDuration: Int) {
+        let oldDuration = durationFrames
         durationFrames = newDuration
+        rescaleWordTimings(from: oldDuration)
         clampKeyframesToDuration()
         clampFadesToDuration()
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        func normalizedValue(forKey key: CodingKeys) -> Double {
+            let value = (try? c.decode(Double.self, forKey: key)) ?? 0
+            return (0...1).contains(value) ? value : 0
+        }
         self.init(
             id: (try? c.decode(String.self, forKey: .id)) ?? UUID().uuidString,
             mediaRef: try c.decode(String.self, forKey: .mediaRef),
@@ -350,29 +521,42 @@ extension Clip {
             opacity: (try? c.decode(Double.self, forKey: .opacity)) ?? 1.0,
             transform: (try? c.decode(Transform.self, forKey: .transform)) ?? Transform(),
             crop: (try? c.decode(Crop.self, forKey: .crop)) ?? Crop(),
+            edgeRounding: normalizedValue(forKey: .edgeRounding),
+            edgeSoftness: normalizedValue(forKey: .edgeSoftness),
             linkGroupId: try? c.decode(String.self, forKey: .linkGroupId),
             captionGroupId: try? c.decode(String.self, forKey: .captionGroupId),
+            multicamGroupId: try? c.decode(String.self, forKey: .multicamGroupId),
             textContent: try? c.decode(String.self, forKey: .textContent),
             textStyle: try? c.decode(TextStyle.self, forKey: .textStyle),
+            textAnimation: try? c.decode(TextAnimation.self, forKey: .textAnimation),
+            wordTimings: try? c.decode([WordTiming].self, forKey: .wordTimings),
+            textFillMode: try? c.decode(TextFillMode.self, forKey: .textFillMode),
             opacityTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .opacityTrack),
             positionTrack: try? c.decode(KeyframeTrack<AnimPair>.self, forKey: .positionTrack),
             scaleTrack: try? c.decode(KeyframeTrack<AnimPair>.self, forKey: .scaleTrack),
             rotationTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .rotationTrack),
             cropTrack: try? c.decode(KeyframeTrack<Crop>.self, forKey: .cropTrack),
             volumeTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .volumeTrack),
-            effects: try? c.decode([Effect].self, forKey: .effects)
+            effects: try? c.decode([Effect].self, forKey: .effects),
+            blendMode: try? c.decode(BlendMode.self, forKey: .blendMode)
         )
     }
 }
 
-struct Transform: Codable, Sendable, Equatable {
+struct Transform: Codable, Sendable, Equatable, Hashable {
+    static let tiltRotationRange = -89.0...89.0
+
     var centerX: Double = 0.5
     var centerY: Double = 0.5
     var width: Double = 1
     var height: Double = 1
     var rotation: Double = 0 // degrees, positive = clockwise
+    var rotationX: Double = 0
+    var rotationY: Double = 0
     var flipHorizontal: Bool = false
     var flipVertical: Bool = false
+
+    var hasTiltRotation: Bool { rotationX != 0 || rotationY != 0 }
 
     var topLeft: (x: Double, y: Double) {
         (centerX - width / 2, centerY - height / 2)
@@ -388,6 +572,8 @@ struct Transform: Codable, Sendable, Equatable {
         width: Double = 1,
         height: Double = 1,
         rotation: Double = 0,
+        rotationX: Double = 0,
+        rotationY: Double = 0,
         flipHorizontal: Bool = false,
         flipVertical: Bool = false
     ) {
@@ -396,6 +582,8 @@ struct Transform: Codable, Sendable, Equatable {
         self.width = width
         self.height = height
         self.rotation = rotation
+        self.rotationX = rotationX
+        self.rotationY = rotationY
         self.flipHorizontal = flipHorizontal
         self.flipVertical = flipVertical
     }
@@ -415,7 +603,8 @@ struct Transform: Codable, Sendable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case centerX, centerY, width, height, rotation, flipHorizontal, flipVertical
+        case centerX, centerY, width, height, rotation, rotationX, rotationY
+        case flipHorizontal, flipVertical
         // Legacy keys
         case x, y
     }
@@ -441,6 +630,8 @@ struct Transform: Codable, Sendable, Equatable {
         self.width = w
         self.height = h
         self.rotation = try c.decodeIfPresent(Double.self, forKey: .rotation) ?? 0
+        self.rotationX = try c.decodeIfPresent(Double.self, forKey: .rotationX) ?? 0
+        self.rotationY = try c.decodeIfPresent(Double.self, forKey: .rotationY) ?? 0
         self.flipHorizontal = try c.decodeIfPresent(Bool.self, forKey: .flipHorizontal) ?? false
         self.flipVertical = try c.decodeIfPresent(Bool.self, forKey: .flipVertical) ?? false
     }
@@ -452,6 +643,8 @@ struct Transform: Codable, Sendable, Equatable {
         try c.encode(width, forKey: .width)
         try c.encode(height, forKey: .height)
         try c.encode(rotation, forKey: .rotation)
+        try c.encode(rotationX, forKey: .rotationX)
+        try c.encode(rotationY, forKey: .rotationY)
         try c.encode(flipHorizontal, forKey: .flipHorizontal)
         try c.encode(flipVertical, forKey: .flipVertical)
     }
@@ -503,6 +696,8 @@ struct Transform: Codable, Sendable, Equatable {
 
 /// Per-clip crop as edge insets in normalized (0–1) source coordinates.
 struct Crop: Codable, Sendable, Equatable {
+    static let minimumVisibleFraction = 0.05
+
     var left: Double = 0
     var top: Double = 0
     var right: Double = 0
@@ -511,34 +706,116 @@ struct Crop: Codable, Sendable, Equatable {
     var isIdentity: Bool { left == 0 && top == 0 && right == 0 && bottom == 0 }
     var visibleWidthFraction: Double { max(0, 1 - left - right) }
     var visibleHeightFraction: Double { max(0, 1 - top - bottom) }
-}
 
-/// Aspect-ratio constraint for the Crop overlay.
-enum CropAspectLock: Hashable, CaseIterable {
-    case free, original, r16x9, r9x16, r1x1, r4x3, r3x4, r21x9
-
-    var label: String {
-        switch self {
-        case .free: "Custom"
-        case .original: "Original"
-        case .r16x9: "16:9"
-        case .r9x16: "9:16"
-        case .r1x1: "1:1"
-        case .r4x3: "4:3"
-        case .r3x4: "3:4"
-        case .r21x9: "21:9"
+    mutating func setInset(_ value: Double, edge: Edge) {
+        guard value.isFinite else { return }
+        let inset = min(max(0, value), maximumInset(for: edge))
+        switch edge {
+        case .left: left = inset
+        case .top: top = inset
+        case .right: right = inset
+        case .bottom: bottom = inset
         }
     }
 
-    var pixelAspect: Double? {
-        switch self {
-        case .free, .original: nil
-        case .r16x9: 16.0 / 9.0
-        case .r9x16: 9.0 / 16.0
-        case .r1x1: 1.0
-        case .r4x3: 4.0 / 3.0
-        case .r3x4: 3.0 / 4.0
-        case .r21x9: 21.0 / 9.0
+    func inset(for edge: Edge) -> Double {
+        switch edge {
+        case .left: left
+        case .top: top
+        case .right: right
+        case .bottom: bottom
         }
+    }
+
+    func maximumInset(for edge: Edge) -> Double {
+        let maximum = switch edge {
+        case .left: 1 - Self.minimumVisibleFraction - right
+        case .top: 1 - Self.minimumVisibleFraction - bottom
+        case .right: 1 - Self.minimumVisibleFraction - left
+        case .bottom: 1 - Self.minimumVisibleFraction - top
+        }
+        return min(1, max(0, maximum))
+    }
+
+    enum Edge: Sendable {
+        case left, top, right, bottom
+    }
+}
+
+struct CropAspectRatio: Hashable, Sendable {
+    let horizontal: Double
+    let vertical: Double
+
+    init?(horizontal: Double, vertical: Double) {
+        guard horizontal.isFinite, vertical.isFinite,
+              horizontal > 0, vertical > 0,
+              (horizontal / vertical).isFinite else { return nil }
+        self.horizontal = horizontal
+        self.vertical = vertical
+    }
+
+    init?(pixelWidth: Int, pixelHeight: Int) {
+        guard pixelWidth > 0, pixelHeight > 0 else { return nil }
+        var a = pixelWidth
+        var b = pixelHeight
+        while b != 0 { (a, b) = (b, a % b) }
+        self.init(horizontal: Double(pixelWidth / a), vertical: Double(pixelHeight / a))
+    }
+
+    init?(pixelAspect: Double) {
+        guard pixelAspect.isFinite, pixelAspect > 0 else { return nil }
+        self.init(horizontal: max(pixelAspect, 1), vertical: max(1 / pixelAspect, 1))
+    }
+
+    var pixelAspect: Double { horizontal / vertical }
+    var horizontalText: String { Self.format(horizontal) }
+    var verticalText: String { Self.format(vertical) }
+    var label: String { "\(horizontalText):\(verticalText)" }
+
+    private static func format(_ value: Double) -> String {
+        String(format: "%.6g", locale: Locale(identifier: "en_US_POSIX"), value)
+    }
+
+    static func preset(_ horizontal: Double, _ vertical: Double) -> CropAspectRatio {
+        CropAspectRatio(validatedHorizontal: horizontal, vertical: vertical)
+    }
+
+    private init(validatedHorizontal: Double, vertical: Double) {
+        self.horizontal = validatedHorizontal
+        self.vertical = vertical
+    }
+}
+
+enum CropAspectLock: Hashable, Sendable {
+    case free, original, fixed(CropAspectRatio)
+
+    static let r16x9 = fixed(CropAspectRatio.preset(16, 9))
+    static let r9x16 = fixed(CropAspectRatio.preset(9, 16))
+    static let r1x1 = fixed(CropAspectRatio.preset(1, 1))
+    static let r4x3 = fixed(CropAspectRatio.preset(4, 3))
+    static let r3x4 = fixed(CropAspectRatio.preset(3, 4))
+    static let r21x9 = fixed(CropAspectRatio.preset(21, 9))
+    static let presets = [free, original, r16x9, r9x16, r1x1, r4x3, r3x4, r21x9]
+
+    var label: String {
+        switch self {
+        case .free: "Freeform"
+        case .original: "Original"
+        case let .fixed(ratio): ratio.label
+        }
+    }
+
+    var aspectRatio: CropAspectRatio? {
+        guard case let .fixed(ratio) = self else { return nil }
+        return ratio
+    }
+
+    var pixelAspect: Double? { aspectRatio?.pixelAspect }
+
+    static func locked(to ratio: CropAspectRatio) -> CropAspectLock {
+        presets.first {
+            guard let preset = $0.pixelAspect else { return false }
+            return abs(preset - ratio.pixelAspect) < 1e-9
+        } ?? .fixed(ratio)
     }
 }

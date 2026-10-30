@@ -11,7 +11,7 @@ struct MCPServiceTests {
         try await withLoopbackMCP {
             try await requireMCPPortFree()
 
-            let service = MCPService(editorProvider: { nil })
+            let service = MCPService(projectProvider: { nil })
             service.start()
             await service.stop()
 
@@ -26,7 +26,7 @@ struct MCPServiceTests {
         try await withLoopbackMCP {
             try await requireMCPPortFree()
 
-            let service = MCPService(editorProvider: { nil })
+            let service = MCPService(projectProvider: { nil })
             service.start()
             await service.stop()
             service.start()

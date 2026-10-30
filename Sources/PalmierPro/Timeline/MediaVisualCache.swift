@@ -14,10 +14,32 @@ final class MediaVisualCache {
     /// Cap concurrent waveform extractions to avoid starving playback.
     private static let waveformGate = AsyncSemaphore(value: 2)
 
+    // MARK: - Speech masks
+
+    let speech = SpeechMaskStore()
+    /// 32 ms cells, value = global speaker id, -1 = none. Session-scoped, set by identifySpeakers.
+    var speakerMasks: [String: [Int]] = [:]
+
+    nonisolated func speakerMask(for mediaRef: String) -> [Int]? {
+        MainActor.assumeIsolated { speakerMasks[mediaRef] }
+    }
+
+    let beats = BeatStore()
+
+    nonisolated func beatAnalysis(for mediaRef: String) -> BeatAnalysis? {
+        beats.analysis(for: mediaRef)
+    }
+
+    init() {
+        speech.onMaskReady = { [weak self] in self?.timelineView?.needsDisplay = true }
+        beats.onBeatsReady = { [weak self] in self?.timelineView?.needsDisplay = true }
+    }
+
     // MARK: - Video thumbnails (sorted by time)
 
     private var videoThumbnails: [String: [(time: Double, image: CGImage)]] = [:]
     private var videoThumbnailInFlight: Set<String> = []
+    private static let videoThumbnailGate = AsyncSemaphore(value: 2)
 
     // MARK: - Image thumbnails (single still per asset)
 
@@ -28,11 +50,23 @@ final class MediaVisualCache {
     // MARK: - Redraw trigger
 
     weak var timelineView: NSView?
+    var onDeadAirCacheInvalidated: (() -> Void)?
 
     // MARK: - Sync lookups (safe for draw calls)
 
     nonisolated func samples(for mediaRef: String) -> [Float]? {
         MainActor.assumeIsolated { waveformSamples[mediaRef] }
+    }
+
+    nonisolated func deadAirMask(
+        for mediaRef: String,
+        settings: SilenceRemovalSettings
+    ) -> [Bool]? {
+        speech.deadAirMask(for: mediaRef, samples: samples(for: mediaRef), settings: settings)
+    }
+
+    nonisolated func quietNonSpeechMask(for mediaRef: String) -> [Bool]? {
+        speech.quietNonSpeechMask(for: mediaRef, samples: samples(for: mediaRef))
     }
 
     nonisolated func thumbnails(for mediaRef: String) -> [(time: Double, image: CGImage)]? {
@@ -47,6 +81,8 @@ final class MediaVisualCache {
 
     func generateWaveform(for asset: MediaAsset) {
         guard asset.type == .audio || (asset.type == .video && asset.hasAudio) else { return }
+        speech.generate(for: asset)
+        beats.hydrate(for: asset)
         let key = asset.id
         guard waveformSamples[key] == nil, !waveformInFlight.contains(key) else { return }
         waveformInFlight.insert(key)
@@ -63,6 +99,29 @@ final class MediaVisualCache {
                 }
             }
         }
+    }
+
+    /// Drops all in-memory state after a disk-cache clear so everything regenerates.
+    func resetSessionState() {
+        waveformSamples.removeAll()
+        speakerMasks.removeAll()
+        speech.reset()
+        beats.reset()
+        videoThumbnails.removeAll()
+        imageThumbnails.removeAll()
+        onDeadAirCacheInvalidated?()
+        timelineView?.needsDisplay = true
+    }
+
+    /// Clears every cached visual for `mediaRef` so relinked media regenerates.
+    func invalidate(_ mediaRef: String) {
+        waveformSamples.removeValue(forKey: mediaRef)
+        speakerMasks.removeValue(forKey: mediaRef)
+        speech.invalidate(mediaRef)
+        beats.invalidate(mediaRef)
+        videoThumbnails.removeValue(forKey: mediaRef)
+        imageThumbnails.removeValue(forKey: mediaRef)
+        onDeadAirCacheInvalidated?()
     }
 
     func generateImageThumbnail(for asset: MediaAsset) {
@@ -99,6 +158,14 @@ final class MediaVisualCache {
 
         let url = asset.url
         Task.detached(priority: .userInitiated) { [weak self] in
+            do {
+                try await Self.videoThumbnailGate.wait()
+            } catch {
+                await MainActor.run { [weak self] in _ = self?.videoThumbnailInFlight.remove(key) }
+                return
+            }
+            defer { Task { await Self.videoThumbnailGate.signal() } }
+
             let cacheKey = Self.diskCacheKey(for: url)
             var results = cacheKey.flatMap(Self.loadThumbnails(key:)) ?? []
 

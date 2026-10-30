@@ -15,6 +15,7 @@
 <a href="https://x.com/Palmier_io"><img src="https://img.shields.io/badge/Follow-%40Palmier__io-000000?style=flat&logo=x&logoColor=white" alt="Подписаться в X" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Присоединиться к Discord" /></a>
 <a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
+<br />
 
 <p>
   <a href="../../README.md">English</a> ·
@@ -40,7 +41,10 @@
 
 ---
 
-Palmier Pro — open source видеоредактор для Mac. Вы и ваш agent можете вместе генерировать и редактировать видео прямо на таймлайне.
+> [!IMPORTANT]
+> Релизы Palmier Pro до v0.7.6 включительно были опубликованы под лицензией GPLv3. Финальный общедоступный снимок исходного кода — [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source). Релизы после v0.7.6 являются проприетарными, и их исходный код здесь не публикуется.
+
+Palmier Pro — видеоредактор для Mac. Вы и ваш agent можете вместе генерировать и редактировать видео прямо на таймлайне.
 
 ### Видеоредактор, нативный для Swift
 
@@ -89,9 +93,9 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 
 ## FAQ
 
-**Palmier Pro полностью open source?**
+**Какие версии Palmier Pro являются open source?**
 
-Видеоредактор, без функций generative AI, полностью open source. MCP server и agent chat тоже open source. Закрытой остается только обработка generative AI.
+Релизы до v0.7.6 включительно и исходный код вплоть до [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) остаются под GPLv3; более поздние релизы являются проприетарными.
 
 **Это бесплатно?**
 
@@ -103,31 +107,19 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 
 Только macOS 26 (Tahoe) на Apple Silicon.
 
-Подробнее см. [FAQ.md](../../FAQ.md).
+## Участие в проекте
 
-## Разработка
-
-См. [CONTRIBUTING.md](../../CONTRIBUTING.md).
+В этом репозитории больше не принимаются изменения кода. Опубликованный исходный код остается доступным для использования, изменения и распространения по лицензии GPLv3.
 
 ## Сообщество и поддержка
 
 - **Discord:** Присоединяйтесь к сообществу в **[Discord](https://discord.com/invite/SMVW6pKYmg)**.
 - **Twitter / X:** Подписывайтесь на **[@Palmier_io](https://x.com/Palmier_io)**, чтобы получать обновления и анонсы.
 - **Instagram:** Подписывайтесь на [@palmier.io](https://www.instagram.com/palmier.io).
-- **Feedback и поддержка:** Создайте [GitHub Issue](https://github.com/palmier-io/palmier-pro/issues) или напишите нам на founders@palmier.io.
-
-## Star History
-
-<a href="https://www.star-history.com/?type=date&repos=palmier-io%2Fpalmier-pro">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=palmier-io/palmier-pro&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=palmier-io/palmier-pro&type=date&legend=top-left" />
-   <img alt="График Star History" src="https://api.star-history.com/chart?repos=palmier-io/palmier-pro&type=date&legend=top-left" />
- </picture>
-</a>
+- **Feedback и поддержка:** Напишите нам на founders@palmier.io.
 
 ## Лицензия
 
 Copyright (C) 2026 Palmier, Inc.
 
-Palmier Pro распространяется как open source по лицензии [GPLv3](../../LICENSE).
+Исходный код, опубликованный в этом репозитории, остается под лицензией [GPLv3](../../LICENSE). Бинарные релизы после v0.7.6 являются проприетарными и распространяются по [BINARY_LICENSE.md](../../BINARY_LICENSE.md).

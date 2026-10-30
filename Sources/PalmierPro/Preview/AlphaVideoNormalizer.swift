@@ -6,10 +6,13 @@ import CoreVideo
 enum AlphaVideoNormalizer {
 
     /// Returns cached premultiplied-alpha video if source has straight alpha; else nil.
-    static func premultipliedVideo(for sourceURL: URL, mediaRef: String) async throws -> URL? {
-        let asset = AVURLAsset(url: sourceURL)
-        guard let track = try await asset.loadTracks(withMediaType: .video).first,
-              try await trackContainsAlpha(track) else { return nil }
+    static func premultipliedVideo(
+        for sourceURL: URL,
+        mediaRef: String,
+        asset: AVURLAsset,
+        track: AVAssetTrack
+    ) async throws -> URL? {
+        guard try await trackContainsAlpha(track) else { return nil }
 
         // Skip rotated/flipped sources since baking orientation would lose the original transform.
         let preferredTransform = (try? await track.load(.preferredTransform)) ?? .identity
@@ -19,16 +22,11 @@ enum AlphaVideoNormalizer {
         let size = CGSize(width: abs(natSize.width), height: abs(natSize.height))
         guard size.width >= 2, size.height >= 2 else { return nil }
 
-        let filename = "\(mediaRef)_\(cacheTag(for: sourceURL))_premul.mov"
+        let filename = "\(mediaRef)_\(DiskCache.sizeMtimeTag(for: sourceURL))_premul.mov"
         let outputURL = ImageVideoGenerator.cacheDirectory.appendingPathComponent(filename)
         if FileManager.default.fileExists(atPath: outputURL.path) { return outputURL }
 
-        do {
-            return try await transcode(asset: asset, track: track, size: size, to: outputURL)
-        } catch {
-            Log.preview.error("alpha premultiply failed mediaRef=\(mediaRef): \(error.localizedDescription)")
-            return nil
-        }
+        return try await transcode(asset: asset, track: track, size: size, to: outputURL)
     }
 
     private static func trackContainsAlpha(_ track: AVAssetTrack) async throws -> Bool {
@@ -37,14 +35,6 @@ enum AlphaVideoNormalizer {
         return CMFormatDescriptionGetExtension(
             format, extensionKey: kCMFormatDescriptionExtension_ContainsAlphaChannel
         ) as? Bool ?? false
-    }
-
-    /// Cache key fragment that busts when the underlying file is replaced.
-    private static func cacheTag(for url: URL) -> String {
-        let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
-        let size = (attrs?[.size] as? Int) ?? 0
-        let modified = (attrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
-        return "\(size)_\(Int(modified))"
     }
 
     private static func transcode(
@@ -100,13 +90,18 @@ enum AlphaVideoNormalizer {
                 guard !alreadyResumed else { return }
                 cont.resume(with: result)
             }
-            input.requestMediaDataWhenReady(on: queue) {
-                while input.isReadyForMoreMediaData {
-                    guard let sample = readerOutput.copyNextSampleBuffer() else {
-                        if reader.status == .failed {
-                            finish(.failure(reader.error ?? NormalizeError.readFailed))
+            nonisolated(unsafe) let unsafeReader = reader
+            nonisolated(unsafe) let unsafeReaderOutput = readerOutput
+            nonisolated(unsafe) let unsafeWriter = writer
+            nonisolated(unsafe) let unsafeInput = input
+            nonisolated(unsafe) let unsafeAdaptor = adaptor
+            unsafeInput.requestMediaDataWhenReady(on: queue) {
+                while unsafeInput.isReadyForMoreMediaData {
+                    guard let sample = unsafeReaderOutput.copyNextSampleBuffer() else {
+                        if unsafeReader.status == .failed {
+                            finish(.failure(unsafeReader.error ?? NormalizeError.readFailed))
                         } else {
-                            input.markAsFinished()
+                            unsafeInput.markAsFinished()
                             finish(.success(()))
                         }
                         return
@@ -114,8 +109,8 @@ enum AlphaVideoNormalizer {
                     guard let pixelBuffer = CMSampleBufferGetImageBuffer(sample) else { continue }
                     premultiply(pixelBuffer)
                     let pts = CMSampleBufferGetPresentationTimeStamp(sample)
-                    if !adaptor.append(pixelBuffer, withPresentationTime: pts) {
-                        finish(.failure(writer.error ?? NormalizeError.appendFailed))
+                    if !unsafeAdaptor.append(pixelBuffer, withPresentationTime: pts) {
+                        finish(.failure(unsafeWriter.error ?? NormalizeError.appendFailed))
                         return
                     }
                 }

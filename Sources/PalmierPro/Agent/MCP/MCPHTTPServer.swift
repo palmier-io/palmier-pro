@@ -2,7 +2,12 @@ import Foundation
 import MCP
 import Network
 
-/// HTTP server for MCP. Each TCP connection gets its own `Server` + `Transport` pair.
+struct MCPServerInstance: Sendable {
+    let server: Server
+    let onInitialize: @Sendable (Client.Info) async -> Void
+}
+
+/// HTTP server for MCP. Each client session gets its own `Server` + stateful transport
 actor MCPHTTPServer {
 
     nonisolated static let loopbackHost = "127.0.0.1"
@@ -10,14 +15,26 @@ actor MCPHTTPServer {
     private nonisolated let port: UInt16
     private nonisolated let bindHost: String
     private nonisolated let bearerToken: String
-    private let makeServer: @Sendable () async -> Server
+    private let makeServer: @Sendable () async -> MCPServerInstance
     private nonisolated(unsafe) var listener: NWListener?
+
+    private struct Session {
+        let server: Server
+        let transport: StatefulHTTPServerTransport
+        var lastUsed: ContinuousClock.Instant
+        var toolListAnnounced = false
+    }
+
+    private var sessions: [String: Session] = [:]
+    private var fallback: (server: Server, transport: StatelessHTTPServerTransport)?
+    private static let sessionIdleLimit: Duration = .seconds(3600)
+    private static let sessionCountLimit = 32
 
     init(
         port: UInt16,
         bindHost: String = MCPHTTPServer.loopbackHost,
         bearerToken: String = "",
-        makeServer: @escaping @Sendable () async -> Server
+        makeServer: @escaping @Sendable () async -> MCPServerInstance
     ) {
         self.port = port
         self.bindHost = Self.normalizedBindHost(bindHost)
@@ -39,7 +56,7 @@ actor MCPHTTPServer {
         listener?.newConnectionHandler = { [weak self] connection in
             guard let self else { return }
             connection.start(queue: .global(qos: .userInitiated))
-            Task { await self.handleConnection(connection) }
+            Task { await self.receive(on: connection) }
         }
 
         listener?.start(queue: .global(qos: .userInitiated))
@@ -48,42 +65,77 @@ actor MCPHTTPServer {
     func stop() {
         listener?.cancel()
         listener = nil
+        let closing = sessions.values.map(\.transport)
+        sessions.removeAll()
+        let fallbackTransport = fallback?.transport
+        fallback = nil
+        Task {
+            for transport in closing { await transport.disconnect() }
+            await fallbackTransport?.disconnect()
+        }
     }
 
     // MARK: - Connection
 
-    private func handleConnection(_ connection: NWConnection) async {
-        let pipeline = Self.validationPipeline(port: port, bindHost: bindHost, bearerToken: bearerToken)
-        let transport = StatelessHTTPServerTransport(validationPipeline: pipeline)
-        let server = await makeServer()
-        try? await server.start(transport: transport)
-        receive(on: connection, transport: transport)
-    }
-
-    private func receive(on connection: NWConnection, transport: StatelessHTTPServerTransport) {
+    private func receive(on connection: NWConnection, buffer: Data = Data()) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 1_048_576) { [weak self] data, _, _, error in
             guard let self, let data, !data.isEmpty, error == nil else {
                 connection.cancel(); return
             }
-            Task { await self.handle(data: data, connection: connection, transport: transport) }
+            var buffer = buffer
+            buffer.append(data)
+            Task { await self.process(buffer: buffer, connection: connection) }
         }
     }
 
-    private func handle(data: Data, connection: NWConnection, transport: StatelessHTTPServerTransport) async {
-        guard let request = parseHTTPRequest(data) else {
+    // A request body can span multiple TCP reads; accumulate until Content-Length is satisfied.
+    private func process(buffer: Data, connection: NWConnection) async {
+        switch framing(of: buffer) {
+        case .needMoreData:
+            receive(on: connection, buffer: buffer)
+        case .invalid:
             sendRaw("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n", on: connection, keepAlive: false)
-            return
+        case .complete:
+            guard let request = parseHTTPRequest(buffer) else {
+                sendRaw("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n", on: connection, keepAlive: false)
+                return
+            }
+            await handle(request: request, connection: connection)
         }
+    }
 
+    private enum Framing { case needMoreData, complete, invalid }
+
+    private nonisolated func framing(of data: Data) -> Framing {
+        guard data.count <= 16_777_216 else { return .invalid }
+        guard let headerEnd = data.range(of: Data("\r\n\r\n".utf8)) else {
+            return data.count > 65_536 ? .invalid : .needMoreData
+        }
+        guard let head = String(data: data[data.startIndex..<headerEnd.lowerBound], encoding: .utf8) else {
+            return .invalid
+        }
+        let contentLength = head.components(separatedBy: "\r\n").dropFirst().compactMap { line -> Int? in
+            let parts = line.split(separator: ":", maxSplits: 1)
+            guard parts.count == 2,
+                  parts[0].trimmingCharacters(in: .whitespaces).lowercased() == "content-length" else { return nil }
+            return Int(parts[1].trimmingCharacters(in: .whitespaces))
+        }.first ?? 0
+        let bodyBytes = data.distance(from: headerEnd.upperBound, to: data.endIndex)
+        return bodyBytes >= contentLength ? .complete : .needMoreData
+    }
+
+    // MARK: - Routing
+
+    private func handle(request: HTTPRequest, connection: NWConnection) async {
         if request.path == "/.well-known/oauth-protected-resource" {
             if let rejection = accessRejection(for: request) {
-                writeResponse(rejection, on: connection, transport: transport, keepAlive: false)
+                writeResponse(rejection, on: connection, keepAlive: false)
                 return
             }
 
             let body = "{\"resource\":\"http://\(Self.advertisedHost(forBindHost: bindHost)):\(port)\"}"
             sendRaw("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: \(body.utf8.count)\r\n\r\n\(body)", on: connection, keepAlive: true)
-            receive(on: connection, transport: transport)
+            receive(on: connection)
             return
         }
 
@@ -93,20 +145,134 @@ actor MCPHTTPServer {
         }
 
         if let rejection = accessRejection(for: request) {
-            writeResponse(rejection, on: connection, transport: transport, keepAlive: false)
+            writeResponse(rejection, on: connection, keepAlive: false)
             return
         }
 
-        if request.method.uppercased() == "GET" {
-            sendRaw("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n: connected\n\n", on: connection, keepAlive: true)
-            return
+        let response: HTTPResponse
+        if let claimed = request.header(HTTPHeaderName.sessionID) {
+            guard var session = sessions[claimed] else {
+                // Unknown/expired session → 404 per spec; the client re-initializes
+                // and refreshes its tool inventory.
+                sendRaw("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n", on: connection, keepAlive: true)
+                receive(on: connection)
+                return
+            }
+            session.lastUsed = .now
+            sessions[claimed] = session
+            response = await session.transport.handleRequest(request)
+            if request.method.uppercased() == "DELETE", response.statusCode == 200 {
+                sessions.removeValue(forKey: claimed)
+            } else if request.method.uppercased() == "GET", response.statusCode == 200 {
+                announceToolList(sessionID: claimed)
+            }
+        } else if isInitialize(request) {
+            let transport = StatefulHTTPServerTransport(
+                validationPipeline: StandardValidationPipeline(validators: baseValidators() + [SessionValidator()])
+            )
+            let instance = await makeServer()
+            try? await instance.server.start(transport: transport) { clientInfo, _ in
+                await instance.onInitialize(clientInfo)
+            }
+            response = await transport.handleRequest(request)
+            if let assigned = response.headers[HTTPHeaderName.sessionID] {
+                pruneIdleSessions()
+                sessions[assigned] = Session(server: instance.server, transport: transport, lastUsed: .now)
+                Log.mcp.notice("session started id=\(assigned) total=\(self.sessions.count)")
+            } else {
+                await transport.disconnect()
+            }
+        } else {
+            // Sessionless clients (and plain curl) get simple request/response semantics.
+            response = await fallbackPair().transport.handleRequest(request)
         }
-
-        let mcpResponse = await transport.handleRequest(request)
-        writeResponse(mcpResponse, on: connection, transport: transport)
+        writeResponse(response, on: connection)
     }
 
-    private func writeResponse(_ response: HTTPResponse, on connection: NWConnection, transport: StatelessHTTPServerTransport, keepAlive: Bool = true) {
+    private func announceToolList(sessionID: String) {
+        guard var session = sessions[sessionID], !session.toolListAnnounced else { return }
+        session.toolListAnnounced = true
+        sessions[sessionID] = session
+        let server = session.server
+        Task {
+            do {
+                try await server.notify(ToolListChangedNotification.message())
+            } catch {
+                Log.mcp.warning("tool list_changed notify failed id=\(sessionID): \(error.localizedDescription)")
+                await self.resetToolListAnnouncement(sessionID: sessionID)
+            }
+        }
+    }
+
+    // A failed announce retries on the next GET-stream attach.
+    private func resetToolListAnnouncement(sessionID: String) {
+        guard var session = sessions[sessionID] else { return }
+        session.toolListAnnounced = false
+        sessions[sessionID] = session
+    }
+
+    private nonisolated func isInitialize(_ request: HTTPRequest) -> Bool {
+        guard request.method.uppercased() == "POST", let body = request.body,
+              let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] else { return false }
+        return json["method"] as? String == "initialize"
+    }
+
+    private nonisolated func baseValidators() -> [any HTTPRequestValidator] {
+        Self.validators(port: port, bindHost: bindHost, bearerToken: bearerToken)
+    }
+
+    private func fallbackPair() async -> (server: Server, transport: StatelessHTTPServerTransport) {
+        if let fallback { return fallback }
+        let pipeline = StandardValidationPipeline(validators: baseValidators())
+        let instance = await makeServer()
+        let pair = (server: instance.server, transport: StatelessHTTPServerTransport(validationPipeline: pipeline))
+        try? await pair.server.start(transport: pair.transport) { clientInfo, _ in
+            await instance.onInitialize(clientInfo)
+        }
+        fallback = pair
+        return pair
+    }
+
+    // Evicted clients recover transparently: their next request gets 404 and they re-initialize.
+    private func pruneIdleSessions() {
+        let cutoff = ContinuousClock.now - Self.sessionIdleLimit
+        for (id, session) in sessions where session.lastUsed < cutoff {
+            evictSession(id: id)
+        }
+        while sessions.count >= Self.sessionCountLimit,
+              let oldest = sessions.min(by: { $0.value.lastUsed < $1.value.lastUsed }) {
+            evictSession(id: oldest.key)
+        }
+    }
+
+    private func evictSession(id: String) {
+        guard let session = sessions.removeValue(forKey: id) else { return }
+        Log.mcp.notice("session evicted id=\(id)")
+        Task { await session.transport.disconnect() }
+    }
+
+    // MARK: - Response writing
+
+    private func writeResponse(_ response: HTTPResponse, on connection: NWConnection, keepAlive: Bool = true) {
+        if case .stream(let stream, let headers) = response {
+            // SSE has no Content-Length; close the connection to delimit the body.
+            var head = "HTTP/1.1 200 OK\r\n"
+            for (k, v) in headers where k.lowercased() != "connection" { head += "\(k): \(v)\r\n" }
+            head += "Connection: close\r\n\r\n"
+            connection.send(content: head.data(using: .utf8), completion: .contentProcessed { _ in })
+            Task {
+                do {
+                    for try await chunk in stream {
+                        connection.send(content: chunk, completion: .contentProcessed { _ in })
+                    }
+                } catch {}
+                connection.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { _ in
+                    connection.cancel()
+                })
+            }
+            return
+        }
+
         var head = "HTTP/1.1 \(response.statusCode) \(statusText(response.statusCode))\r\n"
         for (k, v) in response.headers { head += "\(k): \(v)\r\n" }
         head += "Content-Length: \(response.bodyData?.count ?? 0)\r\nConnection: \(keepAlive ? "keep-alive" : "close")\r\n\r\n"
@@ -117,7 +283,7 @@ actor MCPHTTPServer {
         connection.send(content: responseData, completion: .contentProcessed { _ in
             if !keepAlive { connection.cancel() }
         })
-        if keepAlive { receive(on: connection, transport: transport) }
+        if keepAlive { receive(on: connection) }
     }
 
     private nonisolated func accessRejection(for request: HTTPRequest) -> HTTPResponse? {
@@ -164,7 +330,7 @@ actor MCPHTTPServer {
         switch code {
         case 200: "OK"; case 202: "Accepted"; case 400: "Bad Request"
         case 401: "Unauthorized"; case 403: "Forbidden"; case 404: "Not Found"
-        case 405: "Method Not Allowed"; case 406: "Not Acceptable"
+        case 405: "Method Not Allowed"; case 406: "Not Acceptable"; case 409: "Conflict"
         case 415: "Unsupported Media Type"; case 421: "Misdirected Request"
         case 500: "Internal Server Error"
         default: "Unknown"
@@ -192,6 +358,10 @@ actor MCPHTTPServer {
     }
 
     nonisolated static func validationPipeline(port: UInt16, bindHost: String, bearerToken: String) -> StandardValidationPipeline {
+        StandardValidationPipeline(validators: validators(port: port, bindHost: bindHost, bearerToken: bearerToken))
+    }
+
+    nonisolated static func validators(port: UInt16, bindHost: String, bearerToken: String) -> [any HTTPRequestValidator] {
         let host = normalizedBindHost(bindHost)
         var validators: [any HTTPRequestValidator] = []
         if requiresBearerToken(bindHost: host) {
@@ -202,7 +372,7 @@ actor MCPHTTPServer {
         }
         validators.append(ContentTypeValidator())
         validators.append(ProtocolVersionValidator())
-        return StandardValidationPipeline(validators: validators)
+        return validators
     }
 
     private nonisolated static func isLoopbackHost(_ host: String) -> Bool {

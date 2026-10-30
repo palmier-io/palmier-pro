@@ -28,9 +28,12 @@ secrets.json
 
 # mcpb shim dependencies (vendored only inside the packed .mcpb)
 mcpb/server/node_modules/
+mcpb/server/package-lock.json
 
 # CLIP models
 models/*/.venv/
 models/*/build*/
 models/*/checkpoint*
 models/*/convert*.log
+
+AUDIO_SUITE_*

@@ -47,7 +47,7 @@ struct LottieExportTests {
         gen.appliesPreferredTrackTransform = true
         gen.requestedTimeToleranceBefore = .zero
         gen.requestedTimeToleranceAfter = .zero
-        let frame = try gen.copyCGImage(at: CMTime(value: 0, timescale: 600), actualTime: nil)
+        let frame = try await gen.image(at: CMTime(value: 0, timescale: 600)).image
         let rep = NSBitmapImageRep(cgImage: frame)
         let topLeft = try #require(rep.colorAt(x: frame.width / 4, y: frame.height / 4))
         let bottomRight = try #require(rep.colorAt(x: frame.width * 3 / 4, y: frame.height * 3 / 4))

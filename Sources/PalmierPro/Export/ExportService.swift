@@ -1,5 +1,6 @@
 import AVFoundation
 import AppKit
+import CoreImage
 
 enum ExportError: LocalizedError {
     case unsupportedPreset
@@ -21,54 +22,196 @@ struct ExportRunReport {
     let unprocessableMediaRefs: Set<String>
 }
 
-@Observable
+struct ExportAnalyticsContext: Sendable {
+    var source: String = "manual"
+    var projectId: String?
+    var timelineInput: ExportTimelineAnalyticsInput?
+}
+
+private struct ExportAnalyticsRun: Sendable {
+    private let source, projectId, mode, format, resolution: String
+    private let timelineInput: ExportTimelineAnalyticsInput?
+    private let started: ContinuousClock.Instant
+
+    init(
+        mode: String,
+        format: ExportFormat,
+        resolution: ExportResolution?,
+        context: ExportAnalyticsContext
+    ) {
+        self.source = context.source
+        self.projectId = context.projectId ?? "unknown"
+        self.mode = mode
+        self.format = format.displayName
+        self.resolution = resolution?.rawValue ?? "n/a"
+        self.timelineInput = context.timelineInput
+        self.started = ContinuousClock.now
+    }
+
+    init(palmierContext context: ExportAnalyticsContext) {
+        self.source = context.source
+        self.projectId = context.projectId ?? "unknown"
+        self.mode = "palmier"
+        self.format = "Palmier"
+        self.resolution = "n/a"
+        self.timelineInput = context.timelineInput
+        self.started = ContinuousClock.now
+    }
+
+    func begin() {
+        Analytics.capture(.exportStarted, properties: basePayload())
+    }
+
+    func finish() {
+        let duration = Self.durationSeconds(since: started)
+        Task.detached(priority: .utility) { [self] in
+            guard Analytics.canCapture else { return }
+            var payload = basePayload()
+            payload["export_duration_seconds"] = duration
+            if let timelineInput {
+                payload.merge(ExportTimelineAnalyticsSnapshot.analyticsProperties(from: timelineInput)) {
+                    current, _ in current
+                }
+            }
+            Analytics.capture(.exportFinished, properties: payload)
+        }
+    }
+
+    func fail(reason: String = "other") {
+        var payload = timedPayload()
+        payload["failure_reason"] = reason
+        Analytics.capture(.exportFailed, properties: payload)
+    }
+
+    private func timedPayload() -> [String: Any] {
+        var payload = basePayload()
+        payload["export_duration_seconds"] = Self.durationSeconds(since: started)
+        return payload
+    }
+
+    private func basePayload() -> [String: Any] {
+        [
+            "source": source,
+            "project_id": projectId,
+            "mode": mode,
+            "format": format,
+            "resolution": resolution,
+        ]
+    }
+
+    private static func durationSeconds(since started: ContinuousClock.Instant) -> Double {
+        let duration = started.duration(to: .now)
+        return Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
+    }
+}
+
 @MainActor
 final class ExportService {
+    enum Phase {
+        case preparing
+        case exporting
+    }
+
     var progress: Double = 0
-    var isExporting = false
     var error: String?
     var lastReport: ExportRunReport?
+    var lastPalmierReport: PalmierProjectExporter.Report?
+    var wasCancelled = false
+    private(set) var didCommitOutput = false
+    var onPhaseChange: ((Phase) -> Void)?
+    var onProgressChange: ((Double) -> Void)?
+    private var activeCancellation: (() -> Void)?
+
+    private enum SessionObservationPhase {
+        case pending
+        case started
+        case ended
+    }
+
+    @discardableResult
+    func cancel() -> Bool {
+        guard !didCommitOutput else { return false }
+        wasCancelled = true
+        activeCancellation?()
+        return true
+    }
 
     func export(
         timeline: Timeline,
         resolver: MediaResolver,
+        resolveTimeline: @escaping @Sendable (String) -> Timeline? = { _ in nil },
         format: ExportFormat,
         resolution: ExportResolution,
+        fcpxmlVersion: FCPXMLVersion = .default,
+        fcpxmlTarget: FCPXMLTarget = .default,
         missingMediaRefs: Set<String> = [],
         outputURL: URL,
-        acquireSlot: Bool = true
+        analyticsContext: ExportAnalyticsContext = .init()
     ) async {
-        error = nil
-        lastReport = nil
-        isExporting = true
-        progress = 0
-        defer { isExporting = false }
+        reset()
+        defer { activeCancellation = nil }
 
-        if format == .xml {
+        if format == .xml || format == .fcpxml {
+            let name = format.fileExtension
+            let analytics = ExportAnalyticsRun(
+                mode: name,
+                format: format,
+                resolution: nil,
+                context: analyticsContext
+            )
+            analytics.begin()
+            setPhase(.exporting)
             Log.export.notice(
-                "export requested format=xml",
+                "export requested format=\(name)",
                 telemetry: "Export started",
-                data: ["format": "xml", "tracks": timeline.tracks.count, "clips": timeline.tracks.reduce(0) { $0 + $1.clips.count }]
+                data: ["format": name, "tracks": timeline.tracks.count, "clips": timeline.tracks.reduce(0) { $0 + $1.clips.count }]
             )
             do {
-                try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outputURL)
-                progress = 1.0
-                Log.export.notice("export ok format=xml", telemetry: "Export finished", data: ["format": "xml"])
+                try await withStagedOutput(to: outputURL) { stagingURL in
+                    if format == .xml {
+                        try await XMLExporter.export(timeline: timeline, resolver: resolver, resolveTimeline: resolveTimeline, outputURL: stagingURL)
+                    } else {
+                        try await FCPXMLExporter.export(timeline: timeline, resolver: resolver, resolveTimeline: resolveTimeline,
+                                                        version: fcpxmlVersion, target: fcpxmlTarget, outputURL: stagingURL)
+                    }
+                }
+                setProgress(1)
+                Log.export.notice("export ok format=\(name)", telemetry: "Export finished", data: ["format": name])
+                analytics.finish()
             } catch {
-                self.error = Log.detail(error)
-                Log.export.error(
-                    "export failed format=xml: \(Log.detail(error))",
-                    telemetry: "Export failed",
-                    data: ["format": "xml", "error": Log.detail(error)]
-                )
+                if Self.isCancellation(error) {
+                    wasCancelled = true
+                    Log.export.notice("export cancelled format=\(name)", telemetry: "Export cancelled", data: ["format": name])
+                } else {
+                    self.error = Log.detail(error)
+                    Log.export.error(
+                        "export failed format=\(name): \(Log.detail(error))",
+                        telemetry: "Export failed",
+                        data: ["format": name, "error": Log.detail(error)]
+                    )
+                    analytics.fail()
+                }
             }
             return
         }
-
-        if acquireSlot {
-            await ExportCoordinator.acquireExport()
+        let videoAnalytics = ExportAnalyticsRun(
+            mode: "video",
+            format: format,
+            resolution: resolution,
+            context: analyticsContext
+        )
+        if format.isHDR {
+            videoAnalytics.begin()
+            await exportHDR(
+                timeline: timeline,
+                resolver: resolver,
+                resolution: resolution,
+                missingMediaRefs: missingMediaRefs,
+                outputURL: outputURL,
+                analytics: videoAnalytics
+            )
+            return
         }
-        defer { if acquireSlot { ExportCoordinator.endExport() } }
 
         Log.export.notice(
             "export requested format=\(String(describing: format)) resolution=\(resolution.rawValue)",
@@ -82,126 +225,254 @@ final class ExportService {
                 "fps": timeline.fps
             ]
         )
+        videoAnalytics.begin()
+        var failureStage = "preparing"
 
         do {
+            try checkCancellation()
             let prepared = try await makeExportSession(
-                timeline: timeline, resolver: resolver,
+                timeline: timeline, resolver: resolver, resolveTimeline: resolveTimeline,
                 format: format, resolution: resolution,
                 missingMediaRefs: missingMediaRefs
             )
             let session = prepared.session
             guard let fileType = format.utType else { throw ExportError.invalidFormat }
-
-            // AVAssetExportSession fails if the file already exists
-            try? FileManager.default.removeItem(at: outputURL)
-
             nonisolated(unsafe) let unsafeSession = session
-            let progressTask = Task { @MainActor in
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .milliseconds(200))
-                    let p = Double(unsafeSession.progress)
-                    if p != self.progress { self.progress = p }
+            failureStage = "exporting"
+            try await withStagedOutput(to: outputURL, onCommit: { failureStage = "committing" }) { stagingURL in
+                var observationPhase = SessionObservationPhase.pending
+                let stateTask = Task { @MainActor in
+                    defer { observationPhase = .ended }
+                    for await state in unsafeSession.states(updateInterval: 0.2) {
+                        switch state {
+                        case .pending:
+                            break
+                        case .waiting:
+                            observationPhase = .started
+                        case .exporting(let progress):
+                            observationPhase = .started
+                            setProgress(progress.fractionCompleted)
+                        @unknown default:
+                            break
+                        }
+                    }
+                }
+                defer { stateTask.cancel() }
+
+                let exportTask = Task { @MainActor in
+                    try await session.export(to: stagingURL, as: fileType)
+                }
+                try await withTaskCancellationHandler {
+                    while observationPhase == .pending {
+                        try Task.checkCancellation()
+                        await Task.yield()
+                    }
+                    let canCancelSession = observationPhase == .started
+                    activeCancellation = {
+                        exportTask.cancel()
+                        if canCancelSession { unsafeSession.cancelExport() }
+                    }
+                    setPhase(.exporting)
+                    try await exportTask.value
+                } onCancel: {
+                    exportTask.cancel()
                 }
             }
-
-            do {
-                try await session.export(to: outputURL, as: fileType)
-                let outputSize = await Self.encodedVideoSize(of: outputURL) ?? prepared.renderSize
-                lastReport = ExportRunReport(
-                    outputSize: outputSize,
-                    offlineMediaRefs: prepared.result.offlineMediaRefs,
-                    unprocessableMediaRefs: prepared.result.unprocessableMediaRefs
-                )
-                progress = 1.0
+            let outputSize = await Self.encodedVideoSize(of: outputURL) ?? prepared.renderSize
+            lastReport = ExportRunReport(
+                outputSize: outputSize,
+                offlineMediaRefs: prepared.result.offlineMediaRefs,
+                unprocessableMediaRefs: prepared.result.unprocessableMediaRefs
+            )
+            setProgress(1)
+            Log.export.notice(
+                "export ok",
+                telemetry: "Export finished",
+                data: ["format": String(describing: format), "resolution": resolution.rawValue]
+            )
+            videoAnalytics.finish()
+        } catch {
+            if Self.isCancellation(error) {
+                wasCancelled = true
                 Log.export.notice(
-                    "export ok",
-                    telemetry: "Export finished",
+                    "export cancelled",
+                    telemetry: "Export cancelled",
                     data: ["format": String(describing: format), "resolution": resolution.rawValue]
                 )
-            } catch {
-                if (error as NSError).domain == NSCocoaErrorDomain && (error as NSError).code == NSUserCancelledError {
-                    self.error = "Export was cancelled"
-                    Log.export.notice(
-                        "export cancelled",
-                        telemetry: "Export cancelled",
-                        data: ["format": String(describing: format), "resolution": resolution.rawValue]
-                    )
-                } else {
-                    self.error = Log.detail(error)
-                    Log.export.error(
-                        "export failed: \(Log.detail(error))",
-                        telemetry: "Export failed",
-                        data: ["format": String(describing: format), "resolution": resolution.rawValue, "error": Log.detail(error)]
-                    )
-                }
+            } else {
+                self.error = Log.detail(error)
+                let diagnostics = Self.failureDiagnostics(
+                    error: error,
+                    stage: failureStage,
+                    progress: progress,
+                    format: format,
+                    resolution: resolution
+                )
+                Log.export.error(
+                    "export failed: \(Log.detail(error))",
+                    telemetry: "Export failed",
+                    data: diagnostics.data
+                )
+                videoAnalytics.fail(reason: diagnostics.reason)
             }
-
-            progressTask.cancel()
-        } catch {
-            self.error = Log.detail(error)
-            Log.export.error(
-                "export setup failed: \(Log.detail(error))",
-                telemetry: "Export setup failed",
-                data: ["format": String(describing: format), "resolution": resolution.rawValue, "error": Log.detail(error)]
-            )
         }
+    }
 
+    static func failureDiagnostics(
+        error: Error,
+        stage: String,
+        progress: Double,
+        format: ExportFormat,
+        resolution: ExportResolution
+    ) -> (reason: String, data: Telemetry.Payload) {
+        var chain: [NSError] = []
+        var current: NSError? = error as NSError
+        while let value = current, chain.count < 8 {
+            chain.append(value)
+            current = value.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+        func has(_ domain: String, _ code: Int) -> Bool {
+            chain.contains { $0.domain == domain && $0.code == code }
+        }
+        let reason = if has(AVFoundationErrorDomain, -11801) {
+            "out_of_memory"
+        } else if has(AVFoundationErrorDomain, -11821) {
+            "media_decode"
+        } else if has(AVFoundationErrorDomain, -11833) {
+            "decoder_missing"
+        } else if has(AVFoundationErrorDomain, -11841) {
+            "video_composition"
+        } else if has(AVFoundationErrorDomain, -11807) || has(NSPOSIXErrorDomain, 28) {
+            "disk_full"
+        } else {
+            "other"
+        }
+        return (reason, [
+            "stage": stage,
+            "progress": progress,
+            "format": String(describing: format),
+            "resolution": resolution.rawValue,
+            "failure_reason": reason,
+            "error_chain": chain.map { ["domain": $0.domain, "code": $0.code] },
+        ])
     }
 
     /// Writes a self-contained `.palmier` bundle (all media collected internally).
     @discardableResult
     func exportPalmierProject(
-        timeline: Timeline,
+        projectFile: ProjectFile,
         manifest: MediaManifest,
-        generationLog: GenerationLog,
         sourceProjectURL: URL?,
         outputURL: URL,
-        acquireSlot: Bool = true
+        analyticsContext: ExportAnalyticsContext = .init()
     ) async -> PalmierProjectExporter.Report? {
-        isExporting = true
-        progress = 0
-        error = nil
-        lastReport = nil
-        defer { isExporting = false }
-
-        if acquireSlot {
-            await ExportCoordinator.acquireExport()
-        }
-        defer { if acquireSlot { ExportCoordinator.endExport() } }
+        reset()
+        defer { activeCancellation = nil }
+        let analytics = ExportAnalyticsRun(palmierContext: analyticsContext)
 
         do {
+            try checkCancellation()
+            analytics.begin()
+            setPhase(.exporting)
             Log.export.notice(
                 "palmier export start url=\(outputURL.lastPathComponent)",
                 telemetry: "Palmier project export started",
                 data: [
-                    "tracks": timeline.tracks.count,
-                    "clips": timeline.tracks.reduce(0) { $0 + $1.clips.count },
-                    "media": manifest.entries.count,
-                    "generationLogEntries": generationLog.entries.count
+                    "timelines": projectFile.timelines.count,
+                    "clips": projectFile.timelines.reduce(0) { $0 + $1.tracks.reduce(0) { $0 + $1.clips.count } },
+                    "media": manifest.entries.count
                 ]
             )
-            let report = try await Task.detached(priority: .userInitiated) {
+            let worker = Task.detached(priority: .userInitiated) {
                 try PalmierProjectExporter.export(
-                    timeline: timeline, manifest: manifest, generationLog: generationLog,
+                    projectFile: projectFile, manifest: manifest,
                     sourceProjectURL: sourceProjectURL, to: outputURL,
-                    progress: { p in Task { @MainActor in self.progress = p } }
+                    progress: { p in Task { @MainActor in self.setProgress(p) } }
                 )
-            }.value
-            progress = 1.0
+            }
+            activeCancellation = { worker.cancel() }
+            let report = try await withTaskCancellationHandler {
+                try await worker.value
+            } onCancel: {
+                worker.cancel()
+            }
+            lastPalmierReport = report
+            didCommitOutput = true
+            setProgress(1)
             Log.export.notice(
                 "palmier export ok collected=\(report.collected.count) missing=\(report.missing.count)",
                 telemetry: "Palmier project export finished",
                 data: ["collected": report.collected.count, "missing": report.missing.count]
             )
+            analytics.finish()
             return report
         } catch {
-            self.error = Log.detail(error)
-            Log.export.error(
-                "palmier export failed: \(Log.detail(error))",
-                telemetry: "Palmier project export failed",
-                data: ["error": Log.detail(error)]
-            )
+            if Self.isCancellation(error) {
+                wasCancelled = true
+                Log.export.notice("palmier export cancelled", telemetry: "Export cancelled")
+            } else {
+                self.error = Log.detail(error)
+                Log.export.error(
+                    "palmier export failed: \(Log.detail(error))",
+                    telemetry: "Palmier project export failed",
+                    data: ["error": Log.detail(error)]
+                )
+                analytics.fail()
+            }
             return nil
+        }
+    }
+
+    /// Encode HEVC Main10 HDR; `HDRVideoExporter` converts the composition's SDR 709 frames to HLG.
+    private func exportHDR(
+        timeline: Timeline,
+        resolver: MediaResolver,
+        resolution: ExportResolution,
+        missingMediaRefs: Set<String>,
+        outputURL: URL,
+        analytics: ExportAnalyticsRun
+    ) async {
+        do {
+            try checkCancellation()
+            let renderSize = resolution.renderSize(for: CGSize(width: timeline.width, height: timeline.height))
+            let result = try await CompositionBuilder.build(
+                timeline: timeline,
+                resolveURL: { resolver.resolveURL(for: $0) },
+                missingMediaRefs: missingMediaRefs,
+                renderSize: renderSize
+            )
+            try checkCancellation()
+            try await withStagedOutput(to: outputURL) { stagingURL in
+                Log.export.notice("hdr export start size=\(Int(renderSize.width))x\(Int(renderSize.height)) url=\(outputURL.lastPathComponent)")
+                let inputs = HDRVideoExporter.Inputs(
+                    composition: result.composition,
+                    videoComposition: result.videoComposition,
+                    audioMix: result.audioMix
+                )
+                setPhase(.exporting)
+                try await HDRVideoExporter.export(
+                    inputs, renderSize: renderSize, transfer: .hlg, to: stagingURL,
+                    onProgress: { [weak self] p in Task { @MainActor in self?.setProgress(p) } }
+                )
+            }
+            let outputSize = await Self.encodedVideoSize(of: outputURL) ?? renderSize
+            lastReport = ExportRunReport(
+                outputSize: outputSize,
+                offlineMediaRefs: result.offlineMediaRefs,
+                unprocessableMediaRefs: result.unprocessableMediaRefs
+            )
+            setProgress(1)
+            Log.export.notice("hdr export ok")
+            analytics.finish()
+        } catch {
+            if Self.isCancellation(error) {
+                wasCancelled = true
+                Log.export.notice("hdr export cancelled", telemetry: "Export cancelled")
+            } else {
+                self.error = Log.detail(error)
+                Log.export.error("hdr export failed: \(Log.detail(error))")
+                analytics.fail()
+            }
         }
     }
 
@@ -216,9 +487,73 @@ final class ExportService {
         return CGSize(width: abs(size.width), height: abs(size.height))
     }
 
+    private func setPhase(_ phase: Phase) {
+        onPhaseChange?(phase)
+    }
+
+    private func reset() {
+        error = nil
+        lastReport = nil
+        lastPalmierReport = nil
+        didCommitOutput = false
+        setProgress(0)
+        setPhase(.preparing)
+    }
+
+    private func setProgress(_ value: Double) {
+        progress = value
+        onProgressChange?(value)
+    }
+
+    private func withStagedOutput<T>(
+        to outputURL: URL,
+        onCommit: () -> Void = {},
+        operation: (URL) async throws -> T
+    ) async throws -> T {
+        try checkCancellation()
+        let stagingURL = Self.stagingURL(for: outputURL)
+        defer { try? FileManager.default.removeItem(at: stagingURL) }
+        let result = try await operation(stagingURL)
+        try checkCancellation()
+        onCommit()
+        try Self.commit(stagingURL: stagingURL, to: outputURL)
+        didCommitOutput = true
+        return result
+    }
+
+    private func checkCancellation() throws {
+        if wasCancelled { throw CancellationError() }
+        try Task.checkCancellation()
+    }
+
+    private static func stagingURL(for outputURL: URL) -> URL {
+        let ext = outputURL.pathExtension
+        let stem = outputURL.deletingPathExtension().lastPathComponent
+        let name = ext.isEmpty
+            ? ".\(stem)-\(UUID().uuidString).partial"
+            : ".\(stem)-\(UUID().uuidString).partial.\(ext)"
+        return outputURL.deletingLastPathComponent().appendingPathComponent(name)
+    }
+
+    private static func commit(stagingURL: URL, to outputURL: URL) throws {
+        let fm = FileManager.default
+        if fm.fileExists(atPath: outputURL.path) {
+            _ = try fm.replaceItemAt(outputURL, withItemAt: stagingURL)
+        } else {
+            try fm.moveItem(at: stagingURL, to: outputURL)
+        }
+    }
+
+    private static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError || Task.isCancelled { return true }
+        let nsError = error as NSError
+        return nsError.domain == NSCocoaErrorDomain && nsError.code == NSUserCancelledError
+    }
+
     private func makeExportSession(
         timeline: Timeline,
         resolver: MediaResolver,
+        resolveTimeline: @escaping @Sendable (String) -> Timeline? = { _ in nil },
         format: ExportFormat,
         resolution: ExportResolution,
         missingMediaRefs: Set<String>
@@ -227,31 +562,36 @@ final class ExportService {
         let renderSize = resolution.renderSize(for: timelineCanvas)
         let mediaURLs = resolver.expectedURLMap()
 
+        for track in timeline.tracks {
+            for clip in track.clips where clip.hasDenoiseEnabled && clip.denoiseAmount > 0 {
+                try Task.checkCancellation()
+                guard !missingMediaRefs.contains(clip.mediaRef), let url = mediaURLs[clip.mediaRef] else { continue }
+                do {
+                    _ = try await AudioEnhancer.denoisedAudio(for: url, mediaRef: clip.mediaRef)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    Log.export.error("denoise bake failed — exporting original audio. mediaRef=\(clip.mediaRef): \(Log.detail(error))")
+                }
+            }
+        }
+
+        try Task.checkCancellation()
         let result = try await CompositionBuilder.build(
             timeline: timeline,
             resolveURL: { mediaURLs[$0] },
+            resolveTimeline: resolveTimeline,
             missingMediaRefs: missingMediaRefs,
             renderSize: renderSize
         )
+        try Task.checkCancellation()
 
         let presetName = exportPresetName(format: format, resolution: resolution)
         guard let session = AVAssetExportSession(asset: result.composition, presetName: presetName) else {
             throw ExportError.unsupportedPreset
         }
         session.audioMix = result.audioMix
-
-        // Bake text clips into the export via AVVideoCompositionCoreAnimationTool
-        let (parent, videoLayer) = TextLayerController.buildForExport(
-            timeline: timeline,
-            fps: timeline.fps,
-            renderSize: renderSize
-        )
-        let mutableVC = result.videoComposition.mutableCopy() as! AVMutableVideoComposition
-        mutableVC.animationTool = AVVideoCompositionCoreAnimationTool(
-            postProcessingAsVideoLayer: videoLayer,
-            in: parent
-        )
-        session.videoComposition = mutableVC
+        session.videoComposition = result.videoComposition
         return (session, result, renderSize)
     }
 
@@ -277,8 +617,8 @@ final class ExportService {
             }
         case .prores:
             AVAssetExportPresetAppleProRes422LPCM
-        case .xml:
-            AVAssetExportPresetPassthrough // unreachable — XML returns early
+        case .xml, .fcpxml, .hevcHDR:
+            AVAssetExportPresetPassthrough // unreachable — timeline formats and HDR return early
         }
     }
 }

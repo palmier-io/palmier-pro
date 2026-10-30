@@ -19,23 +19,36 @@ extension EditorSplitViewController {
 
     private func tourFrame(for target: TourTarget) -> CGRect? {
         switch target {
-        case .panel(let panel):
-            return flippedFrame(of: leafItem(for: panel)?.viewController.view)
-        case .element(.timelineRuler):
-            // The ruler is the top band of the timeline panel, below its toolbar.
-            guard let panel = flippedFrame(of: leafItem(for: .timeline)?.viewController.view) else { return nil }
-            return CGRect(x: panel.minX, y: panel.minY + Layout.toolbarHeight,
-                          width: panel.width, height: Layout.rulerHeight)
+        case .panel:
+            return excludingTitlebar(flippedFrame(of: leafItem(for: target.hostPanel)?.viewController.view))
         case .element(let id):
             return flippedFrame(of: editor.tour.anchorViews[id]?.value)
         }
     }
 
-    /// A view's frame in this controller's view coords, flipped to top-left origin.
+    private func excludingTitlebar(_ frame: CGRect?) -> CGRect? {
+        guard var frame else { return nil }
+        let titlebarHeight = view.window?.contentView?.safeAreaInsets.top ?? 0
+        let minY = max(frame.minY, titlebarHeight)
+        let height = frame.maxY - minY
+        guard height > 0 else { return frame }
+        frame.origin.y = minY
+        frame.size.height = height
+        return frame
+    }
+
+    /// A view's frame in the full window content coords, flipped to top-left origin.
     private func flippedFrame(of source: NSView?) -> CGRect? {
         guard let source, source.window != nil,
+              let windowContent = source.window?.contentView,
               source.bounds.width > 1, source.bounds.height > 1 else { return nil }
-        let r = source.convert(source.bounds, to: view)
-        return CGRect(x: r.minX, y: view.bounds.height - r.maxY, width: r.width, height: r.height)
+        let r = source.convert(source.bounds, to: windowContent)
+        let top = windowContent.isFlipped ? r.minY : windowContent.bounds.height - r.maxY
+        return CGRect(
+            x: r.minX,
+            y: top,
+            width: r.width,
+            height: r.height
+        )
     }
 }

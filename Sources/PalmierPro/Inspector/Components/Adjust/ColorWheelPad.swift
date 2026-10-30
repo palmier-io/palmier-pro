@@ -36,7 +36,7 @@ struct ColorWheelPad: View {
 
     private var puck: some View {
         Circle()
-            .fill(.white)
+            .fill(AppTheme.MediaOverlay.primaryColor)
             .frame(width: AppTheme.Wheels.puckSize, height: AppTheme.Wheels.puckSize)
             .overlay(Circle().strokeBorder(AppTheme.Background.baseColor, lineWidth: AppTheme.BorderWidth.thin))
             .shadow(AppTheme.Shadow.sm)

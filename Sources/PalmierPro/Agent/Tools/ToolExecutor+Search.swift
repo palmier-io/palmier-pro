@@ -17,9 +17,11 @@ extension ToolExecutor {
             restrict = [try asset(ref, editor: editor).id]
         }
 
-        var payload: [String: Any] = [:]
+        var payload: [String: Any] = ["timelineFps": editor.timeline.fps]
         if scope != "spoken" {
-            payload.merge(await visualResults(editor, query: query, limit: limit, restrict: restrict)) { _, new in new }
+            let (moments, index) = await visualResults(editor, query: query, limit: limit, restrict: restrict)
+            payload["moments"] = moments
+            if let index { payload["index"] = index }
         }
         if scope != "visual" {
             payload["spoken"] = await spokenResults(editor, query: query, limit: limit, restrict: restrict)
@@ -31,28 +33,45 @@ extension ToolExecutor {
         return .ok(json)
     }
 
+    /// Index health rides along only while it can explain missing results.
     private func visualResults(
         _ editor: EditorViewModel, query: String, limit: Int, restrict: Set<String>?
-    ) async -> [String: Any] {
+    ) async -> (moments: [[String: Any]], index: [String: Any]?) {
         let coordinator = editor.searchIndex
-        if VisualModelLoader.shared.enabled, VisualModelLoader.shared.state == .unknown {
-            await VisualModelLoader.shared.prepare()
-        }
-
-        var payload: [String: Any] = ["status": Self.visualStatus(coordinator)]
         let indexable = editor.mediaAssets.filter {
             ($0.type == .video || $0.type == .image) && (restrict?.contains($0.id) ?? true)
         }
-        payload["indexableAssets"] = indexable.count
-        if let spec = VisualModelLoader.shared.embedder?.spec {
+        if !indexable.isEmpty, visualSearchModel.enabled, visualSearchModel.state == .unknown {
+            await visualSearchModel.prepare()
+        }
+        if !indexable.isEmpty, visualSearchModel.enabled, visualSearchModel.state == .notInstalled {
+            visualSearchModel.download()
+        }
+
+        let status = Self.visualStatus(coordinator, model: visualSearchModel)
+        var indexed: Int?
+        if let spec = visualSearchModel.embedder?.spec {
             let urls = indexable.map(\.url)
-            payload["indexedAssets"] = await Task.detached {
+            indexed = await Task.detached {
                 urls.filter { !VisualIndexer.needsIndex(url: $0, spec: spec) }.count
             }.value
         }
 
+        var index: [String: Any]?
+        if !indexable.isEmpty, status != "ready" || (indexed ?? indexable.count) < indexable.count {
+            var info: [String: Any] = ["status": status, "indexableAssets": indexable.count]
+            if let indexed { info["indexedAssets"] = indexed }
+            if case .downloading(let progress) = visualSearchModel.state {
+                info["modelDownloadProgress"] = progress
+            }
+            if case .failed(let reason) = visualSearchModel.state {
+                info["modelDownloadError"] = reason
+            }
+            index = info
+        }
+
         let hits = await coordinator.search(query: query, limit: limit, within: restrict)
-        payload["moments"] = hits.map { hit -> [String: Any] in
+        let moments = hits.map { hit -> [String: Any] in
             let asset = editor.mediaAssets.first { $0.id == hit.assetID }
             var entry: [String: Any] = [
                 "mediaRef": hit.assetID,
@@ -67,7 +86,7 @@ extension ToolExecutor {
             }
             return entry
         }
-        return payload
+        return (moments, index)
     }
 
     private func spokenResults(
@@ -88,9 +107,12 @@ extension ToolExecutor {
         }
     }
 
-    private static func visualStatus(_ coordinator: SearchIndexCoordinator) -> String {
-        guard VisualModelLoader.shared.enabled else { return "disabled" }
-        switch VisualModelLoader.shared.state {
+    private static func visualStatus(
+        _ coordinator: SearchIndexCoordinator,
+        model: any VisualSearchModelLoading
+    ) -> String {
+        guard model.enabled else { return "disabled" }
+        switch model.state {
         case .ready: return coordinator.indexingActive ? "indexing" : "ready"
         case .notInstalled: return "modelNotInstalled"
         case .downloading: return "downloadingModel"

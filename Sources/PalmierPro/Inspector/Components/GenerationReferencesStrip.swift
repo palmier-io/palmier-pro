@@ -26,10 +26,10 @@ struct GenerationReferencesStrip: View {
         let primary = primaryLabels(for: gen)
         let videoBase = videoReferenceBaseLabel(for: gen)
         let groups: [(ids: [String]?, base: String, primary: [String])] = [
-            (gen.imageURLAssetIds,       "Reference", primary),
-            (gen.referenceImageAssetIds, "Image Ref", []),
+            (gen.imageURLAssetIds,       L10n.string("Reference"), primary),
+            (gen.referenceImageAssetIds, L10n.string("Image Ref"), []),
             (gen.referenceVideoAssetIds, videoBase, []),
-            (gen.referenceAudioAssetIds, "Audio Ref", []),
+            (gen.referenceAudioAssetIds, L10n.string("Audio Ref"), []),
         ]
         return groups.flatMap { ids, base, primary -> [(String, MediaAsset)] in
             let ids = ids ?? []
@@ -44,19 +44,27 @@ struct GenerationReferencesStrip: View {
     private static func videoReferenceBaseLabel(for gen: GenerationInput) -> String {
         if case .audio(let model) = ModelRegistry.byId[gen.model],
            model.inputs.contains(.video) {
-            return "Source Video"
+            return L10n.string("Source Video")
         }
-        return "Video Ref"
+        return L10n.string("Video Ref")
     }
 
     private static func primaryLabels(for gen: GenerationInput) -> [String] {
         switch ModelRegistry.byId[gen.model] {
         case .video(let m):
-            if m.requiresSourceVideo { return m.supportsReferences ? ["Source", "Reference"] : ["Source"] }
-            if m.supportsFirstFrame  { return m.supportsLastFrame  ? ["First Frame", "Last Frame"] : ["First Frame"] }
+            if m.requiresSourceVideo {
+                return m.supportsReferences
+                    ? [L10n.string("Source"), L10n.string("Reference")]
+                    : [L10n.string("Source")]
+            }
+            if m.supportsFirstFrame {
+                return m.supportsLastFrame
+                    ? [L10n.string("First Frame"), L10n.string("Last Frame")]
+                    : [L10n.string("First Frame")]
+            }
             return []
         case .upscale:
-            return ["Source"]
+            return [L10n.string("Source")]
         default:
             return []
         }
@@ -65,25 +73,25 @@ struct GenerationReferencesStrip: View {
     private func thumbnail(label: String, asset: MediaAsset) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
             ZStack {
-                Rectangle().fill(Color.black)
+                Rectangle().fill(AppTheme.MediaOverlay.backgroundColor)
                 if let thumb = asset.thumbnail {
                     Image(nsImage: thumb).resizable().aspectRatio(contentMode: .fit)
                 } else {
                     Image(systemName: asset.type.sfSymbolName)
                         .font(.system(size: AppTheme.FontSize.mdLg))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        .foregroundStyle(AppTheme.MediaOverlay.tertiaryColor)
                 }
             }
             .frame(width: 72, height: 41)
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
             .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                .strokeBorder(Color.white.opacity(AppTheme.Opacity.faint), lineWidth: AppTheme.BorderWidth.hairline))
+                .strokeBorder(AppTheme.MediaOverlay.primaryColor.opacity(AppTheme.Opacity.faint), lineWidth: AppTheme.BorderWidth.hairline))
             Text(label)
                 .font(.system(size: AppTheme.FontSize.xxs, weight: .medium))
                 .foregroundStyle(AppTheme.Text.mutedColor)
                 .lineLimit(1)
         }
-        .help("\(label) · \(asset.name)")
+        .help(Text(verbatim: "\(L10n.string(key: label)) · \(asset.name)"))
         .onTapGesture {
             editor.selectMediaAsset(asset)
             editor.mediaPanelRevealAssetId = asset.id

@@ -4,146 +4,171 @@ struct AIEditTab: View {
     let asset: MediaAsset
     /// Clip id from the timeline.
     let clipId: String?
+    let usesOwnScrollView: Bool
     @Environment(EditorViewModel.self) private var editor
     @Bindable private var account = AccountService.shared
-    @State private var rerunError: String?
     @State private var replaceClipSource: Bool = false
     @State private var useTrimmedClip: Bool = true
     @State private var placeAudioOnTimeline: Bool = true
     @State private var aiEnhanceExpanded: Bool = true
     @State private var aiAudioExpanded: Bool = true
+    @State private var createVideoOptionsPresented = false
 
-    init(asset: MediaAsset, clipId: String? = nil) {
+    init(asset: MediaAsset, clipId: String? = nil, usesOwnScrollView: Bool = true) {
         self.asset = asset
         self.clipId = clipId
+        self.usesOwnScrollView = usesOwnScrollView
     }
 
+    @ViewBuilder
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
-                if hasScopeToggles {
-                    aiSection(title: "Scope") {
-                        if clipId != nil { replaceToggle }
-                        if trimmedClipAvailable { trimmedClipToggle }
+        if usesOwnScrollView {
+            ScrollView {
+                panelContent
+            }
+        } else {
+            panelContent
+        }
+    }
+
+    private var panelContent: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
+            if trimmedClipAvailable {
+                trimmedClipToggle
+                    .padding(AppTheme.Spacing.smMd)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(AppTheme.Background.surfaceColor)
+                    .overlay(alignment: .bottom) {
+                        Rectangle()
+                            .fill(AppTheme.Border.primaryColor)
+                            .frame(height: AppTheme.BorderWidth.thin)
                     }
-                }
+            }
 
-                collapsibleAISection(title: "AI Enhance", isExpanded: $aiEnhanceExpanded) {
-                    actionRow(
-                        action: .upscale,
-                        icon: "sparkles.rectangle.stack",
-                        title: "Upscale",
-                        description: "Enhance resolution with AI"
-                    )
-                    actionRow(
-                        action: .edit,
-                        icon: "wand.and.stars",
-                        title: "Edit",
-                        description: "Transform with a prompt or motion reference"
-                    )
-                    actionRow(
-                        action: .rerun,
-                        icon: "arrow.clockwise",
-                        title: "Rerun",
-                        description: rerunDescription
-                    )
-                    if asset.type == .image {
-                        actionRow(
-                            action: .createVideo,
-                            icon: "video.badge.plus",
-                            title: "Create Video",
-                            description: "Use as first frame or reference"
-                        )
+            if isVisualClipContext {
+                EditorPanelGroup(
+                    L10n.string("AI Enhance"),
+                    isExpanded: $aiEnhanceExpanded,
+                    contentSpacing: AppTheme.Spacing.smMd,
+                    contentInsets: actionGroupInsets
+                ) {
+                    if clipId != nil { replaceToggle }
+                    visualActionGrid
+                }
+                .padding(.top, AppTheme.Spacing.xxs)
+            }
+
+            if asset.type == .video || asset.type == .audio {
+                EditorPanelGroup(
+                    L10n.string("AI Audio"),
+                    isExpanded: $aiAudioExpanded,
+                    contentSpacing: AppTheme.Spacing.smMd,
+                    contentInsets: actionGroupInsets
+                ) {
+                    if clipId != nil {
+                        audioPlacementToggle
                     }
+                    audioActionGrid
                 }
-
-                if asset.type == .video {
-                    collapsibleAISection(title: "AI Audio", isExpanded: $aiAudioExpanded) {
-                        if showsAudioOutputOptions {
-                            audioPlacementToggle
-                        }
-                        videoAudioActionRow(kind: .music)
-                        videoAudioActionRow(kind: .sfx)
-                    }
-                }
-            }
-            .padding(.horizontal, AppTheme.Spacing.lg)
-            .padding(.vertical, AppTheme.Spacing.md)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .alert("Rerun failed", isPresented: Binding(
-            get: { rerunError != nil },
-            set: { if !$0 { rerunError = nil } }
-        )) {
-            Button("Dismiss") { rerunError = nil }
-        } message: {
-            Text(rerunError ?? "")
-        }
-    }
-
-    private var hasScopeToggles: Bool {
-        clipId != nil || trimmedClipAvailable
-    }
-
-    private var showsAudioOutputOptions: Bool {
-        asset.type == .video && clipId != nil
-    }
-
-    private var rerunDescription: String {
-        guard let gen = asset.generationInput,
-              let cost = CostEstimator.cost(for: gen) else {
-            return "Regenerate with the same parameters"
-        }
-        return "Regenerate · \(CostEstimator.format(cost))"
-    }
-
-    private func aiSection<Content: View>(
-        title: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
-            Text(title.uppercased())
-                .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
-                .tracking(AppTheme.Tracking.wide)
-                .foregroundStyle(AppTheme.Text.mutedColor)
-            VStack(spacing: AppTheme.Spacing.smMd) {
-                content()
+                .padding(.top, AppTheme.Spacing.xxs)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func collapsibleAISection<Content: View>(
-        title: String,
-        isExpanded: Binding<Bool>,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
-            Button {
-                withAnimation(.easeInOut(duration: AppTheme.Anim.transition)) {
-                    isExpanded.wrappedValue.toggle()
-                }
-            } label: {
-                HStack(spacing: AppTheme.Spacing.xs) {
-                    Image(systemName: isExpanded.wrappedValue ? "chevron.down" : "chevron.right")
-                        .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
-                        .foregroundStyle(AppTheme.Text.mutedColor)
-                        .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
-                    Text(title.uppercased())
-                        .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
-                        .tracking(AppTheme.Tracking.wide)
-                        .foregroundStyle(AppTheme.Text.mutedColor)
-                    Spacer(minLength: AppTheme.Spacing.xs)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
+    private var actionGroupInsets: EdgeInsets {
+        EdgeInsets(
+            top: AppTheme.Spacing.xxs,
+            leading: AppTheme.Spacing.smMd,
+            bottom: AppTheme.Spacing.md,
+            trailing: AppTheme.Spacing.smMd
+        )
+    }
 
-            if isExpanded.wrappedValue {
-                VStack(spacing: AppTheme.Spacing.smMd) {
-                    content()
-                }
+    private var actionGridColumns: [GridItem] {
+        [
+            GridItem(.flexible(), spacing: AppTheme.Spacing.sm),
+            GridItem(.flexible(), spacing: AppTheme.Spacing.sm),
+        ]
+    }
+
+    private var visualActionGrid: some View {
+        LazyVGrid(columns: actionGridColumns, spacing: AppTheme.Spacing.sm) {
+            actionTile(
+                action: .upscale,
+                icon: "sparkles.rectangle.stack",
+                title: L10n.string("Upscale"),
+                description: L10n.string("Enhance resolution or frame rate with AI")
+            )
+            actionTile(
+                action: .edit,
+                icon: "wand.and.stars",
+                title: L10n.string("Edit"),
+                description: L10n.string("Transform with a prompt or motion reference")
+            )
+            actionTile(
+                action: .rerun,
+                icon: "arrow.clockwise",
+                title: L10n.string("Rerun"),
+                description: L10n.string("Regenerate with the same parameters")
+            )
+            if asset.type == .video, VideoModelConfig.lipSync != nil {
+                actionTile(
+                    action: .lipSync,
+                    icon: "mouth",
+                    title: L10n.string("Lip Sync"),
+                    description: L10n.string("Match mouth movement to replacement audio")
+                )
+            }
+            if asset.type == .video {
+                actionTile(
+                    action: .reframe,
+                    icon: "aspectratio",
+                    title: L10n.string("Reframe"),
+                    description: L10n.string("Change aspect ratio and extend the frame with AI")
+                )
+            }
+            if asset.type == .image {
+                actionTile(
+                    action: .createVideo,
+                    icon: "video.badge.plus",
+                    title: L10n.string("Create Video"),
+                    description: L10n.string("Use as first frame or reference")
+                )
+            }
+            if asset.canEnhanceDraft {
+                actionTile(
+                    action: .enhanceDraft,
+                    icon: "arrow.up.right.video",
+                    title: L10n.string("FLUX Enhance"),
+                    description: L10n.string("Re-render the same motion at full quality in 1080p"),
+                    detail: asset.draftEnhancementCost.map { "\($0) credits" }
+                )
             }
         }
+    }
+
+    private var audioActionGrid: some View {
+        LazyVGrid(columns: actionGridColumns, spacing: AppTheme.Spacing.sm) {
+            if asset.type == .audio {
+                actionTile(
+                    action: .rerun,
+                    icon: "arrow.clockwise",
+                    title: L10n.string("Rerun"),
+                    description: L10n.string("Regenerate with the same parameters")
+                )
+            }
+            audioTransformActionTile(kind: .cleanup)
+            audioTransformActionTile(kind: .dubbing)
+            if isVisualClipContext, asset.type == .video {
+                videoAudioActionTile(kind: .music)
+                videoAudioActionTile(kind: .sfx)
+            }
+        }
+    }
+
+    private var isVisualClipContext: Bool {
+        timelineClip?.mediaType.isVisual ?? asset.type.isVisual
     }
 
     // MARK: - Replace toggle
@@ -151,8 +176,8 @@ struct AIEditTab: View {
     private var replaceToggle: some View {
         scopeToggleRow(
             icon: "arrow.triangle.2.circlepath",
-            label: "Replace clip source",
-            help: "Swap the clip's media when generation completes. Speed, volume, trim, and transform are preserved.",
+            label: L10n.string("Replace clip source"),
+            help: L10n.string("Swap the clip's media when generation completes. Speed, volume, trim, and transform are preserved."),
             isOn: $replaceClipSource
         )
     }
@@ -162,8 +187,8 @@ struct AIEditTab: View {
     private var trimmedClipToggle: some View {
         scopeToggleRow(
             icon: "scissors",
-            label: "Use trimmed portion only",
-            help: "Send only the visible clip range to the model, not the full source.",
+            label: L10n.string("Use trimmed portion only"),
+            help: L10n.string("Send only the visible clip range to the model, not the full source."),
             isOn: $useTrimmedClip
         )
     }
@@ -171,8 +196,8 @@ struct AIEditTab: View {
     private var audioPlacementToggle: some View {
         scopeToggleRow(
             icon: "plus.rectangle.on.rectangle",
-            label: "Place on timeline",
-            help: "Add generated audio to an audio track at this clip's start.",
+            label: L10n.string("Place on timeline"),
+            help: L10n.string("Add generated audio to an audio track at this clip's start."),
             isOn: $placeAudioOnTimeline
         )
     }
@@ -188,16 +213,18 @@ struct AIEditTab: View {
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(isOn.wrappedValue ? AppTheme.Accent.primary : AppTheme.Text.tertiaryColor)
                 .frame(width: AppTheme.Spacing.lgXl, alignment: .center)
-            Text(label)
+            Text(L10n.string(key: label))
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
             Spacer(minLength: AppTheme.Spacing.xs)
-            Toggle("", isOn: isOn)
+            Toggle(String(), isOn: isOn)
                 .toggleStyle(.switch)
                 .controlSize(.mini)
                 .labelsHidden()
+                .accessibilityLabel(L10n.string(key: label))
+                .accessibilityHint(L10n.string(key: help))
         }
-        .help(help)
+        .help(L10n.string(key: help))
     }
 
     private var timelineClip: Clip? {
@@ -206,108 +233,210 @@ struct AIEditTab: View {
     }
 
     private var trimmedClipAvailable: Bool {
-        guard asset.type == .video, let clip = timelineClip else { return false }
-        return clip.trimStartFrame > 0 || clip.trimEndFrame > 0
+        guard let clipId else { return false }
+        return editor.aiEditTrimmedSource(clipId: clipId) != nil
     }
 
     private func trimmedSourceIfEnabled() -> TrimmedSource? {
-        guard trimmedClipAvailable, useTrimmedClip, let clip = timelineClip else { return nil }
-        return TrimmedSource(
-            sourceURL: asset.url,
-            trimStartFrame: clip.trimStartFrame,
-            trimEndFrame: clip.trimEndFrame,
-            sourceFramesConsumed: clip.sourceFramesConsumed,
-            fps: editor.timeline.fps
-        )
+        guard useTrimmedClip, let clipId else { return nil }
+        return editor.aiEditTrimmedSource(clipId: clipId)
     }
 
     private var effectiveDurationForAvailability: Double? {
         trimmedSourceIfEnabled()?.durationSeconds
     }
 
-    // MARK: - Action row
+    // MARK: - Action tiles
 
     @ViewBuilder
-    private func actionRow(
+    private func actionTile(
         action: EditAction,
         icon: String,
         title: String,
         description: String,
-        triggerTitle: String? = nil
+        detail: String? = nil
     ) -> some View {
         let availability = action.availability(
             for: asset,
             effectiveDurationOverride: effectiveDurationForAvailability
         )
-        let isEnabled = availability.isAvailable
-        let disabledReason = availability.reason
+        let paidBlocked = action.requiresPaidPlan && !account.isPaid
+        let isEnabled = availability.isAvailable && !paidBlocked && aiDisabledReason == nil
+        let disabledReason = aiDisabledReason
+            ?? (paidBlocked ? L10n.string("Requires a paid plan") : availability.reason)
 
-        HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
-            Image(systemName: icon)
-                .font(.system(size: AppTheme.FontSize.md))
-                .foregroundStyle(isEnabled ? AppTheme.Text.secondaryColor : AppTheme.Text.mutedColor)
-                .frame(width: AppTheme.Spacing.lgXl, alignment: .center)
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
-                Text(title)
-                    .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
-                    .foregroundStyle(isEnabled ? AppTheme.Text.primaryColor : AppTheme.Text.mutedColor)
-                Text(disabledReason ?? description)
-                    .font(.system(size: AppTheme.FontSize.xs))
-                    .foregroundStyle(disabledReason != nil ? AppTheme.Text.secondaryColor : AppTheme.Text.tertiaryColor)
-                    .fixedSize(horizontal: false, vertical: true)
+        switch action {
+        case .createVideo:
+            actionTileSurface(
+                description: description,
+                isEnabled: isEnabled,
+                disabledReason: disabledReason
+            ) {
+                actionButton(
+                    icon: icon,
+                    title: title,
+                    detail: detail,
+                    isEnabled: isEnabled,
+                    showsMenuIndicator: true
+                ) {
+                    createVideoOptionsPresented = true
+                }
+                .popover(isPresented: $createVideoOptionsPresented, arrowEdge: .bottom) {
+                    createVideoOptions
+                }
             }
-            Spacer(minLength: AppTheme.Spacing.sm)
-            actionTrigger(action: action, title: triggerTitle ?? title, isEnabled: isEnabled)
+        case .enhanceDraft, .upscale, .lipSync, .reframe, .edit,
+             .generateMusic, .generateSFX, .rerun:
+            actionTileSurface(
+                description: description,
+                isEnabled: isEnabled,
+                disabledReason: disabledReason
+            ) {
+                actionButton(
+                    icon: icon,
+                    title: title,
+                    detail: detail,
+                    isEnabled: isEnabled
+                ) {
+                    present(action)
+                }
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .help(disabledReason ?? "")
     }
 
-    private func videoAudioActionRow(kind: VideoToAudioEditKind) -> some View {
-        actionRow(
+    private func videoAudioActionTile(kind: VideoToAudioEditKind) -> some View {
+        actionTile(
             action: kind.action,
             icon: kind.iconName,
-            title: kind.title,
-            description: kind.description,
-            triggerTitle: "Generate"
+            title: L10n.string(key: kind.title),
+            description: L10n.string(key: kind.description)
         )
     }
 
-    @ViewBuilder
-    private func actionTrigger(action: EditAction, title: String, isEnabled: Bool) -> some View {
-        switch action {
-        case .upscale:
-            Menu(title) {
-                ForEach(UpscaleModelConfig.models(for: asset.type)) { model in
-                    Button {
-                        runUpscale(model)
-                    } label: {
-                        Text(upscaleLabel(for: model))
-                    }
+    private func audioTransformActionTile(kind: AudioTransformEditKind) -> some View {
+        let availability = kind.availability(
+            for: asset,
+            effectiveDurationOverride: effectiveDurationForAvailability
+        )
+        let paidBlocked = kind.model?.paidOnly == true && !account.isPaid
+        let isEnabled = availability.isAvailable && !paidBlocked && aiDisabledReason == nil
+        let disabledReason = aiDisabledReason
+            ?? (paidBlocked ? L10n.string("Requires a paid plan") : availability.reason)
+
+        return actionTileSurface(
+            description: L10n.string(key: kind.description),
+            isEnabled: isEnabled,
+            disabledReason: disabledReason
+        ) {
+            actionButton(
+                icon: kind.iconName,
+                title: L10n.string(key: kind.title),
+                isEnabled: isEnabled
+            ) {
+                presentAudioTransform(kind)
+            }
+        }
+    }
+
+    private func actionTileSurface<Content: View>(
+        description: String,
+        isEnabled: Bool,
+        disabledReason: String?,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
+            .themedSurface(
+                AppTheme.Background.raisedColor,
+                cornerRadius: AppTheme.Radius.sm,
+                borderWidth: AppTheme.BorderWidth.hairline
+            )
+            .disabled(!isEnabled)
+            .help(disabledReason ?? description)
+            .accessibilityHint(disabledReason ?? description)
+    }
+
+    private func actionButton(
+        icon: String,
+        title: String,
+        detail: String? = nil,
+        isEnabled: Bool,
+        showsMenuIndicator: Bool = false,
+        perform: @escaping () -> Void
+    ) -> some View {
+        Button(action: perform) {
+            HStack(spacing: AppTheme.Spacing.sm) {
+                Image(systemName: icon)
+                    .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(isEnabled ? AppTheme.Text.secondaryColor : AppTheme.Text.mutedColor)
+                    .frame(
+                        width: AppTheme.IconSize.xs,
+                        height: AppTheme.IconSize.xs,
+                        alignment: .center
+                    )
+                Text(verbatim: title)
+                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(isEnabled ? AppTheme.Text.primaryColor : AppTheme.Text.mutedColor)
+                    .lineLimit(1)
+                Spacer(minLength: AppTheme.Spacing.xs)
+                if isEnabled, let detail {
+                    Text(verbatim: detail)
+                        .font(.system(size: AppTheme.FontSize.xxs))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        .lineLimit(1)
+                }
+                if showsMenuIndicator {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
+                        .foregroundStyle(isEnabled ? AppTheme.Text.tertiaryColor : AppTheme.Text.mutedColor)
                 }
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .controlSize(.small)
-            .disabled(!isEnabled || !account.aiAllowed)
-            .help(account.aiAllowed ? "" : "Sign in to upscale")
-        case .createVideo:
-            Menu(title) {
-                Button("Set as first frame") { sendToVideo(asReference: false) }
-                Button("Set as reference") { sendToVideo(asReference: true) }
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .controlSize(.small)
-            .disabled(!isEnabled)
-        case .edit, .generateMusic, .generateSFX, .rerun:
-            Button(title) {
-                present(action)
-            }
-            .buttonStyle(.capsule(.secondary))
-            .controlSize(.small)
-            .disabled(!isEnabled)
+            .padding(.horizontal, AppTheme.Spacing.smMd)
+            .padding(.vertical, AppTheme.Spacing.sm)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
+            )
         }
+        .buttonStyle(.plain)
+    }
+
+    private func presentAudioTransform(_ kind: AudioTransformEditKind) {
+        if let clipId {
+            editor.beginAIAudioTransform(
+                clipId: clipId,
+                kind: kind,
+                useTrimmedClip: useTrimmedClip,
+                placeOnTimeline: placeAudioOnTimeline
+            )
+        } else if let stored = EditSubmitter.audioTransformSeed(for: asset, kind: kind) {
+            editor.seedGenerationPanel(asset: asset, stored: stored)
+        }
+    }
+
+    private var createVideoOptions: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
+            createVideoOption(L10n.string("Set as first frame"), asReference: false)
+            createVideoOption(L10n.string("Set as reference"), asReference: true)
+        }
+        .padding(.vertical, AppTheme.Spacing.xs)
+    }
+
+    private func createVideoOption(_ title: String, asReference: Bool) -> some View {
+        Button {
+            createVideoOptionsPresented = false
+            sendToVideo(asReference: asReference)
+        } label: {
+            Text(verbatim: title)
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.primaryColor)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, AppTheme.Spacing.md)
+                .padding(.vertical, AppTheme.Spacing.sm)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
     }
 
     private func sendToVideo(asReference: Bool) {
@@ -317,7 +446,24 @@ struct AIEditTab: View {
 
     private func present(_ action: EditAction) {
         switch action {
-        case .upscale, .createVideo: break // handled via menu
+        case .enhanceDraft:
+            editor.generationService.enhanceDraft(asset: asset, editor: editor)
+        case .upscale:
+            guard let model = UpscaleModelConfig.models(for: asset.type).first else { return }
+            let trim = trimmedSourceIfEnabled()
+            seedPanel(
+                stored: EditSubmitter.upscaleSeed(for: asset, model: model, trimmedSource: trim),
+                trimmed: trim
+            )
+        case .reframe:
+            let trim = trimmedSourceIfEnabled()
+            guard let stored = EditSubmitter.reframeSeed(for: asset, trimmedSource: trim) else { return }
+            seedPanel(stored: stored, trimmed: trim)
+        case .lipSync:
+            guard let model = VideoModelConfig.lipSync,
+                  let stored = EditSubmitter.lipSyncSeed(for: asset, model: model) else { return }
+            seedPanel(stored: stored, trimmed: trimmedSourceIfEnabled())
+        case .createVideo: break // handled via menu
         case .edit:
             guard let stored = EditSubmitter.editSeed(for: asset) else { return }
             seedPanel(stored: stored, trimmed: trimmedSourceIfEnabled())
@@ -326,20 +472,7 @@ struct AIEditTab: View {
         case .generateSFX:
             presentVideoAudio(kind: .sfx)
         case .rerun:
-            let modelId = asset.generationInput?.model ?? ""
-            if UpscaleModelConfig.allIds.contains(modelId) {
-                do {
-                    markReplacementPendingIfNeeded()
-                    _ = try EditSubmitter.rerun(
-                        asset: asset, editor: editor,
-                        onComplete: replacementCompletion(),
-                        onFailure: replacementFailure()
-                    )
-                } catch {
-                    unmarkReplacementPendingIfNeeded()
-                    rerunError = error.localizedDescription
-                }
-            } else if let stored = asset.generationInput {
+            if let stored = asset.generationInput {
                 seedPanel(stored: stored, trimmed: nil)
             }
         }
@@ -371,63 +504,20 @@ struct AIEditTab: View {
     }
 
     private func pendingAudioPlacement(actionName: String) -> PendingAudioPlacement? {
-        guard placeAudioOnTimeline, let clip = timelineClip else { return nil }
-        let spanSeconds = trimmedSourceIfEnabled()?.durationSeconds
-            ?? (asset.duration > 0
-                ? asset.duration
-                : Double(clip.durationFrames) / Double(max(1, editor.timeline.fps)))
-        return PendingAudioPlacement(
-            startFrame: clip.startFrame,
-            spanSeconds: max(spanSeconds, 1 / Double(max(1, editor.timeline.fps))),
+        guard placeAudioOnTimeline, let clipId else { return nil }
+        return editor.aiAudioPlacement(
+            clipId: clipId,
+            trimmedSource: trimmedSourceIfEnabled(),
             actionName: actionName
-        )
-    }
-
-    private func upscaleLabel(for model: UpscaleModelConfig) -> String {
-        let seconds = Int((effectiveDurationForAvailability ?? asset.duration).rounded())
-        let cost = CostEstimator.upscaleCost(model: model, durationSeconds: max(1, seconds))
-        return "\(model.displayName) · \(model.speed) · \(CostEstimator.format(cost))"
-    }
-
-    private func runUpscale(_ model: UpscaleModelConfig) {
-        markReplacementPendingIfNeeded()
-        let trim = trimmedSourceIfEnabled()
-        _ = EditSubmitter.submitUpscale(
-            asset: asset, model: model, editor: editor,
-            trimmedSource: trim,
-            onComplete: replacementCompletion(resetTrim: trim != nil),
-            onFailure: replacementFailure()
         )
     }
 
     private var shouldReplace: Bool { replaceClipSource && clipId != nil }
 
-    private func markReplacementPendingIfNeeded() {
-        guard shouldReplace, let clipId else { return }
-        editor.markPendingReplacement(clipId: clipId)
-    }
-
-    private func unmarkReplacementPendingIfNeeded() {
-        guard shouldReplace, let clipId else { return }
-        editor.clearPendingReplacement(clipId: clipId)
-    }
-
-    private func replacementCompletion(resetTrim: Bool = false) -> (@MainActor (MediaAsset) -> Void)? {
-        guard shouldReplace, let clipId else { return nil }
-        // if generating more than one image, only replace with the first one
-        let fired = FirstOnlyFlag()
-        return { [weak editor] newAsset in
-            guard fired.fire() else { return }
-            editor?.replaceClipMediaRef(clipId: clipId, newAssetId: newAsset.id, resetTrim: resetTrim)
-            editor?.clearPendingReplacement(clipId: clipId)
-        }
-    }
-
-    private func replacementFailure() -> (@MainActor () -> Void)? {
-        guard shouldReplace, let clipId else { return nil }
-        return { [weak editor] in
-            editor?.clearPendingReplacement(clipId: clipId)
-        }
+    private var aiDisabledReason: String? {
+        if account.isMisconfigured { return L10n.string("AI is unavailable") }
+        if !account.isSignedIn { return L10n.string("Sign in to use AI") }
+        return nil
     }
 
 }

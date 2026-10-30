@@ -10,12 +10,9 @@ extension EditorViewModel {
 
     /// Minimum zoom scale that fits the entire timeline with end padding.
     var minZoomScale: Double {
-        let totalFrames = timeline.totalFrames
+        let totalFrames = timeline.displayFrames
         guard totalFrames > 0, timelineVisibleWidth > 0 else { return Zoom.min }
-        let headerWidth = Double(Layout.trackHeaderWidth)
-        let availableWidth = timelineVisibleWidth - headerWidth
-        guard availableWidth > 0 else { return Zoom.min }
-        let fitAll = availableWidth / (Double(totalFrames) * Zoom.fitAllBuffer)
+        let fitAll = timelineVisibleWidth / (Double(totalFrames) * Zoom.fitAllBuffer)
         return min(Zoom.max, max(Zoom.floor, fitAll))
     }
 
@@ -30,6 +27,7 @@ extension EditorViewModel {
     }
 
     func selectMediaAsset(_ asset: MediaAsset, atSourceFrame frame: Int = 0) {
+        selectedTimelineIds.removeAll()
         openPreviewTab(for: asset, atSourceFrame: frame)
         syncSelectionToActiveTab()
         showMediaPanelMediaTab()
@@ -70,6 +68,15 @@ extension EditorViewModel {
         pushPreviewHistory(id)
     }
 
+    @discardableResult
+    func selectAdjacentPreviewTab(delta: Int) -> Bool {
+        guard let id = Self.adjacentId(in: previewTabs.map(\.id), current: activePreviewTabId, delta: delta) else {
+            return false
+        }
+        selectPreviewTab(id: id)
+        return true
+    }
+
     // MARK: - Tab history (back/forward navigation)
 
     var canGoBackPreviewTab: Bool { previewTabHistoryIndex > 0 }
@@ -101,10 +108,13 @@ extension EditorViewModel {
         switch activePreviewTab {
         case .timeline:
             selectedMediaAssetIds.removeAll()
+            pruneMediaPanelSelectionAnchor()
         case .mediaAsset(let id, _, _):
             selectedClipIds.removeAll()
+            selectedTimelineMarkerIds = []
             selectedFolderIds.removeAll()
             selectedMediaAssetIds = [id]
+            mediaPanelSelectionAnchor = id
         }
     }
 

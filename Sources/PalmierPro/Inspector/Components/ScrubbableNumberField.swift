@@ -1,8 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// Scrubbable number: drag the value horizontally to change it,
-/// click to type. A subtle warm accent color marks it as interactive.
 struct ScrubbableNumberField: View {
     let value: Double?
     let range: ClosedRange<Double>
@@ -11,10 +9,19 @@ struct ScrubbableNumberField: View {
     var valueSuffix: String = ""
     /// Display units changed per pixel of horizontal drag.
     var dragSensitivity: Double = 1
-    var fieldWidth: CGFloat = 50
+    var fieldWidth: CGFloat = AppTheme.EditorPanel.numericFieldWidth
+    var fieldHeight: CGFloat = AppTheme.EditorPanel.fieldMinHeight
+    var fieldFill: Color = AppTheme.Background.baseColor
+    var valueFontSize: CGFloat = AppTheme.FontSize.sm
+    var dragValueAdjustment: (Double) -> Double = { $0 }
     var trailingLabel: String? = nil
+    var trailingLabelFontSize: CGFloat = AppTheme.FontSize.xs
     var displayTextOverride: ((Double) -> String?)? = nil
+    var parseTextOverride: ((String) -> Double?)? = nil
+    var onDraggingValue: ((Double) -> Void)? = nil
     var onChanged: ((Double) -> Void)? = nil
+    var onInteractionStart: (() -> Void)? = nil
+    var onInteractionEnd: (() -> Void)? = nil
     let onCommit: (Double) -> Void
 
     @State private var isEditing = false
@@ -24,6 +31,7 @@ struct ScrubbableNumberField: View {
     @State private var isDragging = false
     @State private var dragStartValue: Double = 0
     @State private var liveValue: Double = 0
+    @State private var interactionActive = false
 
     private var isMixed: Bool { value == nil && !isDragging }
     private var sourceValue: Double { isDragging ? liveValue : (value ?? liveValue) }
@@ -35,17 +43,25 @@ struct ScrubbableNumberField: View {
         return String(format: format, displayValue) + valueSuffix
     }
     private var editingText: String {
-        isMixed ? "" : String(format: format, displayValue)
+        if isMixed { return "" }
+        return displayTextOverride?(sourceValue) ?? String(format: format, displayValue)
     }
 
     var body: some View {
         HStack(spacing: AppTheme.Spacing.xs) {
+            if let trailingLabel {
+                Text(trailingLabel)
+                    .font(.system(size: trailingLabelFontSize, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .fixedSize()
+            }
+
             ZStack {
                 if isEditing {
-                    TextField("", text: $editText)
+                    TextField(String(), text: $editText)
                         .textFieldStyle(.plain)
                         .multilineTextAlignment(.trailing)
-                        .font(.system(size: AppTheme.FontSize.sm, weight: .medium).monospacedDigit())
+                        .font(.system(size: valueFontSize, weight: .medium).monospacedDigit())
                         .foregroundStyle(AppTheme.Text.primaryColor)
                         .focused($editFocused)
                         .onAppear { editFocused = true }
@@ -53,10 +69,11 @@ struct ScrubbableNumberField: View {
                         .onExitCommand {
                             isEditing = false
                             editFocused = false
+                            endInteraction()
                         }
                 } else {
                     Text(displayText)
-                        .font(.system(size: AppTheme.FontSize.sm, weight: .medium).monospacedDigit())
+                        .font(.system(size: valueFontSize, weight: .medium).monospacedDigit())
                         .foregroundStyle(isMixed ? AppTheme.Text.tertiaryColor : ScrubbableTheme.accent)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                         .lineLimit(1)
@@ -65,14 +82,12 @@ struct ScrubbableNumberField: View {
             .frame(width: fieldWidth, alignment: .trailing)
             .padding(.horizontal, AppTheme.Spacing.sm)
             .padding(.vertical, AppTheme.Spacing.xxs)
+            .editorValueField(
+                active: isEditing || isDragging,
+                minHeight: fieldHeight,
+                fill: fieldFill
+            )
             .overlay(scrubOverlay)
-
-            if let trailingLabel {
-                Text(trailingLabel)
-                    .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    .fixedSize()
-            }
         }
         .fixedSize(horizontal: true, vertical: false)
         .onAppear { liveValue = value ?? range.lowerBound }
@@ -83,7 +98,15 @@ struct ScrubbableNumberField: View {
             if !focused && isEditing {
                 commitEdit()
                 isEditing = false
+                endInteraction()
             }
+        }
+        .onDisappear {
+            if isDragging {
+                onCommit(liveValue)
+                isDragging = false
+            }
+            endInteraction()
         }
     }
 
@@ -95,6 +118,7 @@ struct ScrubbableNumberField: View {
             ScrubMouseArea(
                 canScrub: !isMixed,
                 onDragStart: {
+                    beginInteraction()
                     dragStartValue = value ?? liveValue
                     isDragging = true
                 },
@@ -103,7 +127,9 @@ struct ScrubbableNumberField: View {
                     if modifiers.contains(.shift) { sens *= 10 }
                     if modifiers.contains(.command) { sens *= 0.1 }
                     let mult = displayMultiplier == 0 ? 1 : displayMultiplier
-                    let next = (dragStartValue + Double(totalDx) * sens / mult).clamped(to: range)
+                    let candidate = (dragStartValue + Double(totalDx) * sens / mult).clamped(to: range)
+                    let next = dragValueAdjustment(candidate).clamped(to: range)
+                    onDraggingValue?(next)
                     if next != liveValue {
                         liveValue = next
                         onChanged?(next)
@@ -113,9 +139,11 @@ struct ScrubbableNumberField: View {
                     if isDragging {
                         onCommit(liveValue)
                         isDragging = false
+                        endInteraction()
                     }
                 },
                 onClick: {
+                    beginInteraction()
                     editText = editingText
                     isEditing = true
                 }
@@ -124,19 +152,47 @@ struct ScrubbableNumberField: View {
     }
 
     private func commitEdit() {
-        let trimmed = editText.trimmingCharacters(in: .whitespaces)
+        let parsed = parseTextOverride?(editText) ?? Self.committedValue(
+            from: editText, suffix: valueSuffix,
+            displayMultiplier: displayMultiplier, range: range
+        )
+        guard let raw = parsed else { return }
+        liveValue = raw.clamped(to: range)
+        onCommit(liveValue)
+    }
+
+    private func beginInteraction() {
+        guard !interactionActive else { return }
+        interactionActive = true
+        onInteractionStart?()
+    }
+
+    private func endInteraction() {
+        guard interactionActive else { return }
+        interactionActive = false
+        onInteractionEnd?()
+    }
+
+    nonisolated static func committedValue(
+        from text: String,
+        suffix: String,
+        displayMultiplier: Double,
+        range: ClosedRange<Double>
+    ) -> Double? {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
         let withoutSuffix: String = {
-            guard !valueSuffix.isEmpty, trimmed.hasSuffix(valueSuffix) else { return trimmed }
-            return String(trimmed.dropLast(valueSuffix.count))
+            guard !suffix.isEmpty, trimmed.hasSuffix(suffix) else { return trimmed }
+            return String(trimmed.dropLast(suffix.count))
         }()
         let cleaned = withoutSuffix
             .trimmingCharacters(in: .whitespaces)
             .replacingOccurrences(of: ",", with: ".")
-        guard let parsed = Double(cleaned) else { return }
+        guard let parsed = Double(cleaned), parsed.isFinite else { return nil }
         let mult = displayMultiplier == 0 ? 1 : displayMultiplier
-        let raw = (parsed / mult).clamped(to: range)
-        liveValue = raw
-        onCommit(raw)
+        guard mult.isFinite else { return nil }
+        let raw = parsed / mult
+        guard raw.isFinite else { return nil }
+        return raw.clamped(to: range)
     }
 }
 

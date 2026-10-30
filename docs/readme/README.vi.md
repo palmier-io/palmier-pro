@@ -15,6 +15,7 @@
 <a href="https://x.com/Palmier_io"><img src="https://img.shields.io/badge/Follow-%40Palmier__io-000000?style=flat&logo=x&logoColor=white" alt="Theo dõi trên X" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Tham gia Discord" /></a>
 <a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
+<br />
 
 <p>
   <a href="../../README.md">English</a> ·
@@ -40,7 +41,10 @@
 
 ---
 
-Palmier Pro là trình biên tập video mã nguồn mở cho Mac. Bạn và agent của bạn có thể cùng tạo và chỉnh sửa video ngay trong timeline.
+> [!IMPORTANT]
+> Các bản phát hành Palmier Pro đến hết v0.7.6 được phát hành theo GPLv3. Ảnh chụp mã nguồn công khai cuối cùng là [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source). Các bản phát hành sau v0.7.6 là phần mềm độc quyền và mã nguồn của chúng không được công bố tại đây.
+
+Palmier Pro là trình biên tập video cho Mac. Bạn và agent của bạn có thể cùng tạo và chỉnh sửa video ngay trong timeline.
 
 ### Trình biên tập video thuần Swift
 
@@ -89,9 +93,9 @@ Chúng tôi đóng gói một [mcpb](https://github.com/modelcontextprotocol/mcp
 
 ## FAQ
 
-**Palmier Pro có hoàn toàn mã nguồn mở không?**
+**Những phiên bản Palmier Pro nào là mã nguồn mở?**
 
-Trình biên tập video, không bao gồm các tính năng AI tạo sinh, hoàn toàn là mã nguồn mở. MCP server và agent chat cũng là mã nguồn mở. Phần duy nhất đóng nguồn là xử lý AI tạo sinh.
+Các bản phát hành đến hết v0.7.6 và mã nguồn đến [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) vẫn theo GPLv3; các bản phát hành sau đó là phần mềm độc quyền.
 
 **Có miễn phí không?**
 
@@ -103,31 +107,19 @@ Các tính năng AI tạo sinh yêu cầu đăng nhập và gói đăng ký.
 
 Chỉ hỗ trợ macOS 26 (Tahoe) trên Apple Silicon.
 
-Xem thêm tại [FAQ.md](../../FAQ.md).
+## Đóng góp
 
-## Phát triển
-
-Xem [CONTRIBUTING.md](../../CONTRIBUTING.md).
+Kho lưu trữ này không còn nhận các đóng góp mã nguồn. Mã nguồn đã công bố vẫn có thể được sử dụng, sửa đổi và phân phối lại theo GPLv3.
 
 ## Cộng đồng và hỗ trợ
 
 - **Discord:** Tham gia cộng đồng trên **[Discord](https://discord.com/invite/SMVW6pKYmg)**.
 - **Twitter / X:** Theo dõi **[@Palmier_io](https://x.com/Palmier_io)** để nhận cập nhật và thông báo.
 - **Instagram:** Theo dõi [@palmier.io](https://www.instagram.com/palmier.io).
-- **Phản hồi và hỗ trợ:** Tạo [GitHub Issue](https://github.com/palmier-io/palmier-pro/issues) hoặc gửi email tới founders@palmier.io.
-
-## Star History
-
-<a href="https://www.star-history.com/?type=date&repos=palmier-io%2Fpalmier-pro">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=palmier-io/palmier-pro&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=palmier-io/palmier-pro&type=date&legend=top-left" />
-   <img alt="Biểu đồ Star History" src="https://api.star-history.com/chart?repos=palmier-io/palmier-pro&type=date&legend=top-left" />
- </picture>
-</a>
+- **Phản hồi và hỗ trợ:** Gửi email tới founders@palmier.io.
 
 ## Giấy phép
 
 Copyright (C) 2026 Palmier, Inc.
 
-Palmier Pro là mã nguồn mở theo [GPLv3](../../LICENSE).
+Mã nguồn được công bố trong kho lưu trữ này vẫn theo [GPLv3](../../LICENSE). Các bản phát hành nhị phân sau v0.7.6 là phần mềm độc quyền theo [BINARY_LICENSE.md](../../BINARY_LICENSE.md).

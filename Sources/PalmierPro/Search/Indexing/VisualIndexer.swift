@@ -30,7 +30,7 @@ enum VisualIndexer {
 
         for try await frame in FrameSampler.frames(url: url, duration: duration, options: options) {
             try Task.checkCancellation()
-            try await ExportCoordinator.waitWhileExportActive()
+            try await ExportQueue.shared.waitWhileExportActive()
             if frame.isNewShot {
                 shotStarts.append(shotStarts.isEmpty ? 0 : frame.time)
             }
@@ -54,7 +54,7 @@ enum VisualIndexer {
     static func indexImage(url: URL, model: VisualEmbedder) async throws {
         guard let key = EmbeddingStore.key(for: url) else { return }
         guard needsIndex(url: url, spec: model.spec) else { return }
-        try await ExportCoordinator.waitWhileExportActive()
+        try await ExportQueue.shared.waitWhileExportActive()
 
         var rows: [EmbeddingStore.Row] = []
         var vectors: [Float] = []

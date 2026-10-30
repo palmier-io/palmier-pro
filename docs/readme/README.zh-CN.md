@@ -1,4 +1,4 @@
-> 此翻译由 AI 生成。如发现错误，欢迎提交 PR。
+> 此翻译由 AI 辅助翻译。如发现错误，欢迎修改并提交 PR。
 
 <div align="center">
 
@@ -15,6 +15,7 @@
 <a href="https://x.com/Palmier_io"><img src="https://img.shields.io/badge/Follow-%40Palmier__io-000000?style=flat&logo=x&logoColor=white" alt="在 X 上关注" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="加入 Discord" /></a>
 <a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
+<br />
 
 <p>
   <a href="../../README.md">English</a> ·
@@ -40,23 +41,26 @@
 
 ---
 
-Palmier Pro 是面向 Mac 的开源视频编辑器。你和你的 agent 可以在时间线中一起生成和编辑视频。
+> [!IMPORTANT]
+> Palmier Pro v0.7.6 及之前的版本以 GPLv3 发布。最终的公开源代码快照是 [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source)。v0.7.6 之后的版本为专有软件，其源代码不在此发布。
 
-### Swift 原生视频编辑器
+Palmier Pro 是面向 Mac 的视频编辑器。你和你的 Agent 可以在时间线中一起生成和编辑视频。
 
-我们用 Swift 从零构建了 Palmier Pro。参考目标是 Premiere Pro，并以我们自己的方式把 AI 融入工作流。
+### 基于 Swift 原生开发的剪辑工具
 
-### 内置生成式 AI
+本软件基于 Swift 从零原生开发，对标专业剪辑软件 Premiere Pro。软件独创 AI 深度融合架构，重构视频制作全流程，你可搭配各类 AI 智能代理，直接在时间线内协同生成、剪辑视频。
 
-在时间线编辑器内使用 Seedance、Kling、Nano Banana Pro 等前沿模型生成视频和图像。
+### 内置前沿生成式 AI 能力
 
-### 与你的 agent 集成
+可直接在时间线编辑器内调用多款行业顶尖 AI 模型生成图片、视频素材，包含字节跳动Seedance、可灵 Kling、Nano Banana Pro。
 
-通过 MCP 连接 Claude、Codex 或 Cursor，或使用应用内 agent 在同一个项目中协作。
+### 可对接各类 Agents 协同工作
+
+通过 MCP 协议对接 Claude、Codex、Cursor 等 AI 工具，也可使用软件内置智能助手，多人 / 多 AI 协同处理同一剪辑工程。
 
 ## MCP 服务器
 
-应用打开时，会通过 HTTP 在 `http://127.0.0.1:19789/mcp` 暴露 MCP 服务器。连接方式：
+软件启动后，会在本地 `http://127.0.0.1:19789/mcp` 地址开启 HTTP 协议 MCP 服务，各工具连接配置如下：
 
 **Claude Code**
 ```bash
@@ -69,10 +73,10 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 ```
 
 **Cursor**
+推荐快捷安装：打开软件顶部菜单栏 `Help` -> `MCP Instructions` -> `Install in Cursor`；
+如需手动配置，将下方配置写入 `~/.cursor/mcp.json` 文件：
 
-最简单的方法是在应用内打开 `Help` -> `MCP Instructions` -> `Install in Cursor`，也可以手动把以下内容添加到 `~/.cursor/mcp.json`：
-
-```
+```json
 {
   "mcpServers": {
     "palmier-pro": {
@@ -85,13 +89,13 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 
 **Claude Desktop**
 
-应用内置了一个 [mcpb](https://github.com/modelcontextprotocol/mcpb)，可在 Claude Desktop 中一键安装桌面扩展。打开 `Help` -> `MCP Instructions` -> `Install in Claude Desktop`。
+软件内置了一个 [mcpb](https://github.com/modelcontextprotocol/mcpb)工具，支持一键为 Claude Desktop 安装配套桌面扩展。打开 `Help` -> `MCP Instructions` -> `Install in Claude Desktop`。
 
 ## FAQ
 
-**Palmier Pro 是否完全开源？**
+**哪些 Palmier Pro 版本是开源的？**
 
-视频编辑器本身完全开源，不包括生成式 AI 功能。MCP 服务器和 agent 聊天也开源。唯一闭源的是生成式 AI 处理部分。
+Palmier Pro v0.7.6 及之前的版本，以及截至 [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) 的源代码，仍采用 GPLv3 许可；之后的版本为专有软件。
 
 **是否免费？**
 
@@ -103,31 +107,19 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 
 仅支持搭载 Apple Silicon 的 macOS 26 (Tahoe)。
 
-更多内容请查看 [FAQ.md](../../FAQ.md)。
+## 贡献
 
-## 开发
-
-查看 [CONTRIBUTING.md](../../CONTRIBUTING.md)。
+此仓库不再接受代码贡献。已发布的源代码仍可依据 GPLv3 使用、修改和再分发。
 
 ## 社区与支持
 
 - **Discord:** 在 **[Discord](https://discord.com/invite/SMVW6pKYmg)** 加入社区。
 - **Twitter / X:** 关注 **[@Palmier_io](https://x.com/Palmier_io)** 获取更新和公告。
 - **Instagram:** 关注 [@palmier.io](https://www.instagram.com/palmier.io)。
-- **反馈与支持:** 创建 [GitHub Issue](https://github.com/palmier-io/palmier-pro/issues) 或发送邮件至 founders@palmier.io。
-
-## Star History
-
-<a href="https://www.star-history.com/?type=date&repos=palmier-io%2Fpalmier-pro">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=palmier-io/palmier-pro&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=palmier-io/palmier-pro&type=date&legend=top-left" />
-   <img alt="Star History 图表" src="https://api.star-history.com/chart?repos=palmier-io/palmier-pro&type=date&legend=top-left" />
- </picture>
-</a>
+- **反馈与支持:** 发送邮件至 founders@palmier.io。
 
 ## 许可证
 
 Copyright (C) 2026 Palmier, Inc.
 
-Palmier Pro 基于 [GPLv3](../../LICENSE) 开源。
+此仓库中发布的源代码仍采用 [GPLv3](../../LICENSE) 许可。v0.7.6 之后的二进制版本为专有软件，受 [BINARY_LICENSE.md](../../BINARY_LICENSE.md) 约束。

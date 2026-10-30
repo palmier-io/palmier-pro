@@ -9,6 +9,7 @@ enum ImageEncoder {
     static let maxBytes = 3_500_000
     /// Internal downsample target.
     static let maxLongestEdge = 1568
+    static let libraryThumbnailMaxPixelSize = 320
 
     struct Output: Sendable {
         let data: Data
@@ -29,12 +30,30 @@ enum ImageEncoder {
         return output
     }
 
-    /// JPEG-encode an already-decoded `CGImage`. Shared with video frame sampling.
     nonisolated static func encodeJPEG(_ image: CGImage, quality: CGFloat) -> Data? {
         let buffer = NSMutableData()
         guard let dest = CGImageDestinationCreateWithData(buffer, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
         CGImageDestinationAddImage(dest, image, [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
         return CGImageDestinationFinalize(dest) ? buffer as Data : nil
+    }
+
+    nonisolated static func encodePNG(_ image: CGImage) -> Data? {
+        let buffer = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(buffer, UTType.png.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(dest, image, nil)
+        return CGImageDestinationFinalize(dest) ? buffer as Data : nil
+    }
+
+    nonisolated static func encodeWithinBudget(_ image: CGImage, preferPNG: Bool = false) -> Output? {
+        if preferPNG, let png = encodePNG(image), png.count <= maxBytes {
+            return Output(data: png, mime: "image/png")
+        }
+        for quality in jpegQualities {
+            if let data = encodeJPEG(image, quality: quality), data.count <= maxBytes {
+                return Output(data: data, mime: "image/jpeg")
+            }
+        }
+        return nil
     }
 
     nonisolated static func metadata(url: URL, thumbnailMaxPixelSize: Int? = nil) -> ImageMetadata {
@@ -60,6 +79,11 @@ enum ImageEncoder {
         return makeThumbnail(source: source, maxPixelSize: maxPixelSize)
     }
 
+    nonisolated static func thumbnail(data: Data, maxPixelSize: Int) -> CGImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        return makeThumbnail(source: source, maxPixelSize: maxPixelSize)
+    }
+
     // MARK: - Paths
 
     private static func passthrough(url: URL, stamp: FileStamp?) -> Output? {
@@ -74,14 +98,11 @@ enum ImageEncoder {
         return Output(data: data, mime: mime)
     }
 
+    private static let jpegQualities: [CGFloat] = [0.85, 0.7, 0.55, 0.4]
+
     private static func downscaled(url: URL) -> Output? {
         guard let image = thumbnail(url: url, maxPixelSize: maxLongestEdge) else { return nil }
-        for quality in [0.85, 0.7, 0.55, 0.4] as [CGFloat] {
-            if let data = encodeJPEG(image, quality: quality), data.count <= maxBytes {
-                return Output(data: data, mime: "image/jpeg")
-            }
-        }
-        return nil
+        return encodeWithinBudget(image)
     }
 
     // MARK: - Cache

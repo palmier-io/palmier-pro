@@ -14,6 +14,12 @@ struct SnapEngineTests {
         #expect(SnapEngine.collectTargets(tracks: [], includePlayhead: false).isEmpty)
     }
 
+    @Test func collectTargetsIncludesMarkerFrames() {
+        let targets = SnapEngine.collectTargets(tracks: [], markerFrames: [12, 30])
+        #expect(targets.map(\.frame) == [12, 30])
+        #expect(targets.allSatisfy { $0.kind == .marker })
+    }
+
     @Test func collectTargetsIncludesPlayheadOnlyWhenRequested() {
         let withPlayhead = SnapEngine.collectTargets(tracks: [], playheadFrame: 75, includePlayhead: true)
         #expect(withPlayhead.count == 1)
