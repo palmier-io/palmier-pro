@@ -62,9 +62,16 @@ actor MCPHTTPServer {
         listener?.start(queue: .global(qos: .userInitiated))
     }
 
-    func stop() {
-        listener?.cancel()
-        listener = nil
+    func stop() async {
+        if let listener {
+            self.listener = nil
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                listener.stateUpdateHandler = { state in
+                    if case .cancelled = state { continuation.resume() }
+                }
+                listener.cancel()
+            }
+        }
         let closing = sessions.values.map(\.transport)
         sessions.removeAll()
         let fallbackTransport = fallback?.transport
