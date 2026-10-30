@@ -71,13 +71,13 @@ private func mcpPortBecameAccepting(within timeout: Duration) async -> Bool {
 private func tcpPortIsAccepting(_ port: UInt16, timeout: Duration) async -> Bool {
     guard let endpointPort = NWEndpoint.Port(rawValue: port) else { return false }
     let connection = NWConnection(
-        host: NWEndpoint.Host(MCPService.loopbackBindHost),
+        host: NWEndpoint.Host(MCPHTTPServer.loopbackHost),
         port: endpointPort,
         using: .tcp
     )
     return await withCheckedContinuation { continuation in
         let box = ResumeBox()
-        func finish(_ value: Bool) {
+        @Sendable func finish(_ value: Bool) {
             guard box.complete() else { return }
             connection.cancel()
             continuation.resume(returning: value)
