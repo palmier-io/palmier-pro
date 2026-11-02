@@ -3,6 +3,8 @@ import SwiftUI
 
 struct AgentPane: View {
     @Bindable private var appState = AppState.shared
+    @State private var mcpBindHost: String = MCPService.bindHostPreference
+    @State private var mcpBearerToken: String = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xxl) {
@@ -13,6 +15,7 @@ struct AgentPane: View {
                 mcpSection
             }
         }
+        .onAppear(perform: refreshMCPSettings)
     }
 
     private var apiKeySection: some View {
@@ -32,6 +35,8 @@ struct AgentPane: View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
             mcpHeader
             mcpStatusRow
+            mcpNetworkAccessRow
+            mcpConnectionBox
         }
     }
 
@@ -74,7 +79,7 @@ struct AgentPane: View {
                     HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.xxs) {
                         Text(L10n.string("Running on"))
                             .foregroundStyle(AppTheme.Text.secondaryColor)
-                        Text(verbatim: "127.0.0.1:\(String(MCPService.port))")
+                        Text(verbatim: mcpServerAddress)
                             .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
                             .foregroundStyle(AppTheme.Text.primaryColor)
                     }
@@ -100,6 +105,137 @@ struct AgentPane: View {
             .accessibilityLabel(L10n.string("MCP Server"))
         }
         .padding(.top, AppTheme.Spacing.xs)
+    }
+
+    private var mcpNetworkAccessRow: some View {
+        HStack(spacing: AppTheme.Spacing.md) {
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+                Text("Allow access from local network")
+                    .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
+                Text("Requires the bearer token for every LAN request.")
+                    .font(.system(size: AppTheme.FontSize.sm))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+
+            Toggle(
+                "",
+                isOn: Binding(
+                    get: { mcpLANAccessEnabled },
+                    set: { setMCPLANAccess($0) }
+                )
+            )
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, AppTheme.Spacing.md)
+        .padding(.vertical, AppTheme.Spacing.smMd)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                .fill(Color.black.opacity(AppTheme.Opacity.muted))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                .strokeBorder(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
+        )
+    }
+
+    private var mcpConnectionBox: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+            mcpValueRow(label: "Connection URL", value: mcpConnectionURL)
+
+            if mcpLANAccessEnabled {
+                Divider().overlay(AppTheme.Border.subtleColor)
+                mcpValueRow(label: "Bearer token", value: mcpBearerToken)
+                Button("Regenerate Token", action: regenerateMCPToken)
+                    .buttonStyle(.capsule(.secondary, size: .regular))
+                    .controlSize(.large)
+            }
+        }
+        .padding(.horizontal, AppTheme.Spacing.md)
+        .padding(.vertical, AppTheme.Spacing.smMd)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                .fill(Color.black.opacity(AppTheme.Opacity.muted))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                .strokeBorder(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
+        )
+    }
+
+    private func mcpValueRow(label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+            HStack(spacing: AppTheme.Spacing.sm) {
+                Text(label)
+                    .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .textCase(.uppercase)
+                Spacer()
+                mcpCopyButton(value: value)
+            }
+
+            Text(value)
+                .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
+                .foregroundStyle(AppTheme.Text.primaryColor)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+        }
+    }
+
+    private func mcpCopyButton(value: String) -> some View {
+        Button(action: { copyToPasteboard(value) }) {
+            Image(systemName: "doc.on.doc")
+                .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .frame(width: AppTheme.IconSize.lg, height: AppTheme.IconSize.lg)
+                .hoverHighlight()
+        }
+        .buttonStyle(.plain)
+        .help("Copy")
+    }
+
+    private var mcpLANAccessEnabled: Bool {
+        MCPHTTPServer.requiresBearerToken(bindHost: mcpBindHost)
+    }
+
+    private var mcpServerAddress: String {
+        "\(mcpConnectionHost):\(MCPService.port)"
+    }
+
+    private var mcpConnectionURL: String {
+        "http://\(mcpServerAddress)/mcp"
+    }
+
+    private var mcpConnectionHost: String {
+        mcpBindHost == MCPService.lanBindHost ? MCPService.connectionHost : mcpBindHost
+    }
+
+    private func refreshMCPSettings() {
+        mcpBindHost = MCPService.bindHostPreference
+        mcpBearerToken = mcpLANAccessEnabled ? MCPService.bearerTokenPreference : ""
+    }
+
+    private func setMCPLANAccess(_ enabled: Bool) {
+        let host = enabled ? MCPService.lanBindHost : MCPService.loopbackBindHost
+        mcpBindHost = host
+        appState.setMCPHost(host)
+        mcpBearerToken = enabled ? MCPService.bearerTokenPreference : ""
+    }
+
+    private func regenerateMCPToken() {
+        mcpBearerToken = appState.regenerateMCPToken()
+    }
+
+    private func copyToPasteboard(_ value: String) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(value, forType: .string)
     }
 
     private func openInstructions() {

@@ -1,5 +1,6 @@
 import Foundation
 import MCP
+import Security
 
 /// HTTP adapter. Tool handling lives in `ToolExecutor`.
 @Observable
@@ -7,8 +8,12 @@ import MCP
 final class MCPService {
 
     static let port: UInt16 = 19789
+    static let loopbackBindHost = MCPHTTPServer.loopbackHost
+    static let lanBindHost = "0.0.0.0"
 
     private static let enabledKey = "io.palmier.pro.mcp.enabled"
+    private static let bindHostKey = "io.palmier.pro.mcp.bindHost"
+    private static let bearerTokenKey = "io.palmier.pro.mcp.bearerToken"
 
     static var isEnabledPreference: Bool {
         get {
@@ -19,6 +24,37 @@ final class MCPService {
         set {
             UserDefaults.standard.set(newValue, forKey: enabledKey)
         }
+    }
+
+    static var bindHostPreference: String {
+        get {
+            MCPHTTPServer.normalizedBindHost(UserDefaults.standard.string(forKey: bindHostKey) ?? loopbackBindHost)
+        }
+        set {
+            UserDefaults.standard.set(MCPHTTPServer.normalizedBindHost(newValue), forKey: bindHostKey)
+        }
+    }
+
+    static var bearerTokenPreference: String {
+        let defaults = UserDefaults.standard
+        if let token = defaults.string(forKey: bearerTokenKey), !token.isEmpty {
+            return token
+        }
+        return regenerateBearerTokenPreference()
+    }
+
+    static func regenerateBearerTokenPreference() -> String {
+        let token = makeBearerToken()
+        UserDefaults.standard.set(token, forKey: bearerTokenKey)
+        return token
+    }
+
+    static var connectionHost: String {
+        MCPHTTPServer.advertisedHost(forBindHost: bindHostPreference)
+    }
+
+    static var connectionURL: String {
+        "http://\(connectionHost):\(port)/mcp"
     }
 
     private(set) var isRunning: Bool = false
@@ -33,7 +69,9 @@ final class MCPService {
     }
 
     func start() {
-        let httpServer = MCPHTTPServer(port: Self.port) { [self] in
+        let bindHost = Self.bindHostPreference
+        let bearerToken = MCPHTTPServer.requiresBearerToken(bindHost: bindHost) ? Self.bearerTokenPreference : ""
+        let httpServer = MCPHTTPServer(port: Self.port, bindHost: bindHost, bearerToken: bearerToken) { [self] in
             let toolExecutor = await makeSessionToolExecutor()
             let server = Server(
                 name: "palmier-pro",
@@ -52,13 +90,19 @@ final class MCPService {
         }
         self.httpServer = httpServer
         Task { @MainActor [weak self] in
+            guard let self, self.httpServer === httpServer else { return }
             do {
                 try await httpServer.start()
-                Log.mcp.notice("http server started port=\(Self.port)")
-                self?.isRunning = true
+                guard self.httpServer === httpServer else {
+                    await httpServer.stop()
+                    return
+                }
+                Log.mcp.notice("http server started host=\(bindHost) port=\(Self.port)")
+                self.isRunning = true
             } catch {
+                guard self.httpServer === httpServer else { return }
                 Log.mcp.error("http server failed to start: \(error.localizedDescription)")
-                self?.isRunning = false
+                self.isRunning = false
             }
         }
     }
@@ -67,12 +111,13 @@ final class MCPService {
         ToolExecutor(projectProvider: projectProvider)
     }
 
-    func stop() {
-        if let server = httpServer {
-            Task { await server.stop() }
-        }
+    func stop() async {
+        let server = httpServer
         httpServer = nil
         isRunning = false
+        if let server {
+            await server.stop()
+        }
         Log.mcp.notice("http server stopped")
     }
 
@@ -134,6 +179,22 @@ final class MCPService {
         default:
             return .init(contents: [.text("Unknown resource: \(uri)", uri: uri)])
         }
+    }
+
+    private static func makeBearerToken() -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        let count = bytes.count
+        let status = bytes.withUnsafeMutableBytes { buffer in
+            SecRandomCopyBytes(kSecRandomDefault, count, buffer.baseAddress!)
+        }
+        guard status == errSecSuccess else {
+            return (0..<4).map { _ in UUID().uuidString.replacingOccurrences(of: "-", with: "") }.joined()
+        }
+        return Data(bytes)
+            .base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
     }
 
 }
