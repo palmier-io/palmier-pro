@@ -102,6 +102,24 @@ enum MainMenuBuilder {
 
         menu.addItem(.separator())
 
+        let appendItem = NSMenuItem(title: L10n.string("Append to End"), action: #selector(EditorActions.appendSourceToEnd(_:)), keyEquivalent: "e")
+        appendItem.keyEquivalentModifierMask = []
+        menu.addItem(appendItem)
+
+        let insertItem = NSMenuItem(title: L10n.string("Insert at Playhead"), action: #selector(EditorActions.insertSourceAtPlayhead(_:)), keyEquivalent: "e")
+        insertItem.keyEquivalentModifierMask = [.shift]
+        menu.addItem(insertItem)
+
+        let overwriteItem = NSMenuItem(title: L10n.string("Overwrite at Playhead"), action: #selector(EditorActions.overwriteSourceAtPlayhead(_:)), keyEquivalent: "d")
+        overwriteItem.keyEquivalentModifierMask = []
+        menu.addItem(overwriteItem)
+
+        let clearMarksItem = NSMenuItem(title: L10n.string("Clear Source In/Out"), action: #selector(EditorActions.clearSourceMarks(_:)), keyEquivalent: "x")
+        clearMarksItem.keyEquivalentModifierMask = [.option]
+        menu.addItem(clearMarksItem)
+
+        menu.addItem(.separator())
+
         let deleteItem = NSMenuItem(title: L10n.string("Delete"), action: #selector(EditorActions.deleteSelectedClips(_:)), keyEquivalent: "\u{8}") // backspace
         deleteItem.keyEquivalentModifierMask = []
         menu.addItem(deleteItem)
@@ -193,6 +211,10 @@ enum MainMenuBuilder {
     func splitAtPlayhead(_ sender: Any?)
     func trimStartToPlayhead(_ sender: Any?)
     func trimEndToPlayhead(_ sender: Any?)
+    func appendSourceToEnd(_ sender: Any?)
+    func insertSourceAtPlayhead(_ sender: Any?)
+    func overwriteSourceAtPlayhead(_ sender: Any?)
+    func clearSourceMarks(_ sender: Any?)
     func selectForwardOnTrack(_ sender: Any?)
     func selectForwardOnAllTracks(_ sender: Any?)
     func deleteSelectedClips(_ sender: Any?)
