@@ -136,7 +136,7 @@ extension EditorViewModel {
     ) async throws -> URL {
         defer { try? FileManager.default.removeItem(at: stagedURL) }
         guard projectURL != nil else {
-            let destination = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+            let destination = StorageLocations.temporaryDirectory.appendingPathComponent(filename)
             return try await Task.detached(priority: .userInitiated) {
                 try FileIO.moveReplacingDestination(from: stagedURL, to: destination, maxBytes: maxBytes)
                 return destination

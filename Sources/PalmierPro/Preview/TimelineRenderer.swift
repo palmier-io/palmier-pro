@@ -56,7 +56,7 @@ enum TimelineRenderer {
             duration: CMTime(value: CMTimeValue(frameCount), timescale: timescale)
         )
 
-        let outputURL = FileManager.default.temporaryDirectory
+        let outputURL = StorageLocations.temporaryDirectory
             .appendingPathComponent("timeline-render-\(UUID().uuidString).mp4")
         try? FileManager.default.removeItem(at: outputURL)
 

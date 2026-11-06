@@ -37,7 +37,8 @@ final class ProjectRegistry {
     private var pendingMutations: [(inout [ProjectEntry]) -> Void] = []
 
     private init() {
-        fileURL = Project.storageDirectory.appendingPathComponent(Project.registryFilename)
+        // Pinned to the default folder so recents survive a change of projects location.
+        fileURL = StorageLocations.defaultProjectsDirectory.appendingPathComponent(Project.registryFilename)
         load()
     }
 
@@ -146,7 +147,9 @@ private actor ProjectRegistryDisk {
     }
 
     func load(from fileURL: URL) -> [ProjectEntry] {
-        Project.ensureStorageDirectory()
+        try? FileManager.default.createDirectory(
+            at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
         return ProjectRegistry.loadEntries(from: fileURL)
     }
 
