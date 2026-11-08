@@ -14,7 +14,7 @@ Goal: produce researched, narration-led explainers from one brief, with mandator
 - [ ] Evaluate Pixabay alternatives and repeated-stock selection, including canonical exclusions, pagination, source diversity, rights, and measured retrieval/import quality (task 9a). Public documentation findings alone do not complete this requirement.
 - [ ] After implementation, run deep tests, fix failures, rerun affected/full suites, and repeat until acceptance passes. Preserve truthful unresolved UI, temporal, external-provider, and lifecycle checks (verification section and release gates).
 - [ ] Only after those gates pass, build/verify a Developer ID-signed app and safely update the existing Compositor Pro installation (signed app update section). Do not substitute ad-hoc signing or mark blocked signing complete.
-- [ ] Add subagent spawning support for faster editing. Default to parallel subagents for independent work; fall back to normal execution on repeated timeouts, unsupported models, or persistent failures. Preserve shared state, undo, cancellation, and production gates (task 13a).
+- [x] Add subagent spawning support for faster editing. Default to parallel subagents for independent work; fall back to normal execution on repeated timeouts, unsupported models, or persistent failures. Preserve shared state, undo, cancellation, and production gates (task 13a; implementation verified, provider/UI and performance proof pending).
 
 Based on [Malaysia chip explainer capability audit](docs/malaysia-chip-explainer-capability-audit.md). Reference: [CaspianReport's Malaysia semiconductor explainer](https://www.youtube.com/watch?v=zH5WptvpLCY).
 
@@ -389,13 +389,17 @@ Storyboard guidance now requires explicit review of narration, order, proposed v
 
 ### 13a. Spawn subagents for independent editing work
 
-- [ ] Implement bounded parallel subagent spawning through the existing Agent runtime.
+- [x] Implement bounded parallel subagent spawning through the existing Agent runtime.
 
 **User requirement:** Default to parallel subagents for independent work; fall back to normal execution on repeated timeouts, unsupported models, or persistent failures. Preserve shared state, undo, cancellation, and production gates.
 
 **How:** Trace existing model/tool execution and job ownership before changing it. Children receive immutable task context and explicit independent scopes. Shared editor mutations still use existing domain operations and shared `EditorUndo`; no child can bypass storyboard approval, uniqueness, package coordination, or stale-result validation. Bound concurrency and retries, own child handles, propagate cancellation, and report failed/canceled/fallback results without duplicate commits or success-shaped failures. Do not expose credentials to children or create a second editor state owner.
 
 **Done when:** Independent preparation runs concurrently by default, unsupported models and repeated timeout/failure switch to normal execution, cancellation tears down owned work, and isolated runtime/MCP tests independently verify shared state, undo, stale-result refusal, and production gates.
+
+**Implemented:** App-only `delegate_work` runs immutable text-preparation tasks through the parent's selected client, with two concurrent children, eight tasks per batch, 32,000-byte task/output caps, a 64,000-byte system cap, 90-second deadlines, and at most two transient retries. Stable ordered receipts retain completed drafts. Unsupported models, repeated timeouts, or exhausted/persistent failures disable spawning for that run; authentication, credits, permission, model refusal, and forbidden child tools instead block denied work. Hosted HTTP errors preserve status/code so a denial cannot be mislabeled as operational fallback. Children have no tools/editor access, never approve or attest, and cannot nest. The parent revalidates context and alone applies shared domain edits/undo. Canceled run handles remain owned and drain before later runs; close drains reject admission. Late results and canceled exchanges persist only in their originating chat. [Contract and manual plan](docs/agent-delegation.md).
+
+**Final-source verification:** Isolated staged-only `swift build` passed. `swift test --filter 'AgentDelegation|AgentStreamPresentationTests|StoryboardMCPTests|UndoToolTests'` passed 54 tests in 5 suites. `swift test --sanitize thread --filter 'AgentDelegation|AgentStreamPresentationTests|UndoToolTests'` passed 44 tests in 4 suites, with no reported races. Full staged-only `swift test` ran 2,243 tests in 336 suites and failed only unchanged `CustomAgentModelPersistenceTests.aRemoteCustomModelWithAStoredKeyIsSelectable`; no final-source staged-only full pass is claimed. Earlier same-snapshot attempts also hit that routing test, while its isolated suite passed 9 tests. Earlier working-tree full tests passed 2,262 tests before final persistence/hosted-error fixes; that is not final-source proof. Runtime tests independently read edits and undo through in-memory MCP, and verify discovery stays app-only, source/stale/session/cancel/close behavior, denial/fallback instructions, and refusal to bypass storyboard approval. Real provider/UI, Save As/close/quit, transport cleanup, and performance checks remain pending under task 13; no speedup or installed-app claim. Client streams signal producer cancellation but expose no producer join handle.
 
 ### 14. Measure long-form efficiency and responsiveness
 

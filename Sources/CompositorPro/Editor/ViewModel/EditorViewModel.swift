@@ -91,7 +91,10 @@ final class EditorViewModel {
         didSet { mediaManifestRevision &+= 1 }
     }
     @ObservationIgnored private(set) var mediaManifestRevision: UInt64 = 0
-    var editPlans: [EditPlan] = []
+    var editPlans: [EditPlan] = [] {
+        didSet { editPlansRevision &+= 1 }
+    }
+    @ObservationIgnored private(set) var editPlansRevision: UInt64 = 0
     var editPlansLoadFailed = false
     // MARK: - Denoise bake state (session-scoped, keyed by mediaRef)
 

@@ -399,7 +399,7 @@ struct AgentPanelView: View {
             return ErrorCTA(title: L10n.string("Open Settings")) {
                 SettingsWindowController.shared.show(tab: .agent)
             }
-        case .refusal, .upstream:
+        case .refusal, .upstream, .httpError:
             return nil
         }
     }
@@ -410,7 +410,7 @@ struct AgentPanelView: View {
             HostedServices.enabled
                 ? L10n.string("Sign in to use AI chat.")
                 : L10n.string("This model needs a hosted Palmier account, which this build does not use. Add your own API key in Settings, or pick a custom endpoint.")
-        case .insufficientCredits(let message), .upstream(let message):
+        case .insufficientCredits(let message), .upstream(let message), .httpError(_, _, let message):
             message
         case .unavailable(let model):
             if !HostedServices.enabled || (model.requiresPaidHostedPlan && !AccountService.shared.isPaid) {

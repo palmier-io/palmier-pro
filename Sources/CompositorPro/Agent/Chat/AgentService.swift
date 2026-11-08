@@ -9,6 +9,7 @@ final class AgentService {
     private var apiKeyObserver: NSObjectProtocol?
     private var endpointObserver: NSObjectProtocol?
     private let userDefaults: UserDefaults
+    @ObservationIgnored private let skillStore: SkillStore?
     private var reasoningEfforts: [AgentModel: AgentReasoningEffort]
     /// The user's own OpenAI-compatible models, each with its own endpoint and credential.
     private(set) var customModels: [CustomAgentModel] = []
@@ -16,8 +17,9 @@ final class AgentService {
     /// Which of `customModels` the `.custom` model entry resolves to.
     private(set) var selectedCustomModelID: UUID?
 
-    init(userDefaults: UserDefaults = .standard) {
+    init(userDefaults: UserDefaults = .standard, skillStore: SkillStore? = nil) {
         self.userDefaults = userDefaults
+        self.skillStore = skillStore
         let models = CustomModelStore.load(defaults: userDefaults)
         let selection = CustomModelStore.selectedID(defaults: userDefaults)
         let selectedID = models.contains { $0.id == selection } ? selection : models.first?.id
@@ -86,6 +88,7 @@ final class AgentService {
     }
 
     isolated deinit {
+        for task in runTasks.values { task.cancel() }
         if let token = apiKeyObserver {
             NotificationCenter.default.removeObserver(token)
         }
@@ -112,7 +115,7 @@ final class AgentService {
     }
 
     var canStream: Bool {
-        route != .unavailable
+        route != .unavailable && drainsInProgress == 0
     }
 
     /// The custom entry only appears once a model exists, so the picker never offers a
@@ -356,12 +359,20 @@ final class AgentService {
     }
 
     weak var editor: EditorViewModel? {
-        didSet { toolExecutor = editor.map { ToolExecutor(editor: $0) } }
+        didSet {
+            cancel()
+            toolExecutor = editor.map { ToolExecutor(editor: $0) }
+        }
     }
     private var toolExecutor: ToolExecutor?
-    private var currentTask: Task<Void, Never>?
+    @ObservationIgnored private var runTasks: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored private var currentRunID: UUID?
+    private var drainsInProgress = 0
+
+    private var currentTask: Task<Void, Never>? { currentRunID.flatMap { runTasks[$0] } }
 
     func loadSessions(from projectURL: URL?) {
+        cancel()
         sessions = ChatSessionStore.load(from: projectURL)
             .filter { !$0.messages.isEmpty }
             .map {
@@ -382,7 +393,7 @@ final class AgentService {
     }
 
     func newChat() {
-        currentTask?.cancel()
+        cancel()
         syncMessagesIntoCurrentSession()
         if let id = currentSessionId,
            let idx = sessions.firstIndex(where: { $0.id == id }),
@@ -402,7 +413,7 @@ final class AgentService {
 
     func selectSession(_ id: UUID) {
         guard let idx = sessions.firstIndex(where: { $0.id == id }) else { return }
-        currentTask?.cancel()
+        cancel()
         syncMessagesIntoCurrentSession()
         if !sessions[idx].isOpen {
             sessions[idx].isOpen = true
@@ -417,6 +428,8 @@ final class AgentService {
         guard let idx = sessions.firstIndex(where: { $0.id == id }) else { return }
         sessions[idx].isOpen = false
         if currentSessionId == id {
+            cancel()
+            syncMessagesIntoCurrentSession()
             if let next = sessions.first(where: { $0.isOpen }) {
                 currentSessionId = next.id
                 messages = next.messages
@@ -429,6 +442,7 @@ final class AgentService {
     }
 
     func deleteSession(_ id: UUID) {
+        if currentSessionId == id { cancel() }
         sessions.removeAll { $0.id == id }
         if currentSessionId == id {
             currentSessionId = sessions.first(where: { $0.isOpen })?.id
@@ -441,6 +455,7 @@ final class AgentService {
     }
 
     func send(text: String, mentions: [AgentMention]) {
+        guard drainsInProgress == 0 else { return }
         guard canStream else {
             streamError = .unavailable(model)
             return
@@ -488,36 +503,74 @@ final class AgentService {
 
     func cancel() {
         currentTask?.cancel()
-        currentTask = nil
+        currentRunID = nil
         isStreaming = false
+        syncMessagesIntoCurrentSession()
+        onSessionsChanged?()
     }
 
-    private func kickOffStream(
+    func cancelAndWait() async {
+        drainsInProgress += 1
+        defer { drainsInProgress -= 1 }
+        let tasks = Array(runTasks.values)
+        let conversationID = currentSessionId
+        for task in tasks { task.cancel() }
+        cancel()
+        for task in tasks { await task.value }
+        if currentRunID == nil, currentSessionId == conversationID {
+            syncMessagesIntoCurrentSession()
+            onSessionsChanged?()
+        }
+    }
+
+    @discardableResult
+    func kickOffStream(
         conversationID: UUID,
         traceID: UUID,
-        settings: AgentRunSettings
-    ) {
-        currentTask?.cancel()
+        settings: AgentRunSettings,
+        client: (any AgentClient)? = nil
+    ) -> Task<Void, Never> {
+        guard drainsInProgress == 0 else { return Task {} }
+        let previousTasks = Array(runTasks.values)
+        for task in previousTasks { task.cancel() }
+        cancel()
+        let runID = UUID()
+        currentRunID = runID
         isStreaming = true
-        currentTask = Task { [weak self] in
+        let task = Task { [weak self] in
             defer {
-                self?.isStreaming = false
-                self?.syncMessagesIntoCurrentSession()
-                self?.onSessionsChanged?()
+                self?.runTasks.removeValue(forKey: runID)
+                if let self {
+                    if self.currentSessionId == conversationID { self.syncMessagesIntoCurrentSession() }
+                    self.onSessionsChanged?()
+                }
+                if let self, self.currentRunID == runID {
+                    self.isStreaming = false
+                    self.currentRunID = nil
+                }
             }
+            for previous in previousTasks { await previous.value }
+            guard !Task.isCancelled else { return }
             await self?.runLoop(
                 conversationID: conversationID,
                 traceID: traceID,
-                settings: settings
+                settings: settings,
+                runID: runID,
+                client: client
             )
         }
+        runTasks[runID] = task
+        return task
     }
 
     private func runLoop(
         conversationID: UUID,
         traceID: UUID,
-        settings: AgentRunSettings
+        settings: AgentRunSettings,
+        runID: UUID,
+        client suppliedClient: (any AgentClient)?
     ) async {
+        let runEditor = editor
         let chosenModel = settings.model
         let turnID = String(traceID.uuidString.prefix(8))
         AgentDiagnostics.currentTurnID = turnID
@@ -527,21 +580,32 @@ final class AgentService {
             messageCount: messages.count,
             toolCount: ToolDefinitions.all.count
         )
-        guard let client = await selectClient(for: settings) else {
-            streamError = .unavailable(chosenModel)
+        let selectedClient: (any AgentClient)?
+        if let suppliedClient { selectedClient = suppliedClient }
+        else { selectedClient = await selectClient(for: settings) }
+        guard let client = selectedClient else {
+            if isCurrentRun(runID, conversationID: conversationID, editor: runEditor) {
+                streamError = .unavailable(chosenModel)
+            }
             return
         }
+        guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor) else { return }
+        let skillStore = skillStore ?? SkillStore.shared
+        await skillStore.waitForSkillSync()
         if Task.isCancelled { return }
-        await SkillStore.shared.waitForSkillSync()
-        if Task.isCancelled { return }
-        await SkillStore.shared.reloadSkills()
-        let tools = ToolDefinitions.inAppAgent.map {
+        await skillStore.reloadSkills()
+        let baseTools = ToolDefinitions.inAppAgent.map {
             AgentToolSchema(name: $0.name.rawValue, description: $0.description, inputSchema: $0.inputSchema)
         }
+        let delegation = AgentDelegation()
 
-        loop: while !Task.isCancelled {
+        loop: while isCurrentRun(runID, conversationID: conversationID, editor: runEditor) {
             resolveOrphanToolUses()
             let apiMsgs = await apiMessages()
+            let delegationEnabled = await delegation.isEnabled
+            let permitsFallback = await delegation.permitsFallback
+            guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor) else { break }
+            let tools = baseTools + (delegationEnabled ? [AgentDelegationTool.schema] : [])
             guard let inputMessageID = messages.last(where: { $0.role == .user })?.id else {
                 streamError = .upstream("The agent request has no user message.")
                 break loop
@@ -552,7 +616,9 @@ final class AgentService {
 
             do {
                 let stream = client.stream(
-                    system: AgentInstructions.serverInstructions + AgentInstructions.skillsSection(SkillStore.shared.skillIndex),
+                    system: AgentInstructions.serverInstructions + AgentInstructions.skillsSection(skillStore.skillIndex)
+                        + (delegationEnabled ? AgentDelegationTool.instructions
+                            : permitsFallback ? AgentDelegationTool.fallbackInstructions : AgentDelegationTool.blockedInstructions),
                     tools: tools,
                     messages: apiMsgs,
                     context: AgentRequestContext(
@@ -579,12 +645,15 @@ final class AgentService {
                 let stopReason = finalSnapshot.stopReason
 
                 dropEmptyAssistantTurn(id: assistantID, conversationID: conversationID)
+                guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor) else { break }
                 if stopReason == .refusal {
                     streamError = .refusal(chosenModel)
                     break loop
                 }
                 if stopReason == .toolUse {
-                    await runPendingToolUses(assistantID: assistantID, conversationID: conversationID)
+                    await runPendingToolUses(assistantID: assistantID, conversationID: conversationID,
+                                            runID: runID, runEditor: runEditor, settings: settings,
+                                            client: client, traceID: traceID, delegation: delegation)
                     if Task.isCancelled { break loop }
                     continue loop
                 }
@@ -595,11 +664,13 @@ final class AgentService {
                 break loop
             } catch let err as AgentServiceError {
                 dropEmptyAssistantTurn(id: assistantID, conversationID: conversationID)
-                streamError = err
+                if isCurrentRun(runID, conversationID: conversationID, editor: runEditor) { streamError = err }
                 break loop
             } catch {
                 dropEmptyAssistantTurn(id: assistantID, conversationID: conversationID)
-                streamError = .upstream(error.localizedDescription)
+                if isCurrentRun(runID, conversationID: conversationID, editor: runEditor) {
+                    streamError = .upstream(error.localizedDescription)
+                }
                 break loop
             }
         }
@@ -662,7 +733,13 @@ final class AgentService {
         }
     }
 
-    private func runPendingToolUses(assistantID: UUID, conversationID: UUID) async {
+    private func isCurrentRun(_ runID: UUID, conversationID: UUID, editor runEditor: EditorViewModel?) -> Bool {
+        !Task.isCancelled && currentRunID == runID && currentSessionId == conversationID && editor === runEditor
+    }
+
+    private func runPendingToolUses(assistantID: UUID, conversationID: UUID, runID: UUID,
+                                   runEditor: EditorViewModel?, settings: AgentRunSettings,
+                                   client: any AgentClient, traceID: UUID, delegation: AgentDelegation) async {
         guard let assistantIndex = assistantMessageIndex(id: assistantID) else { return }
         guard let executor = toolExecutor else {
             messages.append(AgentMessage(role: .user, blocks: [.text("Tool executor unavailable.")]))
@@ -677,19 +754,37 @@ final class AgentService {
 
         var resultBlocks: [AgentContentBlock] = []
         for use in toolUses where !alreadyResolved.contains(use.id) {
-            if Task.isCancelled {
+            if !isCurrentRun(runID, conversationID: conversationID, editor: runEditor) {
                 resultBlocks.append(.toolResult(toolUseId: use.id, content: [.text("Cancelled")], isError: true))
                 continue
             }
-            let result = await executor.execute(
-                name: use.name,
-                args: Self.parseJSONObject(use.input),
-                sessionID: conversationID.uuidString
-            )
+            let result: ToolResult
+            if use.name == AgentDelegationTool.name {
+                result = await executeDelegation(input: use.input, client: client, delegation: delegation,
+                    context: AgentRequestContext(conversationID: conversationID, traceID: traceID, spanID: UUID(),
+                        inputMessageID: assistantID, outputMessageID: UUID(), projectID: runEditor?.projectId),
+                    settings: settings)
+            } else {
+                result = await executor.execute(
+                    name: use.name,
+                    args: Self.parseJSONObject(use.input),
+                    sessionID: conversationID.uuidString
+                )
+            }
             resultBlocks.append(.toolResult(toolUseId: use.id, content: result.content, isError: result.isError))
         }
-        if !resultBlocks.isEmpty {
-            messages.append(AgentMessage(role: .user, blocks: resultBlocks))
+        appendToolResults(resultBlocks, conversationID: conversationID)
+    }
+
+    func appendToolResults(_ blocks: [AgentContentBlock], conversationID: UUID) {
+        guard !blocks.isEmpty else { return }
+        let message = AgentMessage(role: .user, blocks: blocks)
+        if currentSessionId == conversationID {
+            messages.append(message)
+        } else if let index = sessions.firstIndex(where: { $0.id == conversationID }) {
+            sessions[index].messages.append(message)
+            sessions[index].updatedAt = Date()
+            onSessionsChanged?()
         }
     }
 

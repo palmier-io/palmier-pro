@@ -64,6 +64,7 @@ enum AgentServiceError: Error {
     case unavailable(AgentModel)
     case refusal(AgentModel)
     case upstream(String)
+    case httpError(status: Int, code: String?, message: String)
 
     static func from(status: Int, body: String) -> AgentServiceError {
         let parsed = parseErrorEnvelope(body)
@@ -74,7 +75,7 @@ enum AgentServiceError: Error {
         default:
             if status == 401 { return .unauthenticated }
             if status == 402 { return .insufficientCredits(message) }
-            return .upstream(message.isEmpty ? "HTTP \(status)" : message)
+            return .httpError(status: status, code: parsed?.code, message: message.isEmpty ? "HTTP \(status)" : message)
         }
     }
 

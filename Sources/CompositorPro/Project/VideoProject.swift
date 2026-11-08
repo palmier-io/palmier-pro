@@ -200,6 +200,7 @@ class VideoProject: NSDocument {
 
     @MainActor
     func saveBeforeClosing() async throws {
+        await editorViewModel.agentService.cancelAndWait()
         isSavingBeforeClose = true
         defer { isSavingBeforeClose = false }
         let coordinator = editorViewModel.projectPackageCoordinator
@@ -453,6 +454,7 @@ class VideoProject: NSDocument {
     // MARK: - Close
 
     override func close() {
+        editorViewModel.agentService.cancel()
         super.close()
         editorViewModel.detachProxyStore()
         DispatchQueue.main.async {
