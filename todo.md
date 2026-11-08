@@ -2,6 +2,19 @@
 
 Goal: produce researched, narration-led explainers from one brief, with mandatory storyboard review before full production and no user “continue” prompts. Every image or video must be used at most once within the finished video. No images or videos may reveal people's faces.
 
+## User requirements — including mid-conversation instructions
+
+- [ ] Complete every unfinished item in this file before declaring the task finished. Continue implementation between coherent commits; a foundation commit is not roadmap completion.
+- [ ] Implement remaining work one coherent step at a time, test each step, and commit it. Preserve unrelated working-tree changes through selective staging.
+- [ ] Require explicit storyboard approval before full production. Group consequential script, research, rights, voice, and spending decisions; avoid routine shot questions and repeated “continue” prompts (tasks 5, 5a, 8).
+- [ ] Never reuse an image/video source within one finished video, including different trims, crops, encodings, nested carriers, or composite wrappers. Enforce this across planning, assembly, revisions, and delivery (task 5b).
+- [x] Give every timeline placement its own clip ID; expose stable input identity independently so the Agent can recognize duplicate source use. Identity/move regressions and MCP readback are documented in task 5b; complete output enforcement remains unchecked above.
+- [ ] Avoid imagery revealing people's faces; inspect actual selected spans/final framing and block unresolved coverage rather than trusting search tags or sparse thumbnails (tasks 5a, 8, 9, 12).
+- [x] Record what/how, acceptance conditions, evidence, and limitations in this file. Maintain these records as implementation continues; do not check off unverified capabilities.
+- [ ] Evaluate Pixabay alternatives and repeated-stock selection, including canonical exclusions, pagination, source diversity, rights, and measured retrieval/import quality (task 9a). Public documentation findings alone do not complete this requirement.
+- [ ] After implementation, run deep tests, fix failures, rerun affected/full suites, and repeat until acceptance passes. Preserve truthful unresolved UI, temporal, external-provider, and lifecycle checks (verification section and release gates).
+- [ ] Only after those gates pass, build/verify a Developer ID-signed app and safely update the existing Compositor Pro installation (signed app update section). Do not substitute ad-hoc signing or mark blocked signing complete.
+
 Based on [Malaysia chip explainer capability audit](docs/malaysia-chip-explainer-capability-audit.md). Reference: [CaspianReport's Malaysia semiconductor explainer](https://www.youtube.com/watch?v=zH5WptvpLCY).
 
 Unchecked items below are planned work, not completed capabilities. Completed items record their verification below. Reference inspection covered captions and storyboard samples; continuous motion and audible mix remain unverified. Provider findings below come from public documentation checked on 2026-11-08, not authenticated search-quality benchmarks.
