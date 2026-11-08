@@ -148,6 +148,35 @@ struct StockMediaTests {
         #expect(PexelsProvider.bestFile([]) == nil)
     }
 
+    @Test(arguments: [(width: 0, height: 1080), (width: -1, height: 1080),
+                      (width: 1920, height: 0), (width: 1920, height: -1), (width: Int.max, height: 2)])
+    func pexelsSkipsInvalidRenditionDimensions(dimensions: (width: Int, height: Int)) {
+        let valid = file()
+        let invalid = file(width: dimensions.width, height: dimensions.height)
+        #expect(PexelsProvider.bestFile([invalid, valid]) == valid)
+        #expect(PexelsProvider.bestFile([invalid]) == nil)
+    }
+
+    @Test(arguments: [(width: 0, height: 1080), (width: -1, height: 1080),
+                      (width: 1920, height: 0), (width: 1920, height: -1), (width: Int.max, height: 2)])
+    func pixabaySkipsInvalidPreferredAndFallbackRenditionDimensions(dimensions: (width: Int, height: Int)) {
+        let valid = PixabayProvider.VideoResponse.Rendition(url: "https://example.test/valid.mp4",
+            width: 1920, height: 1080, size: 10, thumbnail: nil)
+        let invalid = PixabayProvider.VideoResponse.Rendition(url: "https://example.test/invalid.mp4",
+            width: dimensions.width, height: dimensions.height, size: 1, thumbnail: nil)
+        #expect(PixabayProvider.bestRendition(["medium": invalid, "tiny": valid]) == valid)
+        #expect(PixabayProvider.bestRendition(["large": invalid, "tiny": valid]) == valid)
+        #expect(PixabayProvider.bestRendition(["medium": invalid]) == nil)
+    }
+
+    @Test func representableMaximumPixelCountIsNotSilentlyClamped() {
+        let pexels = file(width: Int.max, height: 1)
+        #expect(PexelsProvider.bestFile([pexels]) == pexels)
+        let pixabay = PixabayProvider.VideoResponse.Rendition(url: "https://example.test/max.mp4",
+            width: Int.max, height: 1, size: nil, thumbnail: nil)
+        #expect(PixabayProvider.bestRendition(["medium": pixabay]) == pixabay)
+    }
+
     @Test func attributionPrefersTheSourcesOwnWording() {
         let supplied = StockMediaHit(
             id: "a", kind: .audio, title: nil, url: "https://x/y.mp3", thumbnailURL: nil,

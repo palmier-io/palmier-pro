@@ -70,6 +70,14 @@ enum StockMediaKind: String, CaseIterable, Sendable {
     }
 }
 
+enum StockMediaDimensions {
+    static func pixelCount(width: Int?, height: Int?) -> Int? {
+        guard let width, let height, width > 0, height > 0 else { return nil }
+        let product = width.multipliedReportingOverflow(by: height)
+        return product.overflow ? nil : product.partialValue
+    }
+}
+
 struct StockMediaQuery: Sendable {
     var text: String
     var kind: StockMediaKind

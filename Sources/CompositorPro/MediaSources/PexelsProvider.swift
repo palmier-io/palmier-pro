@@ -180,19 +180,13 @@ struct PexelsProvider: StockMediaProvider {
     /// dimensions and are streams rather than files, so they are never importable.
     static func bestFile(_ files: [VideoResponse.File]?) -> VideoResponse.File? {
         guard let files, !files.isEmpty else { return nil }
-        let progressive = files.filter { $0.file_type == "video/mp4" && $0.width != nil && $0.height != nil }
-        let pool = progressive.isEmpty ? [] : progressive
-        guard !pool.isEmpty else { return nil }
-        let hd = pool.filter { $0.quality == "hd" }
-        if !hd.isEmpty {
-            // Among HD renditions take the smallest: 1080p is plenty for a cut and the
-            // 4096-wide variants are needlessly heavy to download.
-            return hd.min { lhs, rhs in
-                (lhs.width ?? 0) * (lhs.height ?? 0) < (rhs.width ?? 0) * (rhs.height ?? 0)
-            }
+        let progressive = files.compactMap { file -> (file: VideoResponse.File, pixels: Int)? in
+            guard file.file_type == "video/mp4",
+                  let pixels = StockMediaDimensions.pixelCount(width: file.width, height: file.height) else { return nil }
+            return (file, pixels)
         }
-        return pool.min { lhs, rhs in
-            (lhs.width ?? 0) * (lhs.height ?? 0) < (rhs.width ?? 0) * (rhs.height ?? 0)
-        }
+        let hd = progressive.filter { $0.file.quality == "hd" }
+        let pool = hd.isEmpty ? progressive : hd
+        return pool.min { $0.pixels < $1.pixels }?.file
     }
 }

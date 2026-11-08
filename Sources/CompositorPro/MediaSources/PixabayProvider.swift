@@ -120,17 +120,15 @@ struct PixabayProvider: StockMediaProvider {
     /// use the smallest usable rendition; an empty URL is a stream placeholder, not a file.
     static func bestRendition(_ renditions: [String: VideoResponse.Rendition]?) -> VideoResponse.Rendition? {
         guard let renditions, !renditions.isEmpty else { return nil }
-        let usable = renditions.values.filter { rendition in
+        let usable = renditions.values.compactMap { rendition -> (file: VideoResponse.Rendition, pixels: Int)? in
             guard let url = rendition.url, !url.isEmpty,
-                  let width = rendition.width, width > 0,
-                  let height = rendition.height, height > 0 else { return false }
-            return true
+                  let pixels = StockMediaDimensions.pixelCount(width: rendition.width, height: rendition.height) else { return nil }
+            return (rendition, pixels)
         }
-        if let medium = renditions["medium"], usable.contains(medium) { return medium }
+        if let medium = renditions["medium"], usable.contains(where: { $0.file == medium }) { return medium }
         return usable.min {
-            ($0.size ?? Int.max, ($0.width ?? 0) * ($0.height ?? 0)) <
-            ($1.size ?? Int.max, ($1.width ?? 0) * ($1.height ?? 0))
-        }
+            ($0.file.size ?? Int.max, $0.pixels) < ($1.file.size ?? Int.max, $1.pixels)
+        }?.file
     }
 
     private static func httpsURL(_ value: String?) -> String? {
