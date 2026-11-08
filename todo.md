@@ -147,6 +147,8 @@ Add this exact machine-facing rule to Agent guidance during implementation, and 
 
 **What:** Prevent the same image/video from appearing twice even when it has different clip IDs, download URLs, crops, trims, or wrappers. A prompt instruction alone is insufficient.
 
+**Timeline identity fix:** Repeated IDs in one `move_clips` request previously appended multiple copies with the same clip ID. Shared move validation now refuses repeated IDs before mutation/undo, including full and short IDs resolving to the same clip through MCP. Placement still creates distinct clip IDs while retaining the original `mediaRef`; source identity is a separate concern. `swift build`, localization sync, and working-tree `swift test` passed (2,161 tests in 330 suites). Regression tests reproduced the original duplication through domain and MCP calls, verify unchanged timeline/undo on refusal, and verify valid movement and exact undo. Manual UI check: place one asset twice, move either placement, undo, and confirm independent selection; repeated media use remains prohibited for the finished explainer, not for general editing experiments.
+
 **How:**
 - Preserve canonical origin identity through search → import → derivative rendering → placement: original provider plus original asset ID/source page, local content fingerprint, and derivative input lineage. Aggregator IDs such as Pexafy's `photo_id` must also resolve to the underlying original source identity.
 - Compute content hashes off-main at import/preparation boundaries; cache by validated asset revision rather than read files during timeline interaction or every export check. Provider identity catches different renditions; hashes catch identical local copies. Unknown identity is unresolved, not proof of uniqueness.

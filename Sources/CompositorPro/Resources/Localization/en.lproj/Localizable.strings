@@ -180,6 +180,7 @@
 "Canceled" = "Canceled";
 "Canceling" = "Canceling";
 "Cancels %@" = "Cancels %@";
+"Cannot move the same clip more than once." = "Cannot move the same clip more than once.";
 "Canvas" = "Canvas";
 "Canvas Guides" = "Canvas Guides";
 "Canvas Zoom" = "Canvas Zoom";

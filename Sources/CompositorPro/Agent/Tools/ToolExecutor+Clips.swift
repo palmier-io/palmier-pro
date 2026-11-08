@@ -497,6 +497,9 @@ extension ToolExecutor {
     func moveClips(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         let input: MoveClipsInput = try decodeToolArgs(args, path: "move_clips")
         guard !input.moves.isEmpty else { throw ToolError("Missing or empty 'moves' array") }
+        if let id = EditorViewModel.repeatedMoveClipId(input.moves.map(\.clipId)) {
+            throw ToolError("move_clips: repeated clipId '\(id)'; each clip may be moved only once per request")
+        }
         if let raws = args["moves"] as? [Any] {
             for (idx, raw) in raws.enumerated() {
                 if let d = raw as? [String: Any] {

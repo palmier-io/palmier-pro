@@ -42,6 +42,10 @@ extension EditorViewModel {
     /// Moved clips share a single delta from the drag, so they don't collide with each other.
     func moveClips(_ moves: [(clipId: String, toTrack: Int, toFrame: Int)]) {
         guard !moves.isEmpty else { return }
+        guard Self.repeatedMoveClipId(moves.map(\.clipId)) == nil else {
+            refuseWithToast(L10n.string("Cannot move the same clip more than once."))
+            return
+        }
 
         // Collect current state + validate track-type compatibility.
         var clipInfos: [(clip: Clip, fromTrack: Int, toTrack: Int, toFrame: Int)] = []
@@ -88,6 +92,11 @@ extension EditorViewModel {
             for i in timeline.tracks.indices { sortClips(trackIndex: i) }
             pruneEmptyTracks()
         }
+    }
+
+    nonisolated static func repeatedMoveClipId(_ clipIds: [String]) -> String? {
+        var seen = Set<String>()
+        return clipIds.first { !seen.insert($0).inserted }
     }
 
     // MARK: - Split / remove
