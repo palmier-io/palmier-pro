@@ -30,6 +30,6 @@ Review is bound to the exact supporting-content revision. A stale revision is re
 
 ## Remaining production bindings
 
-The current ledger provides chapter/shot factual links and dependency receipts. Stable script-beat bindings, semantic chart/map consumers, final-output factual checking, and storyboard review are later roadmap layers. A successful ledger test does not prove every fact in a rendered film was sourced or visually correct.
+The current ledger provides chapter/shot and script-beat factual links and dependency receipts, including scenes linked to factual beats. Semantic chart/map consumers, final-output factual checking, and storyboard review remain later roadmap layers. A successful ledger test does not prove every fact in a rendered film was sourced or visually correct.
 
 Manual UI confirmation remains: on an isolated project, review a revised claim through MCP, confirm the Undo menu shows localized “Review Claims,” then undo and confirm the prior research-review state returns. No storyboard UI is present yet.

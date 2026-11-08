@@ -56,11 +56,18 @@ extension EditorViewModel {
                   plan.width == current.width,
                   plan.height == current.height,
                    plan.createdAt == current.createdAt,
-                  plan.sourceLedgerRevision == current.sourceLedgerRevision,
+                   plan.sourceLedgerRevision == current.sourceLedgerRevision,
+                   plan.narrationRevision == current.narrationRevision,
                   plan.status == current.status else {
                 throw EditPlanValidationError.invalidReference("Plan identity, timeline, geometry, and status are immutable in an update.")
             }
             plan.status = .proposed
+            plan.scriptBeats = try plan.scriptBeats?.map { try $0.validated() }
+            plan.narration = try plan.narration?.validated()
+            if plan.scriptBeats != current.scriptBeats || plan.narration != current.narration {
+                plan.narrationRevision = plan.scriptBeats == nil ? nil : UUID().uuidString
+                plan.narrationTiming = nil
+            }
             plan.sourceLedger = try plan.sourceLedger?.validated(previous: current.sourceLedger, reviewingClaimIds: reviewingClaimIds)
             if let ledger = plan.sourceLedger, current.sourceLedger.map({ !ledger.hasSameEvidence(as: $0) }) ?? true {
                 plan.sourceLedgerRevision = UUID().uuidString
@@ -150,7 +157,7 @@ extension EditPlan {
     static func ensureGlobalIDs(_ plans: [EditPlan]) throws {
         var seen = Set<String>()
         for plan in plans {
-            for id in [plan.id] + plan.sections.map(\.id) + plan.shots.map(\.id) {
+            for id in [plan.id] + plan.sections.map(\.id) + plan.shots.map(\.id) + (plan.scriptBeats ?? []).map(\.beatId) {
                 guard seen.insert(id).inserted else { throw EditPlanValidationError.duplicateId(id) }
             }
         }

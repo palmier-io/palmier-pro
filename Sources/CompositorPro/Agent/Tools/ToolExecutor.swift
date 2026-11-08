@@ -22,6 +22,7 @@ final class ToolExecutor {
     let exportQueue: ExportQueue
     let skillStore: SkillStore
     let visualSearchModel: any VisualSearchModelLoading
+    let narrationTimingService: NarrationTimingService
     let capabilityInputLoader: @Sendable () async throws -> RuntimeCapabilities.LocalInputs
 
     var editor: EditorViewModel? {
@@ -42,7 +43,8 @@ final class ToolExecutor {
         exportQueue: ExportQueue = .shared,
         skillStore: SkillStore = .shared,
         visualSearchModel: any VisualSearchModelLoading = VisualModelLoader.shared,
-        capabilityInputLoader: @escaping @Sendable () async throws -> RuntimeCapabilities.LocalInputs = RuntimeCapabilities.LocalInputs.load
+        capabilityInputLoader: @escaping @Sendable () async throws -> RuntimeCapabilities.LocalInputs = RuntimeCapabilities.LocalInputs.load,
+        narrationTimingService: NarrationTimingService = .shared
     ) {
         self.inAppEditor = editor
         self.frontmostProjectProvider = nil
@@ -50,13 +52,15 @@ final class ToolExecutor {
         self.skillStore = skillStore
         self.visualSearchModel = visualSearchModel
         self.capabilityInputLoader = capabilityInputLoader
+        self.narrationTimingService = narrationTimingService
     }
 
     init(
         projectProvider: @escaping () -> VideoProject?,
         exportQueue: ExportQueue = .shared,
         visualSearchModel: any VisualSearchModelLoading = VisualModelLoader.shared,
-        capabilityInputLoader: @escaping @Sendable () async throws -> RuntimeCapabilities.LocalInputs = RuntimeCapabilities.LocalInputs.load
+        capabilityInputLoader: @escaping @Sendable () async throws -> RuntimeCapabilities.LocalInputs = RuntimeCapabilities.LocalInputs.load,
+        narrationTimingService: NarrationTimingService = .shared
     ) {
         let project = projectProvider()
         self.inAppEditor = nil
@@ -66,6 +70,7 @@ final class ToolExecutor {
         self.skillStore = .shared
         self.visualSearchModel = visualSearchModel
         self.capabilityInputLoader = capabilityInputLoader
+        self.narrationTimingService = narrationTimingService
     }
 
     func bindProject(_ project: VideoProject?) {
@@ -407,8 +412,8 @@ final class ToolExecutor {
         case .addCaptions:   return try await addCaptions(editor, args)
         case .exportProject: return try await exportProject(editor, args)
         case .manageExports: return try manageExports(editor, args)
-        case .planEdit:     return try planEdit(editor, args)
-        case .applyPlan:    return try applyPlan(editor, args)
+        case .planEdit:     return try await planEdit(editor, args)
+        case .applyPlan:    return try await applyPlan(editor, args)
         case .generateVideo: return try generate(editor, args, type: .video)
         case .generateImage: return try generate(editor, args, type: .image)
         case .generateAudio: return try await generateAudio(editor, args)

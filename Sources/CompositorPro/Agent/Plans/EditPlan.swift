@@ -28,6 +28,7 @@ struct EditPlanSection: Codable, Sendable, Equatable, Identifiable {
     var endFrame: Int
     var referenceUse: ReferenceRecipeUse?
     var claimIds: [String]?
+    var narrationLink: SceneNarrationLink?
 }
 
 struct EditPlanShot: Codable, Sendable, Equatable, Identifiable {
@@ -45,6 +46,7 @@ struct EditPlanShot: Codable, Sendable, Equatable, Identifiable {
     var notes: String = ""
     var referenceUse: ReferenceRecipeUse?
     var claimIds: [String]?
+    var narrationLink: SceneNarrationLink?
 }
 
 struct EditPlan: Codable, Sendable, Equatable, Identifiable {
@@ -64,10 +66,15 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
     var referenceRecipe: ReferenceRecipe?
     var sourceLedger: SourceClaimLedger?
     var sourceLedgerRevision: String?
+    var scriptBeats: [ScriptBeat]?
+    var narration: NarrationSource?
+    var narrationRevision: String?
+    var narrationTiming: NarrationTiming?
 
     private enum CodingKeys: String, CodingKey {
         case id, name, goal, timelineId, fps, width, height, status
         case sections, shots, notes, createdAt, updatedAt, referenceRecipe, sourceLedger, sourceLedgerRevision
+        case scriptBeats, narration, narrationRevision, narrationTiming
     }
 
     init(
@@ -85,7 +92,9 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         referenceRecipe: ReferenceRecipe? = nil,
-        sourceLedger: SourceClaimLedger? = nil
+        sourceLedger: SourceClaimLedger? = nil,
+        scriptBeats: [ScriptBeat]? = nil,
+        narration: NarrationSource? = nil
     ) {
         self.id = id
         self.name = name
@@ -103,6 +112,9 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
         self.referenceRecipe = referenceRecipe
         self.sourceLedger = sourceLedger
         self.sourceLedgerRevision = sourceLedger == nil ? nil : UUID().uuidString
+        self.scriptBeats = scriptBeats
+        self.narration = narration
+        self.narrationRevision = scriptBeats == nil ? nil : UUID().uuidString
     }
 
     init(from decoder: Decoder) throws {
@@ -123,6 +135,10 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
         referenceRecipe = try container.decodeIfPresent(ReferenceRecipe.self, forKey: .referenceRecipe)
         sourceLedger = try container.decodeIfPresent(SourceClaimLedger.self, forKey: .sourceLedger)
         sourceLedgerRevision = try container.decodeIfPresent(String.self, forKey: .sourceLedgerRevision)
+        scriptBeats = try container.decodeIfPresent([ScriptBeat].self, forKey: .scriptBeats)
+        narration = try container.decodeIfPresent(NarrationSource.self, forKey: .narration)
+        narrationRevision = try container.decodeIfPresent(String.self, forKey: .narrationRevision)
+        narrationTiming = try container.decodeIfPresent(NarrationTiming.self, forKey: .narrationTiming)
     }
 }
 
@@ -331,7 +347,7 @@ extension EditPlan {
 
     static func ensureUniqueIDs(_ plan: EditPlan) throws {
         var seen = Set<String>()
-        for id in [plan.id] + plan.sections.map(\.id) + plan.shots.map(\.id) {
+        for id in [plan.id] + plan.sections.map(\.id) + plan.shots.map(\.id) + (plan.scriptBeats ?? []).map(\.beatId) {
             guard seen.insert(id).inserted else { throw EditPlanValidationError.duplicateId(id) }
         }
     }
@@ -355,6 +371,25 @@ extension EditPlan {
             if let referenceRecipe { out["referenceRecipe"] = referenceRecipe.receipt() }
             if let sourceLedger { out["sourceLedger"] = sourceLedger.receipt() }
             if let sourceLedgerRevision { out["sourceLedgerRevision"] = sourceLedgerRevision }
+            if let scriptBeats { out["scriptBeats"] = scriptBeats.map { $0.receipt() } }
+            if let narration {
+                var row: [String: Any] = ["mediaRef": narration.mediaRef, "startFrame": narration.startFrame]
+                if let language = narration.language { row["language"] = language }
+                out["narration"] = row
+            }
+            if let narrationRevision { out["narrationRevision"] = narrationRevision }
+            if let narrationTiming {
+                out["narrationTiming"] = [
+                    "revision": narrationTiming.revision, "sourceFingerprint": narrationTiming.sourceFingerprint,
+                    "duration": ["value": narrationTiming.duration.value, "timescale": narrationTiming.duration.timescale],
+                    "unresolvedBeatIds": narrationTiming.unresolvedBeatIds,
+                    "anchors": narrationTiming.anchors.map {
+                        ["beatId": $0.beatId,
+                         "speechStart": ["value": $0.speechStart.value, "timescale": $0.speechStart.timescale],
+                         "speechEnd": ["value": $0.speechEnd.value, "timescale": $0.speechEnd.timescale]] as [String: Any]
+                    },
+                ] as [String: Any]
+            }
             out["sections"] = sections.map { section in
                 var row: [String: Any] = [
                     "sectionId": section.id,
@@ -365,6 +400,7 @@ extension EditPlan {
                 ]
                 if let use = section.referenceUse { row["referenceUse"] = use.receipt() }
                 if let claimIds = section.claimIds { row["claimIds"] = claimIds }
+                addNarrationReceipt(section.narrationLink, to: &row)
                 return row
             }
             out["shots"] = shots.map { shot in
@@ -384,6 +420,7 @@ extension EditPlan {
                 if !shot.notes.isEmpty { row["notes"] = shot.notes }
                 if let use = shot.referenceUse { row["referenceUse"] = use.receipt() }
                 if let claimIds = shot.claimIds { row["claimIds"] = claimIds }
+                addNarrationReceipt(shot.narrationLink, to: &row)
                 return row
             }
             if !notes.isEmpty { out["notes"] = notes }
@@ -394,6 +431,28 @@ extension EditPlan {
     mutating func validateArtifacts() throws {
         referenceRecipe = try referenceRecipe?.validated()
         sourceLedger = try sourceLedger?.validated()
+        if let beats = scriptBeats {
+            guard (1...256).contains(beats.count), let revision = narrationRevision, UUID(uuidString: revision) != nil else {
+                throw EditPlanValidationError.invalidReference("Scripts require 1–256 beats and a valid narration revision.")
+            }
+            scriptBeats = try beats.map { original in
+                var beat = try original.validated()
+                beat.claimIds = try validatedClaimIDs(beat.claimIds)
+                return beat
+            }
+            let normalized = scriptBeats ?? []
+            guard Set(normalized.map(\.beatId)).count == normalized.count,
+                  normalized.reduce(0, { $0 + $1.narrationText.count }) <= SpeechSynthesizer.maxCharacters else {
+                throw EditPlanValidationError.invalidReference("Script IDs must be unique and total narration must not exceed 20,000 characters.")
+            }
+        } else if narration != nil || narrationTiming != nil || narrationRevision != nil {
+            throw EditPlanValidationError.invalidReference("Narration requires scriptBeats.")
+        }
+        narration = try narration?.validated()
+        if let narrationTiming {
+            guard narration != nil else { throw EditPlanValidationError.invalidReference("Timing requires a narration source.") }
+            try narrationTiming.validated(beats: scriptBeats ?? [], revision: narrationRevision)
+        }
         if sourceLedger != nil {
             guard let revision = sourceLedgerRevision, UUID(uuidString: revision) != nil else {
                 throw EditPlanValidationError.invalidReference("A source ledger requires a valid review revision.")
@@ -402,10 +461,12 @@ extension EditPlan {
         for index in sections.indices {
             sections[index].referenceUse = try sections[index].referenceUse?.validated(recipe: referenceRecipe)
             sections[index].claimIds = try validatedClaimIDs(sections[index].claimIds)
+            sections[index].narrationLink = try sections[index].narrationLink?.validated(beats: scriptBeats ?? [])
         }
         for index in shots.indices {
             shots[index].referenceUse = try shots[index].referenceUse?.validated(recipe: referenceRecipe)
             shots[index].claimIds = try validatedClaimIDs(shots[index].claimIds)
+            shots[index].narrationLink = try shots[index].narrationLink?.validated(beats: scriptBeats ?? [])
         }
     }
 
@@ -418,15 +479,38 @@ extension EditPlan {
     }
 
     var unresolvedClaimIDs: [String] {
-        let used = Set(sections.flatMap { $0.claimIds ?? [] } + shots.flatMap { $0.claimIds ?? [] })
+        let used = Set(sections.flatMap { $0.claimIds ?? [] } + shots.flatMap { $0.claimIds ?? [] }
+                       + (scriptBeats ?? []).flatMap { $0.claimIds ?? [] })
         return (sourceLedger?.claims ?? []).filter { used.contains($0.claimId) && $0.status != .reviewed }.map(\.claimId)
     }
 
     func claimDependents(_ claimIds: Set<String>) -> [String: [String]] {
-        [
-            "sectionIds": sections.filter { !claimIds.isDisjoint(with: $0.claimIds ?? []) }.map(\.id),
-            "shotIds": shots.filter { !claimIds.isDisjoint(with: $0.claimIds ?? []) }.map(\.id),
+        let beats = scriptBeats ?? []
+        let dependentBeats = beats.filter { !claimIds.isDisjoint(with: $0.claimIds ?? []) }.map(\.beatId)
+        let indices = Dictionary(uniqueKeysWithValues: beats.enumerated().map { ($0.element.beatId, $0.offset) })
+        let dependentIndices = Set(dependentBeats.compactMap { indices[$0] })
+        func linksDependentBeat(_ link: SceneNarrationLink?) -> Bool {
+            guard let link, let first = indices[link.firstBeatId], let last = indices[link.lastBeatId], first <= last else { return false }
+            return dependentIndices.contains { (first...last).contains($0) }
+        }
+        return [
+            "sectionIds": sections.filter { !claimIds.isDisjoint(with: $0.claimIds ?? []) || linksDependentBeat($0.narrationLink) }.map(\.id),
+            "shotIds": shots.filter { !claimIds.isDisjoint(with: $0.claimIds ?? []) || linksDependentBeat($0.narrationLink) }.map(\.id),
+            "beatIds": dependentBeats,
         ]
+    }
+
+    private func addNarrationReceipt(_ link: SceneNarrationLink?, to row: inout [String: Any]) {
+        guard let link else { return }
+        row["narrationLink"] = ["firstBeatId": link.firstBeatId, "lastBeatId": link.lastBeatId,
+                                "minimumHoldSeconds": link.minimumHoldSeconds] as [String: Any]
+        do {
+            let range = try resolvedNarrationRange(link)
+            row["resolvedTiming"] = ["startFrame": range.lowerBound, "endFrame": range.upperBound,
+                                     "revealFrame": range.lowerBound, "holdFrames": range.count] as [String: Any]
+        } catch {
+            row["timingBlocker"] = error.localizedDescription
+        }
     }
 }
 

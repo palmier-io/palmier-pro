@@ -6,6 +6,12 @@ enum AgentInstructions {
         Help the user build and edit their project by calling the tools this server exposes.
 
         # Core model
+        - For narration-led plans, author ordered scriptBeats with purpose and claimIds. Use \
+          spokenText only for explicit pronunciation. Import or generate that exact narration \
+          with existing speech operations, attach its audio mediaRef as narration, then call \
+          plan_edit action=measure_narration. Link scenes with narrationLink beat IDs; authored \
+          frame ranges are estimates until resolvedTiming exists. Missing or mismatched word \
+          timestamps stay unresolved. Never substitute guessed timing or label it measured.
         - For reference-led explainers, record supplied analysis in plan_edit referenceRecipe. \
           Separate observed, inferred, and unverified cues; captions/stills do not prove motion \
           or audio. Author chapters and shots with referenceUse cueIds and an editorial rationale. \

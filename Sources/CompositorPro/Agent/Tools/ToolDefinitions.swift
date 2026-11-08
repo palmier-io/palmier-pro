@@ -222,8 +222,8 @@ enum ToolDefinitions {
             description: "Maintains one persistent, reviewable edit plan for the active timeline: proposed structure, B-roll shots, timing, and source provenance. Accepts an externally prepared referenceRecipe with timestamped editorial cues and inspection limitations; chapter/shot referenceUse cites its cueIds and explains the adaptation. Reference duration never sets output runtime. This stores the Agent's authored outline, not automatic reference acquisition or analysis. It stores and revises the plan, and changes its review status, but performs no timeline edits. New plans start as proposed and belong to the active timeline; timeline identity and geometry cannot change afterward. A web candidate must have an HTTPS candidateURL, license, and attribution. plan_edit can mark approved, proposed, or superseded; apply_plan(commit:true) assembles and marks applied.",
             inputSchema: objectSchema(
                 properties: [
-                    "action": ["type": "string", "enum": ["create", "read", "update", "status", "delete", "review_claims"], "description": "Plan operation. review_claims confirms selected facts after checking their exact supporting evidence; requires the current sourceLedgerRevision as ledgerRevision."],
-                    "planId": ["type": "string", "description": "Exact plan id from a plan_edit receipt. Required for update, status, delete, and single-plan reads."],
+                    "action": ["type": "string", "enum": ["create", "read", "update", "status", "delete", "review_claims", "measure_narration"], "description": "Plan operation. review_claims confirms selected facts after checking their exact supporting evidence; requires the current sourceLedgerRevision as ledgerRevision. measure_narration measures the attached ready audio and locally aligns script beats; it returns aligned:false and unresolvedBeatIds on mismatched or missing words rather than guessing timing. No timeline edits."],
+                    "planId": ["type": "string", "description": "Exact plan id from a plan_edit receipt. Required for update, status, delete, review_claims, measure_narration, and single-plan reads."],
                     "plan": [
                         "type": "object",
                         "description": "Create only. A plan draft.",
@@ -234,6 +234,8 @@ enum ToolDefinitions {
                             "timelineId": ["type": "string", "description": "Optional. Must be the active timeline. Omitted means the active timeline."],
                             "referenceRecipe": referenceRecipeSchema,
                             "sourceLedger": sourceLedgerSchema,
+                            "scriptBeats": scriptBeatsSchema,
+                            "narration": narrationSourceSchema,
                             "sections": [
                                 "type": "array",
                                 "description": "Optional structural sections.",
@@ -243,6 +245,7 @@ enum ToolDefinitions {
                                     "summary": ["type": "string", "description": "Optional section summary."],
                                     "referenceUse": referenceUseSchema,
                                     "claimIds": claimIdsSchema,
+                                    "narrationLink": sceneNarrationLinkSchema,
                                     "startFrame": ["type": "integer", "description": "Timeline frame, inclusive."],
                                     "endFrame": ["type": "integer", "description": "Timeline frame, exclusive. Must be greater than startFrame."],
                                 ]),
@@ -265,6 +268,7 @@ enum ToolDefinitions {
                                     "notes": ["type": "string", "description": "Optional shot note."],
                                     "referenceUse": referenceUseSchema,
                                     "claimIds": claimIdsSchema,
+                                    "narrationLink": sceneNarrationLinkSchema,
                                 ]),
                             ],
                             "notes": ["type": "string", "description": "Optional plan notes."],
@@ -272,12 +276,14 @@ enum ToolDefinitions {
                     ],
                     "patch": [
                         "type": "object",
-                        "description": "Update only. Full replacement values for supplied name, goal, sections, shots, notes, referenceRecipe, and sourceLedger. Preserve cited cueIds/claimIds or replace their uses atomically. Changed reviewed research becomes unresolved; receipts report invalidatedClaimIds and chapter/shot dependents. Use review_claims with the current revision to confirm revised evidence, not another content update.",
+                        "description": "Update only. Full replacement values for supplied name, goal, sections, shots, notes, referenceRecipe, sourceLedger, scriptBeats, and narration. Preserve cited cueIds/claimIds/beat IDs or replace their uses atomically. Script or narration changes invalidate measured timing. Changed reviewed research becomes unresolved; receipts report invalidatedClaimIds and chapter/shot/beat dependents. Use review_claims with the current revision to confirm revised evidence, not another content update.",
                         "properties": [
                             "name": ["type": "string", "description": "Replacement plan name."],
                             "goal": ["type": "string", "description": "Replacement goal."],
                             "referenceRecipe": referenceRecipeSchema,
                             "sourceLedger": sourceLedgerSchema,
+                            "scriptBeats": scriptBeatsSchema,
+                            "narration": narrationSourceSchema,
                             "sections": [
                                 "type": "array",
                                 "description": "Complete replacement sections. Preserve existing sectionIds to keep them; omitted ids become new sections.",
@@ -287,6 +293,7 @@ enum ToolDefinitions {
                                     "summary": ["type": "string", "description": "Optional section summary."],
                                     "referenceUse": referenceUseSchema,
                                     "claimIds": claimIdsSchema,
+                                    "narrationLink": sceneNarrationLinkSchema,
                                     "startFrame": ["type": "integer", "description": "Timeline frame, inclusive."],
                                     "endFrame": ["type": "integer", "description": "Timeline frame, exclusive. Must be greater than startFrame."],
                                 ]),
@@ -309,6 +316,7 @@ enum ToolDefinitions {
                                     "notes": ["type": "string", "description": "Optional shot note."],
                                     "referenceUse": referenceUseSchema,
                                     "claimIds": claimIdsSchema,
+                                    "narrationLink": sceneNarrationLinkSchema,
                                 ]),
                             ],
                             "notes": ["type": "string", "description": "Replacement plan notes."],
@@ -325,7 +333,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .applyPlan,
-            description: "Validates an approved plan against the current timeline and referenced media. commit:false (default) checks readiness without editing. commit:true assembles the planned clips and marks the plan applied as one undoable action; it refuses unresolved media or blockers. Returns added clip IDs. An already-applied plan returns noOp:true without assembling again. Do not place its shots separately after a successful commit.",
+            description: "Validates an approved plan against the current timeline and referenced media. commit:false (default) checks readiness without editing. commit:true assembles the planned clips and marks the plan applied as one undoable action; it refuses unresolved media or blockers. Scripts require measured, aligned narration. Linked scene ranges use resolvedTiming, not estimated frames; attached narration assembles with the shots. Changed narration files and ranges shorter than minimum readable holds block readiness. Returns added clip IDs. An already-applied plan returns noOp:true without assembling again. Do not place its shots separately after a successful commit.",
             inputSchema: objectSchema(
                 properties: [
                     "planId": ["type": "string", "description": "Exact plan id from a plan_edit receipt."],
@@ -1904,6 +1912,33 @@ enum ToolDefinitions {
                 "editorialRule": ["type": "string", "description": "Transferable explaining principle, not copied narration, assets, branding, or voice identity."],
             ], required: ["cueId", "kind", "evidence", "observation", "editorialRule"])],
         ], required: ["title", "sourceURL", "coverage", "cues", "limitations"])
+    }
+
+    private static var scriptBeatsSchema: [String: Any] {
+        ["type": "array", "minItems": 1, "maxItems": 256, "description": "Ordered script paragraphs; at most 20,000 spoken characters total. Source-linked facts use claimIds. Updating text or pronunciation invalidates measured narration timing.",
+         "items": objectSchema(properties: [
+            "beatId": ["type": "string", "description": "Stable paragraph/beat ID, unique across plan elements."],
+            "text": ["type": "string", "description": "Authored narration paragraph."],
+            "spokenText": ["type": "string", "description": "Optional explicit pronunciation wording; this is what must be spoken and aligned, not text."],
+            "purpose": ["type": "string", "description": "Editorial purpose of this beat."],
+            "claimIds": claimIdsSchema,
+         ], required: ["beatId", "text", "purpose"])]
+    }
+
+    private static var narrationSourceSchema: [String: Any] {
+        objectSchema(properties: [
+            "mediaRef": ["type": "string", "description": "Ready library audio asset from import_media or generate_speech. Measurement never synthesizes or spends credits."],
+            "language": ["type": "string", "description": "Optional local transcription locale tag."],
+            "startFrame": ["type": "integer", "description": "Narration placement in project frames. Whole source at normal speed; no trims or speed changes."],
+        ], required: ["mediaRef", "startFrame"])
+    }
+
+    private static var sceneNarrationLinkSchema: [String: Any] {
+        objectSchema(properties: [
+            "firstBeatId": ["type": "string", "description": "First beat covered by this scene."],
+            "lastBeatId": ["type": "string", "description": "Last beat covered, in script order."],
+            "minimumHoldSeconds": ["type": "number", "minimum": 1, "maximum": 60, "description": "Minimum readable scene hold, defaults to 1 second. Shorter measured ranges block assembly; no silent stretch."],
+        ], required: ["firstBeatId", "lastBeatId"])
     }
 
     private static var sourceLedgerSchema: [String: Any] {
