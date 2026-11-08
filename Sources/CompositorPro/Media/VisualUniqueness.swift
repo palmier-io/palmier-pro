@@ -70,15 +70,22 @@ enum VisualUniqueness {
             }
         }
         resolver[timeline.id] = timeline
+        var traversal = Traversal(timelines: resolver)
+        try traversal.visit(timeline, path: [], lane: [], ancestors: [])
+        let report = traversal.report
+        return try await audit(occurrences: report.occurrences, manifest: manifest, unresolved: report.unresolved)
+    }
+
+    @concurrent
+    static func audit(occurrences: [VisualOccurrence], manifest: MediaManifest,
+                      unresolved: [VisualUniquenessIssue] = []) async throws -> VisualUniquenessReport {
         var media: [String: MediaManifestEntry] = [:]
         for entry in manifest.entries {
             guard media.updateValue(entry, forKey: entry.id) == nil else {
                 return VisualUniquenessReport(unresolved: [.init(reason: "duplicate_media_ref", clipId: nil, mediaRef: entry.id)])
             }
         }
-        var traversal = Traversal(timelines: resolver)
-        try traversal.visit(timeline, path: [], lane: [], ancestors: [])
-        var report = traversal.report
+        var report = VisualUniquenessReport(occurrences: occurrences, unresolved: unresolved)
         report.occurrences = try coalesce(report.occurrences)
         var aliases = Aliases()
         var tokens: [String: [String]] = [:]

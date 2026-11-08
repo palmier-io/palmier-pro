@@ -219,10 +219,10 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .planEdit,
-            description: "Maintains one persistent, reviewable edit plan for the active timeline: proposed structure, B-roll shots, timing, and source provenance. Accepts an externally prepared referenceRecipe with timestamped editorial cues and inspection limitations; chapter/shot referenceUse cites its cueIds and explains the adaptation. Reference duration never sets output runtime. This stores the Agent's authored outline, not automatic reference acquisition or analysis. It stores and revises the plan, and changes its review status, but performs no timeline edits. New plans start as proposed and belong to the active timeline; timeline identity and geometry cannot change afterward. A web candidate must have an HTTPS candidateURL, license, and attribution. plan_edit can mark approved, proposed, or superseded; apply_plan(commit:true) assembles and marks applied.",
+            description: "Maintains one persistent edit plan with structure, source-linked script beats, shots, timing, claims, and provenance. Supplied referenceRecipe cues adapt editorial principles; reference duration never sets output runtime. New plans start proposed on the active timeline. prepare_storyboard starts a managed production review with derived scene cards and one persistent approval owner; inspect actual selections and obtain explicit user approval of the exact revision. Managed approval cannot be replaced by a plain status change or override visual/rights blockers. Generic plan status remains available for ordinary editing. Web candidates require HTTPS URLs, license, and attribution; managed imported selections also retain rights. No timeline edits; apply_plan(commit:true) assembles once.",
             inputSchema: objectSchema(
                 properties: [
-                    "action": ["type": "string", "enum": ["create", "read", "update", "status", "delete", "review_claims", "measure_narration"], "description": "Plan operation. review_claims confirms selected facts after checking their exact supporting evidence; requires the current sourceLedgerRevision as ledgerRevision. measure_narration measures the attached ready audio and locally aligns script beats; it returns aligned:false and unresolvedBeatIds on mismatched or missing words rather than guessing timing. No timeline edits."],
+                    "action": ["type": "string", "enum": ["create", "read", "update", "status", "delete", "review_claims", "measure_narration", "prepare_storyboard", "read_storyboard", "review_storyboard_scene", "approve_storyboard", "cancel_production"], "description": "Plan operation. review_claims confirms selected facts against the current ledgerRevision. measure_narration measures and aligns ready audio, never guesses missing words. prepare_storyboard creates or refreshes one persistent production review; read_storyboard returns derived cards, revision, inspection blockers, and source conflicts. review_storyboard_scene records an explicitly performed full still or continuous selected-span inspection, not a guess from tags or samples; never invent reviewer evidence. approve_storyboard is the user's explicit grouped approval of the exact current revision and cannot override visual or rights blockers. cancel_production revokes approval. No timeline edits."],
                     "planId": ["type": "string", "description": "Exact plan id from a plan_edit receipt. Required for update, status, delete, review_claims, measure_narration, and single-plan reads."],
                     "plan": [
                         "type": "object",
@@ -261,8 +261,8 @@ enum ToolDefinitions {
                                     "trackId": ["type": "string", "description": "Optional existing track id."],
                                     "mediaRef": ["type": "string", "description": "Optional imported asset id. Mutually exclusive with candidateURL."],
                                     "candidateURL": ["type": "string", "description": "Optional HTTPS source that has not been imported yet. Mutually exclusive with mediaRef."],
-                                    "license": ["type": "string", "description": "Required with candidateURL."],
-                                    "attribution": ["type": "string", "description": "Required with candidateURL."],
+                                    "license": ["type": "string", "description": "Required with candidateURL or for a managed storyboard's imported selection."],
+                                    "attribution": ["type": "string", "description": "Required with candidateURL or for a managed storyboard's imported selection."],
                                     "sourceStartSeconds": ["type": "number", "description": "Optional selected source span, with sourceEndSeconds."],
                                     "sourceEndSeconds": ["type": "number", "description": "Optional selected source span, with sourceStartSeconds."],
                                     "notes": ["type": "string", "description": "Optional shot note."],
@@ -309,8 +309,8 @@ enum ToolDefinitions {
                                     "trackId": ["type": "string", "description": "Optional existing track id."],
                                     "mediaRef": ["type": "string", "description": "Optional imported asset id. Mutually exclusive with candidateURL."],
                                     "candidateURL": ["type": "string", "description": "Optional HTTPS source that has not been imported yet. Mutually exclusive with mediaRef."],
-                                    "license": ["type": "string", "description": "Required with candidateURL."],
-                                    "attribution": ["type": "string", "description": "Required with candidateURL."],
+                                    "license": ["type": "string", "description": "Required with candidateURL or for a managed storyboard's imported selection."],
+                                    "attribution": ["type": "string", "description": "Required with candidateURL or for a managed storyboard's imported selection."],
                                     "sourceStartSeconds": ["type": "number", "description": "Optional selected source span, with sourceEndSeconds."],
                                     "sourceEndSeconds": ["type": "number", "description": "Optional selected source span, with sourceStartSeconds."],
                                     "notes": ["type": "string", "description": "Optional shot note."],
@@ -327,13 +327,23 @@ enum ToolDefinitions {
                     "limit": ["type": "integer", "description": "Read only. Plans to return, 1–100 (default 20)."],
                     "claimIds": ["type": "array", "items": ["type": "string"], "description": "review_claims only. Non-empty, unique claim IDs whose current evidence was reviewed."],
                     "ledgerRevision": ["type": "string", "description": "review_claims only. Exact sourceLedgerRevision from the plan read back for review. Rejects stale research review."],
+                    "storyboardRevision": ["type": "string", "description": "approve_storyboard/review_storyboard_scene only. Exact revision from the board actually reviewed."],
+                    "sceneId": ["type": "string", "description": "review_storyboard_scene only. Stable storyboard scene ID."],
+                    "selectionRevision": ["type": "string", "description": "review_storyboard_scene only. Exact selected source/span revision from its card."],
+                    "coverage": ["type": "string", "enum": ["full_still_inspection", "full_span_playback"], "description": "review_storyboard_scene only. Actual complete inspection method; sparse frames cannot certify video coverage."],
+                    "reviewer": ["type": "string", "description": "review_storyboard_scene only. Identifies the person or supported temporal inspection system that actually inspected the selection."],
+                    "evidence": ["type": "string", "description": "review_storyboard_scene only. Non-empty description of performed inspection, final framing, and rights evidence. Not an automatic detector certificate."],
+                    "facesRevealed": ["type": "boolean", "description": "review_storyboard_scene only. Whether inspected selection reveals any person's face. True blocks approval."],
+                    "rightsConfirmed": ["type": "boolean", "description": "review_storyboard_scene only. Explicit verification of selected use's license and attribution obligations. False blocks approval."],
+                    "suspectedDuplicate": ["type": "boolean", "description": "review_storyboard_scene only. Unresolved suspected crop/re-encode/cross-provider duplicate. True blocks approval."],
+                    "comment": ["type": "string", "description": "approve_storyboard only. Optional grouped editorial approval comment."],
                 ],
                 required: ["action"]
             )
         ),
         AgentTool(
             name: .applyPlan,
-            description: "Validates an approved plan against the current timeline and referenced media. commit:false (default) checks readiness without editing. commit:true assembles the planned clips and marks the plan applied as one undoable action; it refuses unresolved media or blockers. Scripts require measured, aligned narration. Linked scene ranges use resolvedTiming, not estimated frames; attached narration assembles with the shots. Changed narration files and ranges shorter than minimum readable holds block readiness. Returns added clip IDs. An already-applied plan returns noOp:true without assembling again. Do not place its shots separately after a successful commit.",
+            description: "Validates an approved plan against the current timeline and referenced media. Managed storyboard runs also require explicit current revision approval, verified source bytes, full-selection inspection, resolved rights, and no source conflicts. commit:false (default) checks readiness without editing. commit:true assembles the planned clips and marks the plan applied as one undoable action; it refuses unresolved media or blockers. Scripts require measured, aligned narration. Linked scene ranges use resolvedTiming, not estimated frames; attached narration assembles with the shots. Changed narration files and ranges shorter than minimum readable holds block readiness. Returns added clip IDs. An already-applied plan returns noOp:true without assembling again. Do not place its shots separately after a successful commit.",
             inputSchema: objectSchema(
                 properties: [
                     "planId": ["type": "string", "description": "Exact plan id from a plan_edit receipt."],

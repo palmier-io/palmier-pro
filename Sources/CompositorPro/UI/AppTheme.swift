@@ -463,6 +463,14 @@ enum AppTheme {
         static let skillToastDuration: Duration = .seconds(5)
     }
 
+    enum Storyboard {
+        static let width: CGFloat = 900
+        static let height: CGFloat = 680
+        static let sidebarWidth: CGFloat = 220
+        static let previewHeight: CGFloat = 200
+        static let evidenceHeight: CGFloat = 80
+    }
+
     enum EditorPanel {
         static let defaultWidth: CGFloat = 340
         static let minimumWidth: CGFloat = 300
@@ -491,7 +499,7 @@ enum AppTheme {
             width: 960 + GenerationPanel.minimumWidthAdjustment,
             height: 600
         )
-        static let projectTitlebarLeadingWidth: CGFloat = 132
+        static let projectTitlebarLeadingWidth: CGFloat = 164
         static let projectTitlebarTrailingWidth: CGFloat = 280
         static let settingsDefault = NSSize(width: 1200, height: 800)
         static let settingsMin = NSSize(width: 860, height: 640)

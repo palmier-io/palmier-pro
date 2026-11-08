@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TitleBarLeadingView: View {
     @Environment(EditorViewModel.self) var editor
+    @State private var showStoryboard = false
 
     var body: some View {
         HStack(spacing: AppTheme.Spacing.xxs) {
@@ -27,7 +28,11 @@ struct TitleBarLeadingView: View {
             ) {
                 editor.inspectorPanelVisible.toggle()
             }
+            PanelVisibilityButton(systemName: "rectangle.stack", label: L10n.string("Storyboard"), isVisible: showStoryboard) {
+                showStoryboard = true
+            }
         }
+        .sheet(isPresented: $showStoryboard) { StoryboardView().environment(editor) }
     }
 }
 

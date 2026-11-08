@@ -70,11 +70,13 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
     var narration: NarrationSource?
     var narrationRevision: String?
     var narrationTiming: NarrationTiming?
+    var productionRun: ProductionRun?
 
     private enum CodingKeys: String, CodingKey {
         case id, name, goal, timelineId, fps, width, height, status
         case sections, shots, notes, createdAt, updatedAt, referenceRecipe, sourceLedger, sourceLedgerRevision
         case scriptBeats, narration, narrationRevision, narrationTiming
+        case productionRun
     }
 
     init(
@@ -139,6 +141,7 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
         narration = try container.decodeIfPresent(NarrationSource.self, forKey: .narration)
         narrationRevision = try container.decodeIfPresent(String.self, forKey: .narrationRevision)
         narrationTiming = try container.decodeIfPresent(NarrationTiming.self, forKey: .narrationTiming)
+        productionRun = try container.decodeIfPresent(ProductionRun.self, forKey: .productionRun)
     }
 }
 
@@ -260,9 +263,18 @@ extension EditPlan {
             }
             shot.license = license
             shot.attribution = attribution
-        } else {
-            shot.license = nil
-            shot.attribution = nil
+        } else if shot.license != nil || shot.attribution != nil {
+            guard let license = shot.license, let attribution = shot.attribution,
+                  !license.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  !attribution.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  license.count <= EditPlanLimits.maximumLicenseLength,
+                  attribution.count <= EditPlanLimits.maximumAttributionLength,
+                  license.rangeOfCharacter(from: .controlCharacters) == nil,
+                  attribution.rangeOfCharacter(from: .controlCharacters) == nil else {
+                throw EditPlanValidationError.invalidLicense
+            }
+            shot.license = license.trimmingCharacters(in: .whitespacesAndNewlines)
+            shot.attribution = attribution.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         switch (shot.sourceStartSeconds, shot.sourceEndSeconds) {
         case (.none, .none):
@@ -366,6 +378,7 @@ extension EditPlan {
             "shotCount": shots.count,
         ]
         if !goal.isEmpty { out["goal"] = goal }
+        if let productionRun { out["productionRun"] = productionRun.receipt }
         if includeDetails {
             out["createdAt"] = EditPlanStore.iso8601String(createdAt)
             if let referenceRecipe { out["referenceRecipe"] = referenceRecipe.receipt() }
@@ -429,6 +442,7 @@ extension EditPlan {
     }
 
     mutating func validateArtifacts() throws {
+        try productionRun?.validate()
         referenceRecipe = try referenceRecipe?.validated()
         sourceLedger = try sourceLedger?.validated()
         if let beats = scriptBeats {

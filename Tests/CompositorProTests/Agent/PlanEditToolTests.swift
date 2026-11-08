@@ -20,7 +20,7 @@ struct PlanEditToolTests {
             let plan = try #require(tools.first { $0.name == "plan_edit" })
             let apply = try #require(tools.first { $0.name == "apply_plan" })
             let planActions = try #require(plan.inputSchema.objectValue?["properties"]?.objectValue?["action"]?.objectValue?["enum"]?.arrayValue)
-            #expect(planActions.compactMap(\.stringValue) == ["create", "read", "update", "status", "delete", "review_claims", "measure_narration"])
+            #expect(planActions.compactMap(\.stringValue) == ["create", "read", "update", "status", "delete", "review_claims", "measure_narration", "prepare_storyboard", "read_storyboard", "review_storyboard_scene", "approve_storyboard", "cancel_production"])
             let applyRequired = try #require(apply.inputSchema.objectValue?["required"]?.arrayValue)
             #expect(applyRequired.compactMap(\.stringValue) == ["planId"])
 

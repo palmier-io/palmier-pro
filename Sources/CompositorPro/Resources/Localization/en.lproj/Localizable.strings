@@ -125,6 +125,7 @@
 "App version %@ and macOS %@ are included." = "App version %@ and macOS %@ are included.";
 "Appearance" = "Appearance";
 "Apply" = "Apply";
+"Approve Storyboard" = "Approve Storyboard";
 "Ask anything, or start with:" = "Ask anything, or start with:";
 "Ask the agent" = "Ask the agent";
 "Ask, or type @ to reference media" = "Ask, or type @ to reference media";
@@ -176,6 +177,7 @@
 "Cancel" = "Cancel";
 "Cancel Export" = "Cancel Export";
 "Cancel Key Color Sampling" = "Cancel Key Color Sampling";
+"Cancel Production" = "Cancel Production";
 "Cancel key color sampling" = "Cancel key color sampling";
 "Canceled" = "Canceled";
 "Canceling" = "Canceling";
@@ -294,6 +296,7 @@
 "Create Nested Timeline" = "Create Nested Timeline";
 "Create Video" = "Create Video";
 "Create Video only works on images" = "Create Video only works on images";
+"Create a plan with script beats and proposed visuals, then select it here." = "Create a plan with script beats and proposed visuals, then select it here.";
 "Create a skill from this edit so I can reuse how I cut it." = "Create a skill from this edit so I can reuse how I cut it.";
 "Create a skill or browse the Community collection." = "Create a skill or browse the Community collection.";
 "Create matching sound for the video" = "Create matching sound for the video";
@@ -433,6 +436,7 @@
 "Enter a model identifier." = "Enter a model identifier.";
 "Enter a valid http:// or https:// base URL." = "Enter a valid http:// or https:// base URL.";
 "Estimated cost. Actual billing may differ slightly." = "Estimated cost. Actual billing may differ slightly.";
+"Estimated: %lld frames" = "Estimated: %lld frames";
 "Even out the loudness across the interview clips." = "Even out the loudness across the interview clips.";
 "Every edit here is a single step, not a pile of small ones. Undo puts the timeline back exactly as it was, including retimed and restructured clips." = "Every edit here is a single step, not a pile of small ones. Undo puts the timeline back exactly as it was, including retimed and restructured clips.";
 "Exclusion" = "Exclusion";
@@ -548,6 +552,7 @@
 "Grid 3×3" = "Grid 3×3";
 "Grid 4×4" = "Grid 4×4";
 "Grouped" = "Grouped";
+"Grouped editorial comments" = "Grouped editorial comments";
 "Hacker News" = "Hacker News";
 "Hard Light" = "Hard Light";
 "Height" = "Height";
@@ -572,6 +577,7 @@
 "How strongly sibilance (\"s\" and \"sh\" sounds) is lowered." = "How strongly sibilance (\"s\" and \"sh\" sounds) is lowered.";
 "Hue" = "Hue";
 "Hue Curves" = "Hue Curves";
+"I inspected the complete selected source and intended framing." = "I inspected the complete selected source and intended framing.";
 "Identify" = "Identify";
 "Identifying…" = "Identifying…";
 "Ignores speech-free pauses shorter than this." = "Ignores speech-free pauses shorter than this.";
@@ -594,6 +600,7 @@
 "Indexing %lld/%lld" = "Indexing %lld/%lld";
 "Input" = "Input";
 "Insets" = "Insets";
+"Inspection and rights evidence" = "Inspection and rights evidence";
 "Inspector" = "Inspector";
 "Inspector Panel" = "Inspector Panel";
 "Instagram" = "Instagram";
@@ -646,6 +653,7 @@
 "Levels" = "Levels";
 "Levels and fades" = "Levels and fades";
 "Library" = "Library";
+"License and attribution obligations are confirmed." = "License and attribution obligations are confirmed.";
 "Lift" = "Lift";
 "Lift a subject off its background and keep the result transparent, so it can be placed over anything. Runs entirely on this machine: no model is downloaded and nothing leaves the device. Leave the background transparent by default; flattening onto a colour is for a product shot on white. This is subject segmentation rather than a matting network, so hair and fine edges are rough. For a green screen or a flat chroma background, the chroma key effect is far more reliable." = "Lift a subject off its background and keep the result transparent, so it can be placed over anything. Runs entirely on this machine: no model is downloaded and nothing leaves the device. Leave the background transparent by default; flattening onto a colour is for a product shot on white. This is subject segmentation rather than a matting network, so hair and fine edges are rough. For a green screen or a flat chroma background, the chroma key effect is far more reliable.";
 "Light" = "Light";
@@ -711,6 +719,7 @@
 "Max words" = "Max words";
 "Maximize Focused Panel" = "Maximize Focused Panel";
 "Measure Narration" = "Measure Narration";
+"Measured: %lld frames" = "Measured: %lld frames";
 "Measures each clip's loudness and adjusts it to a common target (-16 LUFS) so clips sit at the same level." = "Measures each clip's loudness and adjusts it to a common target (-16 LUFS) so clips sit at the same level.";
 "Media" = "Media";
 "Media Offline" = "Media Offline";
@@ -761,6 +770,7 @@
 "No Community Skills" = "No Community Skills";
 "No Installed Skills" = "No Installed Skills";
 "No Matching Skills" = "No Matching Skills";
+"No Storyboard Selected" = "No Storyboard Selected";
 "No Tracks" = "No Tracks";
 "No adjustments yet" = "No adjustments yet";
 "No audio" = "No audio";
@@ -780,10 +790,12 @@
 "No media yet" = "No media yet";
 "No models match \"%@\"." = "No models match \"%@\".";
 "No music models available." = "No music models available.";
+"No person's face is revealed." = "No person's face is revealed.";
 "No projects found" = "No projects found";
 "No prompt needed" = "No prompt needed";
 "No speech detected." = "No speech detected.";
 "No track" = "No track";
+"No unresolved suspected duplicate remains." = "No unresolved suspected duplicate remains.";
 "No usable local speech engine and voice were found. Install a voice before generating speech." = "No usable local speech engine and voice were found. Install a voice before generating speech.";
 "No video" = "No video";
 "No video clips" = "No video clips";
@@ -844,6 +856,7 @@
 "Place a title, lower third or any text on a track above the picture. Set the type, colour, outline and fill independently, and animate it in without keyframing by hand." = "Place a title, lower third or any text on a track above the picture. Set the type, colour, outline and fill independently, and animate it in without keyframing by hand.";
 "Place on timeline" = "Place on timeline";
 "Placing media on the timeline" = "Placing media on the timeline";
+"Plan" = "Plan";
 "Plan out a three-part edit for this documentary, then show me the plan." = "Plan out a three-part edit for this documentary, then show me the plan.";
 "Plans" = "Plans";
 "Play / Pause" = "Play / Pause";
@@ -857,14 +870,17 @@
 "Portrait (9:16)" = "Portrait (9:16)";
 "Position" = "Position";
 "Poster images" = "Poster images";
+"Prepare Storyboard" = "Prepare Storyboard";
 "Preparing" = "Preparing";
 "Preparing…" = "Preparing…";
 "Presence" = "Presence";
 "Press M in the timeline to add a marker." = "Press M in the timeline to add a marker.";
 "Preview" = "Preview";
+"Preview Unavailable" = "Preview Unavailable";
 "Privacy & Diagnostics" = "Privacy & Diagnostics";
 "Pro plan" = "Pro plan";
 "Product demos" = "Product demos";
+"Production Blockers (%lld)" = "Production Blockers (%lld)";
 "Project" = "Project";
 "Project Activity" = "Project Activity";
 "Project Settings" = "Project Settings";
@@ -889,6 +905,8 @@
 "Re-render the same motion at full quality in 1080p" = "Re-render the same motion at full quality in 1080p";
 "Reasoning" = "Reasoning";
 "Reasoning effort" = "Reasoning effort";
+"Record Inspection" = "Record Inspection";
+"Record Visual Inspection" = "Record Visual Inspection";
 "Redetect Beats" = "Redetect Beats";
 "Redo" = "Redo";
 "Redo (⇧⌘Z)" = "Redo (⇧⌘Z)";
@@ -953,6 +971,9 @@
 "Reveal in Finder" = "Reveal in Finder";
 "Review" = "Review";
 "Review Claims" = "Review Claims";
+"Review Storyboard Scene" = "Review Storyboard Scene";
+"Reviewed by %@" = "Reviewed by %@";
+"Reviewer" = "Reviewer";
 "Right" = "Right";
 "Ripple Delete" = "Ripple Delete";
 "Ripple Delete Gap" = "Ripple Delete Gap";
@@ -1001,11 +1022,14 @@
 "Select Forward on All Tracks" = "Select Forward on All Tracks";
 "Select Forward on Track" = "Select Forward on Track";
 "Select Range" = "Select Range";
+"Select a Plan" = "Select a Plan";
+"Select a scene to review its narration and visual." = "Select a scene to review its narration and visual.";
 "Select compatible clips and paste settings again." = "Select compatible clips and paste settings again.";
 "Select media files or folders to import" = "Select media files or folders to import";
 "Select the timeline to add a marker." = "Select the timeline to add a marker.";
 "Selected" = "Selected";
 "Selected Clips · %lld" = "Selected Clips · %lld";
+"Selected source: %lf–%lf seconds" = "Selected source: %lf–%lf seconds";
 "Selection Tool" = "Selection Tool";
 "Send" = "Send";
 "Send Feedback…" = "Send Feedback…";
@@ -1078,6 +1102,7 @@
 "Source Audio" = "Source Audio";
 "Source Media" = "Source Media";
 "Source Video" = "Source Video";
+"Source thumbnail only. Inspect the full still or continuously play the selected video span before recording review." = "Source thumbnail only. Inspect the full still or continuously play the selected video span before recording review.";
 "Speaker Detection" = "Speaker Detection";
 "Speech" = "Speech";
 "Speech Padding" = "Speech Padding";
@@ -1110,6 +1135,7 @@
 "Stop editing crop on canvas" = "Stop editing crop on canvas";
 "Stopped" = "Stopped";
 "Storage" = "Storage";
+"Storyboard" = "Storyboard";
 "Streaming through your Anthropic API key (BYOK)" = "Streaming through your Anthropic API key (BYOK)";
 "Streaming through your OpenAI API key (BYOK)" = "Streaming through your OpenAI API key (BYOK)";
 "Streaming through your own OpenAI-compatible endpoint" = "Streaming through your own OpenAI-compatible endpoint";

@@ -17,13 +17,17 @@ extension EditorViewModel {
         updates: [EditPlan] = [],
         deleteIds: [String] = [],
         actionName: String,
-        reviewingClaimIds: Set<String> = []
+        reviewingClaimIds: Set<String> = [],
+        updatingProductionRun: Bool = false
     ) throws -> EditPlanChangeReceipt {
         if editPlansLoadFailed {
             throw EditPlanValidationError.unreadablePlans
         }
         guard reviewingClaimIds.isEmpty || (updates.count == 1 && creates.isEmpty && deleteIds.isEmpty) else {
             throw EditPlanValidationError.invalidReference("Claim review must target one existing plan.")
+        }
+        guard !updatingProductionRun || (updates.count == 1 && creates.isEmpty && deleteIds.isEmpty) else {
+            throw EditPlanValidationError.invalidReference("Production review must target one existing plan.")
         }
         guard Set(deleteIds).count == deleteIds.count else {
             throw EditPlanValidationError.invalidReference("Duplicate plan id in deleteIds.")
@@ -32,6 +36,9 @@ extension EditorViewModel {
         var next = before
 
         for var plan in creates {
+            guard plan.productionRun == nil else {
+                throw EditPlanValidationError.invalidReference("Prepare a storyboard before creating production review state.")
+            }
             plan = try EditPlan.validatedNew(
                 plan,
                 timelineId: plan.timelineId,
@@ -51,6 +58,9 @@ extension EditorViewModel {
                 throw EditPlanValidationError.invalidReference("Unknown planId '\(plan.id)'.")
             }
             let current = next[index]
+            guard updatingProductionRun || plan.productionRun == current.productionRun else {
+                throw EditPlanValidationError.invalidReference("Production review changes require a storyboard operation.")
+            }
             guard plan.timelineId == current.timelineId,
                   plan.fps == current.fps,
                   plan.width == current.width,
@@ -84,6 +94,10 @@ extension EditorViewModel {
             normalized.createdAt = current.createdAt
             normalized.status = current.status
             normalized.updatedAt = current.updatedAt
+            if !normalized.hasSameStoryboardIntent(as: current), normalized.productionRun?.phase != .canceled {
+                normalized.productionRun?.phase = .stale
+                normalized.productionRun?.approvedRevision = nil
+            }
             guard normalized != current else { continue }
             normalized.updatedAt = Date()
             next[index] = normalized
@@ -117,9 +131,19 @@ extension EditorViewModel {
             throw EditPlanValidationError.invalidReference("Unknown planId '\(id)'.")
         }
         try EditPlan.validatedStatusTransition(from: plan.status, to: status, permitReserved: permitReserved)
+        if status == .approved, let run = plan.productionRun, run.phase != .approved || run.approvedRevision == nil {
+            throw EditPlanValidationError.invalidReference("Managed production requires explicit approval of the current storyboard.")
+        }
         guard plan.status != status else { return plan }
         let before = editPlans
         plan.status = status
+        if status == .proposed, plan.productionRun != nil {
+            plan.productionRun?.phase = .awaitingStoryboardApproval
+            plan.productionRun?.approvedRevision = nil
+        } else if status == .superseded, plan.productionRun != nil {
+            plan.productionRun?.phase = .canceled
+            plan.productionRun?.approvedRevision = nil
+        }
         plan.updatedAt = Date()
         editPlans = before.map { $0.id == id ? plan : $0 }
         registerEditPlanSwap(before: before, after: editPlans, actionName: actionName)
@@ -154,6 +178,12 @@ extension EditorViewModel {
 }
 
 extension EditPlan {
+    func hasSameStoryboardIntent(as other: EditPlan) -> Bool {
+        goal == other.goal && notes == other.notes && sections == other.sections && shots == other.shots
+            && scriptBeats == other.scriptBeats && sourceLedger == other.sourceLedger && referenceRecipe == other.referenceRecipe
+            && narration?.language == other.narration?.language && narration?.startFrame == other.narration?.startFrame
+    }
+
     static func ensureGlobalIDs(_ plans: [EditPlan]) throws {
         var seen = Set<String>()
         for plan in plans {

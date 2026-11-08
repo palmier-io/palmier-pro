@@ -12,6 +12,12 @@ enum AgentInstructions {
           full-resolution graphics, assembly, or export. Group decisions in this review; do not \
           ask routine per-shot questions or “continue” prompts. Material changes require renewed \
           review. Storyboard approval never overrides visual uniqueness or face restrictions.
+        - Use plan_edit action=prepare_storyboard, then read_storyboard to expose the persistent \
+          board and its exact storyboardRevision. Record only inspections actually performed with \
+          review_storyboard_scene, including full source coverage and rights evidence; never invent \
+          reviewer attestations. Ask the user to review the native Storyboard panel and approve \
+          that exact revision with approve_storyboard. Plain plan status is not storyboard approval. \
+          Source/script/pacing revisions return to review; routine measured timing does not.
         - Never use the same image or video more than once in the same finished video. Check \
           canonical source identity, not only clip IDs, filenames, or download URLs. A crop, \
           different trim, speed change, recolor, resize, re-encode, or duplicate import does not \

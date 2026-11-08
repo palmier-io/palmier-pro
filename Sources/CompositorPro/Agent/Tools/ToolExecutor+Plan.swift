@@ -80,6 +80,9 @@ extension ToolExecutor {
     ]
 
     func planEdit(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
+        if let action = args["action"] as? String, Self.storyboardActions.contains(action) {
+            return try await storyboardEdit(editor, args)
+        }
         try validatePlanObjects(args)
         let input: PlanEditInput = try decodeToolArgs(args, path: "plan_edit")
         if input.action != "review_claims", input.claimIds != nil || input.ledgerRevision != nil {
@@ -143,12 +146,21 @@ extension ToolExecutor {
             throw ToolError("Plan '\(plan.id)' no longer matches the timeline geometry. Revise the plan before applying it.")
         }
         var blockers = readinessBlockers(plan: plan, editor: editor)
+        let productionRevision = editor.visualReviewRevision
+        if plan.productionRun != nil {
+            let board = try await editor.verifiedStoryboardReport(planId: plan.id)
+            blockers += board.blockers
+            if !board.canProduce { blockers.append("Explicit approval of the current storyboard is required before production.") }
+        }
         if plan.scriptBeats != nil, blockers.isEmpty {
             do { try await verifyPlanNarration(editor, plan: plan) }
             catch is CancellationError { throw CancellationError() }
             catch { blockers.append((error as? ToolError)?.message ?? error.localizedDescription) }
         }
         let commit = input.commit ?? false
+        guard editor.editPlan(id: plan.id) == plan, editor.visualReviewRevision == productionRevision else {
+            throw ToolError("Plan, storyboard, or timeline changed during readiness checks; retry current state.")
+        }
         if commit {
             guard blockers.isEmpty else {
                 throw ToolError("Plan '\(plan.id)' is not ready: \(blockers.joined(separator: " "))")

@@ -1,0 +1,201 @@
+import SwiftUI
+
+struct StoryboardView: View {
+    @Environment(EditorViewModel.self) private var editor
+    @Environment(\.dismiss) private var dismiss
+    @State private var planId = ""
+    @State private var sceneId: String?
+    @State private var report: StoryboardReport?
+    @State private var error: String?
+    @State private var comment = ""
+    @State private var operation: Task<Void, Never>?
+    @State private var operationGeneration = UUID()
+
+    private struct Context: Equatable {
+        var planId: String
+        var updatedAt: Date?
+        var mediaRevision: UInt64
+        var timelineRevision: Int
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+            HStack {
+                Text(L10n.string("Storyboard"))
+                    .font(.system(size: AppTheme.FontSize.lg, weight: AppTheme.FontWeight.semibold))
+                Picker(L10n.string("Plan"), selection: $planId) {
+                    Text(L10n.string("Select a Plan")).tag("")
+                    ForEach(editor.editPlans.filter { $0.timelineId == editor.activeTimelineId }) { plan in
+                        Text(verbatim: plan.name).tag(plan.id)
+                    }
+                }
+                Spacer()
+                Button(L10n.string("Close")) { dismiss() }.keyboardShortcut(.cancelAction)
+            }
+            if let error { Text(verbatim: error).foregroundStyle(AppTheme.Status.errorColor).textSelection(.enabled) }
+            if let report {
+                HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
+                    List(selection: $sceneId) {
+                        ForEach(report.cards, id: \.shot.id) { card in
+                            VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
+                                Text(verbatim: card.shot.title)
+                                Text(card.resolvedRange.map { L10n.string("Measured: \($0.count) frames") }
+                                     ?? L10n.string("Estimated: \(card.shot.endFrame - card.shot.startFrame) frames"))
+                                    .font(.system(size: AppTheme.FontSize.xs))
+                                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                            }.tag(card.shot.id)
+                        }
+                    }.frame(width: AppTheme.Storyboard.sidebarWidth)
+                    ScrollView {
+                        if let card = report.cards.first(where: { $0.shot.id == sceneId }) {
+                            StoryboardSceneView(card: card, asset: card.shot.mediaRef.flatMap { editor.mediaAssetsById[$0] },
+                                canReview: report.phase == .awaitingStoryboardApproval && operation == nil) { review in
+                                perform { try await editor.reviewStoryboardScene(planId: report.planId, revision: report.revision, review: review) }
+                            }.id(card.shot.id + card.selectionRevision)
+                        } else { Text(L10n.string("Select a scene to review its narration and visual.")) }
+                    }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                DisclosureGroup(L10n.string("Production Blockers (\(report.blockers.count))")) {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
+                            ForEach(Array(report.blockers.enumerated()), id: \.offset) { _, blocker in
+                                Text(verbatim: blocker).textSelection(.enabled)
+                            }
+                        }.frame(maxWidth: .infinity, alignment: .leading)
+                    }.frame(maxHeight: AppTheme.Storyboard.evidenceHeight)
+                }
+                TextField(L10n.string("Grouped editorial comments"), text: $comment)
+                HStack {
+                    Button(L10n.string("Prepare Storyboard")) { perform { try await editor.prepareStoryboard(planId: planId) } }
+                    Button(L10n.string("Cancel Production")) {
+                        perform {
+                            var result = try await editor.storyboardReport(planId: planId)
+                            try editor.cancelProductionReview(planId: planId)
+                            result.phase = .canceled
+                            return result
+                        }
+                    }.disabled(editor.editPlan(id: planId)?.productionRun == nil)
+                    Spacer()
+                    Text(verbatim: report.phase.rawValue).foregroundStyle(AppTheme.Text.secondaryColor)
+                    Button(L10n.string("Approve Storyboard")) {
+                        perform { try await editor.approveStoryboard(planId: report.planId, revision: report.revision, comment: comment) }
+                    }.disabled(!report.blockers.isEmpty || report.phase != .awaitingStoryboardApproval)
+                }.disabled(operation != nil)
+            } else {
+                ContentUnavailableView(L10n.string("No Storyboard Selected"), systemImage: "rectangle.stack",
+                    description: Text(L10n.string("Create a plan with script beats and proposed visuals, then select it here.")))
+            }
+        }
+        .padding(AppTheme.Spacing.lg)
+        .frame(width: AppTheme.Storyboard.width, height: AppTheme.Storyboard.height)
+        .background(AppTheme.Background.surfaceColor)
+        .task(id: Context(planId: planId, updatedAt: editor.editPlan(id: planId)?.updatedAt,
+                          mediaRevision: editor.mediaManifestRevision, timelineRevision: editor.timelineRenderRevision)) {
+            report = nil
+            error = nil
+            guard !planId.isEmpty else { return }
+            do {
+                report = try await editor.storyboardReport(planId: planId)
+                if sceneId == nil || report?.cards.contains(where: { $0.shot.id == sceneId }) != true {
+                    sceneId = report?.cards.first?.shot.id
+                }
+            } catch is CancellationError {} catch { self.error = error.localizedDescription }
+        }
+        .onChange(of: planId) { cancelOperation() }
+        .onDisappear { cancelOperation() }
+    }
+
+    private func perform(_ action: @escaping @MainActor () async throws -> StoryboardReport) {
+        operation?.cancel()
+        let generation = UUID()
+        operationGeneration = generation
+        error = nil
+        operation = Task {
+            defer { if operationGeneration == generation { operation = nil } }
+            do {
+                let result = try await action()
+                if operationGeneration == generation { report = result }
+            } catch is CancellationError {} catch {
+                if operationGeneration == generation { self.error = error.localizedDescription }
+            }
+        }
+    }
+
+    private func cancelOperation() {
+        operationGeneration = UUID()
+        operation?.cancel()
+        operation = nil
+    }
+}
+
+private struct StoryboardSceneView: View {
+    let card: StoryboardCard
+    let asset: MediaAsset?
+    let canReview: Bool
+    let onReview: (ProductionRun.VisualReview) -> Void
+    @State private var image: CGImage?
+    @State private var previewError: String?
+    @State private var inspected = false
+    @State private var faceless = false
+    @State private var rights = false
+    @State private var distinct = false
+    @State private var reviewer = ""
+    @State private var evidence = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+            Text(verbatim: card.shot.title).font(.system(size: AppTheme.FontSize.lg, weight: AppTheme.FontWeight.semibold))
+            ZStack {
+                Rectangle().fill(AppTheme.Background.placeholderColor)
+                if let image { Image(decorative: image, scale: 1).resizable().scaledToFit() }
+                else { Text(L10n.string("Preview Unavailable")) }
+            }.frame(height: AppTheme.Storyboard.previewHeight)
+            Text(L10n.string("Source thumbnail only. Inspect the full still or continuously play the selected video span before recording review."))
+                .font(.system(size: AppTheme.FontSize.xs)).foregroundStyle(AppTheme.Text.secondaryColor)
+            if let previewError { Text(verbatim: previewError) }
+            Text(verbatim: card.narration).textSelection(.enabled)
+            Text(verbatim: card.purpose).foregroundStyle(AppTheme.Text.secondaryColor)
+            if let inputId = card.inputId { Text(verbatim: inputId).textSelection(.enabled) }
+            if let start = card.shot.sourceStartSeconds, let end = card.shot.sourceEndSeconds {
+                Text(L10n.string("Selected source: \(start)–\(end) seconds"))
+            }
+            if let license = card.shot.license { Text(verbatim: license).textSelection(.enabled) }
+            if let attribution = card.shot.attribution { Text(verbatim: attribution).textSelection(.enabled) }
+            if !card.claimIds.isEmpty { Text(verbatim: card.claimIds.joined(separator: ", ")).textSelection(.enabled) }
+            if let review = card.review {
+                Text(L10n.string("Reviewed by \(review.reviewer)"))
+                Text(verbatim: review.evidence).textSelection(.enabled)
+            }
+            DisclosureGroup(L10n.string("Record Visual Inspection")) {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+                    Toggle(L10n.string("I inspected the complete selected source and intended framing."), isOn: $inspected)
+                    Toggle(L10n.string("No person's face is revealed."), isOn: $faceless)
+                    Toggle(L10n.string("License and attribution obligations are confirmed."), isOn: $rights)
+                    Toggle(L10n.string("No unresolved suspected duplicate remains."), isOn: $distinct)
+                    TextField(L10n.string("Reviewer"), text: $reviewer)
+                    TextEditor(text: $evidence).frame(height: AppTheme.Storyboard.evidenceHeight)
+                        .accessibilityLabel(L10n.string("Inspection and rights evidence"))
+                    Button(L10n.string("Record Inspection")) {
+                        onReview(.init(sceneId: card.shot.id, selectionRevision: card.selectionRevision,
+                            coverage: card.mediaType == .image ? .fullStill : .fullSpan, reviewer: reviewer,
+                            evidence: evidence, facesRevealed: !faceless, rightsConfirmed: rights, suspectedDuplicate: !distinct))
+                    }.disabled(!canReview || !inspected || reviewer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                               || evidence.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+        .task(id: card.selectionRevision) {
+            image = nil
+            previewError = nil
+            guard let asset else { return }
+            let url = asset.url
+            do {
+                let loaded = try await StoryboardThumbnailService.load(url: url, type: asset.type, sourceSeconds: card.shot.sourceStartSeconds ?? 0)
+                try Task.checkCancellation()
+                guard asset.url == url, asset.inputIdentity?.inputId == card.inputId else { return }
+                image = loaded
+            }
+            catch is CancellationError {} catch { previewError = error.localizedDescription }
+        }
+    }
+}
