@@ -95,8 +95,8 @@ extension ToolExecutor {
 
         let snapshot = timelineSnapshot(editor)
         let ids = try await editor.generateCaptions(for: request, applying: { mutation in
-            editor.undo.perform("Generate Captions (Agent)") {
-                let ids = mutation()
+            try editor.undo.perform("Generate Captions (Agent)") {
+                let ids = try mutation()
                 if transform?.x != nil || transform?.rotation != nil
                     || transform?.rotationX != nil || transform?.rotationY != nil {
                     editor.commitClipProperties(clipIds: ids, actionName: "Transform Captions (Agent)") { clip in

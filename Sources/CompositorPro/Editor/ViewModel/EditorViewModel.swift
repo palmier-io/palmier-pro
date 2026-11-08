@@ -206,6 +206,10 @@ final class EditorViewModel {
     var slipPreview: SlipPreviewState?
     var captionPreviewConfiguration: CaptionPreviewConfiguration?
     var captionPreviewEnabled = true
+    // Persistent across tab switches so a canceled generation cannot be re-started
+    // while its transcription still drains.
+    let captionGenerationController = CaptionGenerationController()
+    @ObservationIgnored var captionTranscriptionService = CaptionTranscriptionService.live
     @ObservationIgnored var captionPreviewCenterChange: ((CGPoint) -> Void)?
     var cropAspectLock: CropAspectLock = .free
     var previewTabs: [PreviewTab] = [.timeline]

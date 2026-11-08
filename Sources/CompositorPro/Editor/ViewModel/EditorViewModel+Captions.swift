@@ -208,9 +208,21 @@ extension EditorViewModel {
     @discardableResult
     func generateCaptions(
         for request: CaptionRequest,
-        applying mutation: (@MainActor (@MainActor () -> [String]) async throws -> [String])? = nil
+        applying mutation: (@MainActor (@MainActor () throws -> [String]) async throws -> [String])? = nil
     ) async throws -> [String] {
+        try await projectPackageCoordinator.withIntent { lease in
+            try await self.prepareAndPlaceCaptions(for: request, lease: lease, applying: mutation)
+        }
+    }
+
+    private func prepareAndPlaceCaptions(
+        for request: CaptionRequest,
+        lease: ProjectPackageCoordinator.IntentLease,
+        applying mutation: (@MainActor (@MainActor () throws -> [String]) async throws -> [String])?
+    ) async throws -> [String] {
+        let context = captionPreparationContext(for: request)
         let prepared = try await prepareTranscript(for: request)
+        try context.validate(in: self)
         let targets = prepared.targets
         let results = prepared.results
         let preparationTimeline = prepared.timeline
@@ -239,18 +251,19 @@ extension EditorViewModel {
             animation: animation
         )
         let specs = try await CaptionSpecBuilder.build(input)
-        try Task.checkCancellation()
-        guard captionPreparationIsCurrent(
-            timelineId: prepared.timelineId,
-            snapshot: preparationTimeline
-        ) else {
-            throw CaptionError.timelineChanged
-        }
+        try context.validate(in: self)
         guard !specs.isEmpty else { return [] }
-        if let mutation {
-            return try await mutation { self.placeCaptionTrack(specs, actionName: "Generate Captions") }
+        try await context.checkSourcesAvailableOffMain(in: self)
+        try context.validate(in: self)
+        let place: @MainActor () throws -> [String] = {
+            try self.projectPackageCoordinator.validate(lease)
+            try context.validate(in: self)
+            return self.placeCaptionTrack(specs, actionName: "Generate Captions")
         }
-        return placeCaptionTrack(specs, actionName: "Generate Captions")
+        if let mutation {
+            return try await mutation(place)
+        }
+        return try place()
     }
 
     /// Places each subtitle asset's cues as one caption group on a new top track
@@ -293,28 +306,31 @@ extension EditorViewModel {
     /// Imports an SRT or WebVTT file as one caption group on a new top track. One undo step.
     @discardableResult
     func importCaptions(from url: URL, platform: DeliveryPlatform = .generic) async throws -> [String] {
-        let owningTimelineId = activeTimelineId
-        let preparationTimeline = timeline
-        let specs = try await subtitleCaptionSpecs(from: url, platform: platform)
-        try Task.checkCancellation()
-        guard captionPreparationIsCurrent(timelineId: owningTimelineId, snapshot: preparationTimeline) else {
-            throw CaptionError.timelineChanged
+        try await projectPackageCoordinator.withIntent { lease in
+            let owningTimelineId = self.activeTimelineId
+            let preparationTimeline = self.timeline
+            let specs = try await self.subtitleCaptionSpecs(from: url, platform: platform)
+            try Task.checkCancellation()
+            try self.projectPackageCoordinator.validate(lease)
+            guard self.captionPreparationIsCurrent(timelineId: owningTimelineId, snapshot: preparationTimeline) else {
+                throw CaptionError.timelineChanged
+            }
+            return self.placeCaptionTrack(specs, actionName: "Add Captions")
         }
-        return placeCaptionTrack(specs, actionName: "Add Captions")
     }
 
     func timelineTranscript(
         for request: CaptionRequest
     ) async throws -> TimelineTranscriptDocument {
-        let prepared = try await prepareTranscript(for: request)
-        let document = await Self.makeTimelineTranscriptDocument(prepared)
-        guard captionPreparationIsCurrent(
-            timelineId: prepared.timelineId,
-            snapshot: prepared.timeline
-        ) else {
-            throw CaptionError.timelineChanged
+        try await projectPackageCoordinator.withIntent { lease in
+            let context = self.captionPreparationContext(for: request)
+            let prepared = try await self.prepareTranscript(for: request)
+            try context.validate(in: self)
+            let document = await Self.makeTimelineTranscriptDocument(prepared)
+            try self.projectPackageCoordinator.validate(lease)
+            try context.validate(in: self)
+            return document
         }
-        return document
     }
 
     func cachedTimelineTranscript() async -> TimelineTranscriptDocument? {
@@ -475,6 +491,62 @@ extension EditorViewModel {
         activeTimelineId == timelineId && timeline == snapshot
     }
 
+    @MainActor struct CaptionPreparationContext {
+        struct Source {
+            let asset: MediaAsset
+            let preparation: MediaAsset.PreparationContext
+            // Manifest-derived URL only; existence is checked off-main (see below).
+            let expectedURL: URL?
+            let duration: Double
+            let hasAudio: Bool
+        }
+
+        let timelineId: String
+        let timeline: Timeline
+        let projectId: String?
+        let sources: [Source]
+
+        func validate(in editor: EditorViewModel) throws {
+            try Task.checkCancellation()
+            guard editor.projectId == projectId,
+                  editor.captionPreparationIsCurrent(timelineId: timelineId, snapshot: timeline),
+                  sources.allSatisfy({ source in
+                      editor.mediaAssetsById[source.asset.id] === source.asset
+                          && source.asset.preparationContext == source.preparation
+                          && source.asset.duration == source.duration
+                          && source.asset.hasAudio == source.hasAudio
+                          && editor.mediaResolver.expectedURL(for: source.asset.id) == source.expectedURL
+                  }) else { throw CaptionError.timelineChanged }
+        }
+
+        // File availability is disk I/O; run it on the coordinator queue, never the main actor.
+        func checkSourcesAvailableOffMain(in editor: EditorViewModel) async throws {
+            let urls = sources.compactMap(\.expectedURL)
+            guard !urls.isEmpty else { return }
+            let available = try await editor.projectPackageCoordinator.io.perform {
+                let fm = FileManager.default
+                return urls.allSatisfy { fm.fileExists(atPath: $0.path) }
+            }
+            try Task.checkCancellation()
+            guard available else { throw CaptionError.timelineChanged }
+        }
+    }
+
+    func captionPreparationContext(for request: CaptionRequest) -> CaptionPreparationContext {
+        let ids = Set(resolvedCaptionTargets(for: request).map(\.clip.mediaRef))
+        return CaptionPreparationContext(
+            timelineId: activeTimelineId, timeline: timeline, projectId: projectId,
+            sources: ids.compactMap { id in
+                mediaAssetsById[id].map { asset in
+                    CaptionPreparationContext.Source(
+                        asset: asset, preparation: asset.preparationContext,
+                        expectedURL: mediaResolver.expectedURL(for: id), duration: asset.duration, hasAudio: asset.hasAudio
+                    )
+                }
+            }
+        )
+    }
+
     private struct TranscribeJob {
         let mediaRef: String
         let url: URL
@@ -492,30 +564,17 @@ extension EditorViewModel {
             return TranscribeJob(mediaRef: t.clip.mediaRef, url: url, range: range, isVideo: captionUsesVideoAudioExtraction(for: t.clip))
         }
         let projectId = projectId
+        let service = captionTranscriptionService
 
         let outcomes = await withTaskGroup(of: (String, Result<TranscriptionResult, Error>).self) { group in
             for job in jobs {
                 group.addTask {
                     do {
-                        let result: TranscriptionResult
-                        switch request.provider {
-                        case .local:
-                            if request.censorProfanity || request.locale != nil {
-                                // option variants produce different transcripts — bypass the cache
-                                result = job.isVideo
-                                    ? try await Transcription.transcribeVideoAudio(videoURL: job.url, censorProfanity: request.censorProfanity, preferredLocale: request.locale, sourceRange: job.range)
-                                    : try await Transcription.transcribe(fileURL: job.url, censorProfanity: request.censorProfanity, preferredLocale: request.locale, sourceRange: job.range)
-                            } else {
-                                result = try await TranscriptCache.shared.transcript(for: job.url, isVideo: job.isVideo, range: job.range)
-                            }
-                        case .cloud:
-                            result = try await CloudTranscription.transcribe(
-                                fileURL: job.url,
-                                range: job.range,
-                                preferredLocale: request.locale,
-                                projectId: projectId
-                            )
-                        }
+                        let result = try await service.load(.init(
+                            url: job.url, isVideo: job.isVideo, range: job.range,
+                            censorProfanity: request.censorProfanity, locale: request.locale,
+                            provider: request.provider, projectId: projectId
+                        ))
                         return (job.mediaRef, .success(result))
                     } catch {
                         return (job.mediaRef, .failure(error))

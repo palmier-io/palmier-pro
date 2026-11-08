@@ -23,9 +23,8 @@ struct CaptionTab: View {
     @State private var maximumGapSeconds = CaptionGapSettings.default.maximumGapSeconds
     @State private var locale: Locale?
     @State private var supportedLocales: [Locale] = []
-    @State private var isGenerating = false
+    private var generation: CaptionGenerationController { editor.captionGenerationController }
     @State private var estimatedCloudCost: Int?
-    @State private var note: String?
     @State private var sourceExpanded = true
     @State private var settingsExpanded = true
     @State private var styleExpanded = false
@@ -86,7 +85,7 @@ struct CaptionTab: View {
         return nil
     }
     private var canGenerateCaptions: Bool {
-        effectiveCount > 0 && !isGenerating && cloudModeUnavailableMessage == nil
+        effectiveCount > 0 && !generation.isGenerating && cloudModeUnavailableMessage == nil
     }
     private var costEstimateKey: String {
         "\(provider.rawValue)|\(sourceClipIds.joined(separator: ","))|\(isAutoSource)|\(locale?.identifier ?? "")"
@@ -145,7 +144,7 @@ struct CaptionTab: View {
                     generateBar
                 }
             }
-            if isGenerating {
+            if generation.isGenerating {
                 AppTheme.Background.surfaceColor.opacity(AppTheme.Opacity.prominent)
                 GeneratingOverlay(label: L10n.string("Transcribing…"), size: .preview)
             }
@@ -166,9 +165,12 @@ struct CaptionTab: View {
             }
         }
         .onDisappear {
+            generation.cancel()
             editor.captionPreviewConfiguration = nil
             editor.captionPreviewCenterChange = nil
         }
+        .onChange(of: editor.activeTimelineId) { _, _ in generation.cancel() }
+        .onExitCommand { generation.cancel() }
         .onChange(of: previewConfiguration) { _, _ in showCaptionPreview() }
         .onChange(of: editor.mediaPanelVisible) { _, _ in showCaptionPreview() }
         .onChange(of: editor.selectedClipIds) { _, _ in
@@ -538,7 +540,7 @@ struct CaptionTab: View {
     }
 
     private var generateBar: some View {
-        EditorActionFooter(message: note ?? cloudModeUnavailableMessage) {
+        EditorActionFooter(message: generation.note ?? cloudModeUnavailableMessage) {
             HStack(spacing: AppTheme.Spacing.sm) {
                 Spacer(minLength: AppTheme.Spacing.zero)
                 Button(action: generate) {
@@ -559,10 +561,11 @@ struct CaptionTab: View {
     }
 
     private func generate() {
-        note = nil
+        guard !generation.isGenerating else { return }
+        generation.note = nil
         let sourceIds = sourceClipIds
         if selectedTrackId != nil && sourceIds.isEmpty {
-            note = L10n.string("No audio selected.")
+            generation.note = L10n.string("No audio selected.")
             return
         }
         let request = EditorViewModel.CaptionRequest(
@@ -578,45 +581,16 @@ struct CaptionTab: View {
             provider: provider,
             animation: TextAnimation(preset: animationPreset, highlight: animationHighlight)
         )
-        Task {
-            isGenerating = true
-            defer { isGenerating = false }
-            do {
-                if request.provider == .cloud {
-                    if let message = cloudUnavailableMessage(cost: nil, provider: request.provider) {
-                        note = message
-                        return
-                    }
-                    let cost = await editor.captionCloudCreditCost(for: request)
-                    if let message = cloudUnavailableMessage(cost: cost, provider: request.provider) {
-                        note = message
-                        return
-                    }
-                }
-                switch output {
-                case .transcript(let onGeneratedTranscript):
-                    let transcript = try await editor.timelineTranscript(
-                        for: request
-                    )
-                    if transcript.rows.isEmpty {
-                        note = L10n.string("No speech detected.")
-                    } else {
-                        onGeneratedTranscript(transcript)
-                    }
-                case .captions(let onGeneratedCaptions):
-                    let createdIds = try await editor.generateCaptions(for: request)
-                    if createdIds.isEmpty {
-                        note = L10n.string("No speech detected.")
-                    } else {
-                        let groupId = createdIds.lazy.compactMap {
-                            editor.clipFor(id: $0)?.captionGroupId
-                        }.first
-                        editor.captionPreviewEnabled = false
-                        onGeneratedCaptions(groupId)
-                    }
-                }
-            } catch {
-                note = localizedCaptionError(error)
+        generation.start(in: editor, request: request, mode: isTranscriptOnly ? .transcript : .captions) { result in
+            switch (output, result) {
+            case (.transcript(let onGenerated), .transcript(let transcript)):
+                onGenerated(transcript)
+            case (.captions(let onGenerated), .captions(let createdIds)):
+                let groupId = createdIds.lazy.compactMap { editor.clipFor(id: $0)?.captionGroupId }.first
+                editor.captionPreviewEnabled = false
+                onGenerated(groupId)
+            default:
+                break
             }
         }
     }
@@ -637,32 +611,4 @@ struct CaptionTab: View {
         maxWords = count > 0 ? count : nil
     }
 
-    private func cloudUnavailableMessage(cost: Int?, provider mode: TranscriptionProvider? = nil) -> String? {
-        guard (mode ?? provider) == .cloud else { return nil }
-        guard account.isSignedIn else { return L10n.string("Sign in to use Cloud.") }
-        guard let cost else { return nil }
-        guard cost > 0 else { return nil }
-        guard let remaining = remainingCloudCredits else { return nil }
-        guard remaining > 0 else { return L10n.string("Add credits to use Cloud.") }
-        if cost > remaining {
-            return CostEstimator.localizedInsufficientCredits(cost, remaining: remaining)
-        }
-        return nil
-    }
-
-    private func localizedCaptionError(_ error: Error) -> String {
-        guard let error = error as? TranscriptionError else { return error.localizedDescription }
-        switch error {
-        case .unsupportedLocale(let identifier):
-            return L10n.string("On-device transcription is not available for \(identifier).")
-        case .modelInstallFailed(let reason):
-            return L10n.string("Could not install the on-device speech model: \(reason)")
-        case .decodeFailed:
-            return L10n.string("Could not parse transcription result.")
-        case .audioExtractionFailed(let reason):
-            return L10n.string("Audio extraction failed: \(reason)")
-        case .analysisFailed(let reason):
-            return L10n.string("Transcription failed: \(reason)")
-        }
-    }
 }

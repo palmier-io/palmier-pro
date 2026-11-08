@@ -195,6 +195,7 @@
 "Cap the words shown per caption. None fits each line to the box." = "Cap the words shown per caption. None fits each line to the box.";
 "CapCut" = "CapCut";
 "Caption %@" = "Caption %@";
+"Caption generation canceled." = "Caption generation canceled.";
 "Caption this interview, and keep the captions clear of the Reels interface." = "Caption this interview, and keep the captions clear of the Reels interface.";
 "Caption what is actually said, or import an SRT. Captions can be shortened, capped to a line length, profanity-filtered and restyled as a group rather than clip by clip. For vertical delivery, pass the platform so the captions clear its interface." = "Caption what is actually said, or import an SRT. Captions can be shortened, capped to a line length, profanity-filtered and restyled as a group rather than clip by clip. For vertical delivery, pass the platform so the captions clear its interface.";
 "Captions" = "Captions";
@@ -798,6 +799,7 @@
 "No Visual Selected" = "No Visual Selected";
 "No adjustments yet" = "No adjustments yet";
 "No audio" = "No audio";
+"No audio clips to caption." = "No audio clips to caption.";
 "No audio selected." = "No audio selected.";
 "No beats detected." = "No beats detected.";
 "No conversations yet" = "No conversations yet";
@@ -1230,6 +1232,7 @@
 "The selected chat model is configured without image input." = "The selected chat model is configured without image input.";
 "The selected model refused this request. Revise the prompt and try again." = "The selected model refused this request. Revise the prompt and try again.";
 "The selected projects will be moved to the Trash." = "The selected projects will be moved to the Trash.";
+"The timeline changed while captions were being prepared. Try again." = "The timeline changed while captions were being prepared. Try again.";
 "The timeline settings changed. Close this sheet and try again." = "The timeline settings changed. Close this sheet and try again.";
 "The visual search model failed to prepare. Retry its setup in Settings." = "The visual search model failed to prepare. Retry its setup in Settings.";
 "The visual search model has not been checked yet. Search prepares it on demand." = "The visual search model has not been checked yet. Search prepares it on demand.";
