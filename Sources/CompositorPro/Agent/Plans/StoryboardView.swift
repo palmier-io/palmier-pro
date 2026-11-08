@@ -49,8 +49,14 @@ struct StoryboardView: View {
                     ScrollView {
                         if let card = report.cards.first(where: { $0.shot.id == sceneId }) {
                             StoryboardSceneView(card: card, asset: card.shot.mediaRef.flatMap { editor.mediaAssetsById[$0] },
+                                visualAssets: editor.mediaAssets.filter { $0.type == .image || $0.type == .video },
+                                canEdit: (editor.editPlan(id: report.planId)?.status == .proposed || editor.editPlan(id: report.planId)?.status == .approved)
+                                    && report.phase != .canceled && operation == nil,
                                 canReview: report.phase == .awaitingStoryboardApproval && operation == nil) { review in
                                 perform { try await editor.reviewStoryboardScene(planId: report.planId, revision: report.revision, review: review) }
+                            } onRevise: { edits, visual in
+                                perform { try await editor.reviseStoryboardScene(planId: report.planId, revision: report.revision,
+                                    sceneId: card.shot.id, beatEdits: edits, visual: visual) }
                             }.id(card.shot.id + card.selectionRevision)
                         } else { Text(L10n.string("Select a scene to review its narration and visual.")) }
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -66,6 +72,10 @@ struct StoryboardView: View {
                 }
                 TextField(L10n.string("Grouped editorial comments"), text: $comment)
                 HStack {
+                    Button(L10n.string("Move Scene Earlier")) { moveScene(report, offset: -1) }
+                        .disabled(!canMoveScene(report, offset: -1))
+                    Button(L10n.string("Move Scene Later")) { moveScene(report, offset: 1) }
+                        .disabled(!canMoveScene(report, offset: 1))
                     Button(L10n.string("Prepare Storyboard")) { perform { try await editor.prepareStoryboard(planId: planId) } }
                     Button(L10n.string("Cancel Production")) {
                         perform {
@@ -96,6 +106,7 @@ struct StoryboardView: View {
             guard !planId.isEmpty else { return }
             do {
                 report = try await editor.storyboardReport(planId: planId)
+                comment = editor.editPlan(id: planId)?.productionRun?.comment ?? ""
                 if sceneId == nil || report?.cards.contains(where: { $0.shot.id == sceneId }) != true {
                     sceneId = report?.cards.first?.shot.id
                 }
@@ -126,13 +137,30 @@ struct StoryboardView: View {
         operation?.cancel()
         operation = nil
     }
+
+    private func canMoveScene(_ report: StoryboardReport, offset: Int) -> Bool {
+        guard report.phase != .canceled, let plan = editor.editPlan(id: report.planId),
+              plan.status == .proposed || plan.status == .approved,
+              let index = report.cards.firstIndex(where: { $0.shot.id == sceneId }) else { return false }
+        return report.cards.indices.contains(index + offset)
+    }
+
+    private func moveScene(_ report: StoryboardReport, offset: Int) {
+        guard canMoveScene(report, offset: offset), let index = report.cards.firstIndex(where: { $0.shot.id == sceneId }) else { return }
+        var ids = report.cards.map(\.shot.id)
+        ids.swapAt(index, index + offset)
+        perform { try await editor.reorderStoryboard(planId: report.planId, revision: report.revision, sceneIds: ids) }
+    }
 }
 
 private struct StoryboardSceneView: View {
     let card: StoryboardCard
     let asset: MediaAsset?
+    let visualAssets: [MediaAsset]
+    let canEdit: Bool
     let canReview: Bool
     let onReview: (ProductionRun.VisualReview) -> Void
+    let onRevise: ([StoryboardBeatEdit], StoryboardVisualEdit?) -> Void
     @State private var image: CGImage?
     @State private var previewError: String?
     @State private var inspected = false
@@ -166,6 +194,8 @@ private struct StoryboardSceneView: View {
                 Text(L10n.string("Reviewed by \(review.reviewer)"))
                 Text(verbatim: review.evidence).textSelection(.enabled)
             }
+            StoryboardSceneEditor(card: card, visualAssets: visualAssets, canEdit: canEdit, onRevise: onRevise)
+                .id(card.selectionRevision + card.narration)
             DisclosureGroup(L10n.string("Record Visual Inspection")) {
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
                     Toggle(L10n.string("I inspected the complete selected source and intended framing."), isOn: $inspected)

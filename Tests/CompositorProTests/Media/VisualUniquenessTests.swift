@@ -58,6 +58,22 @@ struct VisualUniquenessTests {
         #expect(report.conflicts.first?.occurrences.first?.clipIds == ["first", "split"])
     }
 
+    @Test(arguments: [false, true])
+    func authoredSelectionsRemainDistinctEvenWhenAdjacent(isImage: Bool) async throws {
+        let selections = [
+            VisualOccurrence(mediaRef: "source", clipIds: ["first"], lane: ["storyboard"], startFrame: 0, endFrame: 30,
+                             sourceStart: 0, sourceEnd: isImage ? 0 : 30, isImage: isImage),
+            VisualOccurrence(mediaRef: "source", clipIds: ["second"], lane: ["storyboard"], startFrame: 30, endFrame: 60,
+                             sourceStart: isImage ? 0 : 30, sourceEnd: isImage ? 0 : 60, isImage: isImage),
+        ]
+        var manifest = MediaManifest()
+        manifest.entries = [entry(type: isImage ? .image : .video)]
+        let report = try await VisualUniqueness.audit(occurrences: selections, manifest: manifest)
+        #expect(report.occurrences == selections)
+        #expect(report.conflicts.first?.occurrences == selections)
+        #expect(!report.knownIdentityReuseFree)
+    }
+
     @Test func aliasesConnectHashesAndAlternateProviderRenditionsTransitively() async throws {
         let origin = MediaImportOrigin(provider: "pexels", assetId: "pexels-video-42", landingPageURL: nil)
         let report = try await audit([Track(type: .video, clips: [

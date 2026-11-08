@@ -222,7 +222,7 @@ enum ToolDefinitions {
             description: "Maintains one persistent edit plan with structure, source-linked script beats, shots, timing, claims, and provenance. Supplied referenceRecipe cues adapt editorial principles; reference duration never sets output runtime. New plans start proposed on the active timeline. prepare_storyboard starts a managed production review with derived scene cards and one persistent approval owner; inspect actual selections and obtain explicit user approval of the exact revision. Managed approval cannot be replaced by a plain status change or override visual/rights blockers. Generic plan status remains available for ordinary editing. Web candidates require HTTPS URLs, license, and attribution; managed imported selections also retain rights. No timeline edits; apply_plan(commit:true) assembles once.",
             inputSchema: objectSchema(
                 properties: [
-                    "action": ["type": "string", "enum": ["create", "read", "update", "status", "delete", "review_claims", "measure_narration", "prepare_storyboard", "read_storyboard", "review_storyboard_scene", "approve_storyboard", "cancel_production"], "description": "Plan operation. review_claims confirms selected facts against the current ledgerRevision. measure_narration measures and aligns ready audio, never guesses missing words. prepare_storyboard creates or refreshes one persistent production review; read_storyboard returns derived cards, revision, inspection blockers, and source conflicts. review_storyboard_scene records an explicitly performed full still or continuous selected-span inspection, not a guess from tags or samples; never invent reviewer evidence. approve_storyboard is the user's explicit grouped approval of the exact current revision and cannot override visual or rights blockers. cancel_production revokes approval. No timeline edits."],
+                    "action": ["type": "string", "enum": ["create", "read", "update", "status", "delete", "review_claims", "measure_narration", "prepare_storyboard", "read_storyboard", "review_storyboard_scene", "approve_storyboard", "cancel_production", "revise_storyboard_scene", "reorder_storyboard"], "description": "Plan operation. review_claims confirms selected facts against current ledgerRevision. measure_narration never guesses missing words. prepare_storyboard/read_storyboard expose persistent revision-bound cards and blockers. review_storyboard_scene records actually performed full still or continuous selected-span inspection; never invent evidence. approve_storyboard requires explicit user approval of the exact revision and cannot override blockers. revise_storyboard_scene updates source-linked narration and/or selected visual atomically; shared beats affect every dependent scene. reorder_storyboard moves a complete contiguous scene sequence and its narration blocks while preserving IDs; shared beats, gaps, overlaps, or split sections are refused. Revisions revoke approval and refuse repeated sources before mutation. cancel_production revokes approval. No timeline edits."],
                     "planId": ["type": "string", "description": "Exact plan id from a plan_edit receipt. Required for update, status, delete, review_claims, measure_narration, and single-plan reads."],
                     "plan": [
                         "type": "object",
@@ -327,8 +327,8 @@ enum ToolDefinitions {
                     "limit": ["type": "integer", "description": "Read only. Plans to return, 1–100 (default 20)."],
                     "claimIds": ["type": "array", "items": ["type": "string"], "description": "review_claims only. Non-empty, unique claim IDs whose current evidence was reviewed."],
                     "ledgerRevision": ["type": "string", "description": "review_claims only. Exact sourceLedgerRevision from the plan read back for review. Rejects stale research review."],
-                    "storyboardRevision": ["type": "string", "description": "approve_storyboard/review_storyboard_scene only. Exact revision from the board actually reviewed."],
-                    "sceneId": ["type": "string", "description": "review_storyboard_scene only. Stable storyboard scene ID."],
+                    "storyboardRevision": ["type": "string", "description": "Storyboard approval, inspection, or revision only. Exact revision from the board actually reviewed."],
+                    "sceneId": ["type": "string", "description": "Scene inspection or revision only. Stable storyboard scene ID."],
                     "selectionRevision": ["type": "string", "description": "review_storyboard_scene only. Exact selected source/span revision from its card."],
                     "coverage": ["type": "string", "enum": ["full_still_inspection", "full_span_playback"], "description": "review_storyboard_scene only. Actual complete inspection method; sparse frames cannot certify video coverage."],
                     "reviewer": ["type": "string", "description": "review_storyboard_scene only. Identifies the person or supported temporal inspection system that actually inspected the selection."],
@@ -337,6 +337,16 @@ enum ToolDefinitions {
                     "rightsConfirmed": ["type": "boolean", "description": "review_storyboard_scene only. Explicit verification of selected use's license and attribution obligations. False blocks approval."],
                     "suspectedDuplicate": ["type": "boolean", "description": "review_storyboard_scene only. Unresolved suspected crop/re-encode/cross-provider duplicate. True blocks approval."],
                     "comment": ["type": "string", "description": "approve_storyboard only. Optional grouped editorial approval comment."],
+                    "sceneIds": ["type": "array", "items": ["type": "string"], "maxItems": 256, "description": "reorder_storyboard only. Every current scene ID exactly once in desired order. Narration blocks move with scenes; partial sections and ambiguous ownership are refused."],
+                    "beatEdits": ["type": "array", "maxItems": 256, "description": "revise_storyboard_scene only. Replace selected scene's linked beats, preserving IDs, purpose, and factual references. Omitted spokenText clears its pronunciation override. Shared beats update all dependent scenes.", "items": objectSchema(properties: [
+                        "beatId": ["type": "string"], "text": ["type": "string"], "spokenText": ["type": "string"],
+                    ], required: ["beatId", "text"])],
+                    "visual": objectSchema(properties: [
+                        "mediaRef": ["type": "string", "description": "Exact current library visual ID; never silently retargeted."],
+                        "license": ["type": "string"], "attribution": ["type": "string"],
+                        "sourceStartSeconds": ["type": "number", "minimum": 0],
+                        "sourceEndSeconds": ["type": "number", "minimum": 0],
+                    ], required: ["mediaRef", "license", "attribution"]),
                 ],
                 required: ["action"]
             )

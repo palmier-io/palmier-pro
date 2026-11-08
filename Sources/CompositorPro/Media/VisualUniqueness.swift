@@ -73,7 +73,7 @@ enum VisualUniqueness {
         var traversal = Traversal(timelines: resolver)
         try traversal.visit(timeline, path: [], lane: [], ancestors: [])
         let report = traversal.report
-        return try await audit(occurrences: report.occurrences, manifest: manifest, unresolved: report.unresolved)
+        return try await audit(occurrences: coalesce(report.occurrences), manifest: manifest, unresolved: report.unresolved)
     }
 
     @concurrent
@@ -86,7 +86,6 @@ enum VisualUniqueness {
             }
         }
         var report = VisualUniquenessReport(occurrences: occurrences, unresolved: unresolved)
-        report.occurrences = try coalesce(report.occurrences)
         var aliases = Aliases()
         var tokens: [String: [String]] = [:]
         for occurrence in report.occurrences {

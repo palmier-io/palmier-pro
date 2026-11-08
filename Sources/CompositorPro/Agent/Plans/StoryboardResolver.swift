@@ -13,6 +13,7 @@ struct StoryboardCard: Sendable {
     var blockers: [String]
     var review: ProductionRun.VisualReview?
     var resolvedRange: Range<Int>?
+    var beats: [ScriptBeat]
 
     var receipt: [String: Any] {
         var row: [String: Any] = ["sceneId": shot.id, "title": shot.title, "narration": narration,
@@ -20,6 +21,7 @@ struct StoryboardCard: Sendable {
                                   "endFrame": shot.endFrame, "timing": resolvedRange == nil ? "estimated" : "measured",
                                   "selectionRevision": selectionRevision, "blockers": blockers,
                                   "previewCoverage": "not_checked"]
+        row["scriptBeats"] = beats.map { $0.receipt() }
         if let mediaRef = shot.mediaRef { row["mediaRef"] = mediaRef }
         if let resolvedRange {
             row["resolvedTiming"] = ["startFrame": resolvedRange.lowerBound, "endFrame": resolvedRange.upperBound]
@@ -165,7 +167,7 @@ enum StoryboardResolver {
                 purpose: linked.map(\.purpose).joined(separator: "\n"), claimIds: claims,
                 selectionRevision: selectionRevision, inputId: entry?.inputIdentity?.inputId,
                 sourceId: entry?.importInput?.origin?.sourceId, mediaType: entry?.type, blockers: blockers,
-                review: review, resolvedRange: resolvedRange))
+                review: review, resolvedRange: resolvedRange, beats: linked))
         }
         let content = Content(planId: plan.id, timelineId: plan.timelineId, fps: plan.fps, width: plan.width,
                               height: plan.height, goal: plan.goal, notes: plan.notes, sections: plan.sections,

@@ -143,7 +143,7 @@ extension EditorViewModel {
         return report
     }
 
-    private func storyboardUnavailableMediaRefs(for plan: EditPlan) -> Set<String> {
+    func storyboardUnavailableMediaRefs(for plan: EditPlan) -> Set<String> {
         Set(plan.shots.compactMap { shot in
             guard let ref = shot.mediaRef else { return nil }
             return missingMediaRefs.contains(ref) || unprocessableMediaRefs.contains(ref)

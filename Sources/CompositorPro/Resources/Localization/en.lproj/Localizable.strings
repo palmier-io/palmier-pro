@@ -132,6 +132,7 @@
 "Aspect" = "Aspect";
 "Aspect Ratio" = "Aspect Ratio";
 "Aspect ratio: %@" = "Aspect ratio: %@";
+"Attribution" = "Attribution";
 "Audio" = "Audio";
 "Audio Ref" = "Audio Ref";
 "Audio extraction failed: %@" = "Audio extraction failed: %@";
@@ -435,6 +436,7 @@
 "Enter Full Screen" = "Enter Full Screen";
 "Enter a model identifier." = "Enter a model identifier.";
 "Enter a valid http:// or https:// base URL." = "Enter a valid http:// or https:// base URL.";
+"Enter finite source times with the end after the start." = "Enter finite source times with the end after the start.";
 "Estimated cost. Actual billing may differ slightly." = "Estimated cost. Actual billing may differ slightly.";
 "Estimated: %lld frames" = "Estimated: %lld frames";
 "Even out the loudness across the interview clips." = "Even out the loudness across the interview clips.";
@@ -653,6 +655,7 @@
 "Levels" = "Levels";
 "Levels and fades" = "Levels and fades";
 "Library" = "Library";
+"License" = "License";
 "License and attribution obligations are confirmed." = "License and attribution obligations are confirmed.";
 "Lift" = "Lift";
 "Lift a subject off its background and keep the result transparent, so it can be placed over anything. Runs entirely on this machine: no model is downloaded and nothing leaves the device. Leave the background transparent by default; flattening onto a colour is for a product shot on white. This is subject segmentation rather than a matting network, so hair and fine edges are rough. For a green screen or a flat chroma background, the chroma key effect is far more reliable." = "Lift a subject off its background and keep the result transparent, so it can be placed over anything. Runs entirely on this machine: no model is downloaded and nothing leaves the device. Leave the background transparent by default; flattening onto a colour is for a product shot on white. This is subject segmentation rather than a matting network, so hair and fine edges are rough. For a green screen or a flat chroma background, the chroma key effect is far more reliable.";
@@ -745,6 +748,8 @@
 "More skill actions" = "More skill actions";
 "Motion Blur" = "Motion Blur";
 "Move Clip to New Track" = "Move Clip to New Track";
+"Move Scene Earlier" = "Move Scene Earlier";
+"Move Scene Later" = "Move Scene Later";
 "Move playhead inside the clip" = "Move playhead inside the clip";
 "Move to Folder" = "Move to Folder";
 "Multicam" = "Multicam";
@@ -756,6 +761,8 @@
 "Name" = "Name";
 "Name (optional)" = "Name (optional)";
 "Name the destination — YouTube, Shorts or Reels — and the export picks the codec and size that upload expects, while captions and credits are placed to clear the same platform's interface. A canvas facing the wrong way is reported rather than letterboxed.\nIt combines the canvas and export features rather than adding tools of its own." = "Name the destination — YouTube, Shorts or Reels — and the export picks the codec and size that upload expects, while captions and credits are placed to clear the same platform's interface. A canvas facing the wrong way is reported rather than letterboxed.\nIt combines the canvas and export features rather than adding tools of its own.";
+"Narration" = "Narration";
+"Narration changes affect every scene linked to that beat. Material changes require storyboard approval again." = "Narration changes affect every scene linked to that beat. Material changes require storyboard approval again.";
 "Nest settings discarded. Undo to restore." = "Nest settings discarded. Undo to restore.";
 "New" = "New";
 "New Folder" = "New Folder";
@@ -772,6 +779,7 @@
 "No Matching Skills" = "No Matching Skills";
 "No Storyboard Selected" = "No Storyboard Selected";
 "No Tracks" = "No Tracks";
+"No Visual Selected" = "No Visual Selected";
 "No adjustments yet" = "No adjustments yet";
 "No audio" = "No audio";
 "No audio selected." = "No audio selected.";
@@ -887,6 +895,7 @@
 "Projects Couldn’t Be Deleted" = "Projects Couldn’t Be Deleted";
 "Projects and timelines" = "Projects and timelines";
 "Prompt" = "Prompt";
+"Pronunciation wording (optional)" = "Pronunciation wording (optional)";
 "Proxies" = "Proxies";
 "Put a library asset on a track at a chosen frame, for a chosen length. Placement resolves what it must — a still needs a display length rather than a source range, and it trims or ripples what it displaces rather than overwriting it. This is the operation behind cut, paste and drag." = "Put a library asset on a track at a chosen frame, for a chosen length. Placement resolves what it must — a still needs a display length rather than a source range, and it trims or ripples what it displaces rather than overwriting it. This is the operation behind cut, paste and drag.";
 "Put a low drone under this gap." = "Put a low drone under this gap.";
@@ -949,6 +958,7 @@
 "Render a separate poster frame sized for the destination — landscape, vertical or square — with an optional headline drawn onto it. It is a standalone image and never touches the video." = "Render a separate poster frame sized for the destination — landscape, vertical or square — with an optional headline drawn onto it. It is a standalone image and never touches the video.";
 "Rendering" = "Rendering";
 "Rendering…" = "Rendering…";
+"Reorder Storyboard" = "Reorder Storyboard";
 "Replace clip source" = "Replace clip source";
 "Replacement Audio" = "Replacement Audio";
 "Report a Problem" = "Report a Problem";
@@ -974,6 +984,8 @@
 "Review Storyboard Scene" = "Review Storyboard Scene";
 "Reviewed by %@" = "Reviewed by %@";
 "Reviewer" = "Reviewer";
+"Revise Scene" = "Revise Scene";
+"Revise Storyboard Scene" = "Revise Storyboard Scene";
 "Right" = "Right";
 "Ripple Delete" = "Ripple Delete";
 "Ripple Delete Gap" = "Ripple Delete Gap";
@@ -997,6 +1009,7 @@
 "Save As…" = "Save As…";
 "Save Changes" = "Save Changes";
 "Save Range as Media" = "Save Range as Media";
+"Save Scene Changes" = "Save Scene Changes";
 "Save any frame as an image in the library — a shot you want to title, grade or use as a reference. Can come from the composed timeline or from a source clip at a specific time, and the saved frame is indexed for search like any other image." = "Save any frame as an image in the library — a shot you want to title, grade or use as a reference. Can come from the composed timeline or from a source clip at a specific time, and the saved frame is indexed for search like any other image.";
 "Save as Audio" = "Save as Audio";
 "Save as Media" = "Save as Media";
@@ -1100,7 +1113,9 @@
 "Sound Effects" = "Sound Effects";
 "Source" = "Source";
 "Source Audio" = "Source Audio";
+"Source End (seconds)" = "Source End (seconds)";
 "Source Media" = "Source Media";
+"Source Start (seconds)" = "Source Start (seconds)";
 "Source Video" = "Source Video";
 "Source thumbnail only. Inspect the full still or continuously play the selected video span before recording review." = "Source thumbnail only. Inspect the full still or continuously play the selected video span before recording review.";
 "Speaker Detection" = "Speaker Detection";
@@ -1279,6 +1294,7 @@
 "Upscale… (Paid)" = "Upscale… (Paid)";
 "Use Freeform" = "Use Freeform";
 "Use Freeform to edit individual crop insets." = "Use Freeform to edit individual crop insets.";
+"Use Selected Source Span" = "Use Selected Source Span";
 "Use an aspect ratio with two positive numbers, such as 3:2." = "Use an aspect ratio with two positive numbers, such as 3:2.";
 "Use as first frame or reference" = "Use as first frame or reference";
 "Use for non-English or mixed-language audio." = "Use for non-English or mixed-language audio.";
@@ -1301,6 +1317,7 @@
 "View Skills" = "View Skills";
 "View plans" = "View plans";
 "Vignette" = "Vignette";
+"Visual" = "Visual";
 "Visual search is disabled in Settings." = "Visual search is disabled in Settings.";
 "Visual search model download failed. Check your connection and try again." = "Visual search model download failed. Check your connection and try again.";
 "Voice" = "Voice";

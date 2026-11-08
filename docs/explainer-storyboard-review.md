@@ -25,6 +25,34 @@ Storyboard cards are derived; no second authored script or timing model exists.
    retained source uniqueness, and measured source bytes before assembly. Existing
    generic plans remain generic editing operations, not verified productions.
 
+## Editing scenes
+
+`revise_storyboard_scene` changes selected source-linked script beats and/or a
+library visual as one undoable action. Beat IDs, purpose, and claim references stay
+stable. A beat shared by several scenes remains one authored value; every dependent
+card changes together. Omitting pronunciation wording clears that beat's override.
+Replacement visuals require exact current library image/video IDs and explicit rights fields.
+The complete proposed board is audited before mutation; a known duplicate refuses
+the entire edit. Adjacent authored selections remain distinct uses; only timeline
+audits coalesce uninterrupted editorial splits. Missing inspection evidence stays
+a blocker, not implied approval.
+
+`reorder_storyboard` supplies every current scene ID exactly once. It preserves
+scene/beat IDs and durations, moving narration blocks and complete section ranges
+with the requested scene sequence. The current operation requires contiguous,
+non-overlapping scenes, complete one-scene ownership of narration, and contiguous
+section membership. Shared beats, gaps, overlaps, partial or split sections are
+refused rather than silently dropping or rearranging dependencies. Reordering
+invalidates measured narration and approval; new speech must match the new order.
+
+Native scene controls edit narration, pronunciation, source, source span, license,
+and attribution. Move-earlier/later buttons use the same domain operation as MCP.
+Changing a source clears copied rights in the draft, requiring an explicit review
+of the replacement's rights. Draft controls do not mutate the plan until Save.
+Narration-only edits remain available when a visual is missing. Invalid source
+time text cannot submit an old numeric value, and unchanged drafts cannot submit.
+External beat changes refresh draft wording even when pronunciation stays unchanged.
+
 Unknown inputs, unavailable media, unresolved derivative lineage, absent rights,
 unresolved claims, revealed faces, suspected duplicates, and incomplete inspection
 block approval. Approval cannot waive these blockers. It is an attestation tied to
@@ -61,8 +89,8 @@ the selected scene; video capture uses the existing bounded frame-capture servic
 
 This slice is not the complete production coordinator. Final narration generation,
 graphics jobs, lower-level placement/export protection, actual-output face/framing
-review, semantic graphics, scene reorder/replacement/narration editing UI, sequential
-animatic, dependent revisions, recovery, and verified delivery remain roadmap work.
+review, semantic graphics, sequential animatic, dependent revisions, recovery, and
+verified delivery remain roadmap work.
 The native panel records review; it does not itself play a selected video span.
 Users must inspect it using a supported playback path before attesting.
 
@@ -78,6 +106,11 @@ Users must inspect it using a supported playback path before attesting.
   approve once. Expect no per-shot approval prompts and one undo action.
 - Change source, script, pronunciation, license, or pacing. Expect stale approval;
   prepare again and review changed selections. Unchanged selection evidence stays.
+- Edit a beat shared by two cards; both must display the changed wording. Save
+  narration and replacement together, then undo once; both restore exactly.
+- Move a scene earlier/later. Expect its narration and complete section to follow;
+  gaps, shared beats, split sections, and reused replacement sources are refused
+  without edits or empty undo steps. Repeated unchanged requests are no-ops.
 - Resolve narration timing without changing intent. Expect approval retained.
 - Exercise Tab/focus, keyboard scene selection, Escape dismissal, undo/redo,
   switching plans while loading, missing assets, and empty/disabled states.
