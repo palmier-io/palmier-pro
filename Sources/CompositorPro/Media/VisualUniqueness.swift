@@ -86,7 +86,7 @@ enum VisualUniqueness {
             }
         }
         var report = VisualUniquenessReport(occurrences: occurrences, unresolved: unresolved)
-        var aliases = Aliases()
+        let aliases = VisualSourceAliases(manifest: manifest)
         var tokens: [String: [String]] = [:]
         for occurrence in report.occurrences {
             try Task.checkCancellation()
@@ -96,15 +96,15 @@ enum VisualUniqueness {
                 tokens[occurrence.mediaRef] = ["media:\(occurrence.mediaRef)"]
                 continue
             }
-            var ids = ["media:\(entry.id)"]
-            if let identity = entry.inputIdentity, identity.isValid { ids.append(identity.inputId) }
-            else { report.unresolved.append(.init(reason: "missing_content_identity", clipId: occurrence.clipIds.first, mediaRef: entry.id)) }
-            if let origin = entry.importInput?.origin { ids.append(origin.sourceId) }
+            let ids = VisualSourceAliases.sourceIds(mediaRef: entry.id, inputId: entry.inputIdentity.flatMap { $0.isValid ? $0.inputId : nil },
+                                                   origin: entry.importInput?.origin)
+            if entry.inputIdentity?.isValid != true {
+                report.unresolved.append(.init(reason: "missing_content_identity", clipId: occurrence.clipIds.first, mediaRef: entry.id))
+            }
             if entry.generationInput != nil || entry.type == .lottie {
                 report.unresolved.append(.init(reason: "unresolved_derivative_lineage", clipId: occurrence.clipIds.first, mediaRef: entry.id))
             }
             tokens[entry.id] = ids
-            for id in ids { aliases.join(ids[0], id) }
         }
         var groups: [String: [VisualOccurrence]] = [:]
         var sources: [String: Set<String>] = [:]
@@ -249,26 +249,5 @@ enum VisualUniqueness {
             } else { result.append(value) }
         }
         return result
-    }
-
-    private struct Aliases {
-        var parents: [String: String] = [:]
-
-        mutating func root(_ id: String) -> String {
-            var value = id
-            var path: [String] = []
-            while let parent = parents[value], parent != value {
-                path.append(value)
-                value = parent
-            }
-            for item in path { parents[item] = value }
-            return value
-        }
-
-        mutating func join(_ a: String, _ b: String) {
-            let first = root(a)
-            let second = root(b)
-            if first != second { parents[max(first, second)] = min(first, second) }
-        }
     }
 }

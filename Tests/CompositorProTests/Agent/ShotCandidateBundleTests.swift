@@ -50,35 +50,35 @@ struct ShotCandidateBundleTests {
             limit: 8
         )
 
-        #expect(bundle.candidates.count == 3)
+        #expect(bundle.candidates.count == 2)
         #expect(bundle.candidates.map(\.id) == [
             "library:asset-1:visual:1.235-4.5",
-            "library:asset-1:spoken:5.0-8.0",
             "stock:pixabay:pixabay-video-1",
         ])
-        #expect(bundle.candidates.map(\.rank) == [1, 2, 3])
+        #expect(bundle.candidates.map(\.rank) == [1, 2])
         #expect(bundle.candidates[0].mediaRef == "asset-1")
         #expect(bundle.candidates[0].score == 0.2)
-        #expect(bundle.candidates[1].title == "harbor at dusk")
+        #expect(bundle.candidates[1].title == "harbor, sunset")
         #expect(bundle.candidates[1].score == nil)
-        #expect(bundle.candidates[2].url == "https://cdn.pixabay.com/video/harbor.mp4")
-        #expect(bundle.candidates[2].attribution == "Video by Example Filmmaker via Pixabay")
-        #expect(bundle.skipped.isEmpty)
+        #expect(bundle.candidates[1].url == "https://cdn.pixabay.com/video/harbor.mp4")
+        #expect(bundle.candidates[1].attribution == "Video by Example Filmmaker via Pixabay")
+        #expect(bundle.skipped.map(\.reason) == ["Duplicate source identity."])
         #expect(bundle.droppedUsable == 0)
     }
 
-    @Test func distinctSourceSpansShareInputIdentityAndStockOriginSurvivesReceipt() {
+    @Test func distinctSourceSpansCollapseByInputIdentityAndStockOriginSurvivesReceipt() {
         var asset = libraryAsset()
-        asset.inputId = "sha256:one-input"
+        asset.inputId = "sha256:\(String(repeating: "a", count: 64))"
         asset.inputIdentityState = "verified"
         let bundle = ShotCandidateBuilder.build(kind: .video, visual: [
             .init(assetID: asset.id, startSeconds: 0, endSeconds: 2, score: 0.9),
             .init(assetID: asset.id, startSeconds: 4, endSeconds: 6, score: 0.8),
         ], spoken: [], remote: [remoteHit()], assets: [asset.id: asset], limit: 8)
-        #expect(bundle.candidates[0].id != bundle.candidates[1].id)
-        #expect(bundle.candidates[0].inputId == bundle.candidates[1].inputId)
+        #expect(bundle.candidates.count == 2)
+        #expect(bundle.candidates[0].inputId == asset.inputId)
+        #expect(bundle.skipped.map(\.reason) == ["Duplicate source identity."])
         #expect(bundle.candidates[0].receipt()["inputIdentityState"] as? String == "verified")
-        #expect(bundle.candidates[2].origin == remoteHit().origin)
+        #expect(bundle.candidates[1].origin == remoteHit().origin)
         #expect((remoteHit().receipt["origin"] as? [String: Any])?["sourceId"] as? String == remoteHit().origin.sourceId)
     }
 
@@ -170,7 +170,7 @@ struct ShotCandidateBundleTests {
             spoken: [.init(assetID: asset.id, startSeconds: 1, endSeconds: 2, text: "Harbor")],
             remote: [], assets: [asset.id: asset], limit: 8
         )
-        #expect(bundle.candidates.count == 2)
+        #expect(bundle.candidates.count == 1)
         for candidate in bundle.candidates {
             let receipt = candidate.receipt()
             #expect(receipt["width"] as? Int == (width > 0 ? width : nil))

@@ -24,6 +24,7 @@ final class ToolExecutor {
     let visualSearchModel: any VisualSearchModelLoading
     let narrationTimingService: NarrationTimingService
     let capabilityInputLoader: @Sendable () async throws -> RuntimeCapabilities.LocalInputs
+    let stockProviders: [any StockMediaProvider]
 
     var editor: EditorViewModel? {
         frontmostProjectProvider == nil ? inAppEditor : sessionProject?.editorViewModel
@@ -44,7 +45,8 @@ final class ToolExecutor {
         skillStore: SkillStore = .shared,
         visualSearchModel: any VisualSearchModelLoading = VisualModelLoader.shared,
         capabilityInputLoader: @escaping @Sendable () async throws -> RuntimeCapabilities.LocalInputs = RuntimeCapabilities.LocalInputs.load,
-        narrationTimingService: NarrationTimingService = .shared
+        narrationTimingService: NarrationTimingService = .shared,
+        stockProviders: [any StockMediaProvider] = StockMediaSearch.defaultProviders
     ) {
         self.inAppEditor = editor
         self.frontmostProjectProvider = nil
@@ -53,6 +55,7 @@ final class ToolExecutor {
         self.visualSearchModel = visualSearchModel
         self.capabilityInputLoader = capabilityInputLoader
         self.narrationTimingService = narrationTimingService
+        self.stockProviders = stockProviders
     }
 
     init(
@@ -60,7 +63,8 @@ final class ToolExecutor {
         exportQueue: ExportQueue = .shared,
         visualSearchModel: any VisualSearchModelLoading = VisualModelLoader.shared,
         capabilityInputLoader: @escaping @Sendable () async throws -> RuntimeCapabilities.LocalInputs = RuntimeCapabilities.LocalInputs.load,
-        narrationTimingService: NarrationTimingService = .shared
+        narrationTimingService: NarrationTimingService = .shared,
+        stockProviders: [any StockMediaProvider] = StockMediaSearch.defaultProviders
     ) {
         let project = projectProvider()
         self.inAppEditor = nil
@@ -71,6 +75,7 @@ final class ToolExecutor {
         self.visualSearchModel = visualSearchModel
         self.capabilityInputLoader = capabilityInputLoader
         self.narrationTimingService = narrationTimingService
+        self.stockProviders = stockProviders
     }
 
     func bindProject(_ project: VideoProject?) {

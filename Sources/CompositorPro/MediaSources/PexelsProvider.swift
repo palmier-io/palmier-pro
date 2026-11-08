@@ -1,13 +1,22 @@
 import Foundation
 
-/// Pexels — stock photography and video for accounts that already hold a free API key. Without
-/// one the provider reports that it needs one rather than failing the whole search.
+/// Pexels provides keyed photography and stock-video search.
 struct PexelsProvider: StockMediaProvider {
     let id = "pexels"
     let displayName = "Pexels"
     let supportedKinds: Set<StockMediaKind> = [.image, .video]
 
     private static let base = URL(string: "https://api.pexels.com")!
+    private let apiKey: String?
+    private let requestJSON: StockMediaJSONRequest
+
+    init(
+        apiKey: String? = nil,
+        requestJSON: @escaping StockMediaJSONRequest = { try await StockMediaHTTP.getJSON($0, headers: $1) }
+    ) {
+        self.apiKey = apiKey
+        self.requestJSON = requestJSON
+    }
 
     struct VideoResponse: Decodable {
         struct File: Decodable, Equatable {
@@ -32,6 +41,9 @@ struct PexelsProvider: StockMediaProvider {
             let video_files: [File]?
         }
         let videos: [Video]
+        let page: Int
+        let next_page: String?
+        let total_results: Int
     }
 
     private struct PhotoResponse: Decodable {
@@ -50,43 +62,63 @@ struct PexelsProvider: StockMediaProvider {
             let src: Source?
         }
         let photos: [Photo]
+        let page: Int
+        let next_page: String?
+        let total_results: Int
     }
 
-    func search(_ query: StockMediaQuery) async throws -> [StockMediaHit] {
-        let key = await StockMediaCredentials.pexelsKey()
+    func search(_ query: StockMediaQuery) async throws -> StockMediaPage {
+        try Task.checkCancellation()
+        let query = try query.normalized()
+        guard supportedKinds.contains(query.kind) else { throw StockMediaError.unsupportedKind(provider: displayName) }
+        let key: String
+        if let apiKey {
+            key = apiKey
+        } else {
+            key = await StockMediaCredentials.pexelsKey()
+            try Task.checkCancellation()
+        }
         guard !key.isEmpty else { throw StockMediaError.needsAPIKey(provider: displayName) }
         let headers = ["Authorization": key]
 
+        let page: StockMediaPage
         switch query.kind {
         case .video:
-            return try await searchVideos(query, headers: headers)
+            page = try await searchVideos(query, headers: headers)
         case .image:
-            return try await searchPhotos(query, headers: headers)
+            page = try await searchPhotos(query, headers: headers)
         case .audio:
             throw StockMediaError.unsupportedKind(provider: displayName)
         }
+        try Task.checkCancellation()
+        return page
     }
 
-    private func searchVideos(_ query: StockMediaQuery, headers: [String: String]) async throws -> [StockMediaHit] {
+    static func searchURL(_ query: StockMediaQuery) -> URL? {
+        guard let query = try? query.normalized(), query.kind != .audio else { return nil }
         var components = URLComponents(
-            url: Self.base.appendingPathComponent("videos/search"),
+            url: Self.base.appendingPathComponent(query.kind == .video ? "v1/videos/search" : "v1/search"),
             resolvingAgainstBaseURL: false
         )
         components?.queryItems = [
             .init(name: "query", value: query.text),
-            .init(name: "per_page", value: String(max(1, min(query.limit * 2, 80)))),
-            .init(name: "orientation", value: query.orientation ?? "landscape"),
+            .init(name: "per_page", value: String(min(query.limit * 2, 80))),
+            .init(name: "page", value: String(query.page)),
         ]
-        guard let url = components?.url else { throw StockMediaError.emptyQuery }
+        if let orientation = query.orientation { components?.queryItems?.append(.init(name: "orientation", value: orientation)) }
+        return components?.url
+    }
 
-        let data = try await StockMediaHTTP.getJSON(url, headers: headers)
+    private func searchVideos(_ query: StockMediaQuery, headers: [String: String]) async throws -> StockMediaPage {
+        guard let url = Self.searchURL(query) else { throw StockMediaError.emptyQuery }
+        let data = try await requestJSON(url, headers)
+        try Task.checkCancellation()
         let response = try StockMediaHTTP.decode(VideoResponse.self, from: data, provider: displayName)
+        guard response.page == query.page, response.total_results >= 0 else { throw StockMediaError.undecodable(provider: displayName) }
+        let nextPage = try StockMediaPage.continuation(response.next_page, requestURL: url, page: query.page, provider: displayName)
 
         let hits = response.videos.compactMap { video -> StockMediaHit? in
             guard let file = Self.bestFile(video.video_files) else { return nil }
-            if let maxDuration = query.maxDurationSeconds, let duration = video.duration, duration > maxDuration {
-                return nil
-            }
             return StockMediaHit(
                 id: "\(id)-video-\(video.id)",
                 kind: .video,
@@ -106,23 +138,17 @@ struct PexelsProvider: StockMediaProvider {
                 attributionText: nil
             )
         }
-        return Array(hits.prefix(max(1, query.limit)))
+        return StockMediaPage(hits: hits.filter(query.includes), nextPage: nextPage, totalResults: response.total_results)
     }
 
-    private func searchPhotos(_ query: StockMediaQuery, headers: [String: String]) async throws -> [StockMediaHit] {
-        var components = URLComponents(
-            url: Self.base.appendingPathComponent("v1/search"),
-            resolvingAgainstBaseURL: false
-        )
-        components?.queryItems = [
-            .init(name: "query", value: query.text),
-            .init(name: "per_page", value: String(max(1, min(query.limit * 2, 80)))),
-            .init(name: "orientation", value: query.orientation ?? "landscape"),
-        ]
-        guard let url = components?.url else { throw StockMediaError.emptyQuery }
+    private func searchPhotos(_ query: StockMediaQuery, headers: [String: String]) async throws -> StockMediaPage {
+        guard let url = Self.searchURL(query) else { throw StockMediaError.emptyQuery }
 
-        let data = try await StockMediaHTTP.getJSON(url, headers: headers)
+        let data = try await requestJSON(url, headers)
+        try Task.checkCancellation()
         let response = try StockMediaHTTP.decode(PhotoResponse.self, from: data, provider: displayName)
+        guard response.page == query.page, response.total_results >= 0 else { throw StockMediaError.undecodable(provider: displayName) }
+        let nextPage = try StockMediaPage.continuation(response.next_page, requestURL: url, page: query.page, provider: displayName)
 
         let hits = response.photos.compactMap { photo -> StockMediaHit? in
             // large2x is a sensible default: big enough to hold a full-frame still, far smaller
@@ -147,7 +173,7 @@ struct PexelsProvider: StockMediaProvider {
                 attributionText: nil
             )
         }
-        return Array(hits.prefix(max(1, query.limit)))
+        return StockMediaPage(hits: hits.filter(query.includes), nextPage: nextPage, totalResults: response.total_results)
     }
 
     /// Prefers a real progressive MP4, then the smallest HD rendition. HLS entries have no

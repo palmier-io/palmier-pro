@@ -110,6 +110,155 @@ struct ShotCandidateBundle: Sendable, Equatable {
     var droppedUsable: Int
 }
 
+struct ShotCandidateExclusions: Sendable, Equatable {
+    static let maximumExplicitSourceIds = 256
+
+    let aliases: VisualSourceAliases
+    let sourceIds: Set<String>
+    let selectedMediaRefs: Set<String>
+    let unresolved: [VisualUniquenessIssue]
+
+    init(aliases: VisualSourceAliases, explicitSourceIds: [String], selectedMediaRefs: Set<String> = [],
+         unresolved: [VisualUniquenessIssue] = []) throws {
+        guard explicitSourceIds.count <= Self.maximumExplicitSourceIds else {
+            throw ToolError("excludedSourceIds accepts at most \(Self.maximumExplicitSourceIds) canonical IDs.")
+        }
+        guard explicitSourceIds.allSatisfy(VisualSourceAliases.isCanonicalSourceId) else {
+            throw ToolError("excludedSourceIds must contain canonical media:<mediaRef>, sha256:<64 lowercase hex digits>, or stock:<provider>:<assetId> IDs.")
+        }
+        guard Set(explicitSourceIds).count == explicitSourceIds.count else {
+            throw ToolError("excludedSourceIds must not contain duplicate IDs.")
+        }
+        self.aliases = aliases
+        self.selectedMediaRefs = selectedMediaRefs
+        self.unresolved = unresolved
+        self.sourceIds = aliases.expanded(Set(explicitSourceIds).union(selectedMediaRefs.map { "media:\($0)" }))
+    }
+
+    var stockSourceIds: [String] { sourceIds.filter { $0.hasPrefix("stock:") }.sorted() }
+
+    func excludes(mediaRef: String) -> Bool { sourceIds.contains("media:\(mediaRef)") }
+
+    func root(mediaRef: String) -> String { aliases.root("media:\(mediaRef)") }
+
+    func eligibleAssets(_ assets: [String: LibraryShotAsset], kind: StockMediaKind,
+                        restrict: Set<String>? = nil) -> Set<String> {
+        Set(assets.values.compactMap { asset in
+            guard asset.readiness == .ready, asset.type.rawValue == kind.rawValue,
+                  restrict?.contains(asset.id) ?? true, !excludes(mediaRef: asset.id) else { return nil }
+            return asset.id
+        })
+    }
+
+    @concurrent
+    static func snapshot(manifest: MediaManifest, assets: [LibraryShotAsset], explicitSourceIds: [String],
+                         selectedMediaRefs: Set<String>, kind: StockMediaKind, restrict: Set<String>?) async throws
+        -> (assets: [String: LibraryShotAsset], exclusions: Self, eligible: Set<String>) {
+        try Task.checkCancellation()
+        _ = try Self(aliases: .init(), explicitSourceIds: explicitSourceIds)
+        var byId: [String: LibraryShotAsset] = [:]
+        for asset in assets {
+            guard byId.updateValue(asset, forKey: asset.id) == nil else { throw ToolError("Duplicate library mediaRef '\(asset.id)'.") }
+        }
+        var seenManifestRefs = Set<String>()
+        var manifestById: [String: MediaManifestEntry] = [:]
+        var sources: [VisualSourceAliases.Source] = []
+        for entry in manifest.entries {
+            try Task.checkCancellation()
+            guard seenManifestRefs.insert(entry.id).inserted else { throw ToolError("Duplicate manifest mediaRef '\(entry.id)'.") }
+            manifestById[entry.id] = entry
+            if let asset = byId[entry.id] {
+                sources.append(.init(mediaRef: entry.id, inputId: asset.inputId, origin: asset.origin))
+            } else {
+                sources.append(.init(mediaRef: entry.id, inputId: entry.inputIdentity.flatMap { $0.isValid ? $0.inputId : nil },
+                                     origin: entry.importInput?.origin))
+            }
+        }
+        for asset in assets where !seenManifestRefs.contains(asset.id) {
+            sources.append(.init(mediaRef: asset.id, inputId: asset.inputId, origin: asset.origin))
+        }
+        let aliases = VisualSourceAliases(sources: sources)
+        var unresolved: [VisualUniquenessIssue] = []
+        for ref in selectedMediaRefs.sorted() {
+            let entry = manifestById[ref]
+            let inputId: String?
+            if let asset = byId[ref] { inputId = asset.inputId }
+            else { inputId = entry?.inputIdentity.flatMap { $0.isValid ? $0.inputId : nil } }
+            if byId[ref] == nil, entry == nil {
+                unresolved.append(.init(reason: "missing_media", clipId: nil, mediaRef: ref))
+            } else if !VisualSourceAliases.isValidInputId(inputId ?? "") {
+                unresolved.append(.init(reason: "missing_content_identity", clipId: nil, mediaRef: ref))
+            }
+            if entry?.generationInput != nil || entry?.type == .lottie {
+                unresolved.append(.init(reason: "unresolved_derivative_lineage", clipId: nil, mediaRef: ref))
+            }
+        }
+        let exclusions = try Self(aliases: aliases, explicitSourceIds: explicitSourceIds,
+                                  selectedMediaRefs: selectedMediaRefs, unresolved: unresolved)
+        let eligible = exclusions.eligibleAssets(byId, kind: kind, restrict: restrict)
+        try Task.checkCancellation()
+        return (byId, exclusions, eligible)
+    }
+}
+
+enum ShotCandidateRetrieval {
+    @concurrent
+    static func visual(eligible: Set<String>, exclusions: ShotCandidateExclusions, limit: Int,
+                       initial: [ShotCandidateBuilder.VisualInput]? = nil,
+                       fetch: @Sendable (Int, Set<String>) async throws -> [ShotCandidateBuilder.VisualInput]) async throws -> [ShotCandidateBuilder.VisualInput] {
+        var remaining = eligible
+        var results: [ShotCandidateBuilder.VisualInput] = []
+        var seen = Set<String>()
+        var first = initial
+        while results.count < limit, !remaining.isEmpty {
+            try Task.checkCancellation()
+            let hits: [ShotCandidateBuilder.VisualInput]
+            if let initial = first {
+                hits = initial
+                first = nil
+            } else {
+                hits = try await fetch(limit - results.count, remaining)
+            }
+            try Task.checkCancellation()
+            guard !hits.isEmpty else { break }
+            let oldCount = remaining.count
+            let ordered = hits.sorted {
+                if $0.score != $1.score { return $0.score > $1.score }
+                if $0.assetID != $1.assetID { return $0.assetID < $1.assetID }
+                return $0.startSeconds < $1.startSeconds
+            }
+            for hit in ordered where remaining.contains(hit.assetID) {
+                if seen.insert(exclusions.root(mediaRef: hit.assetID)).inserted { results.append(hit) }
+            }
+            remaining = remaining.filter { !seen.contains(exclusions.root(mediaRef: $0)) }
+            guard remaining.count < oldCount else { break }
+        }
+        return results
+    }
+
+    @concurrent
+    static func spoken(query: String, assets: [(id: String, url: URL)], exclusions: ShotCandidateExclusions,
+                       representedMediaRefs: [String] = [], limit: Int) async throws -> [ShotCandidateBuilder.SpokenInput] {
+        let represented = Set(representedMediaRefs.map { exclusions.root(mediaRef: $0) })
+        var remaining = assets.filter { !represented.contains(exclusions.root(mediaRef: $0.id)) }.sorted { $0.id < $1.id }
+        var results: [ShotCandidateBuilder.SpokenInput] = []
+        var seen = Set<String>()
+        while results.count < limit, !remaining.isEmpty {
+            try Task.checkCancellation()
+            let hits = TranscriptSearch.search(query: query, assets: remaining, limit: limit - results.count)
+            guard !hits.isEmpty else { break }
+            for hit in hits {
+                if seen.insert(exclusions.root(mediaRef: hit.assetID)).inserted {
+                    results.append(.init(assetID: hit.assetID, startSeconds: hit.start, endSeconds: hit.end, text: hit.text))
+                }
+            }
+            remaining.removeAll { seen.contains(exclusions.root(mediaRef: $0.id)) }
+        }
+        try Task.checkCancellation()
+        return results
+    }
+}
+
 enum ShotCandidateBuilder {
     struct VisualInput: Sendable, Equatable {
         var assetID: String
@@ -134,12 +283,17 @@ enum ShotCandidateBuilder {
         spoken: [SpokenInput],
         remote: [StockMediaHit],
         assets: [String: LibraryShotAsset],
-        limit: Int
+        limit: Int,
+        aliases: VisualSourceAliases? = nil,
+        excludedSourceIds: Set<String> = []
     ) -> ShotCandidateBundle {
+        let aliases = aliases ?? VisualSourceAliases(sources: assets.values.map {
+            .init(mediaRef: $0.id, inputId: $0.inputId, origin: $0.origin)
+        })
+        let excludedSourceIds = aliases.expanded(excludedSourceIds)
         var visualCandidates: [ShotCandidate] = []
         var spokenCandidates: [ShotCandidate] = []
         var remoteCandidates: [ShotCandidate] = []
-        var candidates: [ShotCandidate] = []
         var skipped: [ShotCandidateSkipped] = []
         var seenIDs = Set<String>()
 
@@ -148,6 +302,15 @@ enum ShotCandidateBuilder {
                 candidate.inputId = asset.inputId
                 candidate.inputIdentityState = asset.inputIdentityState
                 candidate.origin = asset.origin
+                if !VisualSourceAliases.isValidInputId(asset.inputId ?? "") {
+                    candidate.blockers.append("missing_content_identity")
+                }
+            }
+            let sourceIds = VisualSourceAliases.sourceIds(mediaRef: candidate.mediaRef, inputId: candidate.inputId,
+                                                         origin: candidate.origin)
+            guard !sourceIds.contains(where: excludedSourceIds.contains) else {
+                skipped.append(.init(id: candidate.id, source: candidate.source, reason: "Excluded source identity."))
+                return
             }
             guard seenIDs.insert(candidate.id).inserted else {
                 skipped.append(ShotCandidateSkipped(id: candidate.id, source: candidate.source, reason: "Duplicate candidate."))
@@ -326,7 +489,16 @@ enum ShotCandidateBuilder {
         }
         // Ready library rows need no download, so they precede remote catalog rows. Within each
         // evidence group, only source-provided ordering is used; no cross-mode score is invented.
-        let usable = orderedVisual + orderedSpoken + remoteCandidates
+        var seenSources = Set<String>()
+        let usable = (orderedVisual + orderedSpoken + remoteCandidates).filter { candidate in
+            let ids = VisualSourceAliases.sourceIds(mediaRef: candidate.mediaRef, inputId: candidate.inputId, origin: candidate.origin)
+            let root = aliases.root(ids.first ?? candidate.id)
+            guard seenSources.insert(root).inserted else {
+                skipped.append(.init(id: candidate.id, source: candidate.source, reason: "Duplicate source identity."))
+                return false
+            }
+            return true
+        }
         let ranked = usable.enumerated().map { index, candidate in
             var candidate = candidate
             candidate.rank = index + 1

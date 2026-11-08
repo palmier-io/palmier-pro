@@ -76,10 +76,57 @@ struct StockMediaQuery: Sendable {
     var orientation: String?
     var maxDurationSeconds: Int?
     var limit: Int
+    var page: Int = 1
+    var excludedSourceIds: Set<String> = []
+
+    func normalized() throws -> Self {
+        var query = self
+        query.text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.text.isEmpty else { throw StockMediaError.emptyQuery }
+        guard (1...50).contains(limit) else { throw StockMediaError.invalidQuery(field: "limit") }
+        guard (1...500).contains(page) else { throw StockMediaError.invalidQuery(field: "page") }
+        if let orientation {
+            guard kind != .audio, ["landscape", "portrait", "square"].contains(orientation) else {
+                throw StockMediaError.invalidQuery(field: "orientation")
+            }
+        }
+        if let maxDurationSeconds {
+            guard kind != .image, maxDurationSeconds > 0 else {
+                throw StockMediaError.invalidQuery(field: "maxDurationSeconds")
+            }
+        }
+        guard excludedSourceIds.allSatisfy(Self.isStockSourceId) else {
+            throw StockMediaError.invalidQuery(field: "excludedSourceIds")
+        }
+        return query
+    }
+
+    private static func isStockSourceId(_ value: String) -> Bool {
+        value.hasPrefix("stock:") && VisualSourceAliases.isCanonicalSourceId(value)
+    }
+
+    func includes(_ hit: StockMediaHit) -> Bool {
+        guard hit.kind == kind, !excludedSourceIds.contains(hit.origin.sourceId),
+              let url = URL(string: hit.url), url.scheme == "https", url.host?.isEmpty == false else { return false }
+        if let maxDurationSeconds {
+            guard let duration = hit.durationSeconds, duration > 0, duration <= maxDurationSeconds else { return false }
+        }
+        if let orientation {
+            guard let width = hit.width, let height = hit.height, width > 0, height > 0 else { return false }
+            switch orientation {
+            case "landscape": guard width > height else { return false }
+            case "portrait": guard height > width else { return false }
+            case "square": guard width == height else { return false }
+            default: return false
+            }
+        }
+        return true
+    }
 }
 
 enum StockMediaError: LocalizedError, Equatable {
     case emptyQuery
+    case invalidQuery(field: String)
     case needsAPIKey(provider: String)
     case badStatus(provider: String, code: Int)
     case rateLimited(provider: String)
@@ -91,6 +138,15 @@ enum StockMediaError: LocalizedError, Equatable {
         switch self {
         case .emptyQuery:
             "Search text is required."
+        case .invalidQuery(let field):
+            switch field {
+            case "limit": "Stock search limit must be 1–50."
+            case "page": "Stock search page must be 1–500."
+            case "orientation": "Stock search orientation must be landscape, portrait, or square and cannot apply to audio."
+            case "maxDurationSeconds": "Stock search duration must be positive and can apply only to audio or video."
+            case "excludedSourceIds": "Stock search exclusions must contain valid stock source IDs, each at most 256 UTF-8 bytes."
+            default: "Invalid stock search \(field)."
+            }
         case .needsAPIKey(let provider):
             "\(provider) needs a free API key before it can search. Add it in Settings, then retry."
         case .badStatus(let provider, let code):
@@ -113,7 +169,36 @@ protocol StockMediaProvider: Sendable {
     var supportedKinds: Set<StockMediaKind> { get }
 
     /// Throws `StockMediaError.needsAPIKey` when the provider is configured but unusable.
-    func search(_ query: StockMediaQuery) async throws -> [StockMediaHit]
+    func search(_ query: StockMediaQuery) async throws -> StockMediaPage
+}
+
+typealias StockMediaJSONRequest = @Sendable (URL, [String: String]) async throws -> Data
+
+struct StockMediaPage: Sendable {
+    let hits: [StockMediaHit]
+    let nextPage: Int?
+    let totalResults: Int?
+
+    init(hits: [StockMediaHit], nextPage: Int? = nil, totalResults: Int? = nil) {
+        self.hits = hits
+        self.nextPage = nextPage
+        self.totalResults = totalResults
+    }
+
+    static func continuation(_ value: String?, requestURL: URL, page: Int, provider: String) throws -> Int? {
+        guard let value else { return nil }
+        guard let components = URLComponents(string: value), components.scheme == "https",
+              components.host == requestURL.host, components.port == requestURL.port,
+              components.user == nil, components.password == nil,
+              components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                == requestURL.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")),
+              let items = components.queryItems else { throw StockMediaError.undecodable(provider: provider) }
+        let pages = items.filter { $0.name == "page" }
+        guard pages.count == 1, let raw = pages.first?.value, let next = Int(raw), next > page else {
+            throw StockMediaError.undecodable(provider: provider)
+        }
+        return next
+    }
 }
 
 /// Per-provider outcome, so a receipt never implies every source was searched successfully.
@@ -127,6 +212,25 @@ struct StockProviderOutcome: Sendable {
     let status: Status
     let count: Int
     let message: String?
+    let pagesFetched: Int
+    let exhausted: Bool
+    let nextPage: Int?
+    let totalResults: Int?
+
+    init(
+        id: String, displayName: String, status: Status, count: Int, message: String?,
+        pagesFetched: Int = 0, exhausted: Bool = false, nextPage: Int? = nil, totalResults: Int? = nil
+    ) {
+        self.id = id
+        self.displayName = displayName
+        self.status = status
+        self.count = count
+        self.message = message
+        self.pagesFetched = pagesFetched
+        self.exhausted = exhausted
+        self.nextPage = nextPage
+        self.totalResults = totalResults
+    }
 
     var receipt: [String: Any] {
         var out: [String: Any] = [
@@ -134,8 +238,12 @@ struct StockProviderOutcome: Sendable {
             "displayName": displayName,
             "status": status.rawValue,
             "count": count,
+            "pagesFetched": pagesFetched,
+            "exhausted": exhausted,
         ]
         if let message { out["message"] = message }
+        out["nextPage"] = nextPage
+        out["totalResults"] = totalResults
         return out
     }
 }
@@ -150,78 +258,129 @@ struct StockMediaResult: Sendable {
 /// credentials. Pixabay carries free video search once the user supplies a key; Pexels remains
 /// available for photography and video on accounts that already hold a key.
 enum StockMediaSearch {
-    static func search(_ query: StockMediaQuery) async throws -> StockMediaResult {
-        let (hits, outcomes, totals, scoped) = try await collect(query)
+    static var defaultProviders: [any StockMediaProvider] {
+        [OpenverseProvider(), PexelsProvider(), PixabayProvider()]
+    }
+
+    static func search(
+        _ query: StockMediaQuery, providers: [any StockMediaProvider] = defaultProviders
+    ) async throws -> StockMediaResult {
+        let (hits, outcomes, totals, scoped) = try await collect(query, providers: providers)
+        try Task.checkCancellation()
         return try finalize(hits: hits, outcomes: outcomes, totals: totals, query: scoped)
     }
 
     /// Runs every provider against one normalized query and preserves each source's outcome.
     /// Unlike `search`, this does not treat an empty aggregate as a failure; a unified caller
     /// may still have local candidates and must see exactly which remote sources succeeded.
-    static func collect(_ query: StockMediaQuery) async throws -> (
+    static func collect(
+        _ query: StockMediaQuery, providers: [any StockMediaProvider] = defaultProviders
+    ) async throws -> (
         hits: [StockMediaHit],
         outcomes: [StockProviderOutcome],
         totals: [Int],
         query: StockMediaQuery
     ) {
-        let text = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { throw StockMediaError.emptyQuery }
-
-        var scoped = query
-        scoped.text = text
-        // Every provider is queried at once; keyless and keyed sources both report their own
-        // availability, and a keyless source must not wait on a keyed one.
-        let providers: [any StockMediaProvider] = [OpenverseProvider(), PexelsProvider(), PixabayProvider()]
-
-        var outcomes: [StockProviderOutcome] = []
-        var collected: [StockMediaHit] = []
-        var totals: [Int] = []
-
-        for provider in providers {
-            try Task.checkCancellation()
-            guard provider.supportedKinds.contains(scoped.kind) else {
-                outcomes.append(.init(
-                    id: provider.id,
-                    displayName: provider.displayName,
-                    status: .unsupportedKind,
-                    count: 0,
-                    message: "\(provider.displayName) does not provide \(scoped.kind.rawValue) media."
-                ))
-                continue
+        try Task.checkCancellation()
+        let scoped = try query.normalized()
+        let results = try await withThrowingTaskGroup(of: (Int, ProviderCollection).self) { group in
+            var results = [ProviderCollection?](repeating: nil, count: providers.count)
+            var scheduled = min(2, providers.count)
+            for index in 0..<scheduled {
+                let provider = providers[index]
+                group.addTask { (index, try await collectProvider(provider, query: scoped)) }
             }
-            do {
-                let hits = try await provider.search(scoped)
-                totals.append(hits.count)
-                collected.append(contentsOf: hits)
-                outcomes.append(.init(
-                    id: provider.id,
-                    displayName: provider.displayName,
-                    status: .ok,
-                    count: hits.count,
-                    message: nil
-                ))
-            } catch {
-                if error is CancellationError { throw error }
-                if let error = error as? StockMediaError {
-                    outcomes.append(.init(
-                        id: provider.id,
-                        displayName: provider.displayName,
-                        status: status(for: error),
-                        count: 0,
-                        message: error.errorDescription
-                    ))
-                } else {
-                    outcomes.append(.init(
-                        id: provider.id,
-                        displayName: provider.displayName,
-                        status: .failed,
-                        count: 0,
-                        message: error.localizedDescription
-                    ))
+            while let (index, result) = try await group.next() {
+                try Task.checkCancellation()
+                results[index] = result
+                if scheduled < providers.count {
+                    let nextIndex = scheduled
+                    let provider = providers[nextIndex]
+                    group.addTask { (nextIndex, try await collectProvider(provider, query: scoped)) }
+                    scheduled += 1
                 }
             }
+            return results.compactMap { $0 }
         }
-        return (collected, outcomes, totals, scoped)
+        try Task.checkCancellation()
+        let outcomes = results.map(\.outcome)
+        let totals = outcomes.compactMap(\.totalResults)
+        return (interleave(results.map(\.hits), query: scoped), outcomes, totals, scoped)
+    }
+
+    private struct ProviderCollection: Sendable {
+        let hits: [StockMediaHit]
+        let outcome: StockProviderOutcome
+    }
+
+    private static func collectProvider(_ provider: any StockMediaProvider, query: StockMediaQuery) async throws -> ProviderCollection {
+        try Task.checkCancellation()
+        guard provider.supportedKinds.contains(query.kind) else {
+            return ProviderCollection(hits: [], outcome: .init(
+                id: provider.id, displayName: provider.displayName, status: .unsupportedKind, count: 0,
+                message: "\(provider.displayName) does not provide \(query.kind.rawValue) media."
+            ))
+        }
+        var hits: [StockMediaHit] = []
+        var seen = Set<String>()
+        var pagesFetched = 0
+        var nextPage: Int?
+        var totalResults: Int?
+        var exhausted = false
+        var pageQuery = query
+        var status = StockProviderOutcome.Status.ok
+        var message: String?
+        do {
+            while pagesFetched < 3 {
+                try Task.checkCancellation()
+                let page = try await provider.search(pageQuery)
+                try Task.checkCancellation()
+                guard page.totalResults.map({ $0 >= 0 }) ?? true,
+                      page.nextPage.map({ $0 > pageQuery.page }) ?? true else {
+                    throw StockMediaError.undecodable(provider: provider.displayName)
+                }
+                pagesFetched += 1
+                nextPage = page.nextPage
+                if let total = page.totalResults { totalResults = total }
+                exhausted = nextPage == nil
+                for hit in page.hits where query.includes(hit) {
+                    if seen.insert(hit.origin.sourceId).inserted { hits.append(hit) }
+                }
+                guard hits.count < query.limit, let nextPage, nextPage <= 500 else { break }
+                pageQuery.page = nextPage
+            }
+        } catch {
+            try Task.checkCancellation()
+            if error is CancellationError { throw error }
+            status = (error as? StockMediaError).map { Self.status(for: $0) } ?? .failed
+            message = error.localizedDescription
+        }
+        return ProviderCollection(hits: hits, outcome: .init(
+            id: provider.id, displayName: provider.displayName, status: status, count: hits.count, message: message,
+            pagesFetched: pagesFetched, exhausted: exhausted, nextPage: nextPage, totalResults: totalResults
+        ))
+    }
+
+    private static func interleave(_ lists: [[StockMediaHit]], query: StockMediaQuery) -> [StockMediaHit] {
+        var hits: [StockMediaHit] = []
+        var seen = Set<String>()
+        var indices = [Int](repeating: 0, count: lists.count)
+        var advanced = true
+        while advanced, hits.count < query.limit {
+            advanced = false
+            for index in lists.indices {
+                while indices[index] < lists[index].count {
+                    let hit = lists[index][indices[index]]
+                    indices[index] += 1
+                    advanced = true
+                    guard seen.insert(hit.origin.sourceId).inserted else { continue }
+                    hits.append(hit)
+                    break
+                }
+                if hits.count == query.limit { break }
+            }
+        }
+        return hits
     }
 
     private static func finalize(
@@ -230,16 +389,14 @@ enum StockMediaSearch {
         totals: [Int],
         query: StockMediaQuery
     ) throws -> StockMediaResult {
-        // A video search with at least one working provider and no usable hits is a real
-        // absence; for images and audio an empty result may simply mean every source missed.
-        let usable = dedupe(hits).prefix(query.limit)
-        guard !usable.isEmpty else {
-            if query.kind == .video, outcomes.contains(where: { $0.status == .ok }) {
+        guard !hits.isEmpty else {
+            let supported = outcomes.filter { $0.status != .unsupportedKind }
+            if query.kind == .video, !supported.isEmpty, supported.allSatisfy({ $0.status == .ok && $0.exhausted }) {
                 throw StockMediaError.noUsableResults
             }
-            return StockMediaResult(hits: [], outcomes: outcomes, totalResults: nil)
+            return StockMediaResult(hits: [], outcomes: outcomes, totalResults: totals.max())
         }
-        return StockMediaResult(hits: Array(usable), outcomes: outcomes, totalResults: totals.max())
+        return StockMediaResult(hits: hits, outcomes: outcomes, totalResults: totals.max())
     }
 
     private static func status(for error: StockMediaError) -> StockProviderOutcome.Status {
@@ -248,10 +405,5 @@ enum StockMediaSearch {
         case .rateLimited: .rateLimited
         default: .failed
         }
-    }
-
-    private static func dedupe(_ hits: [StockMediaHit]) -> [StockMediaHit] {
-        var seen = Set<String>()
-        return hits.filter { seen.insert($0.url).inserted }
     }
 }

@@ -45,6 +45,7 @@ struct StockMediaTests {
         #expect(values["key"] == "key-1")
         #expect(values["q"] == "harbor & sunset")
         #expect(values["per_page"] == "3")
+        #expect(values["page"] == "1")
         #expect(values["safesearch"] == "true")
     }
 
@@ -70,7 +71,7 @@ struct StockMediaTests {
     @Test func pixabayMapsLicensesAttributionDimensionsAndDuration() throws {
         let response = try JSONDecoder().decode(PixabayProvider.VideoResponse.self, from: Data(
             """
-            {"hits": [{
+            {"totalHits": 1, "hits": [{
               "id": 125,
               "pageURL": "https://pixabay.com/videos/id-125/",
               "tags": "harbor, sunset",
@@ -196,7 +197,7 @@ struct StockMediaTests {
         // Openverse reports audio duration in milliseconds; a hit must not claim 300 seconds
         // of silence for a five-minute ambience bed.
         let json = """
-        {"results":[{"id":"1","url":"https://cdn.freesound.org/a.mp3","duration":300804,\
+        {"page":1,"page_count":1,"result_count":1,"results":[{"id":"1","url":"https://cdn.freesound.org/a.mp3","duration":300804,\
         "license":"by","license_version":"4.0","mature":false}]}
         """
         let response = try JSONDecoder().decode(OpenverseProvider.Response.self, from: Data(json.utf8))

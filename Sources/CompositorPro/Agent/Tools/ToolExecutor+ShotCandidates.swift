@@ -11,9 +11,11 @@ extension ToolExecutor {
         let orientation: String?
         let maxDurationSeconds: Int?
         let limit: Int?
+        let excludedSourceIds: [String]?
+        let planId: String?
         static let allowedKeys: Set<String> = [
             "query", "kind", "scope", "mediaRef", "includeLibrary", "includeRemote",
-            "orientation", "maxDurationSeconds", "limit",
+            "orientation", "maxDurationSeconds", "limit", "excludedSourceIds", "planId",
         ]
     }
 
@@ -55,86 +57,86 @@ extension ToolExecutor {
            !["landscape", "portrait", "square"].contains(orientation) {
             throw ToolError("orientation must be landscape, portrait, or square (got '\(orientation)')")
         }
-        if let maxDuration = input.maxDurationSeconds, maxDuration < 0 {
+        if let maxDuration = input.maxDurationSeconds, maxDuration <= 0 {
             throw ToolError("maxDurationSeconds must be positive (got \(maxDuration))")
         }
-        let limit = min(max(input.limit ?? 8, 1), 20)
+        let limit = input.limit ?? 8
+        guard (1...20).contains(limit) else { throw ToolError("limit must be an integer from 1 through 20.") }
+        let explicitSourceIds = input.excludedSourceIds ?? []
+        _ = try ShotCandidateExclusions(aliases: .init(), explicitSourceIds: explicitSourceIds)
+        var plan: EditPlan?
+        if let planId = input.planId {
+            guard VisualSourceAliases.isValidEntityId(planId) else { throw ToolError("planId must be a nonempty stable ID of at most 200 characters without whitespace or colons.") }
+            guard let selectedPlan = editor.editPlan(id: planId) else { throw ToolError("Unknown planId '\(planId)'.") }
+            plan = selectedPlan
+        }
 
         var restrict: Set<String>?
         if let mediaRef = input.mediaRef {
             restrict = [try asset(mediaRef, editor: editor).id]
         }
 
-        var visualInputs: [VisualSearch.Hit] = []
-        var spokenInputs: [TranscriptSearch.Hit] = []
+        let manifest = editor.mediaManifest
+        let library = shotLibraryAssets(editor)
+        let urls = editor.mediaAssets.map { (id: $0.id, url: $0.url) }
+        let projectId = editor.projectId
+        let projectURL = editor.projectURL
+        let timelineId = editor.activeTimelineId
+        let snapshot = try await ShotCandidateExclusions.snapshot(manifest: manifest, assets: library,
+            explicitSourceIds: explicitSourceIds, selectedMediaRefs: Set(plan?.shots.compactMap(\.mediaRef) ?? []), kind: kind, restrict: restrict)
+        let exclusions = snapshot.exclusions
+        let assets = snapshot.assets
+        func requireCurrentSnapshot() throws {
+            guard self.editor === editor, editor.projectId == projectId, editor.projectURL == projectURL, editor.activeTimelineId == timelineId,
+                  editor.mediaManifest == manifest, shotLibraryAssets(editor) == library,
+                  zip(editor.mediaAssets, urls).allSatisfy({ $0.0.id == $0.1.id && $0.0.url == $0.1.url }),
+                  input.planId.map({ editor.editPlan(id: $0) == plan }) ?? true else {
+                throw ToolError("Project, plan, or library changed during shot retrieval; retry current state.")
+            }
+        }
+        try requireCurrentSnapshot()
+        var remoteRequest: StockMediaQuery?
+        if includeRemote {
+            remoteRequest = try StockMediaQuery(text: text, kind: kind, orientation: input.orientation,
+                maxDurationSeconds: input.maxDurationSeconds, limit: limit,
+                excludedSourceIds: Set(exclusions.stockSourceIds)).normalized()
+        }
+        let eligible = snapshot.eligible
+        var visualInputs: [ShotCandidateBuilder.VisualInput] = []
+        var spokenInputs: [ShotCandidateBuilder.SpokenInput] = []
         var indexStatus: [String: Any]?
-        if includeLibrary, usesVisualEvidence(kind: kind, scope: scope) {
-            let fetch = await fetchVisualCandidates(editor, query: text, limit: limit, restrict: restrict)
-            visualInputs = fetch.hits
+        if includeLibrary, usesVisualEvidence(kind: kind, scope: scope), !eligible.isEmpty {
+            let fetch = await fetchVisualCandidates(editor, query: text, limit: limit, restrict: eligible)
             indexStatus = fetch.index
+            visualInputs = try await ShotCandidateRetrieval.visual(eligible: eligible, exclusions: exclusions, limit: limit,
+                initial: fetch.hits.map { .init(assetID: $0.assetID, startSeconds: $0.shotStart, endSeconds: $0.shotEnd, score: $0.score) }) { [self] count, refs in
+                    await self.fetchVisualShotInputs(editor, query: text, limit: count, restrict: refs)
+                }
         }
         if includeLibrary, usesSpokenEvidence(kind: kind, scope: scope) {
-            let candidates = editor.mediaAssets
-                .filter { ($0.type == .video || $0.type == .audio) && (restrict?.contains($0.id) ?? true) }
-                .map { (id: $0.id, url: $0.url) }
-            spokenInputs = TranscriptSearch.search(query: text, assets: candidates, limit: limit)
+            let candidates = urls.filter { eligible.contains($0.id) }
+            spokenInputs = try await ShotCandidateRetrieval.spoken(query: text, assets: candidates, exclusions: exclusions,
+                representedMediaRefs: visualInputs.map(\.assetID), limit: limit)
         }
         try Task.checkCancellation()
 
         var remoteHits: [StockMediaHit] = []
         var providerOutcomes: [StockProviderOutcome] = []
-        if includeRemote {
-            let collected = try await StockMediaSearch.collect(StockMediaQuery(
-                text: text,
-                kind: kind,
-                orientation: input.orientation,
-                maxDurationSeconds: input.maxDurationSeconds,
-                limit: limit
-            ))
+        if var request = remoteRequest {
+            let represented = Set((visualInputs.map(\.assetID) + spokenInputs.map(\.assetID)).map { "media:\($0)" })
+            let stockExclusions = exclusions.sourceIds.union(exclusions.aliases.expanded(represented))
+                .filter { $0.hasPrefix("stock:") }
+            request.excludedSourceIds = stockExclusions
+            let collected = try await StockMediaSearch.collect(try request.normalized(), providers: stockProviders)
             remoteHits = collected.hits
             providerOutcomes = collected.outcomes
         }
         try Task.checkCancellation()
 
-        let assets = Dictionary(uniqueKeysWithValues: editor.mediaAssets.map { asset in
-            let readiness: LibraryShotAsset.Readiness
-            if editor.missingMediaRefs.contains(asset.id) || editor.unprocessableMediaRefs.contains(asset.id) {
-                readiness = .unavailable("missing or unreadable")
-            } else {
-                switch asset.generationStatus {
-                case .none:
-                    readiness = .ready
-                case .failed(let message):
-                    readiness = .failed(message)
-                default:
-                    readiness = .pending(asset.generationStatus.serialized)
-                }
-            }
-            return (asset.id, LibraryShotAsset(
-                id: asset.id,
-                name: asset.name,
-                type: asset.type,
-                durationSeconds: asset.resolvedDuration,
-                readiness: readiness,
-                width: asset.sourceWidth,
-                height: asset.sourceHeight,
-                inputId: asset.inputIdentityReceipt["inputId"] as? String,
-                inputIdentityState: asset.inputIdentityReceipt["inputIdentityState"] as? String ?? "unresolved",
-                origin: asset.importInput?.origin
-            ))
-        })
-        let bundle = ShotCandidateBuilder.build(
-            kind: kind,
-            visual: visualInputs.map {
-                ShotCandidateBuilder.VisualInput(assetID: $0.assetID, startSeconds: $0.shotStart, endSeconds: $0.shotEnd, score: $0.score)
-            },
-            spoken: spokenInputs.map {
-                ShotCandidateBuilder.SpokenInput(assetID: $0.assetID, startSeconds: $0.start, endSeconds: $0.end, text: $0.text)
-            },
-            remote: remoteHits,
-            assets: assets,
-            limit: limit
-        )
+        let bundle = await Self.buildShotCandidates(kind: kind, visual: visualInputs, spoken: spokenInputs,
+            remote: remoteHits, assets: assets, exclusions: exclusions, limit: limit)
+        try Task.checkCancellation()
+        try requireCurrentSnapshot()
 
         var warnings: [String] = []
         if !includeLibrary { warnings.append("Local library search was disabled.") }
@@ -150,6 +152,9 @@ extension ToolExecutor {
         }
         if !bundle.skipped.isEmpty {
             warnings.append("Skipped candidates are reported separately rather than silently dropped.")
+        }
+        if !exclusions.unresolved.isEmpty {
+            warnings.append("Known source aliases were excluded; selected sources with unresolved identities cannot certify distinct alternatives.")
         }
 
         var local: [String: Any] = ["included": includeLibrary, "scope": scope]
@@ -169,11 +174,56 @@ extension ToolExecutor {
             "skipped": bundle.skipped.map { $0.receipt() },
             "local": local,
             "remote": remote,
+            "noOp": true,
+            "exclusions": [
+                "sourceIds": exclusions.sourceIds.sorted(),
+                "selectedMediaRefs": exclusions.selectedMediaRefs.sorted(),
+                "planId": input.planId.map { $0 as Any } ?? NSNull(),
+                "scope": "retained_source_identity",
+                "identityFreshness": "not_checked",
+                "perceptualSimilarity": "not_checked",
+                "unresolved": exclusions.unresolved.map { ["reason": $0.reason, "mediaRef": $0.mediaRef ?? ""] },
+            ],
             "warnings": warnings,
         ] as [String: Any], toPlaces: 3)) else {
             throw ToolError("find_shot_candidates: failed to encode results")
         }
         return .ok(json)
+    }
+
+    private func fetchVisualShotInputs(_ editor: EditorViewModel, query: String, limit: Int,
+                                      restrict: Set<String>) async -> [ShotCandidateBuilder.VisualInput] {
+        let fetched = await fetchVisualCandidates(editor, query: query, limit: limit, restrict: restrict)
+        return fetched.hits.map { .init(assetID: $0.assetID, startSeconds: $0.shotStart, endSeconds: $0.shotEnd, score: $0.score) }
+    }
+
+    private func shotLibraryAssets(_ editor: EditorViewModel) -> [LibraryShotAsset] {
+        editor.mediaAssets.map { asset in
+            let readiness: LibraryShotAsset.Readiness
+            if editor.missingMediaRefs.contains(asset.id) || editor.unprocessableMediaRefs.contains(asset.id) {
+                readiness = .unavailable("missing or unreadable")
+            } else {
+                switch asset.generationStatus {
+                case .none: readiness = .ready
+                case .failed(let message): readiness = .failed(message)
+                default: readiness = .pending(asset.generationStatus.serialized)
+                }
+            }
+            return LibraryShotAsset(id: asset.id, name: asset.name, type: asset.type,
+                durationSeconds: asset.resolvedDuration, readiness: readiness,
+                width: asset.sourceWidth, height: asset.sourceHeight,
+                inputId: asset.inputIdentityReceipt["inputId"] as? String,
+                inputIdentityState: asset.inputIdentityReceipt["inputIdentityState"] as? String ?? "unresolved",
+                origin: asset.importInput?.origin)
+        }
+    }
+
+    @concurrent
+    private static func buildShotCandidates(kind: StockMediaKind, visual: [ShotCandidateBuilder.VisualInput],
+        spoken: [ShotCandidateBuilder.SpokenInput], remote: [StockMediaHit], assets: [String: LibraryShotAsset],
+        exclusions: ShotCandidateExclusions, limit: Int) async -> ShotCandidateBundle {
+        ShotCandidateBuilder.build(kind: kind, visual: visual, spoken: spoken, remote: remote, assets: assets,
+            limit: limit, aliases: exclusions.aliases, excludedSourceIds: exclusions.sourceIds)
     }
 
     private func usesVisualEvidence(kind: StockMediaKind, scope: String) -> Bool {

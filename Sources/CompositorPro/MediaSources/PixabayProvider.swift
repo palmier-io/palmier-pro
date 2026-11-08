@@ -1,9 +1,6 @@
 import Foundation
 
-/// Pixabay — the currently working free stock-video source. Pixabay still issues free API keys;
-/// Pexels issuance is paused, so Pixabay carries video retrieval. This provider intentionally
-/// covers video only and leaves Pexels photography/video in place for accounts that already hold
-/// a key.
+/// Pixabay provides keyed stock-video search.
 struct PixabayProvider: StockMediaProvider {
     let id = "pixabay"
     let displayName = "Pixabay"
@@ -16,9 +13,14 @@ struct PixabayProvider: StockMediaProvider {
     /// Injected for tests so a missing-key refusal can be verified without Keychain or network
     /// access. Production uses the stored credential.
     private let apiKey: String?
+    private let requestJSON: StockMediaJSONRequest
 
-    init(apiKey: String? = nil) {
+    init(
+        apiKey: String? = nil,
+        requestJSON: @escaping StockMediaJSONRequest = { try await StockMediaHTTP.getJSON($0, headers: $1) }
+    ) {
         self.apiKey = apiKey
+        self.requestJSON = requestJSON
     }
 
     struct VideoResponse: Decodable {
@@ -38,47 +40,55 @@ struct PixabayProvider: StockMediaProvider {
             let user: String?
         }
         let hits: [Video]
+        let totalHits: Int
     }
 
     static func searchURL(_ query: StockMediaQuery, key: String) -> URL? {
-        guard !key.isEmpty else { return nil }
+        guard !key.isEmpty, let query = try? query.normalized() else { return nil }
         var components = URLComponents(url: base, resolvingAgainstBaseURL: false)
         components?.queryItems = [
             .init(name: "key", value: key),
             .init(name: "q", value: query.text),
-            .init(name: "per_page", value: String(max(3, min(max(query.limit, 1) * 2, 200)))),
+            .init(name: "per_page", value: String(pageSize(query))),
+            .init(name: "page", value: String(query.page)),
             .init(name: "safesearch", value: "true"),
         ]
         return components?.url
     }
 
-    func search(_ query: StockMediaQuery) async throws -> [StockMediaHit] {
+    private static func pageSize(_ query: StockMediaQuery) -> Int { max(3, query.limit * 2) }
+
+    func search(_ query: StockMediaQuery) async throws -> StockMediaPage {
+        try Task.checkCancellation()
+        let query = try query.normalized()
+        guard supportedKinds.contains(query.kind) else { throw StockMediaError.unsupportedKind(provider: displayName) }
         let key: String
         if let apiKey {
             key = apiKey
         } else {
             key = await StockMediaCredentials.pixabayKey()
+            try Task.checkCancellation()
         }
         guard !key.isEmpty else { throw StockMediaError.needsAPIKey(provider: displayName) }
         guard let url = Self.searchURL(query, key: key) else { throw StockMediaError.emptyQuery }
 
-        let data = try await StockMediaHTTP.getJSON(url)
+        let data = try await requestJSON(url, [:])
+        try Task.checkCancellation()
         let response = try StockMediaHTTP.decode(VideoResponse.self, from: data, provider: displayName)
+        guard response.totalHits >= 0 else { throw StockMediaError.undecodable(provider: displayName) }
         let hits = response.hits.compactMap { Self.hit($0, query: query) }
-        return Array(hits.prefix(max(1, query.limit)))
+        let nextPage = query.page * Self.pageSize(query) < response.totalHits ? query.page + 1 : nil
+        return StockMediaPage(hits: hits, nextPage: nextPage, totalResults: response.totalHits)
     }
 
     static func hit(_ video: VideoResponse.Video, query: StockMediaQuery) -> StockMediaHit? {
         guard let rendition = bestRendition(video.videos),
               let fileURL = httpsURL(rendition.url) else { return nil }
-        if let maxDuration = query.maxDurationSeconds, let duration = video.duration, duration > maxDuration {
-            return nil
-        }
         let creator = video.user?.trimmingCharacters(in: .whitespacesAndNewlines)
         let attribution = creator.map { "Video by \($0) via Pixabay" } ?? "Video via Pixabay"
         let creatorName = (creator?.isEmpty == true) ? nil : creator
         let hitID = "\(Self.providerID)-video-\(video.id)"
-        return StockMediaHit(
+        let hit = StockMediaHit(
             id: hitID,
             kind: .video,
             title: title(tags: video.tags),
@@ -96,6 +106,7 @@ struct PixabayProvider: StockMediaProvider {
             fileSizeBytes: rendition.size,
             attributionText: attribution
         )
+        return query.includes(hit) ? hit : nil
     }
 
     private static let providerID = "pixabay"
