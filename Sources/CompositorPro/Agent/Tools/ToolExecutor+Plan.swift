@@ -27,6 +27,7 @@ extension ToolExecutor {
         let referenceRecipe: ReferenceRecipe?
         let sourceLedger: SourceClaimLedger?
         let scriptBeats: [ScriptBeat]?
+        let narrationIntent: NarrationIntentRequest?
         let narration: NarrationSource?
     }
 
@@ -68,11 +69,12 @@ extension ToolExecutor {
         let referenceRecipe: ReferenceRecipe?
         let sourceLedger: SourceClaimLedger?
         let scriptBeats: [ScriptBeat]?
+        let narrationIntent: NarrationIntentRequest?
         let narration: NarrationSource?
     }
 
-    private static let planObjectKeys: Set<String> = ["planId", "name", "goal", "timelineId", "sections", "shots", "notes", "referenceRecipe", "sourceLedger", "scriptBeats", "narration"]
-    private static let planPatchKeys: Set<String> = ["name", "goal", "sections", "shots", "notes", "referenceRecipe", "sourceLedger", "scriptBeats", "narration"]
+    private static let planObjectKeys: Set<String> = ["planId", "name", "goal", "timelineId", "sections", "shots", "notes", "referenceRecipe", "sourceLedger", "scriptBeats", "narrationIntent", "narration"]
+    private static let planPatchKeys: Set<String> = ["name", "goal", "sections", "shots", "notes", "referenceRecipe", "sourceLedger", "scriptBeats", "narrationIntent", "narration"]
     private static let sectionObjectKeys: Set<String> = ["sectionId", "title", "summary", "startFrame", "endFrame", "referenceUse", "claimIds", "narrationLink"]
     private static let shotObjectKeys: Set<String> = [
         "shotId", "title", "startFrame", "endFrame", "trackId", "mediaRef",
@@ -90,11 +92,11 @@ extension ToolExecutor {
         }
         switch input.action {
         case "create":
-            return try createEditPlan(editor, input: input)
+            return try await createEditPlan(editor, input: input)
         case "read":
             return try readEditPlans(editor, input: input)
         case "update":
-            return try updateEditPlan(editor, input: input)
+            return try await updateEditPlan(editor, input: input)
         case "status":
             return try changePlanStatus(editor, input: input)
         case "delete":
@@ -203,7 +205,7 @@ extension ToolExecutor {
         )) ?? "{}")
     }
 
-    private func createEditPlan(_ editor: EditorViewModel, input: PlanEditInput) throws -> ToolResult {
+    private func createEditPlan(_ editor: EditorViewModel, input: PlanEditInput) async throws -> ToolResult {
         try rejectPlanEditKeys(input, forbidden: ["planId", "patch", "status", "filterStatus", "limit"], path: "plan_edit action='create'")
         guard let draft = input.plan else { throw ToolError("plan_edit action='create' requires plan.") }
         do {
@@ -222,6 +224,7 @@ extension ToolExecutor {
                     referenceRecipe: draft.referenceRecipe,
                     sourceLedger: draft.sourceLedger,
                     scriptBeats: draft.scriptBeats,
+                    narrationIntent: draft.narrationIntent.map { NarrationIntent(language: $0.language, startFrame: $0.startFrame) },
                     narration: draft.narration
                 ),
                 timelineId: editor.activeTimelineId,
@@ -230,7 +233,10 @@ extension ToolExecutor {
                 height: editor.timeline.height,
                 existingCount: editor.editPlans.count
             )
-            let receipt = try editor.changeEditPlans(creates: [plan], actionName: "Add Plan (Agent)")
+            let prepared = try await editor.preparePlanNarrationChange(plan, intentRequest: draft.narrationIntent)
+            guard self.editor === editor else { throw ToolError("Project binding changed during narration preparation.") }
+            let receipt = try editor.changeEditPlans(creates: [prepared.plan], actionName: "Add Plan (Agent)",
+                                                     narrationValidation: prepared.validation)
             guard let created = receipt.created.first else { throw ToolError("Plan creation produced no change.") }
             return .ok(Self.jsonString(created.receipt(includeDetails: true)) ?? "{}")
         } catch let error as EditPlanValidationError {
@@ -267,7 +273,7 @@ extension ToolExecutor {
         ]) ?? "{}")
     }
 
-    private func updateEditPlan(_ editor: EditorViewModel, input: PlanEditInput) throws -> ToolResult {
+    private func updateEditPlan(_ editor: EditorViewModel, input: PlanEditInput) async throws -> ToolResult {
         try rejectPlanEditKeys(input, forbidden: ["plan", "status", "filterStatus", "limit"], path: "plan_edit action='update'")
         guard let planId = input.planId, !planId.isEmpty else {
             throw ToolError("plan_edit action='update' requires planId.")
@@ -299,6 +305,13 @@ extension ToolExecutor {
                 try Self.planShot(draft, path: "patch.shots[\(index)]")
             }
         }
+        var narrationValidation: PlanNarrationChangeValidation?
+        if patch.narrationIntent != nil || patch.narration != nil {
+            let prepared = try await editor.preparePlanNarrationChange(candidate, intentRequest: patch.narrationIntent)
+            guard self.editor === editor else { throw ToolError("Project binding changed during narration preparation.") }
+            candidate = prepared.plan
+            narrationValidation = prepared.validation
+        }
         try EditPlan.ensureGlobalIDs([candidate])
         guard candidate.name != current.name || candidate.goal != current.goal
                 || candidate.notes != current.notes
@@ -307,6 +320,7 @@ extension ToolExecutor {
                 || candidate.referenceRecipe != current.referenceRecipe
                 || candidate.sourceLedger != current.sourceLedger
                 || candidate.scriptBeats != current.scriptBeats
+                || candidate.narrationIntent != current.narrationIntent
                 || candidate.narration != current.narration else {
             return .ok(Self.jsonString(current.receipt(includeDetails: true).merging(
                 ["noOp": true],
@@ -314,7 +328,8 @@ extension ToolExecutor {
             )) ?? "{}")
         }
         do {
-            let receipt = try editor.changeEditPlans(updates: [candidate], actionName: "Change Plan (Agent)")
+            let receipt = try editor.changeEditPlans(updates: [candidate], actionName: "Change Plan (Agent)",
+                                                     narrationValidation: narrationValidation)
             guard let updated = receipt.updated.first else {
                 return .ok(Self.jsonString(current.receipt(includeDetails: true).merging(
                     ["noOp": true], uniquingKeysWith: { _, new in new }
@@ -501,7 +516,14 @@ extension ToolExecutor {
             try validatePlanArray(beats, allowed: ["beatId", "text", "spokenText", "purpose", "claimIds"], singular: "beat", path: "\(path).scriptBeats")
         }
         if let narration = object["narration"] {
-            try validatePlanValue(narration, allowed: ["mediaRef", "language", "startFrame"], path: "\(path).narration")
+            try validatePlanValue(narration, allowed: ["mediaRef"], path: "\(path).narration")
+        }
+        if let intent = object["narrationIntent"] {
+            try validatePlanValue(intent, allowed: ["language", "startFrame", "narrator"], path: "\(path).narrationIntent")
+            if let narrator = (intent as? [String: Any])?["narrator"] {
+                try validatePlanValue(narrator, allowed: ["kind", "mediaRef", "engine", "voiceIdentifier", "rate", "pitch"],
+                                      path: "\(path).narrationIntent.narrator")
+            }
         }
     }
 
@@ -547,11 +569,11 @@ extension ToolExecutor {
             }
             return entry
         }
-        if let narration = plan.narration, let timing = plan.narrationTiming {
+        if let narration = plan.narration, let intent = plan.narrationIntent, let timing = plan.narrationTiming {
             let duration = try timing.duration.frame(fps: plan.fps, rounding: .roundTowardZero)
-            guard duration > 0, narration.startFrame <= maxFrameArg - duration else { throw ToolError("Narration duration exceeds timeline bounds.") }
-            var entry: [String: Any] = ["mediaRef": narration.mediaRef, "startFrame": narration.startFrame,
-                                        "endFrame": narration.startFrame + duration]
+            guard duration > 0, intent.startFrame <= maxFrameArg - duration else { throw ToolError("Narration duration exceeds timeline bounds.") }
+            var entry: [String: Any] = ["mediaRef": narration.mediaRef, "startFrame": intent.startFrame,
+                                         "endFrame": intent.startFrame + duration]
             if !allOmitTracks {
                 guard let index = editor.timeline.tracks.firstIndex(where: { $0.type == .audio }) else {
                     throw ToolError("Plan narration requires a compatible audio track when shot tracks are explicit.")

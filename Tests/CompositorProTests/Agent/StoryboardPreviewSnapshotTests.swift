@@ -13,7 +13,7 @@ private enum StoryboardPreviewFixtures {
                 .init(id: "second-scene", title: "Second", startFrame: 60, endFrame: 120, mediaRef: "image",
                     narrationLink: .init(firstBeatId: "second-beat", lastBeatId: "second-beat")),
             ], createdAt: Date(timeIntervalSince1970: 0), updatedAt: Date(timeIntervalSince1970: 0),
-            scriptBeats: PlanNarrationFixtures.beats(), narration: .init(mediaRef: "audio", startFrame: 0))
+            scriptBeats: PlanNarrationFixtures.beats(), narrationIntent: .init(startFrame: 0), narration: .init(mediaRef: "audio"))
         if measured { plan.narrationTiming = try PlanNarrationFixtures.timing(revision: #require(plan.narrationRevision)) }
         var manifest = MediaManifest()
         manifest.entries = [
@@ -101,7 +101,7 @@ struct StoryboardPreviewSnapshotTests {
         }
         #expect(clips.map(\.durationFrames) == [45, 45])
         let audio = try #require(snapshot.timeline.tracks.first { $0.type == .audio }?.clips.first)
-        #expect(audio.startFrame == plan.narration?.startFrame)
+        #expect(audio.startFrame == plan.narrationIntent?.startFrame)
         #expect(audio.durationFrames == 90 && audio.endFrame == snapshot.frameCount)
         #expect(audio.trimStartFrame == 0 && audio.volume == 1)
         #expect(snapshot.sources.map(\.mediaRef) == ["audio", "image", "video"])
@@ -203,7 +203,7 @@ struct StoryboardPreviewSnapshotTests {
         plan.shots[0].sourceEndSeconds = nil
         switch failure {
         case "overlapping links": plan.shots[0].narrationLink?.lastBeatId = "second-beat"
-        case "offset narration": plan.narration?.startFrame = 1
+        case "offset narration": plan.narrationIntent?.startFrame = 1
         default:
             plan.shots[0].narrationLink?.firstBeatId = "second-beat"
             plan.shots[0].narrationLink?.lastBeatId = "second-beat"

@@ -28,6 +28,7 @@ struct StoryboardView: View {
             }
             if let error { Text(verbatim: error).foregroundStyle(AppTheme.Status.errorColor).textSelection(.enabled) }
             if let report {
+                narratorIntent(report.narrationIntent)
                 StoryboardPreviewView(controller: preview) { preview.prepare(editor: editor, planId: planId) }
                 HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
                     List(selection: $sceneId) {
@@ -84,7 +85,7 @@ struct StoryboardView: View {
                     Text(verbatim: report.phase.rawValue).foregroundStyle(AppTheme.Text.secondaryColor)
                     Button(L10n.string("Approve Storyboard")) {
                         perform { try await editor.approveStoryboard(planId: report.planId, revision: report.revision, comment: comment) }
-                    }.disabled(!report.blockers.isEmpty || report.phase != .awaitingStoryboardApproval)
+                    }.disabled(!report.canApprove || report.phase != .awaitingStoryboardApproval)
                 }.disabled(operation != nil)
             } else {
                 ContentUnavailableView(L10n.string("No Storyboard Selected"), systemImage: "rectangle.stack",
@@ -112,6 +113,31 @@ struct StoryboardView: View {
             cancelOperation()
             preview.invalidate()
         }
+    }
+
+    @ViewBuilder
+    private func narratorIntent(_ intent: NarrationIntent?) -> some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
+            Text(L10n.string("Narrator Intent"))
+                .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.semibold))
+            if let intent {
+                Text(L10n.string("Language: \(intent.language ?? "—") · Start: \(intent.startFrame) frames"))
+                switch intent.narrator {
+                case .localSpeech(let speech):
+                    Text(L10n.string("Engine: \(speech.engine.rawValue) · Voice: \(speech.voiceIdentifier) · Rate: \(speech.rate) · Pitch: \(speech.pitch)"))
+                    Text(L10n.string("Pinned speech generation is not available. Production remains blocked."))
+                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                case .recording(let recording):
+                    Text(L10n.string("Recording: \(recording.mediaRef)"))
+                    Text(verbatim: recording.identity.inputId).textSelection(.enabled)
+                case nil:
+                    Text(L10n.string("Choose an exact narrator before approving this storyboard."))
+                }
+            } else {
+                Text(L10n.string("Choose narration language, placement, and narrator before approval."))
+            }
+        }
+        .font(.system(size: AppTheme.FontSize.xs))
     }
 
     private func perform(_ action: @escaping @MainActor () async throws -> StoryboardReport) {

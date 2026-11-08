@@ -24,6 +24,7 @@ extension EditorViewModel {
         if let plan {
             var refs = Set(plan.shots.compactMap(\.mediaRef))
             if plan.narrationTiming != nil, let ref = plan.narration?.mediaRef { refs.insert(ref) }
+            if case .recording(let recording) = plan.narrationIntent?.narrator { refs.insert(recording.mediaRef) }
             for ref in refs {
                 guard let asset = mediaAssetsById[ref] else { continue }
                 sources[ref] = .init(url: asset.url, type: asset.type,

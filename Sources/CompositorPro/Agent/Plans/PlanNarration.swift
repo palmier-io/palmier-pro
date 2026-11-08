@@ -32,15 +32,244 @@ struct ScriptBeat: Codable, Sendable, Equatable {
 
 struct NarrationSource: Codable, Sendable, Equatable {
     var mediaRef: String
-    var language: String?
-    var startFrame: Int
 
     func validated() throws -> Self {
         var source = self
         source.mediaRef = try EditPlan.validatedID(mediaRef, field: "narration.mediaRef")
-        guard (0...maxFrameArg).contains(startFrame) else { throw EditPlanValidationError.invalidRange }
-        if let language { source.language = try EditPlan.validatedName(language) }
         return source
+    }
+}
+
+struct NarrationIntent: Codable, Sendable, Equatable {
+    enum Narrator: Codable, Sendable, Equatable {
+        case localSpeech(LocalSpeechNarrator)
+        case recording(RecordingNarrator)
+
+        private enum CodingKeys: String, CodingKey {
+            case kind, engine, voiceIdentifier, rate, pitch, modelIdentity, configurationIdentity, mediaRef, identity
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            switch try container.decode(String.self, forKey: .kind) {
+            case "local_speech": self = .localSpeech(try LocalSpeechNarrator(from: decoder))
+            case "recording": self = .recording(try RecordingNarrator(from: decoder))
+            default: throw EditPlanValidationError.invalidReference("Narrator kind must be local_speech or recording.")
+            }
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            switch self {
+            case .localSpeech(let speech):
+                try container.encode("local_speech", forKey: .kind)
+                try speech.encode(to: encoder)
+            case .recording(let recording):
+                try container.encode("recording", forKey: .kind)
+                try recording.encode(to: encoder)
+            }
+        }
+
+        var receipt: [String: Any] {
+            switch self {
+            case .localSpeech(let speech): speech.receipt
+            case .recording(let recording): recording.receipt
+            }
+        }
+    }
+
+    var language: String?
+    var startFrame: Int
+    var narrator: Narrator?
+
+    func validated() throws -> Self {
+        var intent = self
+        guard (0...maxFrameArg).contains(startFrame) else { throw EditPlanValidationError.invalidRange }
+        if let language { intent.language = try EditPlan.validatedName(language) }
+        switch narrator {
+        case .localSpeech(let speech): intent.narrator = .localSpeech(try speech.validated())
+        case .recording(let recording): intent.narrator = .recording(try recording.validated())
+        case nil: break
+        }
+        return intent
+    }
+
+    var receipt: [String: Any] {
+        var row: [String: Any] = ["startFrame": startFrame]
+        if let language { row["language"] = language }
+        if let narrator { row["narrator"] = narrator.receipt }
+        return row
+    }
+
+    @concurrent
+    func verifyAvailableNarrator() async throws {
+        try Task.checkCancellation()
+        guard let language, !language.isEmpty, let narrator else {
+            throw EditPlanValidationError.invalidReference("Managed narration requires language, placement, and an exact narrator.")
+        }
+        _ = try validated()
+        if case .localSpeech(let speech) = narrator {
+            try await speech.verifyAvailable(language: language)
+        }
+        try Task.checkCancellation()
+    }
+}
+
+struct RecordingNarrator: Codable, Sendable, Equatable {
+    var mediaRef: String
+    var identity: MediaInputIdentity
+
+    func validated() throws -> Self {
+        var recording = self
+        recording.mediaRef = try EditPlan.validatedID(mediaRef, field: "narrator.mediaRef")
+        guard identity.isValid else {
+            throw EditPlanValidationError.invalidReference("Recording narrator requires a measured byte identity.")
+        }
+        return recording
+    }
+
+    var receipt: [String: Any] {
+        ["kind": "recording", "mediaRef": mediaRef, "inputId": identity.inputId,
+         "identity": ["contentSHA256": identity.contentSHA256, "byteCount": identity.byteCount]]
+    }
+}
+
+struct LocalSpeechNarrator: Codable, Sendable, Equatable {
+    enum Engine: String, Codable, Sendable { case system, piper }
+
+    var engine: Engine
+    var voiceIdentifier: String
+    var rate: Double
+    var pitch: Double
+    var modelIdentity: MediaInputIdentity?
+    var configurationIdentity: MediaInputIdentity?
+
+    func validated() throws -> Self {
+        var speech = self
+        speech.voiceIdentifier = try EditPlan.validatedID(voiceIdentifier, field: "narrator.voiceIdentifier")
+        guard rate.isFinite, pitch.isFinite, (0.5...2).contains(rate), (0.5...2).contains(pitch) else {
+            throw EditPlanValidationError.invalidReference("Narrator rate and pitch must be finite multipliers from 0.5 through 2.")
+        }
+        switch engine {
+        case .system:
+            guard modelIdentity == nil, configurationIdentity == nil else {
+                throw EditPlanValidationError.invalidReference("System narration does not accept Piper model identities.")
+            }
+        case .piper:
+            guard pitch == 1, modelIdentity?.isValid == true, configurationIdentity?.isValid == true else {
+                throw EditPlanValidationError.invalidReference("Piper narration requires measured model/config identities and pitch 1; pitch changes are unsupported.")
+            }
+        }
+        return speech
+    }
+
+    @concurrent
+    func verifyAvailable(language: String) async throws {
+        try Task.checkCancellation()
+        _ = try validated()
+        let locale = language.replacingOccurrences(of: "_", with: "-").lowercased()
+        switch engine {
+        case .system:
+            guard let voice = SpeechSynthesizer.voices().first(where: { $0.identifier == voiceIdentifier }),
+                  voice.language.replacingOccurrences(of: "_", with: "-").lowercased() == locale else {
+                throw EditPlanValidationError.invalidReference("Narration requires the exact installed system voice identifier and its matching language.")
+            }
+        case .piper:
+            guard PiperTTS.isAvailable,
+                  let model = PiperTTS.installedModels().first(where: { $0.fileName == voiceIdentifier }),
+                  model.languageTag.lowercased() == locale else {
+                throw EditPlanValidationError.invalidReference("Narration requires the exact installed Piper model and its matching language.")
+            }
+            let measuredModel = try await MediaInputIdentityService.shared.identify(model.modelURL, force: true)
+            let measuredConfiguration = try await MediaInputIdentityService.shared.identify(model.modelURL.appendingPathExtension("json"), force: true)
+            guard measuredModel == modelIdentity, measuredConfiguration == configurationIdentity else {
+                throw EditPlanValidationError.invalidReference("Piper model or configuration changed; choose and approve the current narrator.")
+            }
+        }
+        try Task.checkCancellation()
+    }
+
+    var receipt: [String: Any] {
+        var row: [String: Any] = ["kind": "local_speech", "engine": engine.rawValue,
+                                 "voiceIdentifier": voiceIdentifier, "rate": rate, "pitch": pitch]
+        if let modelIdentity { row["modelInputId"] = modelIdentity.inputId }
+        if let configurationIdentity { row["configurationInputId"] = configurationIdentity.inputId }
+        return row
+    }
+}
+
+struct NarrationIntentRequest: Decodable, Sendable {
+    struct Narrator: Decodable, Sendable {
+        var kind: String
+        var mediaRef: String?
+        var engine: LocalSpeechNarrator.Engine?
+        var voiceIdentifier: String?
+        var rate: Double?
+        var pitch: Double?
+    }
+
+    var language: String?
+    var startFrame: Int
+    var narrator: Narrator?
+
+    @concurrent
+    func resolveLocalSpeech() async throws -> LocalSpeechNarrator {
+        guard let narrator, narrator.kind == "local_speech", narrator.mediaRef == nil,
+              let engine = narrator.engine, let voice = narrator.voiceIdentifier,
+              let rate = narrator.rate, let pitch = narrator.pitch, let language,
+              rate.isFinite, pitch.isFinite, (0.5...2).contains(rate), (0.5...2).contains(pitch) else {
+            throw EditPlanValidationError.invalidReference("Local narration requires engine, canonical voiceIdentifier, language, rate, and pitch; recording mediaRef is not allowed.")
+        }
+        var speech = LocalSpeechNarrator(engine: engine, voiceIdentifier: voice, rate: rate, pitch: pitch)
+        if engine == .piper {
+            guard pitch == 1, PiperTTS.isAvailable,
+                  let model = PiperTTS.installedModels().first(where: { $0.fileName == voice }) else {
+                throw EditPlanValidationError.invalidReference("Choose an exact installed Piper model with pitch 1; no model or engine substitution is allowed.")
+            }
+            speech.modelIdentity = try await MediaInputIdentityService.shared.identify(model.modelURL, force: true)
+            speech.configurationIdentity = try await MediaInputIdentityService.shared.identify(model.modelURL.appendingPathExtension("json"), force: true)
+        }
+        try await speech.verifyAvailable(language: language)
+        return speech
+    }
+}
+
+extension EditPlan {
+    func validateNarrationAttachment(identity: MediaInputIdentity) throws {
+        guard productionRun != nil else { return }
+        guard let narrator = narrationIntent?.narrator else {
+            throw EditPlanValidationError.invalidReference("Managed narration requires an approved narrator intent.")
+        }
+        switch narrator {
+        case .recording(let recording):
+            guard identity.isValid, identity == recording.identity else {
+                throw EditPlanValidationError.invalidReference("Narration attachment does not match the chosen recording byte identity.")
+            }
+        case .localSpeech:
+            throw EditPlanValidationError.invalidReference("Pinned local speech generation and attachment proof are not implemented; generic speech metadata cannot verify the approved narrator.")
+        }
+    }
+
+    func narrationProductionBlockers(entries: [String: MediaManifestEntry], unavailable: Set<String>) -> [String] {
+        var blockers: [String] = []
+        if case .localSpeech = narrationIntent?.narrator { blockers.append("unverified_synthesized_narration") }
+        guard let source = narration else { return blockers + ["missing_narration_attachment"] }
+        guard let entry = entries[source.mediaRef], entry.type == .audio, entry.generationStatus == nil,
+              entry.duration.isFinite, entry.duration > 0, !unavailable.contains(source.mediaRef) else {
+            return blockers + ["narration_media_not_ready"]
+        }
+        if let identity = entry.inputIdentity, identity.isValid {
+            if case .recording(let recording) = narrationIntent?.narrator, identity != recording.identity {
+                blockers.append("narration_recording_identity_mismatch")
+            }
+            if let timing = narrationTiming, timing.sourceFingerprint != identity.contentSHA256 {
+                blockers.append("narration_timing_source_mismatch")
+            }
+        } else { blockers.append("unresolved_narration_identity") }
+        if narrationTiming == nil || narrationTiming?.unresolvedBeatIds.isEmpty == false {
+            blockers.append("narration_timing_unresolved")
+        }
+        return blockers
     }
 }
 
@@ -199,7 +428,7 @@ enum NarrationAlignment {
 
 extension EditPlan {
     func resolvedNarrationRange(_ link: SceneNarrationLink) throws -> Range<Int> {
-        guard let source = narration, let timing = narrationTiming, timing.unresolvedBeatIds.isEmpty else {
+        guard narration != nil, let intent = narrationIntent, let timing = narrationTiming, timing.unresolvedBeatIds.isEmpty else {
             throw EditPlanValidationError.invalidReference("Narration alignment is unresolved; measure the current script and audio before assembly.")
         }
         try timing.validated(beats: scriptBeats ?? [], revision: narrationRevision)
@@ -213,10 +442,10 @@ extension EditPlan {
             ? try timing.anchors[last + 1].speechStart.frame(fps: fps)
             : try timing.duration.frame(fps: fps, rounding: .roundTowardZero)
         guard end > start, end - start >= Int(ceil(link.minimumHoldSeconds * Double(fps))),
-              source.startFrame <= maxFrameArg - end else {
+              intent.startFrame <= maxFrameArg - end else {
             throw EditPlanValidationError.invalidReference("Scene narration range is too short for its minimum hold or exceeds supported timeline bounds.")
         }
-        return (source.startFrame + start)..<(source.startFrame + end)
+        return (intent.startFrame + start)..<(intent.startFrame + end)
     }
 
     func resolvedShots() throws -> [EditPlanShot] {

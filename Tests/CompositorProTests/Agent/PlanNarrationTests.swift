@@ -29,19 +29,24 @@ enum PlanNarrationFixtures {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("narration-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         do {
-            let format = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1)!
-            let file = try AVAudioFile(forWriting: directory.appendingPathComponent("voice.wav"), settings: format.settings)
-            let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(seconds * 48_000))!
-            buffer.frameLength = buffer.frameCapacity
-            for index in 0..<Int(buffer.frameLength) {
-                buffer.floatChannelData![0][index] = Float(0.1 * sin(Double(index) / 10))
-            }
-            try file.write(from: buffer)
+            try await writeAudio(in: directory, seconds: seconds)
             return directory
         } catch {
             try? FileManager.default.removeItem(at: directory)
             throw error
         }
+    }
+
+    @concurrent
+    static func writeAudio(in directory: URL, seconds: Int = 3) async throws {
+        guard (1...60).contains(seconds) else { throw CocoaError(.fileWriteUnknown) }
+        let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+        let file = try AVAudioFile(forWriting: directory.appendingPathComponent("voice.wav"), settings: format.settings)
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(seconds * 48_000)))
+        buffer.frameLength = buffer.frameCapacity
+        let channel = try #require(buffer.floatChannelData?[0])
+        for index in 0..<Int(buffer.frameLength) { channel[index] = Float(0.1 * sin(Double(index) / 10)) }
+        try file.write(from: buffer)
     }
 
     @concurrent
@@ -107,14 +112,14 @@ struct PlanNarrationTests {
     @Test(arguments: ["missing beat", "reversed beats", "short hold", "overflow", "stale revision"])
     func invalidSceneResolutionIsRefused(failure: String) throws {
         var plan = EditPlan(name: "Narration", timelineId: "timeline", fps: 30, width: 1920, height: 1080,
-                            scriptBeats: PlanNarrationFixtures.beats(), narration: .init(mediaRef: "audio", startFrame: 30))
+                            scriptBeats: PlanNarrationFixtures.beats(), narrationIntent: .init(startFrame: 30), narration: .init(mediaRef: "audio"))
         plan.narrationTiming = try PlanNarrationFixtures.timing(revision: #require(plan.narrationRevision))
         var link = SceneNarrationLink(firstBeatId: "first-beat", lastBeatId: "first-beat")
         switch failure {
         case "missing beat": link.firstBeatId = "missing"
         case "reversed beats": link.firstBeatId = "second-beat"
         case "short hold": link.minimumHoldSeconds = 2
-        case "overflow": plan.narration?.startFrame = maxFrameArg
+        case "overflow": plan.narrationIntent?.startFrame = maxFrameArg
         default: plan.narrationRevision = UUID().uuidString
         }
         #expect(throws: EditPlanValidationError.self) { try plan.resolvedNarrationRange(link) }
@@ -122,7 +127,7 @@ struct PlanNarrationTests {
 
     @Test func linkedScenesShareOneBoundaryAndAbsorbLeadingSilence() throws {
         var plan = EditPlan(name: "Narration", timelineId: "timeline", fps: 30, width: 1920, height: 1080,
-                            scriptBeats: PlanNarrationFixtures.beats(), narration: .init(mediaRef: "audio", startFrame: 30))
+                            scriptBeats: PlanNarrationFixtures.beats(), narrationIntent: .init(startFrame: 30), narration: .init(mediaRef: "audio"))
         plan.narrationTiming = try PlanNarrationFixtures.timing(revision: #require(plan.narrationRevision))
         #expect(try plan.resolvedNarrationRange(.init(firstBeatId: "first-beat", lastBeatId: "first-beat")) == 30..<75)
         #expect(try plan.resolvedNarrationRange(.init(firstBeatId: "second-beat", lastBeatId: "second-beat")) == 75..<120)
@@ -197,7 +202,7 @@ struct PlanNarrationLifecycleTests {
             audio.url = originalURL
             let plan = EditPlan(id: "narration-plan", name: "Narration", timelineId: harness.editor.activeTimelineId,
                                 fps: 30, width: 1920, height: 1080, scriptBeats: PlanNarrationFixtures.beats(),
-                                narration: .init(mediaRef: audio.id, startFrame: 0))
+                                narrationIntent: .init(startFrame: 0), narration: .init(mediaRef: audio.id))
             try harness.editor.changeEditPlans(creates: [plan], actionName: "Create")
             let executor = ToolExecutor(editor: harness.editor, narrationTimingService: service)
             #expect(!(await executor.execute(name: "plan_edit", args: ["action": "measure_narration", "planId": plan.id])).isError)
@@ -222,7 +227,7 @@ struct PlanNarrationLifecycleTests {
         try await PlanNarrationFixtures.remove(replacementDirectory)
     }
 
-    @Test(arguments: ["cancel", "script", "timeline", "asset", "file", "failure"])
+    @Test(arguments: ["cancel", "script", "timeline", "asset", "asset-return", "file", "failure"])
     func canceledFailedOrStalePreparationCannotCommit(change: String) async throws {
         let directory = try await PlanNarrationFixtures.makeAudio()
         do {
@@ -231,7 +236,7 @@ struct PlanNarrationLifecycleTests {
             audio.url = directory.appendingPathComponent("voice.wav")
             let plan = EditPlan(id: "narration-plan", name: "Narration", timelineId: harness.editor.activeTimelineId,
                                 fps: harness.editor.timeline.fps, width: harness.editor.timeline.width, height: harness.editor.timeline.height,
-                                scriptBeats: PlanNarrationFixtures.beats(), narration: .init(mediaRef: audio.id, startFrame: 0))
+                                scriptBeats: PlanNarrationFixtures.beats(), narrationIntent: .init(startFrame: 0), narration: .init(mediaRef: audio.id))
             try harness.editor.changeEditPlans(creates: [plan], actionName: "Create")
             let gate = NarrationTranscriptGate()
             let service = NarrationTimingService { _, _ in
@@ -250,6 +255,13 @@ struct PlanNarrationLifecycleTests {
                 try harness.editor.changeEditPlans(updates: [revised], actionName: "Revise")
             case "timeline": harness.editor.timeline.width = 1280
             case "asset": audio.url = directory.appendingPathComponent("replacement.wav")
+            case "asset-return":
+                let context = audio.preparationContext
+                let identity = audio.inputIdentity
+                audio.url = directory.appendingPathComponent("replacement.wav")
+                audio.url = context.sourceURL
+                audio.inputIdentity = identity
+                #expect(audio.preparationContext != context)
             case "file":
                 let url = audio.url
                 try await Task.detached { try Data("changed file".utf8).write(to: url) }.value

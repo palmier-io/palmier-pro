@@ -219,10 +219,10 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .planEdit,
-            description: "Maintains one persistent edit plan with structure, source-linked script beats, shots, timing, claims, and provenance. Supplied referenceRecipe cues adapt editorial principles; reference duration never sets output runtime. New plans start proposed on the active timeline. prepare_storyboard starts a managed production review with derived scene cards and one persistent approval owner; inspect actual selections and obtain explicit user approval of the exact revision. Managed approval cannot be replaced by a plain status change or override visual/rights blockers. Generic plan status remains available for ordinary editing. Web candidates require HTTPS URLs, license, and attribution; managed imported selections also retain rights. No timeline edits; apply_plan(commit:true) assembles once.",
+            description: "Maintains one persistent edit plan with structure, source-linked script beats, shots, narration intent, timing, claims, and provenance. Supplied referenceRecipe cues adapt editorial principles; reference duration never sets output runtime. New plans start proposed on the active timeline. prepare_storyboard starts a managed production review with derived scene cards and one persistent approval owner; inspect actual selections and obtain explicit user approval of the exact revision. Managed approval requires complete available narrationIntent but not rendered audio; canApprove/approvalBlockers are separate from canProduce/production blockers. Matching recording attachment and measurement preserve approval; material intent changes revoke it. Managed local-speech attachment proof is unavailable: generic generate_speech output cannot satisfy it. Managed approval cannot be replaced by a plain status change or override visual/rights blockers. Generic plan status remains available for ordinary editing. Web candidates require HTTPS URLs, license, and attribution; managed imported selections also retain rights. No timeline edits; apply_plan(commit:true) assembles once.",
             inputSchema: objectSchema(
                 properties: [
-                    "action": ["type": "string", "enum": ["create", "read", "update", "status", "delete", "review_claims", "measure_narration", "prepare_storyboard", "read_storyboard", "review_storyboard_scene", "approve_storyboard", "cancel_production", "revise_storyboard_scene", "reorder_storyboard"], "description": "Plan operation. review_claims confirms selected facts against current ledgerRevision. measure_narration never guesses missing words. prepare_storyboard/read_storyboard expose persistent revision-bound cards and blockers. review_storyboard_scene records actually performed full still or continuous selected-span inspection; never invent evidence. approve_storyboard requires explicit user approval of the exact revision and cannot override blockers. revise_storyboard_scene updates source-linked narration and/or selected visual atomically; shared beats affect every dependent scene. reorder_storyboard moves a complete contiguous scene sequence and its narration blocks while preserving IDs; shared beats, gaps, overlaps, or split sections are refused. Revisions revoke approval and refuse repeated sources before mutation. cancel_production revokes approval. No timeline edits."],
+                    "action": ["type": "string", "enum": ["create", "read", "update", "status", "delete", "review_claims", "measure_narration", "prepare_storyboard", "read_storyboard", "review_storyboard_scene", "approve_storyboard", "cancel_production", "revise_storyboard_scene", "reorder_storyboard"], "description": "Plan operation. review_claims confirms selected facts against current ledgerRevision. measure_narration verifies attached recording bytes and never guesses missing words. prepare_storyboard/read_storyboard expose persistent revision-bound cards, narrator intent, approvalBlockers/canApprove, and production blockers/canProduce. review_storyboard_scene records actually performed full still or continuous selected-span inspection; never invent evidence. approve_storyboard requires explicit user approval of the exact revision and cannot override approval blockers; a complete available narrator can be approved before audio exists. revise_storyboard_scene updates source-linked narration and/or selected visual atomically; shared beats affect every dependent scene. reorder_storyboard moves a complete contiguous scene sequence and its narration blocks while preserving IDs; shared beats, gaps, overlaps, or split sections are refused. Material revisions revoke approval; matching recording attachment and measured timing do not. cancel_production revokes approval. No timeline edits."],
                     "planId": ["type": "string", "description": "Exact plan id from a plan_edit receipt. Required for update, status, delete, review_claims, measure_narration, and single-plan reads."],
                     "plan": [
                         "type": "object",
@@ -235,6 +235,7 @@ enum ToolDefinitions {
                             "referenceRecipe": referenceRecipeSchema,
                             "sourceLedger": sourceLedgerSchema,
                             "scriptBeats": scriptBeatsSchema,
+                            "narrationIntent": narrationIntentSchema,
                             "narration": narrationSourceSchema,
                             "sections": [
                                 "type": "array",
@@ -276,13 +277,14 @@ enum ToolDefinitions {
                     ],
                     "patch": [
                         "type": "object",
-                        "description": "Update only. Full replacement values for supplied name, goal, sections, shots, notes, referenceRecipe, sourceLedger, scriptBeats, and narration. Preserve cited cueIds/claimIds/beat IDs or replace their uses atomically. Script or narration changes invalidate measured timing. Changed reviewed research becomes unresolved; receipts report invalidatedClaimIds and chapter/shot/beat dependents. Use review_claims with the current revision to confirm revised evidence, not another content update.",
+                        "description": "Update only. Full replacement values for supplied name, goal, sections, shots, notes, referenceRecipe, sourceLedger, scriptBeats, narrationIntent, and narration. Preserve cited cueIds/claimIds/beat IDs or replace their uses atomically. Script, intent, or attachment changes invalidate measured timing. Script, language, start frame, exact speech delivery, or chosen recording bytes are material intent changes and revoke managed approval. Attaching the matching recording preserves approval; different bytes are refused without mutation. Changed reviewed research becomes unresolved; receipts report invalidatedClaimIds and chapter/shot/beat dependents. Use review_claims with the current revision to confirm revised evidence, not another content update.",
                         "properties": [
                             "name": ["type": "string", "description": "Replacement plan name."],
                             "goal": ["type": "string", "description": "Replacement goal."],
                             "referenceRecipe": referenceRecipeSchema,
                             "sourceLedger": sourceLedgerSchema,
                             "scriptBeats": scriptBeatsSchema,
+                            "narrationIntent": narrationIntentSchema,
                             "narration": narrationSourceSchema,
                             "sections": [
                                 "type": "array",
@@ -1955,12 +1957,49 @@ enum ToolDefinitions {
          ], required: ["beatId", "text", "purpose"])]
     }
 
+    private static var narrationIntentSchema: [String: Any] {
+        var schema = objectSchema(properties: [
+            "language": ["type": "string", "description": "Authored narration language/locale tag. Required for managed approval; local speech must match the exact installed voice language."],
+            "startFrame": ["type": "integer", "minimum": 0, "maximum": maxFrameArg, "description": "Authored narration placement in project frames. Whole attached source at normal speed; no trims or speed changes."],
+            "narrator": ["description": "Exact narrator intent. Recording identity and Piper model/config identities are measured by the app and returned in readback; never supply asserted hashes. Omit only for a generic draft, not managed approval. Resolving intent does not generate, install, download, or spend credits.",
+                "oneOf": [recordingNarratorSchema, localSpeechNarratorSchema(engine: .system), localSpeechNarratorSchema(engine: .piper)]],
+        ], required: ["startFrame"])
+        schema["additionalProperties"] = false
+        schema["allOf"] = [[
+            "if": ["required": ["narrator"], "properties": ["narrator": ["required": ["kind"], "properties": ["kind": ["const": "local_speech"]]]]],
+            "then": ["required": ["language"]],
+        ]]
+        return schema
+    }
+
+    private static var recordingNarratorSchema: [String: Any] {
+        var schema = objectSchema(properties: [
+            "kind": ["type": "string", "enum": ["recording"]],
+            "mediaRef": ["type": "string", "description": "Explicitly chosen ready library audio asset. The app measures its actual bytes before committing intent; eventual narration attachment must match those bytes, including an explicitly selected identical-byte alias."],
+        ], required: ["kind", "mediaRef"])
+        schema["additionalProperties"] = false
+        return schema
+    }
+
+    private static func localSpeechNarratorSchema(engine: LocalSpeechNarrator.Engine) -> [String: Any] {
+        var schema = objectSchema(properties: [
+            "kind": ["type": "string", "enum": ["local_speech"]],
+            "engine": ["type": "string", "enum": [engine.rawValue], "description": "Exact installed local engine; no substitution or fallback."],
+            "voiceIdentifier": ["type": "string", "description": "Exact installed system voice identifier or Piper model name from list_speech_voices. Names, prefixes, unknown voices, unavailable models, and language mismatches are refused; Piper model/config bytes are pinned by the app."],
+            "rate": ["type": "number", "minimum": 0.5, "maximum": 2, "description": "Explicit finite rate multiplier, 1 = normal."],
+            "pitch": ["type": "number", "minimum": engine == .piper ? 1 : 0.5, "maximum": engine == .piper ? 1 : 2, "description": "Explicit finite pitch multiplier. Piper requires 1; other pitch values are unsupported."],
+        ], required: ["kind", "engine", "voiceIdentifier", "rate", "pitch"])
+        schema["additionalProperties"] = false
+        schema["description"] = "Available exact local speech intent may be approved without audio. Managed synthesized attachment proof is not implemented; generic speech receipts or package metadata never establish readiness."
+        return schema
+    }
+
     private static var narrationSourceSchema: [String: Any] {
-        objectSchema(properties: [
-            "mediaRef": ["type": "string", "description": "Ready library audio asset from import_media or generate_speech. Measurement never synthesizes or spends credits."],
-            "language": ["type": "string", "description": "Optional local transcription locale tag."],
-            "startFrame": ["type": "integer", "description": "Narration placement in project frames. Whole source at normal speed; no trims or speed changes."],
-        ], required: ["mediaRef", "startFrame"])
+        var schema = objectSchema(properties: [
+            "mediaRef": ["type": "string", "description": "Ready library audio attachment. Language and placement belong to narrationIntent, not this source. Managed recordings must match the chosen byte identity; managed synthesized attachments remain blocked until pinned generation proof exists. Generic plans remain ordinary audio edits. Measurement never synthesizes or spends credits."],
+        ], required: ["mediaRef"])
+        schema["additionalProperties"] = false
+        return schema
     }
 
     private static var sceneNarrationLinkSchema: [String: Any] {

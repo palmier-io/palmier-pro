@@ -36,10 +36,7 @@ extension EditorViewModel {
         var next = try edit(plan)
         guard next != plan else { return before }
         if next.scriptBeats != plan.scriptBeats { next.narrationTiming = nil }
-        if !next.hasSameStoryboardIntent(as: plan) {
-            next.productionRun?.phase = .stale
-            next.productionRun?.approvedRevision = nil
-        }
+        next.invalidateStoryboardApproval(comparedTo: plan)
         try next.validateArtifacts()
         let snapshot = visualReviewRevision
         let unavailable = storyboardUnavailableMediaRefs(for: next)

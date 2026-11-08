@@ -18,7 +18,8 @@ extension EditorViewModel {
         deleteIds: [String] = [],
         actionName: String,
         reviewingClaimIds: Set<String> = [],
-        updatingProductionRun: Bool = false
+        updatingProductionRun: Bool = false,
+        narrationValidation: PlanNarrationChangeValidation? = nil
     ) throws -> EditPlanChangeReceipt {
         if editPlansLoadFailed {
             throw EditPlanValidationError.unreadablePlans
@@ -39,6 +40,12 @@ extension EditorViewModel {
             guard plan.productionRun == nil else {
                 throw EditPlanValidationError.invalidReference("Prepare a storyboard before creating production review state.")
             }
+            if plan.narrationIntent?.narrator != nil {
+                guard let narrationValidation else {
+                    throw EditPlanValidationError.invalidReference("Choosing a narrator requires shared narration validation.")
+                }
+                try narrationValidation.validate(plan: plan, previous: nil, in: self)
+            }
             plan = try EditPlan.validatedNew(
                 plan,
                 timelineId: plan.timelineId,
@@ -58,6 +65,13 @@ extension EditorViewModel {
                 throw EditPlanValidationError.invalidReference("Unknown planId '\(plan.id)'.")
             }
             let current = next[index]
+            if plan.narrationIntent?.narrator != current.narrationIntent?.narrator
+                || (plan.productionRun != nil && plan.narration != current.narration) {
+                guard let narrationValidation else {
+                    throw EditPlanValidationError.invalidReference("Narrator and managed attachment changes require shared narration validation.")
+                }
+                try narrationValidation.validate(plan: plan, previous: current, in: self)
+            }
             guard updatingProductionRun || plan.productionRun == current.productionRun else {
                 throw EditPlanValidationError.invalidReference("Production review changes require a storyboard operation.")
             }
@@ -73,8 +87,10 @@ extension EditorViewModel {
             }
             plan.status = .proposed
             plan.scriptBeats = try plan.scriptBeats?.map { try $0.validated() }
+            plan.narrationIntent = try plan.narrationIntent?.validated()
             plan.narration = try plan.narration?.validated()
-            if plan.scriptBeats != current.scriptBeats || plan.narration != current.narration {
+            if plan.scriptBeats != current.scriptBeats || plan.narrationIntent != current.narrationIntent
+                || plan.narration != current.narration {
                 plan.narrationRevision = plan.scriptBeats == nil ? nil : UUID().uuidString
                 plan.narrationTiming = nil
             }
@@ -94,10 +110,7 @@ extension EditorViewModel {
             normalized.createdAt = current.createdAt
             normalized.status = current.status
             normalized.updatedAt = current.updatedAt
-            if !normalized.hasSameStoryboardIntent(as: current), normalized.productionRun?.phase != .canceled {
-                normalized.productionRun?.phase = .stale
-                normalized.productionRun?.approvedRevision = nil
-            }
+            normalized.invalidateStoryboardApproval(comparedTo: current)
             guard normalized != current else { continue }
             normalized.updatedAt = Date()
             next[index] = normalized
@@ -179,9 +192,13 @@ extension EditorViewModel {
 
 extension EditPlan {
     func hasSameStoryboardIntent(as other: EditPlan) -> Bool {
-        goal == other.goal && notes == other.notes && sections == other.sections && shots == other.shots
-            && scriptBeats == other.scriptBeats && sourceLedger == other.sourceLedger && referenceRecipe == other.referenceRecipe
-            && narration?.language == other.narration?.language && narration?.startFrame == other.narration?.startFrame
+        storyboardIntent == other.storyboardIntent
+    }
+
+    mutating func invalidateStoryboardApproval(comparedTo previous: EditPlan) {
+        guard !hasSameStoryboardIntent(as: previous), productionRun?.phase != .canceled else { return }
+        productionRun?.phase = .stale
+        productionRun?.approvedRevision = nil
     }
 
     static func ensureGlobalIDs(_ plans: [EditPlan]) throws {

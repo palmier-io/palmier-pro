@@ -5,7 +5,7 @@ actor NarrationTimingService {
     static let shared = NarrationTimingService()
     private let gate = AsyncSemaphore(value: 1)
     private let transcribe: @Sendable (URL, String?) async throws -> TranscriptionResult
-    private var cachedTiming: (source: NarrationSource, beats: [ScriptBeat], timing: NarrationTiming)?
+    private var cachedTiming: (source: NarrationSource, language: String?, beats: [ScriptBeat], timing: NarrationTiming)?
 
     init(transcribe: @escaping @Sendable (URL, String?) async throws -> TranscriptionResult = { url, language in
         let locale = language.map(Locale.init(identifier:))
@@ -20,11 +20,11 @@ actor NarrationTimingService {
         self.transcribe = transcribe
     }
 
-    func measure(url: URL, source: NarrationSource, beats: [ScriptBeat], revision: String,
+    func measure(url: URL, source: NarrationSource, language: String?, beats: [ScriptBeat], revision: String,
                  previous: NarrationTiming?) async throws -> NarrationTiming {
         try await gate.wait()
         do {
-            let result = try await measureAdmitted(url: url, source: source, beats: beats, revision: revision, previous: previous)
+            let result = try await measureAdmitted(url: url, source: source, language: language, beats: beats, revision: revision, previous: previous)
             await gate.signal()
             return result
         } catch {
@@ -33,12 +33,12 @@ actor NarrationTimingService {
         }
     }
 
-    private func measureAdmitted(url: URL, source: NarrationSource, beats: [ScriptBeat], revision: String,
+    private func measureAdmitted(url: URL, source: NarrationSource, language: String?, beats: [ScriptBeat], revision: String,
                                  previous: NarrationTiming?) async throws -> NarrationTiming {
         try Task.checkCancellation()
         let before = try await Self.fingerprint(url)
         try Task.checkCancellation()
-        if let cachedTiming, cachedTiming.source == source, cachedTiming.beats == beats,
+        if let cachedTiming, cachedTiming.source == source, cachedTiming.language == language, cachedTiming.beats == beats,
            cachedTiming.timing.revision == revision, cachedTiming.timing.sourceFingerprint == before {
             return cachedTiming.timing
         }
@@ -52,7 +52,7 @@ actor NarrationTimingService {
         }
         let duration = try await NarrationTime(asset.load(.duration))
         guard duration.cmTime > .zero else { throw EditPlanValidationError.invalidRange }
-        let transcript = try await transcribe(url, source.language)
+        let transcript = try await transcribe(url, language)
         let timing = try NarrationAlignment.align(beats: beats, transcript: transcript, duration: duration,
                                                   revision: revision, fingerprint: before)
         try Task.checkCancellation()
@@ -60,7 +60,7 @@ actor NarrationTimingService {
             throw EditPlanValidationError.invalidReference("Narration file changed during alignment; retry with the current source.")
         }
         try Task.checkCancellation()
-        if timing.unresolvedBeatIds.isEmpty { cachedTiming = (source, beats, timing) }
+        if timing.unresolvedBeatIds.isEmpty { cachedTiming = (source, language, beats, timing) }
         return timing
     }
 

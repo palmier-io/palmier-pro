@@ -258,7 +258,8 @@ struct StoryboardPreviewServiceTests {
             let identity = try await MediaInputIdentityService.shared.identify(narration, force: true)
             manifest.entries.append(MediaManifestEntry(id: "narration", name: "Narration", type: .audio,
                 source: .external(absolutePath: narration.path), duration: 2, inputIdentity: identity))
-            plan.narration = NarrationSource(mediaRef: "narration", startFrame: 0)
+            plan.narrationIntent = NarrationIntent(startFrame: 0)
+            plan.narration = NarrationSource(mediaRef: "narration")
             plan.narrationTiming = NarrationTiming(revision: try #require(plan.narrationRevision),
                 sourceFingerprint: identity.contentSHA256, duration: try NarrationTime(CMTime(value: 2, timescale: 1)),
                 anchors: [.init(beatId: "beat-0", speechStart: try NarrationTime(.zero),

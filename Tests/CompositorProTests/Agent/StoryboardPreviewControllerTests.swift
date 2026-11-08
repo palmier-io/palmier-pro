@@ -35,7 +35,7 @@ struct StoryboardPreviewControllerTests {
         var plan = try #require(harness.editor.editPlans.first)
         plan = EditPlan(id: plan.id, name: plan.name, timelineId: plan.timelineId, fps: plan.fps,
             width: plan.width, height: plan.height, shots: plan.shots,
-            scriptBeats: PlanNarrationFixtures.beats(), narration: .init(mediaRef: voice.id, startFrame: 0))
+            scriptBeats: PlanNarrationFixtures.beats(), narrationIntent: .init(startFrame: 0), narration: .init(mediaRef: voice.id))
         plan.narrationTiming = try PlanNarrationFixtures.timing(revision: #require(plan.narrationRevision))
         harness.editor.editPlans = [plan]
         #expect(!harness.editor.storyboardPreviewContext(planId: plan.id).unavailable.contains(voice.id))

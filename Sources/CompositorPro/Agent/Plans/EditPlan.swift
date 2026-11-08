@@ -67,6 +67,7 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
     var sourceLedger: SourceClaimLedger?
     var sourceLedgerRevision: String?
     var scriptBeats: [ScriptBeat]?
+    var narrationIntent: NarrationIntent?
     var narration: NarrationSource?
     var narrationRevision: String?
     var narrationTiming: NarrationTiming?
@@ -75,7 +76,7 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
     private enum CodingKeys: String, CodingKey {
         case id, name, goal, timelineId, fps, width, height, status
         case sections, shots, notes, createdAt, updatedAt, referenceRecipe, sourceLedger, sourceLedgerRevision
-        case scriptBeats, narration, narrationRevision, narrationTiming
+        case scriptBeats, narrationIntent, narration, narrationRevision, narrationTiming
         case productionRun
     }
 
@@ -96,6 +97,7 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
         referenceRecipe: ReferenceRecipe? = nil,
         sourceLedger: SourceClaimLedger? = nil,
         scriptBeats: [ScriptBeat]? = nil,
+        narrationIntent: NarrationIntent? = nil,
         narration: NarrationSource? = nil
     ) {
         self.id = id
@@ -115,6 +117,7 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
         self.sourceLedger = sourceLedger
         self.sourceLedgerRevision = sourceLedger == nil ? nil : UUID().uuidString
         self.scriptBeats = scriptBeats
+        self.narrationIntent = narrationIntent
         self.narration = narration
         self.narrationRevision = scriptBeats == nil ? nil : UUID().uuidString
     }
@@ -138,6 +141,7 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
         sourceLedger = try container.decodeIfPresent(SourceClaimLedger.self, forKey: .sourceLedger)
         sourceLedgerRevision = try container.decodeIfPresent(String.self, forKey: .sourceLedgerRevision)
         scriptBeats = try container.decodeIfPresent([ScriptBeat].self, forKey: .scriptBeats)
+        narrationIntent = try container.decodeIfPresent(NarrationIntent.self, forKey: .narrationIntent)
         narration = try container.decodeIfPresent(NarrationSource.self, forKey: .narration)
         narrationRevision = try container.decodeIfPresent(String.self, forKey: .narrationRevision)
         narrationTiming = try container.decodeIfPresent(NarrationTiming.self, forKey: .narrationTiming)
@@ -385,10 +389,9 @@ extension EditPlan {
             if let sourceLedger { out["sourceLedger"] = sourceLedger.receipt() }
             if let sourceLedgerRevision { out["sourceLedgerRevision"] = sourceLedgerRevision }
             if let scriptBeats { out["scriptBeats"] = scriptBeats.map { $0.receipt() } }
+            if let narrationIntent { out["narrationIntent"] = narrationIntent.receipt }
             if let narration {
-                var row: [String: Any] = ["mediaRef": narration.mediaRef, "startFrame": narration.startFrame]
-                if let language = narration.language { row["language"] = language }
-                out["narration"] = row
+                out["narration"] = ["mediaRef": narration.mediaRef]
             }
             if let narrationRevision { out["narrationRevision"] = narrationRevision }
             if let narrationTiming {
@@ -459,10 +462,14 @@ extension EditPlan {
                   normalized.reduce(0, { $0 + $1.narrationText.count }) <= SpeechSynthesizer.maxCharacters else {
                 throw EditPlanValidationError.invalidReference("Script IDs must be unique and total narration must not exceed 20,000 characters.")
             }
-        } else if narration != nil || narrationTiming != nil || narrationRevision != nil {
+        } else if narrationIntent != nil || narration != nil || narrationTiming != nil || narrationRevision != nil {
             throw EditPlanValidationError.invalidReference("Narration requires scriptBeats.")
         }
+        narrationIntent = try narrationIntent?.validated()
         narration = try narration?.validated()
+        if narration != nil, narrationIntent == nil {
+            throw EditPlanValidationError.invalidReference("Narration attachments require an authored narrationIntent with placement.")
+        }
         if let narrationTiming {
             guard narration != nil else { throw EditPlanValidationError.invalidReference("Timing requires a narration source.") }
             try narrationTiming.validated(beats: scriptBeats ?? [], revision: narrationRevision)
@@ -525,6 +532,30 @@ extension EditPlan {
         } catch {
             row["timingBlocker"] = error.localizedDescription
         }
+    }
+}
+
+struct StoryboardIntent: Encodable, Sendable, Equatable {
+    var planId: String
+    var timelineId: String
+    var fps: Int
+    var width: Int
+    var height: Int
+    var goal: String
+    var notes: String
+    var sections: [EditPlanSection]
+    var shots: [EditPlanShot]
+    var script: [ScriptBeat]
+    var ledger: SourceClaimLedger?
+    var recipe: ReferenceRecipe?
+    var narration: NarrationIntent?
+}
+
+extension EditPlan {
+    var storyboardIntent: StoryboardIntent {
+        StoryboardIntent(planId: id, timelineId: timelineId, fps: fps, width: width, height: height,
+            goal: goal, notes: notes, sections: sections, shots: shots, script: scriptBeats ?? [],
+            ledger: sourceLedger, recipe: referenceRecipe, narration: narrationIntent)
     }
 }
 

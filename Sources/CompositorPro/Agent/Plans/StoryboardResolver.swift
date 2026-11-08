@@ -58,33 +58,26 @@ struct StoryboardReport: Sendable {
     var phase: ProductionRun.Phase
     var cards: [StoryboardCard]
     var blockers: [String]
+    var approvalBlockers: [String]
+    var narrationIntent: NarrationIntent?
     var uniqueness: VisualUniquenessReport
+    var approvedRevision: String?
 
-    var canProduce: Bool { phase == .approved && blockers.isEmpty }
+    var canApprove: Bool { approvalBlockers.isEmpty }
+    var canProduce: Bool { phase == .approved && approvedRevision == revision && blockers.isEmpty }
 
     var receipt: [String: Any] {
-        ["planId": planId, "storyboardRevision": revision, "phase": phase.rawValue,
-         "canProduce": canProduce, "blockers": blockers, "cards": cards.map(\.receipt),
-         "visualIdentity": uniqueness.receipt, "deliveryVerified": false]
+        var row: [String: Any] = ["planId": planId, "storyboardRevision": revision, "phase": phase.rawValue,
+         "canApprove": canApprove, "canProduce": canProduce, "approvalBlockers": approvalBlockers,
+         "blockers": blockers, "cards": cards.map(\.receipt), "visualIdentity": uniqueness.receipt, "deliveryVerified": false]
+        if let narrationIntent { row["narrationIntent"] = narrationIntent.receipt }
+        return row
     }
 }
 
 enum StoryboardResolver {
     private struct Content: Encodable {
-        var planId: String
-        var timelineId: String
-        var fps: Int
-        var width: Int
-        var height: Int
-        var goal: String
-        var notes: String
-        var sections: [EditPlanSection]
-        var shots: [EditPlanShot]
-        var script: [ScriptBeat]
-        var ledger: SourceClaimLedger?
-        var recipe: ReferenceRecipe?
-        var language: String?
-        var narrationStartFrame: Int?
+        var intent: StoryboardIntent
         var selections: [String]
     }
 
@@ -120,6 +113,7 @@ enum StoryboardResolver {
         guard Set(beats.map(\.beatId)).count == beats.count else { throw EditPlanValidationError.invalidReference("Duplicate script beat IDs.") }
         let indices = Dictionary(uniqueKeysWithValues: beats.enumerated().map { ($0.element.beatId, $0.offset) })
         var cards: [StoryboardCard] = []
+        var approvalBlockers: [String] = []
         var occurrences: [VisualOccurrence] = []
         for shot in plan.shots {
             try Task.checkCancellation()
@@ -127,13 +121,17 @@ enum StoryboardResolver {
             let entry = shot.mediaRef.flatMap { entries[$0] }
             let derivative = entry?.generationInput != nil || entry?.type == .lottie
             var blockers: [String] = []
+            var derivedBlockers = Set<String>()
             var linked: [ScriptBeat] = []
             var resolvedRange: Range<Int>?
             if let link = shot.narrationLink, let first = indices[link.firstBeatId], let last = indices[link.lastBeatId], first <= last {
                 linked = Array(beats[first...last])
                 if plan.narrationTiming != nil {
                     do { resolvedRange = try plan.resolvedNarrationRange(link) }
-                    catch { blockers.append("narration_timing_unresolved") }
+                    catch {
+                        blockers.append("narration_timing_unresolved")
+                        derivedBlockers.insert("narration_timing_unresolved")
+                    }
                 }
             } else { blockers.append("missing_scene_narration_link") }
             var playbackShot = shot
@@ -146,8 +144,19 @@ enum StoryboardResolver {
             if let entry {
                 do {
                     inspectionRange = try PlanSourceRange.inspection(shot: shot, fps: plan.fps, type: entry.type, duration: entry.duration)
-                    playbackRange = try PlanSourceRange.playback(shot: playbackShot, fps: plan.fps, type: entry.type, duration: entry.duration)
                 } catch let error as PlanSourceRangeError { blockers.append(error.blocker) }
+                do {
+                    playbackRange = try PlanSourceRange.playback(shot: shot, fps: plan.fps, type: entry.type, duration: entry.duration)
+                } catch let error as PlanSourceRangeError { blockers.append(error.blocker) }
+                if resolvedRange != nil {
+                    do {
+                        playbackRange = try PlanSourceRange.playback(shot: playbackShot, fps: plan.fps, type: entry.type, duration: entry.duration)
+                    } catch let error as PlanSourceRangeError {
+                        playbackRange = nil
+                        if !blockers.contains(error.blocker) { derivedBlockers.insert(error.blocker) }
+                        blockers.append(error.blocker)
+                    }
+                }
             }
             let selection = Selection(mediaRef: shot.mediaRef, candidateURL: shot.candidateURL,
                                       startSeconds: shot.sourceStartSeconds, endSeconds: shot.sourceEndSeconds,
@@ -182,6 +191,7 @@ enum StoryboardResolver {
                 blockers.append("unresolved_face_and_similarity_inspection")
             }
             let claims = Set((shot.claimIds ?? []) + linked.flatMap { $0.claimIds ?? [] }).sorted()
+            approvalBlockers += blockers.filter { !derivedBlockers.contains($0) }.map { "\(shot.id):\($0)" }
             cards.append(StoryboardCard(shot: shot, narration: linked.map(\.narrationText).joined(separator: "\n\n"),
                 purpose: linked.map(\.purpose).joined(separator: "\n"), claimIds: claims,
                 selectionRevision: selectionRevision, inputId: entry?.inputIdentity?.inputId,
@@ -189,26 +199,36 @@ enum StoryboardResolver {
                 review: review, resolvedRange: resolvedRange, beats: linked,
                 inspectionRange: inspectionRange, playbackRange: playbackRange, fps: plan.fps))
         }
-        let content = Content(planId: plan.id, timelineId: plan.timelineId, fps: plan.fps, width: plan.width,
-                              height: plan.height, goal: plan.goal, notes: plan.notes, sections: plan.sections,
-                              shots: plan.shots, script: beats, ledger: plan.sourceLedger, recipe: plan.referenceRecipe,
-                              language: plan.narration?.language, narrationStartFrame: plan.narration?.startFrame,
-                              selections: cards.map(\.selectionRevision))
+        let content = Content(intent: plan.storyboardIntent, selections: cards.map(\.selectionRevision))
         let revision = try digest(content)
         let uniqueness = try await VisualUniqueness.audit(occurrences: occurrences, manifest: manifest)
         var blockers = cards.flatMap { card in card.blockers.map { "\(card.shot.id):\($0)" } }
-        if cards.isEmpty { blockers.append("empty_storyboard") }
-        if beats.isEmpty { blockers.append("missing_script") }
-        blockers += plan.unresolvedClaimIDs.map { "unresolved_claim:\($0)" }
-        if !uniqueness.conflicts.isEmpty { blockers.append("repeated_visual_sources") }
-        if !uniqueness.unresolved.isEmpty { blockers.append("unresolved_visual_identity") }
+        if cards.isEmpty { approvalBlockers.append("empty_storyboard") }
+        if beats.isEmpty { approvalBlockers.append("missing_script") }
+        approvalBlockers += plan.unresolvedClaimIDs.map { "unresolved_claim:\($0)" }
+        if !uniqueness.conflicts.isEmpty { approvalBlockers.append("repeated_visual_sources") }
+        if !uniqueness.unresolved.isEmpty { approvalBlockers.append("unresolved_visual_identity") }
+        if let intent = plan.narrationIntent {
+            do { try await intent.verifyAvailableNarrator() }
+            catch is CancellationError { throw CancellationError() }
+            catch { approvalBlockers.append("unavailable_narrator_intent") }
+            if case .recording(let recording) = intent.narrator,
+               entries[recording.mediaRef]?.inputIdentity != recording.identity
+                || unavailable.contains(recording.mediaRef) || entries[recording.mediaRef]?.generationStatus != nil
+                || entries[recording.mediaRef]?.type != .audio {
+                approvalBlockers.append("unavailable_recording_narrator")
+            }
+        } else { approvalBlockers.append("missing_narration_intent") }
+        for blocker in approvalBlockers where !blockers.contains(blocker) { blockers.append(blocker) }
+        blockers += plan.narrationProductionBlockers(entries: entries, unavailable: unavailable)
         let run = plan.productionRun
         let phase: ProductionRun.Phase = run.map {
             $0.phase == .canceled ? .canceled : ($0.storyboardRevision == revision ? $0.phase : .stale)
         } ?? .awaitingStoryboardApproval
         try Task.checkCancellation()
         return StoryboardReport(planId: plan.id, revision: revision, phase: phase, cards: cards,
-                                blockers: blockers, uniqueness: uniqueness)
+                                blockers: blockers, approvalBlockers: approvalBlockers, narrationIntent: plan.narrationIntent,
+                                uniqueness: uniqueness, approvedRevision: run?.approvedRevision)
     }
 
     private static func digest(_ value: some Encodable) throws -> String {

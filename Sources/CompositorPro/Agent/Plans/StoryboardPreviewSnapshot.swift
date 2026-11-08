@@ -153,7 +153,8 @@ struct StoryboardPreviewSnapshot: Sendable {
             }
             var tracks = [Track(id: "storyboard-preview-video:\(plan.id)", type: .video, clips: clips)]
             if let timing = plan.narrationTiming {
-                guard let narration = plan.narration, let entry = entries[narration.mediaRef] else {
+                guard let narration = plan.narration, let intent = plan.narrationIntent,
+                      let entry = entries[narration.mediaRef] else {
                     throw StoryboardPreviewError.unresolvedTiming
                 }
                 guard entry.type == .audio else { throw StoryboardPreviewError.unsupportedSource }
@@ -162,13 +163,18 @@ struct StoryboardPreviewSnapshot: Sendable {
                         throw StoryboardPreviewError.sourceMismatch
                     }
                 }
+                if plan.productionRun != nil {
+                    guard let identity = entry.inputIdentity else { throw StoryboardPreviewError.sourceMismatch }
+                    do { try plan.validateNarrationAttachment(identity: identity) }
+                    catch { throw StoryboardPreviewError.sourceMismatch }
+                }
                 let duration = try timing.duration.frame(fps: plan.fps, rounding: .roundTowardZero)
-                guard narration.startFrame == 0, duration == visualEnd else { throw StoryboardPreviewError.renderIncomplete }
-                let audioShot = EditPlanShot(id: "preview-narration", title: "Narration", startFrame: narration.startFrame,
+                guard intent.startFrame == 0, duration == visualEnd else { throw StoryboardPreviewError.renderIncomplete }
+                let audioShot = EditPlanShot(id: "preview-narration", title: "Narration", startFrame: intent.startFrame,
                     endFrame: visualEnd, mediaRef: narration.mediaRef)
                 _ = try PlanSourceRange.playback(shot: audioShot, fps: plan.fps, type: entry.type, duration: entry.duration)
                 let audio = Clip(id: "preview-narration:\(plan.id)", mediaRef: narration.mediaRef, mediaType: .audio,
-                    sourceClipType: .audio, startFrame: narration.startFrame, durationFrames: duration)
+                    sourceClipType: .audio, startFrame: intent.startFrame, durationFrames: duration)
                 tracks.append(Track(id: "storyboard-preview-audio:\(plan.id)", type: .audio, clips: [audio]))
             }
             let sources = try selectedRefs.sorted().map { ref -> Source in

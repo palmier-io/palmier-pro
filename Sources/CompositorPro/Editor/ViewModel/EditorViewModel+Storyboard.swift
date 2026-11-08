@@ -83,8 +83,8 @@ extension EditorViewModel {
               plan.status == .proposed || plan.status == .approved,
               report.revision == revision, run.storyboardRevision == revision,
               run.phase == .awaitingStoryboardApproval || run.phase == .approved,
-              report.blockers.isEmpty else {
-            throw EditPlanValidationError.invalidReference("Storyboard approval requires the current prepared revision without blockers: \(report.blockers.joined(separator: ", ")).")
+               report.canApprove else {
+            throw EditPlanValidationError.invalidReference("Storyboard approval requires the current prepared revision without approval blockers: \(report.approvalBlockers.joined(separator: ", ")).")
         }
         let comment = try EditPlan.validatedText(comment, field: "storyboard comment")
         run.phase = .approved
@@ -99,6 +99,7 @@ extension EditorViewModel {
         }
         var approved = report
         approved.phase = .approved
+        approved.approvedRevision = revision
         return approved
     }
 
@@ -117,6 +118,14 @@ extension EditorViewModel {
         let plan = editPlan(id: planId)
         let revision = visualReviewRevision
         let unavailable = plan.map(storyboardUnavailableMediaRefs) ?? []
+        var narrationValidation: PlanNarrationChangeValidation?
+        if let plan {
+            narrationValidation = try await verifyRecordingNarrator(plan: plan)
+            try Task.checkCancellation()
+            guard editPlan(id: planId) == plan, visualReviewRevision == revision else {
+                throw EditPlanValidationError.invalidReference("Narrator or storyboard changed during review; retry current state.")
+            }
+        }
         var seen = Set<String>()
         var sources: [(String, MediaAsset, URL, MediaInputIdentity)] = []
         for card in report.cards {
@@ -140,14 +149,17 @@ extension EditorViewModel {
         }) else {
             throw EditPlanValidationError.invalidReference("Selected sources changed during inspection; review the current storyboard.")
         }
+        if let plan { try narrationValidation?.validate(plan: plan, previous: plan, in: self) }
         return report
     }
 
     func storyboardUnavailableMediaRefs(for plan: EditPlan) -> Set<String> {
-        Set(plan.shots.compactMap { shot in
-            guard let ref = shot.mediaRef else { return nil }
+        var refs = Set(plan.shots.compactMap(\.mediaRef))
+        if let source = plan.narration { refs.insert(source.mediaRef) }
+        if case .recording(let recording) = plan.narrationIntent?.narrator { refs.insert(recording.mediaRef) }
+        return Set(refs.filter { ref in
             return missingMediaRefs.contains(ref) || unprocessableMediaRefs.contains(ref)
-                || (mediaAssetsById[ref].map { $0.generationStatus != .none } ?? true) ? ref : nil
+                || (mediaAssetsById[ref].map { $0.generationStatus != .none } ?? true)
         })
     }
 

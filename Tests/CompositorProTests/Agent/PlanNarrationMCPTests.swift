@@ -37,6 +37,7 @@ struct PlanNarrationMCPTests {
             #expect(!package.unreadable)
             let persisted = try #require(package.plans.first)
             #expect(persisted.scriptBeats == plan.scriptBeats)
+            #expect(persisted.narrationIntent == plan.narrationIntent)
             #expect(persisted.narration == plan.narration)
             #expect(persisted.narrationRevision == plan.narrationRevision)
             #expect(persisted.narrationTiming == plan.narrationTiming)
@@ -139,7 +140,8 @@ struct PlanNarrationMCPTests {
                 "action": .string("create"), "plan": .object([
                     "planId": .string("narration-plan"), "name": .string("Measured explainer"),
                     "scriptBeats": try Value(PlanNarrationFixtures.beats()),
-                    "narration": .object(["mediaRef": .string(audio.id), "startFrame": .int(30)]),
+                    "narrationIntent": .object(["startFrame": .int(30)]),
+                    "narration": .object(["mediaRef": .string(audio.id)]),
                     "shots": .array(["first", "second"].map { name in .object([
                         "shotId": .string("\(name)-scene"), "title": .string(name), "startFrame": .int(0), "endFrame": .int(10),
                         "mediaRef": .string("\(name)-image"),

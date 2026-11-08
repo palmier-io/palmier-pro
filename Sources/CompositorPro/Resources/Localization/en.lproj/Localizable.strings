@@ -134,6 +134,7 @@
 "Aspect" = "Aspect";
 "Aspect Ratio" = "Aspect Ratio";
 "Aspect ratio: %@" = "Aspect ratio: %@";
+"Attach Narration" = "Attach Narration";
 "Attribution" = "Attribution";
 "Audio" = "Audio";
 "Audio Ref" = "Audio Ref";
@@ -203,6 +204,7 @@
 "Captured %@. The destination folder was removed, so the frame was saved at the top level of Media." = "Captured %@. The destination folder was removed, so the frame was saved at the top level of Media.";
 "Censor profanity" = "Censor profanity";
 "Center" = "Center";
+"Change Narration Intent" = "Change Narration Intent";
 "Change aspect ratio and extend the frame with AI" = "Change aspect ratio and extend the frame with AI";
 "Change playback rate, or ramp it — a slow push-in, a whip pan, a drift back to real time. A ramp holds its start and end, and time-based effects follow the retimed clip." = "Change playback rate, or ramp it — a slow push-in, a whip pan, a drift back to real time. A ramp holds its start and end, and time-based effects follow the retimed clip.";
 "Change to Match" = "Change to Match";
@@ -216,10 +218,12 @@
 "Checking a cut" = "Checking a cut";
 "Choose a .cube LUT file" = "Choose a .cube LUT file";
 "Choose a crop aspect" = "Choose a crop aspect";
+"Choose an exact narrator before approving this storyboard." = "Choose an exact narrator before approving this storyboard.";
 "Choose animation clip color" = "Choose animation clip color";
 "Choose audio clip color" = "Choose audio clip color";
 "Choose color" = "Choose color";
 "Choose image clip color" = "Choose image clip color";
+"Choose narration language, placement, and narrator before approval." = "Choose narration language, placement, and narrator before approval.";
 "Choose sequence clip color" = "Choose sequence clip color";
 "Choose text clip color" = "Choose text clip color";
 "Choose the folder that holds your media" = "Choose the folder that holds your media";
@@ -430,6 +434,7 @@
 "Enable: %@" = "Enable: %@";
 "End" = "End";
 "End credits and subscribe cards" = "End credits and subscribe cards";
+"Engine: %@ · Voice: %@ · Rate: %lf · Pitch: %lf" = "Engine: %@ · Voice: %@ · Rate: %lf · Pitch: %lf";
 "Enhance" = "Enhance";
 "Enhance Voice" = "Enhance Voice";
 "Enhance resolution or frame rate with AI" = "Enhance resolution or frame rate with AI";
@@ -648,6 +653,7 @@
 "Labels" = "Labels";
 "Language" = "Language";
 "Language for the editor UI" = "Language for the editor UI";
+"Language: %@ · Start: %lld frames" = "Language: %@ · Start: %lld frames";
 "Large" = "Large";
 "Last Frame" = "Last Frame";
 "Layout" = "Layout";
@@ -772,6 +778,7 @@
 "Name the destination — YouTube, Shorts or Reels — and the export picks the codec and size that upload expects, while captions and credits are placed to clear the same platform's interface. A canvas facing the wrong way is reported rather than letterboxed.\nIt combines the canvas and export features rather than adding tools of its own." = "Name the destination — YouTube, Shorts or Reels — and the export picks the codec and size that upload expects, while captions and credits are placed to clear the same platform's interface. A canvas facing the wrong way is reported rather than letterboxed.\nIt combines the canvas and export features rather than adding tools of its own.";
 "Narration" = "Narration";
 "Narration changes affect every scene linked to that beat. Material changes require storyboard approval again." = "Narration changes affect every scene linked to that beat. Material changes require storyboard approval again.";
+"Narrator Intent" = "Narrator Intent";
 "Nest settings discarded. Undo to restore." = "Nest settings discarded. Undo to restore.";
 "New" = "New";
 "New Folder" = "New Folder";
@@ -870,6 +877,7 @@
 "PiP Top Left" = "PiP Top Left";
 "PiP Top Right" = "PiP Top Right";
 "Pick a replacement for \"%@\"" = "Pick a replacement for \"%@\"";
+"Pinned speech generation is not available. Production remains blocked." = "Pinned speech generation is not available. Production remains blocked.";
 "Place a title, lower third or any text on a track above the picture. Set the type, colour, outline and fill independently, and animate it in without keyframing by hand." = "Place a title, lower third or any text on a track above the picture. Set the type, colour, outline and fill independently, and animate it in without keyframing by hand.";
 "Place on timeline" = "Place on timeline";
 "Placing media on the timeline" = "Placing media on the timeline";
@@ -930,6 +938,7 @@
 "Reasoning effort" = "Reasoning effort";
 "Record Inspection" = "Record Inspection";
 "Record Visual Inspection" = "Record Visual Inspection";
+"Recording: %@" = "Recording: %@";
 "Redetect Beats" = "Redetect Beats";
 "Redo" = "Redo";
 "Redo (⇧⌘Z)" = "Redo (⇧⌘Z)";

@@ -219,6 +219,8 @@ enum StoryboardPreviewService {
                       snapshot.plan.narrationTiming?.sourceFingerprint == identity.contentSHA256 else {
                     throw StoryboardPreviewError.sourceMismatch
                 }
+                do { try snapshot.plan.validateNarrationAttachment(identity: identity) }
+                catch { throw StoryboardPreviewError.sourceMismatch }
             }
             identities[source.mediaRef] = identity
         }

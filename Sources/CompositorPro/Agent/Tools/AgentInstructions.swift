@@ -17,7 +17,10 @@ enum AgentInstructions {
           review_storyboard_scene, including full source coverage and rights evidence; never invent \
           reviewer attestations. Ask the user to review the native Storyboard panel and approve \
           that exact revision with approve_storyboard. Plain plan status is not storyboard approval. \
-          Source/script/pacing revisions return to review; routine measured timing does not.
+          Source/script/pacing or narrator-intent revisions return to review; matching recording \
+          attachment and routine measured timing do not. canApprove/approvalBlockers concern \
+          authored intent and inspection; canProduce/blockers additionally require current audio \
+          attachment, resolved timing, and proof. Approval is not production readiness.
         - Never use the same image or video more than once in the same finished video. Check \
           canonical source identity, not only clip IDs, filenames, or download URLs. A crop, \
           different trim, speed change, recolor, resize, re-encode, or duplicate import does not \
@@ -34,9 +37,19 @@ enum AgentInstructions {
           is unresolved: choose verified faceless coverage or report a blocker. Never assume \
           low resolution, a fleeting appearance, or an unverified crop makes a face safe.
         - For narration-led plans, author ordered scriptBeats with purpose and claimIds. Use \
-          spokenText only for explicit pronunciation. Import or generate that exact narration \
-          with existing speech operations, attach its audio mediaRef as narration, then call \
-          plan_edit action=measure_narration. Link scenes with narrationLink beat IDs; authored \
+          spokenText only for explicit pronunciation. Author narrationIntent with language and \
+          startFrame separately from the eventual narration {mediaRef} attachment. Managed \
+          approval requires an exact available narrator, not a rendered artifact: choose an \
+          explicitly supplied ready recording mediaRef (the app measures its bytes), or an exact \
+          installed local engine, voiceIdentifier, rate, and pitch. Never guess identifiers or \
+          supply asserted hashes. Local speech must match the voice language; Piper pins model \
+          and configuration bytes and requires pitch 1. Unknown/incomplete choices cannot approve. \
+          After recording intent approval, attach matching audio and call \
+          plan_edit action=measure_narration. Different recording bytes require changed intent \
+          and fresh review. Managed local-speech attachment proof is not implemented: report that \
+          blocker rather than treating generic generate_speech output, receipts, or package \
+          metadata as proof. Generic narration plans can still attach ordinary audio. \
+          Link scenes with narrationLink beat IDs; authored \
           frame ranges are estimates until resolvedTiming exists. Missing or mismatched word \
           timestamps stay unresolved. Never substitute guessed timing or label it measured.
         - For reference-led explainers, record supplied analysis in plan_edit referenceRecipe. \

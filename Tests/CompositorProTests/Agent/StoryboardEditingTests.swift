@@ -234,6 +234,13 @@ struct StoryboardEditingTests {
                 harness.editor.mediaManifest.entries.append(asset.toManifestEntry(projectURL: nil))
             }
             try harness.editor.changeEditPlans(creates: [Self.plan(timelineId: harness.editor.activeTimelineId)], actionName: "Create")
+            try await PlanNarrationFixtures.writeAudio(in: directory)
+            let recording = harness.addAsset(id: "recording", type: .audio, duration: 3)
+            recording.url = directory.appendingPathComponent("voice.wav")
+            try await recording.prepareInputIdentity()
+            harness.editor.mediaManifest.entries.append(recording.toManifestEntry(projectURL: nil))
+            try await harness.editor.setPlanNarrationIntent(planId: "plan", request: .init(language: "en", startFrame: 0,
+                narrator: .init(kind: "recording", mediaRef: recording.id)))
             await MCPService.registerTools(on: server, executor: harness.executor)
             try await server.start(transport: transports.server)
             _ = try await client.connect(transport: transports.client)
