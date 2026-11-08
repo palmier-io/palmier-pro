@@ -8,6 +8,7 @@ enum NestFlattener {
     struct Flattened: Sendable {
         /// Child visual tracks, child track order preserved (text clips included).
         var videoTracks: [[Clip]] = []
+        var videoTrackIds: [String] = []
         /// Unmuted child audio tracks; clips within a track never overlap.
         var audioTracks: [[Clip]] = []
         var childCanvas: CGSize = .zero
@@ -26,7 +27,10 @@ enum NestFlattener {
                 let clips = track.clips
                     .sorted { $0.startFrame < $1.startFrame }
                     .compactMap { remap($0, window: window, shift: shift, nestId: carrier.id) }
-                if !clips.isEmpty { out.videoTracks.append(clips) }
+                if !clips.isEmpty {
+                    out.videoTracks.append(clips)
+                    out.videoTrackIds.append(track.id)
+                }
             } else {
                 guard track.type == .audio, !track.muted else { continue }
                 let clips = track.clips

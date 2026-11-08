@@ -3,7 +3,7 @@ import Foundation
 extension ToolExecutor {
     /// Read-only whole-timeline check. Returns findings with stable ids, the tool that would fix
     /// each one, and an explicit pass when there is nothing wrong.
-    func qcTimeline(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+    func qcTimeline(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: ["severity"], path: "qc_timeline")
         let minimum: TimelineIssue.Severity
         if let raw = args.string("severity") {
@@ -14,14 +14,28 @@ extension ToolExecutor {
         } else {
             minimum = .warning
         }
+        let revision = editor.visualReviewRevision
+        let checked = editor.timeline.tracks.reduce(0) { $0 + $1.clips.count }
         let found = TimelineQCAudit.audit(timeline: editor.timeline, editor: editor)
+        let visualIdentity = try await editor.visualUniquenessReport()
+        let encoded = try await Self.encodeQC(found: found, minimum: minimum, checked: checked, visualIdentity: visualIdentity)
+        try Task.checkCancellation()
+        guard editor.visualReviewRevision == revision else { throw VisualUniquenessValidationError.staleSnapshot }
+        return .ok(encoded)
+    }
+
+    @concurrent
+    private static func encodeQC(found: [TimelineIssue], minimum: TimelineIssue.Severity,
+                                 checked: Int, visualIdentity: VisualUniquenessReport) async throws -> String {
+        try Task.checkCancellation()
         let kept = found.filter { $0.severity.meets(minimum) }
         let counts = Dictionary(grouping: found, by: \.severity).mapValues(\.count)
         let payload: [String: Any] = [
             "pass": kept.isEmpty,
             "errorCount": counts[.error] ?? 0,
             "warningCount": counts[.warning] ?? 0,
-            "checked": editor.timeline.tracks.reduce(0) { $0 + $1.clips.count },
+            "checked": checked,
+            "visualIdentity": visualIdentity.receipt,
             "issues": kept.map { issue -> [String: Any] in
                 var entry: [String: Any] = [
                     "kind": issue.kind.rawValue,
@@ -37,6 +51,8 @@ extension ToolExecutor {
                 return entry
             },
         ]
-        return .ok(Self.jsonString(payload) ?? "{}")
+        let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        try Task.checkCancellation()
+        return String(decoding: data, as: UTF8.self)
     }
 }

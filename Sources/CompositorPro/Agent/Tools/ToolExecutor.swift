@@ -388,7 +388,7 @@ final class ToolExecutor {
         case .manageProxies:      return try await manageProxies(editor, args)
         case .applyStylePreset: return try applyStylePreset(editor, args)
         case .applyMotionPreset: return try applyMotionPreset(editor, args)
-        case .qcTimeline:       return try qcTimeline(editor, args)
+        case .qcTimeline:       return try await qcTimeline(editor, args)
         case .setClipSpeedRamp: return try setClipSpeedRamp(editor, args)
         case .crossfadeAudio:   return try crossfadeAudio(editor, args)
         case .duckAudio:        return try await duckAudio(editor, args)

@@ -83,6 +83,47 @@ struct MediaInputIdentityMCPTests {
         }
     }
 
+    @Test func qcReportsCopiedSourceReuseIndependentlyWithoutMutation() async throws {
+        try await withClient { client, harness, directory in
+            let (tools, _) = try await client.listTools()
+            let qc = try #require(tools.first { $0.name == "qc_timeline" })
+            #expect(qc.description?.contains("retained source identities") == true)
+            var refs: [String] = []
+            for filename in ["original.png", "renamed.png"] {
+                let imported = try await client.callTool(name: "import_media", arguments: [
+                    "source": .object(["path": .string(directory.appendingPathComponent(filename).path)]),
+                ])
+                try #require(imported.isError != true)
+                refs.append(try #require(try json(imported.content)["mediaRef"] as? String))
+            }
+            let undo = UndoManager()
+            harness.editor.undo.attach(undo)
+            let baseline = harness.editor.timeline
+            let added = try await client.callTool(name: "add_clips", arguments: ["entries": .array(refs.enumerated().map { index, ref in
+                .object(["mediaRef": .string(ref), "startFrame": .int(index * 60), "endFrame": .int(index * 60 + 30)])
+            })])
+            try #require(added.isError != true)
+            let placed = harness.editor.timeline
+            let review = try await client.callTool(name: "qc_timeline", arguments: ["severity": .string("error")])
+            try #require(review.isError != true)
+            let report = try #require(try json(review.content)["visualIdentity"] as? [String: Any])
+            #expect(report["knownIdentityReuseFree"] as? Bool == false)
+            #expect(report["deliveryVerified"] as? Bool == false)
+            #expect(report["occurrenceCount"] as? Int == 2)
+            let conflicts = try #require(report["conflicts"] as? [[String: Any]])
+            #expect(conflicts.count == 1)
+            let occurrences = try #require(conflicts.first?["occurrences"] as? [[String: Any]])
+            #expect(occurrences.compactMap { $0["startFrame"] as? Int } == [0, 60])
+            let timeline = try await client.callTool(name: "get_timeline")
+            let tracks = try #require(try json(timeline.content)["tracks"] as? [[String: Any]])
+            #expect(tracks.flatMap { $0["clips"] as? [[String: Any]] ?? [] }.count == 2)
+            #expect(harness.editor.timeline == placed)
+            _ = try await client.callTool(name: "undo")
+            #expect(harness.editor.timeline == baseline)
+            #expect(!undo.canUndo)
+        }
+    }
+
     @Test func corruptByteImportReportsFailureAndRetainsFailedRecord() async throws {
         try await withClient { client, harness, _ in
             let result = try await client.callTool(name: "import_media", arguments: [

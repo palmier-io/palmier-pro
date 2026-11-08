@@ -87,7 +87,10 @@ final class EditorViewModel {
             yield &timelines[i]
         }
     }
-    var mediaManifest = MediaManifest()
+    var mediaManifest = MediaManifest() {
+        didSet { mediaManifestRevision &+= 1 }
+    }
+    @ObservationIgnored private(set) var mediaManifestRevision: UInt64 = 0
     var editPlans: [EditPlan] = []
     var editPlansLoadFailed = false
     // MARK: - Denoise bake state (session-scoped, keyed by mediaRef)
