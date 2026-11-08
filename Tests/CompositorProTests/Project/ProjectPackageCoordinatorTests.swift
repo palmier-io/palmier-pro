@@ -161,7 +161,7 @@ struct ProjectPackageCoordinatorTests {
             try await coordinator.withMutation { _ in Issue.record("Late admission ran") }
         }
         await entered.wait()
-        coordinator.beginClosing()
+        let close = try #require(coordinator.beginClosing())
         await #expect(throws: CancellationError.self) { try await waiting.value }
         await #expect(throws: CancellationError.self) { try await coordinator.withMutation { _ in } }
         #expect(!coordinator.canFinishClosing)
@@ -169,7 +169,7 @@ struct ProjectPackageCoordinatorTests {
         try await mutation.value
         await coordinator.waitUntilIdle()
         #expect(coordinator.canFinishClosing)
-        coordinator.cancelClosing()
+        coordinator.cancelClosing(close)
         try await coordinator.withMutation { _ in }
     }
 

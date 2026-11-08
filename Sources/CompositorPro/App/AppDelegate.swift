@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private(set) var isTerminating = false
     private var restartRequested = false
+    private var terminationTask: Task<Void, Never>?
 
     private override init() {
         super.init()
@@ -54,27 +55,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         isTerminating = true
         let projects = AppState.shared.openProjects
         let shouldRestart = restartRequested
-        projects.forEach { $0.beginClosing() }
+        let closeOwners = projects.compactMap { project in
+            project.beginClosing().map { (project: project, lease: $0) }
+        }
+        let validateOwners = {
+            try Task.checkCancellation()
+            for owner in closeOwners { try owner.project.validateCloseOwner(owner.lease) }
+        }
 
-        Task { @MainActor in
+        terminationTask = Task { @MainActor in
             do {
-                for project in projects {
-                    try await project.saveBeforeClosing()
+                for owner in closeOwners {
+                    if !owner.project.editorViewModel.projectPackageCoordinator.isClosed {
+                        do { try await owner.project.saveBeforeClosing(using: owner.lease) }
+                        catch {
+                            guard owner.project.editorViewModel.projectPackageCoordinator.isClosed else { throw error }
+                            try owner.project.validateCloseOwner(owner.lease)
+                        }
+                    }
+                    try validateOwners()
                 }
                 try await ProjectRegistry.shared.flush()
+                try validateOwners()
                 if shouldRestart {
                     try await Self.scheduleRelaunch(
                         applicationURL: Bundle.main.bundleURL,
                         processID: ProcessInfo.processInfo.processIdentifier
                     )
+                    try validateOwners()
                 }
                 await SkillStore.shared.prepareForTermination()
+                try validateOwners()
                 if !MLXRuntime.beginTermination() {
                     await MLXRuntime.waitUntilIdle()
+                    try validateOwners()
                 }
+                repeat {
+                    for owner in closeOwners where !owner.project.editorViewModel.projectPackageCoordinator.isClosed {
+                        do { try await owner.project.editorViewModel.projectPackageCoordinator.waitUntilIdle(for: owner.lease) }
+                        catch {
+                            guard owner.project.editorViewModel.projectPackageCoordinator.isClosed else { throw error }
+                            try owner.project.validateCloseOwner(owner.lease)
+                        }
+                        try validateOwners()
+                    }
+                } while closeOwners.contains { owner in
+                    let coordinator = owner.project.editorViewModel.projectPackageCoordinator
+                    return !coordinator.isClosed && !coordinator.canFinishClosing
+                }
+                try validateOwners()
+                terminationTask = nil
                 sender.reply(toApplicationShouldTerminate: true)
             } catch {
-                projects.forEach { $0.editorViewModel.projectPackageCoordinator.cancelClosing() }
+                for owner in closeOwners {
+                    owner.project.editorViewModel.projectPackageCoordinator.cancelClosing(owner.lease)
+                }
+                terminationTask = nil
                 restartRequested = false
                 isTerminating = false
                 sender.presentError(error)

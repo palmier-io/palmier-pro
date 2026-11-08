@@ -31,12 +31,16 @@ private typealias DocumentCloseCallback = @convention(c) (
 
 @MainActor
 private final class ProjectCloseDecision: NSObject {
-    let complete: @MainActor (Bool) -> Void
+    private var complete: (@MainActor (Bool) -> Void)?
 
     init(complete: @escaping @MainActor (Bool) -> Void) { self.complete = complete }
 
     @objc nonisolated func document(_ document: NSDocument, shouldClose: Bool, contextInfo: UnsafeMutableRawPointer?) {
-        Task { @MainActor in complete(shouldClose) }
+        Task { @MainActor in
+            let callback = complete
+            complete = nil
+            callback?(shouldClose)
+        }
     }
 }
 
@@ -61,6 +65,7 @@ class VideoProject: NSDocument {
     private struct CloseRequest {
         let target: AnyObject
         let selector: Selector
+        let callback: DocumentCloseCallback
         let contextInfo: UnsafeMutableRawPointer?
     }
 
@@ -97,12 +102,13 @@ class VideoProject: NSDocument {
     private nonisolated(unsafe) var saveContext: SaveContext?
     private var saveTask: Task<Void, Never>?
     private var closeTask: Task<Void, Never>?
-    private var closePreparationTask: Task<Void, Error>?
     private var nativeCloseTask: Task<Void, Never>?
+    private var nativeCloseLease: ProjectPackageCoordinator.CloseLease?
     private var closeRequests: [CloseRequest] = []
     private var closeDecision: ProjectCloseDecision?
     private var projectCheckpointAutosaveScheduled = false
-    private var isSavingBeforeClose = false
+    private var closeSaveCount = 0
+    private var isSavingBeforeClose: Bool { closeSaveCount > 0 }
 
     // MARK: - Persistence
 
@@ -237,15 +243,33 @@ class VideoProject: NSDocument {
         shouldClose shouldCloseSelector: Selector?,
         contextInfo: UnsafeMutableRawPointer?
     ) {
-        guard let shouldCloseSelector else { return }
-        beginClosing()
-        closeRequests.append(CloseRequest(target: delegate as AnyObject, selector: shouldCloseSelector, contextInfo: contextInfo))
+        let target = delegate as AnyObject
+        guard let shouldCloseSelector, let callbackTarget = target as? NSObjectProtocol,
+              callbackTarget.responds(to: shouldCloseSelector), let implementation = target.method(for: shouldCloseSelector) else { return }
+        let request = CloseRequest(target: target, selector: shouldCloseSelector,
+            callback: unsafeBitCast(implementation, to: DocumentCloseCallback.self), contextInfo: contextInfo)
+        let coordinator = editorViewModel.projectPackageCoordinator
+        if coordinator.isClosed {
+            do {
+                try confirmClosed()
+                deliverCloseRequest(request, shouldClose: true)
+            } catch { deliverCloseRequest(request, shouldClose: false) }
+            return
+        }
+        if nativeCloseLease == nil { nativeCloseLease = beginClosing() }
+        guard let lease = nativeCloseLease else {
+            deliverCloseRequest(request, shouldClose: false)
+            return
+        }
+        closeRequests.append(request)
         guard closeTask == nil, closeDecision == nil else { return }
         closeTask = Task { @MainActor in
             do {
-                try await saveBeforeClosing()
+                try await saveBeforeClosing(using: lease)
+                try coordinator.validate(lease)
+                guard nativeCloseLease == lease else { throw CancellationError() }
                 let decision = ProjectCloseDecision { [weak self] shouldClose in
-                    self?.completeCloseRequests(shouldClose: shouldClose)
+                    self?.completeCloseRequests(for: lease, shouldClose: shouldClose)
                 }
                 closeDecision = decision
                 closeTask = nil
@@ -255,68 +279,81 @@ class VideoProject: NSDocument {
                     contextInfo: nil
                 )
             } catch {
-                presentError(error)
-                closeTask = nil
-                completeCloseRequests(shouldClose: false)
+                if !coordinator.isClosed, !(error is CancellationError) { presentError(error) }
+                completeCloseRequests(for: lease, shouldClose: coordinator.isClosed)
             }
         }
     }
 
-    private func completeCloseRequests(shouldClose: Bool) {
+    private func completeCloseRequests(for lease: ProjectPackageCoordinator.CloseLease, shouldClose: Bool) {
+        guard nativeCloseLease == lease else { return }
+        let coordinator = editorViewModel.projectPackageCoordinator
+        let approved: Bool
+        do {
+            try validateCloseOwner(lease)
+            approved = shouldClose
+        } catch { approved = false }
         closeDecision = nil
-        if !shouldClose { editorViewModel.projectPackageCoordinator.cancelClosing() }
+        closeTask = nil
+        if !approved || coordinator.isClosed {
+            nativeCloseLease = nil
+            coordinator.cancelClosing(lease)
+        }
         let requests = closeRequests
         closeRequests.removeAll()
         for request in requests {
-            let callback = unsafeBitCast(request.target.method(for: request.selector), to: DocumentCloseCallback.self)
-            callback(request.target, request.selector, self, shouldClose, request.contextInfo)
+            deliverCloseRequest(request, shouldClose: approved)
         }
     }
 
+    private func deliverCloseRequest(_ request: CloseRequest, shouldClose: Bool) {
+        request.callback(request.target, request.selector, self, shouldClose, request.contextInfo)
+    }
+
     @MainActor
-    func beginClosing() {
+    @discardableResult
+    func beginClosing() -> ProjectPackageCoordinator.CloseLease? {
         let coordinator = editorViewModel.projectPackageCoordinator
         coordinator.onReopen = { [weak self] in
             guard let self else { return }
             restoreAssetsFromManifest()
             editorViewModel.generationService.resumePendingGenerations(editor: editorViewModel)
         }
-        coordinator.beginClosing()
-        cancelDocumentBackgroundWork()
+        let wasClosing = coordinator.isClosing
+        let lease = coordinator.beginClosing()
+        if lease != nil, !wasClosing { cancelDocumentBackgroundWork() }
+        return lease
     }
 
     @MainActor
-    func saveBeforeClosing() async throws {
-        if let task = closePreparationTask { return try await task.value }
+    func saveBeforeClosing(using lease: ProjectPackageCoordinator.CloseLease) async throws {
         let coordinator = editorViewModel.projectPackageCoordinator
-        beginClosing()
-        isSavingBeforeClose = true
-        let task = Task { @MainActor in
-            await editorViewModel.agentService.cancelAndWait()
-            await editorViewModel.generationService.suspendAndWait()
-            await coordinator.waitUntilIdle()
-            repeat {
-                guard let url = fileURL else { throw CocoaError(.fileNoSuchFile) }
-                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                    save(to: url, ofType: Self.typeIdentifier, for: .saveOperation) { error in
-                        if let error { continuation.resume(throwing: error) }
-                        else { continuation.resume() }
-                    }
+        try coordinator.validateCloseContext()
+        try Task.checkCancellation()
+        try coordinator.validate(lease)
+        closeSaveCount += 1
+        defer { closeSaveCount -= 1 }
+        await editorViewModel.agentService.cancelAndWait()
+        try Task.checkCancellation()
+        try coordinator.validate(lease)
+        await editorViewModel.generationService.suspendAndWait()
+        try Task.checkCancellation()
+        try coordinator.validate(lease)
+        try await coordinator.waitUntilIdle(for: lease)
+        repeat {
+            try Task.checkCancellation()
+            try coordinator.validate(lease)
+            guard let url = fileURL else { throw CocoaError(.fileNoSuchFile) }
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                save(to: url, ofType: Self.typeIdentifier, for: .saveOperation) { error in
+                    if let error { continuation.resume(throwing: error) }
+                    else { continuation.resume() }
                 }
-            } while hasUnautosavedChanges
-            await coordinator.waitUntilIdle()
-        }
-        closePreparationTask = task
-        defer {
-            closePreparationTask = nil
-            isSavingBeforeClose = false
-        }
-        do {
-            try await task.value
-        } catch {
-            coordinator.cancelClosing()
-            throw error
-        }
+            }
+            try Task.checkCancellation()
+            try coordinator.validate(lease)
+        } while hasUnautosavedChanges
+        try await coordinator.waitUntilIdle(for: lease)
     }
 
     override func writeSafely(
@@ -527,60 +564,67 @@ class VideoProject: NSDocument {
             try confirmClosed()
             return
         }
-        if let url = fileURL { (registry ?? editorViewModel.projectRegistry)?.register(url) }
+        try coordinator.validateCloseContext()
+        guard let lease = beginClosing() else { throw CancellationError() }
+        defer { coordinator.cancelClosing(lease) }
         do {
-            repeat {
-                try await saveBeforeClosing()
-                repeat {
-                    try Task.checkCancellation()
-                    if coordinator.isClosed {
-                        try confirmClosed()
-                        return
-                    }
-                    guard coordinator.isClosing else { throw CancellationError() }
-                    await coordinator.waitUntilIdle()
-                    try Task.checkCancellation()
-                    if coordinator.isClosed {
-                        try confirmClosed()
-                        return
-                    }
-                    guard coordinator.isClosing else { throw CancellationError() }
-                } while !coordinator.canFinishClosing
-            } while hasUnautosavedChanges
-            try closeImmediately()
+            try await finishClose(using: lease)
         } catch {
-            if coordinator.isClosing, !coordinator.isClosed { coordinator.cancelClosing() }
+            if coordinator.isClosed { try confirmClosed(); return }
             throw error
         }
+    }
+
+    private func finishClose(using lease: ProjectPackageCoordinator.CloseLease) async throws {
+        let coordinator = editorViewModel.projectPackageCoordinator
+        try coordinator.validate(lease)
+        if let url = fileURL { (registry ?? editorViewModel.projectRegistry)?.register(url) }
+        repeat {
+            try await saveBeforeClosing(using: lease)
+            try Task.checkCancellation()
+            try coordinator.validate(lease)
+            try await coordinator.waitUntilIdle(for: lease)
+        } while hasUnautosavedChanges
+        try Task.checkCancellation()
+        try coordinator.validate(lease)
+        try closeImmediately(using: lease)
     }
 
     override func close() {
         let coordinator = editorViewModel.projectPackageCoordinator
         guard !coordinator.isClosed else { return }
-        guard coordinator.canFinishClosing, !hasUnautosavedChanges else {
-            guard nativeCloseTask == nil else { return }
+        guard nativeCloseTask == nil else { return }
+        if let lease = nativeCloseLease, coordinator.canFinishClosing, !hasUnautosavedChanges {
+            do { try closeImmediately(using: lease) }
+            catch {
+                completeCloseRequests(for: lease, shouldClose: false)
+                presentError(error)
+            }
+        } else {
+            if nativeCloseLease == nil { nativeCloseLease = beginClosing() }
+            guard let lease = nativeCloseLease else { return }
             nativeCloseTask = Task { @MainActor in
                 defer { nativeCloseTask = nil }
-                do { try await AppState.shared.closeProject(self) }
-                catch { presentError(error) }
+                do {
+                    try await finishClose(using: lease)
+                    try await AppState.shared.closeProject(self)
+                } catch {
+                    completeCloseRequests(for: lease, shouldClose: coordinator.isClosed)
+                    if !coordinator.isClosed, !(error is CancellationError) { presentError(error) }
+                }
             }
-            return
         }
-        do { try closeImmediately() }
-        catch { presentError(error) }
     }
 
-    private func closeImmediately() throws {
+    private func closeImmediately(using lease: ProjectPackageCoordinator.CloseLease) throws {
         guard !editorViewModel.projectPackageCoordinator.isClosed else {
             try confirmClosed()
             return
         }
-        guard editorViewModel.projectPackageCoordinator.canFinishClosing else {
-            throw CocoaError(.userCancelled)
-        }
-        editorViewModel.projectPackageCoordinator.finishClosing()
+        try editorViewModel.projectPackageCoordinator.finishClosing(lease)
         super.close()
         try confirmClosed()
+        if let nativeLease = nativeCloseLease { completeCloseRequests(for: nativeLease, shouldClose: true) }
         editorViewModel.detachProxyStore()
         DispatchQueue.main.async {
             if AppState.shared.activeProject === self {
@@ -599,14 +643,34 @@ class VideoProject: NSDocument {
         }
     }
 
+    func validateCloseOwner(_ lease: ProjectPackageCoordinator.CloseLease) throws {
+        if editorViewModel.projectPackageCoordinator.isClosed { try confirmClosed() }
+        else { try editorViewModel.projectPackageCoordinator.validate(lease) }
+    }
+
     func abortOpening() async {
         let coordinator = editorViewModel.projectPackageCoordinator
-        beginClosing()
-        await editorViewModel.agentService.cancelAndWait()
-        await editorViewModel.generationService.suspendAndWait()
-        await coordinator.waitUntilIdle()
-        do { try closeImmediately() }
-        catch { presentError(error) }
+        do { try coordinator.validateCloseContext() }
+        catch { presentError(error); return }
+        guard let lease = beginClosing() else { return }
+        defer { coordinator.cancelClosing(lease) }
+        // Failed opening must finish cleanup even when its initiating task was cancelled.
+        let cleanup = Task.detached { await self.finishAbortedOpening(using: lease) }
+        await cleanup.value
+    }
+
+    private func finishAbortedOpening(using lease: ProjectPackageCoordinator.CloseLease) async {
+        let coordinator = editorViewModel.projectPackageCoordinator
+        do {
+            await editorViewModel.agentService.cancelAndWait()
+            try coordinator.validate(lease)
+            await editorViewModel.generationService.suspendAndWait()
+            try coordinator.validate(lease)
+            try await coordinator.waitUntilIdle(for: lease)
+            try closeImmediately(using: lease)
+        } catch {
+            if !coordinator.isClosed { presentError(error) }
+        }
     }
 
     // MARK: - Window setup
@@ -736,6 +800,7 @@ class VideoProject: NSDocument {
 
     private var cachedThumbnail: ThumbnailCache?
     private var thumbnailTask: Task<Void, Never>?
+    private var thumbnailRetryTask: Task<Void, Never>?
     private var thumbnailRequestInFlight: ThumbnailRequest?
     private nonisolated static let thumbnailMaxPixelSize = 640
     var thumbnailRenderer: @Sendable (ThumbnailRequest) async throws -> Data? = { request in
@@ -749,7 +814,23 @@ class VideoProject: NSDocument {
         let coordinator = editorViewModel.projectPackageCoordinator
         guard !coordinator.isClosing, !coordinator.isClosed else { return cached?.data }
         if let thumbnailTask {
-            if thumbnailRequestInFlight != request { thumbnailTask.cancel() }
+            if thumbnailRequestInFlight != request {
+                if thumbnailRetryTask == nil {
+                    thumbnailRetryTask = coordinator.startIntent { [weak self] _ in
+                        await thumbnailTask.value
+                        try Task.checkCancellation()
+                        guard let self else { return }
+                        self.thumbnailRetryTask = nil
+                        _ = self.captureThumbnail()
+                    } onFailure: { [weak self] error in
+                        self?.thumbnailRetryTask = nil
+                        if !(error is CancellationError) {
+                            Log.project.warning("thumbnail retry failed: \(error.localizedDescription)")
+                        }
+                    }
+                }
+                thumbnailTask.cancel()
+            }
             return cached?.data
         }
         guard !request.candidates.isEmpty else { return nil }
@@ -780,7 +861,8 @@ class VideoProject: NSDocument {
         thumbnailTask = nil
         thumbnailRequestInFlight = nil
         let coordinator = editorViewModel.projectPackageCoordinator
-        if !coordinator.isClosing, !coordinator.isClosed, thumbnailRequest() != request { _ = captureThumbnail() }
+        if !Task.isCancelled, thumbnailRetryTask == nil, !coordinator.isClosing, !coordinator.isClosed,
+           thumbnailRequest() != request { _ = captureThumbnail() }
     }
 
     private func thumbnailRequest() -> ThumbnailRequest {
@@ -896,6 +978,7 @@ class VideoProject: NSDocument {
 
     func cancelDocumentBackgroundWork() {
         thumbnailTask?.cancel()
+        thumbnailRetryTask?.cancel()
         mediaRestoreTask?.cancel()
         cachedThumbnail = nil
     }

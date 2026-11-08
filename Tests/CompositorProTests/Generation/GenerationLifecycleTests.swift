@@ -462,8 +462,8 @@ struct GenerationLifecycleTests {
         if state == "suspended" {
             await service.suspendAndWait()
         } else {
-            editor.projectPackageCoordinator.beginClosing()
-            if state == "closed" { editor.projectPackageCoordinator.finishClosing() }
+            let lease = try #require(editor.projectPackageCoordinator.beginClosing())
+            if state == "closed" { try editor.projectPackageCoordinator.finishClosing(lease) }
         }
         let ids = editor.mediaAssets.map(\.id)
         let manifest = editor.mediaManifest
@@ -697,8 +697,8 @@ struct GenerationLifecycleTests {
         let harness = ToolHarness()
         let undo = UndoManager()
         harness.editor.undo.attach(undo)
-        harness.editor.projectPackageCoordinator.beginClosing()
-        harness.editor.projectPackageCoordinator.finishClosing()
+        let lease = try #require(harness.editor.projectPackageCoordinator.beginClosing())
+        try harness.editor.projectPackageCoordinator.finishClosing(lease)
         let server = Server(name: "generation-lifecycle", version: "1", capabilities: .init(tools: .init(listChanged: false)))
         await MCPService.registerTools(on: server, executor: harness.executor)
         let transports = await InMemoryTransport.createConnectedPair()
@@ -711,15 +711,14 @@ struct GenerationLifecycleTests {
                 #expect(result.isError == true)
                 let content = try #require(result.content.first)
                 guard case .text(let text, _, _) = content else { throw CocoaError(.coderReadCorrupt) }
-                #expect(text == "generation_project_unavailable")
+                #expect(text == "project_unavailable")
                 #expect(!text.contains("Placeholder asset ID"))
             }
             let readback = try await client.callTool(name: "get_media")
-            #expect(readback.isError != true)
+            #expect(readback.isError == true)
             let content = try #require(readback.content.first)
             guard case .text(let text, _, _) = content else { throw CocoaError(.coderReadCorrupt) }
-            let inventory = try #require(JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
-            #expect((inventory["assets"] as? [[String: Any]])?.isEmpty == true)
+            #expect(text == "project_unavailable")
             #expect(harness.editor.mediaAssets.isEmpty)
             #expect(harness.editor.mediaManifest.entries.isEmpty)
             #expect(!undo.canUndo)

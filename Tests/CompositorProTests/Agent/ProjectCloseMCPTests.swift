@@ -18,8 +18,8 @@ private final class FencedCloseDocument: VideoProject {
         try await super.closeAfterSaving()
     }
 
-    override func saveBeforeClosing() async throws {
-        try await super.saveBeforeClosing()
+    override func saveBeforeClosing(using lease: ProjectPackageCoordinator.CloseLease) async throws {
+        try await super.saveBeforeClosing(using: lease)
         guard shouldFence else { return }
         shouldFence = false
         editorViewModel.projectPackageCoordinator.enqueueSave { lease in

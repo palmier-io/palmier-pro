@@ -125,7 +125,8 @@ struct VideoProjectBackgroundWorkTests {
         }
     }
 
-    @Test func thumbnailCloseCancellationDrainsWithoutLateCheckpoint() async throws {
+    @Test(arguments: [false, true])
+    func thumbnailCloseCancellationDrainsWithoutLateCheckpoint(withRetry: Bool) async throws {
         try await withPackageTestFixture { fixture in
             let document = fixture.document()
             configureThumbnail(document, url: try await fixture.stage())
@@ -136,13 +137,17 @@ struct VideoProjectBackgroundWorkTests {
             let coordinator = document.editorViewModel.projectPackageCoordinator
             _ = document.captureThumbnail()
             await probe.started.wait()
-            coordinator.beginClosing()
+            if withRetry {
+                document.editorViewModel.timeline.tracks[0].clips[0].trimStartFrame = 10
+                #expect(document.captureThumbnail() == nil)
+            }
+            let close = try #require(coordinator.beginClosing())
             document.cancelDocumentBackgroundWork()
             #expect(!coordinator.canFinishClosing)
             probe.release?.signal()
             await coordinator.waitUntilIdle()
             #expect(coordinator.canFinishClosing)
-            coordinator.finishClosing()
+            try coordinator.finishClosing(close)
             #expect(document.captureThumbnail() == nil)
             #expect(checkpoints == 0)
             #expect(probe.calls == 1)
@@ -161,11 +166,14 @@ struct VideoProjectBackgroundWorkTests {
             await probe.started.wait()
             document.editorViewModel.timeline.tracks[0].clips[0].trimStartFrame = 10
             #expect(document.captureThumbnail() == nil)
+            document.editorViewModel.timeline.tracks[0].clips[0].trimStartFrame = 20
+            #expect(document.captureThumbnail() == nil)
             probe.release?.signal()
             await document.editorViewModel.projectPackageCoordinator.waitUntilIdle()
             #expect(document.captureThumbnail() == Data("thumbnail-2".utf8))
             await document.editorViewModel.projectPackageCoordinator.waitUntilIdle()
             #expect(checkpoints == 1)
+            #expect(probe.calls == 2)
         }
     }
 

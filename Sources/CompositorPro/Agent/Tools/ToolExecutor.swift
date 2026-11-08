@@ -188,6 +188,32 @@ final class ToolExecutor {
             )
             return result
         }
+        do {
+            return try await editor.projectPackageCoordinator.withIntent { _ in
+                await executeProjectTool(tool, editor: editor, args: args, origin: origin, started: started)
+            }
+        } catch {
+            let unavailable = !Task.isCancelled && editor.projectPackageCoordinator.isClosing
+            let result = ToolResult.error(unavailable ? "project_unavailable" : "operation_canceled")
+            captureToolAnalytics(
+                toolName: tool.rawValue,
+                origin: origin,
+                projectId: editor.projectId,
+                result: result,
+                started: started,
+                failureReason: unavailable ? "project_unavailable" : "canceled"
+            )
+            return result
+        }
+    }
+
+    private func executeProjectTool(
+        _ tool: ToolName,
+        editor: EditorViewModel,
+        args: [String: Any],
+        origin: Analytics.Origin,
+        started: ContinuousClock.Instant
+    ) async -> ToolResult {
         let activeTimelineIdBefore = editor.activeTimelineId
         let nonAgentMutationRevisionBefore = editor.nonAgentTimelineMutationRevision
         let before = editor.timelines

@@ -142,14 +142,18 @@ struct ProjectPackageImportMCPTests {
                 try #require(result.isError != true)
                 let mediaRef = try #require(try json(result)["mediaRef"] as? String)
                 await gate.entered.wait()
-                document.beginClosing()
-                let closing = Task { try await document.saveBeforeClosing() }
+                let close = try #require(document.beginClosing())
+                defer { document.editorViewModel.projectPackageCoordinator.cancelClosing(close) }
+                let closing = Task { try await document.saveBeforeClosing(using: close) }
                 let refused = try await client.callTool(name: "import_media", arguments: [
                     "source": .object(["bytes": .string(data.base64EncodedString()), "mimeType": .string("image/png")]),
                 ])
                 #expect(refused.isError == true)
                 gate.complete()
                 try await closing.value
+                let fencedRead = try await client.callTool(name: "get_media")
+                #expect(fencedRead.isError == true)
+                document.editorViewModel.projectPackageCoordinator.cancelClosing(close)
                 let readback = try await inventory(client)
                 #expect(readback.count == 1)
                 #expect(readback.first?["inputIdentityState"] as? String == "verified")

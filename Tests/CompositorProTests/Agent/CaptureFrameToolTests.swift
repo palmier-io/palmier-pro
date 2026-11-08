@@ -113,13 +113,13 @@ struct CaptureFrameToolTests {
             cancelled.cancel()
             await #expect(throws: CancellationError.self) { try await cancelled.value }
 
-            await fixture.editor.projectPackageCoordinator.beginClosing()
+            let close = try #require(fixture.editor.projectPackageCoordinator.beginClosing())
             await #expect(throws: CancellationError.self) {
                 try await fixture.editor.captureFrameToMedia(
                     source: .media(mediaRef: fixture.source.id, sourceSeconds: 0)
                 )
             }
-            fixture.editor.projectPackageCoordinator.cancelClosing()
+            fixture.editor.projectPackageCoordinator.cancelClosing(close)
             #expect(fixture.editor.mediaAssets.map(\.id) == originalIds)
         }
     }
