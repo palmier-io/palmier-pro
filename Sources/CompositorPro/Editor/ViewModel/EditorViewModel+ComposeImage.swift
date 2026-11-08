@@ -75,13 +75,24 @@ extension EditorViewModel {
     }
 
     func composeImage(_ request: ComposeImageRequest) async throws -> ComposeImageReceipt {
-        guard projectURL != nil else { throw ComposeImageError.noProject }
+        try await projectPackageCoordinator.withMutation { lease in
+            try await self.performImageComposition(request, lease: lease)
+        }
+    }
+
+    private func performImageComposition(
+        _ request: ComposeImageRequest, lease: ProjectPackageCoordinator.MutationLease
+    ) async throws -> ComposeImageReceipt {
+        guard let package = projectURL else { throw ComposeImageError.noProject }
         if let folderId = request.folderId, folder(id: folderId) == nil {
             throw ComposeImageError.folderMissing
         }
 
         var warnings: [String] = []
-        var resolved = try await resolveSources(request, warnings: &warnings)
+        let resolved = try await resolveSources(request, warnings: &warnings)
+        let sourceIdentities = resolved.compactMap { source in
+            mediaAssetsById[source.mediaRef].map { (asset: $0, url: $0.url) }
+        }
 
         var images: [CGImage] = []
         images.reserveCapacity(resolved.count)
@@ -102,24 +113,13 @@ extension EditorViewModel {
             placement: request.placement,
             scrim: request.scrim
         )
-        let composed = try ImageComposer.compose(images, spec: spec)
-
-        try Task.checkCancellation()
-        // The project can be closed or saved elsewhere while sources resolve, so re-check before
-        // anything is written into its package.
-        guard projectURL != nil else { throw ComposeImageError.noProject }
-        try projectPackageCoordinator.beginMutation()
-        defer { projectPackageCoordinator.endMutation() }
-
-        let staged = try Self.stagePNG(composed)
-        defer { Task { try? FileManager.default.removeItem(at: staged) } }
-        let filename = "composed-\(UUID().uuidString.prefix(8)).png"
-        let committed = try await commitStagedProjectMedia(
-            staged, filename: filename, workAlreadyAdmitted: true
-        )
+        let inputImages = images
+        let composed = try await projectPackageCoordinator.io.perform { try ImageComposer.compose(inputImages, spec: spec) }
+        let staged = try await projectPackageCoordinator.io.perform { try Self.stagePNG(composed) }
+        let filename = "composed-\(UUID().uuidString).png"
 
         let asset = MediaAsset(
-            url: committed,
+            url: package.appendingPathComponent("media/\(filename)"),
             type: .image,
             name: request.name ?? defaultComposedName(request, count: images.count),
             duration: Defaults.imageDurationSeconds
@@ -129,32 +129,27 @@ extension EditorViewModel {
         asset.sourceWidth = composed.width
         asset.sourceHeight = composed.height
 
-        importMediaAsset(asset)
-        searchIndex.schedule(asset)
-        prepareMediaVisuals(for: asset)
-
-        // Placed here rather than by calling another tool, so the whole request is one domain
-        // operation and the receipt can carry the clip id without re-parsing a payload.
         var placedClipId: String?
-        if request.addToTimeline {
-            // An empty timeline has no video track, and placeClip silently does nothing when handed
-            // an index that is not there, so one is created rather than reporting a placement that
-            // never happened.
-            let trackIndex = timeline.tracks.firstIndex(where: { $0.type == .video })
-                ?? insertTrack(at: 0, type: .video)
-            let frames = max(1, secondsToFrame(seconds: asset.duration, fps: timeline.fps))
-            placedClipId = placeClip(
-                asset: asset,
-                trackIndex: trackIndex,
-                startFrame: max(0, request.startFrame),
-                durationFrames: frames,
-                addLinkedAudio: false
-            ).first
-            if placedClipId == nil {
-                warnings.append("The image was created but could not be placed on the timeline.")
+        _ = try await commitStagedProjectMedia(staged, filename: filename, lease: lease, validate: {
+            guard sourceIdentities.allSatisfy({ self.mediaAssetsById[$0.asset.id] === $0.asset && $0.asset.url == $0.url }) else {
+                throw CancellationError()
             }
+            if let id = request.folderId, self.folder(id: id) == nil { throw ComposeImageError.folderMissing }
+        }) { destination in
+            asset.url = destination
+            self.importMediaAsset(asset)
+            self.searchIndex.schedule(asset)
+            self.prepareMediaVisuals(for: asset)
+            if request.addToTimeline {
+                let trackIndex = self.timeline.tracks.firstIndex(where: { $0.type == .video })
+                    ?? self.insertTrack(at: 0, type: .video)
+                let frames = max(1, secondsToFrame(seconds: asset.duration, fps: self.timeline.fps))
+                placedClipId = self.placeClip(asset: asset, trackIndex: trackIndex,
+                    startFrame: max(0, request.startFrame), durationFrames: frames, addLinkedAudio: false).first
+                if placedClipId == nil { warnings.append("The image was created but could not be placed on the timeline.") }
+            }
+            self.onProjectCheckpointRequired?()
         }
-        onProjectCheckpointRequired?()
 
         return ComposeImageReceipt(
             asset: asset,
@@ -218,7 +213,8 @@ extension EditorViewModel {
         guard let asset = mediaAssetsById[source.mediaRef] else { return nil }
         switch asset.type {
         case .image:
-            return Self.decodeImage(asset.url)
+            let url = asset.url
+            return try await projectPackageCoordinator.io.perform { Self.decodeImage(url) }
         case .video:
             let seconds = source.sourceSeconds ?? max(0, asset.resolvedDuration / 3)
             return await Self.frameImage(from: asset.url, seconds: seconds)
@@ -227,7 +223,7 @@ extension EditorViewModel {
         }
     }
 
-    private static func decodeImage(_ url: URL) -> CGImage? {
+    private nonisolated static func decodeImage(_ url: URL) -> CGImage? {
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
@@ -256,7 +252,7 @@ extension EditorViewModel {
 
     // MARK: - Output
 
-    private static func stagePNG(_ image: CGImage) throws -> URL {
+    private nonisolated static func stagePNG(_ image: CGImage) throws -> URL {
         guard let data = ImageEncoder.encodePNG(image) else {
             throw ComposeImageError.noSources
         }

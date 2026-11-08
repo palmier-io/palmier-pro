@@ -30,7 +30,8 @@ extension EditSubmitter {
         trimmedSource: TrimmedSource? = nil,
         onComplete: (@MainActor (MediaAsset) -> Void)? = nil,
         onFailure: (@MainActor () -> Void)? = nil
-    ) -> String? {
+    ) throws -> String? {
+        try editor.generationService.requireAvailable(editor: editor)
         guard AccountService.shared.isSignedIn,
               asset.sourceWidth != nil, asset.sourceHeight != nil,
               model.supports(source: asset),
@@ -52,7 +53,7 @@ extension EditSubmitter {
         }
 
         let sourceAssetId = asset.id
-        return editor.generationService.generate(
+        return try editor.generationService.generate(
             genInput: genInput,
             assetType: asset.type,
             placeholderDuration: placeholderDuration,

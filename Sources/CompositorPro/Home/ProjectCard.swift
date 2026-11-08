@@ -11,6 +11,36 @@ struct ProjectCard: View {
 
     @State private var isHovered = false
     @State private var thumbnail: NSImage?
+    @State private var accessibility: ProjectAccessibility?
+    @State private var accessibilityRequest: AccessibilityRequest?
+
+    private enum ProjectAction: Hashable {
+        case open
+        case reveal
+    }
+
+    private struct AccessibilityRequest: Hashable {
+        let key: ProjectAccessibility.Key
+        let action: ProjectAction?
+        let windowIdentity: ObjectIdentifier?
+        let id = UUID()
+    }
+
+    private var currentAccessibility: ProjectAccessibility? {
+        guard accessibility?.key == ProjectAccessibility.Key(entry) else { return nil }
+        return accessibility
+    }
+
+    private var isAccessible: Bool { currentAccessibility?.isAccessible == true }
+    private var isUnavailable: Bool {
+        guard let currentAccessibility else { return false }
+        return !currentAccessibility.isAccessible
+    }
+
+    private var unavailableMessage: String {
+        if currentAccessibility?.state == .missing { return L10n.string("File missing") }
+        return L10n.string("Can't read \"\(entry.name)\" — it may be missing or you may not have permission.")
+    }
 
     private let cardRadius: CGFloat = AppTheme.Radius.mdLg
 
@@ -31,13 +61,13 @@ struct ProjectCard: View {
                     }
                 }
                 .overlay {
-                    if !entry.isAccessible {
+                    if isUnavailable {
                         AppTheme.MediaOverlay.backgroundColor.opacity(0.6)
 
                         VStack(spacing: AppTheme.Spacing.xs) {
                             Image(systemName: "questionmark.folder")
                                 .font(.system(size: AppTheme.FontSize.title1))
-                            Text(L10n.string("File missing"))
+                            Text(verbatim: unavailableMessage)
                                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                         }
                         .foregroundStyle(AppTheme.MediaOverlay.tertiaryColor)
@@ -60,9 +90,9 @@ struct ProjectCard: View {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
                 Text(entry.name)
                     .font(.system(size: AppTheme.FontSize.smMd, weight: .regular))
-                    .foregroundStyle(entry.isAccessible
-                        ? AppTheme.MediaOverlay.primaryColor
-                        : AppTheme.MediaOverlay.mutedColor)
+                    .foregroundStyle(isUnavailable
+                        ? AppTheme.MediaOverlay.mutedColor
+                        : AppTheme.MediaOverlay.primaryColor)
                     .lineLimit(1)
 
                 Text(Self.relativeString(for: entry.createdDate))
@@ -76,11 +106,11 @@ struct ProjectCard: View {
         .onTapGesture {
             if isSelecting {
                 onSelect()
-            } else if entry.isAccessible {
-                onOpen(entry.url)
+            } else {
+                refreshAccessibility(action: .open)
             }
         }
-        .opacity(entry.isAccessible ? 1.0 : 0.6)
+        .opacity(isUnavailable ? AppTheme.Opacity.strong : AppTheme.Opacity.opaque)
         .overlay(alignment: .topTrailing) {
             if isSelecting {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
@@ -119,17 +149,72 @@ struct ProjectCard: View {
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHovered)
         .onHover { isHovered = $0 }
         .contextMenu {
-            if entry.isAccessible {
-                Button(L10n.string("Open")) { onOpen(entry.url) }
-                Button(L10n.string("Reveal in Finder")) {
-                    NSWorkspace.shared.selectFile(entry.url.path, inFileViewerRootedAtPath: entry.url.deletingLastPathComponent().path)
-                }
+            if isAccessible {
+                Button(L10n.string("Open")) { refreshAccessibility(action: .open) }
+                Button(L10n.string("Reveal in Finder")) { refreshAccessibility(action: .reveal) }
                 Divider()
             }
             Button(L10n.string("Remove from Recents")) { onRemove(entry.url) }
             Button(L10n.string("Delete Project"), role: .destructive, action: onDelete)
         }
+        .onAppear { refreshAccessibility() }
+        .onChange(of: ProjectAccessibility.Key(entry)) { _, _ in refreshAccessibility() }
+        .onChange(of: entry.lastOpenedDate) { _, _ in refreshAccessibility() }
+        .onChange(of: isSelecting) { _, _ in
+            if accessibilityRequest?.action != nil { refreshAccessibility() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification).receive(on: RunLoop.main)) { _ in
+            refreshAccessibility()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willResignActiveNotification).receive(on: RunLoop.main)) { _ in
+            accessibilityRequest = nil
+            accessibility = nil
+        }
+        .onDisappear {
+            accessibilityRequest = nil
+            accessibility = nil
+        }
+        .task(id: accessibilityRequest) {
+            guard let request = accessibilityRequest else { return }
+            await checkAccessibility(request)
+        }
         .task(id: entry.lastOpenedDate) { await loadThumbnail(for: entry.url) }
+    }
+
+    private func refreshAccessibility(action: ProjectAction? = nil) {
+        accessibility = nil
+        guard NSApplication.shared.isActive else {
+            accessibilityRequest = nil
+            return
+        }
+        accessibilityRequest = AccessibilityRequest(
+            key: ProjectAccessibility.Key(entry), action: action,
+            windowIdentity: NSApplication.shared.keyWindow.map(ObjectIdentifier.init)
+        )
+    }
+
+    private func checkAccessibility(_ request: AccessibilityRequest) async {
+        do {
+            let results = try await ProjectAccessibility.check([request.key])
+            guard !Task.isCancelled, NSApplication.shared.isActive, accessibilityRequest == request,
+                  let result = results.first, result.key == request.key,
+                  ProjectRegistry.shared.entries.contains(where: { ProjectAccessibility.Key($0) == request.key }) else { return }
+            accessibility = result
+            guard result.isAccessible, let action = request.action,
+                  NSApplication.shared.keyWindow.map(ObjectIdentifier.init) == request.windowIdentity else { return }
+            switch action {
+            case .open:
+                onOpen(request.key.url)
+            case .reveal:
+                NSWorkspace.shared.selectFile(
+                    request.key.url.path,
+                    inFileViewerRootedAtPath: request.key.url.deletingLastPathComponent().path
+                )
+            }
+        } catch {
+            guard !Task.isCancelled, accessibilityRequest == request else { return }
+            accessibility = ProjectAccessibility(key: request.key, state: .unavailable)
+        }
     }
 
     private static let relativeDateFormatter: RelativeDateTimeFormatter = {

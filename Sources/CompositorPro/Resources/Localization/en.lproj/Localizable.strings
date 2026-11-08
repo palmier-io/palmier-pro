@@ -536,8 +536,13 @@
 "Generating…" = "Generating…";
 "Generation Failed" = "Generation Failed";
 "Generation Input" = "Generation Input";
+"Generation canceled." = "Generation canceled.";
 "Generation complete" = "Generation complete";
 "Generation in progress" = "Generation in progress";
+"Generation inputs changed. Submit again." = "Generation inputs changed. Submit again.";
+"Generation is paused. Reopen the project to resume." = "Generation is paused. Reopen the project to resume.";
+"Generation is unavailable while the project is closing." = "Generation is unavailable while the project is closing.";
+"Generation monitoring interrupted." = "Generation monitoring interrupted.";
 "Generation panel" = "Generation panel";
 "Get Anthropic API key" = "Get Anthropic API key";
 "Get OpenAI API key" = "Get OpenAI API key";
@@ -1047,6 +1052,7 @@
 "Select Forward on Track" = "Select Forward on Track";
 "Select Range" = "Select Range";
 "Select a Plan" = "Select a Plan";
+"Select a completed draft to enhance." = "Select a completed draft to enhance.";
 "Select a scene to review its narration and visual." = "Select a scene to review its narration and visual.";
 "Select compatible clips and paste settings again." = "Select compatible clips and paste settings again.";
 "Select media files or folders to import" = "Select media files or folders to import";

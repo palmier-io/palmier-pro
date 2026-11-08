@@ -32,11 +32,14 @@ struct MusicGenerationSubmission {
         onPhase: @MainActor (Phase) -> Void = { _ in },
         onFinished: @escaping @MainActor () -> Void = {}
     ) async throws {
+        try service.requireAvailable(editor: editor)
+        let timeline = editor.timeline
+        let projectId = editor.projectId
         var videoURL: String?
         if mode == .videoToMusic {
             onPhase(.exporting)
             let mp4 = try await TimelineRenderer.render(
-                timeline: editor.timeline,
+                timeline: timeline,
                 resolver: editor.mediaResolver,
                 resolveTimeline: editor.timelineResolver(),
                 missingMediaRefs: editor.missingMediaRefs,
@@ -46,12 +49,28 @@ struct MusicGenerationSubmission {
                 includeAudio: false,
                 preset: AVAssetExportPresetLowQuality
             )
-            defer { try? FileManager.default.removeItem(at: mp4) }
             onPhase(.uploading)
-            videoURL = try await GenerationBackend.uploadReference(
-                fileURL: mp4,
-                contentType: "video/mp4"
-            )
+            do {
+                try Task.checkCancellation()
+                try service.requireAvailable(editor: editor)
+                guard editor.timeline == timeline, editor.projectId == projectId else {
+                    throw GenerationService.StartError.preparationChanged
+                }
+                videoURL = try await GenerationBackend.uploadReference(
+                    fileURL: mp4,
+                    contentType: "video/mp4"
+                )
+            } catch {
+                do { try await GenerationService.cleanupTempFiles([mp4]) }
+                catch let cleanup { throw ProjectPackageCleanupError(operationError: error, cleanupError: cleanup) }
+                throw error
+            }
+            try await GenerationService.cleanupTempFiles([mp4])
+        }
+
+        try Task.checkCancellation()
+        guard editor.timeline == timeline, editor.projectId == projectId else {
+            throw GenerationService.StartError.preparationChanged
         }
 
         let durationSeconds = max(1, Int(spanSeconds.rounded()))
@@ -78,7 +97,7 @@ struct MusicGenerationSubmission {
 
         onPhase(.generating)
         let startFrame = source.startFrame
-        let placeholderId = AudioGenerationSubmission.make(
+        let placeholderId = try AudioGenerationSubmission.make(
             genInput: genInput, model: model, params: params, name: name ?? model.displayName
         ).submit(
             service: service,

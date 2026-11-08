@@ -192,6 +192,17 @@ extension EditorViewModel {
         )
     }
 
+    func importMediaAssetUndoably(_ asset: MediaAsset) {
+        guard !mediaAssets.contains(where: { $0.id == asset.id }) else { return }
+        let before = mediaLibraryUndoSnapshot()
+        undo.perform("Import Media") {
+            importMediaAsset(asset)
+            undo.register("Import Media", withTarget: self) { editor in
+                editor.restoreMediaLibraryUndoSnapshot(before, actionName: "Import Media")
+            }
+        }
+    }
+
     func restoreMediaLibraryUndoSnapshot(_ snapshot: MediaLibraryUndoSnapshot, actionName: String) {
         let redo = mediaLibraryUndoSnapshot()
         timelines = snapshot.timelines
@@ -200,6 +211,11 @@ extension EditorViewModel {
             activateTimeline(snapshot.activeTimelineId)
         }
         mediaManifest = snapshot.mediaManifest
+        let expectedURLs = MediaResolver.expectedURLMap(entries: mediaManifest.entries, projectURL: projectURL)
+        for asset in snapshot.mediaAssets {
+            guard let url = expectedURLs[asset.id], asset.url != url else { continue }
+            asset.relocate(to: url)
+        }
         mediaAssets = snapshot.mediaAssets
         selectedClipIds = snapshot.selectedClipIds
         selectedMediaAssetIds = snapshot.selectedMediaAssetIds

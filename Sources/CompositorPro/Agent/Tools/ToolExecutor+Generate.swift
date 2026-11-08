@@ -33,6 +33,7 @@ extension ToolExecutor {
     }
 
     func generate(_ editor: EditorViewModel, _ args: [String: Any], type: ClipType) throws -> ToolResult {
+        try editor.generationService.requireAvailable(editor: editor)
         let prompt = args["prompt"] == nil ? "" : try args.requireString("prompt")
         try HostedServices.generationAvailability.requireAvailable()
         switch type {
@@ -41,12 +42,10 @@ extension ToolExecutor {
         case .video:
             if let mediaRef = args.string("enhanceDraftMediaRef") {
                 let draft = try asset(mediaRef, editor: editor, label: "Draft")
-                guard let placeholderId = editor.generationService.enhanceDraft(
+                let placeholderId = try editor.generationService.enhanceDraft(
                     asset: draft,
                     editor: editor
-                ) else {
-                    throw ToolError("Asset '\(mediaRef)' is not a completed enhanceable draft.")
-                }
+                )
                 return .ok("Draft enhancement started. Placeholder asset ID: \(placeholderId)")
             }
             let modelId = try args.string("model") ?? defaultModelId(
@@ -138,7 +137,7 @@ extension ToolExecutor {
             draft: draft,
             usesSourceVideo: true
         )
-        let placeholderId = VideoGenerationSubmission.make(
+        let placeholderId = try VideoGenerationSubmission.make(
             genInput: genInput,
             model: model,
             inputAssets: inputAssets,
@@ -216,7 +215,7 @@ extension ToolExecutor {
         let folderId = try resolveFolder(
             args, editor: editor, fallbackReferences: inputAssets.textToVideoReferences
         )
-        let placeholderId = VideoGenerationSubmission.make(
+        let placeholderId = try VideoGenerationSubmission.make(
             genInput: genInput,
             model: model,
             inputAssets: inputAssets,
@@ -280,7 +279,7 @@ extension ToolExecutor {
             aspectRatio: aspectRatio, resolution: resolution, quality: quality
         )
         let folderId = try resolveFolder(args, editor: editor, fallbackReferences: refs)
-        let placeholderId = ImageGenerationSubmission.make(
+        let placeholderId = try ImageGenerationSubmission.make(
             genInput: genInput,
             model: model,
             references: refs,
@@ -295,6 +294,9 @@ extension ToolExecutor {
     }
 
     func generateAudio(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
+        try editor.generationService.requireAvailable(editor: editor)
+        let preparationTimeline = editor.timeline
+        let preparationProjectId = editor.projectId
         try HostedServices.generationAvailability.requireAvailable()
         let modelId = try args.string("model") ?? defaultModelId(
             AudioModelConfig.allModels.map { (id: $0.id, paidOnly: $0.paidOnly) }, kind: "audio")
@@ -352,15 +354,30 @@ extension ToolExecutor {
                 throw ToolError(err)
             }
             let mp4 = try await TimelineRenderer.render(
-                timeline: editor.timeline, resolver: editor.mediaResolver,
+                timeline: preparationTimeline, resolver: editor.mediaResolver,
                 resolveTimeline: editor.timelineResolver(),
                 missingMediaRefs: editor.missingMediaRefs,
                 startFrame: start, frameCount: end - start,
                 shortSide: 240, includeAudio: false,
                 preset: AVAssetExportPresetLowQuality
             )
-            defer { try? FileManager.default.removeItem(at: mp4) }
-            videoURL = try await GenerationBackend.uploadReference(fileURL: mp4, contentType: "video/mp4")
+            do {
+                try Task.checkCancellation()
+                try editor.generationService.requireAvailable(editor: editor)
+                guard editor.timeline == preparationTimeline, editor.projectId == preparationProjectId else {
+                    throw GenerationService.StartError.preparationChanged
+                }
+                videoURL = try await GenerationBackend.uploadReference(fileURL: mp4, contentType: "video/mp4")
+            } catch {
+                do { try await GenerationService.cleanupTempFiles([mp4]) }
+                catch let cleanup { throw ProjectPackageCleanupError(operationError: error, cleanupError: cleanup) }
+                throw error
+            }
+            try await GenerationService.cleanupTempFiles([mp4])
+            try Task.checkCancellation()
+            guard editor.timeline == preparationTimeline, editor.projectId == preparationProjectId else {
+                throw GenerationService.StartError.preparationChanged
+            }
             spanSeconds = Double(end - start) / Double(max(1, editor.timeline.fps))
             placementStartFrame = start
         }
@@ -437,8 +454,9 @@ extension ToolExecutor {
 
         if let startFrame = placementStartFrame, let sourceSpan = spanSeconds {
             let outputSpan = requestedDurationSeconds.map(Double.init) ?? sourceSpan
-            let placeholderId = editor.undo.perform("Add \(model.category.label) (Agent)") {
-                let placeholderId = submission.submit(
+            try editor.generationService.requireAvailable(editor: editor)
+            let placeholderId = try editor.undo.perform("Add \(model.category.label) (Agent)") {
+                let placeholderId = try submission.submit(
                     service: editor.generationService,
                     projectURL: editor.projectURL,
                     editor: editor,
@@ -455,7 +473,7 @@ extension ToolExecutor {
             return .ok("Generation started and placed on the timeline at frame \(startFrame). Placeholder asset ID: \(placeholderId). Model: \(model.displayName), \(model.category.label) (scored from video).")
         }
 
-        let placeholderId = submission.submit(
+        let placeholderId = try submission.submit(
             service: editor.generationService,
             projectURL: editor.projectURL,
             editor: editor
@@ -465,6 +483,7 @@ extension ToolExecutor {
     }
 
     func upscaleMedia(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        try editor.generationService.requireAvailable(editor: editor)
         let mediaRef = try args.requireString("mediaRef")
         let asset = try asset(mediaRef, editor: editor)
         guard asset.type == .video || asset.type == .image else {
@@ -501,7 +520,7 @@ extension ToolExecutor {
 
         let settings = try resolvedUpscaleSettings(args["settings"], model: model, source: asset)
         let trimmed = try trimmedSource(args, editor: editor, source: asset)
-        guard let placeholderId = EditSubmitter.submitUpscale(
+        guard let placeholderId = try EditSubmitter.submitUpscale(
             asset: asset, model: model, editor: editor, settings: settings, trimmedSource: trimmed
         ) else {
             throw ToolError("Failed to start upscale")

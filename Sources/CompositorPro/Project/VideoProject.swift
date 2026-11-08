@@ -29,6 +29,17 @@ private typealias DocumentCloseCallback = @convention(c) (
     AnyObject, Selector, NSDocument, Bool, UnsafeMutableRawPointer?
 ) -> Void
 
+@MainActor
+private final class ProjectCloseDecision: NSObject {
+    let complete: @MainActor (Bool) -> Void
+
+    init(complete: @escaping @MainActor (Bool) -> Void) { self.complete = complete }
+
+    @objc nonisolated func document(_ document: NSDocument, shouldClose: Bool, contextInfo: UnsafeMutableRawPointer?) {
+        Task { @MainActor in complete(shouldClose) }
+    }
+}
+
 class VideoProject: NSDocument {
 
     private struct SaveRequest {
@@ -38,9 +49,39 @@ class VideoProject: NSDocument {
         let completion: (Error?) -> Void
     }
 
+    private struct SaveContext: Sendable {
+        let projectFile: ProjectFile
+        let manifest: MediaManifest?
+        let plans: [EditPlan]?
+        let thumbnail: Data?
+        let chatSessions: [ChatSession]
+        let sourceURL: URL?
+    }
+
+    private struct CloseRequest {
+        let target: AnyObject
+        let selector: Selector
+        let contextInfo: UnsafeMutableRawPointer?
+    }
+
     static let typeIdentifier = Project.typeIdentifier
 
-    let editorViewModel = EditorViewModel()
+    let editorViewModel: EditorViewModel
+    private nonisolated let packageIO: ProjectPackageIO
+    private var registry: ProjectRegistry?
+
+    override convenience init() {
+        self.init(registry: nil)
+    }
+
+    init(registry: ProjectRegistry?) {
+        let editor = EditorViewModel()
+        editor.projectRegistry = registry
+        editorViewModel = editor
+        packageIO = editor.projectPackageCoordinator.io
+        self.registry = registry
+        super.init()
+    }
 
     /// Decoded off-main in read(), applied on main in makeWindowControllers.
     private nonisolated(unsafe) var loadedProjectFile: ProjectFile?
@@ -52,17 +93,14 @@ class VideoProject: NSDocument {
     private nonisolated(unsafe) var manifestLoadFailed = false
     private nonisolated(unsafe) var plansLoadFailed = false
 
-    /// Captured on main thread as cheap value copies; encoded off-main in write().
-    private nonisolated(unsafe) var snapshotProjectFile: ProjectFile?
-    private nonisolated(unsafe) var snapshotManifest: MediaManifest?
-    private nonisolated(unsafe) var snapshotPlans: [EditPlan]?
-    private nonisolated(unsafe) var snapshotThumbnail: Data?
-    private nonisolated(unsafe) var snapshotChatSessionFiles: [(name: String, data: Data)] = []
-    private nonisolated(unsafe) var snapshotSourceProjectURL: URL?
-    private nonisolated(unsafe) var snapshotPreparedForWrite = false
-    // AppKit saves asynchronously, but write() consumes one shared snapshot at a time.
-    // Keep the first request active and serialize any requests behind it.
-    private var saveQueue: [SaveRequest] = []
+    // Published before super.save, read-only until its completion, then cleared on main.
+    private nonisolated(unsafe) var saveContext: SaveContext?
+    private var saveTask: Task<Void, Never>?
+    private var closeTask: Task<Void, Never>?
+    private var closePreparationTask: Task<Void, Error>?
+    private var nativeCloseTask: Task<Void, Never>?
+    private var closeRequests: [CloseRequest] = []
+    private var closeDecision: ProjectCloseDecision?
     private var projectCheckpointAutosaveScheduled = false
     private var isSavingBeforeClose = false
 
@@ -74,11 +112,13 @@ class VideoProject: NSDocument {
     override func canAsynchronouslyWrite(to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType) -> Bool { true }
 
     @MainActor
-    static func load(from url: URL) async throws -> VideoProject {
-        let contents = try await Task.detached(priority: .userInitiated) {
+    static func load(from url: URL, registry: ProjectRegistry? = nil) async throws -> VideoProject {
+        try Task.checkCancellation()
+        let contents = try await ProjectPackageIO().perform {
             try readProjectPackage(at: url)
-        }.value
-        let doc = VideoProject()
+        }
+        try Task.checkCancellation()
+        let doc = VideoProject(registry: registry)
         doc.fileURL = url
         doc.fileType = typeIdentifier
         doc.applyLoadedContents(contents)
@@ -94,18 +134,8 @@ class VideoProject: NSDocument {
         loadedManifest = contents.manifest
         manifestLoadFailed = contents.manifestUnreadable
         loadedPlans = contents.plans
+        loadedPlansUnreadable = contents.plansUnreadable
         plansLoadFailed = contents.plansUnreadable
-        let timelines = loadedProjectFile?.timelines ?? []
-        Log.project.notice(
-            "read ok timelines=\(timelines.count)",
-            telemetry: "Project read",
-            data: [
-                "timelines": timelines.count,
-                "tracks": timelines.reduce(0) { $0 + $1.tracks.count },
-                "clips": timelines.reduce(0) { $0 + $1.tracks.reduce(0) { $0 + $1.clips.count } },
-                "media": loadedManifest?.entries.count ?? 0
-            ]
-        )
     }
 
     nonisolated static func readProjectPackage(at url: URL) throws -> ProjectPackageContents {
@@ -136,6 +166,16 @@ class VideoProject: NSDocument {
         }
 
         let plans = try EditPlanStore.readPackageFile(at: url)
+        Log.project.notice(
+            "read ok timelines=\(projectFile.timelines.count)",
+            telemetry: "Project read",
+            data: [
+                "timelines": projectFile.timelines.count,
+                "tracks": projectFile.timelines.reduce(0) { $0 + $1.tracks.count },
+                "clips": projectFile.timelines.reduce(0) { $0 + $1.tracks.reduce(0) { $0 + $1.clips.count } },
+                "media": manifest?.entries.count ?? 0
+            ]
+        )
         return ProjectPackageContents(
             projectFile: projectFile,
             manifest: manifest,
@@ -146,32 +186,49 @@ class VideoProject: NSDocument {
     }
 
     override func save(to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType, completionHandler: @escaping (Error?) -> Void) {
+        guard !editorViewModel.projectPackageCoordinator.isClosed else {
+            completionHandler(CocoaError(.userCancelled))
+            return
+        }
         let request = SaveRequest(
             url: url,
             typeName: typeName,
             operation: saveOperation,
             completion: completionHandler
         )
-        editorViewModel.projectPackageCoordinator.saveStarted()
-        saveQueue.append(request)
-        guard saveQueue.count == 1 else { return }
-        performNextSave()
+        editorViewModel.projectPackageCoordinator.enqueueSave { lease in
+            self.performSave(request, lease: lease)
+        }
     }
 
-    private func performNextSave() {
-        guard let request = saveQueue.first else { return }
-        if let date = try? request.url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate {
-            fileModificationDate = date
-        }
-
+    private func performSave(_ request: SaveRequest, lease: ProjectPackageCoordinator.SaveLease) {
         let coordinator = editorViewModel.projectPackageCoordinator
-        captureSaveSnapshot()
-        snapshotSourceProjectURL = fileURL
-        super.save(to: request.url, ofType: request.typeName, for: request.operation) { error in
-            coordinator.saveFinished(success: error == nil)
-            request.completion(error)
-            self.saveQueue.removeFirst()
-            self.performNextSave()
+        saveTask = Task { @MainActor in
+            let error: Error?
+            do {
+                let url = request.url
+                let date = try await coordinator.io.perform {
+                    do { return try url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
+                    catch let error as CocoaError where error.code == .fileNoSuchFile || error.code == .fileReadNoSuchFile { return nil }
+                }
+                if let date { fileModificationDate = date }
+                saveContext = captureSaveSnapshot()
+                let writeError = await withCheckedContinuation { continuation in
+                    super.save(to: request.url, ofType: request.typeName, for: request.operation) { error in
+                        continuation.resume(returning: error)
+                    }
+                }
+                if writeError == nil {
+                    if saveContext?.manifest != nil { manifestLoadFailed = false }
+                    try await (registry ?? editorViewModel.projectRegistry)?.flush()
+                }
+                error = writeError
+            } catch let failure {
+                error = failure
+            }
+            saveContext = nil
+            saveTask = nil
+            coordinator.finishSave(lease) { request.completion(error) }
         }
     }
 
@@ -180,45 +237,82 @@ class VideoProject: NSDocument {
         shouldClose shouldCloseSelector: Selector?,
         contextInfo: UnsafeMutableRawPointer?
     ) {
-        Task { @MainActor in
+        guard let shouldCloseSelector else { return }
+        beginClosing()
+        closeRequests.append(CloseRequest(target: delegate as AnyObject, selector: shouldCloseSelector, contextInfo: contextInfo))
+        guard closeTask == nil, closeDecision == nil else { return }
+        closeTask = Task { @MainActor in
             do {
                 try await saveBeforeClosing()
+                let decision = ProjectCloseDecision { [weak self] shouldClose in
+                    self?.completeCloseRequests(shouldClose: shouldClose)
+                }
+                closeDecision = decision
+                closeTask = nil
                 super.canClose(
-                    withDelegate: delegate,
-                    shouldClose: shouldCloseSelector,
-                    contextInfo: contextInfo
+                    withDelegate: decision,
+                    shouldClose: #selector(ProjectCloseDecision.document(_:shouldClose:contextInfo:)),
+                    contextInfo: nil
                 )
             } catch {
                 presentError(error)
-                guard let shouldCloseSelector else { return }
-                let target = delegate as AnyObject
-                let callback = unsafeBitCast(target.method(for: shouldCloseSelector), to: DocumentCloseCallback.self)
-                callback(target, shouldCloseSelector, self, false, contextInfo)
+                closeTask = nil
+                completeCloseRequests(shouldClose: false)
             }
         }
     }
 
+    private func completeCloseRequests(shouldClose: Bool) {
+        closeDecision = nil
+        if !shouldClose { editorViewModel.projectPackageCoordinator.cancelClosing() }
+        let requests = closeRequests
+        closeRequests.removeAll()
+        for request in requests {
+            let callback = unsafeBitCast(request.target.method(for: request.selector), to: DocumentCloseCallback.self)
+            callback(request.target, request.selector, self, shouldClose, request.contextInfo)
+        }
+    }
+
+    @MainActor
+    func beginClosing() {
+        let coordinator = editorViewModel.projectPackageCoordinator
+        coordinator.onReopen = { [weak self] in
+            guard let self else { return }
+            restoreAssetsFromManifest()
+            editorViewModel.generationService.resumePendingGenerations(editor: editorViewModel)
+        }
+        coordinator.beginClosing()
+        cancelDocumentBackgroundWork()
+    }
+
     @MainActor
     func saveBeforeClosing() async throws {
-        await editorViewModel.agentService.cancelAndWait()
-        isSavingBeforeClose = true
-        defer { isSavingBeforeClose = false }
+        if let task = closePreparationTask { return try await task.value }
         let coordinator = editorViewModel.projectPackageCoordinator
-        await coordinator.beginClosing()
-        do {
+        beginClosing()
+        isSavingBeforeClose = true
+        let task = Task { @MainActor in
+            await editorViewModel.agentService.cancelAndWait()
+            await editorViewModel.generationService.suspendAndWait()
+            await coordinator.waitUntilIdle()
             repeat {
                 guard let url = fileURL else { throw CocoaError(.fileNoSuchFile) }
                 try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                     save(to: url, ofType: Self.typeIdentifier, for: .saveOperation) { error in
-                        if let error {
-                            continuation.resume(throwing: error)
-                        } else {
-                            continuation.resume()
-                        }
+                        if let error { continuation.resume(throwing: error) }
+                        else { continuation.resume() }
                     }
                 }
             } while hasUnautosavedChanges
             await coordinator.waitUntilIdle()
+        }
+        closePreparationTask = task
+        defer {
+            closePreparationTask = nil
+            isSavingBeforeClose = false
+        }
+        do {
+            try await task.value
         } catch {
             coordinator.cancelClosing()
             throw error
@@ -236,63 +330,45 @@ class VideoProject: NSDocument {
     }
 
     override func write(to url: URL, ofType typeName: String) throws {
-        var mainThreadUnblocked = false
-        defer { if !mainThreadUnblocked { unblockUserInteraction() } }
-
-        if !snapshotPreparedForWrite {
-            guard Thread.isMainThread else {
-                Log.project.error("save: snapshot not prepared for off-main write()")
-                throw CocoaError(.fileWriteUnknown)
-            }
-            MainActor.assumeIsolated {
-                captureSaveSnapshot()
-                snapshotSourceProjectURL = fileURL
-            }
-        }
-
-        let file = snapshotProjectFile
-        let manifest = snapshotManifest
-        let plans = snapshotPlans
-        let thumbnail = snapshotThumbnail
-        let chatSessionFiles = snapshotChatSessionFiles
-        let sourceURL = snapshotSourceProjectURL
-        snapshotPreparedForWrite = false
-        snapshotSourceProjectURL = nil
         unblockUserInteraction()
-        mainThreadUnblocked = true
-
-        guard let file, let data = try? JSONEncoder().encode(file) else {
-            Log.project.error("save: project snapshot missing at write()")
+        guard !Thread.isMainThread, let context = saveContext else {
+            Log.project.error("save: coordinated snapshot missing at write()")
             throw CocoaError(.fileWriteUnknown)
         }
-
-        try Self.writeProjectPackage(
-            ProjectPackageSnapshot(
-                timeline: data,
-                manifest: try manifest.map { try JSONEncoder().encode($0) },
-                plans: try plans.map { try EditPlanStore.encode($0) },
-                thumbnail: thumbnail,
-                chatSessionFiles: chatSessionFiles
-            ),
-            to: url,
-            sourceURL: sourceURL
-        )
-        // A real manifest was just written, so the unreadable original is gone; stop preserving it.
-        if manifest != nil { manifestLoadFailed = false }
+        try packageIO.write {
+            try Self.writeProjectPackage(
+                ProjectPackageSnapshot(
+                    timeline: try JSONEncoder().encode(context.projectFile),
+                    manifest: try context.manifest.map { try JSONEncoder().encode($0) },
+                    plans: try context.plans.map { try EditPlanStore.encode($0) },
+                    thumbnail: context.thumbnail,
+                    chatSessionFiles: try Self.encodeChatSessions(context.chatSessions)
+                ),
+                to: url,
+                sourceURL: context.sourceURL
+            )
+        }
     }
 
-    private func captureSaveSnapshot() {
+    private func captureSaveSnapshot() -> SaveContext {
         editorViewModel.flushPendingManifestMetadataUpdates()
-        snapshotProjectFile = editorViewModel.projectFileSnapshot()
-        snapshotManifest = Self.manifestSnapshot(manifest: editorViewModel.mediaManifest, loadFailed: manifestLoadFailed)
-        snapshotPlans = EditPlanStore.snapshot(plans: editorViewModel.editPlans, loadFailed: plansLoadFailed)
-        snapshotThumbnail = captureThumbnail()
-        snapshotChatSessionFiles = editorViewModel.agentService.sessions
-            .filter { !$0.messages.isEmpty }
-            .compactMap { session in
-                ChatSessionStore.encodeSession(session).map { (name: "\(session.id.uuidString).json", data: $0) }
-            }
-        snapshotPreparedForWrite = true
+        return SaveContext(
+            projectFile: editorViewModel.projectFileSnapshot(),
+            manifest: Self.manifestSnapshot(manifest: editorViewModel.mediaManifest, loadFailed: manifestLoadFailed),
+            plans: EditPlanStore.snapshot(plans: editorViewModel.editPlans, loadFailed: plansLoadFailed),
+            thumbnail: captureThumbnail(),
+            chatSessions: editorViewModel.agentService.sessions,
+            sourceURL: fileURL
+        )
+    }
+
+    private nonisolated static func encodeChatSessions(_ sessions: [ChatSession]) throws -> [(name: String, data: Data)] {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return try sessions.filter { !$0.messages.isEmpty }.map {
+            (name: "\($0.id.uuidString).json", data: try encoder.encode($0))
+        }
     }
 
     nonisolated static func manifestSnapshot(manifest: MediaManifest, loadFailed: Bool) -> MediaManifest? {
@@ -427,12 +503,15 @@ class VideoProject: NSDocument {
             if let oldURL, let newURL = newValue,
                oldURL.standardizedFileURL != newURL.standardizedFileURL {
                 MainActor.assumeIsolated {
+                    let registry = self.registry ?? ProjectRegistry.shared
+                    self.registry = registry
+                    editorViewModel.projectRegistry = registry
                     Telemetry.beginOperation("project_url_rebase", data: [
                         "media_count": editorViewModel.mediaAssets.count,
-                        "registry_count": ProjectRegistry.shared.entries.count,
+                        "registry_count": registry.entries.count,
                     ])
                     defer { Telemetry.endOperation("project_url_rebase") }
-                    ProjectRegistry.shared.updateURL(from: oldURL, to: newURL)
+                    registry.updateURL(from: oldURL, to: newURL)
                     editorViewModel.rebaseProjectURL(from: oldURL, to: newURL)
                 }
             }
@@ -441,15 +520,93 @@ class VideoProject: NSDocument {
 
     // MARK: - Close
 
+    func closeAfterSaving() async throws {
+        try Task.checkCancellation()
+        let coordinator = editorViewModel.projectPackageCoordinator
+        guard !coordinator.isClosed else {
+            try confirmClosed()
+            return
+        }
+        if let url = fileURL { (registry ?? editorViewModel.projectRegistry)?.register(url) }
+        do {
+            repeat {
+                try await saveBeforeClosing()
+                repeat {
+                    try Task.checkCancellation()
+                    if coordinator.isClosed {
+                        try confirmClosed()
+                        return
+                    }
+                    guard coordinator.isClosing else { throw CancellationError() }
+                    await coordinator.waitUntilIdle()
+                    try Task.checkCancellation()
+                    if coordinator.isClosed {
+                        try confirmClosed()
+                        return
+                    }
+                    guard coordinator.isClosing else { throw CancellationError() }
+                } while !coordinator.canFinishClosing
+            } while hasUnautosavedChanges
+            try closeImmediately()
+        } catch {
+            if coordinator.isClosing, !coordinator.isClosed { coordinator.cancelClosing() }
+            throw error
+        }
+    }
+
     override func close() {
-        editorViewModel.agentService.cancel()
+        let coordinator = editorViewModel.projectPackageCoordinator
+        guard !coordinator.isClosed else { return }
+        guard coordinator.canFinishClosing, !hasUnautosavedChanges else {
+            guard nativeCloseTask == nil else { return }
+            nativeCloseTask = Task { @MainActor in
+                defer { nativeCloseTask = nil }
+                do { try await AppState.shared.closeProject(self) }
+                catch { presentError(error) }
+            }
+            return
+        }
+        do { try closeImmediately() }
+        catch { presentError(error) }
+    }
+
+    private func closeImmediately() throws {
+        guard !editorViewModel.projectPackageCoordinator.isClosed else {
+            try confirmClosed()
+            return
+        }
+        guard editorViewModel.projectPackageCoordinator.canFinishClosing else {
+            throw CocoaError(.userCancelled)
+        }
+        editorViewModel.projectPackageCoordinator.finishClosing()
         super.close()
+        try confirmClosed()
         editorViewModel.detachProxyStore()
         DispatchQueue.main.async {
             if AppState.shared.activeProject === self {
-                AppState.shared.showHome()
+                Task { @MainActor in
+                    do { try await AppState.shared.closeProject(self) }
+                    catch { self.presentError(error) }
+                }
             }
         }
+    }
+
+    private func confirmClosed() throws {
+        guard editorViewModel.projectPackageCoordinator.isClosed,
+              !NSDocumentController.shared.documents.contains(where: { $0 === self }) else {
+            throw CocoaError(.userCancelled)
+        }
+    }
+
+    func abortOpening() async {
+        let coordinator = editorViewModel.projectPackageCoordinator
+        beginClosing()
+        await editorViewModel.agentService.cancelAndWait()
+        await editorViewModel.generationService.suspendAndWait()
+        await coordinator.waitUntilIdle()
+        do { try closeImmediately() }
+        catch { presentError(error) }
     }
 
     // MARK: - Window setup
@@ -482,7 +639,6 @@ class VideoProject: NSDocument {
             loadedManifest = nil
             restoreAssetsFromManifest()
         }
-        editorViewModel.enhancePendingEnhancements()
         if editorViewModel.markSpeakers { editorViewModel.identifySpeakers() }
 
         let editorView = EditorView()
@@ -540,180 +696,408 @@ class VideoProject: NSDocument {
 
     // MARK: - Thumbnail
 
-    private var cachedThumbnail: Data?
-    private var thumbnailInFlight = false
-    private nonisolated static let thumbnailMaxPixelSize = 640
+    struct ThumbnailCandidate: Sendable, Equatable {
+        let clipID: String
+        let mediaRef: String
+        let url: URL
+        let isVideo: Bool
+        let trimStartFrame: Int
+        let source: MediaSource
+        let inputIdentity: MediaInputIdentity?
+        let assetIdentity: ObjectIdentifier?
+        let assetURL: URL?
+        let assetInputIdentity: MediaInputIdentity?
+        let generationStatus: String?
+        let generationInput: GenerationInput?
+        let pendingDownloadURL: URL?
+    }
 
-    private func captureThumbnail() -> Data? {
-        if let cached = cachedThumbnail { return cached }
-        guard !thumbnailInFlight else { return nil }
-        thumbnailInFlight = true
-        Task { [weak self] in
-            await self?.generateThumbnail()
+    struct ThumbnailRequest: Sendable, Equatable {
+        let documentURL: URL?
+        let projectURL: URL?
+        let timelineID: String
+        let fps: Int
+        let maxPixelSize: Int
+        let candidates: [ThumbnailCandidate]
+    }
+
+    private struct ThumbnailFileStamp: Sendable, Equatable {
+        let fileNumber: UInt64?
+        let size: Int?
+        let modified: Date?
+        let created: Date?
+    }
+
+    private struct ThumbnailCache: Sendable {
+        let request: ThumbnailRequest
+        let stamps: [ThumbnailFileStamp?]
+        let data: Data?
+    }
+
+    private var cachedThumbnail: ThumbnailCache?
+    private var thumbnailTask: Task<Void, Never>?
+    private var thumbnailRequestInFlight: ThumbnailRequest?
+    private nonisolated static let thumbnailMaxPixelSize = 640
+    var thumbnailRenderer: @Sendable (ThumbnailRequest) async throws -> Data? = { request in
+        try await VideoProject.renderThumbnail(request)
+    }
+
+    func captureThumbnail() -> Data? {
+        let request = thumbnailRequest()
+        if cachedThumbnail?.request != request { cachedThumbnail = nil }
+        let cached = cachedThumbnail
+        let coordinator = editorViewModel.projectPackageCoordinator
+        guard !coordinator.isClosing, !coordinator.isClosed else { return cached?.data }
+        if let thumbnailTask {
+            if thumbnailRequestInFlight != request { thumbnailTask.cancel() }
+            return cached?.data
+        }
+        guard !request.candidates.isEmpty else { return nil }
+        thumbnailRequestInFlight = request
+        let renderer = thumbnailRenderer
+        thumbnailTask = coordinator.startMutation { [weak self] lease in
+            guard let self else { return }
+            let result = try await Self.refreshThumbnail(request, cached: cached, render: renderer)
+            try Task.checkCancellation()
+            try coordinator.validate(lease)
+            if !coordinator.isClosing, thumbnailRequest() == request {
+                cachedThumbnail = result
+                if result.data != cached?.data { editorViewModel.onProjectCheckpointRequired?() }
+            }
+            finishThumbnailRequest(request)
+        } onFailure: { [weak self] error in
+            if let self, thumbnailRequestInFlight == request { cachedThumbnail = nil }
+            self?.finishThumbnailRequest(request)
+            if !(error is CancellationError) {
+                Log.project.warning("thumbnail failed: \(error.localizedDescription)")
+            }
+        }
+        return cached?.data
+    }
+
+    private func finishThumbnailRequest(_ request: ThumbnailRequest) {
+        guard thumbnailRequestInFlight == request else { return }
+        thumbnailTask = nil
+        thumbnailRequestInFlight = nil
+        let coordinator = editorViewModel.projectPackageCoordinator
+        if !coordinator.isClosing, !coordinator.isClosed, thumbnailRequest() != request { _ = captureThumbnail() }
+    }
+
+    private func thumbnailRequest() -> ThumbnailRequest {
+        let entries = editorViewModel.mediaManifest.entries
+        let urls = MediaResolver.expectedURLMap(entries: entries, projectURL: editorViewModel.projectURL)
+        var entriesByID: [String: MediaManifestEntry] = [:]
+        for entry in entries where entriesByID[entry.id] == nil { entriesByID[entry.id] = entry }
+        var candidates: [ThumbnailCandidate] = []
+        for track in editorViewModel.timeline.tracks where track.type == .video {
+            for clip in track.clips {
+                guard clip.mediaType == .image || clip.mediaType == .video, clip.trimStartFrame >= 0,
+                      let entry = entriesByID[clip.mediaRef], let url = urls[clip.mediaRef] else { continue }
+                let asset = editorViewModel.mediaAssetsById[clip.mediaRef]
+                guard asset == nil || asset?.url == url else { continue }
+                candidates.append(ThumbnailCandidate(
+                    clipID: clip.id, mediaRef: clip.mediaRef, url: url,
+                    isVideo: clip.mediaType == .video, trimStartFrame: clip.trimStartFrame,
+                    source: entry.source, inputIdentity: entry.inputIdentity,
+                    assetIdentity: asset.map(ObjectIdentifier.init), assetURL: asset?.url,
+                    assetInputIdentity: asset?.inputIdentity, generationStatus: asset?.generationStatus.serialized,
+                    generationInput: asset?.generationInput ?? entry.generationInput, pendingDownloadURL: asset?.pendingDownloadURL
+                ))
+            }
+        }
+        return ThumbnailRequest(
+            documentURL: fileURL, projectURL: editorViewModel.projectURL,
+            timelineID: editorViewModel.timeline.id, fps: editorViewModel.timeline.fps,
+            maxPixelSize: Self.thumbnailMaxPixelSize, candidates: candidates
+        )
+    }
+
+    @concurrent
+    private static func refreshThumbnail(
+        _ request: ThumbnailRequest, cached: ThumbnailCache?,
+        render: @Sendable (ThumbnailRequest) async throws -> Data?
+    ) async throws -> ThumbnailCache {
+        try Task.checkCancellation()
+        let stamps = try thumbnailFileStamps(request)
+        if let cached, cached.request == request, cached.stamps == stamps { return cached }
+        let data = try await render(request)
+        try Task.checkCancellation()
+        guard try thumbnailFileStamps(request) == stamps else { throw CancellationError() }
+        return ThumbnailCache(request: request, stamps: stamps, data: data)
+    }
+
+    private nonisolated static func thumbnailFileStamps(_ request: ThumbnailRequest) throws -> [ThumbnailFileStamp?] {
+        try request.candidates.map { candidate in
+            try Task.checkCancellation()
+            do {
+                let values = try FileManager.default.attributesOfItem(atPath: candidate.url.path)
+                return ThumbnailFileStamp(
+                    fileNumber: (values[.systemFileNumber] as? NSNumber)?.uint64Value,
+                    size: (values[.size] as? NSNumber)?.intValue,
+                    modified: values[.modificationDate] as? Date, created: values[.creationDate] as? Date
+                )
+            } catch let error as CocoaError where error.code == .fileNoSuchFile || error.code == .fileReadNoSuchFile {
+                return nil
+            }
+        }
+    }
+
+    @concurrent
+    private static func renderThumbnail(_ request: ThumbnailRequest) async throws -> Data? {
+        guard request.fps > 0, request.fps <= Int(Int32.max) else { return nil }
+        for candidate in request.candidates {
+            try Task.checkCancellation()
+            do {
+                if candidate.isVideo {
+                    let time = CMTime(value: CMTimeValue(candidate.trimStartFrame), timescale: CMTimeScale(request.fps))
+                    let renderer = ProjectThumbnailFrameRenderer(url: candidate.url, time: time, maxPixelSize: request.maxPixelSize)
+                    let image = try await renderer.render()
+                    try Task.checkCancellation()
+                    if let data = ImageEncoder.encodeJPEG(image, quality: 0.7) { return data }
+                } else if let image = ImageEncoder.thumbnail(url: candidate.url, maxPixelSize: request.maxPixelSize),
+                          let data = ImageEncoder.encodeJPEG(image, quality: 0.7) {
+                    return data
+                }
+            } catch {
+                try Task.checkCancellation()
+            }
         }
         return nil
     }
 
-    /// Picks the first usable video-track clip and generates a jpeg
-    private func generateThumbnail() async {
-        defer { thumbnailInFlight = false }
-
-        struct Candidate { let url: URL; let isVideo: Bool; let trimStartFrame: Int }
-        var candidates: [Candidate] = []
-        for track in editorViewModel.timeline.tracks where track.type == .video {
-            for clip in track.clips {
-                guard clip.mediaType == .image || clip.mediaType == .video,
-                      let url = editorViewModel.mediaResolver.expectedURL(for: clip.mediaRef) else { continue }
-                candidates.append(Candidate(
-                    url: url,
-                    isVideo: clip.mediaType == .video,
-                    trimStartFrame: clip.trimStartFrame
-                ))
-            }
-        }
-        let fps = editorViewModel.timeline.fps
-        guard !candidates.isEmpty else { return }
-
-        let maxPixelSize = Self.thumbnailMaxPixelSize
-        let data: Data? = await Task.detached(priority: .utility) {
-            for candidate in candidates {
-                if candidate.isVideo {
-                    // Async `loadTracks` / `image(at:)` — no blocking semaphore wait.
-                    let asset = AVURLAsset(url: candidate.url)
-                    guard (try? await asset.loadTracks(withMediaType: .video).first) != nil else { continue }
-                    let generator = AVAssetImageGenerator(asset: asset)
-                    // Aspect-preserving box; frame is ~640px on the long edge.
-                    generator.maximumSize = CGSize(width: maxPixelSize, height: maxPixelSize)
-                    generator.appliesPreferredTrackTransform = true
-                    let time = CMTime(value: CMTimeValue(candidate.trimStartFrame), timescale: CMTimeScale(max(fps, 1)))
-                    guard let cgImage = try? await generator.image(at: time).image else { continue }
-                    return NSBitmapImageRep(cgImage: cgImage).representation(using: .jpeg, properties: [.compressionFactor: 0.7])
-                } else if let image = ImageEncoder.thumbnail(url: candidate.url, maxPixelSize: maxPixelSize),
-                          let data = ImageEncoder.encodeJPEG(image, quality: 0.7) {
-                    return data
-                }
-            }
-            return nil
-        }.value
-
-        guard let data else { return }
-        cachedThumbnail = data
-        editorViewModel.onProjectCheckpointRequired?()
-    }
-
     // MARK: - Media restore
 
+    private struct MediaRestoreTarget {
+        let entry: MediaManifestEntry
+        let candidate: RestoredMediaCandidate?
+        let asset: MediaAsset?
+        let assetSnapshot: MediaManifestEntry?
+        let pendingDownloadURL: URL?
+        let requiresRecoveryNormalization: Bool
+    }
+
+    private struct RestoredMediaMetadata: Sendable {
+        let duration: Double
+        let sourceWidth: Int?
+        let sourceHeight: Int?
+        let sourceFPS: Double?
+        let hasAudio: Bool
+    }
+
+    private var mediaRestoreTask: Task<Void, Never>?
+    private var mediaRestoreRevision = UUID()
+    private var pendingMediaRestoreStates: [ObjectIdentifier: MediaManifestEntry] = [:]
+    var mediaRestoreScanner: @Sendable ([URL]) async throws -> Set<URL> = { urls in
+        try await VideoProject.existingMediaURLs(urls)
+    }
+    var restoredMetadataLoader: @MainActor (MediaAsset) async -> Bool = { asset in
+        await asset.loadMetadata(includeThumbnail: false)
+    }
+
+    func cancelDocumentBackgroundWork() {
+        thumbnailTask?.cancel()
+        mediaRestoreTask?.cancel()
+        cachedThumbnail = nil
+    }
+
     func restoreAssetsFromManifest() {
+        let coordinator = editorViewModel.projectPackageCoordinator
+        guard !coordinator.isClosing, !coordinator.isClosed else { return }
+        let previousTask = mediaRestoreTask
+        previousTask?.cancel()
+        let revision = UUID()
+        mediaRestoreRevision = revision
+        let documentURL = fileURL
+        let projectURL = editorViewModel.projectURL
         let entries = editorViewModel.mediaManifest.entries
-        let expectedURLs = MediaResolver.expectedURLMap(entries: entries, projectURL: editorViewModel.projectURL)
-        var missing = 0
-        var missingRefs: Set<String> = []
+        let expectedURLs = MediaResolver.expectedURLMap(entries: entries, projectURL: projectURL)
+        let existingAssets = editorViewModel.mediaAssetsById
+        let existingIdentities = Set(existingAssets.values.map(ObjectIdentifier.init))
+        pendingMediaRestoreStates = pendingMediaRestoreStates.filter { existingIdentities.contains($0.key) }
         var restoredAssets: [MediaAsset] = []
-        var candidates: [RestoredMediaCandidate] = []
+        var targets: [MediaRestoreTarget] = []
+        var seen: Set<String> = []
         restoredAssets.reserveCapacity(entries.count)
-        candidates.reserveCapacity(entries.count)
-        for entry in entries {
-            guard let url = expectedURLs[entry.id] else {
-                Log.project.warning("restore: could not resolve URL for entry id=\(entry.id) name=\(entry.name)")
-                missing += 1
-                missingRefs.insert(entry.id)
-                continue
+        for entry in entries where seen.insert(entry.id).inserted {
+            let candidate = expectedURLs[entry.id].map { RestoredMediaCandidate(id: entry.id, name: entry.name, url: $0) }
+            let existing = existingAssets[entry.id]
+            let asset = existing ?? candidate.map { MediaAsset(entry: entry, resolvedURL: $0.url) }
+            let snapshot = asset?.toManifestEntry(projectURL: projectURL)
+            if existing == nil, let asset, let snapshot {
+                restoredAssets.append(asset)
+                pendingMediaRestoreStates[ObjectIdentifier(asset)] = snapshot
             }
-            let asset = MediaAsset(entry: entry, resolvedURL: url)
-            restoredAssets.append(asset)
-            candidates.append(RestoredMediaCandidate(id: entry.id, name: entry.name, url: url))
+            targets.append(MediaRestoreTarget(
+                entry: entry, candidate: candidate, asset: asset,
+                assetSnapshot: snapshot, pendingDownloadURL: asset?.pendingDownloadURL,
+                requiresRecoveryNormalization: asset.map { pendingMediaRestoreStates[ObjectIdentifier($0)] == snapshot } ?? false
+            ))
         }
-        if !restoredAssets.isEmpty {
-            editorViewModel.mediaAssets.append(contentsOf: restoredAssets)
-        }
-        editorViewModel.missingMediaRefs = missingRefs
-
-        let restoreCandidates = candidates
-        let initialMissingRefs = missingRefs
-        let initialMissingCount = missing
-        let manifestEntries = entries.count
-        Task { [weak self] in
-            let existingRefs = await Task.detached(priority: .utility) {
-                Self.existingMediaRefs(restoreCandidates)
-            }.value
-            self?.finishRestoredMediaScan(
-                candidates: restoreCandidates,
-                existingRefs: existingRefs,
-                initialMissingRefs: initialMissingRefs,
-                initialMissingCount: initialMissingCount,
-                manifestEntries: manifestEntries
-            )
+        if !restoredAssets.isEmpty { editorViewModel.mediaAssets.append(contentsOf: restoredAssets) }
+        let scanner = mediaRestoreScanner
+        let loader = restoredMetadataLoader
+        let urls = targets.compactMap { $0.candidate?.url }
+        let timelines = editorViewModel.timelines
+        mediaRestoreTask = coordinator.startMutation { [weak self] lease in
+            guard let self else { return }
+            defer { if mediaRestoreRevision == revision { mediaRestoreTask = nil } }
+            if let previousTask {
+                await previousTask.value
+                try Task.checkCancellation()
+                try coordinator.validate(lease)
+                guard isCurrentMediaRestore(revision, documentURL: documentURL, projectURL: projectURL) else { return }
+            }
+            let scan = try await Self.scanRestoredMedia(urls, timelines: timelines, scan: scanner)
+            try Task.checkCancellation()
+            try coordinator.validate(lease)
+            guard isCurrentMediaRestore(revision, documentURL: documentURL, projectURL: projectURL) else { return }
+            let currentEntries = mediaRestoreEntriesByID()
+            var missingRefs = editorViewModel.missingMediaRefs
+            var updates: [MediaAsset] = []
+            var hydration: [MediaAsset] = []
+            for target in targets {
+                guard isCurrentMediaRestoreTarget(target, entries: currentEntries, projectURL: projectURL) else { continue }
+                let exists = target.candidate.map { scan.existingURLs.contains($0.url) } ?? false
+                guard let asset = target.asset else {
+                    missingRefs.insert(target.entry.id)
+                    continue
+                }
+                let interruptedImport = target.requiresRecoveryNormalization && !exists
+                    && asset.importInput != nil && asset.generationStatus == .downloading
+                if target.requiresRecoveryNormalization {
+                    let oldStatus = asset.generationStatus
+                    if asset.importInput != nil, oldStatus == .downloading {
+                        asset.generationStatus = exists ? .none : .failed("Import interrupted")
+                    } else if !exists, asset.isRecoveringGeneration {
+                        asset.generationStatus = .generating
+                    } else if exists, oldStatus != .none, !asset.canResumeGeneration {
+                        asset.generationStatus = .none
+                    }
+                    if oldStatus != asset.generationStatus { updates.append(asset) }
+                }
+                pendingMediaRestoreStates.removeValue(forKey: ObjectIdentifier(asset))
+                if exists || asset.isRecoveringGeneration || asset.isGenerating || interruptedImport {
+                    missingRefs.remove(asset.id)
+                } else {
+                    missingRefs.insert(asset.id)
+                }
+                if exists, scan.usedRefs.contains(asset.id), !asset.isGenerating { hydration.append(asset) }
+            }
+            editorViewModel.updateManifestMetadata(for: updates)
+            if missingRefs != editorViewModel.missingMediaRefs { editorViewModel.missingMediaRefs = missingRefs }
+            var hydrationManifest = editorViewModel.mediaManifest
+            var hydrationEntries = mediaRestoreEntriesByID()
+            let hydrationTargets = hydration.compactMap { asset -> MediaRestoreTarget? in
+                guard let entry = hydrationEntries[asset.id] else { return nil }
+                return MediaRestoreTarget(
+                    entry: entry, candidate: RestoredMediaCandidate(id: asset.id, name: asset.name, url: asset.url), asset: asset,
+                    assetSnapshot: asset.toManifestEntry(projectURL: projectURL), pendingDownloadURL: asset.pendingDownloadURL,
+                    requiresRecoveryNormalization: false
+                )
+            }
+            var hydrated: [(target: MediaRestoreTarget, metadata: RestoredMediaMetadata)] = []
+            for target in hydrationTargets {
+                try Task.checkCancellation()
+                guard isCurrentMediaRestore(revision, documentURL: documentURL, projectURL: projectURL) else { return }
+                if hydrationManifest != editorViewModel.mediaManifest {
+                    hydrationManifest = editorViewModel.mediaManifest
+                    hydrationEntries = mediaRestoreEntriesByID()
+                }
+                guard isCurrentMediaRestoreTarget(target, entries: hydrationEntries, projectURL: projectURL),
+                      let asset = target.asset, let state = target.assetSnapshot,
+                      isMediaUsedOnTimeline(asset.id), !asset.isGenerating else { continue }
+                let temporary = MediaAsset(entry: state, resolvedURL: asset.url)
+                let loaded = await loader(temporary)
+                try Task.checkCancellation()
+                try coordinator.validate(lease)
+                guard isCurrentMediaRestore(revision, documentURL: documentURL, projectURL: projectURL) else { return }
+                if hydrationManifest != editorViewModel.mediaManifest {
+                    hydrationManifest = editorViewModel.mediaManifest
+                    hydrationEntries = mediaRestoreEntriesByID()
+                }
+                guard loaded, isCurrentMediaRestoreTarget(target, entries: hydrationEntries, projectURL: projectURL),
+                      isMediaUsedOnTimeline(asset.id) else { continue }
+                hydrated.append((target, RestoredMediaMetadata(
+                    duration: temporary.duration, sourceWidth: temporary.sourceWidth, sourceHeight: temporary.sourceHeight,
+                    sourceFPS: temporary.sourceFPS, hasAudio: temporary.hasAudio
+                )))
+            }
+            var metadataUpdates: [MediaAsset] = []
+            for result in hydrated {
+                guard isCurrentMediaRestoreTarget(result.target, entries: hydrationEntries, projectURL: projectURL),
+                      let asset = result.target.asset, isMediaUsedOnTimeline(asset.id) else { continue }
+                asset.duration = result.metadata.duration
+                asset.sourceWidth = result.metadata.sourceWidth
+                asset.sourceHeight = result.metadata.sourceHeight
+                asset.sourceFPS = result.metadata.sourceFPS
+                asset.hasAudio = result.metadata.hasAudio
+                metadataUpdates.append(asset)
+                editorViewModel.prepareMediaVisuals(for: asset)
+            }
+            editorViewModel.updateManifestMetadata(for: metadataUpdates)
+            editorViewModel.generationService.resumePendingGenerations(editor: editorViewModel)
+            Log.project.notice("restore complete entries=\(entries.count) missing=\(editorViewModel.missingMediaRefs.count)")
+        } onFailure: { [weak self] error in
+            guard let self, mediaRestoreRevision == revision else { return }
+            mediaRestoreTask = nil
+            if !(error is CancellationError) { Log.project.warning("restore scan failed: \(error.localizedDescription)") }
         }
     }
 
-    private nonisolated static func existingMediaRefs(_ candidates: [RestoredMediaCandidate]) -> Set<String> {
-        Set(candidates.compactMap { candidate in
-            FileManager.default.fileExists(atPath: candidate.url.path) ? candidate.id : nil
-        })
+    @concurrent
+    private static func scanRestoredMedia(
+        _ urls: [URL], timelines: [Timeline], scan: @Sendable ([URL]) async throws -> Set<URL>
+    ) async throws -> (existingURLs: Set<URL>, usedRefs: Set<String>) {
+        var usedRefs: Set<String> = []
+        for timeline in timelines {
+            for track in timeline.tracks {
+                for clip in track.clips {
+                    try Task.checkCancellation()
+                    usedRefs.insert(clip.mediaRef)
+                }
+            }
+        }
+        let existingURLs = try await scan(urls)
+        try Task.checkCancellation()
+        return (existingURLs, usedRefs)
     }
 
-    private func finishRestoredMediaScan(
-        candidates: [RestoredMediaCandidate],
-        existingRefs: Set<String>,
-        initialMissingRefs: Set<String>,
-        initialMissingCount: Int,
-        manifestEntries: Int
-    ) {
-        var assetsByID: [String: MediaAsset] = [:]
-        for asset in editorViewModel.mediaAssets {
-            assetsByID[asset.id] = asset
+    @concurrent
+    private static func existingMediaURLs(_ urls: [URL]) async throws -> Set<URL> {
+        var existing: Set<URL> = []
+        for url in urls {
+            try Task.checkCancellation()
+            if FileManager.default.fileExists(atPath: url.path) { existing.insert(url) }
         }
-        var restored = 0
-        var missing = initialMissingCount
-        var missingRefs = initialMissingRefs
-        var manifestUpdates: [MediaAsset] = []
-        let timelineMediaRefs = Set(editorViewModel.timelines.flatMap { timeline in
-            timeline.tracks.flatMap { track in track.clips.map(\.mediaRef) }
-        })
+        return existing
+    }
 
-        for candidate in candidates {
-            guard let asset = assetsByID[candidate.id] else { continue }
-            guard existingRefs.contains(candidate.id) else {
-                if asset.importInput != nil, asset.generationStatus == .downloading {
-                    asset.generationStatus = .failed("Import interrupted")
-                    manifestUpdates.append(asset)
-                    continue
-                }
-                if asset.isRecoveringGeneration {
-                    asset.generationStatus = .generating
-                    manifestUpdates.append(asset)
-                    continue
-                }
-                Log.project.warning("restore: media file missing id=\(candidate.id) name=\(candidate.name) path=\(candidate.url.path)")
-                missing += 1
-                missingRefs.insert(candidate.id)
-                continue
-            }
-            if asset.importInput != nil, asset.generationStatus == .downloading {
-                asset.generationStatus = .none
-                manifestUpdates.append(asset)
-            }
-            if asset.generationStatus != .none, !asset.canResumeGeneration {
-                asset.generationStatus = .none
-                manifestUpdates.append(asset)
-            }
-            restored += 1
-            let usedOnTimeline = timelineMediaRefs.contains(asset.id)
-            Task { [weak self] in
-                _ = await asset.loadMetadata(includeThumbnail: false)
-                guard usedOnTimeline, let self else { return }
-                self.editorViewModel.prepareMediaVisuals(for: asset)
-            }
+    private func isCurrentMediaRestore(_ revision: UUID, documentURL: URL?, projectURL: URL?) -> Bool {
+        let coordinator = editorViewModel.projectPackageCoordinator
+        return !coordinator.isClosing && !coordinator.isClosed && mediaRestoreRevision == revision
+            && fileURL == documentURL && editorViewModel.projectURL == projectURL
+    }
+
+    private func mediaRestoreEntriesByID() -> [String: MediaManifestEntry] {
+        var entries: [String: MediaManifestEntry] = [:]
+        for entry in editorViewModel.mediaManifest.entries where entries[entry.id] == nil { entries[entry.id] = entry }
+        return entries
+    }
+
+    private func isCurrentMediaRestoreTarget(
+        _ target: MediaRestoreTarget, entries: [String: MediaManifestEntry], projectURL: URL?
+    ) -> Bool {
+        guard entries[target.entry.id] == target.entry else { return false }
+        let current = editorViewModel.mediaAssetsById[target.entry.id]
+        guard current === target.asset else { return false }
+        return current?.url == target.candidate?.url && current?.toManifestEntry(projectURL: projectURL) == target.assetSnapshot
+            && current?.pendingDownloadURL == target.pendingDownloadURL
+    }
+
+    private func isMediaUsedOnTimeline(_ id: String) -> Bool {
+        editorViewModel.timelines.contains { timeline in
+            timeline.tracks.contains { track in track.clips.contains { $0.mediaRef == id } }
         }
-
-        editorViewModel.updateManifestMetadata(for: manifestUpdates)
-        editorViewModel.missingMediaRefs = missingRefs
-        editorViewModel.generationService.resumePendingGenerations(editor: editorViewModel)
-        Log.project.notice(
-            "restore ok restored=\(restored) missing=\(missing)",
-            telemetry: "Media restored",
-            data: ["restored": restored, "missing": missing, "manifestEntries": manifestEntries]
-        )
     }
 }
 

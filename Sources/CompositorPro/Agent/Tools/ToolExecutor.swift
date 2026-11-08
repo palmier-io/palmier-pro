@@ -25,6 +25,9 @@ final class ToolExecutor {
     let narrationTimingService: NarrationTimingService
     let capabilityInputLoader: @Sendable () async throws -> RuntimeCapabilities.LocalInputs
     let stockProviders: [any StockMediaProvider]
+    let importDownloader: ImportMediaDownload
+    let projectRegistry: ProjectRegistry?
+    let projectAccessibilityCheck: (@Sendable ([ProjectAccessibility.Key]) async throws -> [ProjectAccessibility])?
 
     var editor: EditorViewModel? {
         frontmostProjectProvider == nil ? inAppEditor : sessionProject?.editorViewModel
@@ -46,7 +49,10 @@ final class ToolExecutor {
         visualSearchModel: any VisualSearchModelLoading = VisualModelLoader.shared,
         capabilityInputLoader: @escaping @Sendable () async throws -> RuntimeCapabilities.LocalInputs = RuntimeCapabilities.LocalInputs.load,
         narrationTimingService: NarrationTimingService = .shared,
-        stockProviders: [any StockMediaProvider] = StockMediaSearch.defaultProviders
+        stockProviders: [any StockMediaProvider] = StockMediaSearch.defaultProviders,
+        projectRegistry: ProjectRegistry? = nil,
+        projectAccessibilityCheck: (@Sendable ([ProjectAccessibility.Key]) async throws -> [ProjectAccessibility])? = nil,
+        importDownloader: @escaping ImportMediaDownload = ToolExecutor.downloadImportedMedia
     ) {
         self.inAppEditor = editor
         self.frontmostProjectProvider = nil
@@ -56,6 +62,9 @@ final class ToolExecutor {
         self.capabilityInputLoader = capabilityInputLoader
         self.narrationTimingService = narrationTimingService
         self.stockProviders = stockProviders
+        self.importDownloader = importDownloader
+        self.projectRegistry = projectRegistry
+        self.projectAccessibilityCheck = projectAccessibilityCheck
     }
 
     init(
@@ -64,7 +73,10 @@ final class ToolExecutor {
         visualSearchModel: any VisualSearchModelLoading = VisualModelLoader.shared,
         capabilityInputLoader: @escaping @Sendable () async throws -> RuntimeCapabilities.LocalInputs = RuntimeCapabilities.LocalInputs.load,
         narrationTimingService: NarrationTimingService = .shared,
-        stockProviders: [any StockMediaProvider] = StockMediaSearch.defaultProviders
+        stockProviders: [any StockMediaProvider] = StockMediaSearch.defaultProviders,
+        projectRegistry: ProjectRegistry? = nil,
+        projectAccessibilityCheck: (@Sendable ([ProjectAccessibility.Key]) async throws -> [ProjectAccessibility])? = nil,
+        importDownloader: @escaping ImportMediaDownload = ToolExecutor.downloadImportedMedia
     ) {
         let project = projectProvider()
         self.inAppEditor = nil
@@ -76,6 +88,9 @@ final class ToolExecutor {
         self.capabilityInputLoader = capabilityInputLoader
         self.narrationTimingService = narrationTimingService
         self.stockProviders = stockProviders
+        self.importDownloader = importDownloader
+        self.projectRegistry = projectRegistry
+        self.projectAccessibilityCheck = projectAccessibilityCheck
     }
 
     func bindProject(_ project: VideoProject?) {

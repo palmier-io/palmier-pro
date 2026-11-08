@@ -118,87 +118,73 @@ struct VideoProjectLoadTests {
     }
 
     @MainActor
-    @Test func manifestRestoreLoadsUnusedMetadataWithoutVisuals() async throws {
-        let imageURL = try CompositorFixtures.patternPNG(size: CGSize(width: 640, height: 360))
-        let document = VideoProject()
-        var manifest = MediaManifest()
-        manifest.entries = [MediaManifestEntry(
-            id: "unused-image",
-            name: "Unused Image",
-            type: .image,
-            source: .external(absolutePath: imageURL.path),
-            duration: Defaults.imageDurationSeconds
-        )]
-        document.editorViewModel.mediaManifest = manifest
-
-        document.restoreAssetsFromManifest()
-        for _ in 0..<100 {
-            if document.editorViewModel.mediaAssets.first?.sourceWidth == 640 { break }
-            try await Task.sleep(for: .milliseconds(10))
+    @Test func manifestRestoreKeepsUnusedMetadataAndVisualsLazy() async throws {
+        try await withPackageTestFixture { fixture in
+            let imageURL = try await fixture.stage(MediaInputIdentityFixtures.imageData(width: 640, height: 360))
+            let document = fixture.document()
+            document.editorViewModel.mediaManifest.entries = [MediaManifestEntry(
+                id: "unused-image", name: "Unused Image", type: .image,
+                source: .external(absolutePath: imageURL.path), duration: Defaults.imageDurationSeconds
+            )]
+            document.restoreAssetsFromManifest()
+            await document.editorViewModel.projectPackageCoordinator.waitUntilIdle()
+            let asset = try #require(document.editorViewModel.mediaAssets.first)
+            #expect(asset.sourceWidth == nil)
+            #expect(asset.sourceHeight == nil)
+            #expect(asset.thumbnail == nil)
+            #expect(document.editorViewModel.mediaVisualCache.imageThumbnail(for: asset.id) == nil)
         }
-
-        let asset = try #require(document.editorViewModel.mediaAssets.first)
-        #expect(asset.sourceWidth == 640)
-        #expect(asset.sourceHeight == 360)
-        #expect(asset.thumbnail == nil)
-        #expect(document.editorViewModel.mediaVisualCache.imageThumbnail(for: asset.id) == nil)
     }
 
     @MainActor
     @Test func manifestRestoreRefreshesTimelineMetadataWithoutThumbnail() async throws {
-        let imageURL = try CompositorFixtures.patternPNG(size: CGSize(width: 640, height: 360))
-        let document = VideoProject()
-        document.editorViewModel.timeline = Fixtures.timeline(tracks: [
-            Fixtures.videoTrack(clips: [Fixtures.clip(
-                mediaRef: "used-image",
-                mediaType: .image,
-                start: 0,
-                duration: 30
-            )])
-        ])
-        var manifest = MediaManifest()
-        manifest.entries = [
-            MediaManifestEntry(
-                id: "used-image",
-                name: "Used Image",
-                type: .image,
-                source: .external(absolutePath: imageURL.path),
-                duration: Defaults.imageDurationSeconds,
-                sourceWidth: 1,
-                sourceHeight: 1
-            ),
-            MediaManifestEntry(
-                id: "unused-image",
-                name: "Unused Image",
-                type: .image,
-                source: .external(absolutePath: imageURL.path),
-                duration: Defaults.imageDurationSeconds,
-                sourceWidth: 2,
-                sourceHeight: 2
-            ),
-        ]
-        document.editorViewModel.mediaManifest = manifest
+        try await withPackageTestFixture { fixture in
+            let imageURL = try await fixture.stage(MediaInputIdentityFixtures.imageData(width: 640, height: 360))
+            let document = fixture.document()
+            document.editorViewModel.timeline = Fixtures.timeline(tracks: [
+                Fixtures.videoTrack(clips: [Fixtures.clip(
+                    mediaRef: "used-image",
+                    mediaType: .image,
+                    start: 0,
+                    duration: 30
+                )])
+            ])
+            var manifest = MediaManifest()
+            manifest.entries = [
+                MediaManifestEntry(
+                    id: "used-image",
+                    name: "Used Image",
+                    type: .image,
+                    source: .external(absolutePath: imageURL.path),
+                    duration: Defaults.imageDurationSeconds,
+                    sourceWidth: 1,
+                    sourceHeight: 1
+                ),
+                MediaManifestEntry(
+                    id: "unused-image",
+                    name: "Unused Image",
+                    type: .image,
+                    source: .external(absolutePath: imageURL.path),
+                    duration: Defaults.imageDurationSeconds,
+                    sourceWidth: 2,
+                    sourceHeight: 2
+                ),
+            ]
+            document.editorViewModel.mediaManifest = manifest
 
-        document.restoreAssetsFromManifest()
-        for _ in 0..<100 {
-            let usedReady = document.editorViewModel.mediaVisualCache.imageThumbnail(for: "used-image") != nil
-            let unusedReady = document.editorViewModel.mediaAssets.first(where: { $0.id == "unused-image" })?.sourceWidth == 640
-            if usedReady && unusedReady {
-                break
-            }
-            try await Task.sleep(for: .milliseconds(10))
+            document.restoreAssetsFromManifest()
+            await document.editorViewModel.projectPackageCoordinator.waitUntilIdle()
+
+            let used = try #require(document.editorViewModel.mediaAssets.first { $0.id == "used-image" })
+            let unused = try #require(document.editorViewModel.mediaAssets.first { $0.id == "unused-image" })
+            #expect(used.sourceWidth == 640)
+            #expect(used.sourceHeight == 360)
+            #expect(used.thumbnail == nil)
+            #expect(unused.sourceWidth == 2)
+            #expect(unused.sourceHeight == 2)
+            #expect(unused.thumbnail == nil)
+            #expect(document.editorViewModel.mediaVisualCache.imageThumbnail(for: unused.id) == nil)
         }
-
-        let used = try #require(document.editorViewModel.mediaAssets.first { $0.id == "used-image" })
-        let unused = try #require(document.editorViewModel.mediaAssets.first { $0.id == "unused-image" })
-        #expect(used.sourceWidth == 640)
-        #expect(used.sourceHeight == 360)
-        #expect(used.thumbnail == nil)
-        #expect(unused.sourceWidth == 640)
-        #expect(unused.sourceHeight == 360)
-        #expect(unused.thumbnail == nil)
-        #expect(document.editorViewModel.mediaVisualCache.imageThumbnail(for: used.id) != nil)
-        #expect(document.editorViewModel.mediaVisualCache.imageThumbnail(for: unused.id) == nil)
     }
 
     @MainActor
@@ -326,24 +312,23 @@ struct VideoProjectLoadTests {
 
     @MainActor
     @Test func emptyingTheLibraryPersistsOnceAManifestHasBeenRewritten() async throws {
-        // After opening a corrupt-manifest project, rebuilding the library and saving writes a real
-        // manifest. Emptying the library and saving again must persist as empty, not resurrect the
-        // rebuilt entries from the no-longer-relevant load failure.
-        let bundle = try makeBundle()
-        defer { try? fm.removeItem(at: bundle) }
-        try Data("{ corrupt ".utf8).write(to: bundle.appendingPathComponent(Project.manifestFilename))
-
-        let doc = try await VideoProject.load(from: bundle)   // manifestLoadFailed = true
-
-        doc.editorViewModel.mediaManifest = sampleManifest()
-        try doc.write(to: bundle, ofType: VideoProject.typeIdentifier)
-        #expect(try VideoProject.readProjectPackage(at: bundle).manifest?.entries.count == 1)
-
-        doc.editorViewModel.mediaManifest = MediaManifest()
-        try doc.write(to: bundle, ofType: VideoProject.typeIdentifier)
-
-        let reopened = try VideoProject.readProjectPackage(at: bundle)
-        #expect(reopened.manifest?.entries.isEmpty == true)   // emptied library sticks
-        #expect(reopened.manifestUnreadable == false)         // valid (empty) manifest now
+        try await withPackageTestFixture { fixture in
+            let bundle = fixture.package
+            let timeline = Fixtures.timeline()
+            try await fixture.io.perform {
+                try FileManager.default.createDirectory(at: bundle, withIntermediateDirectories: true)
+                try JSONEncoder().encode(ProjectFile(timelines: [timeline], activeTimelineId: timeline.id)).write(to: bundle.appendingPathComponent(Project.timelineFilename))
+                try Data("{ corrupt ".utf8).write(to: bundle.appendingPathComponent(Project.manifestFilename))
+            }
+            let document = try await VideoProject.load(from: bundle, registry: fixture.registry)
+            document.editorViewModel.mediaManifest = sampleManifest()
+            try await savePackageTestDocument(document)
+            #expect(try await fixture.readPackage().manifest?.entries.count == 1)
+            document.editorViewModel.mediaManifest = MediaManifest()
+            try await savePackageTestDocument(document)
+            let reopened = try await fixture.readPackage()
+            #expect(reopened.manifest?.entries.isEmpty == true)
+            #expect(reopened.manifestUnreadable == false)
+        }
     }
 }

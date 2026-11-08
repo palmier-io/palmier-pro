@@ -125,19 +125,43 @@ struct MediaInputIdentityMCPTests {
     }
 
     @Test func corruptByteImportReportsFailureAndRetainsFailedRecord() async throws {
-        try await withClient { client, harness, _ in
-            let result = try await client.callTool(name: "import_media", arguments: [
-                "source": .object(["bytes": .string(Data("not an image".utf8).base64EncodedString()), "mimeType": .string("image/png")]),
-            ])
-            #expect(result.isError == true)
-            let asset = try #require(harness.editor.mediaAssets.first)
-            #expect(asset.inputIdentity == nil)
-            #expect(asset.generationStatus == .failed("Could not read media file."))
-            let inventory = try await client.callTool(name: "get_media")
-            let assets = try #require(try json(inventory.content)["assets"] as? [[String: Any]])
-            #expect(assets.count == 1)
-            #expect(assets.first?["inputIdentityState"] as? String == "unresolved")
-            #expect(harness.editor.unprocessableMediaRefs.contains(asset.id))
+        try await withSavedMediaPackageTestFixture { fixture, document in
+            let editor = document.editorViewModel
+            editor.timeline.settingsConfigured = true
+            let executor = ToolExecutor(editor: editor)
+            let server = Server(name: "corrupt-media-identity", version: "1", capabilities: .init(tools: .init(listChanged: false)))
+            await MCPService.registerTools(on: server, executor: executor)
+            let transports = await InMemoryTransport.createConnectedPair()
+            let client = Client(name: "corrupt-media-identity-tests", version: "1")
+            do {
+                try await server.start(transport: transports.server)
+                _ = try await client.connect(transport: transports.client)
+                let bytes = Data("not an image".utf8)
+                let result = try await client.callTool(name: "import_media", arguments: [
+                    "source": .object(["bytes": .string(bytes.base64EncodedString()), "mimeType": .string("image/png")]),
+                ])
+                #expect(result.isError == true)
+                let asset = try #require(editor.mediaAssets.first)
+                #expect(asset.inputIdentity == nil)
+                #expect(asset.generationStatus == .failed("Could not read media file."))
+                let inventory = try await client.callTool(name: "get_media")
+                let assets = try #require(try json(inventory.content)["assets"] as? [[String: Any]])
+                #expect(assets.count == 1)
+                #expect(assets.first?["inputIdentityState"] as? String == "unresolved")
+                #expect(editor.unprocessableMediaRefs.contains(asset.id))
+                #expect(try await fixture.contents(of: asset.url) == bytes)
+                try await savePackageTestDocument(document)
+                let persisted = try #require(try await fixture.readPackage().manifest?.entries.first)
+                #expect(persisted.id == asset.id)
+                #expect(persisted.inputIdentity == nil)
+                #expect(persisted.generationStatus == asset.generationStatus.manifestValue)
+            } catch {
+                await server.stop()
+                await client.disconnect()
+                throw error
+            }
+            await server.stop()
+            await client.disconnect()
         }
     }
 

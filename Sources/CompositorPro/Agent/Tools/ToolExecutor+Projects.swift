@@ -16,7 +16,12 @@ extension ToolExecutor {
             }
             let actionArgs = args.filter { $0.key != "action" }
             switch action {
-            case "list":   return try listProjects(actionArgs)
+            case "list":
+                let registry = projectRegistry ?? .shared
+                if let projectAccessibilityCheck {
+                    return try await listProjects(actionArgs, registry: registry, checkAccessibility: projectAccessibilityCheck)
+                }
+                return try await listProjects(actionArgs, registry: registry)
             case "open":   return try await openProject(actionArgs)
             case "create": return try await createProject(actionArgs)
             case "close":  return try await closeProject(actionArgs)
@@ -30,17 +35,36 @@ extension ToolExecutor {
         }
     }
 
-    private func listProjects(_ args: [String: Any]) throws -> ToolResult {
+    func listProjects(
+        _ args: [String: Any],
+        registry: ProjectRegistry,
+        checkAccessibility: @Sendable ([ProjectAccessibility.Key]) async throws -> [ProjectAccessibility] = {
+            try await ProjectAccessibility.check($0)
+        }
+    ) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: [], path: "manage_project action='list'")
+        try await registry.waitUntilLoaded()
+        let entries = registry.sortedEntries
         let openDocs = AppState.shared.openProjects
-        let openURLs = Set(openDocs.compactMap { $0.fileURL?.standardizedFileURL })
         let active = sessionProject
-        let activeURL = active?.fileURL?.standardizedFileURL
         let visible = frontmostProject
-        let visibleURL = visible?.fileURL?.standardizedFileURL
+        let context = ProjectListContext(
+            entries: registry.entries, open: openDocs, active: active, visible: visible
+        )
+        let keys = entries.map(ProjectAccessibility.Key.init)
+        let accessibility = try await checkAccessibility(keys)
+        try Task.checkCancellation()
+        guard context == ProjectListContext(
+            entries: registry.entries, open: AppState.shared.openProjects,
+            active: sessionProject, visible: frontmostProject
+        ), accessibility.map(\.key) == keys else {
+            throw ToolError("Project context changed while checking accessibility. Run manage_project with action='list' again.")
+        }
+        let openURLs = Set(context.open.compactMap { $0.url?.standardizedFileURL })
+        let activeURL = context.active?.url?.standardizedFileURL
+        let visibleURL = context.visible?.url?.standardizedFileURL
 
-        // Only registered projects, sorted by most recently opened.
-        let projects = ProjectRegistry.shared.sortedEntries.map { entry -> [String: Any] in
+        let projects = zip(entries, accessibility).map { entry, availability -> [String: Any] in
             let url = entry.url.standardizedFileURL
             return [
                 "id": entry.id.uuidString,
@@ -49,7 +73,7 @@ extension ToolExecutor {
                 "isOpen": openURLs.contains(url),
                 "isActive": activeURL == url,
                 "isVisible": visibleURL == url,
-                "isAccessible": entry.isAccessible,
+                "isAccessible": availability.isAccessible,
             ]
         }
 
@@ -69,10 +93,7 @@ extension ToolExecutor {
         guard let selector = try projectSelector(args, path: actionPath) else {
             throw ToolError("\(actionPath) needs a name, an id from action='list', or a path.")
         }
-        let url = try resolveProjectURL(selector)
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            throw ToolError("No project at \(url.path).")
-        }
+        let url = try await resolveProjectURL(selector)
         let doc = try await AppState.shared.openProjectAsync(at: url)
         bindProject(doc)
         notifyNowEditing(doc)
@@ -105,7 +126,7 @@ extension ToolExecutor {
         let selector = try projectSelector(args, path: actionPath)
         let target: VideoProject
         if let selector {
-            let url = try resolveProjectURL(selector).standardizedFileURL
+            let url = try await resolveProjectURL(selector).standardizedFileURL
             guard let doc = AppState.shared.openProjects.first(where: {
                 $0.fileURL?.standardizedFileURL == url
             }) else {
@@ -145,7 +166,7 @@ extension ToolExecutor {
         return .ok(Self.jsonString(payload) ?? "{}")
     }
 
-    private enum ProjectSelector {
+    enum ProjectSelector {
         case name(String)
         case id(UUID)
         case path(String)
@@ -186,23 +207,26 @@ extension ToolExecutor {
         ]
     }
 
-    private func resolveProjectURL(_ selector: ProjectSelector) throws -> URL {
+    func resolveProjectURL(_ selector: ProjectSelector) async throws -> URL {
+        try Task.checkCancellation()
         switch selector {
         case .path(let path):
             return URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
         case .id(let id):
-            guard let entry = ProjectRegistry.shared.entries.first(where: { $0.id == id }) else {
+            let registry = try await loadedProjectRegistry()
+            guard let entry = registry.entries.first(where: { $0.id == id }) else {
                 throw ToolError("No project with id \(id). Call manage_project with action='list' for valid ids.")
             }
             return entry.url
         case .name(let name):
-            let matches = ProjectRegistry.shared.entries.filter {
+            let registry = try await loadedProjectRegistry()
+            let matches = registry.entries.filter {
                 $0.name.compare(name, options: .caseInsensitive) == .orderedSame
             }
             switch matches.count {
             case 1: return matches[0].url
             case 0:
-                let known = ProjectRegistry.shared.sortedEntries.prefix(15).map(\.name)
+                let known = registry.sortedEntries.prefix(15).map(\.name)
                 throw ToolError("No project named '\(name)'. Known projects: \(known.joined(separator: ", ")). Call manage_project with action='list' for the full list.")
             default:
                 throw ToolError("\(matches.count) projects are named '\(name)'. Pick one by path: \(matches.map { $0.url.path }.joined(separator: ", "))")
@@ -210,8 +234,36 @@ extension ToolExecutor {
         }
     }
 
+    private func loadedProjectRegistry() async throws -> ProjectRegistry {
+        let registry = projectRegistry ?? .shared
+        try await registry.waitUntilLoaded()
+        return registry
+    }
+
     private func notifyNowEditing(_ doc: VideoProject) {
         let name = doc.displayName ?? Project.defaultProjectName
         doc.editorViewModel.agentService.postSystemNotice("Now editing: \(name)")
+    }
+}
+
+struct ProjectListContext: Equatable {
+    struct Document: Equatable {
+        let identity: ObjectIdentifier
+        let url: URL?
+    }
+
+    let entries: [ProjectEntry]
+    let open: [Document]
+    let active: Document?
+    let visible: Document?
+}
+
+extension ProjectListContext {
+    @MainActor
+    init(entries: [ProjectEntry], open: [VideoProject], active: VideoProject?, visible: VideoProject?) {
+        self.entries = entries
+        self.open = open.map { Document(identity: ObjectIdentifier($0), url: $0.fileURL) }
+        self.active = active.map { Document(identity: ObjectIdentifier($0), url: $0.fileURL) }
+        self.visible = visible.map { Document(identity: ObjectIdentifier($0), url: $0.fileURL) }
     }
 }

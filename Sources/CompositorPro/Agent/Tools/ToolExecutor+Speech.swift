@@ -80,6 +80,14 @@ extension ToolExecutor {
     /// and optionally places it. Prefers the best installed Piper voice, falling back to a Mac
     /// system voice. No server, no sign-in, no credits.
     func generateSpeech(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
+        try await editor.projectPackageCoordinator.withMutation { lease in
+            try await self.performSpeechGeneration(editor, args, lease: lease)
+        }
+    }
+
+    private func performSpeechGeneration(
+        _ editor: EditorViewModel, _ args: [String: Any], lease: ProjectPackageCoordinator.MutationLease
+    ) async throws -> ToolResult {
         let input: GenerateSpeechInput = try decodeToolArgs(args, path: "generate_speech")
 
         if let rate = input.rate, !(0.5...2.0).contains(rate) {
@@ -129,19 +137,28 @@ extension ToolExecutor {
             engine: requestedEngine
         )
         let (engine, model) = SpeechSynthesizer.resolveEngine(for: spec)
+        let timelineBeforeRender = editor.timeline
+        let revision = editor.timelineRenderRevision
         let result = try await SpeechSynthesizer.renderReportingEngine(spec: spec)
         let wavURL = result.url
-
-        // Commit into the project package rather than pointing the asset at the temp file:
-        // finalize only reads metadata in place, so a temp path would leave a dead reference
-        // the moment the render directory is cleaned. This also removes the staged file.
-        let committed = try await editor.commitStagedProjectMedia(
+        let filename = "speech-\(UUID().uuidString).wav"
+        let asset = MediaAsset(url: wavURL, type: .audio, name: "speech-\(UUID().uuidString)")
+        _ = try await editor.commitStagedProjectMedia(
             wavURL,
-            filename: "speech-\(UUID().uuidString.prefix(8)).wav"
-        )
-
-        guard let asset = editor.addMediaAsset(from: committed) else {
-            throw ToolError("The rendered speech could not be imported as media.")
+            filename: filename, lease: lease, validate: {
+                guard editor.timeline == timelineBeforeRender, editor.timelineRenderRevision == revision else { throw CancellationError() }
+            }
+        ) { destination in
+            asset.url = destination
+            editor.importMediaAsset(asset)
+        }
+        let finalized = await editor.finalizeImportedAsset(asset)
+        guard finalized, editor.mediaAssetsById[asset.id] === asset else {
+            throw ToolError("Could not prepare rendered speech; library record retained with mediaRef '\(asset.id)'")
+        }
+        try Task.checkCancellation()
+        guard editor.timeline == timelineBeforeRender, editor.timelineRenderRevision == revision else {
+            throw ToolError("Timeline changed while preparing speech; rendered media retained with mediaRef '\(asset.id)'")
         }
 
         var notes = [

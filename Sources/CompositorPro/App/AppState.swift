@@ -122,10 +122,8 @@ final class AppState {
 
     // Save and close project; switch to next open or show Home. Throws (without closing) if the save fails.
     func closeProject(_ project: VideoProject) async throws {
-        if let url = project.fileURL { ProjectRegistry.shared.register(url) }
-        try await project.saveBeforeClosing()
+        try await project.closeAfterSaving()
         let wasActive = activeProject === project
-        project.close()
         if wasActive {
             activeProject = nil
             if let next = openProjects.first {
@@ -182,7 +180,7 @@ final class AppState {
 
     // Creates and displays a project at `url`; doesn't save or register.
     private func instantiateProject(at url: URL) -> VideoProject {
-        let doc = VideoProject()
+        let doc = VideoProject(registry: .shared)
         doc.fileURL = url
         doc.fileType = VideoProject.typeIdentifier
         doc.makeWindowControllers()
@@ -199,11 +197,24 @@ final class AppState {
         guard !base.contains("/"), !base.contains("\\"), base != ".", base != ".." else {
             throw ProjectError.invalidName(base)
         }
-        let directory = Project.storageDirectory
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = directory.appendingPathComponent(base).appendingPathExtension(Project.fileExtension)
-        guard !FileManager.default.fileExists(atPath: url.path) else {
-            throw ProjectError.nameTaken(url)
+        let url = Project.storageDirectory.appendingPathComponent(base).appendingPathExtension(Project.fileExtension)
+        return try await createProject(at: url)
+    }
+
+    private func createProject(at url: URL) async throws -> VideoProject {
+        try Task.checkCancellation()
+        guard !AppDelegate.shared.isTerminating else { throw CancellationError() }
+        try await ProjectRegistry.shared.waitUntilLoaded()
+        guard !AppDelegate.shared.isTerminating else { throw CancellationError() }
+        let io = ProjectPackageIO()
+        try await io.reservePackage(at: url)
+        do {
+            try Task.checkCancellation()
+            guard !AppDelegate.shared.isTerminating else { throw CancellationError() }
+        } catch {
+            do { try await io.remove([url]) }
+            catch let cleanup { throw ProjectPackageCleanupError(operationError: error, cleanupError: cleanup) }
+            throw error
         }
         let previous = activeProject
         let doc = instantiateProject(at: url)
@@ -214,8 +225,12 @@ final class AppState {
                 }
             }
         } catch {
-            doc.close()
-            try? FileManager.default.removeItem(at: url)
+            await doc.abortOpening()
+            do { try await io.remove([url]) }
+            catch let cleanup {
+                if let previous { showEditor(for: previous) }
+                throw ProjectPackageCleanupError(operationError: error, cleanupError: cleanup)
+            }
             if let previous { showEditor(for: previous) }
             throw error
         }
@@ -236,13 +251,9 @@ final class AppState {
         panel.begin { [self] response in
             Telemetry.endOperation("save_panel")
             guard response == .OK, let url = panel.url else { return }
-            let doc = instantiateProject(at: url)
-            doc.save(to: url, ofType: VideoProject.typeIdentifier, for: .saveOperation) { error in
-                guard error == nil else { return }
-                ProjectRegistry.shared.register(url)
-                doc.editorViewModel.refreshProjectId()
-                self.recordProjectCreated(doc)
-                self.recordProjectOpened(doc)
+            Task { @MainActor in
+                do { _ = try await self.createProject(at: url) }
+                catch { NSAlert(error: error).runModal() }
             }
         }
     }
@@ -260,6 +271,9 @@ final class AppState {
     @discardableResult
     func openProjectAsync(at url: URL, register: Bool = true, options: ProjectOpenOptions = .init()) async throws -> VideoProject {
         try Task.checkCancellation()
+        guard !AppDelegate.shared.isTerminating else { throw CancellationError() }
+        try await ProjectRegistry.shared.waitUntilLoaded()
+        guard !AppDelegate.shared.isTerminating else { throw CancellationError() }
         let resolved = url.standardizedFileURL
         guard !projectPathsBeingDeleted.contains(resolved.path) else {
             throw ProjectError.deletionInProgress(resolved)
@@ -275,8 +289,9 @@ final class AppState {
                 projectOpenCounts[resolved.path, default: 1] -= 1
             }
         }
-        let doc = try await VideoProject.load(from: resolved)
+        let doc = try await VideoProject.load(from: resolved, registry: .shared)
         try Task.checkCancellation()
+        guard !AppDelegate.shared.isTerminating else { throw CancellationError() }
         guard !projectPathsBeingDeleted.contains(resolved.path) else {
             throw ProjectError.deletionInProgress(resolved)
         }
@@ -295,6 +310,7 @@ final class AppState {
     }
 
     func deleteProjects(withIDs ids: Set<UUID>) async throws -> ProjectDeletionResult {
+        try await ProjectRegistry.shared.waitUntilLoaded()
         let entries = ProjectRegistry.shared.entries.filter { ids.contains($0.id) }
         let openPaths = Set(openProjects.compactMap { $0.fileURL?.standardizedFileURL.path })
         let openEntries = entries.filter { openPaths.contains($0.url.standardizedFileURL.path) }

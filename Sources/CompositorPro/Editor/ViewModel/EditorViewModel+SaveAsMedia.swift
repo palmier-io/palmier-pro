@@ -23,7 +23,10 @@ extension EditorViewModel {
         await installExtractedAudio(
             name: "\(asset.name) (audio)",
             folderId: asset.folderId,
-            sourceId: assetId
+            validateSource: {
+                guard self.mediaAssetsById[assetId] === asset, self.canExtractAudio(from: asset),
+                      self.mediaResolver.expectedURL(for: assetId) == sourceURL else { throw CancellationError() }
+            }
         ) { destURL in
             _ = try await AudioTrackExtractor.extract(sourceURL: sourceURL, destURL: destURL)
         }
@@ -46,7 +49,10 @@ extension EditorViewModel {
         let sourceFramesConsumed = clip.sourceFramesConsumed
         let durationFrames = clip.durationFrames
         let speed = clip.speed
-        await installExtractedAudio(name: name, folderId: folderId, sourceId: clipId) { stagedURL in
+        await installExtractedAudio(name: name, folderId: folderId, validateSource: {
+            guard self.audioClipForExtraction(clipId: clipId) == clip, self.timeline.fps == fps,
+                  self.mediaResolver.expectedURL(for: clip.mediaRef) == sourceURL else { throw CancellationError() }
+        }) { stagedURL in
             try await Self.exportClipRange(
                 sourceURL: sourceURL,
                 destURL: stagedURL,
@@ -84,39 +90,34 @@ extension EditorViewModel {
     private func installExtractedAudio(
         name: String,
         folderId: String?,
-        sourceId: String,
+        validateSource: @MainActor () throws -> Void,
         produce: (URL) async throws -> Void
     ) async {
-        guard (try? projectPackageCoordinator.beginMutation()) != nil else { return }
-        let filename = Self.uniqueClipFilename(for: .audio)
-        let mediaDir = projectURL?.appendingPathComponent(Project.mediaDirectoryName)
-            ?? FileManager.default.temporaryDirectory
-        let destURL = mediaDir.appendingPathComponent(filename)
-        let placeholder = MediaAsset(url: destURL, type: .audio, name: name)
-        placeholder.folderId = folderId
-        placeholder.generationStatus = .generating
-        importMediaAsset(placeholder)
-        let stagedURL = FileIO.temporaryFileURL(pathExtension: "m4a")
-        defer {
-            try? FileManager.default.removeItem(at: stagedURL)
-            projectPackageCoordinator.endMutation()
-        }
-
         do {
-            try await produce(stagedURL)
-            guard mediaAssetsById[placeholder.id] != nil else { return }
-            placeholder.url = try await commitStagedProjectMedia(
-                stagedURL,
-                filename: filename,
-                workAlreadyAdmitted: true
-            )
-            placeholder.generationStatus = .none
-            await finalizeImportedAsset(placeholder)
-            Log.project.notice("extractAudio ok source=\(sourceId) out=\(placeholder.url.lastPathComponent)")
+            try await projectPackageCoordinator.withMutation { lease in
+                guard let package = self.projectURL else { throw CocoaError(.fileNoSuchFile) }
+                try validateSource()
+                let filename = Self.uniqueClipFilename(for: .audio)
+                let placeholder = MediaAsset(url: package.appendingPathComponent("media/\(filename)"), type: .audio, name: name)
+                placeholder.folderId = folderId
+                placeholder.generationStatus = .generating
+                self.importMediaAsset(placeholder)
+                do {
+                    let staged = try await self.stageExtractedMedia(pathExtension: "m4a", produce: produce)
+                    _ = try await self.commitStagedProjectMedia(staged, filename: filename, lease: lease, validate: {
+                        try validateSource()
+                        guard self.mediaAssetsById[placeholder.id] === placeholder else { throw CancellationError() }
+                    }) { destination in
+                        placeholder.url = destination
+                        self.updateManifestMetadata(for: [placeholder])
+                    }
+                    await self.finalizeImportedAsset(placeholder)
+                } catch {
+                    self.failExtractedMedia(placeholder, error: error)
+                }
+            }
         } catch {
-            placeholder.generationStatus = .failed(error.localizedDescription)
-            updateManifestMetadata(for: [placeholder])
-            Log.project.error("extractAudio failed source=\(sourceId): \(error.localizedDescription)")
+            reportMediaImportFailure(error)
         }
     }
 
@@ -130,15 +131,7 @@ extension EditorViewModel {
             return
         }
         let sourceName = mediaResolver.displayName(for: clip.mediaRef)
-        guard (try? projectPackageCoordinator.beginMutation()) != nil else { return }
-
         let filename = Self.uniqueClipFilename(for: clip.mediaType)
-        let mediaDir = projectURL?.appendingPathComponent(Project.mediaDirectoryName) ?? FileManager.default.temporaryDirectory
-        let destURL = mediaDir.appendingPathComponent(filename)
-
-        let placeholder = MediaAsset(url: destURL, type: clip.mediaType, name: "\(sourceName) (clip)")
-        placeholder.generationStatus = .generating
-        importMediaAsset(placeholder)
 
         let fps = timeline.fps
         let trimStartFrame = clip.trimStartFrame
@@ -147,34 +140,34 @@ extension EditorViewModel {
         let speed = clip.speed
         let mediaType = clip.mediaType
 
-        Task { @MainActor in
-            defer { self.projectPackageCoordinator.endMutation() }
-            let stagedURL = FileIO.temporaryFileURL(pathExtension: mediaType == .video ? "mp4" : "m4a")
-            defer { try? FileManager.default.removeItem(at: stagedURL) }
+        projectPackageCoordinator.startMutation { lease in
+            guard let package = self.projectURL else { throw CocoaError(.fileNoSuchFile) }
+            guard self.clipFor(id: clipId) == clip, self.timeline.fps == fps,
+                  self.mediaResolver.expectedURL(for: clip.mediaRef) == sourceURL else { throw CancellationError() }
+            let placeholder = MediaAsset(url: package.appendingPathComponent("media/\(filename)"), type: mediaType, name: "\(sourceName) (clip)")
+            placeholder.generationStatus = .generating
+            self.importMediaAsset(placeholder)
             do {
-                try await Self.exportClipRange(
-                    sourceURL: sourceURL,
-                    destURL: stagedURL,
-                    fps: fps,
-                    trimStartFrame: trimStartFrame,
-                    sourceFramesConsumed: sourceFramesConsumed,
-                    durationFrames: durationFrames,
-                    speed: speed,
-                    mediaType: mediaType
-                )
-                placeholder.url = try await self.commitStagedProjectMedia(
-                    stagedURL,
-                    filename: filename,
-                    workAlreadyAdmitted: true
-                )
-                placeholder.generationStatus = .none
+                let staged = try await self.stageExtractedMedia(pathExtension: mediaType == .video ? "mp4" : "m4a") { stagedURL in
+                    try await Self.exportClipRange(sourceURL: sourceURL, destURL: stagedURL, fps: fps,
+                        trimStartFrame: trimStartFrame, sourceFramesConsumed: sourceFramesConsumed,
+                        durationFrames: durationFrames, speed: speed, mediaType: mediaType)
+                }
+                _ = try await self.commitStagedProjectMedia(staged, filename: filename, lease: lease, validate: {
+                    guard self.mediaAssetsById[placeholder.id] === placeholder,
+                          self.clipFor(id: clipId) == clip,
+                          self.timeline.fps == fps,
+                          self.mediaResolver.expectedURL(for: clip.mediaRef) == sourceURL else { throw CancellationError() }
+                }) { destination in
+                    placeholder.url = destination
+                    self.updateManifestMetadata(for: [placeholder])
+                }
                 await self.finalizeImportedAsset(placeholder)
-                Log.project.notice("saveClipAsMedia ok clip=\(clipId) out=\(placeholder.url.lastPathComponent)")
             } catch {
-                placeholder.generationStatus = .failed(error.localizedDescription)
-                self.updateManifestMetadata(for: [placeholder])
-                Log.project.error("saveClipAsMedia failed clip=\(clipId): \(error.localizedDescription)")
+                self.failExtractedMedia(placeholder, error: error)
             }
+        } onFailure: { error in
+            if !(error is CancellationError) { self.reportMediaImportFailure(error) }
         }
     }
 
@@ -184,23 +177,20 @@ extension EditorViewModel {
         let startFrame = range.startFrame
         let frameCount = range.endFrame - range.startFrame
         guard frameCount > 0 else { return }
-        guard (try? projectPackageCoordinator.beginMutation()) != nil else { return }
-
         let filename = Self.uniqueClipFilename(for: .video)
-        let mediaDir = projectURL?.appendingPathComponent(Project.mediaDirectoryName) ?? FileManager.default.temporaryDirectory
-        let destURL = mediaDir.appendingPathComponent(filename)
-
-        let placeholder = MediaAsset(url: destURL, type: .video, name: "Timeline range")
-        placeholder.generationStatus = .rendering
-        importMediaAsset(placeholder)
 
         let timeline = self.timeline
         let resolver = mediaResolver
         let missingMediaRefs = self.missingMediaRefs
         let resolveTimeline = timelineResolver()
+        let revision = timelineRenderRevision
 
-        Task { @MainActor in
-            defer { self.projectPackageCoordinator.endMutation() }
+        projectPackageCoordinator.startMutation { lease in
+            guard let package = self.projectURL else { throw CocoaError(.fileNoSuchFile) }
+            guard self.timeline == timeline, self.timelineRenderRevision == revision else { throw CancellationError() }
+            let placeholder = MediaAsset(url: package.appendingPathComponent("media/\(filename)"), type: .video, name: "Timeline range")
+            placeholder.generationStatus = .rendering
+            self.importMediaAsset(placeholder)
             do {
                 let tempURL = try await TimelineRenderer.render(
                     timeline: timeline,
@@ -211,28 +201,50 @@ extension EditorViewModel {
                     frameCount: frameCount,
                     preset: AVAssetExportPresetHighestQuality
                 )
-                placeholder.url = try await self.commitStagedProjectMedia(
-                    tempURL,
-                    filename: filename,
-                    workAlreadyAdmitted: true
-                )
-                placeholder.generationStatus = .none
+                _ = try await self.commitStagedProjectMedia(tempURL, filename: filename, lease: lease, validate: {
+                    guard self.mediaAssetsById[placeholder.id] === placeholder,
+                          self.timeline == timeline, self.timelineRenderRevision == revision else { throw CancellationError() }
+                }) { destination in
+                    placeholder.url = destination
+                    self.updateManifestMetadata(for: [placeholder])
+                }
                 await self.finalizeImportedAsset(placeholder)
-                Log.project.notice("saveTimelineRangeAsMedia ok frames=\(startFrame)..<\(startFrame + frameCount) out=\(placeholder.url.lastPathComponent)")
             } catch {
-                placeholder.generationStatus = .failed(error.localizedDescription)
-                self.updateManifestMetadata(for: [placeholder])
-                Log.project.error("saveTimelineRangeAsMedia failed: \(error.localizedDescription)")
+                self.failExtractedMedia(placeholder, error: error)
             }
+        } onFailure: { error in
+            if !(error is CancellationError) { self.reportMediaImportFailure(error) }
         }
+    }
+
+    private func stageExtractedMedia(pathExtension: String, produce: (URL) async throws -> Void) async throws -> URL {
+        let io = projectPackageCoordinator.io
+        let staged = try await io.perform { FileIO.temporaryFileURL(pathExtension: pathExtension) }
+        do {
+            try Task.checkCancellation()
+            try await produce(staged)
+            return staged
+        } catch {
+            do { try await io.remove([staged]) }
+            catch let cleanup { throw ProjectPackageCleanupError(operationError: error, cleanupError: cleanup) }
+            throw error
+        }
+    }
+
+    private func failExtractedMedia(_ asset: MediaAsset, error: Error) {
+        guard mediaAssetsById[asset.id] === asset, !projectPackageCoordinator.isClosed else { return }
+        asset.generationStatus = .failed(error.localizedDescription)
+        updateManifestMetadata(for: [asset])
+        onProjectCheckpointRequired?()
+        reportMediaImportFailure(error)
     }
 
     private static func uniqueClipFilename(for type: ClipType) -> String {
         let ext = type == .video ? "mp4" : "m4a"
-        return "clip-\(UUID().uuidString.prefix(8)).\(ext)"
+        return "clip-\(UUID().uuidString).\(ext)"
     }
 
-    private static func exportClipRange(
+    @concurrent private static func exportClipRange(
         sourceURL: URL,
         destURL: URL,
         fps: Int,
@@ -294,8 +306,6 @@ extension EditorViewModel {
                 )
             }
         }
-
-        try? FileManager.default.removeItem(at: destURL)
 
         let presetName = mediaType == .audio
             ? AVAssetExportPresetAppleM4A

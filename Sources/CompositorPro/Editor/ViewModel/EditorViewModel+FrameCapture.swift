@@ -50,7 +50,16 @@ extension EditorViewModel {
         name requestedName: String? = nil,
         folderId: String? = nil
     ) async throws -> FrameCaptureReceipt {
-        guard projectURL != nil else { throw FrameCaptureError.noProject }
+        try await projectPackageCoordinator.withMutation { lease in
+            try await self.performFrameCapture(source: source, name: requestedName, folderId: folderId, lease: lease)
+        }
+    }
+
+    private func performFrameCapture(
+        source: FrameCaptureSource, name requestedName: String?, folderId: String?,
+        lease: ProjectPackageCoordinator.MutationLease
+    ) async throws -> FrameCaptureReceipt {
+        guard let package = projectURL else { throw FrameCaptureError.noProject }
         if let folderId, folder(id: folderId) == nil {
             throw FrameCaptureError.destinationFolderMissing
         }
@@ -58,6 +67,7 @@ extension EditorViewModel {
         let defaultName: String
         let capturedTimelineId: String?
         let rendered: RenderedFrame
+        let validateSource: @MainActor () throws -> Void
         switch source {
         case .timeline(let frame):
             let timeline = timeline
@@ -70,6 +80,11 @@ extension EditorViewModel {
             let missingMediaRefs = missingMediaRefs
             defaultName = "Frame \(frame)"
             capturedTimelineId = timeline.id
+            let revision = timelineRenderRevision
+            validateSource = {
+                guard self.timeline == timeline, self.timelineRenderRevision == revision,
+                      self.mediaResolver.expectedURLMap() == mediaURLs else { throw CancellationError() }
+            }
             rendered = try await FrameCaptureRenderer.timeline(
                 timeline,
                 frame: frame,
@@ -92,30 +107,17 @@ extension EditorViewModel {
             let url = media.url
             defaultName = "\(media.name) frame"
             capturedTimelineId = nil
+            validateSource = {
+                guard self.mediaAssetsById[mediaRef] === media, media.url == url else { throw CancellationError() }
+            }
             rendered = try await FrameCaptureRenderer.media(url: url, sourceSeconds: sourceSeconds)
         }
 
-        do {
-            try Task.checkCancellation()
-            guard projectURL != nil else { throw FrameCaptureError.noProject }
-            try projectPackageCoordinator.beginMutation()
-        } catch {
-            await FrameCaptureRenderer.discardStagedFile(at: rendered.stagedURL)
-            throw error
-        }
-        defer { projectPackageCoordinator.endMutation() }
-
-        let filename = "frame-\(UUID().uuidString.prefix(8)).png"
-        let committedURL = try await commitStagedProjectMedia(
-            rendered.stagedURL,
-            filename: filename,
-            workAlreadyAdmitted: true
-        )
-
-        let destinationFolderStillExists = folderId.map { folder(id: $0) != nil } ?? true
+        let filename = "frame-\(UUID().uuidString).png"
+        var destinationFolderStillExists = true
 
         let asset = MediaAsset(
-            url: committedURL,
+            url: package.appendingPathComponent("media/\(filename)"),
             type: .image,
             name: requestedName ?? defaultName,
             duration: Defaults.imageDurationSeconds
@@ -123,19 +125,23 @@ extension EditorViewModel {
         if let thumbnail = rendered.thumbnail {
             asset.installThumbnail(thumbnail, maximumPixelSize: ImageEncoder.libraryThumbnailMaxPixelSize)
         }
-        asset.folderId = destinationFolderStillExists ? folderId : nil
         asset.sourceWidth = rendered.width
         asset.sourceHeight = rendered.height
 
-        undo.perform("Capture Frame") {
-            let before = mediaLibraryUndoSnapshot()
-            importMediaAsset(asset)
-            searchIndex.schedule(asset)
-            prepareMediaVisuals(for: asset)
-            undo.register("Capture Frame", withTarget: self) { editor in
-                editor.restoreMediaLibraryUndoSnapshot(before, actionName: "Capture Frame")
+        _ = try await commitStagedProjectMedia(rendered.stagedURL, filename: filename, lease: lease, validate: validateSource) { destination in
+            asset.url = destination
+            destinationFolderStillExists = folderId.map { self.folder(id: $0) != nil } ?? true
+            asset.folderId = destinationFolderStillExists ? folderId : nil
+            self.undo.perform("Capture Frame") {
+                let before = self.mediaLibraryUndoSnapshot()
+                self.importMediaAsset(asset)
+                self.searchIndex.schedule(asset)
+                self.prepareMediaVisuals(for: asset)
+                self.undo.register("Capture Frame", withTarget: self) { editor in
+                    editor.restoreMediaLibraryUndoSnapshot(before, actionName: "Capture Frame")
+                }
+                self.onProjectCheckpointRequired?()
             }
-            onProjectCheckpointRequired?()
         }
 
         return FrameCaptureReceipt(

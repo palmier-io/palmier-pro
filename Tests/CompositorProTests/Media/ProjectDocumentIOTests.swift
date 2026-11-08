@@ -2,64 +2,49 @@ import Foundation
 import Testing
 @testable import CompositorPro
 
-@Suite("Project document IO")
+@Suite("Project document IO", .serialized)
 @MainActor
 struct ProjectDocumentIOTests {
-    private let fm = FileManager.default
-
-    @Test func directWritePreservesExistingPackageMediaAndThumbnail() throws {
-        let root = fm.temporaryDirectory.appendingPathComponent("pp-doc-io-\(UUID().uuidString)", isDirectory: true)
-        let package = root.appendingPathComponent("Project.palmier", isDirectory: true)
-        try makePackage(at: package)
-        defer { try? fm.removeItem(at: root) }
-
-        let doc = configuredDocument(fileURL: package)
-        try doc.write(to: package, ofType: VideoProject.typeIdentifier)
-
-        #expect(try String(contentsOf: package.appendingPathComponent("media/clip.mp4"), encoding: .utf8) == "MEDIA")
-        #expect(try String(contentsOf: package.appendingPathComponent(Project.thumbnailFilename), encoding: .utf8) == "THUMB")
-        #expect(fm.fileExists(atPath: package.appendingPathComponent(ChatSessionStore.dirName).path))
+    @Test func nativeSavePreservesExistingPackageMediaAndThumbnail() async throws {
+        try await withPackageTestFixture { fixture in
+            try await makePackage(at: fixture.package, io: fixture.io)
+            let document = configuredDocument(fixture)
+            try await savePackageTestDocument(document)
+            #expect(try await fixture.contents(of: fixture.package.appendingPathComponent("media/clip.mp4")) == Data("MEDIA".utf8))
+            #expect(try await fixture.contents(of: fixture.package.appendingPathComponent(Project.thumbnailFilename)) == Data("THUMB".utf8))
+            #expect(try await fixture.exists(fixture.package.appendingPathComponent(ChatSessionStore.dirName)))
+        }
     }
 
-    @Test func directWriteCopiesPackageMediaAndThumbnailToNewDestination() throws {
-        let root = fm.temporaryDirectory.appendingPathComponent("pp-doc-io-\(UUID().uuidString)", isDirectory: true)
-        let source = root.appendingPathComponent("Source.palmier", isDirectory: true)
-        let destination = root.appendingPathComponent("Destination.palmier", isDirectory: true)
-        try makePackage(at: source)
-        defer { try? fm.removeItem(at: root) }
-
-        let doc = configuredDocument(fileURL: source)
-        try doc.write(to: destination, ofType: VideoProject.typeIdentifier)
-
-        #expect(try String(contentsOf: destination.appendingPathComponent("media/clip.mp4"), encoding: .utf8) == "MEDIA")
-        #expect(try String(contentsOf: destination.appendingPathComponent(Project.thumbnailFilename), encoding: .utf8) == "THUMB")
-        #expect(fm.fileExists(atPath: destination.appendingPathComponent(Project.timelineFilename).path))
-        #expect(fm.fileExists(atPath: destination.appendingPathComponent(Project.manifestFilename).path))
+    @Test func nativeSaveCopyIncludesMediaAndThumbnailAtNewDestination() async throws {
+        try await withPackageTestFixture { fixture in
+            try await makePackage(at: fixture.package, io: fixture.io)
+            let destination = fixture.root.appendingPathComponent("Copy.palmier", isDirectory: true)
+            let document = configuredDocument(fixture)
+            try await savePackageTestDocument(document, to: destination, operation: .saveToOperation)
+            #expect(document.fileURL == fixture.package)
+            #expect(try await fixture.contents(of: destination.appendingPathComponent("media/clip.mp4")) == Data("MEDIA".utf8))
+            #expect(try await fixture.contents(of: destination.appendingPathComponent(Project.thumbnailFilename)) == Data("THUMB".utf8))
+            let saved = try await fixture.readPackage(at: destination)
+            #expect(saved.manifest?.entries.first?.source == .project(relativePath: "media/clip.mp4"))
+        }
     }
 
-    private func makePackage(at url: URL) throws {
-        let media = url.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
-        try fm.createDirectory(at: media, withIntermediateDirectories: true)
-        try Data("MEDIA".utf8).write(to: media.appendingPathComponent("clip.mp4"))
-        try Data("THUMB".utf8).write(to: url.appendingPathComponent(Project.thumbnailFilename))
+    private func makePackage(at url: URL, io: ProjectPackageIO) async throws {
+        try await io.perform {
+            let media = url.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
+            try FileManager.default.createDirectory(at: media, withIntermediateDirectories: true)
+            try Data("MEDIA".utf8).write(to: media.appendingPathComponent("clip.mp4"))
+            try Data("THUMB".utf8).write(to: url.appendingPathComponent(Project.thumbnailFilename))
+        }
     }
 
-    private func configuredDocument(fileURL: URL) -> VideoProject {
-        let doc = VideoProject()
-        doc.fileURL = fileURL
-        doc.fileType = VideoProject.typeIdentifier
-        doc.editorViewModel.timeline = Fixtures.timeline()
-        var manifest = MediaManifest()
-        manifest.entries = [
-            MediaManifestEntry(
-                id: "clip",
-                name: "Clip",
-                type: .video,
-                source: .project(relativePath: "media/clip.mp4"),
-                duration: 1
-            )
+    private func configuredDocument(_ fixture: PackageTestFixture) -> VideoProject {
+        let document = fixture.document()
+        document.editorViewModel.timeline = Fixtures.timeline()
+        document.editorViewModel.mediaManifest.entries = [
+            .init(id: "clip", name: "Clip", type: .video, source: .project(relativePath: "media/clip.mp4"), duration: 1),
         ]
-        doc.editorViewModel.mediaManifest = manifest
-        return doc
+        return document
     }
 }

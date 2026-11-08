@@ -5,7 +5,7 @@ import ClerkKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     static let shared = AppDelegate()
 
-    private var isTerminating = false
+    private(set) var isTerminating = false
     private var restartRequested = false
 
     private override init() {
@@ -54,12 +54,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         isTerminating = true
         let projects = AppState.shared.openProjects
         let shouldRestart = restartRequested
+        projects.forEach { $0.beginClosing() }
 
         Task { @MainActor in
             do {
                 for project in projects {
                     try await project.saveBeforeClosing()
                 }
+                try await ProjectRegistry.shared.flush()
                 if shouldRestart {
                     try await Self.scheduleRelaunch(
                         applicationURL: Bundle.main.bundleURL,

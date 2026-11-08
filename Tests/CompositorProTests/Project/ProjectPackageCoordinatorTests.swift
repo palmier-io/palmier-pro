@@ -1,141 +1,240 @@
 import AppKit
+import Foundation
 import Testing
 @testable import CompositorPro
 
 @MainActor
 private final class DocumentCloseProbe: NSObject {
+    let completed = PackageTestSignal()
     private(set) var result: Bool?
+    private(set) var calls = 0
 
     @objc func document(_ document: NSDocument, shouldClose: Bool, contextInfo: UnsafeMutableRawPointer?) {
         result = shouldClose
+        calls += 1
+        completed.signal()
     }
 }
 
 @Suite("Project package coordination", .serialized)
 @MainActor
 struct ProjectPackageCoordinatorTests {
-    @Test func queuedMutationRunsBeforeSaveCompletionReturns() async throws {
+    @Test func saveFenceWaitsForPublicationAndCleanup() async throws {
         let coordinator = ProjectPackageCoordinator()
-        coordinator.saveStarted()
-        coordinator.saveStarted()
-        var enteredCoordinator = false
-        var mutationRan = false
+        let admitted = PackageTestSignal()
+        let finish = PackageTestSignal()
+        var events: [String] = []
         let mutation = Task {
-            enteredCoordinator = true
-            try await coordinator.performMutation { mutationRan = true }
-        }
-        while !enteredCoordinator { await Task.yield() }
-        #expect(!mutationRan)
-
-        coordinator.saveFinished(success: false)
-        #expect(!mutationRan)
-        coordinator.saveFinished(success: true)
-        #expect(mutationRan)
-        try await mutation.value
-    }
-
-    @Test func failedPreexistingSaveCancelsQueueWithoutReopening() async {
-        let coordinator = ProjectPackageCoordinator()
-        coordinator.saveStarted()
-        var closingStarted = false
-        let closing = Task {
-            closingStarted = true
-            await coordinator.beginClosing()
-        }
-        while !closingStarted { await Task.yield() }
-
-        var entered = false
-        let mutation = Task {
-            entered = true
-            try await coordinator.performMutation {}
-        }
-        while !entered { await Task.yield() }
-
-        coordinator.saveFinished(success: false)
-        await closing.value
-        await #expect(throws: CancellationError.self) { try await mutation.value }
-        #expect(throws: CancellationError.self) { try coordinator.beginMutation() }
-    }
-
-    @Test func queuedMediaCommitUsesRebasedProjectURL() async throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("coordinator-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: root) }
-        let oldURL = root.appendingPathComponent("Old.palmier", isDirectory: true)
-        let newURL = root.appendingPathComponent("New.palmier", isDirectory: true)
-
-        let document = VideoProject()
-        document.fileURL = oldURL
-        let editor = document.editorViewModel
-        editor.projectURL = oldURL
-
-        editor.projectPackageCoordinator.saveStarted()
-        let stagedURL = try FileIO.stageData(Data("video".utf8), pathExtension: "mp4")
-        let commit = Task { try await editor.commitStagedProjectMedia(stagedURL, filename: "new.mp4") }
-        await Task.yield()
-        document.fileURL = newURL
-        editor.projectPackageCoordinator.saveFinished(success: true)
-
-        let destination = try await commit.value
-        #expect(destination == newURL.appendingPathComponent("media/new.mp4"))
-    }
-
-    @Test func nativeCloseWaitsForAcceptedMutationAndRejectsLateWork() async throws {
-        let package = FileManager.default.temporaryDirectory
-            .appendingPathComponent("native-close-\(UUID().uuidString).palmier", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: package) }
-        let document = VideoProject()
-        document.fileURL = package
-        document.fileType = VideoProject.typeIdentifier
-        let coordinator = document.editorViewModel.projectPackageCoordinator
-        try coordinator.beginMutation()
-
-        let probe = DocumentCloseProbe()
-        document.canClose(
-            withDelegate: probe,
-            shouldClose: #selector(DocumentCloseProbe.document(_:shouldClose:contextInfo:)),
-            contextInfo: nil
-        )
-        await Task.yield()
-        #expect(probe.result == nil)
-
-        coordinator.endMutation()
-        while probe.result == nil { await Task.yield() }
-        #expect(probe.result == true)
-        #expect(throws: CancellationError.self) { try coordinator.beginMutation() }
-    }
-
-    @Test func admittedMediaWorkCommitsBeforeCloseSave() async throws {
-        let package = FileManager.default.temporaryDirectory
-            .appendingPathComponent("admitted-work-\(UUID().uuidString).palmier", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: package) }
-        let document = VideoProject()
-        document.fileURL = package
-        document.fileType = VideoProject.typeIdentifier
-        let editor = document.editorViewModel
-        editor.projectURL = package
-        let coordinator = editor.projectPackageCoordinator
-        let closing: Task<Void, any Error>
-        do {
-            try coordinator.beginMutation()
-            defer { coordinator.endMutation() }
-
-            var closingStarted = false
-            closing = Task {
-                closingStarted = true
-                try await document.saveBeforeClosing()
+            try await coordinator.withMutation { _ in
+                admitted.signal()
+                await finish.wait()
+                events.append("publish")
+                events.append("cleanup")
             }
-            while !closingStarted { await Task.yield() }
-            await Task.yield()
-
-            let stagedURL = try FileIO.stageData(Data("video".utf8), pathExtension: "mp4")
-            let destination = try await editor.commitStagedProjectMedia(
-                stagedURL, filename: "rendered.mp4", workAlreadyAdmitted: true
-            )
-            editor.importMediaAsset(MediaAsset(url: destination, type: .video, name: "Rendered"))
         }
-        try await closing.value
+        await admitted.wait()
+        coordinator.enqueueSave { lease in
+            events.append("snapshot")
+            coordinator.finishSave(lease) { events.append("complete") }
+        }
+        #expect(events.isEmpty)
+        finish.signal()
+        try await mutation.value
+        #expect(events == ["publish", "cleanup", "snapshot", "complete"])
+    }
 
-        let saved = try VideoProject.readProjectPackage(at: package)
-        #expect(saved.manifest?.entries.first?.source == .project(relativePath: "media/rendered.mp4"))
+    @Test func fifoSavesKeepPostFenceAdmissionsUncounted() async throws {
+        let coordinator = ProjectPackageCoordinator()
+        var events: [String] = []
+        var firstLease: ProjectPackageCoordinator.SaveLease?
+        coordinator.enqueueSave { lease in firstLease = lease; events.append("first") }
+        coordinator.enqueueSave { lease in
+            events.append("second")
+            coordinator.finishSave(lease) { events.append("secondComplete") }
+        }
+        let entered = PackageTestSignal()
+        let mutation = Task {
+            entered.signal()
+            try await coordinator.withMutation { _ in events.append("mutation") }
+        }
+        await entered.wait()
+        #expect(events == ["first"])
+        coordinator.finishSave(try #require(firstLease)) { events.append("firstComplete") }
+        #expect(events == ["first", "firstComplete", "second", "secondComplete"])
+        try await mutation.value
+        #expect(events.last == "mutation")
+    }
+
+    @Test func completionCanEnqueueAnotherSaveWithoutOverlappingItsFence() async throws {
+        let coordinator = ProjectPackageCoordinator()
+        var firstLease: ProjectPackageCoordinator.SaveLease?
+        var secondStarted = false
+        coordinator.enqueueSave { firstLease = $0 }
+        coordinator.finishSave(try #require(firstLease)) {
+            coordinator.enqueueSave { lease in
+                secondStarted = true
+                coordinator.finishSave(lease) {}
+            }
+            #expect(!secondStarted)
+        }
+        #expect(secondStarted)
+        await coordinator.waitUntilIdle()
+    }
+
+    @Test func cancelledAdmissionDoesNotRunOrBlockSaveCompletion() async throws {
+        let coordinator = ProjectPackageCoordinator()
+        var saveLease: ProjectPackageCoordinator.SaveLease?
+        coordinator.enqueueSave { saveLease = $0 }
+        let entered = PackageTestSignal()
+        var ran = false
+        let mutation = Task {
+            entered.signal()
+            try await coordinator.withMutation { _ in ran = true }
+        }
+        await entered.wait()
+        mutation.cancel()
+        await #expect(throws: CancellationError.self) { try await mutation.value }
+        coordinator.finishSave(try #require(saveLease)) {}
+        await coordinator.waitUntilIdle()
+        #expect(!ran)
+    }
+
+    @Test func ownedMutationReservesAdmissionBeforeTaskStarts() async {
+        let coordinator = ProjectPackageCoordinator()
+        let entered = PackageTestSignal()
+        let finish = PackageTestSignal()
+        var saved = false
+        coordinator.startMutation { _ in
+            entered.signal()
+            await finish.wait()
+        } onFailure: { Issue.record($0) }
+        coordinator.enqueueSave { lease in
+            saved = true
+            coordinator.finishSave(lease) {}
+        }
+        #expect(!saved)
+        await entered.wait()
+        finish.signal()
+        await coordinator.waitUntilIdle()
+        #expect(saved)
+    }
+
+    @Test func preStartCancellationPublishesFailureBeforeSaveFenceOpens() async {
+        let coordinator = ProjectPackageCoordinator()
+        var status = "preparing"
+        var savedStatus: String?
+        var failures = 0
+        let mutation = coordinator.startMutation { _ in
+            Issue.record("Cancelled operation ran")
+        } onFailure: { error in
+            #expect(error is CancellationError)
+            failures += 1
+            status = "cancelled"
+        }
+        mutation.cancel()
+        coordinator.enqueueSave { lease in
+            savedStatus = status
+            coordinator.finishSave(lease) {}
+        }
+        await mutation.value
+        await coordinator.waitUntilIdle()
+        #expect(failures == 1)
+        #expect(savedStatus == "cancelled")
+    }
+
+    @Test func closingRejectsQueuedAndNewAdmissionsButDrainsGrantedWork() async throws {
+        let coordinator = ProjectPackageCoordinator()
+        let admitted = PackageTestSignal()
+        let finish = PackageTestSignal()
+        let mutation = Task {
+            try await coordinator.withMutation { lease in
+                admitted.signal()
+                await finish.wait()
+                try coordinator.validate(lease)
+            }
+        }
+        await admitted.wait()
+        coordinator.enqueueSave { lease in coordinator.finishSave(lease) {} }
+        let entered = PackageTestSignal()
+        let waiting = Task {
+            entered.signal()
+            try await coordinator.withMutation { _ in Issue.record("Late admission ran") }
+        }
+        await entered.wait()
+        coordinator.beginClosing()
+        await #expect(throws: CancellationError.self) { try await waiting.value }
+        await #expect(throws: CancellationError.self) { try await coordinator.withMutation { _ in } }
+        #expect(!coordinator.canFinishClosing)
+        finish.signal()
+        try await mutation.value
+        await coordinator.waitUntilIdle()
+        #expect(coordinator.canFinishClosing)
+        coordinator.cancelClosing()
+        try await coordinator.withMutation { _ in }
+    }
+
+    @Test func queuedInstallationResolvesDestinationAfterRebase() async throws {
+        try await withPackageTestFixture { fixture in
+            let editor = EditorViewModel()
+            editor.projectURL = fixture.package
+            let rebased = fixture.root.appendingPathComponent("Rebased.palmier", isDirectory: true)
+            let stage = try await fixture.stage()
+            let coordinator = editor.projectPackageCoordinator
+            var saveLease: ProjectPackageCoordinator.SaveLease?
+            coordinator.enqueueSave { saveLease = $0 }
+            let entered = PackageTestSignal()
+            let mutation = Task {
+                entered.signal()
+                return try await coordinator.withMutation { lease in
+                    try await editor.commitStagedProjectMedia(stage, filename: "result.mp4", lease: lease) { destination in
+                        editor.importMediaAsset(MediaAsset(url: destination, type: .video, name: "Result"))
+                    }
+                }
+            }
+            await entered.wait()
+            editor.rebaseProjectURL(from: fixture.package, to: rebased)
+            coordinator.finishSave(try #require(saveLease)) {}
+            let destination = try await mutation.value
+            #expect(destination == rebased.appendingPathComponent("media/result.mp4"))
+            #expect(try await fixture.contents(of: destination) == Data("MEDIA".utf8))
+            #expect(try await !fixture.exists(fixture.package.appendingPathComponent("media/result.mp4")))
+            #expect(try await !fixture.exists(stage))
+        }
+    }
+
+    @Test func nativeClosePersistsGrantedMediaBeforeCompletingDelegateOnce() async throws {
+        try await withPackageTestFixture { fixture in
+            let document = fixture.document()
+            let editor = document.editorViewModel
+            let coordinator = editor.projectPackageCoordinator
+            let stage = try await fixture.stage()
+            let admitted = PackageTestSignal()
+            let finish = PackageTestSignal()
+            let mutation = Task {
+                try await coordinator.withMutation { lease in
+                    admitted.signal()
+                    await finish.wait()
+                    _ = try await editor.commitStagedProjectMedia(stage, filename: "rendered.mp4", lease: lease) { destination in
+                        editor.importMediaAsset(MediaAsset(id: "rendered", url: destination, type: .video, name: "Rendered"))
+                    }
+                }
+            }
+            await admitted.wait()
+            let probe = DocumentCloseProbe()
+            document.canClose(withDelegate: probe,
+                shouldClose: #selector(DocumentCloseProbe.document(_:shouldClose:contextInfo:)), contextInfo: nil)
+            #expect(coordinator.isClosing)
+            #expect(probe.result == nil)
+            await #expect(throws: CancellationError.self) { try await coordinator.withMutation { _ in } }
+            finish.signal()
+            try await mutation.value
+            await probe.completed.wait()
+            #expect(probe.result == true)
+            #expect(probe.calls == 1)
+            let saved = try await fixture.readPackage()
+            #expect(saved.manifest?.entries.first?.id == "rendered")
+            #expect(saved.manifest?.entries.first?.source == .project(relativePath: "media/rendered.mp4"))
+            #expect(try await fixture.contents(of: fixture.package.appendingPathComponent("media/rendered.mp4")) == Data("MEDIA".utf8))
+        }
     }
 }

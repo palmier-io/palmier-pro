@@ -21,8 +21,8 @@ struct VideoGenerationSubmission {
         editor: EditorViewModel,
         onComplete: (@MainActor (MediaAsset) -> Void)? = nil,
         onFailure: (@MainActor () -> Void)? = nil
-    ) -> String {
-        service.generate(
+    ) throws -> String {
+        try service.generate(
             genInput: genInput,
             assetType: .video,
             placeholderDuration: placeholderDuration,

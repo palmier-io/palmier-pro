@@ -330,7 +330,7 @@ struct MusicSection: View {
                     onFinished: { isGenerating = false }
                 )
             } catch {
-                note = error.localizedDescription
+                note = (error as? GenerationService.StartError)?.localizedMessage ?? error.localizedDescription
                 isGenerating = false
             }
         }

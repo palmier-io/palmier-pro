@@ -53,6 +53,14 @@ extension EditorViewModel {
     func removeImageBackground(
         _ request: RemoveBackgroundRequest
     ) async throws -> RemoveBackgroundReceipt {
+        try await projectPackageCoordinator.withMutation { lease in
+            try await self.performBackgroundRemoval(request, lease: lease)
+        }
+    }
+
+    private func performBackgroundRemoval(
+        _ request: RemoveBackgroundRequest, lease: ProjectPackageCoordinator.MutationLease
+    ) async throws -> RemoveBackgroundReceipt {
         guard projectURL != nil else { throw RemoveBackgroundError.noProject }
         if let folderId = request.folderId, folder(id: folderId) == nil {
             throw RemoveBackgroundError.folderMissing
@@ -83,21 +91,21 @@ extension EditorViewModel {
             )
         }.value
 
-        // Flattening is a deliberate second step: the cutout is kept transparent unless the caller
-        // asked for a background, so compositing stays possible.
-        let output: CGImage
-        if let fill, let flattened = Self.flatten(result.image, onto: fill) {
-            output = flattened
-        } else {
-            output = result.image
+        let resolvedFill = fill
+        let output = try await projectPackageCoordinator.io.perform {
+            if let resolvedFill, let flattened = Self.flatten(result.image, onto: resolvedFill) { return flattened }
+            return result.image
         }
 
         try Task.checkCancellation()
         guard projectURL != nil else { throw RemoveBackgroundError.noProject }
-        let filename = "cutout-\(UUID().uuidString.prefix(8)).png"
+        let filename = "cutout-\(UUID().uuidString).png"
         let committed = try await commitImageAsset(
             output, filename: filename, name: request.name ?? defaultCutoutName(asset, request.mode),
-            folderId: request.folderId
+            folderId: request.folderId, lease: lease, validate: {
+                guard self.mediaAssetsById[asset.id] === asset, asset.url == sourceURL else { throw CancellationError() }
+                if let id = request.folderId, self.folder(id: id) == nil { throw RemoveBackgroundError.folderMissing }
+            }
         )
 
         return RemoveBackgroundReceipt(
@@ -119,32 +127,25 @@ extension EditorViewModel {
 
     /// Writes a PNG into the project package and registers it as a library asset.
     private func commitImageAsset(
-        _ image: CGImage, filename: String, name: String, folderId: String?
+        _ image: CGImage, filename: String, name: String, folderId: String?,
+        lease: ProjectPackageCoordinator.MutationLease, validate: @MainActor () throws -> Void
     ) async throws -> MediaAsset {
-        guard let data = ImageEncoder.encodePNG(image) else {
-            throw RemoveBackgroundError.noProject
+        guard let package = projectURL else { throw RemoveBackgroundError.noProject }
+        let staged = try await projectPackageCoordinator.io.perform {
+            guard let data = ImageEncoder.encodePNG(image) else { throw RemoveBackgroundError.noProject }
+            return try FileIO.stageData(data, pathExtension: "png")
         }
-        let staged = try await Task.detached(priority: .userInitiated) {
-            try FileIO.stageData(data, pathExtension: "png")
-        }.value
-        do {
-            try projectPackageCoordinator.beginMutation()
-        } catch {
-            throw error
-        }
-        defer { projectPackageCoordinator.endMutation() }
-
-        let destination = try await commitStagedProjectMedia(
-            staged, filename: filename, workAlreadyAdmitted: true
-        )
         let asset = MediaAsset(
-            url: destination, type: .image, name: name, duration: Defaults.imageDurationSeconds
+            url: package.appendingPathComponent("media/\(filename)"), type: .image, name: name, duration: Defaults.imageDurationSeconds
         )
         asset.installThumbnail(image, maximumPixelSize: ImageEncoder.libraryThumbnailMaxPixelSize)
         asset.folderId = folderId
         asset.sourceWidth = image.width
         asset.sourceHeight = image.height
-        importMediaAsset(asset)
+        _ = try await commitStagedProjectMedia(staged, filename: filename, lease: lease, validate: validate) { destination in
+            asset.url = destination
+            self.importMediaAsset(asset)
+        }
         await finalizeImportedAsset(asset)
         onProjectCheckpointRequired?()
         return asset

@@ -9,12 +9,7 @@ enum MediaInputIdentityFixtures {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("media-identity-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         do {
-            let context = try #require(CGContext(data: nil, width: 2, height: 2, bitsPerComponent: 8, bytesPerRow: 0,
-                                                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
-            context.setFillColor(CGColor(srgbRed: 0.2, green: 0.4, blue: 0.8, alpha: 1))
-            context.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
-            let image = try #require(context.makeImage())
-            let data = try #require(ImageEncoder.encodePNG(image))
+            let data = try await imageData()
             try data.write(to: directory.appendingPathComponent("original.png"))
             try data.write(to: directory.appendingPathComponent("renamed.png"))
             return directory
@@ -22,6 +17,16 @@ enum MediaInputIdentityFixtures {
             try? FileManager.default.removeItem(at: directory)
             throw error
         }
+    }
+
+    @concurrent
+    static func imageData(width: Int = 2, height: Int = 2) async throws -> Data {
+        let context = try #require(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(CGColor(srgbRed: 0.2, green: 0.4, blue: 0.8, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        let image = try #require(context.makeImage())
+        return try #require(ImageEncoder.encodePNG(image))
     }
 
     @concurrent
@@ -93,11 +98,11 @@ struct MediaInputIdentityTests {
         let release = AsyncStream<Void>.makeStream()
         let identity = MediaInputIdentity(contentSHA256: String(repeating: "a", count: 64), byteCount: 1)
         let task = Task {
-            try await asset.prepareInputIdentity { _ in
+            try await asset.prepareInputIdentity(identify: { _ in
                 ready.continuation.yield(())
                 for await _ in release.stream { break }
                 return identity
-            }
+            })
         }
         for await _ in ready.stream { break }
         asset.url = URL(fileURLWithPath: "/identity/replacement.png")

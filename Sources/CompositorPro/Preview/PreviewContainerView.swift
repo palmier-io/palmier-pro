@@ -662,7 +662,7 @@ struct PreviewContainerView: View {
                     .font(.system(size: AppTheme.FontSize.lg, weight: .semibold))
                     .foregroundStyle(AppTheme.MediaOverlay.primaryColor)
                 ScrollView {
-                    Text(error)
+                    Text(verbatim: GenerationService.localizedFailureMessage(error))
                         .font(.system(size: AppTheme.FontSize.md))
                         .foregroundStyle(AppTheme.MediaOverlay.secondaryColor)
                         .multilineTextAlignment(.center)
@@ -681,7 +681,12 @@ struct PreviewContainerView: View {
                 }
                 if let asset = activeMediaAsset, asset.pendingDownloadURL != nil {
                     Button {
-                        editor.generationService.retryDownload(asset: asset, editor: editor)
+                        do { try editor.generationService.retryDownload(asset: asset, editor: editor) }
+                        catch {
+                            editor.mediaPanelToast = MediaPanelToast(
+                                message: (error as? GenerationService.StartError)?.localizedMessage ?? error.localizedDescription
+                            )
+                        }
                     } label: {
                         HStack(spacing: AppTheme.Spacing.xs) {
                             Image(systemName: "arrow.clockwise")

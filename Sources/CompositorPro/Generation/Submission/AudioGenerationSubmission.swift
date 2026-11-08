@@ -18,7 +18,7 @@ struct AudioGenerationSubmission {
         editor: EditorViewModel,
         onComplete: (@MainActor (MediaAsset) -> Void)? = nil,
         onFailure: (@MainActor () -> Void)? = nil
-    ) -> String {
+    ) throws -> String {
         let usesReferences = model.supportsReferences
         let shouldExtractAudio = !usesReferences && !references.isEmpty && model.usesSourceURL
             && (references.first?.type == .video || trimmedSourceOverride?.hasTrim == true)
@@ -66,7 +66,7 @@ struct AudioGenerationSubmission {
         } else {
             snapshotRefs = nil
         }
-        return service.generate(
+        return try service.generate(
             genInput: genInput,
             assetType: .audio,
             placeholderDuration: placeholderDuration,

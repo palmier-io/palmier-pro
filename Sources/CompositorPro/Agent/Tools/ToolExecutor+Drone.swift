@@ -15,6 +15,14 @@ extension ToolExecutor {
     /// Renders a tanpura/shruti-style tonal drone on-device (Karplus-Strong synthesis),
     /// imports it as media, and places it on its own audio track. No server, no credits.
     func generateDrone(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
+        try await editor.projectPackageCoordinator.withMutation { lease in
+            try await self.performDroneGeneration(editor, args, lease: lease)
+        }
+    }
+
+    private func performDroneGeneration(
+        _ editor: EditorViewModel, _ args: [String: Any], lease: ProjectPackageCoordinator.MutationLease
+    ) async throws -> ToolResult {
         let input: GenerateDroneInput = try decodeToolArgs(args, path: "generate_drone")
         guard DroneSynthesizer.semitone(forTonic: input.tonic) != nil else {
             throw ToolError("tonic must be a note name C…B (optionally sharped, e.g. C#, Eb). Got '\(input.tonic)'.")
@@ -71,20 +79,29 @@ extension ToolExecutor {
             pattern: pattern,
             duration: duration
         )
+        let timelineBeforeRender = editor.timeline
+        let revision = editor.timelineRenderRevision
         let wavURL = try await Task.detached(priority: .utility) {
             try DroneSynthesizer.renderWAV(spec: spec)
         }.value
-
-        // Commit into the project package: finalize only reads metadata in place, so pointing
-        // the asset at the render's temporary file left a reference to something already deleted
-        // by the time the clip was placed. This also removes the staged file.
-        let committed = try await editor.commitStagedProjectMedia(
+        let filename = "drone-\(UUID().uuidString).wav"
+        let asset = MediaAsset(url: wavURL, type: .audio, name: filename)
+        _ = try await editor.commitStagedProjectMedia(
             wavURL,
-            filename: "drone-\(UUID().uuidString.prefix(8)).wav"
-        )
-
-        guard let asset = editor.addMediaAsset(from: committed) else {
-            throw ToolError("The rendered drone could not be imported as media.")
+            filename: filename, lease: lease, validate: {
+                guard editor.timeline == timelineBeforeRender, editor.timelineRenderRevision == revision else { throw CancellationError() }
+            }
+        ) { destination in
+            asset.url = destination
+            editor.importMediaAsset(asset)
+        }
+        let finalized = await editor.finalizeImportedAsset(asset)
+        guard finalized, editor.mediaAssetsById[asset.id] === asset else {
+            throw ToolError("Could not prepare rendered drone; library record retained with mediaRef '\(asset.id)'")
+        }
+        try Task.checkCancellation()
+        guard editor.timeline == timelineBeforeRender, editor.timelineRenderRevision == revision else {
+            throw ToolError("Timeline changed while preparing drone; rendered media retained with mediaRef '\(asset.id)'")
         }
 
         let snapshot = timelineSnapshot(editor)

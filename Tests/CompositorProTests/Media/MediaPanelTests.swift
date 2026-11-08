@@ -885,40 +885,55 @@ struct HandleClipboardPasteTests {
         return pb
     }
 
-    @Test func pngBytesImportAtRootWhenDestinationIsNil() async {
-        let e = editor()
-        let pb = freshPasteboard()
-        pb.setData(Data([0x89, 0x50, 0x4E, 0x47]), forType: .png)
+    @Test func pngBytesImportAtRootWhenDestinationIsNil() async throws {
+        try await withSavedMediaPackageTestFixture { fixture, document in
+            let e = document.editorViewModel
+            let pb = freshPasteboard()
+            let data = Data([0x89, 0x50, 0x4E, 0x47])
+            pb.setData(data, forType: .png)
 
-        await MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
+            await MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
 
-        #expect(e.mediaAssets.count == 1)
-        #expect(e.mediaAssets.first?.type == .image)
-        #expect(e.mediaAssets.first?.url.pathExtension == "png")
-        #expect(e.mediaAssets.first?.folderId == nil)
+            #expect(e.mediaAssets.count == 1)
+            let asset = try #require(e.mediaAssets.first)
+            #expect(asset.type == .image)
+            #expect(asset.url.pathExtension == "png")
+            #expect(asset.folderId == nil)
+            #expect(asset.generationStatus == .failed("Could not read media file."))
+            #expect(try await fixture.contents(of: asset.url) == data)
+        }
     }
 
-    @Test func pngBytesLandInDestinationFolder() async {
-        let e = editor()
-        let dest = e.createFolder(name: "Dest")
-        let pb = freshPasteboard()
-        pb.setData(Data([0x89, 0x50, 0x4E, 0x47]), forType: .png)
+    @Test func pngBytesLandInDestinationFolder() async throws {
+        try await withSavedMediaPackageTestFixture { _, document in
+            let e = document.editorViewModel
+            let dest = e.createFolder(name: "Dest")
+            let pb = freshPasteboard()
+            pb.setData(Data([0x89, 0x50, 0x4E, 0x47]), forType: .png)
 
-        await MediaTab.handleClipboardPaste(pasteboard: pb, into: dest, editor: e)
+            await MediaTab.handleClipboardPaste(pasteboard: pb, into: dest, editor: e)
 
-        #expect(e.mediaAssets.first?.folderId == dest)
-        #expect(e.mediaManifest.entries.first?.folderId == dest)
+            #expect(e.mediaAssets.first?.folderId == dest)
+            #expect(e.mediaManifest.entries.first?.folderId == dest)
+            #expect(e.mediaAssets.first?.generationStatus == .failed("Could not read media file."))
+        }
     }
 
-    @Test func tiffBytesImportWithTiffExtension() async {
-        let e = editor()
-        let pb = freshPasteboard()
-        pb.setData(Data([0x4D, 0x4D, 0x00, 0x2A]), forType: .tiff)
+    @Test func tiffBytesImportWithTiffExtension() async throws {
+        try await withSavedMediaPackageTestFixture { fixture, document in
+            let e = document.editorViewModel
+            let pb = freshPasteboard()
+            let data = Data([0x4D, 0x4D, 0x00, 0x2A])
+            pb.setData(data, forType: .tiff)
 
-        await MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
+            await MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
 
-        #expect(e.mediaAssets.count == 1)
-        #expect(e.mediaAssets.first?.url.pathExtension == "tiff")
+            #expect(e.mediaAssets.count == 1)
+            let asset = try #require(e.mediaAssets.first)
+            #expect(asset.url.pathExtension == "tiff")
+            #expect(asset.generationStatus == .failed("Could not read media file."))
+            #expect(try await fixture.contents(of: asset.url) == data)
+        }
     }
 
     @Test func fileURLRoutesThroughFinderDrop() async {

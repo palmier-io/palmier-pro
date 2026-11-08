@@ -9,115 +9,119 @@ import Testing
 @MainActor
 struct CaptureFrameToolTests {
     @Test func MCPDiscoveryCaptureReadbackAndUndo() async throws {
-        let fixture = try await makeFixture()
-        defer { cleanup(fixture) }
-        let server = Server(
-            name: "compositor-pro-test",
-            version: "1.0.0",
-            capabilities: .init(tools: .init(listChanged: false))
-        )
-        await MCPService.registerTools(on: server, executor: ToolExecutor(editor: fixture.editor))
-        let transports = await InMemoryTransport.createConnectedPair()
-        let client = Client(name: "capture-frame-test", version: "1.0.0")
-
-        try await server.start(transport: transports.server)
-        do {
-            _ = try await client.connect(transport: transports.client)
-            let (tools, _) = try await client.listTools()
-            let tool = try #require(tools.first { $0.name == "capture_frame" })
-            let properties = try #require(tool.inputSchema.objectValue?["properties"]?.objectValue)
-            #expect(properties["timelineFrame"]?.objectValue?["type"]?.stringValue == "integer")
-            #expect(properties["mediaRef"]?.objectValue?["type"]?.stringValue == "string")
-            #expect(properties["sourceSeconds"]?.objectValue?["type"]?.stringValue == "number")
-
-            let sourceCapture = try await client.callTool(name: "capture_frame", arguments: [
-                "mediaRef": .string(fixture.source.id),
-                "sourceSeconds": .double(fixture.source.duration),
-                "name": .string("Final source frame"),
-            ])
-            let sourceReceipt = try json(text(sourceCapture.content))
-            let sourceRef = try #require(sourceReceipt["mediaRef"] as? String)
-            #expect(sourceReceipt["name"] as? String == "Final source frame")
-            #expect(fixture.editor.mediaAssets.first { $0.id.hasPrefix(sourceRef) }?.thumbnail != nil)
-            let sourceImage = try imageData(try await client.callTool(
-                name: "inspect_media",
-                arguments: ["mediaRef": .string(sourceRef)]
-            ).content)
-
-            let timelineCapture = try await client.callTool(
-                name: "capture_frame",
-                arguments: ["timelineFrame": .int(0)]
+        try await withFixture { fixture in
+            let server = Server(
+                name: "compositor-pro-test",
+                version: "1.0.0",
+                capabilities: .init(tools: .init(listChanged: false))
             )
-            let timelineRef = try #require(try json(text(timelineCapture.content))["mediaRef"] as? String)
-            let timelineImage = try imageData(try await client.callTool(
-                name: "inspect_media",
-                arguments: ["mediaRef": .string(timelineRef)]
-            ).content)
-            let sourceColor = try await Self.averageRGB(sourceImage)
-            let timelineColor = try await Self.averageRGB(timelineImage)
-            #expect(sourceColor.blue > sourceColor.red)
-            #expect(timelineColor.red > timelineColor.blue)
+            await MCPService.registerTools(on: server, executor: ToolExecutor(editor: fixture.editor))
+            let transports = await InMemoryTransport.createConnectedPair()
+            let client = Client(name: "capture-frame-test", version: "1.0.0")
 
-            let placement = try await client.callTool(name: "add_clips", arguments: [
-                "entries": .array([.object([
-                    "mediaRef": .string(timelineRef),
-                    "startFrame": .int(10),
-                ])]),
-            ])
-            _ = try json(text(placement.content))
-            _ = try await client.callTool(name: "undo")
+            do {
+                try await server.start(transport: transports.server)
+                _ = try await client.connect(transport: transports.client)
+                let (tools, _) = try await client.listTools()
+                let tool = try #require(tools.first { $0.name == "capture_frame" })
+                let properties = try #require(tool.inputSchema.objectValue?["properties"]?.objectValue)
+                #expect(properties["timelineFrame"]?.objectValue?["type"]?.stringValue == "integer")
+                #expect(properties["mediaRef"]?.objectValue?["type"]?.stringValue == "string")
+                #expect(properties["sourceSeconds"]?.objectValue?["type"]?.stringValue == "number")
 
-            _ = try await client.callTool(name: "undo")
-            let afterFirstUndo = try await mediaIds(client, ids: [sourceRef, timelineRef])
-            #expect(afterFirstUndo == Set([sourceRef]))
-            _ = try await client.callTool(name: "undo")
-            #expect(try await mediaIds(client, ids: [sourceRef, timelineRef]).isEmpty)
-        } catch {
+                let sourceCapture = try await client.callTool(name: "capture_frame", arguments: [
+                    "mediaRef": .string(fixture.source.id),
+                    "sourceSeconds": .double(fixture.source.duration),
+                    "name": .string("Final source frame"),
+                ])
+                let sourceResponse = try text(sourceCapture.content)
+                try #require(sourceCapture.isError != true, "\(sourceResponse)")
+                let sourceReceipt = try json(sourceResponse)
+                let sourceRef = try #require(sourceReceipt["mediaRef"] as? String)
+                #expect(sourceReceipt["name"] as? String == "Final source frame")
+                #expect(fixture.editor.mediaAssets.first { $0.id.hasPrefix(sourceRef) }?.thumbnail != nil)
+                let sourceImage = try imageData(try await client.callTool(
+                    name: "inspect_media",
+                    arguments: ["mediaRef": .string(sourceRef)]
+                ).content)
+
+                let timelineCapture = try await client.callTool(
+                    name: "capture_frame",
+                    arguments: ["timelineFrame": .int(0)]
+                )
+                let timelineResponse = try text(timelineCapture.content)
+                try #require(timelineCapture.isError != true, "\(timelineResponse)")
+                let timelineRef = try #require(try json(timelineResponse)["mediaRef"] as? String)
+                let timelineImage = try imageData(try await client.callTool(
+                    name: "inspect_media",
+                    arguments: ["mediaRef": .string(timelineRef)]
+                ).content)
+                let sourceColor = try await Self.averageRGB(sourceImage)
+                let timelineColor = try await Self.averageRGB(timelineImage)
+                #expect(sourceColor.blue > sourceColor.red)
+                #expect(timelineColor.red > timelineColor.blue)
+
+                let placement = try await client.callTool(name: "add_clips", arguments: [
+                    "entries": .array([.object([
+                        "mediaRef": .string(timelineRef),
+                        "startFrame": .int(10),
+                    ])]),
+                ])
+                _ = try json(text(placement.content))
+                _ = try await client.callTool(name: "undo")
+
+                _ = try await client.callTool(name: "undo")
+                let afterFirstUndo = try await mediaIds(client, ids: [sourceRef, timelineRef])
+                #expect(afterFirstUndo == Set([sourceRef]))
+                _ = try await client.callTool(name: "undo")
+                #expect(try await mediaIds(client, ids: [sourceRef, timelineRef]).isEmpty)
+            } catch {
+                await server.stop()
+                await client.disconnect()
+                throw error
+            }
             await server.stop()
             await client.disconnect()
-            throw error
         }
-        await server.stop()
-        await client.disconnect()
     }
 
     @Test func invalidCancelledAndClosingRequestsDoNotCreateAssets() async throws {
-        let fixture = try await makeFixture()
-        defer { cleanup(fixture) }
-        let executor = ToolExecutor(editor: fixture.editor)
-        let originalIds = fixture.editor.mediaAssets.map(\.id)
+        try await withFixture { fixture in
+            let executor = ToolExecutor(editor: fixture.editor)
+            let originalIds = fixture.editor.mediaAssets.map(\.id)
 
-        let invalidResults = await [
-            executor.execute(name: "capture_frame", args: [
-                "timelineFrame": 0,
-                "mediaRef": fixture.source.id,
-                "sourceSeconds": 0,
-            ]),
-            executor.execute(name: "capture_frame", args: ["timelineFrame": "0"]),
-            executor.execute(name: "capture_frame", args: [
-                "mediaRef": fixture.source.id,
-                "sourceSeconds": 3.0,
-            ]),
-            executor.execute(name: "capture_frame", args: ["timelineFrame": 10]),
-        ]
-        #expect(invalidResults.allSatisfy { $0.isError })
+            let invalidResults = await [
+                executor.execute(name: "capture_frame", args: [
+                    "timelineFrame": 0,
+                    "mediaRef": fixture.source.id,
+                    "sourceSeconds": 0,
+                ]),
+                executor.execute(name: "capture_frame", args: ["timelineFrame": "0"]),
+                executor.execute(name: "capture_frame", args: [
+                    "mediaRef": fixture.source.id,
+                    "sourceSeconds": 3.0,
+                ]),
+                executor.execute(name: "capture_frame", args: ["timelineFrame": 10]),
+            ]
+            #expect(invalidResults.allSatisfy { $0.isError })
 
-        let cancelled = Task { @MainActor in
-            try await fixture.editor.captureFrameToMedia(
-                source: .media(mediaRef: fixture.source.id, sourceSeconds: 0)
-            )
+            let cancelled = Task { @MainActor in
+                try await fixture.editor.captureFrameToMedia(
+                    source: .media(mediaRef: fixture.source.id, sourceSeconds: 0)
+                )
+            }
+            cancelled.cancel()
+            await #expect(throws: CancellationError.self) { try await cancelled.value }
+
+            await fixture.editor.projectPackageCoordinator.beginClosing()
+            await #expect(throws: CancellationError.self) {
+                try await fixture.editor.captureFrameToMedia(
+                    source: .media(mediaRef: fixture.source.id, sourceSeconds: 0)
+                )
+            }
+            fixture.editor.projectPackageCoordinator.cancelClosing()
+            #expect(fixture.editor.mediaAssets.map(\.id) == originalIds)
         }
-        cancelled.cancel()
-        await #expect(throws: CancellationError.self) { try await cancelled.value }
-
-        await fixture.editor.projectPackageCoordinator.beginClosing()
-        await #expect(throws: CancellationError.self) {
-            try await fixture.editor.captureFrameToMedia(
-                source: .media(mediaRef: fixture.source.id, sourceSeconds: 0)
-            )
-        }
-        fixture.editor.projectPackageCoordinator.cancelClosing()
-        #expect(fixture.editor.mediaAssets.map(\.id) == originalIds)
     }
 
     @Test func sourceSecondsUseVideoTrackTimeRange() throws {
@@ -155,83 +159,83 @@ struct CaptureFrameToolTests {
     }
 
     @Test func sourcePreviewLoadUsesLiveScrubFrameBeforePlaying() async throws {
-        let fixture = try await makeFixture()
-        defer { cleanup(fixture) }
-        let engine = VideoEngine(editor: fixture.editor)
-        fixture.editor.videoEngine = engine
-        defer {
-            engine.pause()
-            engine.teardown()
-            fixture.editor.videoEngine = nil
+        try await withFixture { fixture in
+            let engine = VideoEngine(editor: fixture.editor)
+            fixture.editor.videoEngine = engine
+            defer {
+                engine.pause()
+                engine.teardown()
+                fixture.editor.videoEngine = nil
+            }
+
+            fixture.editor.openPreviewTab(for: fixture.source)
+            let load = try #require(engine.sourcePreviewTask)
+            fixture.editor.seekSourceToFrame(5, mode: .interactiveScrub)
+            engine.play()
+            await load.value
+
+            #expect(engine.sourcePreviewTask == nil)
+            #expect(engine.player.currentItem != nil)
+            #expect(engine.player.currentTime().seconds >= 0.9)
+            #expect(engine.player.rate > 0)
         }
-
-        fixture.editor.openPreviewTab(for: fixture.source)
-        let load = try #require(engine.sourcePreviewTask)
-        fixture.editor.seekSourceToFrame(5, mode: .interactiveScrub)
-        engine.play()
-        await load.value
-
-        #expect(engine.sourcePreviewTask == nil)
-        #expect(engine.player.currentItem != nil)
-        #expect(engine.player.currentTime().seconds >= 0.9)
-        #expect(engine.player.rate > 0)
     }
 
     @Test func sourcePreviewTimingFailureDoesNotInstallOrPlayItem() async throws {
-        let fixture = try await makeFixture()
-        defer { cleanup(fixture) }
-        let missing = MediaAsset(
-            url: fixture.root.appendingPathComponent("missing.mov"),
-            type: .video,
-            name: "Missing",
-            duration: 1
-        )
-        fixture.editor.importMediaAsset(missing)
-        let engine = VideoEngine(editor: fixture.editor)
-        fixture.editor.videoEngine = engine
-        defer {
-            engine.teardown()
-            fixture.editor.videoEngine = nil
+        try await withFixture { fixture in
+            let missing = MediaAsset(
+                url: fixture.root.appendingPathComponent("missing.mov"),
+                type: .video,
+                name: "Missing",
+                duration: 1
+            )
+            fixture.editor.importMediaAsset(missing)
+            let engine = VideoEngine(editor: fixture.editor)
+            fixture.editor.videoEngine = engine
+            defer {
+                engine.teardown()
+                fixture.editor.videoEngine = nil
+            }
+
+            fixture.editor.openPreviewTab(for: missing)
+            let load = try #require(engine.sourcePreviewTask)
+            engine.play()
+            await load.value
+
+            #expect(engine.sourcePreviewTask == nil)
+            #expect(engine.player.currentItem == nil)
+            #expect(!fixture.editor.isPlaying)
         }
-
-        fixture.editor.openPreviewTab(for: missing)
-        let load = try #require(engine.sourcePreviewTask)
-        engine.play()
-        await load.value
-
-        #expect(engine.sourcePreviewTask == nil)
-        #expect(engine.player.currentItem == nil)
-        #expect(!fixture.editor.isPlaying)
     }
 
     @Test func staleSourcePreviewLoadPreservesDeferredPlayback() async throws {
-        let fixture = try await makeFixture()
-        defer { cleanup(fixture) }
-        let engine = VideoEngine(editor: fixture.editor)
-        fixture.editor.videoEngine = engine
-        defer {
-            engine.teardown()
-            fixture.editor.videoEngine = nil
+        try await withFixture { fixture in
+            let engine = VideoEngine(editor: fixture.editor)
+            fixture.editor.videoEngine = engine
+            defer {
+                engine.teardown()
+                fixture.editor.videoEngine = nil
+            }
+
+            fixture.editor.openPreviewTab(for: fixture.source)
+            let load = try #require(engine.sourcePreviewTask)
+            engine.play()
+            fixture.source.url = fixture.root.appendingPathComponent("replacement.mov")
+            await load.value
+
+            #expect(engine.sourcePreviewTask == nil)
+            #expect(fixture.editor.isPlaying)
+            #expect(engine.player.rate == 0)
+
+            fixture.source.url = fixture.videoURL
+            engine.previewAsset(fixture.source)
+            let successor = try #require(engine.sourcePreviewTask)
+            await successor.value
+
+            #expect(engine.sourcePreviewTask == nil)
+            #expect(fixture.editor.isPlaying)
+            #expect(engine.player.rate > 0)
         }
-
-        fixture.editor.openPreviewTab(for: fixture.source)
-        let load = try #require(engine.sourcePreviewTask)
-        engine.play()
-        fixture.source.url = fixture.root.appendingPathComponent("replacement.mov")
-        await load.value
-
-        #expect(engine.sourcePreviewTask == nil)
-        #expect(fixture.editor.isPlaying)
-        #expect(engine.player.rate == 0)
-
-        fixture.source.url = fixture.videoURL
-        engine.previewAsset(fixture.source)
-        let successor = try #require(engine.sourcePreviewTask)
-        await successor.value
-
-        #expect(engine.sourcePreviewTask == nil)
-        #expect(fixture.editor.isPlaying)
-        #expect(engine.player.rate > 0)
     }
 
     private struct Fixture {
@@ -242,15 +246,30 @@ struct CaptureFrameToolTests {
         let undoManager: UndoManager
     }
 
-    private func makeFixture() async throws -> Fixture {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("capture-frame-\(UUID().uuidString)", isDirectory: true)
-        let videoURL = try await FixtureVideo.write(scenes: [
+    @concurrent private static func writeVideo(in root: URL) async throws -> URL {
+        let staged = try await FixtureVideo.write(scenes: [
             .init(rgb: (240, 20, 20), seconds: 1),
             .init(rgb: (20, 20, 240), seconds: 1),
         ], fps: 5, size: 64)
-        let editor = EditorViewModel()
-        editor.projectURL = root.appendingPathComponent("Capture.palmier", isDirectory: true)
+        let destination = root.appendingPathComponent("source.mp4")
+        do {
+            try FileManager.default.moveItem(at: staged, to: destination)
+        } catch {
+            do { try FileManager.default.removeItem(at: staged) }
+            catch let cleanup { throw ProjectPackageCleanupError(operationError: error, cleanupError: cleanup) }
+            throw error
+        }
+        return destination
+    }
+
+    private func withFixture(_ operation: @MainActor (Fixture) async throws -> Void) async throws {
+        try await withSavedMediaPackageTestFixture { package, document in
+            let videoURL = try await Self.writeVideo(in: package.root)
+            try await operation(makeFixture(editor: document.editorViewModel, root: package.root, videoURL: videoURL))
+        }
+    }
+
+    private func makeFixture(editor: EditorViewModel, root: URL, videoURL: URL) -> Fixture {
         let source = MediaAsset(url: videoURL, type: .video, name: "Two colors", duration: 2)
         source.sourceWidth = 64
         source.sourceHeight = 64
@@ -268,15 +287,6 @@ struct CaptureFrameToolTests {
         let undoManager = UndoManager()
         editor.undo.attach(undoManager)
         return Fixture(editor: editor, root: root, videoURL: videoURL, source: source, undoManager: undoManager)
-    }
-
-    private func cleanup(_ fixture: Fixture) {
-        let root = fixture.root
-        let videoURL = fixture.videoURL
-        Task.detached {
-            try? FileManager.default.removeItem(at: root)
-            try? FileManager.default.removeItem(at: videoURL)
-        }
     }
 
     private func mediaIds(_ client: Client, ids: [String]) async throws -> Set<String> {

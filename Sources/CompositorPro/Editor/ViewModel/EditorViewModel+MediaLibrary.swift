@@ -179,45 +179,57 @@ extension EditorViewModel {
         _ stagedURL: URL,
         filename: String,
         maxBytes: Int64? = nil,
-        workAlreadyAdmitted: Bool = false
+        lease: ProjectPackageCoordinator.MutationLease,
+        validate: @MainActor () throws -> Void = {},
+        publish: @MainActor (URL) -> Void
     ) async throws -> URL {
-        defer { try? FileManager.default.removeItem(at: stagedURL) }
-        guard projectURL != nil else {
-            let destination = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
-            return try await Task.detached(priority: .userInitiated) {
-                try FileIO.moveReplacingDestination(from: stagedURL, to: destination, maxBytes: maxBytes)
-                return destination
-            }.value
-        }
-        for _ in 0..<3 {
-            guard let targetProjectURL = projectURL else { break }
-            try Task.checkCancellation()
-            do {
-                let preparedURL = try await Task.detached(priority: .userInitiated) {
-                    try FileIO.prepareStagedFile(from: stagedURL, nextTo: targetProjectURL, maxBytes: maxBytes)
-                }.value
-                defer { try? FileManager.default.removeItem(at: preparedURL) }
-                try Task.checkCancellation()
-                if !workAlreadyAdmitted {
-                    try projectPackageCoordinator.beginMutation()
-                }
-                defer {
-                    if !workAlreadyAdmitted {
-                        projectPackageCoordinator.endMutation()
-                    }
-                }
-                if let destination = try await projectPackageCoordinator.performMutation({ () -> URL? in
-                    guard self.projectURL?.standardizedFileURL == targetProjectURL.standardizedFileURL else { return nil }
-                    let destination = targetProjectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
-                        .appendingPathComponent(filename, isDirectory: false)
-                    try FileIO.installPreparedFile(from: preparedURL, to: destination)
-                    return destination
-                }) {
-                    return destination
-                }
+        let coordinator = projectPackageCoordinator
+        var prepared: URL?
+        var installed: URL?
+        var ownsStage = false
+        do {
+            let package = projectURL
+            ownsStage = try await coordinator.io.perform {
+                guard let package else { return true }
+                let targetPath = package.resolvingSymlinksInPath().standardizedFileURL.path
+                let stagePath = stagedURL.resolvingSymlinksInPath().standardizedFileURL.path
+                return stagePath != targetPath && !stagePath.hasPrefix(targetPath + "/")
             }
+            guard ownsStage else { throw CocoaError(.fileWriteInvalidFileName) }
+            try Task.checkCancellation()
+            try coordinator.validate(lease)
+            guard let target = projectURL?.standardizedFileURL else { throw CocoaError(.fileNoSuchFile) }
+            guard !filename.isEmpty, filename != ".", filename != "..",
+                  !filename.contains("/"), !filename.contains("\\"), !filename.contains("\0") else {
+                throw CocoaError(.fileWriteInvalidFileName)
+            }
+            try validate()
+            let destination = target.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
+                .appendingPathComponent(filename, isDirectory: false)
+            let preparedURL = try await coordinator.io.prepare(stagedURL, for: target, maxBytes: maxBytes)
+            prepared = preparedURL
+            try Task.checkCancellation()
+            try coordinator.validate(lease)
+            guard projectURL?.standardizedFileURL.path == target.path else { throw CancellationError() }
+            try validate()
+            try await coordinator.io.install(preparedURL, to: destination)
+            installed = destination
+            try await coordinator.io.remove([stagedURL, preparedURL])
+            prepared = nil
+            try Task.checkCancellation()
+            try coordinator.validate(lease)
+            guard projectURL?.standardizedFileURL.path == target.path else { throw CancellationError() }
+            try validate()
+            publish(destination)
+            return destination
+        } catch {
+            do {
+                try await coordinator.io.remove((ownsStage ? [stagedURL] : []) + [prepared, installed].compactMap { $0 })
+            } catch let cleanup {
+                throw ProjectPackageCleanupError(operationError: error, cleanupError: cleanup)
+            }
+            throw error
         }
-        throw CocoaError(.fileNoSuchFile)
     }
 
     func rebaseProjectURL(from oldURL: URL, to newURL: URL) {
@@ -315,7 +327,11 @@ extension EditorViewModel {
         asset.folderId = folderId
         importMediaAsset(asset)
         if finalize {
-            Task { await finalizeImportedAsset(asset) }
+            projectPackageCoordinator.startMutation { _ in
+                await self.finalizeImportedAsset(asset)
+            } onFailure: { error in
+                if !(error is CancellationError) { self.reportMediaImportFailure(error) }
+            }
         }
         return asset
     }
@@ -339,6 +355,7 @@ extension EditorViewModel {
         let sequence = mediaImportSequence
         let task = Task { @MainActor in
             _ = try? await previous?.value
+            try Task.checkCancellation()
             return try await performFinderImport(urls, into: folderId, finalize: finalize, applying: mutation)
         }
         mediaImportTail = task
@@ -346,7 +363,9 @@ extension EditorViewModel {
         defer {
             if mediaImportSequence == sequence { mediaImportTail = nil }
         }
-        return try await task.value
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: { task.cancel() }
     }
 
     @discardableResult
@@ -356,23 +375,33 @@ extension EditorViewModel {
         finalize: Bool,
         applying mutation: (@MainActor (@MainActor () -> MediaImportSummary) async throws -> MediaImportSummary)?
     ) async throws -> MediaImportSummary {
-        let before = mediaLibraryUndoSnapshot()
-        let roots = urls.map { MediaImportScanner.Root(url: $0, parentFolderId: folderId) }
-
-        let plan = await Task.detached(priority: .userInitiated) {
-            MediaImportScanner.scan(roots: roots)
-        }.value
-        if let mutation {
-            return try await mutation { self.applyMediaImportPlan(plan, restoringFrom: before, finalize: finalize) }
+        try await projectPackageCoordinator.withMutation { _ in
+            let roots = urls.map { MediaImportScanner.Root(url: $0, parentFolderId: folderId) }
+            let plan = try await self.projectPackageCoordinator.io.perform { MediaImportScanner.scan(roots: roots) }
+            try Task.checkCancellation()
+            if let folderId, self.folder(id: folderId) == nil { throw CocoaError(.fileNoSuchFile) }
+            let before = self.mediaLibraryUndoSnapshot()
+            let summary: MediaImportSummary
+            if let mutation {
+                summary = try await mutation { self.applyMediaImportPlan(plan, restoringFrom: before) }
+            } else {
+                summary = self.applyMediaImportPlan(plan, restoringFrom: before)
+            }
+            if finalize {
+                for asset in summary.assets {
+                    try Task.checkCancellation()
+                    await self.finalizeImportedAsset(asset, batchManifestUpdate: true)
+                }
+            }
+            self.flushPendingManifestMetadataUpdates()
+            return summary
         }
-        return applyMediaImportPlan(plan, restoringFrom: before, finalize: finalize)
     }
 
     @discardableResult
     private func applyMediaImportPlan(
         _ plan: MediaImportPlan,
-        restoringFrom before: MediaLibraryUndoSnapshot,
-        finalize: Bool = true
+        restoringFrom before: MediaLibraryUndoSnapshot
     ) -> MediaImportSummary {
         let importedAssets = undo.withoutRegistration {
             var folderIds = Array(repeating: "", count: plan.folders.count)
@@ -421,11 +450,6 @@ extension EditorViewModel {
         undo.register("Import Media", withTarget: self) { vm in
             vm.restoreMediaLibraryUndoSnapshot(before, actionName: "Import Media")
         }
-        if finalize {
-            for asset in importedAssets {
-                Task { await finalizeImportedAsset(asset, batchManifestUpdate: true) }
-            }
-        }
         return summary
     }
 
@@ -459,71 +483,61 @@ extension EditorViewModel {
         atFrame: Int,
         ripple: Bool
     ) async {
-        var before: MediaLibraryUndoSnapshot?
-        let summary: MediaImportSummary?
         do {
-            summary = try await importFinderItems(urls, into: mediaPanelCurrentFolderId, finalize: false) { apply in
-                before = self.mediaLibraryUndoSnapshot()
-                return self.undo.withoutRegistration { apply() }
+            _ = try await importFinderItems(urls, into: mediaPanelCurrentFolderId, finalize: false) { apply in
+                let before = self.mediaLibraryUndoSnapshot()
+                let summary = self.undo.withoutRegistration { apply() }
+                guard summary.assetCount != 0 || summary.folderCount != 0 else { return summary }
+                var placeable: [MediaAsset] = []
+                for asset in summary.assets {
+                    if await self.finalizeImportedAsset(asset, batchManifestUpdate: true) { placeable.append(asset) }
+                }
+                var captionSpecSets: [[TextClipSpec]] = []
+                for asset in placeable where asset.type == .subtitle {
+                    guard let url = self.mediaResolver.resolveURL(for: asset.id) else { continue }
+                    do {
+                        captionSpecSets.append(try await self.subtitleCaptionSpecs(from: url))
+                    } catch {
+                        self.mediaPanelToast = MediaPanelToast(
+                            message: L10n.string("Can't add captions from \"\(asset.name)\" — \(error.localizedDescription)")
+                        )
+                    }
+                }
+                guard !Task.isCancelled, summary.assets.allSatisfy({ self.mediaAssetsById[$0.id] === $0 }) else { return summary }
+                let operation: @MainActor () -> Void = {
+                    self.undo.perform("Add Media") {
+                        self.undo.register("Add Media", withTarget: self) { vm in
+                            vm.restoreMediaLibraryUndoSnapshot(before, actionName: "Add Media")
+                        }
+                        if !placeable.isEmpty { self.placeDroppedAssets(placeable, cursor: cursor, atFrame: atFrame, ripple: ripple) }
+                        for specs in captionSpecSets { self.placeCaptionTrack(specs, actionName: "Add Media") }
+                    }
+                }
+                if placeable.isEmpty { operation() }
+                else { self.addClipsWithSettingsCheck(assets: placeable, operation: operation) }
+                return summary
             }
         } catch {
             reportMediaImportFailure(error)
-            return
-        }
-        guard let summary, let before,
-              summary.assetCount != 0 || summary.folderCount != 0 else { return }
-
-        var placeable: [MediaAsset] = []
-        for asset in summary.assets {
-            if await finalizeImportedAsset(asset, batchManifestUpdate: true) {
-                placeable.append(asset)
-            }
-        }
-        // Pre-parse subtitle files so caption placement joins the drop's single undo group.
-        var captionSpecSets: [[TextClipSpec]] = []
-        for asset in placeable where asset.type == .subtitle {
-            guard let url = mediaResolver.resolveURL(for: asset.id) else { continue }
-            do {
-                captionSpecSets.append(try await subtitleCaptionSpecs(from: url))
-            } catch {
-                mediaPanelToast = MediaPanelToast(
-                    message: L10n.string("Can't add captions from \"\(asset.name)\" — \(error.localizedDescription)")
-                )
-            }
-        }
-        // Revalidate after the awaits: bail if the project changed while metadata loaded.
-        guard summary.assets.allSatisfy({ mediaAssetsById[$0.id] === $0 }) else { return }
-
-        let operation: @MainActor () -> Void = { [weak self] in
-            guard let self else { return }
-            undo.perform("Add Media") {
-                undo.register("Add Media", withTarget: self) { vm in
-                    vm.restoreMediaLibraryUndoSnapshot(before, actionName: "Add Media")
-                }
-                if !placeable.isEmpty {
-                    placeDroppedAssets(placeable, cursor: cursor, atFrame: atFrame, ripple: ripple)
-                }
-                for specs in captionSpecSets {
-                    placeCaptionTrack(specs, actionName: "Add Media")
-                }
-            }
-        }
-        if placeable.isEmpty {
-            operation()
-        } else {
-            addClipsWithSettingsCheck(assets: placeable, operation: operation)
         }
     }
 
     @discardableResult
     func importPastedImageData(_ data: Data, fileExtension: String = "png") async -> MediaAsset? {
-        let filename = "pasted-\(UUID().uuidString.prefix(8)).\(fileExtension)"
+        let filename = "pasted-\(UUID().uuidString).\(fileExtension)"
         do {
-            let stagedURL = try await Task.detached(priority: .userInitiated) { try FileIO.stageData(data, pathExtension: fileExtension) }.value
-            let destinationURL = try await commitStagedProjectMedia(stagedURL, filename: filename)
-            return addMediaAsset(from: destinationURL)
+            return try await projectPackageCoordinator.withMutation { lease in
+                guard let type = ClipType(fileExtension: fileExtension) else { throw CocoaError(.fileReadUnsupportedScheme) }
+                let stagedURL = try await self.projectPackageCoordinator.io.perform { try FileIO.stageData(data, pathExtension: fileExtension) }
+                var imported: MediaAsset?
+                _ = try await self.commitStagedProjectMedia(stagedURL, filename: filename, lease: lease) { destination in
+                    imported = self.addMediaAsset(from: destination, type: type, finalize: false)
+                }
+                if let imported { await self.finalizeImportedAsset(imported) }
+                return imported
+            }
         } catch {
-            Log.project.error("importPastedImageData: write failed \(error.localizedDescription)")
+            reportMediaImportFailure(error)
             return nil
         }
     }
@@ -689,17 +703,36 @@ extension EditorViewModel {
     @discardableResult
     func finalizeImportedAsset(
         _ asset: MediaAsset,
-        batchManifestUpdate: Bool = false
+        batchManifestUpdate: Bool = false,
+        loadMetadata: MediaAssetMetadata.Loader = MediaAssetMetadata.load,
+        identify: @Sendable (URL) async throws -> MediaInputIdentity = { try await MediaInputIdentityService.shared.identify($0) },
+        onTerminalPublication: (@MainActor (MediaAsset.PreparationContext) -> Void)? = nil
     ) async -> Bool {
         Log.project.debug("media finalize start asset=\(asset.id.prefix(8)) type=\(asset.type.rawValue)")
-        let sourceURL = asset.url
-        let metadataLoaded = await asset.loadMetadata(includeThumbnail: !batchManifestUpdate)
-        guard !Task.isCancelled, asset.url == sourceURL,
-              mediaAssetsById[asset.id] === asset else { return false }
-        guard metadataLoaded else {
+        let context = asset.preparationContext
+        let isCurrent: @MainActor () -> Bool = {
+            !Task.isCancelled && !self.projectPackageCoordinator.isClosed
+                && self.mediaAssetsById[asset.id] === asset && asset.preparationContext == context
+        }
+        guard isCurrent() else { return false }
+        let metadata: MediaAssetMetadata
+        do {
+            metadata = try await asset.readMetadata(
+                thumbnailMaxPixelSize: batchManifestUpdate ? nil : ImageEncoder.maxLongestEdge,
+                load: loadMetadata, validate: isCurrent
+            )
+        } catch is CancellationError {
+            return false
+        } catch {
+            guard isCurrent() else { return false }
+            metadata = MediaAssetMetadata(isReadable: false)
+        }
+        guard isCurrent() else { return false }
+        asset.applyMetadata(metadata)
+        guard metadata.isReadable else {
+            let sourceURL = context.sourceURL
             let exists = await Task.detached(priority: .utility) { FileManager.default.fileExists(atPath: sourceURL.path) }.value
-            guard !Task.isCancelled, asset.url == sourceURL,
-                  mediaAssetsById[asset.id] === asset else { return false }
+            guard isCurrent() else { return false }
             if exists {
                 unprocessableMediaRefs.insert(asset.id)
             } else {
@@ -709,6 +742,7 @@ extension EditorViewModel {
                 asset.generationStatus = .failed("Could not read media file.")
             }
             recordManifestMetadata(for: asset, batching: batchManifestUpdate)
+            onTerminalPublication?(asset.preparationContext)
             Log.project.warning(
                 "media finalize unreadable asset=\(asset.id.prefix(8)) type=\(asset.type.rawValue)",
                 telemetry: "Media asset finalize unreadable",
@@ -719,22 +753,23 @@ extension EditorViewModel {
             return false
         }
         do {
-            try await asset.prepareInputIdentity()
+            try await asset.prepareInputIdentity(validate: isCurrent, identify: identify)
         } catch is CancellationError {
             return false
         } catch {
-            guard asset.url == sourceURL, mediaAssetsById[asset.id] === asset else { return false }
+            guard isCurrent() else { return false }
             asset.generationStatus = .failed("Could not identify media file.")
             recordManifestMetadata(for: asset, batching: batchManifestUpdate)
+            onTerminalPublication?(asset.preparationContext)
             Log.project.warning("media identity failed asset=\(asset.id) error=\(error.localizedDescription)")
             return false
         }
-        guard !Task.isCancelled, asset.url == sourceURL,
-              mediaAssetsById[asset.id] === asset else { return false }
+        guard isCurrent() else { return false }
         if asset.isGenerating || asset.importInput != nil {
             asset.generationStatus = .none
         }
         recordManifestMetadata(for: asset, batching: batchManifestUpdate)
+        onTerminalPublication?(asset.preparationContext)
         missingMediaRefs.remove(asset.id)
         offlineMediaRefs.remove(asset.id)
         unprocessableMediaRefs.remove(asset.id)

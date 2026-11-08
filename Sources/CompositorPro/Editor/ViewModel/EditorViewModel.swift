@@ -231,6 +231,7 @@ final class EditorViewModel {
     let mediaVisualCache = MediaVisualCache()
     let deadAirMaskCache = DeadAirMaskCache()
     let searchIndex = SearchIndexCoordinator()
+    @ObservationIgnored var projectRegistry: ProjectRegistry?
     var projectURL: URL? {
         didSet {
             guard projectURL != oldValue else { return }
@@ -431,7 +432,7 @@ final class EditorViewModel {
     }
 
     func refreshProjectId() {
-        projectId = projectURL.flatMap { ProjectRegistry.shared.id(for: $0)?.uuidString }
+        projectId = projectURL.flatMap { projectRegistry?.id(for: $0)?.uuidString }
     }
 
     func analyticsSnapshot() -> [String: Any] {

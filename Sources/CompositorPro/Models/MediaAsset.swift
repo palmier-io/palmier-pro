@@ -168,7 +168,7 @@ final class MediaAsset: Identifiable {
     /// Produce a serializable manifest entry from this asset.
     func toManifestEntry(projectURL: URL?) -> MediaManifestEntry {
         let source: MediaSource
-        if let projectURL, url.path.hasPrefix(projectURL.path) {
+        if let projectURL, url.path.hasPrefix(projectURL.path + "/") {
             let relative = String(url.path.dropFirst(projectURL.path.count + 1))
             source = .project(relativePath: relative)
         } else {
@@ -192,16 +192,24 @@ final class MediaAsset: Identifiable {
         MediaInputIdentity.receipt(identity: inputIdentity, verified: inputIdentityVerified, origin: importInput?.origin)
     }
 
+    @ObservationIgnored private var identityPreparationAttempt: UUID?
+
     func prepareInputIdentity(
+        validate: @MainActor () -> Bool = { true },
         identify: @Sendable (URL) async throws -> MediaInputIdentity = { try await MediaInputIdentityService.shared.identify($0) }
     ) async throws {
-        inputIdentityVerified = false
-        inputIdentityRevision = UUID()
-        let sourceURL = url
-        let revision = inputIdentityRevision
-        let identity = try await identify(sourceURL)
+        let context = preparationContext
         try Task.checkCancellation()
-        guard url == sourceURL, inputIdentityRevision == revision else { throw CancellationError() }
+        guard validate() else { throw CancellationError() }
+        inputIdentityVerified = false
+        let attempt = UUID()
+        identityPreparationAttempt = attempt
+        defer {
+            if identityPreparationAttempt == attempt { identityPreparationAttempt = nil }
+        }
+        let identity = try await identify(context.sourceURL)
+        try Task.checkCancellation()
+        guard preparationContext == context, validate(), identityPreparationAttempt == attempt else { throw CancellationError() }
         guard identity.isValid else { throw CocoaError(.fileReadCorruptFile) }
         inputIdentity = identity
         inputIdentityVerified = true
@@ -213,23 +221,24 @@ final class MediaAsset: Identifiable {
         inputIdentity = identity
     }
 
-    func loadLibraryThumbnail() async {
+    func loadLibraryThumbnail(load: MediaAssetMetadata.Loader = MediaAssetMetadata.load) async {
+        let context = preparationContext
         switch type {
         case .image:
-            await loadImageThumbnail(maxPixelSize: ImageEncoder.libraryThumbnailMaxPixelSize)
+            await loadImageThumbnail(maxPixelSize: ImageEncoder.libraryThumbnailMaxPixelSize, load: load)
         case .video, .lottie:
             guard thumbnail == nil, await acquireThumbnailPermit() else { return }
             defer { releaseThumbnailPermit() }
-            guard thumbnail == nil, !Task.isCancelled else { return }
-            _ = await loadMetadata()
+            guard thumbnail == nil, !Task.isCancelled, preparationContext == context else { return }
+            _ = await loadMetadata(load: load)
         case .audio, .text, .sequence, .subtitle:
             break
         }
     }
 
-    func loadPreviewThumbnail() async {
+    func loadPreviewThumbnail(load: MediaAssetMetadata.Loader = MediaAssetMetadata.load) async {
         guard type == .image else { return }
-        await loadImageThumbnail(maxPixelSize: ImageEncoder.maxLongestEdge)
+        await loadImageThumbnail(maxPixelSize: ImageEncoder.maxLongestEdge, load: load)
     }
 
     func installThumbnail(_ image: CGImage, maximumPixelSize: Int) {
@@ -239,122 +248,94 @@ final class MediaAsset: Identifiable {
     }
 
     @discardableResult
-    func loadMetadata(includeThumbnail: Bool = true) async -> Bool {
+    func loadMetadata(
+        includeThumbnail: Bool = true,
+        load: MediaAssetMetadata.Loader = MediaAssetMetadata.load,
+        validate: @MainActor () -> Bool = { true }
+    ) async -> Bool {
+        let context = preparationContext
         do {
-            try await Self.metadataLoadGate.wait()
+            let metadata = try await readMetadata(
+                thumbnailMaxPixelSize: includeThumbnail ? ImageEncoder.maxLongestEdge : nil,
+                load: load, validate: validate
+            )
+            guard !Task.isCancelled, preparationContext == context, validate() else { return false }
+            applyMetadata(metadata)
+            return metadata.isReadable
         } catch {
             return false
         }
-        defer { Task { await Self.metadataLoadGate.signal() } }
-
-        if type == .image {
-            duration = Defaults.imageDurationSeconds
-            let imageURL = url
-            let metadata = await Task.detached(priority: .utility) {
-                ImageEncoder.metadata(
-                    url: imageURL,
-                    thumbnailMaxPixelSize: includeThumbnail ? ImageEncoder.maxLongestEdge : nil
-                )
-            }.value
-            guard !Task.isCancelled, url == imageURL else { return false }
-            if let width = metadata.width { sourceWidth = width }
-            if let height = metadata.height { sourceHeight = height }
-            if let image = metadata.thumbnail,
-               ImageEncoder.maxLongestEdge >= thumbnailMaxPixelSize {
-                thumbnail = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
-                thumbnailMaxPixelSize = ImageEncoder.maxLongestEdge
-            }
-            return metadata.width != nil && metadata.height != nil
-        }
-
-        if type == .lottie {
-            let lottieURL = url
-            guard let info = try? await LottieVideoGenerator.inspect(fileAt: lottieURL),
-                  !Task.isCancelled, url == lottieURL else { return false }
-            duration = info.meta.duration
-            sourceWidth = Int(info.meta.size.width)
-            sourceHeight = Int(info.meta.size.height)
-            sourceFPS = info.meta.framerate
-            if includeThumbnail, let cg = info.thumbnail {
-                thumbnail = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
-            }
-            return true
-        }
-
-        if type == .subtitle {
-            let subtitleURL = url
-            guard let cues = try? await SubtitleFileParser.parseFile(at: subtitleURL),
-                  !Task.isCancelled, url == subtitleURL else { return false }
-            duration = cues.map(\.endSeconds).max() ?? 0
-            return true
-        }
-
-        guard type == .video || type == .audio else { return true }
-
-        let avAsset = AVURLAsset(url: url)
-        if type != .video, let d = try? await avAsset.load(.duration) {
-            duration = d.seconds
-        }
-        if type == .video {
-            var videoDuration: Double?
-            var hasVideoTrack = false
-            if let videoTrack = try? await avAsset.loadTracks(withMediaType: .video).first {
-                hasVideoTrack = true
-                if let size = try? await videoTrack.load(.naturalSize),
-                   let transform = try? await videoTrack.load(.preferredTransform) {
-                    let corrected = size.applying(transform)
-                    sourceWidth = Int(abs(corrected.width))
-                    sourceHeight = Int(abs(corrected.height))
-                }
-                if let rate = try? await videoTrack.load(.nominalFrameRate), rate > 0 {
-                    sourceFPS = Double(rate)
-                }
-                videoDuration = (try? await videoTrack.load(.timeRange))?.duration.seconds
-            }
-            if let videoDuration {
-                duration = videoDuration
-            } else if let d = try? await avAsset.load(.duration) {
-                duration = d.seconds
-            }
-            if let audioTracks = try? await avAsset.loadTracks(withMediaType: .audio) {
-                hasAudio = !audioTracks.isEmpty
-            }
-            if hasVideoTrack {
-                if includeThumbnail {
-                    let gen = AVAssetImageGenerator(asset: avAsset)
-                    gen.maximumSize = CGSize(width: 320, height: 320)   // square budget — portrait gets full res too
-                    gen.appliesPreferredTrackTransform = true
-                    if let cgImage = try? await gen.image(at: .zero).image {
-                        // Use the generated frame's true pixel size — a hardcoded 16:9 size makes
-                        // SwiftUI's aspectRatio squeeze non-16:9 (e.g. vertical) thumbnails.
-                        thumbnail = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
-                    }
-                }
-            }
-            return hasVideoTrack
-        }
-        if type == .audio {
-            return (try? await avAsset.loadTracks(withMediaType: .audio).first) != nil
-        }
-        return true
     }
 
-    private func loadImageThumbnail(maxPixelSize: Int) async {
+    struct PreparationContext: Equatable {
+        let sourceURL: URL
+        let sourceRevision: UUID
+        let backendJobId: String?
+        let outputIndex: Int?
+        let isGenerated: Bool
+        let status: GenerationStatus
+        let importInput: MediaImportInput?
+    }
+
+    var preparationContext: PreparationContext {
+        PreparationContext(
+            sourceURL: url, sourceRevision: inputIdentityRevision, backendJobId: generationInput?.backendJobId,
+            outputIndex: generationInput?.outputIndex, isGenerated: isGenerated,
+            status: generationStatus, importInput: importInput
+        )
+    }
+
+    func readMetadata(
+        thumbnailMaxPixelSize: Int?,
+        load: MediaAssetMetadata.Loader = MediaAssetMetadata.load,
+        validate: @MainActor () -> Bool = { true }
+    ) async throws -> MediaAssetMetadata {
+        let context = preparationContext
+        let request = MediaAssetMetadata.Request(url: url, type: type, thumbnailMaxPixelSize: thumbnailMaxPixelSize)
+        func check() throws {
+            try Task.checkCancellation()
+            guard self.preparationContext == context, validate() else { throw CancellationError() }
+        }
+        try check()
+        try await Self.metadataLoadGate.wait()
+        let metadata: MediaAssetMetadata
+        do {
+            try check()
+            metadata = try await load(request)
+            try check()
+        } catch {
+            await Self.metadataLoadGate.signal()
+            throw error
+        }
+        await Self.metadataLoadGate.signal()
+        try check()
+        return metadata
+    }
+
+    func applyMetadata(_ metadata: MediaAssetMetadata) {
+        if let value = metadata.duration { duration = value }
+        if let value = metadata.width { sourceWidth = value }
+        if let value = metadata.height { sourceHeight = value }
+        if let value = metadata.framesPerSecond { sourceFPS = value }
+        if let value = metadata.hasAudio { hasAudio = value }
+        if let image = metadata.thumbnail, let maximumPixelSize = metadata.thumbnailMaxPixelSize {
+            installThumbnail(image, maximumPixelSize: maximumPixelSize)
+        }
+    }
+
+    private func loadImageThumbnail(maxPixelSize: Int, load: MediaAssetMetadata.Loader) async {
+        let context = preparationContext
         guard maxPixelSize > thumbnailMaxPixelSize, await acquireThumbnailPermit() else { return }
         defer { releaseThumbnailPermit() }
-        guard maxPixelSize > thumbnailMaxPixelSize, !Task.isCancelled else { return }
-
-        let imageURL = url
-        let metadata = await Task.detached(priority: .utility) {
-            ImageEncoder.metadata(url: imageURL, thumbnailMaxPixelSize: maxPixelSize)
-        }.value
-        guard !Task.isCancelled, url == imageURL, maxPixelSize > thumbnailMaxPixelSize else { return }
-        duration = Defaults.imageDurationSeconds
-        if let width = metadata.width { sourceWidth = width }
-        if let height = metadata.height { sourceHeight = height }
-        if let image = metadata.thumbnail {
-            thumbnail = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
-            thumbnailMaxPixelSize = maxPixelSize
+        guard maxPixelSize > thumbnailMaxPixelSize, !Task.isCancelled,
+              preparationContext == context else { return }
+        do {
+            let metadata = try await readMetadata(thumbnailMaxPixelSize: maxPixelSize, load: load)
+            guard !Task.isCancelled, preparationContext == context,
+                  maxPixelSize > thumbnailMaxPixelSize else { return }
+            applyMetadata(metadata)
+        } catch {
+            return
         }
     }
 

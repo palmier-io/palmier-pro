@@ -447,7 +447,7 @@ struct AIEditTab: View {
     private func present(_ action: EditAction) {
         switch action {
         case .enhanceDraft:
-            editor.generationService.enhanceDraft(asset: asset, editor: editor)
+            editor.generationService.enhanceDraftFromUI(asset: asset, editor: editor)
         case .upscale:
             guard let model = UpscaleModelConfig.models(for: asset.type).first else { return }
             let trim = trimmedSourceIfEnabled()

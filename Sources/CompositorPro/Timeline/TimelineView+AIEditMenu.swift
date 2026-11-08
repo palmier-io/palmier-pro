@@ -120,7 +120,7 @@ extension TimelineView {
         guard let clipId = (sender as? NSMenuItem)?.representedObject as? String,
               let clip = editor.clipFor(id: clipId),
               let asset = editor.mediaAssets.first(where: { $0.id == clip.mediaRef }) else { return }
-        editor.generationService.enhanceDraft(asset: asset, editor: editor)
+        editor.generationService.enhanceDraftFromUI(asset: asset, editor: editor)
     }
 
     @objc private func performAIEditReframe(_ sender: Any?) {

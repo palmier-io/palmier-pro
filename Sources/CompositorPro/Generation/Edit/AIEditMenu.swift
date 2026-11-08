@@ -109,7 +109,7 @@ struct AIEditMenu: View {
     }
 
     private func enhanceDraft() {
-        editor.generationService.enhanceDraft(asset: asset, editor: editor)
+        editor.generationService.enhanceDraftFromUI(asset: asset, editor: editor)
     }
 
     private func edit() {

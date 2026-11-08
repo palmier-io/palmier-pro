@@ -1,165 +1,120 @@
 import AppKit
 import Foundation
+import Synchronization
 import Testing
 @testable import CompositorPro
 
-private class UnblockCountingProject: VideoProject {
-    nonisolated(unsafe) private(set) var unblockCount = 0
-    override func unblockUserInteraction() { unblockCount += 1 }
+private struct WriteProbeState {
+    var unblockCount = 0
+    var unblockCountAtWriteEntry: Int?
 }
 
-private final class UnblockOrderingProject: UnblockCountingProject {
-    nonisolated(unsafe) private(set) var unblockCountAtWriteEntry: Int?
+private class UnblockCountingProject: VideoProject {
+    nonisolated let writeProbe = Mutex(WriteProbeState())
+
+    override func unblockUserInteraction() {
+        writeProbe.withLock { $0.unblockCount += 1 }
+        super.unblockUserInteraction()
+    }
 
     override func write(to url: URL, ofType typeName: String) throws {
-        unblockCountAtWriteEntry = unblockCount
+        writeProbe.withLock { $0.unblockCountAtWriteEntry = $0.unblockCount }
         try super.write(to: url, ofType: typeName)
     }
 }
 
-private final class DelayedSafeWriteProject: VideoProject {
-    nonisolated(unsafe) var delaySafeWrites = false
-    let safeWriteEntered = DispatchSemaphore(value: 0)
-    let allowSafeWrite = DispatchSemaphore(value: 0)
+private final class SafeWriteGate: Sendable {
+    let entered: PackageTestSignal
+    let permit = DispatchSemaphore(value: 0)
 
-    override func writeSafely(
-        to url: URL,
-        ofType typeName: String,
-        for saveOperation: NSDocument.SaveOperationType
-    ) throws {
-        if delaySafeWrites {
+    @MainActor init() { entered = PackageTestSignal() }
+}
+
+private final class GatedSafeWriteProject: UnblockCountingProject {
+    nonisolated let nextWriteGate = Mutex<SafeWriteGate?>(nil)
+
+    override func writeSafely(to url: URL, ofType typeName: String, for operation: NSDocument.SaveOperationType) throws {
+        #expect(!Thread.isMainThread)
+        guard !Thread.isMainThread else { throw CocoaError(.fileWriteUnknown) }
+        let gate = nextWriteGate.withLock { value in
+            let gate = value
+            value = nil
+            return gate
+        }
+        if let gate {
             unblockUserInteraction()
-            safeWriteEntered.signal()
-            allowSafeWrite.wait()
+            Task { @MainActor in gate.entered.signal() }
+            gate.permit.wait()
         }
-        try super.writeSafely(to: url, ofType: typeName, for: saveOperation)
+        try super.writeSafely(to: url, ofType: typeName, for: operation)
     }
 }
 
+@Suite("VideoProject write unblocking", .serialized)
 @MainActor
-private func save(_ document: VideoProject, to url: URL) async -> Error? {
-    await withCheckedContinuation { continuation in
-        document.save(
-            to: url,
-            ofType: VideoProject.typeIdentifier,
-            for: .saveOperation
-        ) { error in
-            continuation.resume(returning: error)
-        }
-    }
-}
-
-private func wait(for semaphore: DispatchSemaphore) async {
-    await withCheckedContinuation { continuation in
-        DispatchQueue.global().async {
-            semaphore.wait()
-            continuation.resume()
-        }
-    }
-}
-
-/// With `canAsynchronouslyWrite` enabled, AppKit parks the main thread in
-/// `_waitForUserInteractionUnblocking` until `write()` calls `unblockUserInteraction()`.
-/// A throw that skips the unblock freezes the app permanently (issue #402).
-@Suite("VideoProject write() main-thread unblocking", .serialized)
 struct VideoProjectWriteUnblockTests {
-
-    private func temporaryBundleURL() -> URL {
-        FileManager.default.temporaryDirectory
-            .appendingPathComponent("vp-unblock-\(UUID().uuidString).palmier", isDirectory: true)
+    @Test func offMainWriteWithoutContextThrowsButStillUnblocks() async throws {
+        try await withPackageTestFixture { fixture in
+            let document = UnblockCountingProject()
+            let package = fixture.package
+            let typeIdentifier = VideoProject.typeIdentifier
+            _ = await Task.detached {
+                #expect(throws: CocoaError.self) { try document.write(to: package, ofType: typeIdentifier) }
+            }.value
+            #expect(document.writeProbe.withLock { $0.unblockCount } == 1)
+            let packageExists = try await fixture.exists(package)
+            #expect(!packageExists)
+        }
     }
 
-    @Test func offMainWriteWithoutSnapshotThrowsButStillUnblocks() async {
-        let doc = await MainActor.run { UnblockCountingProject() }
-        let url = temporaryBundleURL()
-        defer { try? FileManager.default.removeItem(at: url) }
+    @Test func mainThreadDirectWriteIsRejectedWithoutTouchingPackage() async throws {
+        try await withPackageTestFixture { fixture in
+            let document = UnblockCountingProject()
+            #expect(throws: CocoaError.self) { try document.write(to: fixture.package, ofType: VideoProject.typeIdentifier) }
+            #expect(document.writeProbe.withLock { $0.unblockCount } == 1)
+            let packageExists = try await fixture.exists(fixture.package)
+            #expect(!packageExists)
+        }
+    }
 
-        // The racing-save shape: a second save's write() lands off-main after the
-        // first write() consumed the shared snapshot.
-        await Task.detached {
-            #expect(throws: CocoaError.self) {
-                try doc.write(to: url, ofType: VideoProject.typeIdentifier)
+    @Test func nativeSafeSaveUnblocksBeforeWriteEntry() async throws {
+        try await withPackageTestFixture { fixture in
+            let document = UnblockCountingProject()
+            document.fileURL = fixture.package
+            document.fileType = VideoProject.typeIdentifier
+            try await savePackageTestDocument(document)
+            #expect(try #require(document.writeProbe.withLock { $0.unblockCountAtWriteEntry }) >= 1)
+            let saved = try await fixture.readPackage()
+            #expect(saved.projectFile.timelines == document.editorViewModel.timelines)
+        }
+    }
+
+    @Test func overlappingNativeSavesPreserveLatestSnapshot() async throws {
+        try await withPackageTestFixture { fixture in
+            let document = GatedSafeWriteProject()
+            document.fileURL = fixture.package
+            document.fileType = VideoProject.typeIdentifier
+            try await savePackageTestDocument(document)
+            let gate = SafeWriteGate()
+            document.nextWriteGate.withLock { $0 = gate }
+            document.editorViewModel.timeline.name = "First save"
+            document.updateChangeCount(.changeDone)
+            let firstSave = Task { try await savePackageTestDocument(document) }
+            await gate.entered.wait()
+            document.editorViewModel.timeline.name = "Second save"
+            document.updateChangeCount(.changeDone)
+            let secondFinished = PackageTestSignal()
+            var secondError: Error?
+            document.save(to: fixture.package, ofType: VideoProject.typeIdentifier, for: .saveOperation) { error in
+                secondError = error
+                secondFinished.signal()
             }
-        }.value
-
-        #expect(doc.unblockCount == 1)
-    }
-
-    @Test func successfulWriteUnblocksExactlyOnce() async throws {
-        let doc = await MainActor.run {
-            let doc = UnblockCountingProject()
-            doc.editorViewModel.timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack()])
-            return doc
+            gate.permit.signal()
+            try await firstSave.value
+            await secondFinished.wait()
+            #expect(secondError == nil)
+            let saved = try await fixture.readPackage()
+            #expect(saved.projectFile.timelines.first?.name == "Second save")
         }
-        let url = temporaryBundleURL()
-        defer { try? FileManager.default.removeItem(at: url) }
-
-        try await MainActor.run {
-            try doc.write(to: url, ofType: VideoProject.typeIdentifier)
-        }
-
-        #expect(doc.unblockCount == 1)
-    }
-
-    @Test func safeWriteUnblocksBeforeEnteringWrite() async throws {
-        let doc = await MainActor.run {
-            let doc = UnblockOrderingProject()
-            doc.editorViewModel.timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack()])
-            return doc
-        }
-        let url = temporaryBundleURL()
-        defer { try? FileManager.default.removeItem(at: url) }
-
-        try await MainActor.run {
-            try doc.writeSafely(
-                to: url,
-                ofType: VideoProject.typeIdentifier,
-                for: .saveOperation
-            )
-        }
-
-        #expect(doc.unblockCountAtWriteEntry == 1)
-    }
-
-    @Test func overlappingSavesPreserveLatestSnapshot() async throws {
-        let url = temporaryBundleURL()
-        defer { try? FileManager.default.removeItem(at: url) }
-        let doc = await MainActor.run {
-            let doc = DelayedSafeWriteProject()
-            doc.fileURL = url
-            doc.fileType = VideoProject.typeIdentifier
-            doc.editorViewModel.timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack()])
-            return doc
-        }
-        #expect(await save(doc, to: url) == nil)
-
-        await MainActor.run {
-            doc.editorViewModel.timeline.name = "First save"
-            doc.updateChangeCount(.changeDone)
-            doc.delaySafeWrites = true
-        }
-        let firstSave = Task { @MainActor in await save(doc, to: url) }
-        await wait(for: doc.safeWriteEntered)
-
-        await MainActor.run {
-            doc.editorViewModel.timeline.name = "Second save"
-            doc.updateChangeCount(.changeDone)
-        }
-        let release = doc.allowSafeWrite
-        let releaseWrites = Task.detached {
-            try? await Task.sleep(for: .milliseconds(100))
-            release.signal()
-            release.signal()
-        }
-        let secondSave = Task { @MainActor in await save(doc, to: url) }
-
-        let firstError = await firstSave.value
-        let secondError = await secondSave.value
-        await releaseWrites.value
-        #expect(firstError == nil)
-        #expect(secondError == nil)
-
-        let saved = try VideoProject.readProjectPackage(at: url)
-        #expect(saved.projectFile.timelines.first?.name == "Second save")
     }
 }

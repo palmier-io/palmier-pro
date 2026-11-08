@@ -127,7 +127,12 @@ extension GenerationView {
         let availability = HostedServices.generationAvailability
         let canSignIn = availability.reason == .authenticationRequired && !account.isSigningIn
         return Button {
-            if aiAllowed { submitGeneration() }
+            if aiAllowed {
+                do { try submitGeneration() }
+                catch {
+                    flashDropError((error as? GenerationService.StartError)?.localizedMessage ?? error.localizedDescription)
+                }
+            }
             else if canSignIn { Task { await account.signInWithGoogle() } }
         } label: {
             Image(systemName: canSignIn ? "person.crop.circle" : "arrow.up")
@@ -265,7 +270,7 @@ extension GenerationView {
         )
     }
 
-    private func submitGeneration() {
+    private func submitGeneration() throws {
         if currentModelLocked {
             SettingsWindowController.shared.show(tab: .account)
             return
@@ -279,6 +284,7 @@ extension GenerationView {
             flashDropError(err)
             return
         }
+        try editor.generationService.requireAvailable(editor: editor)
         let inputDuration: Int = switch selectedType {
         case .video: effectiveVideoSeconds
         case .audio: audioDuration
@@ -370,7 +376,7 @@ extension GenerationView {
                     baseOnComplete?(asset)
                 }
             }()
-            let videoAssetId = VideoGenerationSubmission.make(
+            let videoAssetId = try VideoGenerationSubmission.make(
                 genInput: genInput,
                 model: model,
                 inputAssets: inputAssets,
@@ -391,7 +397,7 @@ extension GenerationView {
             autoOpenPreview(videoAssetId)
         case .image:
             let model = imageModel
-            let imageAssetId = ImageGenerationSubmission.make(
+            let imageAssetId = try ImageGenerationSubmission.make(
                 genInput: genInput,
                 model: model,
                 references: imageReferences,
@@ -420,7 +426,7 @@ extension GenerationView {
                     onCompleteAudio?(asset)
                 }
             }()
-            let audioAssetId = AudioGenerationSubmission.make(
+            let audioAssetId = try AudioGenerationSubmission.make(
                 genInput: genInput,
                 model: model,
                 params: audioParams(audioDuration: audioDuration),
@@ -453,7 +459,7 @@ extension GenerationView {
                       pending.sourceURL == source.url else { return nil }
                 return pending
             }()
-            let assetId = EditSubmitter.submitUpscale(
+            let assetId = try EditSubmitter.submitUpscale(
                 asset: source,
                 model: upscaleModel,
                 editor: editor,
