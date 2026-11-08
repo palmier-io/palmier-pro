@@ -73,6 +73,16 @@ Resolving timing inside unchanged intent does not request another approval.
 Changing narration language or start intent does. Future voice/graphic contracts
 must extend the same intent key, not add another approval owner.
 
+Storyboard, readiness, and assembly share source-range validation. Explicit source
+endpoints truncate independently to project frames and must match the resolved
+scene duration exactly. A mismatch blocks production without changing approval or
+creating an edit; revising authored span/pacing requires renewed approval. Implicit
+video selections require inspection of the full source, while playback uses only
+the resolved scene duration from source frame zero. Playback cannot exceed source
+duration. Stills have no source-duration limit. Readback exposes
+`inspectionSourceSpan` and `playbackSourceFrames` separately; unavailable duration,
+invalid bounds, and unresolved matching remain explicit blockers.
+
 Preparation, inspection, approval, revocation, and cancellation use shared plan
 mutation/undo and existing project checkpoints. Repeated unchanged operations
 are no-ops. Approval is one undo action. Plans persist run state through the
@@ -112,6 +122,11 @@ Users must inspect it using a supported playback path before attesting.
   gaps, shared beats, split sections, and reused replacement sources are refused
   without edits or empty undo steps. Repeated unchanged requests are no-ops.
 - Resolve narration timing without changing intent. Expect approval retained.
+- Measure a scene with an explicit source span of different duration. Expect a
+  mismatch blocker in storyboard and readiness, refused assembly, and no undo step.
+  Correct the authored span, inspect it, approve again, and confirm exact placement.
+- With no explicit video span, inspect the entire source before approval. Measure
+  narration; expect full-source inspection retained and playback bounded to scene.
 - Exercise Tab/focus, keyboard scene selection, Escape dismissal, undo/redo,
   switching plans while loading, missing assets, and empty/disabled states.
 - Save, autosave, Save As, close/reopen, then inspect run/review state and source

@@ -14,6 +14,9 @@ struct StoryboardCard: Sendable {
     var review: ProductionRun.VisualReview?
     var resolvedRange: Range<Int>?
     var beats: [ScriptBeat]
+    var inspectionRange: Range<Int>?
+    var playbackRange: Range<Int>?
+    var fps: Int
 
     var receipt: [String: Any] {
         var row: [String: Any] = ["sceneId": shot.id, "title": shot.title, "narration": narration,
@@ -25,6 +28,12 @@ struct StoryboardCard: Sendable {
         if let mediaRef = shot.mediaRef { row["mediaRef"] = mediaRef }
         if let resolvedRange {
             row["resolvedTiming"] = ["startFrame": resolvedRange.lowerBound, "endFrame": resolvedRange.upperBound]
+        }
+        if let inspectionRange {
+            row["inspectionSourceSpan"] = [Double(inspectionRange.lowerBound) / Double(fps), Double(inspectionRange.upperBound) / Double(fps)]
+        }
+        if let playbackRange {
+            row["playbackSourceFrames"] = [playbackRange.lowerBound, playbackRange.upperBound]
         }
         if let inputId { row["inputId"] = inputId }
         if let sourceId { row["sourceId"] = sourceId }
@@ -94,6 +103,7 @@ enum StoryboardResolver {
         var width: Int?
         var height: Int?
         var derivative: Bool
+        var inspectionFrames: [Int]?
     }
 
     @concurrent
@@ -116,30 +126,48 @@ enum StoryboardResolver {
             _ = try EditPlan.validatedShot(shot)
             let entry = shot.mediaRef.flatMap { entries[$0] }
             let derivative = entry?.generationInput != nil || entry?.type == .lottie
+            var blockers: [String] = []
+            var linked: [ScriptBeat] = []
+            var resolvedRange: Range<Int>?
+            if let link = shot.narrationLink, let first = indices[link.firstBeatId], let last = indices[link.lastBeatId], first <= last {
+                linked = Array(beats[first...last])
+                if plan.narrationTiming != nil {
+                    do { resolvedRange = try plan.resolvedNarrationRange(link) }
+                    catch { blockers.append("narration_timing_unresolved") }
+                }
+            } else { blockers.append("missing_scene_narration_link") }
+            var playbackShot = shot
+            if let resolvedRange {
+                playbackShot.startFrame = resolvedRange.lowerBound
+                playbackShot.endFrame = resolvedRange.upperBound
+            }
+            var inspectionRange: Range<Int>?
+            var playbackRange: Range<Int>?
+            if let entry {
+                do {
+                    inspectionRange = try PlanSourceRange.inspection(shot: shot, fps: plan.fps, type: entry.type, duration: entry.duration)
+                    playbackRange = try PlanSourceRange.playback(shot: playbackShot, fps: plan.fps, type: entry.type, duration: entry.duration)
+                } catch let error as PlanSourceRangeError { blockers.append(error.blocker) }
+            }
             let selection = Selection(mediaRef: shot.mediaRef, candidateURL: shot.candidateURL,
                                       startSeconds: shot.sourceStartSeconds, endSeconds: shot.sourceEndSeconds,
                                       durationFrames: shot.endFrame - shot.startFrame, license: shot.license,
                                       attribution: shot.attribution, inputId: entry?.inputIdentity?.inputId,
                                       origin: entry?.importInput?.origin, type: entry?.type,
                                       duration: entry?.duration, width: entry?.sourceWidth,
-                                      height: entry?.sourceHeight, derivative: derivative)
+                                       height: entry?.sourceHeight, derivative: derivative,
+                                       inspectionFrames: inspectionRange.map { [$0.lowerBound, $0.upperBound] })
             let selectionRevision = try digest(selection)
-            var blockers: [String] = []
             if entry == nil { blockers.append("missing_selected_media") }
             if let entry {
                 if unavailable.contains(entry.id) || entry.generationStatus != nil { blockers.append("media_not_ready") }
                 if entry.inputIdentity?.isValid != true { blockers.append("unresolved_input_identity") }
                 if ![ClipType.image, .video, .lottie].contains(entry.type) { blockers.append("unsupported_storyboard_visual") }
                 if derivative { blockers.append("unresolved_derivative_lineage") }
-                if entry.type != .image {
-                    if !entry.duration.isFinite || entry.duration <= 0 { blockers.append("unresolved_source_duration") }
-                    let end = shot.sourceEndSeconds ?? Double(shot.endFrame - shot.startFrame) / Double(plan.fps)
-                    if end > entry.duration { blockers.append("source_span_out_of_bounds") }
-                }
                 occurrences.append(VisualOccurrence(mediaRef: entry.id, clipIds: [shot.id],
-                    lane: [plan.timelineId, shot.trackId ?? "storyboard"], startFrame: shot.startFrame, endFrame: shot.endFrame,
-                    sourceStart: shot.sourceStartSeconds ?? 0,
-                    sourceEnd: shot.sourceEndSeconds ?? Double(shot.endFrame - shot.startFrame) / Double(plan.fps),
+                    lane: [plan.timelineId, shot.trackId ?? "storyboard"], startFrame: playbackShot.startFrame, endFrame: playbackShot.endFrame,
+                    sourceStart: Double(playbackRange?.lowerBound ?? 0),
+                    sourceEnd: Double(playbackRange?.upperBound ?? 0),
                     isImage: entry.type == .image))
             }
             if shot.license?.isEmpty != false || shot.attribution?.isEmpty != false { blockers.append("unresolved_rights") }
@@ -153,21 +181,13 @@ enum StoryboardResolver {
             } else {
                 blockers.append("unresolved_face_and_similarity_inspection")
             }
-            var linked: [ScriptBeat] = []
-            var resolvedRange: Range<Int>?
-            if let link = shot.narrationLink, let first = indices[link.firstBeatId], let last = indices[link.lastBeatId], first <= last {
-                linked = Array(beats[first...last])
-                if plan.narrationTiming != nil {
-                    do { resolvedRange = try plan.resolvedNarrationRange(link) }
-                    catch { blockers.append("narration_timing_unresolved") }
-                }
-            } else { blockers.append("missing_scene_narration_link") }
             let claims = Set((shot.claimIds ?? []) + linked.flatMap { $0.claimIds ?? [] }).sorted()
             cards.append(StoryboardCard(shot: shot, narration: linked.map(\.narrationText).joined(separator: "\n\n"),
                 purpose: linked.map(\.purpose).joined(separator: "\n"), claimIds: claims,
                 selectionRevision: selectionRevision, inputId: entry?.inputIdentity?.inputId,
                 sourceId: entry?.importInput?.origin?.sourceId, mediaType: entry?.type, blockers: blockers,
-                review: review, resolvedRange: resolvedRange, beats: linked))
+                review: review, resolvedRange: resolvedRange, beats: linked,
+                inspectionRange: inspectionRange, playbackRange: playbackRange, fps: plan.fps))
         }
         let content = Content(planId: plan.id, timelineId: plan.timelineId, fps: plan.fps, width: plan.width,
                               height: plan.height, goal: plan.goal, notes: plan.notes, sections: plan.sections,

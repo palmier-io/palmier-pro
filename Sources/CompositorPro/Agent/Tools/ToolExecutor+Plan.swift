@@ -530,6 +530,7 @@ extension ToolExecutor {
                   let asset = editor.mediaAssetsById[mediaRef] else {
                 throw ToolError("Shot '\(shot.id)' has no ready mediaRef.")
             }
+            _ = try PlanSourceRange.playback(shot: shot, fps: plan.fps, type: asset.type, duration: asset.resolvedDuration)
             var entry: [String: Any] = ["mediaRef": mediaRef, "startFrame": shot.startFrame]
             if let sourceStart = shot.sourceStartSeconds, let sourceEnd = shot.sourceEndSeconds {
                 entry["source"] = [sourceStart, sourceEnd]
@@ -611,15 +612,10 @@ extension ToolExecutor {
                    !asset.type.isCompatible(with: track.type) {
                     blockers.append("Shot '\(shot.id)' media type '\(asset.type.rawValue)' is incompatible with track '\(trackId)'.")
                 }
-                if let sourceStart = shot.sourceStartSeconds, let sourceEnd = shot.sourceEndSeconds {
-                    if asset.resolvedDuration > 0, sourceEnd > asset.resolvedDuration + 0.001 {
-                        blockers.append("Shot '\(shot.id)' selects source audio/video past the end of '\(mediaRef)'.")
-                    }
-                    let sourceFrames = secondsToFrame(seconds: sourceEnd, fps: timeline.fps)
-                        - secondsToFrame(seconds: sourceStart, fps: timeline.fps)
-                    if sourceFrames != shot.endFrame - shot.startFrame {
-                        blockers.append("Shot '\(shot.id)' source span is \(sourceFrames) frames but its timeline range is \(shot.endFrame - shot.startFrame) frames.")
-                    }
+                do {
+                    _ = try PlanSourceRange.playback(shot: shot, fps: plan.fps, type: asset.type, duration: asset.resolvedDuration)
+                } catch {
+                    blockers.append("Shot '\(shot.id)': \(error.localizedDescription)")
                 }
             } else if let candidateURL = shot.candidateURL {
                 blockers.append("Shot '\(shot.id)' has candidate '\(candidateURL)' that has not been imported yet. Import it with import_media, then attach its mediaRef.")
