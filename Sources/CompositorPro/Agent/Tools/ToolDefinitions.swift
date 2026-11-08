@@ -219,7 +219,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .planEdit,
-            description: "Maintains one persistent, reviewable edit plan for the active timeline: proposed structure, B-roll shots, timing, and source provenance. It stores and revises the plan, and changes its review status, but performs no timeline edits. New plans start as proposed and belong to the active timeline; timeline identity and geometry cannot change afterward. A web candidate must have an HTTPS candidateURL, license, and attribution. plan_edit can mark approved, proposed, or superseded; only apply_plan can reserve ready, and only a future assembly operation can mark applied.",
+            description: "Maintains one persistent, reviewable edit plan for the active timeline: proposed structure, B-roll shots, timing, and source provenance. Accepts an externally prepared referenceRecipe with timestamped editorial cues and inspection limitations; chapter/shot referenceUse cites its cueIds and explains the adaptation. Reference duration never sets output runtime. This stores the Agent's authored outline, not automatic reference acquisition or analysis. It stores and revises the plan, and changes its review status, but performs no timeline edits. New plans start as proposed and belong to the active timeline; timeline identity and geometry cannot change afterward. A web candidate must have an HTTPS candidateURL, license, and attribution. plan_edit can mark approved, proposed, or superseded; apply_plan(commit:true) assembles and marks applied.",
             inputSchema: objectSchema(
                 properties: [
                     "action": ["type": "string", "enum": ["create", "read", "update", "status", "delete"], "description": "Plan operation."],
@@ -232,6 +232,7 @@ enum ToolDefinitions {
                             "name": ["type": "string", "description": "Plan name."],
                             "goal": ["type": "string", "description": "Optional filmmaking goal."],
                             "timelineId": ["type": "string", "description": "Optional. Must be the active timeline. Omitted means the active timeline."],
+                            "referenceRecipe": referenceRecipeSchema,
                             "sections": [
                                 "type": "array",
                                 "description": "Optional structural sections.",
@@ -239,6 +240,7 @@ enum ToolDefinitions {
                                     "sectionId": ["type": "string", "description": "Optional stable section id. Omit for a generated id."],
                                     "title": ["type": "string", "description": "Section title."],
                                     "summary": ["type": "string", "description": "Optional section summary."],
+                                    "referenceUse": referenceUseSchema,
                                     "startFrame": ["type": "integer", "description": "Timeline frame, inclusive."],
                                     "endFrame": ["type": "integer", "description": "Timeline frame, exclusive. Must be greater than startFrame."],
                                 ]),
@@ -259,6 +261,7 @@ enum ToolDefinitions {
                                     "sourceStartSeconds": ["type": "number", "description": "Optional selected source span, with sourceEndSeconds."],
                                     "sourceEndSeconds": ["type": "number", "description": "Optional selected source span, with sourceStartSeconds."],
                                     "notes": ["type": "string", "description": "Optional shot note."],
+                                    "referenceUse": referenceUseSchema,
                                 ]),
                             ],
                             "notes": ["type": "string", "description": "Optional plan notes."],
@@ -266,10 +269,11 @@ enum ToolDefinitions {
                     ],
                     "patch": [
                         "type": "object",
-                        "description": "Update only. Full replacement values for supplied name, goal, sections, shots, and notes.",
+                        "description": "Update only. Full replacement values for supplied name, goal, sections, shots, notes, and referenceRecipe. Recipe replacement must preserve cited cueIds or replace their uses atomically.",
                         "properties": [
                             "name": ["type": "string", "description": "Replacement plan name."],
                             "goal": ["type": "string", "description": "Replacement goal."],
+                            "referenceRecipe": referenceRecipeSchema,
                             "sections": [
                                 "type": "array",
                                 "description": "Complete replacement sections. Preserve existing sectionIds to keep them; omitted ids become new sections.",
@@ -277,6 +281,7 @@ enum ToolDefinitions {
                                     "sectionId": ["type": "string", "description": "Existing section id to preserve, or omit for a new section."],
                                     "title": ["type": "string", "description": "Section title."],
                                     "summary": ["type": "string", "description": "Optional section summary."],
+                                    "referenceUse": referenceUseSchema,
                                     "startFrame": ["type": "integer", "description": "Timeline frame, inclusive."],
                                     "endFrame": ["type": "integer", "description": "Timeline frame, exclusive. Must be greater than startFrame."],
                                 ]),
@@ -297,6 +302,7 @@ enum ToolDefinitions {
                                     "sourceStartSeconds": ["type": "number", "description": "Optional selected source span, with sourceEndSeconds."],
                                     "sourceEndSeconds": ["type": "number", "description": "Optional selected source span, with sourceStartSeconds."],
                                     "notes": ["type": "string", "description": "Optional shot note."],
+                                    "referenceUse": referenceUseSchema,
                                 ]),
                             ],
                             "notes": ["type": "string", "description": "Replacement plan notes."],
@@ -1871,6 +1877,32 @@ enum ToolDefinitions {
         chunks.reduce(into: [:]) { merged, chunk in
             merged.merge(chunk) { _, new in new }
         }
+    }
+
+    private static var referenceRecipeSchema: [String: Any] {
+        objectSchema(properties: [
+            "title": ["type": "string", "description": "Reference title."],
+            "sourceURL": ["type": "string", "description": "HTTPS reference URL; records provenance without fetching it."],
+            "sourceDurationSeconds": ["type": "number", "description": "Optional finite positive reference runtime, never the requested output runtime."],
+            "coverage": ["type": "array", "items": ["type": "string", "enum": ReferenceRecipe.Coverage.allCases.map(\.rawValue)], "description": "Unique inspection modes actually used."],
+            "limitations": ["type": "string", "description": "Required truthful inspection limits, including unverified motion/audio."],
+            "cues": ["type": "array", "minItems": 1, "maxItems": 128, "items": objectSchema(properties: [
+                "cueId": ["type": "string", "description": "Stable cue ID, unique within the recipe."],
+                "kind": ["type": "string", "enum": ReferenceRecipe.Cue.Kind.allCases.map(\.rawValue)],
+                "evidence": ["type": "string", "enum": ReferenceRecipe.Cue.Evidence.allCases.map(\.rawValue)],
+                "startSeconds": ["type": "number", "description": "Reference source time, paired with endSeconds; required for observed cues."],
+                "endSeconds": ["type": "number", "description": "Exclusive source time, inside source duration when known."],
+                "observation": ["type": "string", "description": "What was observed, inferred, or remains unverified."],
+                "editorialRule": ["type": "string", "description": "Transferable explaining principle, not copied narration, assets, branding, or voice identity."],
+            ], required: ["cueId", "kind", "evidence", "observation", "editorialRule"])],
+        ], required: ["title", "sourceURL", "coverage", "cues", "limitations"])
+    }
+
+    private static var referenceUseSchema: [String: Any] {
+        objectSchema(properties: [
+            "cueIds": ["type": "array", "items": ["type": "string"], "description": "Non-empty, unique IDs from this plan's referenceRecipe."],
+            "rationale": ["type": "string", "description": "Why these reference principles suit this chapter or scene's argument."],
+        ], required: ["cueIds", "rationale"])
     }
 
     private static func objectSchema(

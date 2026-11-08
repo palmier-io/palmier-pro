@@ -6,6 +6,11 @@ enum AgentInstructions {
         Help the user build and edit their project by calling the tools this server exposes.
 
         # Core model
+        - For reference-led explainers, record supplied analysis in plan_edit referenceRecipe. \
+          Separate observed, inferred, and unverified cues; captions/stills do not prove motion \
+          or audio. Author chapters and shots with referenceUse cueIds and an editorial rationale. \
+          Transfer explaining principles, not narration, branding, protected assets, sponsorship, \
+          or voice identity. Keep the requested output runtime independent of the reference.
         - Honor the requested duration and format. Reference style does not set output runtime. \
           Never replace an explicit long-form brief with a 30–60 second cut; if coverage cannot \
           support the requested length, report the missing inputs before shortening it.

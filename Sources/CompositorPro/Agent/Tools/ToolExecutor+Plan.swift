@@ -22,6 +22,7 @@ extension ToolExecutor {
         let sections: [EditPlanSectionDraft]?
         let shots: [EditPlanShotDraft]?
         let notes: String?
+        let referenceRecipe: ReferenceRecipe?
     }
 
     fileprivate struct EditPlanSectionDraft: Decodable {
@@ -30,6 +31,7 @@ extension ToolExecutor {
         let summary: String?
         let startFrame: Int?
         let endFrame: Int?
+        let referenceUse: ReferenceRecipeUse?
     }
 
     fileprivate struct EditPlanShotDraft: Decodable {
@@ -45,6 +47,7 @@ extension ToolExecutor {
         let sourceStartSeconds: Double?
         let sourceEndSeconds: Double?
         let notes: String?
+        let referenceUse: ReferenceRecipeUse?
     }
 
     fileprivate struct EditPlanPatch: Decodable {
@@ -53,14 +56,15 @@ extension ToolExecutor {
         let sections: [EditPlanSectionDraft]?
         let shots: [EditPlanShotDraft]?
         let notes: String?
+        let referenceRecipe: ReferenceRecipe?
     }
 
-    private static let planObjectKeys: Set<String> = ["planId", "name", "goal", "timelineId", "sections", "shots", "notes"]
-    private static let planPatchKeys: Set<String> = ["name", "goal", "sections", "shots", "notes"]
-    private static let sectionObjectKeys: Set<String> = ["sectionId", "title", "summary", "startFrame", "endFrame"]
+    private static let planObjectKeys: Set<String> = ["planId", "name", "goal", "timelineId", "sections", "shots", "notes", "referenceRecipe"]
+    private static let planPatchKeys: Set<String> = ["name", "goal", "sections", "shots", "notes", "referenceRecipe"]
+    private static let sectionObjectKeys: Set<String> = ["sectionId", "title", "summary", "startFrame", "endFrame", "referenceUse"]
     private static let shotObjectKeys: Set<String> = [
         "shotId", "title", "startFrame", "endFrame", "trackId", "mediaRef",
-        "candidateURL", "license", "attribution", "sourceStartSeconds", "sourceEndSeconds", "notes",
+        "candidateURL", "license", "attribution", "sourceStartSeconds", "sourceEndSeconds", "notes", "referenceUse",
     ]
 
     func planEdit(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
@@ -167,7 +171,9 @@ extension ToolExecutor {
                     width: editor.timeline.width,
                     height: editor.timeline.height,
                     sections: try (draft.sections ?? []).map { try Self.planSection($0) },
-                    shots: try (draft.shots ?? []).map { try Self.planShot($0) }
+                    shots: try (draft.shots ?? []).map { try Self.planShot($0) },
+                    notes: draft.notes ?? "",
+                    referenceRecipe: draft.referenceRecipe
                 ),
                 timelineId: editor.activeTimelineId,
                 fps: editor.timeline.fps,
@@ -230,6 +236,7 @@ extension ToolExecutor {
         if let name = patch.name { candidate.name = name }
         if let goal = patch.goal { candidate.goal = goal }
         if let notes = patch.notes { candidate.notes = notes }
+        if let recipe = patch.referenceRecipe { candidate.referenceRecipe = recipe }
         if let sections = patch.sections {
             candidate.sections = try sections.enumerated().map { index, draft in
                 try Self.planSection(draft, path: "patch.sections[\(index)]")
@@ -244,7 +251,8 @@ extension ToolExecutor {
         guard candidate.name != current.name || candidate.goal != current.goal
                 || candidate.notes != current.notes
                 || candidate.sections != current.sections
-                || candidate.shots != current.shots else {
+                || candidate.shots != current.shots
+                || candidate.referenceRecipe != current.referenceRecipe else {
             return .ok(Self.jsonString(current.receipt(includeDetails: true).merging(
                 ["noOp": true],
                 uniquingKeysWith: { _, new in new }
@@ -252,7 +260,11 @@ extension ToolExecutor {
         }
         do {
             let receipt = try editor.changeEditPlans(updates: [candidate], actionName: "Change Plan (Agent)")
-            guard let updated = receipt.updated.first else { throw ToolError("Plan update produced no change.") }
+            guard let updated = receipt.updated.first else {
+                return .ok(Self.jsonString(current.receipt(includeDetails: true).merging(
+                    ["noOp": true], uniquingKeysWith: { _, new in new }
+                )) ?? "{}")
+            }
             return .ok(Self.jsonString(updated.receipt(includeDetails: true)) ?? "{}")
         } catch let error as EditPlanValidationError {
             throw ToolError(error.errorDescription ?? "Invalid plan update.")
@@ -335,7 +347,8 @@ extension ToolExecutor {
             title: title,
             summary: draft.summary ?? "",
             startFrame: start,
-            endFrame: end
+            endFrame: end,
+            referenceUse: draft.referenceUse
         )
     }
 
@@ -356,7 +369,8 @@ extension ToolExecutor {
             attribution: draft.attribution,
             sourceStartSeconds: draft.sourceStartSeconds,
             sourceEndSeconds: draft.sourceEndSeconds,
-            notes: draft.notes ?? ""
+            notes: draft.notes ?? "",
+            referenceUse: draft.referenceUse
         )
     }
 
@@ -370,6 +384,7 @@ extension ToolExecutor {
             if let shots = plan["shots"] {
                 try validatePlanArray(shots, allowed: Self.shotObjectKeys, singular: "shot", path: "plan.shots")
             }
+            try validateReferenceRecipe(plan["referenceRecipe"], path: "plan.referenceRecipe")
         }
         if let patch = args["patch"] as? [String: Any] {
             try validatePlanValue(patch, allowed: Self.planPatchKeys, path: "patch")
@@ -379,6 +394,7 @@ extension ToolExecutor {
             if let shots = patch["shots"] {
                 try validatePlanArray(shots, allowed: Self.shotObjectKeys, singular: "shot", path: "patch.shots")
             }
+            try validateReferenceRecipe(patch["referenceRecipe"], path: "patch.referenceRecipe")
         }
     }
 
@@ -395,6 +411,17 @@ extension ToolExecutor {
         }
         for (index, item) in items.enumerated() {
             try validatePlanValue(item, allowed: allowed, path: "\(path)[\(index)]")
+            if let use = (item as? [String: Any])?["referenceUse"] {
+                try validatePlanValue(use, allowed: ["cueIds", "rationale"], path: "\(path)[\(index)].referenceUse")
+            }
+        }
+    }
+
+    private func validateReferenceRecipe(_ value: Any?, path: String) throws {
+        guard let value else { return }
+        try validatePlanValue(value, allowed: ["title", "sourceURL", "sourceDurationSeconds", "coverage", "cues", "limitations"], path: path)
+        if let cues = (value as? [String: Any])?["cues"] {
+            try validatePlanArray(cues, allowed: ["cueId", "kind", "evidence", "startSeconds", "endSeconds", "observation", "editorialRule"], singular: "cue", path: "\(path).cues")
         }
     }
 

@@ -26,6 +26,7 @@ struct EditPlanSection: Codable, Sendable, Equatable, Identifiable {
     var summary: String = ""
     var startFrame: Int
     var endFrame: Int
+    var referenceUse: ReferenceRecipeUse?
 }
 
 struct EditPlanShot: Codable, Sendable, Equatable, Identifiable {
@@ -41,6 +42,7 @@ struct EditPlanShot: Codable, Sendable, Equatable, Identifiable {
     var sourceStartSeconds: Double?
     var sourceEndSeconds: Double?
     var notes: String = ""
+    var referenceUse: ReferenceRecipeUse?
 }
 
 struct EditPlan: Codable, Sendable, Equatable, Identifiable {
@@ -57,10 +59,11 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
     var notes: String = ""
     var createdAt = Date()
     var updatedAt = Date()
+    var referenceRecipe: ReferenceRecipe?
 
     private enum CodingKeys: String, CodingKey {
         case id, name, goal, timelineId, fps, width, height, status
-        case sections, shots, notes, createdAt, updatedAt
+        case sections, shots, notes, createdAt, updatedAt, referenceRecipe
     }
 
     init(
@@ -76,7 +79,8 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
         shots: [EditPlanShot] = [],
         notes: String = "",
         createdAt: Date = Date(),
-        updatedAt: Date = Date()
+        updatedAt: Date = Date(),
+        referenceRecipe: ReferenceRecipe? = nil
     ) {
         self.id = id
         self.name = name
@@ -91,6 +95,7 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
         self.notes = notes
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.referenceRecipe = referenceRecipe
     }
 
     init(from decoder: Decoder) throws {
@@ -108,6 +113,7 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
         notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+        referenceRecipe = try container.decodeIfPresent(ReferenceRecipe.self, forKey: .referenceRecipe)
     }
 }
 
@@ -307,6 +313,13 @@ extension EditPlan {
         }
         plan.sections = try plan.sections.map(validatedSection)
         plan.shots = try plan.shots.map(validatedShot)
+        plan.referenceRecipe = try plan.referenceRecipe?.validated()
+        for index in plan.sections.indices {
+            plan.sections[index].referenceUse = try plan.sections[index].referenceUse?.validated(recipe: plan.referenceRecipe)
+        }
+        for index in plan.shots.indices {
+            plan.shots[index].referenceUse = try plan.shots[index].referenceUse?.validated(recipe: plan.referenceRecipe)
+        }
         try ensureUniqueIDs(plan)
         plan.createdAt = Date()
         plan.updatedAt = plan.createdAt
@@ -336,14 +349,17 @@ extension EditPlan {
         if !goal.isEmpty { out["goal"] = goal }
         if includeDetails {
             out["createdAt"] = EditPlanStore.iso8601String(createdAt)
-            out["sections"] = sections.map {
-                [
-                    "sectionId": $0.id,
-                    "title": $0.title,
-                    "summary": $0.summary,
-                    "startFrame": $0.startFrame,
-                    "endFrame": $0.endFrame,
-                ] as [String: Any]
+            if let referenceRecipe { out["referenceRecipe"] = referenceRecipe.receipt() }
+            out["sections"] = sections.map { section in
+                var row: [String: Any] = [
+                    "sectionId": section.id,
+                    "title": section.title,
+                    "summary": section.summary,
+                    "startFrame": section.startFrame,
+                    "endFrame": section.endFrame,
+                ]
+                if let use = section.referenceUse { row["referenceUse"] = use.receipt() }
+                return row
             }
             out["shots"] = shots.map { shot in
                 var row: [String: Any] = [
@@ -360,6 +376,7 @@ extension EditPlan {
                 if let start = shot.sourceStartSeconds { row["sourceStartSeconds"] = start }
                 if let end = shot.sourceEndSeconds { row["sourceEndSeconds"] = end }
                 if !shot.notes.isEmpty { row["notes"] = shot.notes }
+                if let use = shot.referenceUse { row["referenceUse"] = use.receipt() }
                 return row
             }
             if !notes.isEmpty { out["notes"] = notes }

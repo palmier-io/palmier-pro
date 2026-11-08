@@ -55,7 +55,7 @@ extension EditorViewModel {
                   plan.status == current.status else {
                 throw EditPlanValidationError.invalidReference("Plan identity, timeline, geometry, and status are immutable in an update.")
             }
-            plan.updatedAt = Date()
+            plan.status = .proposed
             let validated = try EditPlan.validatedNew(
                 plan,
                 timelineId: current.timelineId,
@@ -67,6 +67,8 @@ extension EditorViewModel {
             var normalized = validated
             normalized.createdAt = current.createdAt
             normalized.status = current.status
+            normalized.updatedAt = current.updatedAt
+            guard normalized != current else { continue }
             normalized.updatedAt = Date()
             next[index] = normalized
             updatedPlans.append(normalized)

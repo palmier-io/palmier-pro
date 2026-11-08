@@ -48,7 +48,7 @@ Add this exact machine-facing rule to Agent guidance during implementation, and 
 
 ### 2. Turn references into an editorial recipe
 
-- [ ] Persist a structured reference recipe that the production plan can use.
+- [x] Persist a structured reference recipe that the production plan can use.
 
 **What:** Capture how a film explains its subject, not merely its palette or effects.
 
@@ -60,6 +60,8 @@ Add this exact machine-facing rule to Agent guidance during implementation, and 
 - Keep requested output duration independent of reference duration.
 
 **Done when:** A supplied recipe produces a chapter/scene outline with traceable rationale and truthful limitations, without requiring the user to explain every visual treatment.
+
+**Verified:** `swift test` passed (2,140 tests in 324 suites). Recipe MCP coverage verifies a 90-second authored outline independent of its 21-minute reference, chapter/shot cue citations, limitations, package readback, atomic refusal, no-op, and undo. The Agent authors the outline from supplied analysis; the app does not acquire or automatically analyze reference URLs. See [reference recipe handoff](docs/explainer-reference-recipes.md). UI/storyboard review remains task 5a.
 
 ### 3. Add a source and claim ledger
 
