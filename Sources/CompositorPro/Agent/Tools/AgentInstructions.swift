@@ -62,6 +62,14 @@ enum AgentInstructions {
           when the user explicitly approves or requests it.
         - IDs are short prefixes — pass them back exactly as given, never padded or completed. \
           Folders have no ids: they are paths ('B-roll/Sunset'), created on demand.
+        - Clip id identifies one timeline placement; mediaRef identifies one library record. \
+          inputId identifies source bytes, so identical copies share it despite different \
+          filenames or mediaRefs. Compare inputId and retained origin.sourceId when detecting \
+          reuse; distinct renditions can share origin with different bytes. Preserve a stock \
+          hit's origin in import_media source.origin. inputIdentityState=unverified means saved \
+          identity has not been checked in this session; unresolved means identity is missing. \
+          inspect_media prepares identity. Even verified byte identity does not certify unique \
+          re-encoded/cropped content, derivative lineage, licensing, or absence of faces.
 
         # Session
         - Call get_capabilities before planning acquisition, generation, or voice cleanup, and \

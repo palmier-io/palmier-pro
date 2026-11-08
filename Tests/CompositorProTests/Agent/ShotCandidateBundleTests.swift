@@ -67,6 +67,21 @@ struct ShotCandidateBundleTests {
         #expect(bundle.droppedUsable == 0)
     }
 
+    @Test func distinctSourceSpansShareInputIdentityAndStockOriginSurvivesReceipt() {
+        var asset = libraryAsset()
+        asset.inputId = "sha256:one-input"
+        asset.inputIdentityState = "verified"
+        let bundle = ShotCandidateBuilder.build(kind: .video, visual: [
+            .init(assetID: asset.id, startSeconds: 0, endSeconds: 2, score: 0.9),
+            .init(assetID: asset.id, startSeconds: 4, endSeconds: 6, score: 0.8),
+        ], spoken: [], remote: [remoteHit()], assets: [asset.id: asset], limit: 8)
+        #expect(bundle.candidates[0].id != bundle.candidates[1].id)
+        #expect(bundle.candidates[0].inputId == bundle.candidates[1].inputId)
+        #expect(bundle.candidates[0].receipt()["inputIdentityState"] as? String == "verified")
+        #expect(bundle.candidates[2].origin == remoteHit().origin)
+        #expect((remoteHit().receipt["origin"] as? [String: Any])?["sourceId"] as? String == remoteHit().origin.sourceId)
+    }
+
     @Test func unavailableLibraryAssetsAreSkippedWithReasons() {
         let visual = [
             ShotCandidateBuilder.VisualInput(assetID: "asset-missing", startSeconds: 0, endSeconds: 2, score: 0.9),

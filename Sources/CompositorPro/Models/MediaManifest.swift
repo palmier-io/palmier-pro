@@ -33,12 +33,23 @@ struct MediaManifestEntry: Codable, Sendable, Equatable, Identifiable {
     var cachedRemoteURLExpiresAt: Date?
     var generationStatus: String?
     var importInput: MediaImportInput?
+    var inputIdentity: MediaInputIdentity?
 }
 
 struct MediaImportInput: Codable, Sendable, Equatable {
     var sourceURL: String? = nil
     var sourcePath: String? = nil
     var createdAt: Date? = nil
+    var origin: MediaImportOrigin? = nil
+
+    static func provenanceURL(_ url: URL) -> String? {
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        components?.user = nil
+        components?.password = nil
+        components?.query = nil
+        components?.fragment = nil
+        return components?.url?.absoluteString
+    }
 }
 
 struct GenerationInput: Codable, Sendable, Equatable {

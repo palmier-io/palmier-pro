@@ -1,5 +1,4 @@
 import AVFoundation
-import CryptoKit
 import Foundation
 
 actor NarrationTimingService {
@@ -65,16 +64,7 @@ actor NarrationTimingService {
         return timing
     }
 
-    @concurrent
     static func fingerprint(_ url: URL) async throws -> String {
-        try Task.checkCancellation()
-        let handle = try FileHandle(forReadingFrom: url)
-        defer { try? handle.close() }
-        var hash = SHA256()
-        while let data = try handle.read(upToCount: 1_048_576), !data.isEmpty {
-            try Task.checkCancellation()
-            hash.update(data: data)
-        }
-        return hash.finalize().map { String(format: "%02x", $0) }.joined()
+        try await MediaInputIdentityService.shared.identify(url, force: true).contentSHA256
     }
 }

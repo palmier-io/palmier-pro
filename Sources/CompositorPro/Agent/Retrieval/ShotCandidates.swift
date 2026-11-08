@@ -26,6 +26,9 @@ struct LibraryShotAsset: Sendable, Equatable {
     var readiness: Readiness
     var width: Int? = nil
     var height: Int? = nil
+    var inputId: String? = nil
+    var inputIdentityState: String = "unresolved"
+    var origin: MediaImportOrigin? = nil
 }
 
 struct ShotCandidate: Sendable, Equatable, Identifiable {
@@ -53,6 +56,9 @@ struct ShotCandidate: Sendable, Equatable, Identifiable {
     var height: Int? = nil
     var thumbnailURL: String? = nil
     var landingPageURL: String? = nil
+    var inputId: String? = nil
+    var inputIdentityState: String = "unresolved"
+    var origin: MediaImportOrigin? = nil
 
     func receipt() -> [String: Any] {
         var out: [String: Any] = [
@@ -81,6 +87,9 @@ struct ShotCandidate: Sendable, Equatable, Identifiable {
         if let height { out["height"] = height }
         if let thumbnailURL { out["thumbnailUrl"] = thumbnailURL }
         if let landingPageURL { out["landingPageUrl"] = landingPageURL }
+        if let inputId { out["inputId"] = inputId }
+        out["inputIdentityState"] = inputIdentityState
+        if let origin { out["origin"] = origin.receipt }
         return out
     }
 }
@@ -135,6 +144,11 @@ enum ShotCandidateBuilder {
         var seenIDs = Set<String>()
 
         func append(_ candidate: inout ShotCandidate, to group: inout [ShotCandidate]) {
+            if let mediaRef = candidate.mediaRef, let asset = assets[mediaRef] {
+                candidate.inputId = asset.inputId
+                candidate.inputIdentityState = asset.inputIdentityState
+                candidate.origin = asset.origin
+            }
             guard seenIDs.insert(candidate.id).inserted else {
                 skipped.append(ShotCandidateSkipped(id: candidate.id, source: candidate.source, reason: "Duplicate candidate."))
                 return
@@ -294,7 +308,8 @@ enum ShotCandidateBuilder {
                 width: positiveDimension(hit.width),
                 height: positiveDimension(hit.height),
                 thumbnailURL: hit.thumbnailURL.flatMap(httpsURL),
-                landingPageURL: hit.landingPageURL.flatMap(httpsURL)
+                landingPageURL: hit.landingPageURL.flatMap(httpsURL),
+                origin: hit.origin
             )
             append(&candidate, to: &remoteCandidates)
         }

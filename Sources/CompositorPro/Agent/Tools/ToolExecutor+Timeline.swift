@@ -225,6 +225,15 @@ extension ToolExecutor {
         }
         return tracks.indices.map { i in
             var track = compactTrack(tracks[i], window: window, captionDetail: captionDetail, fold: fold, grades: grades)
+            if let clips = track["clips"] as? [[String: Any]] {
+                track["clips"] = clips.map { clip in
+                    var out = clip
+                    if let mediaRef = clip["mediaRef"] as? String, let asset = editor.mediaAssetsById[mediaRef] {
+                        out.merge(asset.inputIdentityReceipt) { _, value in value }
+                    }
+                    return out
+                }
+            }
             // Report the displayed label (mirrored video numbering), not the stored seed.
             track["label"] = editor.timelineTrackDisplayLabel(at: i)
             track["index"] = i

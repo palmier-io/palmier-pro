@@ -12,6 +12,9 @@ final class MediaAsset: Identifiable {
             guard url != oldValue else { return }
             thumbnail = nil
             thumbnailMaxPixelSize = 0
+            inputIdentity = nil
+            inputIdentityVerified = false
+            inputIdentityRevision = UUID()
         }
     }
     let type: ClipType
@@ -24,6 +27,11 @@ final class MediaAsset: Identifiable {
     var hasAudio: Bool = false
     var generationInput: GenerationInput?
     var importInput: MediaImportInput?
+    var inputIdentity: MediaInputIdentity? {
+        didSet { if inputIdentity != oldValue { inputIdentityVerified = false } }
+    }
+    private(set) var inputIdentityVerified = false
+    private var inputIdentityRevision = UUID()
     var generationStatus: GenerationStatus = .none
     var folderId: String?
     var pendingDownloadURL: URL?
@@ -152,6 +160,7 @@ final class MediaAsset: Identifiable {
         self.cachedRemoteURL = entry.cachedRemoteURL
         self.cachedRemoteURLExpiresAt = entry.cachedRemoteURLExpiresAt
         self.importInput = entry.importInput
+        self.inputIdentity = entry.inputIdentity.flatMap { $0.isValid ? $0 : nil }
         let restoredStatus = GenerationStatus(serialized: entry.generationStatus)
         self.generationStatus = restoredStatus == .preparing && !canResumeGeneration ? .none : restoredStatus
     }
@@ -175,7 +184,33 @@ final class MediaAsset: Identifiable {
             cachedRemoteURLExpiresAt: fresh == nil ? nil : cachedRemoteURLExpiresAt,
             generationStatus: generationStatus.manifestValue,
             importInput: importInput,
+            inputIdentity: inputIdentity,
         )
+    }
+
+    var inputIdentityReceipt: [String: Any] {
+        MediaInputIdentity.receipt(identity: inputIdentity, verified: inputIdentityVerified, origin: importInput?.origin)
+    }
+
+    func prepareInputIdentity(
+        identify: @Sendable (URL) async throws -> MediaInputIdentity = { try await MediaInputIdentityService.shared.identify($0) }
+    ) async throws {
+        inputIdentityVerified = false
+        inputIdentityRevision = UUID()
+        let sourceURL = url
+        let revision = inputIdentityRevision
+        let identity = try await identify(sourceURL)
+        try Task.checkCancellation()
+        guard url == sourceURL, inputIdentityRevision == revision else { throw CancellationError() }
+        guard identity.isValid else { throw CocoaError(.fileReadCorruptFile) }
+        inputIdentity = identity
+        inputIdentityVerified = true
+    }
+
+    func relocate(to newURL: URL) {
+        let identity = inputIdentity
+        url = newURL
+        inputIdentity = identity
     }
 
     func loadLibraryThumbnail() async {

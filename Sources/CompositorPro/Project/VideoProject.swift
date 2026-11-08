@@ -684,14 +684,9 @@ class VideoProject: NSDocument {
         for candidate in candidates {
             guard let asset = assetsByID[candidate.id] else { continue }
             guard existingRefs.contains(candidate.id) else {
-                if asset.importInput != nil {
-                    switch asset.generationStatus {
-                    case .failed:
-                        break
-                    default:
-                        asset.generationStatus = .failed("Import interrupted")
-                        manifestUpdates.append(asset)
-                    }
+                if asset.importInput != nil, asset.generationStatus == .downloading {
+                    asset.generationStatus = .failed("Import interrupted")
+                    manifestUpdates.append(asset)
                     continue
                 }
                 if asset.isRecoveringGeneration {
@@ -704,11 +699,7 @@ class VideoProject: NSDocument {
                 missingRefs.insert(candidate.id)
                 continue
             }
-            if asset.importInput != nil {
-                if case .failed = asset.generationStatus {
-                    continue
-                }
-                asset.importInput = nil
+            if asset.importInput != nil, asset.generationStatus == .downloading {
                 asset.generationStatus = .none
                 manifestUpdates.append(asset)
             }

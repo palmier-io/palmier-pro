@@ -65,6 +65,9 @@ extension ToolExecutor {
                 guard let f = entry.folderId, folderScope.contains(f) else { continue }
             }
             var a: [String: Any] = ["id": entry.id, "name": entry.name, "type": entry.type.rawValue]
+            let identity = editor.mediaAssetsById[entry.id]?.inputIdentityReceipt
+                ?? MediaInputIdentity.receipt(identity: entry.inputIdentity, verified: false, origin: entry.importInput?.origin)
+            a.merge(identity) { _, value in value }
             if entry.duration > 0 { a["durationSeconds"] = entry.duration }
             if let w = entry.sourceWidth, let h = entry.sourceHeight { a["width"] = w; a["height"] = h }
             if let fps = entry.sourceFPS { a["fps"] = fps }
@@ -104,7 +107,10 @@ extension ToolExecutor {
         let mediaRef = try args.requireString("mediaRef")
         let asset = try asset(mediaRef, editor: editor)
         let url = asset.url
-        guard FileManager.default.fileExists(atPath: url.path) else {
+        let exists = await Task.detached(priority: .utility) { FileManager.default.fileExists(atPath: url.path) }.value
+        try Task.checkCancellation()
+        guard editor.mediaAssetsById[mediaRef] === asset, asset.url == url else { throw ToolError("Media changed during inspection; retry") }
+        guard exists else {
             switch asset.generationStatus {
             case .preparing:
                 throw ToolError("Asset \(asset.id) is still preparing. Poll get_media and retry once generationStatus becomes 'none'.")
@@ -133,6 +139,9 @@ extension ToolExecutor {
             mapping = (clip, editor.timeline.fps)
         }
 
+        try await asset.prepareInputIdentity()
+        guard editor.mediaAssetsById[mediaRef] === asset, asset.url == url else { throw ToolError("Media changed during inspection; retry") }
+        editor.updateManifestMetadata(for: [asset])
         let preferredLocale = try await Self.parseLocale(args, path: "inspect_media")
 
         switch asset.type {
@@ -398,6 +407,7 @@ extension ToolExecutor {
             "durationSeconds": asset.duration.jsonRounded(toPlaces: 3),
             "fileName": asset.url.lastPathComponent,
         ]
+        meta.merge(asset.inputIdentityReceipt) { _, value in value }
         if case .none = asset.generationStatus {} else {
             meta["generationStatus"] = asset.generationStatus.serialized
         }

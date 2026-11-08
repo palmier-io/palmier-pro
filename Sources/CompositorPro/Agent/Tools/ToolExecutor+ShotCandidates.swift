@@ -117,7 +117,10 @@ extension ToolExecutor {
                 durationSeconds: asset.resolvedDuration,
                 readiness: readiness,
                 width: asset.sourceWidth,
-                height: asset.sourceHeight
+                height: asset.sourceHeight,
+                inputId: asset.inputIdentityReceipt["inputId"] as? String,
+                inputIdentityState: asset.inputIdentityReceipt["inputIdentityState"] as? String ?? "unresolved",
+                origin: asset.importInput?.origin
             ))
         })
         let bundle = ShotCandidateBuilder.build(

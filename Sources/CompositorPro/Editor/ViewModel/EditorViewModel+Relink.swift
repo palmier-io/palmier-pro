@@ -33,6 +33,7 @@ extension EditorViewModel {
     private func applyRelink(id: String, to newURL: URL) {
         guard let i = mediaAssets.firstIndex(where: { $0.id == id }) else { return }
         mediaAssets[i].url = newURL
+        mediaAssets[i].importInput = MediaImportInput(sourcePath: newURL.path, createdAt: Date())
         denoiseFailed.remove(id)
         denoiseBaked.remove(id)
         mediaVisualCache.invalidate(id)
@@ -41,6 +42,7 @@ extension EditorViewModel {
             mediaManifest.entries[j].source = mediaAssets[i].toManifestEntry(projectURL: projectURL).source
         }
         let asset = mediaAssets[i]
+        updateManifestMetadata(for: [asset])
         Task { await finalizeImportedAsset(asset) }
     }
 

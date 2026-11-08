@@ -227,7 +227,7 @@ extension EditorViewModel {
         for asset in mediaAssets {
             let path = asset.url.standardizedFileURL.path
             guard path.hasPrefix(oldPrefix) else { continue }
-            asset.url = newRoot.appendingPathComponent(String(path.dropFirst(oldPrefix.count)))
+            asset.relocate(to: newRoot.appendingPathComponent(String(path.dropFirst(oldPrefix.count))))
         }
         projectURL = newRoot
         refreshMissingMediaCache()
@@ -311,6 +311,7 @@ extension EditorViewModel {
     func addMediaAsset(from url: URL, type: ClipType, folderId: String? = nil, finalize: Bool = true) -> MediaAsset {
         let name = url.deletingPathExtension().lastPathComponent
         let asset = MediaAsset(url: url, type: type, name: name)
+        asset.importInput = MediaImportInput(sourcePath: url.path, createdAt: Date())
         asset.folderId = folderId
         importMediaAsset(asset)
         if finalize {
@@ -691,9 +692,15 @@ extension EditorViewModel {
         batchManifestUpdate: Bool = false
     ) async -> Bool {
         Log.project.debug("media finalize start asset=\(asset.id.prefix(8)) type=\(asset.type.rawValue)")
+        let sourceURL = asset.url
         let metadataLoaded = await asset.loadMetadata(includeThumbnail: !batchManifestUpdate)
+        guard !Task.isCancelled, asset.url == sourceURL,
+              mediaAssetsById[asset.id] === asset else { return false }
         guard metadataLoaded else {
-            if FileManager.default.fileExists(atPath: asset.url.path) {
+            let exists = await Task.detached(priority: .utility) { FileManager.default.fileExists(atPath: sourceURL.path) }.value
+            guard !Task.isCancelled, asset.url == sourceURL,
+                  mediaAssetsById[asset.id] === asset else { return false }
+            if exists {
                 unprocessableMediaRefs.insert(asset.id)
             } else {
                 missingMediaRefs.insert(asset.id)
@@ -711,15 +718,26 @@ extension EditorViewModel {
             refreshPreviewForFinalizedAsset(asset)
             return false
         }
-        if asset.isGenerating {
+        do {
+            try await asset.prepareInputIdentity()
+        } catch is CancellationError {
+            return false
+        } catch {
+            guard asset.url == sourceURL, mediaAssetsById[asset.id] === asset else { return false }
+            asset.generationStatus = .failed("Could not identify media file.")
+            recordManifestMetadata(for: asset, batching: batchManifestUpdate)
+            Log.project.warning("media identity failed asset=\(asset.id) error=\(error.localizedDescription)")
+            return false
+        }
+        guard !Task.isCancelled, asset.url == sourceURL,
+              mediaAssetsById[asset.id] === asset else { return false }
+        if asset.isGenerating || asset.importInput != nil {
             asset.generationStatus = .none
         }
         recordManifestMetadata(for: asset, batching: batchManifestUpdate)
-        if FileManager.default.fileExists(atPath: asset.url.path) {
-            missingMediaRefs.remove(asset.id)
-            offlineMediaRefs.remove(asset.id)
-            unprocessableMediaRefs.remove(asset.id)
-        }
+        missingMediaRefs.remove(asset.id)
+        offlineMediaRefs.remove(asset.id)
+        unprocessableMediaRefs.remove(asset.id)
         refreshMissingMediaCache()
         searchIndex.schedule(asset)
         if !batchManifestUpdate {

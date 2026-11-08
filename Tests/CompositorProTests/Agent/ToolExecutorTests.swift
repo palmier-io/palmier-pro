@@ -151,13 +151,12 @@ struct ToolExecutorImportMediaTests {
     }
 
     @Test func importBytesWritesFileAndRegistersAsset() async throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("pp-import-media-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: root) }
+        let root = try await MediaInputIdentityFixtures.makeFiles()
+        defer { Task.detached { try? FileManager.default.removeItem(at: root) } }
 
         let h = ToolHarness()
         h.editor.projectURL = root.appendingPathComponent("Import.palmier", isDirectory: true)
-        let bytes = Data("fake-png".utf8).base64EncodedString()
+        let bytes = try await Task.detached { try Data(contentsOf: root.appendingPathComponent("original.png")).base64EncodedString() }.value
 
         let result = await h.runRaw("import_media", args: [
             "source": ["bytes": bytes, "mimeType": "image/png"],
@@ -221,9 +220,9 @@ struct ToolExecutorImportMediaTests {
         #expect(asset.sourceHeight == 2)
 
         #expect(asset.generationStatus == .none)
-        #expect(asset.importInput == nil)
+        #expect(asset.importInput?.sourcePath == source.path)
         #expect(h.editor.mediaManifest.entries.first?.source == .external(absolutePath: source.path))
-        #expect(h.editor.mediaManifest.entries.first?.importInput == nil)
+        #expect(h.editor.mediaManifest.entries.first?.importInput == asset.importInput)
         #expect(checkpointCount == 1)
     }
 
@@ -247,9 +246,9 @@ struct ToolExecutorImportMediaTests {
         #expect(ToolHarness.textOf(result).contains("Could not read media file"))
         let asset = try #require(h.editor.mediaAssets.first)
 
-        #expect(asset.generationStatus == .none)
+        #expect(asset.generationStatus == .failed("Could not read media file."))
         #expect(asset.url.standardizedFileURL == source.standardizedFileURL)
-        #expect(asset.importInput == nil)
+        #expect(asset.importInput?.sourcePath == source.path)
         #expect(h.editor.mediaManifest.entries.first?.source == .external(absolutePath: source.path))
         #expect(h.editor.unprocessableMediaRefs.contains(asset.id))
     }

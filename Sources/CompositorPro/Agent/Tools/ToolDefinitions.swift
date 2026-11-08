@@ -414,6 +414,14 @@ enum ToolDefinitions {
                                 "required": ["hex"],
                             ],
                             "mimeType": ["type": "string", "description": "Required when bytes is set. Optional override for url when its path has no usable extension (e.g. signed URLs). \(ToolExecutor.acceptedMimeTypesMessage)"],
+                            "origin": objectSchema(properties: [
+                                "provider": ["type": "string", "enum": ["pexels", "pixabay", "openverse"]],
+                                "assetId": ["type": "string", "minLength": 1, "maxLength": 256],
+                                "landingPageUrl": ["type": "string", "description": "Original HTTPS source page, not a rendition URL."],
+                                "sourceId": ["type": "string", "description": "Optional consistency check; pass the search hit's origin unchanged."],
+                            ], required: ["provider", "assetId"]).merging([
+                                "description": "For source.url only. Pass the stock hit's origin unchanged to retain original provider identity across downloads and renditions. Claimed origin is provenance, not proof of rights or uniqueness.",
+                            ]) { _, value in value },
                         ],
                     ],
                     "name": ["type": "string", "description": "Display name in the library. Defaults to the filename derived from url/path, or 'Imported asset' for bytes."],

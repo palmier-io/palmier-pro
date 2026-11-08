@@ -34,6 +34,10 @@ struct StockMediaHit: Sendable, Equatable {
         return "\(kind.rawValue.capitalized)\(author) — \(license)\(licensePart)"
     }
 
+    var origin: MediaImportOrigin {
+        MediaImportOrigin(provider: providerID, assetId: id, landingPageURL: landingPageURL)
+    }
+
     var receipt: [String: Any] {
         var out: [String: Any] = [
             "id": id,
@@ -43,6 +47,7 @@ struct StockMediaHit: Sendable, Equatable {
             "provider": providerID,
         ]
         out["title"] = title
+        out["origin"] = origin.receipt
         out["thumbnailUrl"] = thumbnailURL
         out["creator"] = creator
         out["creatorUrl"] = creatorURL
