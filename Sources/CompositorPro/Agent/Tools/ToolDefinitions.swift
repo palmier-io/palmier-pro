@@ -311,11 +311,11 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .applyPlan,
-            description: "Validates an approved plan against the current timeline and referenced media, and optionally reserves it as ready. It performs no timeline edits. Use commit:false to inspect blockers; use commit:true only when the readiness check has no blockers. Only assembly operations can later mark a ready plan applied.",
+            description: "Validates an approved plan against the current timeline and referenced media. commit:false (default) checks readiness without editing. commit:true assembles the planned clips and marks the plan applied as one undoable action; it refuses unresolved media or blockers. Returns added clip IDs. An already-applied plan returns noOp:true without assembling again. Do not place its shots separately after a successful commit.",
             inputSchema: objectSchema(
                 properties: [
                     "planId": ["type": "string", "description": "Exact plan id from a plan_edit receipt."],
-                    "commit": ["type": "boolean", "description": "Reserve an approved, fully ready plan as ready. Defaults to false."],
+                    "commit": ["type": "boolean", "description": "Validate and assemble the approved plan as one undoable action, then mark it applied. Defaults to false (readiness check only)."],
                 ],
                 required: ["planId"]
             )
@@ -368,7 +368,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .importMedia,
-            description: "Imports external media into the project's library — the bridge for assets coming from other MCP servers (stock libraries, music services, web search) or local files the user already has. The 'source' object must set exactly one of: url (HTTPS only — downloaded in the background, the dominant case; max 1 GB), path (absolute local file path — referenced in place and not copied into the project; may also be a directory, which is imported recursively, mirroring its subfolder structure as media folders), bytes (base64-encoded inline data — max ~15 MB of base64 ≈ 11 MB binary; use url/path for anything larger), or matte (a generated solid-color PNG). For url, type is inferred from the URL path's file extension unless source.mimeType is set as an override (needed for signed URLs whose path has no usable extension). For bytes, source.mimeType is required.\n\nSupported types and extensions: video (mov, mp4, m4v), audio (mp3, wav, aac, m4a, aiff, aifc, caf, flac), image (png, jpg, jpeg, tiff, heic), subtitle (srt, vtt — becomes a subtitle asset; place its cues as caption clips at their timecodes via add_captions subtitleMediaRef or a user drag onto the timeline; not placeable via add_clips). Anything else is rejected — the caller must transcode externally.\n\nURL imports run in the background and return {mediaRef, status:'downloading'} — poll get_media with ids:[mediaRef] until generationStatus clears, then the asset is usable in add_clips. Path, directory, bytes, and matte imports finish inline with status:'ready'. Costs nothing.",
+            description: "Imports external media into the project's library — the bridge for assets coming from other MCP servers (stock libraries, music services, web search) or local files the user already has. The 'source' object must set exactly one of: url (HTTPS only — downloaded in the background, the dominant case; max \(ToolExecutor.remoteImportMaxBytes / (1024 * 1024 * 1024)) GiB), path (absolute local file path — referenced in place and not copied into the project; may also be a directory, which is imported recursively, mirroring its subfolder structure as media folders), bytes (base64-encoded inline data — max ~15 MB of base64 ≈ 11 MB binary; use url/path for anything larger), or matte (a generated solid-color PNG). For url, type is inferred from the URL path's file extension unless source.mimeType is set as an override (needed for signed URLs whose path has no usable extension). For bytes, source.mimeType is required.\n\nSupported types and extensions: video (mov, mp4, m4v), audio (mp3, wav, aac, m4a, aiff, aifc, caf, flac), image (png, jpg, jpeg, tiff, heic), Lottie animation (json — must be a valid Lottie document, not arbitrary JSON; import locally with source.path or source.bytes), subtitle (srt, vtt — becomes a subtitle asset; place its cues as caption clips at their timecodes via add_captions subtitleMediaRef or a user drag onto the timeline; not placeable via add_clips). Anything else is rejected — the caller must transcode externally.\n\nURL imports run in the background and return {mediaRef, status:'downloading'} — poll get_media with ids:[mediaRef] until generationStatus clears, then the asset is usable in add_clips. Path, directory, bytes, and matte imports finish inline with status:'ready'. Costs nothing.",
             inputSchema: objectSchema(
                 properties: [
                     "source": [
@@ -391,7 +391,7 @@ enum ToolDefinitions {
                                 ],
                                 "required": ["hex"],
                             ],
-                            "mimeType": ["type": "string", "description": "Required when bytes is set. Optional override for url when its path has no usable extension (e.g. signed URLs). Accepted: video/mp4, video/quicktime, audio/mpeg, audio/wav, audio/aac, audio/mp4, image/png, image/jpeg, image/tiff, image/heic, application/x-subrip, text/vtt."],
+                            "mimeType": ["type": "string", "description": "Required when bytes is set. Optional override for url when its path has no usable extension (e.g. signed URLs). \(ToolExecutor.acceptedMimeTypesMessage)"],
                         ],
                     ],
                     "name": ["type": "string", "description": "Display name in the library. Defaults to the filename derived from url/path, or 'Imported asset' for bytes."],
@@ -1545,7 +1545,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .findShotCandidates,
-            description: "Find footage worth cutting by combining ready library evidence with downloadable stock catalog rows. It normalizes local visual score and spoken matches with remote license, span, dimension, and duration metadata, ranks usable local matches first, and reports skipped rows with reasons. It never downloads, imports, or places media: import a remote url with import_media, then place mediaRef with add_clips. Query visual captions or exact spoken words; kind is required because visual and spoken evidence differ.",
+            description: "Find footage worth cutting by combining ready library evidence with downloadable stock catalog rows. Returns evidence, source spans and durations where known, cached library or provider dimensions where available, and remote license, attribution, thumbnailUrl and landingPageUrl where supplied. Unknown metadata is omitted, not measured during search. Catalog matches and thumbnails do not verify visual content: use inspect_media after import to inspect the actual source. Ranks usable local matches first and reports skipped rows with reasons. It never downloads, imports, or places media: import a remote url with import_media, then place mediaRef with add_clips. Query visual captions or exact spoken words; kind is required because visual and spoken evidence differ.",
             inputSchema: objectSchema(
                 properties: [
                     "query": ["type": "string", "description": "Subject caption for visual search or exact words for spoken matching."],

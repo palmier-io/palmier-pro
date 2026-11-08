@@ -4,7 +4,7 @@ Goal: produce researched, narration-led explainers from one brief, with mandator
 
 Based on [Malaysia chip explainer capability audit](docs/malaysia-chip-explainer-capability-audit.md). Reference: [CaspianReport's Malaysia semiconductor explainer](https://www.youtube.com/watch?v=zH5WptvpLCY).
 
-All items below are planned work, not completed capabilities. Existing capabilities were inspected in source, not benchmarked end to end. Reference inspection covered captions and storyboard samples; continuous motion and audible mix remain unverified. Provider findings below come from public documentation checked on 2026-11-08, not authenticated search-quality benchmarks.
+Unchecked items below are planned work, not completed capabilities. Completed items record their verification below. Reference inspection covered captions and storyboard samples; continuous motion and audible mix remain unverified. Provider findings below come from public documentation checked on 2026-11-08, not authenticated search-quality benchmarks.
 
 ## Implementation principles
 
@@ -29,7 +29,7 @@ Add this exact machine-facing rule to Agent guidance during implementation, and 
 
 ### 1. Fix tool discovery and execution contracts
 
-- [ ] Make descriptions, schemas, receipts, and actual behavior agree.
+- [x] Make descriptions, schemas, receipts, and actual behavior agree.
 
 **What:** Remove misleading instructions that cause premature stopping, duplicate assembly, or missed capabilities.
 
@@ -43,6 +43,8 @@ Add this exact machine-facing rule to Agent guidance during implementation, and 
 **Start here:** [ToolDefinitions.swift](Sources/CompositorPro/Agent/Tools/ToolDefinitions.swift), [ToolExecutor+Plan.swift](Sources/CompositorPro/Agent/Tools/ToolExecutor+Plan.swift), [ToolExecutor+Import.swift](Sources/CompositorPro/Agent/Tools/ToolExecutor+Import.swift), [ShotCandidates.swift](Sources/CompositorPro/Agent/Retrieval/ShotCandidates.swift), [AgentInstructions.swift](Sources/CompositorPro/Agent/Tools/AgentInstructions.swift).
 
 **Done when:** MCP discovery matches execution. An isolated plan assembles once, state readback confirms clips/status, undo restores prior state, and invalid or unchanged requests create no edits or empty undo steps.
+
+**Verified:** `swift build` and `swift test --filter 'ExplainerContractsMCPTests|ShotCandidateBundleTests|PlanEditToolTests|FindShotCandidatesToolTests|ToolExecutorImportMediaTests'` passed (26 tests). New discovery/metadata tests failed before the fix. In-memory MCP verifies readiness-only behavior, one assembly, repeated-call no-op, plan/timeline readback, undo, and invalid-request refusal. Requested duration/format is Agent guidance, not a new automatic duration planner. No UI or live stock-quality verification claimed.
 
 ### 2. Turn references into an editorial recipe
 

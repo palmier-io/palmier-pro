@@ -133,6 +133,37 @@ struct ShotCandidateBundleTests {
         #expect(bundle.candidates.map(\.rank) == [1, 2])
     }
 
+    @Test func stockReceiptsPreserveDimensionsAndPreviewProvenance() throws {
+        let bundle = ShotCandidateBuilder.build(
+            kind: .video, visual: [], spoken: [], remote: [remoteHit()], assets: [:], limit: 8
+        )
+        let receipt = try #require(bundle.candidates.first).receipt()
+        #expect(receipt["width"] as? Int == 1280)
+        #expect(receipt["height"] as? Int == 720)
+        #expect(receipt["thumbnailUrl"] as? String == "https://cdn.pixabay.com/video/harbor.jpg")
+        #expect(receipt["landingPageUrl"] as? String == "https://pixabay.com/videos/harbor-1/")
+    }
+
+    @Test(arguments: [(1920, 1080), (0, -1)])
+    func localReceiptsUseOnlyPositiveCachedDimensions(width: Int, height: Int) throws {
+        var asset = libraryAsset()
+        asset.width = width
+        asset.height = height
+        let bundle = ShotCandidateBuilder.build(
+            kind: .video,
+            visual: [.init(assetID: asset.id, startSeconds: 0, endSeconds: 1, score: 0.5)],
+            spoken: [.init(assetID: asset.id, startSeconds: 1, endSeconds: 2, text: "Harbor")],
+            remote: [], assets: [asset.id: asset], limit: 8
+        )
+        #expect(bundle.candidates.count == 2)
+        for candidate in bundle.candidates {
+            let receipt = candidate.receipt()
+            #expect(receipt["width"] as? Int == (width > 0 ? width : nil))
+            #expect(receipt["height"] as? Int == (height > 0 ? height : nil))
+            #expect(receipt["thumbnailUrl"] == nil)
+        }
+    }
+
     @Test func exactDuplicateCandidatesAreReportedOnce() {
         let visual = [
             ShotCandidateBuilder.VisualInput(assetID: "asset-1", startSeconds: 1, endSeconds: 2, score: 0.5),

@@ -7,7 +7,7 @@ extension ToolExecutor {
 
     private static let importMediaAllowedKeys: Set<String> = ["source", "name", "folder"]
     private static let importSourceAllowedKeys: Set<String> = ["url", "path", "bytes", "matte", "mimeType"]
-    private nonisolated static let acceptedMimeTypesMessage = "Accepted: video/mp4, video/quicktime, audio/mpeg, audio/wav, audio/aac, audio/mp4, audio/aiff, audio/x-caf, audio/flac, image/png, image/jpeg, image/tiff, image/heic, application/x-subrip, text/vtt."
+    nonisolated static let acceptedMimeTypesMessage = "Accepted: video/mp4, video/quicktime, audio/mpeg, audio/wav, audio/aac, audio/mp4, audio/aiff, audio/x-caf, audio/flac, image/png, image/jpeg, image/tiff, image/heic, application/json, application/vnd.lottie+json, application/x-subrip, text/vtt."
 
     private struct ImportPathStatus: Sendable {
         let exists: Bool

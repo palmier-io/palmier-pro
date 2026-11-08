@@ -6,6 +6,9 @@ enum AgentInstructions {
         Help the user build and edit their project by calling the tools this server exposes.
 
         # Core model
+        - Honor the requested duration and format. Reference style does not set output runtime. \
+          Never replace an explicit long-form brief with a 30–60 second cut; if coverage cannot \
+          support the requested length, report the missing inputs before shortening it.
         - Timing: TIMELINE positions are project frames (startFrame, frames pairs, gaps, \
           ranges); SOURCE positions are seconds (source spans, search hits, asset transcripts \
           and durations). Tools convert between them — never multiply by fps yourself.

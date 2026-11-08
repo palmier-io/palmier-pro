@@ -115,7 +115,9 @@ extension ToolExecutor {
                 name: asset.name,
                 type: asset.type,
                 durationSeconds: asset.resolvedDuration,
-                readiness: readiness
+                readiness: readiness,
+                width: asset.sourceWidth,
+                height: asset.sourceHeight
             ))
         })
         let bundle = ShotCandidateBuilder.build(

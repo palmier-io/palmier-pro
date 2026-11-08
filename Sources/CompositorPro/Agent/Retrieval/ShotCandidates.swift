@@ -24,6 +24,8 @@ struct LibraryShotAsset: Sendable, Equatable {
     var type: ClipType
     var durationSeconds: Double
     var readiness: Readiness
+    var width: Int? = nil
+    var height: Int? = nil
 }
 
 struct ShotCandidate: Sendable, Equatable, Identifiable {
@@ -47,6 +49,10 @@ struct ShotCandidate: Sendable, Equatable, Identifiable {
     var rank: Int?
     var usable: Bool
     var blockers: [String]
+    var width: Int? = nil
+    var height: Int? = nil
+    var thumbnailURL: String? = nil
+    var landingPageURL: String? = nil
 
     func receipt() -> [String: Any] {
         var out: [String: Any] = [
@@ -71,6 +77,10 @@ struct ShotCandidate: Sendable, Equatable, Identifiable {
         if let score { out["score"] = score }
         if let rank { out["rank"] = rank }
         if !blockers.isEmpty { out["blockers"] = blockers }
+        if let width { out["width"] = width }
+        if let height { out["height"] = height }
+        if let thumbnailURL { out["thumbnailUrl"] = thumbnailURL }
+        if let landingPageURL { out["landingPageUrl"] = landingPageURL }
         return out
     }
 }
@@ -177,7 +187,9 @@ enum ShotCandidateBuilder {
                     evidence: [.visual],
                     rank: nil,
                     usable: true,
-                    blockers: []
+                    blockers: [],
+                    width: positiveDimension(asset.width),
+                    height: positiveDimension(asset.height)
                 )
                 append(&candidate, to: &visualCandidates)
             case .pending(let status):
@@ -227,7 +239,9 @@ enum ShotCandidateBuilder {
                     evidence: [.spoken],
                     rank: nil,
                     usable: true,
-                    blockers: []
+                    blockers: [],
+                    width: positiveDimension(asset.width),
+                    height: positiveDimension(asset.height)
                 )
                 append(&candidate, to: &spokenCandidates)
             case .pending(let status):
@@ -276,7 +290,11 @@ enum ShotCandidateBuilder {
                 evidence: [.catalog],
                 rank: nil,
                 usable: true,
-                blockers: []
+                blockers: [],
+                width: positiveDimension(hit.width),
+                height: positiveDimension(hit.height),
+                thumbnailURL: hit.thumbnailURL.flatMap(httpsURL),
+                landingPageURL: hit.landingPageURL.flatMap(httpsURL)
             )
             append(&candidate, to: &remoteCandidates)
         }
@@ -318,6 +336,11 @@ enum ShotCandidateBuilder {
 
     private static func positive(_ value: Double?) -> Double? {
         guard let value, value.isFinite, value > 0 else { return nil }
+        return value
+    }
+
+    private static func positiveDimension(_ value: Int?) -> Int? {
+        guard let value, value > 0 else { return nil }
         return value
     }
 
