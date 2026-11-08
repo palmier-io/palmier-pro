@@ -80,6 +80,10 @@ Add this exact machine-facing rule to Agent guidance during implementation, and 
 
 **Done when:** Every displayed factual figure and named location resolves to reviewed evidence. Updating one claim identifies all dependent script and graphic outputs; save/reopen preserves those links.
 
+**Implemented foundation:** `sourceLedger` persists sources, exact passages, quantities/units, review status, and chapter/shot claim references with the plan. Changed reviewed research becomes unresolved; dependency receipts identify affected chapters/shots. Revision-bound `plan_edit action=review_claims` explicitly confirms current evidence; retries cannot silently approve revised facts. Referenced unresolved claims block assembly. [Ledger contract](docs/explainer-source-ledger.md). This task stays unchecked until tasks 4, 6–7, and 10–12 bind and verify script/graphic/output consumers.
+
+**Foundation verification:** `swift build`, `scripts/localization/sync.sh`, and `swift test` passed (2,146 tests in 326 suites). Isolated MCP verifies discovery, corrected research/dependency readback, revision-bound review, stale refusal, missing/duplicate claim refusal, repeated-content/review no-ops, assembly blocking, persistence codec, and exact undo. Package coverage rejects malformed saved ledgers. No final-film factual or UI review claimed.
+
 ### 4. Anchor scenes to measured narration
 
 - [ ] Extend existing plans with source-linked script beats and narration anchors.

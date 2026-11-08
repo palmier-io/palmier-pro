@@ -222,7 +222,7 @@ enum ToolDefinitions {
             description: "Maintains one persistent, reviewable edit plan for the active timeline: proposed structure, B-roll shots, timing, and source provenance. Accepts an externally prepared referenceRecipe with timestamped editorial cues and inspection limitations; chapter/shot referenceUse cites its cueIds and explains the adaptation. Reference duration never sets output runtime. This stores the Agent's authored outline, not automatic reference acquisition or analysis. It stores and revises the plan, and changes its review status, but performs no timeline edits. New plans start as proposed and belong to the active timeline; timeline identity and geometry cannot change afterward. A web candidate must have an HTTPS candidateURL, license, and attribution. plan_edit can mark approved, proposed, or superseded; apply_plan(commit:true) assembles and marks applied.",
             inputSchema: objectSchema(
                 properties: [
-                    "action": ["type": "string", "enum": ["create", "read", "update", "status", "delete"], "description": "Plan operation."],
+                    "action": ["type": "string", "enum": ["create", "read", "update", "status", "delete", "review_claims"], "description": "Plan operation. review_claims confirms selected facts after checking their exact supporting evidence; requires the current sourceLedgerRevision as ledgerRevision."],
                     "planId": ["type": "string", "description": "Exact plan id from a plan_edit receipt. Required for update, status, delete, and single-plan reads."],
                     "plan": [
                         "type": "object",
@@ -233,6 +233,7 @@ enum ToolDefinitions {
                             "goal": ["type": "string", "description": "Optional filmmaking goal."],
                             "timelineId": ["type": "string", "description": "Optional. Must be the active timeline. Omitted means the active timeline."],
                             "referenceRecipe": referenceRecipeSchema,
+                            "sourceLedger": sourceLedgerSchema,
                             "sections": [
                                 "type": "array",
                                 "description": "Optional structural sections.",
@@ -241,6 +242,7 @@ enum ToolDefinitions {
                                     "title": ["type": "string", "description": "Section title."],
                                     "summary": ["type": "string", "description": "Optional section summary."],
                                     "referenceUse": referenceUseSchema,
+                                    "claimIds": claimIdsSchema,
                                     "startFrame": ["type": "integer", "description": "Timeline frame, inclusive."],
                                     "endFrame": ["type": "integer", "description": "Timeline frame, exclusive. Must be greater than startFrame."],
                                 ]),
@@ -262,6 +264,7 @@ enum ToolDefinitions {
                                     "sourceEndSeconds": ["type": "number", "description": "Optional selected source span, with sourceStartSeconds."],
                                     "notes": ["type": "string", "description": "Optional shot note."],
                                     "referenceUse": referenceUseSchema,
+                                    "claimIds": claimIdsSchema,
                                 ]),
                             ],
                             "notes": ["type": "string", "description": "Optional plan notes."],
@@ -269,11 +272,12 @@ enum ToolDefinitions {
                     ],
                     "patch": [
                         "type": "object",
-                        "description": "Update only. Full replacement values for supplied name, goal, sections, shots, notes, and referenceRecipe. Recipe replacement must preserve cited cueIds or replace their uses atomically.",
+                        "description": "Update only. Full replacement values for supplied name, goal, sections, shots, notes, referenceRecipe, and sourceLedger. Preserve cited cueIds/claimIds or replace their uses atomically. Changed reviewed research becomes unresolved; receipts report invalidatedClaimIds and chapter/shot dependents. Use review_claims with the current revision to confirm revised evidence, not another content update.",
                         "properties": [
                             "name": ["type": "string", "description": "Replacement plan name."],
                             "goal": ["type": "string", "description": "Replacement goal."],
                             "referenceRecipe": referenceRecipeSchema,
+                            "sourceLedger": sourceLedgerSchema,
                             "sections": [
                                 "type": "array",
                                 "description": "Complete replacement sections. Preserve existing sectionIds to keep them; omitted ids become new sections.",
@@ -282,6 +286,7 @@ enum ToolDefinitions {
                                     "title": ["type": "string", "description": "Section title."],
                                     "summary": ["type": "string", "description": "Optional section summary."],
                                     "referenceUse": referenceUseSchema,
+                                    "claimIds": claimIdsSchema,
                                     "startFrame": ["type": "integer", "description": "Timeline frame, inclusive."],
                                     "endFrame": ["type": "integer", "description": "Timeline frame, exclusive. Must be greater than startFrame."],
                                 ]),
@@ -303,6 +308,7 @@ enum ToolDefinitions {
                                     "sourceEndSeconds": ["type": "number", "description": "Optional selected source span, with sourceStartSeconds."],
                                     "notes": ["type": "string", "description": "Optional shot note."],
                                     "referenceUse": referenceUseSchema,
+                                    "claimIds": claimIdsSchema,
                                 ]),
                             ],
                             "notes": ["type": "string", "description": "Replacement plan notes."],
@@ -311,6 +317,8 @@ enum ToolDefinitions {
                     "status": ["type": "string", "enum": ["proposed", "approved", "ready", "applied", "superseded"], "description": "Status action only. plan_edit cannot set ready or applied."],
                     "filterStatus": ["type": "string", "enum": ["proposed", "approved", "ready", "applied", "superseded"], "description": "Read only. List only plans with this status."],
                     "limit": ["type": "integer", "description": "Read only. Plans to return, 1–100 (default 20)."],
+                    "claimIds": ["type": "array", "items": ["type": "string"], "description": "review_claims only. Non-empty, unique claim IDs whose current evidence was reviewed."],
+                    "ledgerRevision": ["type": "string", "description": "review_claims only. Exact sourceLedgerRevision from the plan read back for review. Rejects stale research review."],
                 ],
                 required: ["action"]
             )
@@ -1896,6 +1904,36 @@ enum ToolDefinitions {
                 "editorialRule": ["type": "string", "description": "Transferable explaining principle, not copied narration, assets, branding, or voice identity."],
             ], required: ["cueId", "kind", "evidence", "observation", "editorialRule"])],
         ], required: ["title", "sourceURL", "coverage", "cues", "limitations"])
+    }
+
+    private static var sourceLedgerSchema: [String: Any] {
+        objectSchema(properties: [
+            "sources": ["type": "array", "maxItems": SourceClaimLedger.maximumSources, "items": objectSchema(properties: [
+                "sourceId": ["type": "string", "description": "Stable source ID, unique within this ledger."],
+                "title": ["type": "string"],
+                "url": ["type": "string", "description": "HTTPS evidence URL; mutually exclusive with documentReference. Not fetched by this tool."],
+                "documentReference": ["type": "string", "description": "User-supplied document identifier or locator; mutually exclusive with url."],
+                "author": ["type": "string", "description": "Source author/organization for factual attribution, not an asset license."],
+                "publicationDate": ["type": "string", "description": "Optional YYYY-MM-DD; omit if unknown."],
+                "accessedDate": ["type": "string", "description": "Required valid YYYY-MM-DD access date."],
+            ], required: ["sourceId", "title", "author", "accessedDate"])],
+            "claims": ["type": "array", "maxItems": SourceClaimLedger.maximumClaims, "items": objectSchema(properties: [
+                "claimId": ["type": "string", "description": "Stable fact ID, unique within this ledger."],
+                "kind": ["type": "string", "enum": SourceClaimLedger.Claim.Kind.allCases.map(\.rawValue)],
+                "statement": ["type": "string", "description": "Exact factual assertion or identified location."],
+                "value": ["type": "number", "description": "Finite numeric value; required only for quantity claims."],
+                "unit": ["type": "string", "description": "Explicit unit for quantity claims; cannot be supplied for other kinds."],
+                "status": ["type": "string", "enum": SourceClaimLedger.Claim.Status.allCases.map(\.rawValue), "description": "reviewed only for verified supplied evidence; changed reviewed facts/evidence become unresolved until explicitly reviewed again."],
+                "evidence": ["type": "array", "maxItems": 16, "description": "Reviewed claims need at least one supporting passage. Unresolved claims may use an empty list to record missing evidence.", "items": objectSchema(properties: [
+                    "sourceId": ["type": "string"],
+                    "passage": ["type": "string", "description": "Exact supporting passage, not a lossy summary."],
+                ], required: ["sourceId", "passage"])],
+            ], required: ["claimId", "kind", "statement", "status", "evidence"])],
+        ], required: ["sources", "claims"])
+    }
+
+    private static var claimIdsSchema: [String: Any] {
+        ["type": "array", "items": ["type": "string"], "description": "Unique factual claim IDs from this plan's sourceLedger. Referenced unresolved claims block apply_plan assembly."]
     }
 
     private static var referenceUseSchema: [String: Any] {

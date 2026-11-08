@@ -27,6 +27,7 @@ struct EditPlanSection: Codable, Sendable, Equatable, Identifiable {
     var startFrame: Int
     var endFrame: Int
     var referenceUse: ReferenceRecipeUse?
+    var claimIds: [String]?
 }
 
 struct EditPlanShot: Codable, Sendable, Equatable, Identifiable {
@@ -43,6 +44,7 @@ struct EditPlanShot: Codable, Sendable, Equatable, Identifiable {
     var sourceEndSeconds: Double?
     var notes: String = ""
     var referenceUse: ReferenceRecipeUse?
+    var claimIds: [String]?
 }
 
 struct EditPlan: Codable, Sendable, Equatable, Identifiable {
@@ -60,10 +62,12 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
     var createdAt = Date()
     var updatedAt = Date()
     var referenceRecipe: ReferenceRecipe?
+    var sourceLedger: SourceClaimLedger?
+    var sourceLedgerRevision: String?
 
     private enum CodingKeys: String, CodingKey {
         case id, name, goal, timelineId, fps, width, height, status
-        case sections, shots, notes, createdAt, updatedAt, referenceRecipe
+        case sections, shots, notes, createdAt, updatedAt, referenceRecipe, sourceLedger, sourceLedgerRevision
     }
 
     init(
@@ -80,7 +84,8 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
         notes: String = "",
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
-        referenceRecipe: ReferenceRecipe? = nil
+        referenceRecipe: ReferenceRecipe? = nil,
+        sourceLedger: SourceClaimLedger? = nil
     ) {
         self.id = id
         self.name = name
@@ -96,6 +101,8 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.referenceRecipe = referenceRecipe
+        self.sourceLedger = sourceLedger
+        self.sourceLedgerRevision = sourceLedger == nil ? nil : UUID().uuidString
     }
 
     init(from decoder: Decoder) throws {
@@ -114,6 +121,8 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
         referenceRecipe = try container.decodeIfPresent(ReferenceRecipe.self, forKey: .referenceRecipe)
+        sourceLedger = try container.decodeIfPresent(SourceClaimLedger.self, forKey: .sourceLedger)
+        sourceLedgerRevision = try container.decodeIfPresent(String.self, forKey: .sourceLedgerRevision)
     }
 }
 
@@ -313,13 +322,7 @@ extension EditPlan {
         }
         plan.sections = try plan.sections.map(validatedSection)
         plan.shots = try plan.shots.map(validatedShot)
-        plan.referenceRecipe = try plan.referenceRecipe?.validated()
-        for index in plan.sections.indices {
-            plan.sections[index].referenceUse = try plan.sections[index].referenceUse?.validated(recipe: plan.referenceRecipe)
-        }
-        for index in plan.shots.indices {
-            plan.shots[index].referenceUse = try plan.shots[index].referenceUse?.validated(recipe: plan.referenceRecipe)
-        }
+        try plan.validateArtifacts()
         try ensureUniqueIDs(plan)
         plan.createdAt = Date()
         plan.updatedAt = plan.createdAt
@@ -350,6 +353,8 @@ extension EditPlan {
         if includeDetails {
             out["createdAt"] = EditPlanStore.iso8601String(createdAt)
             if let referenceRecipe { out["referenceRecipe"] = referenceRecipe.receipt() }
+            if let sourceLedger { out["sourceLedger"] = sourceLedger.receipt() }
+            if let sourceLedgerRevision { out["sourceLedgerRevision"] = sourceLedgerRevision }
             out["sections"] = sections.map { section in
                 var row: [String: Any] = [
                     "sectionId": section.id,
@@ -359,6 +364,7 @@ extension EditPlan {
                     "endFrame": section.endFrame,
                 ]
                 if let use = section.referenceUse { row["referenceUse"] = use.receipt() }
+                if let claimIds = section.claimIds { row["claimIds"] = claimIds }
                 return row
             }
             out["shots"] = shots.map { shot in
@@ -377,11 +383,50 @@ extension EditPlan {
                 if let end = shot.sourceEndSeconds { row["sourceEndSeconds"] = end }
                 if !shot.notes.isEmpty { row["notes"] = shot.notes }
                 if let use = shot.referenceUse { row["referenceUse"] = use.receipt() }
+                if let claimIds = shot.claimIds { row["claimIds"] = claimIds }
                 return row
             }
             if !notes.isEmpty { out["notes"] = notes }
         }
         return out
+    }
+
+    mutating func validateArtifacts() throws {
+        referenceRecipe = try referenceRecipe?.validated()
+        sourceLedger = try sourceLedger?.validated()
+        if sourceLedger != nil {
+            guard let revision = sourceLedgerRevision, UUID(uuidString: revision) != nil else {
+                throw EditPlanValidationError.invalidReference("A source ledger requires a valid review revision.")
+            }
+        }
+        for index in sections.indices {
+            sections[index].referenceUse = try sections[index].referenceUse?.validated(recipe: referenceRecipe)
+            sections[index].claimIds = try validatedClaimIDs(sections[index].claimIds)
+        }
+        for index in shots.indices {
+            shots[index].referenceUse = try shots[index].referenceUse?.validated(recipe: referenceRecipe)
+            shots[index].claimIds = try validatedClaimIDs(shots[index].claimIds)
+        }
+    }
+
+    private func validatedClaimIDs(_ ids: [String]?) throws -> [String]? {
+        guard let ids, !ids.isEmpty else { return nil }
+        guard let sourceLedger else {
+            throw EditPlanValidationError.invalidReference("claimIds require the plan's sourceLedger.")
+        }
+        return try sourceLedger.validatedClaimIDs(ids)
+    }
+
+    var unresolvedClaimIDs: [String] {
+        let used = Set(sections.flatMap { $0.claimIds ?? [] } + shots.flatMap { $0.claimIds ?? [] })
+        return (sourceLedger?.claims ?? []).filter { used.contains($0.claimId) && $0.status != .reviewed }.map(\.claimId)
+    }
+
+    func claimDependents(_ claimIds: Set<String>) -> [String: [String]] {
+        [
+            "sectionIds": sections.filter { !claimIds.isDisjoint(with: $0.claimIds ?? []) }.map(\.id),
+            "shotIds": shots.filter { !claimIds.isDisjoint(with: $0.claimIds ?? []) }.map(\.id),
+        ]
     }
 }
 
@@ -410,7 +455,11 @@ enum EditPlanStore {
     }
 
     static func decode(_ data: Data) throws -> [EditPlan] {
-        try decoder.decode([EditPlan].self, from: data)
+        try decoder.decode([EditPlan].self, from: data).map { original in
+            var plan = original
+            try plan.validateArtifacts()
+            return plan
+        }
     }
 
     /// Snapshots plans for saving without destroying recoverable on-disk plans.
@@ -425,7 +474,7 @@ enum EditPlanStore {
         let url = packageURL.appendingPathComponent(filename, isDirectory: false)
         guard FileManager.default.fileExists(atPath: url.path) else { return ([], false) }
         let data = try Data(contentsOf: url, options: [.mappedIfSafe])
-        guard let plans = try? decoder.decode([EditPlan].self, from: data) else {
+        guard let plans = try? decode(data) else {
             Log.project.error("read plans decode failed bytes=\(data.count); keeping the file for recovery")
             return ([], true)
         }

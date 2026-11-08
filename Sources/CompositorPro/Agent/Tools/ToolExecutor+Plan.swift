@@ -9,8 +9,10 @@ extension ToolExecutor {
         let status: String?
         let filterStatus: String?
         let limit: Int?
+        let claimIds: [String]?
+        let ledgerRevision: String?
         static let allowedKeys: Set<String> = [
-            "action", "planId", "plan", "patch", "status", "filterStatus", "limit",
+            "action", "planId", "plan", "patch", "status", "filterStatus", "limit", "claimIds", "ledgerRevision",
         ]
     }
 
@@ -23,6 +25,7 @@ extension ToolExecutor {
         let shots: [EditPlanShotDraft]?
         let notes: String?
         let referenceRecipe: ReferenceRecipe?
+        let sourceLedger: SourceClaimLedger?
     }
 
     fileprivate struct EditPlanSectionDraft: Decodable {
@@ -32,6 +35,7 @@ extension ToolExecutor {
         let startFrame: Int?
         let endFrame: Int?
         let referenceUse: ReferenceRecipeUse?
+        let claimIds: [String]?
     }
 
     fileprivate struct EditPlanShotDraft: Decodable {
@@ -48,6 +52,7 @@ extension ToolExecutor {
         let sourceEndSeconds: Double?
         let notes: String?
         let referenceUse: ReferenceRecipeUse?
+        let claimIds: [String]?
     }
 
     fileprivate struct EditPlanPatch: Decodable {
@@ -57,19 +62,23 @@ extension ToolExecutor {
         let shots: [EditPlanShotDraft]?
         let notes: String?
         let referenceRecipe: ReferenceRecipe?
+        let sourceLedger: SourceClaimLedger?
     }
 
-    private static let planObjectKeys: Set<String> = ["planId", "name", "goal", "timelineId", "sections", "shots", "notes", "referenceRecipe"]
-    private static let planPatchKeys: Set<String> = ["name", "goal", "sections", "shots", "notes", "referenceRecipe"]
-    private static let sectionObjectKeys: Set<String> = ["sectionId", "title", "summary", "startFrame", "endFrame", "referenceUse"]
+    private static let planObjectKeys: Set<String> = ["planId", "name", "goal", "timelineId", "sections", "shots", "notes", "referenceRecipe", "sourceLedger"]
+    private static let planPatchKeys: Set<String> = ["name", "goal", "sections", "shots", "notes", "referenceRecipe", "sourceLedger"]
+    private static let sectionObjectKeys: Set<String> = ["sectionId", "title", "summary", "startFrame", "endFrame", "referenceUse", "claimIds"]
     private static let shotObjectKeys: Set<String> = [
         "shotId", "title", "startFrame", "endFrame", "trackId", "mediaRef",
-        "candidateURL", "license", "attribution", "sourceStartSeconds", "sourceEndSeconds", "notes", "referenceUse",
+        "candidateURL", "license", "attribution", "sourceStartSeconds", "sourceEndSeconds", "notes", "referenceUse", "claimIds",
     ]
 
     func planEdit(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         try validatePlanObjects(args)
         let input: PlanEditInput = try decodeToolArgs(args, path: "plan_edit")
+        if input.action != "review_claims", input.claimIds != nil || input.ledgerRevision != nil {
+            throw ToolError("claimIds and ledgerRevision are only valid for review_claims.")
+        }
         switch input.action {
         case "create":
             return try createEditPlan(editor, input: input)
@@ -81,8 +90,18 @@ extension ToolExecutor {
             return try changePlanStatus(editor, input: input)
         case "delete":
             return try deleteEditPlan(editor, input: input)
+        case "review_claims":
+            try rejectPlanEditKeys(input, forbidden: ["plan", "patch", "status", "filterStatus", "limit"], path: "plan_edit action='review_claims'")
+            guard let planId = input.planId, let ids = input.claimIds, let revision = input.ledgerRevision else {
+                throw ToolError("review_claims requires planId, claimIds, and ledgerRevision from the reviewed plan receipt.")
+            }
+            let result = try editor.reviewEditPlanClaims(id: planId, claimIds: ids, ledgerRevision: revision)
+            guard let plan = editor.editPlan(id: planId) else { throw ToolError("Unknown planId '\(planId)'.") }
+            return .ok(Self.jsonString(plan.receipt(includeDetails: true).merging(
+                ["noOp": result.updated.isEmpty], uniquingKeysWith: { _, new in new }
+            )) ?? "{}")
         default:
-            throw ToolError("action must be create, read, update, status, or delete.")
+            throw ToolError("action must be create, read, update, status, delete, or review_claims.")
         }
     }
 
@@ -173,7 +192,8 @@ extension ToolExecutor {
                     sections: try (draft.sections ?? []).map { try Self.planSection($0) },
                     shots: try (draft.shots ?? []).map { try Self.planShot($0) },
                     notes: draft.notes ?? "",
-                    referenceRecipe: draft.referenceRecipe
+                    referenceRecipe: draft.referenceRecipe,
+                    sourceLedger: draft.sourceLedger
                 ),
                 timelineId: editor.activeTimelineId,
                 fps: editor.timeline.fps,
@@ -237,6 +257,7 @@ extension ToolExecutor {
         if let goal = patch.goal { candidate.goal = goal }
         if let notes = patch.notes { candidate.notes = notes }
         if let recipe = patch.referenceRecipe { candidate.referenceRecipe = recipe }
+        if let ledger = patch.sourceLedger { candidate.sourceLedger = ledger }
         if let sections = patch.sections {
             candidate.sections = try sections.enumerated().map { index, draft in
                 try Self.planSection(draft, path: "patch.sections[\(index)]")
@@ -252,7 +273,8 @@ extension ToolExecutor {
                 || candidate.notes != current.notes
                 || candidate.sections != current.sections
                 || candidate.shots != current.shots
-                || candidate.referenceRecipe != current.referenceRecipe else {
+                || candidate.referenceRecipe != current.referenceRecipe
+                || candidate.sourceLedger != current.sourceLedger else {
             return .ok(Self.jsonString(current.receipt(includeDetails: true).merging(
                 ["noOp": true],
                 uniquingKeysWith: { _, new in new }
@@ -265,7 +287,12 @@ extension ToolExecutor {
                     ["noOp": true], uniquingKeysWith: { _, new in new }
                 )) ?? "{}")
             }
-            return .ok(Self.jsonString(updated.receipt(includeDetails: true)) ?? "{}")
+            let oldReviewed = Set((current.sourceLedger?.claims ?? []).filter { $0.status == .reviewed }.map(\.claimId))
+            let invalidated = (updated.sourceLedger?.claims ?? []).filter { oldReviewed.contains($0.claimId) && $0.status == .unresolved }.map(\.claimId)
+            return .ok(Self.jsonString(updated.receipt(includeDetails: true).merging(
+                ["invalidatedClaimIds": invalidated, "claimDependents": updated.claimDependents(Set(invalidated))],
+                uniquingKeysWith: { _, new in new }
+            )) ?? "{}")
         } catch let error as EditPlanValidationError {
             throw ToolError(error.errorDescription ?? "Invalid plan update.")
         }
@@ -348,7 +375,8 @@ extension ToolExecutor {
             summary: draft.summary ?? "",
             startFrame: start,
             endFrame: end,
-            referenceUse: draft.referenceUse
+            referenceUse: draft.referenceUse,
+            claimIds: draft.claimIds
         )
     }
 
@@ -370,7 +398,8 @@ extension ToolExecutor {
             sourceStartSeconds: draft.sourceStartSeconds,
             sourceEndSeconds: draft.sourceEndSeconds,
             notes: draft.notes ?? "",
-            referenceUse: draft.referenceUse
+            referenceUse: draft.referenceUse,
+            claimIds: draft.claimIds
         )
     }
 
@@ -385,6 +414,7 @@ extension ToolExecutor {
                 try validatePlanArray(shots, allowed: Self.shotObjectKeys, singular: "shot", path: "plan.shots")
             }
             try validateReferenceRecipe(plan["referenceRecipe"], path: "plan.referenceRecipe")
+            try validateSourceLedger(plan["sourceLedger"], path: "plan.sourceLedger")
         }
         if let patch = args["patch"] as? [String: Any] {
             try validatePlanValue(patch, allowed: Self.planPatchKeys, path: "patch")
@@ -395,6 +425,7 @@ extension ToolExecutor {
                 try validatePlanArray(shots, allowed: Self.shotObjectKeys, singular: "shot", path: "patch.shots")
             }
             try validateReferenceRecipe(patch["referenceRecipe"], path: "patch.referenceRecipe")
+            try validateSourceLedger(patch["sourceLedger"], path: "patch.sourceLedger")
         }
     }
 
@@ -425,6 +456,23 @@ extension ToolExecutor {
         }
     }
 
+    private func validateSourceLedger(_ value: Any?, path: String) throws {
+        guard let value else { return }
+        try validatePlanValue(value, allowed: ["sources", "claims"], path: path)
+        if let sources = (value as? [String: Any])?["sources"] {
+            try validatePlanArray(sources, allowed: ["sourceId", "title", "url", "documentReference", "author", "publicationDate", "accessedDate"], singular: "source", path: "\(path).sources")
+        }
+        if let claims = (value as? [String: Any])?["claims"] as? [Any] {
+            for (index, claim) in claims.enumerated() {
+                let claimPath = "\(path).claims[\(index)]"
+                try validatePlanValue(claim, allowed: ["claimId", "kind", "statement", "value", "unit", "evidence", "status"], path: claimPath)
+                if let evidence = (claim as? [String: Any])?["evidence"] {
+                    try validatePlanArray(evidence, allowed: ["sourceId", "passage"], singular: "evidence", path: "\(claimPath).evidence")
+                }
+            }
+        }
+    }
+
     private func assemblyEntries(plan: EditPlan, editor: EditorViewModel) throws -> [[String: Any]] {
         let allOmitTracks = plan.shots.allSatisfy { $0.trackId == nil }
         return try plan.shots.enumerated().map { index, shot in
@@ -452,6 +500,9 @@ extension ToolExecutor {
 
     private func readinessBlockers(plan: EditPlan, editor: EditorViewModel) -> [String] {
         var blockers: [String] = []
+        for claimId in plan.unresolvedClaimIDs {
+            blockers.append("Claim '\(claimId)' is unresolved; review its supporting evidence before assembly.")
+        }
         let timeline = editor.timeline
         if plan.shots.isEmpty {
             blockers.append("The plan has no shots to validate.")

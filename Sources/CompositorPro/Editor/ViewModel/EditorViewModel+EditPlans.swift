@@ -16,10 +16,14 @@ extension EditorViewModel {
         creates: [EditPlan] = [],
         updates: [EditPlan] = [],
         deleteIds: [String] = [],
-        actionName: String
+        actionName: String,
+        reviewingClaimIds: Set<String> = []
     ) throws -> EditPlanChangeReceipt {
         if editPlansLoadFailed {
             throw EditPlanValidationError.unreadablePlans
+        }
+        guard reviewingClaimIds.isEmpty || (updates.count == 1 && creates.isEmpty && deleteIds.isEmpty) else {
+            throw EditPlanValidationError.invalidReference("Claim review must target one existing plan.")
         }
         guard Set(deleteIds).count == deleteIds.count else {
             throw EditPlanValidationError.invalidReference("Duplicate plan id in deleteIds.")
@@ -51,11 +55,16 @@ extension EditorViewModel {
                   plan.fps == current.fps,
                   plan.width == current.width,
                   plan.height == current.height,
-                  plan.createdAt == current.createdAt,
+                   plan.createdAt == current.createdAt,
+                  plan.sourceLedgerRevision == current.sourceLedgerRevision,
                   plan.status == current.status else {
                 throw EditPlanValidationError.invalidReference("Plan identity, timeline, geometry, and status are immutable in an update.")
             }
             plan.status = .proposed
+            plan.sourceLedger = try plan.sourceLedger?.validated(previous: current.sourceLedger, reviewingClaimIds: reviewingClaimIds)
+            if let ledger = plan.sourceLedger, current.sourceLedger.map({ !ledger.hasSameEvidence(as: $0) }) ?? true {
+                plan.sourceLedgerRevision = UUID().uuidString
+            }
             let validated = try EditPlan.validatedNew(
                 plan,
                 timelineId: current.timelineId,
@@ -109,6 +118,23 @@ extension EditorViewModel {
         registerEditPlanSwap(before: before, after: editPlans, actionName: actionName)
         onProjectCheckpointRequired?()
         return plan
+    }
+
+    func reviewEditPlanClaims(id: String, claimIds: [String], ledgerRevision: String) throws -> EditPlanChangeReceipt {
+        guard var plan = editPlan(id: id), let ledger = plan.sourceLedger else {
+            throw EditPlanValidationError.invalidReference("Claim review requires an existing plan with a sourceLedger.")
+        }
+        guard plan.sourceLedgerRevision == ledgerRevision else {
+            throw EditPlanValidationError.invalidReference("Source ledger changed; read and review the current evidence before approving claims.")
+        }
+        guard let ids = try ledger.validatedClaimIDs(claimIds) else {
+            throw EditPlanValidationError.invalidReference("Claim review requires non-empty claimIds.")
+        }
+        let reviewed = Set(ids)
+        for index in ledger.claims.indices where reviewed.contains(ledger.claims[index].claimId) {
+            plan.sourceLedger?.claims[index].status = .reviewed
+        }
+        return try changeEditPlans(updates: [plan], actionName: L10n.string("Review Claims"), reviewingClaimIds: reviewed)
     }
 
     private func registerEditPlanSwap(before: [EditPlan], after: [EditPlan], actionName: String) {
