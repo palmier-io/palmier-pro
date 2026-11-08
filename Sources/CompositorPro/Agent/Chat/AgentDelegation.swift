@@ -272,44 +272,50 @@ actor AgentDelegation {
             messages: [AgentRequestMessage(role: .user, content: [.content(.text(taskText(task)))])],
             context: context
         )
-        var iterator = stream.makeAsyncIterator()
-        var text = ""
-        var textBytes = 0
-        var stopped = false
-        do {
-            while let event = try await iterator.next() {
-                try Task.checkCancellation()
-                switch event {
-                case .toolUseComplete:
-                    throw AgentDelegationError.toolsForbidden
-                case .messageStop(let reason):
-                    if reason == .refusal { throw AgentDelegationError.modelRefusal }
-                    if reason == .toolUse { throw AgentDelegationError.toolsForbidden }
-                    guard !stopped, reason == .endTurn || reason == .stopSequence else {
-                        throw AgentDelegationError.incompleteOutput
+        return try await withTaskCancellationHandler {
+            var iterator = stream.events.makeAsyncIterator()
+            var text = ""
+            var textBytes = 0
+            var stopped = false
+            do {
+                while let event = try await iterator.next() {
+                    try Task.checkCancellation()
+                    switch event {
+                    case .toolUseComplete:
+                        throw AgentDelegationError.toolsForbidden
+                    case .messageStop(let reason):
+                        if reason == .refusal { throw AgentDelegationError.modelRefusal }
+                        if reason == .toolUse { throw AgentDelegationError.toolsForbidden }
+                        guard !stopped, reason == .endTurn || reason == .stopSequence else {
+                            throw AgentDelegationError.incompleteOutput
+                        }
+                        stopped = true
+                    case .textDelta(let delta):
+                        guard !stopped else { throw AgentDelegationError.incompleteOutput }
+                        let count = delta.utf8.count
+                        guard count <= textByteLimit - textBytes else {
+                            throw AgentDelegationError.outputLimitExceeded
+                        }
+                        textBytes += count
+                        text += delta
+                    case .thinkingDelta, .thinkingSignature, .redactedThinking,
+                         .reasoningSummaryDelta, .reasoningComplete:
+                        break
                     }
-                    stopped = true
-                case .textDelta(let delta):
-                    guard !stopped else { throw AgentDelegationError.incompleteOutput }
-                    let count = delta.utf8.count
-                    guard count <= textByteLimit - textBytes else {
-                        throw AgentDelegationError.outputLimitExceeded
-                    }
-                    textBytes += count
-                    text += delta
-                case .thinkingDelta, .thinkingSignature, .redactedThinking,
-                     .reasoningSummaryDelta, .reasoningComplete:
-                    break
                 }
+                try Task.checkCancellation()
+                guard stopped else { throw AgentDelegationError.incompleteOutput }
+                let output = try checkedOutput(text)
+                try await stream.join().get()
+                try Task.checkCancellation()
+                return output
+            } catch {
+                stream.cancel()
+                _ = await stream.join()
+                throw error
             }
-            try Task.checkCancellation()
-            guard stopped else { throw AgentDelegationError.incompleteOutput }
-            return try checkedOutput(text)
-        } catch {
-            // A cancelled next() terminates makeAgentStream's owned transport task even after early rejection.
-            withUnsafeCurrentTask { $0?.cancel() }
-            do { _ = try await iterator.next() } catch {}
-            throw error
+        } onCancel: {
+            stream.cancel()
         }
     }
 

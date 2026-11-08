@@ -9,7 +9,7 @@ struct BYOKClient: AgentClient {
         tools: [AgentToolSchema],
         messages: [AgentRequestMessage],
         context: AgentRequestContext
-    ) -> AsyncThrowingStream<AgentStreamEvent, Error> {
+    ) -> AgentStreamOperation {
         makeAgentStream { continuation in
             try await run(
                 system: system,

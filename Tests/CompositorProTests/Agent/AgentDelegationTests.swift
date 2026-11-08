@@ -531,7 +531,7 @@ private struct DelegationRecordingClient: AgentClient {
 
     func stream(
         system: String, tools: [AgentToolSchema], messages: [AgentRequestMessage], context: AgentRequestContext
-    ) -> AsyncThrowingStream<AgentStreamEvent, any Error> {
+    ) -> AgentStreamOperation {
         makeAgentStream { continuation in
             await probe.record(tools: tools, messages: messages, context: context)
             do {

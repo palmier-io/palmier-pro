@@ -15,15 +15,12 @@ struct CustomEndpointTransportTests {
         let endpoint = try #require(CustomModelStore.normalizedBaseURL(server.baseURL))
         let client = Self.client(modelID: "qwen3-coder:30b", endpoint: endpoint, apiKey: "")
 
-        var events: [AgentStreamEvent] = []
-        for try await event in client.stream(
+        let events = try await transportEvents(client.stream(
             system: "Instructions",
             tools: [AgentToolSchema(name: "get_timeline", description: "Read", inputSchema: ["type": "object"])],
             messages: [AgentRequestMessage(role: .user, content: [.content(.text("Cut the intro"))])],
             context: Self.context
-        ) {
-            events.append(event)
-        }
+        ))
 
         let request = try #require(server.request)
         #expect(request.hasPrefix("POST /v1/chat/completions "))
@@ -47,7 +44,7 @@ struct CustomEndpointTransportTests {
         let endpoint = try #require(CustomModelStore.normalizedBaseURL(server.baseURL))
         let client = Self.client(modelID: "m", endpoint: endpoint, apiKey: "sk-local")
 
-        for try await _ in client.stream(system: "", tools: [], messages: [], context: Self.context) {}
+        _ = try await transportEvents(client.stream(system: "", tools: [], messages: [], context: Self.context))
 
         #expect(try #require(server.request).lowercased().contains("authorization: bearer sk-local"))
     }
@@ -59,7 +56,7 @@ struct CustomEndpointTransportTests {
             apiKey: ""
         )
         do {
-            for try await _ in client.stream(system: "", tools: [], messages: [], context: Self.context) {}
+            _ = try await transportEvents(client.stream(system: "", tools: [], messages: [], context: Self.context))
             Issue.record("Expected a missing-credential failure")
         } catch let error as AgentClientTransportError {
             guard case .missingAPIKey(.custom) = error else {
@@ -80,7 +77,7 @@ struct CustomEndpointTransportTests {
         let client = Self.client(modelID: "missing", endpoint: endpoint, apiKey: "")
 
         do {
-            for try await _ in client.stream(system: "", tools: [], messages: [], context: Self.context) {}
+            _ = try await transportEvents(client.stream(system: "", tools: [], messages: [], context: Self.context))
             Issue.record("Expected an HTTP failure")
         } catch let error as AgentClientTransportError {
             guard case .httpError(let provider, let status, let body) = error else {
@@ -122,7 +119,7 @@ struct CustomEndpointTransportTests {
             ]),
         ]
 
-        for try await _ in client.stream(system: "", tools: [], messages: messages, context: Self.context) {}
+        _ = try await transportEvents(client.stream(system: "", tools: [], messages: messages, context: Self.context))
 
         let request = try #require(server.request)
         let separator = try #require(request.range(of: "\r\n\r\n"))
@@ -147,9 +144,9 @@ struct CustomEndpointTransportTests {
             ? .content(.toolResult(toolUseId: "inspect", content: [.image(base64: "YQ==", mediaType: "image/png")], isError: false))
             : .image(base64: "YQ==", mediaType: "image/png")
         do {
-            for try await _ in client.stream(
+            _ = try await transportEvents(client.stream(
                 system: "", tools: [], messages: [AgentRequestMessage(role: .user, content: [block])], context: Self.context
-            ) {}
+            ))
             Issue.record("Expected image input to be refused")
         } catch let error as AgentClientTransportError {
             guard case .imageInputUnsupported(let model) = error else {
@@ -167,10 +164,10 @@ struct CustomEndpointTransportTests {
         let endpoint = try #require(CustomModelStore.normalizedBaseURL(server.baseURL))
         let client = Self.client(modelID: "text-model", endpoint: endpoint, apiKey: "", supportsImages: false)
         var text = ""
-        for try await event in client.stream(
+        for event in try await transportEvents(client.stream(
             system: "", tools: [], messages: [AgentRequestMessage(role: .user, content: [.content(.text("Read the timeline"))])],
             context: Self.context
-        ) {
+        )) {
             if case .textDelta(let value) = event { text += value }
         }
         #expect(text == "Hello")
@@ -185,11 +182,11 @@ struct CustomEndpointTransportTests {
         let endpoint = try #require(CustomModelStore.normalizedBaseURL(server.baseURL))
         let client = Self.client(modelID: "unknown-model", endpoint: endpoint, apiKey: "")
         do {
-            for try await _ in client.stream(
+            _ = try await transportEvents(client.stream(
                 system: "", tools: [],
                 messages: [AgentRequestMessage(role: .user, content: [.image(base64: "YQ==", mediaType: "image/png")])],
                 context: Self.context
-            ) {}
+            ))
             Issue.record("Expected the provider's image rejection")
         } catch let error as AgentClientTransportError {
             guard case .httpError(.custom, let status, let body) = error else {
@@ -231,6 +228,24 @@ struct CustomEndpointTransportTests {
     """
 }
 
+private func transportEvents(_ operation: AgentStreamOperation) async throws -> [AgentStreamEvent] {
+    try await withTaskCancellationHandler {
+        do {
+            var events: [AgentStreamEvent] = []
+            for try await event in operation.events { events.append(event) }
+            try await operation.join().get()
+            try Task.checkCancellation()
+            return events
+        } catch {
+            operation.cancel()
+            _ = await operation.join()
+            throw error
+        }
+    } onCancel: {
+        operation.cancel()
+    }
+}
+
 /// Replays a capture of the provider's real SSE through the actual client, so a framing or
 /// line-splitting fault between socket and parser fails here instead of being inferred from
 /// a log line. Shape copied from a live OpenRouter stream for this model.
@@ -251,12 +266,9 @@ struct CustomEndpointStreamReplayTests {
         )
 
         let prompt = AgentRequestMessage(role: .user, content: [.content(.text("Add captions"))])
-        var events: [AgentStreamEvent] = []
-        for try await event in client.stream(
+        let events = try await transportEvents(client.stream(
             system: "s", tools: [], messages: [prompt], context: .replay
-        ) {
-            events.append(event)
-        }
+        ))
 
         #expect(events.contains(.textDelta("I'll start by reviewing")))
         let names = events.compactMap { event -> String? in

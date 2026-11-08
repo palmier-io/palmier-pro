@@ -187,7 +187,7 @@ private func milliseconds(since start: ContinuousClock.Instant) -> Int {
 }
 
 func presentAgentStream(
-    _ source: AsyncThrowingStream<AgentStreamEvent, Error>,
+    _ source: AgentStreamOperation,
     model: AgentModel,
     turnID: String = "-",
     onSnapshot: @escaping @Sendable (AgentStreamSnapshot) async -> Void
@@ -195,71 +195,84 @@ func presentAgentStream(
     let buffer = AgentStreamPresentationBuffer(model: model)
     let snapshots = await buffer.snapshots()
     let started = ContinuousClock.now
-    let producer = Task.detached {
+    let consumer = Task.detached { () -> (any Error)? in
+        var failure: (any Error)?
         do {
-            for try await event in source {
+            for try await event in source.events {
                 try Task.checkCancellation()
                 await buffer.receive(event)
             }
-            await buffer.complete()
+            try Task.checkCancellation()
+            failure = nil
         } catch {
-            await buffer.complete(throwing: error)
+            source.cancel()
+            failure = error
         }
+        if case .failure(let error) = await source.join(), failure == nil {
+            failure = error
+        }
+        let terminalError = failure ?? (Task.isCancelled ? CancellationError() : nil)
+        await buffer.complete(throwing: terminalError)
+        return terminalError
     }
-    var lastRevision: UInt64 = 0
-    var firstOutputMs: Int?
+    return try await withTaskCancellationHandler {
+        var lastRevision: UInt64 = 0
+        var firstOutputMs: Int?
 
-    do {
-        for try await snapshot in snapshots {
-            guard snapshot.revision != lastRevision else { continue }
-            if firstOutputMs == nil { firstOutputMs = milliseconds(since: started) }
-            await onSnapshot(snapshot)
-            lastRevision = snapshot.revision
+        do {
+            for try await snapshot in snapshots {
+                guard snapshot.revision != lastRevision else { continue }
+                if firstOutputMs == nil { firstOutputMs = milliseconds(since: started) }
+                await onSnapshot(snapshot)
+                lastRevision = snapshot.revision
+            }
+            if let error = await consumer.value { throw error }
+            try Task.checkCancellation()
+        } catch {
+            source.cancel()
+            consumer.cancel()
+            _ = await consumer.value
+            let final = await buffer.complete()
+            if final.revision != lastRevision {
+                await onSnapshot(final)
+            }
+            AgentDiagnostics.turnFailed(
+                id: turnID, stage: "stream", error: error,
+                elapsed: Double(milliseconds(since: started)) / 1000
+            )
+            Log.agent.error(
+                "chat stream failed model=\(model.rawValue) provider=\(model.provider.rawValue) "
+                    + "after=\(milliseconds(since: started))ms firstOutput=\(firstOutputMs.map { "\($0)ms" } ?? "none") "
+                    + "error=\(error.localizedDescription)",
+                telemetry: "Agent chat stream failed",
+                data: ["model": model.rawValue, "provider": model.provider.rawValue]
+            )
+            throw error
         }
-        if Task.isCancelled {
-            throw CancellationError()
-        }
-    } catch {
-        producer.cancel()
-        await producer.value
+
         let final = await buffer.complete()
         if final.revision != lastRevision {
             await onSnapshot(final)
         }
-        AgentDiagnostics.turnFailed(
-            id: turnID, stage: "stream", error: error,
-            elapsed: Double(milliseconds(since: started)) / 1000
+        AgentDiagnostics.turnCompleted(
+            id: turnID, turns: 1,
+            elapsed: Double(milliseconds(since: started)) / 1000,
+            stopReason: final.stopReason
         )
-        Log.agent.error(
-            "chat stream failed model=\(model.rawValue) provider=\(model.provider.rawValue) "
-                + "after=\(milliseconds(since: started))ms firstOutput=\(firstOutputMs.map { "\($0)ms" } ?? "none") "
-                + "error=\(error.localizedDescription)",
-            telemetry: "Agent chat stream failed",
-            data: ["model": model.rawValue, "provider": model.provider.rawValue]
+        Log.agent.notice(
+            "chat stream done model=\(model.rawValue) provider=\(model.provider.rawValue) "
+                + "firstOutput=\(firstOutputMs.map { "\($0)ms" } ?? "none") "
+                + "total=\(milliseconds(since: started))ms stop=\(final.stopReason.rawValue)",
+            telemetry: "Agent chat stream completed",
+            data: [
+                "model": model.rawValue,
+                "provider": model.provider.rawValue,
+                "stopReason": final.stopReason.rawValue,
+            ]
         )
-        throw error
+        return final
+    } onCancel: {
+        source.cancel()
+        consumer.cancel()
     }
-
-    await producer.value
-    let final = await buffer.complete()
-    if final.revision != lastRevision {
-        await onSnapshot(final)
-    }
-    AgentDiagnostics.turnCompleted(
-        id: turnID, turns: 1,
-        elapsed: Double(milliseconds(since: started)) / 1000,
-        stopReason: final.stopReason
-    )
-    Log.agent.notice(
-        "chat stream done model=\(model.rawValue) provider=\(model.provider.rawValue) "
-            + "firstOutput=\(firstOutputMs.map { "\($0)ms" } ?? "none") "
-            + "total=\(milliseconds(since: started))ms stop=\(final.stopReason.rawValue)",
-        telemetry: "Agent chat stream completed",
-        data: [
-            "model": model.rawValue,
-            "provider": model.provider.rawValue,
-            "stopReason": final.stopReason.rawValue,
-        ]
-    )
-    return final
 }

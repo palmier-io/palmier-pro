@@ -280,7 +280,7 @@ private actor DelegationRuntimeClient: AgentClient {
     }
 
     nonisolated func stream(system: String, tools: [AgentToolSchema], messages: [AgentRequestMessage],
-                            context: AgentRequestContext) -> AsyncThrowingStream<AgentStreamEvent, Error> {
+                            context: AgentRequestContext) -> AgentStreamOperation {
         makeAgentStream { continuation in
             let events = try await self.events(system: system, tools: tools)
             for event in events { continuation.yield(event) }

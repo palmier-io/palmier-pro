@@ -314,25 +314,47 @@ protocol AgentClient: Sendable {
         tools: [AgentToolSchema],
         messages: [AgentRequestMessage],
         context: AgentRequestContext
-    ) -> AsyncThrowingStream<AgentStreamEvent, Error>
+    ) -> AgentStreamOperation
+}
+
+struct AgentStreamOperation: Sendable {
+    let events: AsyncThrowingStream<AgentStreamEvent, Error>
+    private let producer: Task<Void, any Error>
+
+    fileprivate init(events: AsyncThrowingStream<AgentStreamEvent, Error>, producer: Task<Void, any Error>) {
+        self.events = events
+        self.producer = producer
+    }
+
+    func cancel() {
+        producer.cancel()
+    }
+
+    func join() async -> Result<Void, any Error> {
+        await producer.result
+    }
 }
 
 func makeAgentStream(
     _ operation: @escaping @Sendable (
         AsyncThrowingStream<AgentStreamEvent, Error>.Continuation
     ) async throws -> Void
-) -> AsyncThrowingStream<AgentStreamEvent, Error> {
-    AsyncThrowingStream { continuation in
-        let task = Task {
-            do {
-                try await operation(continuation)
-                continuation.finish()
-            } catch {
-                continuation.finish(throwing: error)
-            }
+) -> AgentStreamOperation {
+    let (events, continuation) = AsyncThrowingStream<AgentStreamEvent, Error>.makeStream()
+    let producer = Task.detached {
+        defer { continuation.onTermination = nil }
+        do {
+            try await operation(continuation)
+            continuation.finish()
+        } catch {
+            continuation.finish(throwing: error)
+            throw error
         }
-        continuation.onTermination = { _ in task.cancel() }
     }
+    continuation.onTermination = { termination in
+        if case .cancelled = termination { producer.cancel() }
+    }
+    return AgentStreamOperation(events: events, producer: producer)
 }
 
 enum AgentHTTP {

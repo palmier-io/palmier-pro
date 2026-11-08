@@ -5,16 +5,25 @@ import Testing
 @Suite("Agent stream presentation")
 @MainActor
 struct AgentStreamPresentationTests {
-    @Test func burstCoalescesWithoutChangingText() async throws {
+    @Test func burstPreservesEveryTextDelta() async throws {
         let chunks = Array(repeating: AgentStreamEvent.textDelta("x"), count: 1_951)
-        let recorder = SnapshotRecorder()
-
-        let final = try await presentAgentStream(stream(chunks), model: .sonnet5) {
-            await recorder.append($0)
-        }
-
+        let final = try await presentAgentStream(stream(chunks), model: .sonnet5) { _ in }
         #expect(text(in: final.blocks) == String(repeating: "x", count: 1_951))
-        #expect(await recorder.count <= 2)
+    }
+
+    @Test func burstWithinOneActorTurnPublishesAtMostTwoSnapshots() async throws {
+        let chunks = Array(repeating: AgentStreamEvent.textDelta("x"), count: 1_951)
+        let buffer = AgentStreamPresentationBuffer(model: .sonnet5)
+        let snapshots = await buffer.snapshots()
+        let recorder = SnapshotRecorder()
+        let consumer = Task {
+            for try await snapshot in snapshots { await recorder.append(snapshot) }
+        }
+        let final = await deliverPresentationBurst(chunks, to: buffer)
+        try await consumer.value
+        #expect(text(in: final.blocks) == String(repeating: "x", count: 1_951))
+        #expect(await (1...2).contains(recorder.count))
+        #expect(await recorder.last.map { text(in: $0.blocks) } == text(in: final.blocks))
     }
 
     @Test func reducerPreservesBlockOrderAndStopReason() async throws {
@@ -108,16 +117,12 @@ struct AgentStreamPresentationTests {
     private func stream(
         _ events: [AgentStreamEvent],
         error: (any Error)? = nil
-    ) -> AsyncThrowingStream<AgentStreamEvent, Error> {
-        AsyncThrowingStream { continuation in
+    ) -> AgentStreamOperation {
+        makeAgentStream { continuation in
             for event in events {
                 continuation.yield(event)
             }
-            if let error {
-                continuation.finish(throwing: error)
-            } else {
-                continuation.finish()
-            }
+            if let error { throw error }
         }
     }
 
@@ -127,6 +132,14 @@ struct AgentStreamPresentationTests {
             return text
         }.joined()
     }
+}
+
+private func deliverPresentationBurst(
+    _ events: [AgentStreamEvent],
+    to buffer: isolated AgentStreamPresentationBuffer
+) -> AgentStreamSnapshot {
+    for event in events { buffer.receive(event) }
+    return buffer.complete()
 }
 
 private enum FixtureError: Error {
