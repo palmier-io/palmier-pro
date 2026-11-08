@@ -10,13 +10,7 @@ struct StoryboardView: View {
     @State private var comment = ""
     @State private var operation: Task<Void, Never>?
     @State private var operationGeneration = UUID()
-
-    private struct Context: Equatable {
-        var planId: String
-        var updatedAt: Date?
-        var mediaRevision: UInt64
-        var timelineRevision: Int
-    }
+    @State private var preview = StoryboardPreviewController()
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
@@ -34,6 +28,7 @@ struct StoryboardView: View {
             }
             if let error { Text(verbatim: error).foregroundStyle(AppTheme.Status.errorColor).textSelection(.enabled) }
             if let report {
+                StoryboardPreviewView(controller: preview) { preview.prepare(editor: editor, planId: planId) }
                 HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
                     List(selection: $sceneId) {
                         ForEach(report.cards, id: \.shot.id) { card in
@@ -99,8 +94,8 @@ struct StoryboardView: View {
         .padding(AppTheme.Spacing.lg)
         .frame(width: AppTheme.Storyboard.width, height: AppTheme.Storyboard.height)
         .background(AppTheme.Background.surfaceColor)
-        .task(id: Context(planId: planId, updatedAt: editor.editPlan(id: planId)?.updatedAt,
-                          mediaRevision: editor.mediaManifestRevision, timelineRevision: editor.timelineRenderRevision)) {
+        .task(id: editor.storyboardPreviewContext(planId: planId)) {
+            preview.invalidate()
             report = nil
             error = nil
             guard !planId.isEmpty else { return }
@@ -113,7 +108,10 @@ struct StoryboardView: View {
             } catch is CancellationError {} catch { self.error = error.localizedDescription }
         }
         .onChange(of: planId) { cancelOperation() }
-        .onDisappear { cancelOperation() }
+        .onDisappear {
+            cancelOperation()
+            preview.invalidate()
+        }
     }
 
     private func perform(_ action: @escaping @MainActor () async throws -> StoryboardReport) {

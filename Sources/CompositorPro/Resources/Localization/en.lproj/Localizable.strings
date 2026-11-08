@@ -3,6 +3,7 @@
 "$%lld/mo" = "$%lld/mo";
 "$%lld–$%lld · Credits expire at renewal." = "$%lld–$%lld · Credits expire at renewal.";
 "%@ (Paid)" = "%@ (Paid)";
+"%@ Preview cleanup failed: %@" = "%@ Preview cleanup failed: %@";
 "%@ could not be exported." = "%@ could not be exported.";
 "%@ does not accept this media" = "%@ does not accept this media";
 "%@ does not support this media type." = "%@ does not support this media type.";
@@ -90,6 +91,7 @@
 "Add keyframe" = "Add keyframe";
 "Add models…" = "Add models…";
 "Add nonempty name and description fields to the skill frontmatter." = "Add nonempty name and description fields to the skill frontmatter.";
+"Add scenes before previewing the storyboard." = "Add scenes before previewing the storyboard.";
 "Add source media." = "Add source media.";
 "Add this configuration to ~/.cursor/mcp.json." = "Add this configuration to ~/.cursor/mcp.json.";
 "Add this skill to an external agent" = "Add this skill to an external agent";
@@ -438,6 +440,7 @@
 "Enter a valid http:// or https:// base URL." = "Enter a valid http:// or https:// base URL.";
 "Enter finite source times with the end after the start." = "Enter finite source times with the end after the start.";
 "Estimated cost. Actual billing may differ slightly." = "Estimated cost. Actual billing may differ slightly.";
+"Estimated timing · silent preview" = "Estimated timing · silent preview";
 "Estimated: %lld frames" = "Estimated: %lld frames";
 "Even out the loudness across the interview clips." = "Even out the loudness across the interview clips.";
 "Every edit here is a single step, not a pile of small ones. Undo puts the timeline back exactly as it was, including retimed and restructured clips." = "Every edit here is a single step, not a pile of small ones. Undo puts the timeline back exactly as it was, including retimed and restructured clips.";
@@ -722,6 +725,7 @@
 "Max words" = "Max words";
 "Maximize Focused Panel" = "Maximize Focused Panel";
 "Measure Narration" = "Measure Narration";
+"Measured narration" = "Measured narration";
 "Measured: %lld frames" = "Measured: %lld frames";
 "Measures each clip's loudness and adjusts it to a common target (-16 LUFS) so clips sit at the same level." = "Measures each clip's loudness and adjusts it to a common target (-16 LUFS) so clips sit at the same level.";
 "Media" = "Media";
@@ -884,7 +888,12 @@
 "Presence" = "Presence";
 "Press M in the timeline to add a marker." = "Press M in the timeline to add a marker.";
 "Preview" = "Preview";
+"Preview Storyboard" = "Preview Storyboard";
 "Preview Unavailable" = "Preview Unavailable";
+"Preview could not render every scene and narration range exactly." = "Preview could not render every scene and narration range exactly.";
+"Preview does not approve production or certify source inspection." = "Preview does not approve production or certify source inspection.";
+"Preview requires consecutive scenes starting at frame zero, without gaps or overlaps." = "Preview requires consecutive scenes starting at frame zero, without gaps or overlaps.";
+"Preview supports still images, opaque video, and measured narration. Render other visual types before previewing." = "Preview supports still images, opaque video, and measured narration. Render other visual types before previewing.";
 "Privacy & Diagnostics" = "Privacy & Diagnostics";
 "Pro plan" = "Pro plan";
 "Product demos" = "Product demos";
@@ -933,6 +942,7 @@
 "Refresh to check for available skills." = "Refresh to check for available skills.";
 "Regenerate with the same parameters" = "Regenerate with the same parameters";
 "Relink Folder…" = "Relink Folder…";
+"Relink missing sources or wait for media preparation, then preview again." = "Relink missing sources or wait for media preparation, then preview again.";
 "Relinked %lld of %lld offline clips." = "Relinked %lld of %lld offline clips.";
 "Relink…" = "Relink…";
 "Remaining" = "Remaining";
@@ -971,6 +981,7 @@
 "Resolution" = "Resolution";
 "Resolution must be at least 2 × 2 pixels." = "Resolution must be at least 2 × 2 pixels.";
 "Resolution must not exceed 8192 pixels on either edge." = "Resolution must not exceed 8192 pixels on either edge.";
+"Resolve scene source timing or measure the current narration before previewing." = "Resolve scene source timing or measure the current narration before previewing.";
 "Resolved" = "Resolved";
 "Restart Compositor Pro" = "Restart Compositor Pro";
 "Restart Compositor Pro to apply this change." = "Restart Compositor Pro to apply this change.";
@@ -1117,6 +1128,7 @@
 "Source Media" = "Source Media";
 "Source Start (seconds)" = "Source Start (seconds)";
 "Source Video" = "Source Video";
+"Source contents or duration changed. Revise the source selection or measure narration again." = "Source contents or duration changed. Revise the source selection or measure narration again.";
 "Source thumbnail only. Inspect the full still or continuously play the selected video span before recording review." = "Source thumbnail only. Inspect the full still or continuously play the selected video span before recording review.";
 "Speaker Detection" = "Speaker Detection";
 "Speech" = "Speech";
@@ -1151,6 +1163,9 @@
 "Stopped" = "Stopped";
 "Storage" = "Storage";
 "Storyboard" = "Storyboard";
+"Storyboard preview canceled." = "Storyboard preview canceled.";
+"Storyboard preview supports up to 30 minutes." = "Storyboard preview supports up to 30 minutes.";
+"Storyboard, project, or media changed. Preview the current storyboard again." = "Storyboard, project, or media changed. Preview the current storyboard again.";
 "Streaming through your Anthropic API key (BYOK)" = "Streaming through your Anthropic API key (BYOK)";
 "Streaming through your OpenAI API key (BYOK)" = "Streaming through your OpenAI API key (BYOK)";
 "Streaming through your own OpenAI-compatible endpoint" = "Streaming through your own OpenAI-compatible endpoint";

@@ -456,10 +456,12 @@ enum CompositionBuilder {
         timescale: CMTimeScale
     ) async -> Bool {
         let clipStart = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
-        let trimStartFrame = clip.mediaType == .image ? max(0, clip.trimStartFrame) : clip.trimStartFrame
         let sourceTimescale = (try? await sourceTrack.load(.naturalTimeScale)) ?? timescale
-        let startSeconds = Double(trimStartFrame) / Double(timescale)
-        let trimStart = CMTime(seconds: startSeconds, preferredTimescale: sourceTimescale)
+        let map = clip.timeMap
+        let requestedSourceRange = CompositionSourceTiming.requestedRange(
+            for: clip, timeMap: map, timescale: timescale, sourceTimescale: sourceTimescale
+        )
+        let trimStart = requestedSourceRange.start
         let clipDuration = CMTime(value: CMTimeValue(clip.durationFrames), timescale: timescale)
 
         if clipStart > cursor {
@@ -469,11 +471,9 @@ enum CompositionBuilder {
 
         // A ramp is inserted as one contiguous source range scaled piecewise, so a speed change
         // costs a few scaleTimeRange calls rather than a second composition track.
-        let map = clip.timeMap
         let segments = map.segments
         guard !segments.isEmpty else { return false }
-        let totalSourceSeconds = Double(map.sourceFramesConsumed) / Double(timescale)
-        var sourceDuration = CMTime(seconds: totalSourceSeconds, preferredTimescale: sourceTimescale)
+        var sourceDuration = requestedSourceRange.duration
         // Baked sources can be a hair shorter than the original; clamp instead of throwing.
         if let assetDuration = try? await sourceAsset.load(.duration), assetDuration.isNumeric {
             sourceDuration = CMTimeMinimum(sourceDuration, assetDuration - trimStart)
@@ -498,7 +498,8 @@ enum CompositionBuilder {
         // A single segment is the ordinary case: one linear scale, no per-segment work. A freeze
         // adds a segment even at constant speed, so segment count is the test, not constancy.
         if segments.count == 1 {
-            if abs(map.averageSpeed - 1) > 0.0001 {
+            if abs(map.averageSpeed - 1) > 0.0001
+                || (sourceDuration == requestedSourceRange.duration && sourceDuration != clipDuration) {
                 compTrack.scaleTimeRange(
                     CMTimeRange(start: clipStart, duration: sourceDuration),
                     toDuration: clipDuration
