@@ -531,29 +531,21 @@ extension EditPlan {
 enum EditPlanStore {
     static let filename = Project.plansFilename
 
-    private static let encoder: JSONEncoder = {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
-        return encoder
-    }()
-
-    private static let decoder: JSONDecoder = {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return decoder
-    }()
-
     static func iso8601String(_ date: Date) -> String {
         ISO8601DateFormatter().string(from: date)
     }
 
     static func encode(_ plans: [EditPlan]) throws -> Data {
-        try encoder.encode(plans)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return try encoder.encode(plans)
     }
 
     static func decode(_ data: Data) throws -> [EditPlan] {
-        try decoder.decode([EditPlan].self, from: data).map { original in
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode([EditPlan].self, from: data).map { original in
             var plan = original
             try plan.validateArtifacts()
             return plan

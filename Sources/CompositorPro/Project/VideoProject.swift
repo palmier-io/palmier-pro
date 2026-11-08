@@ -55,7 +55,7 @@ class VideoProject: NSDocument {
     /// Captured on main thread as cheap value copies; encoded off-main in write().
     private nonisolated(unsafe) var snapshotProjectFile: ProjectFile?
     private nonisolated(unsafe) var snapshotManifest: MediaManifest?
-    private nonisolated(unsafe) var snapshotPlans: Data?
+    private nonisolated(unsafe) var snapshotPlans: [EditPlan]?
     private nonisolated(unsafe) var snapshotThumbnail: Data?
     private nonisolated(unsafe) var snapshotChatSessionFiles: [(name: String, data: Data)] = []
     private nonisolated(unsafe) var snapshotSourceProjectURL: URL?
@@ -269,8 +269,8 @@ class VideoProject: NSDocument {
         try Self.writeProjectPackage(
             ProjectPackageSnapshot(
                 timeline: data,
-                manifest: manifest.flatMap { try? JSONEncoder().encode($0) },
-                plans: plans,
+                manifest: try manifest.map { try JSONEncoder().encode($0) },
+                plans: try plans.map { try EditPlanStore.encode($0) },
                 thumbnail: thumbnail,
                 chatSessionFiles: chatSessionFiles
             ),
@@ -285,7 +285,7 @@ class VideoProject: NSDocument {
         editorViewModel.flushPendingManifestMetadataUpdates()
         snapshotProjectFile = editorViewModel.projectFileSnapshot()
         snapshotManifest = Self.manifestSnapshot(manifest: editorViewModel.mediaManifest, loadFailed: manifestLoadFailed)
-        snapshotPlans = Self.plansSnapshotData(plans: editorViewModel.editPlans, loadFailed: plansLoadFailed)
+        snapshotPlans = EditPlanStore.snapshot(plans: editorViewModel.editPlans, loadFailed: plansLoadFailed)
         snapshotThumbnail = captureThumbnail()
         snapshotChatSessionFiles = editorViewModel.agentService.sessions
             .filter { !$0.messages.isEmpty }
@@ -299,18 +299,6 @@ class VideoProject: NSDocument {
         // If the manifest failed to load, don't overwrite the (recoverable) original with an empty one.
         if loadFailed && manifest.entries.isEmpty && manifest.folders.isEmpty { return nil }
         return manifest
-    }
-
-    nonisolated static func plansSnapshotData(plans: [EditPlan], loadFailed: Bool) -> Data? {
-        // If saved plans are unreadable, preserve the recoverable original instead of replacing
-        // it with whatever happens to be in memory.
-        if loadFailed { return nil }
-        do {
-            return try EditPlanStore.encode(plans)
-        } catch {
-            Log.project.error("save: plans encode failed; preserving the previous plans file")
-            return nil
-        }
     }
 
     private nonisolated static func requiredData(_ name: String, in packageURL: URL) throws -> Data {
