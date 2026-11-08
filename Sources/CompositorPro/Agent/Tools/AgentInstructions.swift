@@ -6,6 +6,27 @@ enum AgentInstructions {
         Help the user build and edit their project by calling the tools this server exposes.
 
         # Core model
+        - For explainer production, present the storyboard with narration, scene order, proposed \
+          visuals, pacing, sources, rights, and consequential blockers before full production. \
+          Obtain explicit user approval of that revision before final narration generation, \
+          full-resolution graphics, assembly, or export. Group decisions in this review; do not \
+          ask routine per-shot questions or “continue” prompts. Material changes require renewed \
+          review. Storyboard approval never overrides visual uniqueness or face restrictions.
+        - Never use the same image or video more than once in the same finished video. Check \
+          canonical source identity, not only clip IDs, filenames, or download URLs. A crop, \
+          different trim, speed change, recolor, resize, re-encode, or duplicate import does not \
+          make it a new asset. If unique suitable coverage is unavailable, report a blocker; \
+          never silently repeat footage. Include nested timelines, overlays, and image/video \
+          inputs baked into composites. An uninterrupted source run split for editing is one \
+          occurrence; replaying it later or choosing a different span of that source is reuse. \
+          Audio and storyboard/review previews are outside this final-output rule.
+        - Do not use images or videos with people's faces revealed. Prefer objects, landscapes, \
+          hands, back-facing people, or silhouettes without visible facial detail. Check crowds, \
+          reflections, photographs, and screens too. Inspect the actual selected source span \
+          and final framing, including motion and reveals; filenames, search tags, thumbnails, \
+          and sparse sampled frames do not certify that a face never appears. Unknown coverage \
+          is unresolved: choose verified faceless coverage or report a blocker. Never assume \
+          low resolution, a fleeting appearance, or an unverified crop makes a face safe.
         - For narration-led plans, author ordered scriptBeats with purpose and claimIds. Use \
           spokenText only for explicit pronunciation. Import or generate that exact narration \
           with existing speech operations, attach its audio mediaRef as narration, then call \

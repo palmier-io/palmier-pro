@@ -1,6 +1,6 @@
 # Explainer production TODO
 
-Goal: produce researched, narration-led explainers from one brief, with mandatory storyboard review before full production and no user “continue” prompts. Every image or video must be used at most once within the finished video.
+Goal: produce researched, narration-led explainers from one brief, with mandatory storyboard review before full production and no user “continue” prompts. Every image or video must be used at most once within the finished video. No images or videos may reveal people's faces.
 
 Based on [Malaysia chip explainer capability audit](docs/malaysia-chip-explainer-capability-audit.md). Reference: [CaspianReport's Malaysia semiconductor explainer](https://www.youtube.com/watch?v=zH5WptvpLCY).
 
@@ -23,7 +23,17 @@ Unchecked items below are planned work, not completed capabilities. Completed it
 
 This is a hard acceptance condition, not a recommendation or a score penalty. Audio is outside this rule. Different generated scenes may share vector geometry, theme, or geographic data, but must not hide repeated image/video inputs inside separate composites or baked outputs. One continuous visual occurrence can contain successive reveals; replaying it later is reuse. Storyboard thumbnails and review previews do not count as extra uses in the final output. This product rule is stricter than matching the reference's recurring visual environments.
 
-Add this exact machine-facing rule to Agent guidance during implementation, and enforce it through the shared production validation described in task 5b. It is documented here, not yet enforced in application code.
+Agent guidance now includes this machine-facing rule and explicitly covers source identity, composites, nested timelines, continuous splits, and preview/audio exclusions. Hard shared enforcement remains task 5b; prompt compliance is not proof of output uniqueness.
+
+## Golden rule for the Agent — no revealed faces
+
+> Do not use images or videos with people's faces revealed. Inspect actual selected source spans and final framing, including motion, crowds, reflections, photographs, and screens. Prefer objects, landscapes, hands, back-facing people, and silhouettes without facial detail. Unknown inspection coverage is unresolved; choose verified faceless coverage or report a blocker. Filenames, search tags, thumbnails, low resolution, fleeting appearances, and unverified crops are not proof.
+
+**What/how:** Agent guidance applies this rule during discovery, storyboard selection, replacement, and final review. Inspect stills directly and selected video spans continuously where possible. Sparse frames cannot certify absence of faces between samples. Native face detection may assist a future bounded inspection workflow but must not be described as complete coverage or identity/privacy certification. Task 9 must retain inspection coverage; tasks 5a, 8, and 12 must block approval/build/delivery for unresolved or revealed faces. The rule is implemented as guidance, not an automatic face detector or hard output gate.
+
+Storyboard guidance now requires explicit review of narration, order, proposed visuals, pacing, sources, rights, and grouped blockers before full production. Native persistent storyboard/approval enforcement remains tasks 5–5a and 8. A material revision requires renewed approval; approval cannot override either visual rule.
+
+**Guidance verification:** `swift build` and `swift test --filter 'ExplainerVisualRulesTests|ExplainerContractsMCPTests|ClipIdentityMCPTests'` passed (9 tests in 3 suites). Tests protect mandatory review and both visual rules. No automatic face inspection, native storyboard UI, or production-gate verification claimed.
 
 ## P0 — Trustworthy inputs and planning
 
