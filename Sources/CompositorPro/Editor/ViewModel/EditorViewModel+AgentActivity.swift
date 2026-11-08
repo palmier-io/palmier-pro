@@ -71,9 +71,15 @@ extension EditorViewModel {
 
     private func scheduleAgentActivityClear(after duration: Double) {
         let revision = agentActivity.revision
+        let sleep = agentActivitySleep
         agentActivityClearTask?.cancel()
         agentActivityClearTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(duration))
+            do {
+                try Task.checkCancellation()
+                try await sleep(.seconds(duration))
+            } catch {
+                return
+            }
             guard let self,
                   !Task.isCancelled,
                   self.agentActivity.revision == revision else { return }

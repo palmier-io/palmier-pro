@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import CompositorPro
 
@@ -8,6 +9,15 @@ struct AgentActivityHighlightTests {
         let clip = Fixtures.clip(id: "clip", start: 0, duration: duration)
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
         return (ToolHarness(timeline: timeline), clip)
+    }
+
+    private func holdActivityExpiry(
+        in editor: EditorViewModel,
+        cooperatesWithCancellation: Bool = true
+    ) -> AgentActivitySleepGate {
+        let gate = AgentActivitySleepGate(cooperatesWithCancellation: cooperatesWithCancellation)
+        editor.agentActivitySleep = { try await gate.sleep(for: $0) }
+        return gate
     }
 
     @Test func classifierSeparatesAddedAndMutatedClips() {
@@ -36,6 +46,8 @@ struct AgentActivityHighlightTests {
 
     @Test func executorHighlightsOnlyActualPropertyChanges() async throws {
         let (harness, clip) = harnessWithClip(duration: 30)
+        let gate = holdActivityExpiry(in: harness.editor)
+        defer { harness.editor.clearAgentActivity(); gate.cancelAll() }
         _ = try await harness.runOK("set_clip_properties", args: [
             "clipIds": [clip.id],
             "opacity": 1.0,
@@ -57,6 +69,8 @@ struct AgentActivityHighlightTests {
         let harness = ToolHarness(timeline: Fixtures.timeline(tracks: [
             Fixtures.videoTrack(clips: [source, target]),
         ]))
+        let gate = holdActivityExpiry(in: harness.editor)
+        defer { harness.editor.clearAgentActivity(); gate.cancelAll() }
         let args: [String: Any] = [
             "sourceClipId": source.id,
             "targetClipIds": [target.id],
@@ -87,6 +101,8 @@ struct AgentActivityHighlightTests {
         var audio = Fixtures.audioTrack()
         audio.id = "audio"
         let harness = ToolHarness(timeline: Fixtures.timeline(tracks: [first, second, audio]))
+        let gate = holdActivityExpiry(in: harness.editor)
+        defer { harness.editor.clearAgentActivity(); gate.cancelAll() }
 
         _ = try await harness.runOK("manage_tracks", args: [
             "reorder": [["index": 0, "to": 1]],
@@ -190,6 +206,8 @@ struct AgentActivityHighlightTests {
 
     @Test func windowedTimelineReadFadesAfterSuccess() async throws {
         let (harness, _) = harnessWithClip()
+        let gate = holdActivityExpiry(in: harness.editor)
+        defer { harness.editor.clearAgentActivity(); gate.cancelAll() }
         _ = try await harness.runOK("get_timeline", args: [
             "startFrame": 10,
             "endFrame": 20,
@@ -220,6 +238,135 @@ struct AgentActivityHighlightTests {
         #expect(AppTheme.Anim.agentReadHighlightHold == 0.7)
         #expect(AppTheme.Anim.agentReadHighlightFade == 0.25)
         #expect(abs(AppTheme.Anim.agentReadHighlightDuration - 0.95) < 0.0001)
+    }
+
+    @Test(arguments: [false, true])
+    func completedActivityExpiresOnlyAfterSleepFinishes(isRead: Bool) async throws {
+        let editor = EditorViewModel()
+        let gate = holdActivityExpiry(in: editor)
+        defer { editor.clearAgentActivity(); gate.cancelAll() }
+        if isRead {
+            let revision = try #require(editor.beginAgentTimelineRead(
+                AgentActivityHighlight(readClipIds: ["clip"])
+            ))
+            #expect(editor.agentActivity.isActive)
+            #expect(editor.agentActivityClearTask == nil)
+            #expect(gate.durations.isEmpty)
+            editor.endAgentTimelineRead(revision, succeeded: true)
+        } else {
+            editor.showAgentChanges(addedClipIds: ["clip"], mutatedClipIds: [])
+        }
+        let task = try #require(editor.agentActivityClearTask)
+        let activity = editor.agentActivity
+        await gate.waitForSleeps(1)
+
+        let duration = isRead
+            ? AppTheme.Anim.agentReadHighlightDuration
+            : AppTheme.Anim.agentChangeHighlightDuration
+        #expect(gate.durations == [.seconds(duration)])
+        #expect(editor.agentActivity == activity)
+        #expect(!editor.agentActivity.isEmpty)
+        #expect(!editor.agentActivity.isActive)
+
+        gate.finishSleep(0)
+        await task.value
+
+        #expect(editor.agentActivity.isEmpty)
+        #expect(editor.agentActivity.revision == activity.revision &+ 1)
+        #expect(editor.agentActivityClearTask == nil)
+        #expect(gate.pendingSleepCount == 0)
+    }
+
+    @Test(arguments: ["write-write", "read-write", "read-read"])
+    func replacedActivityIgnoresCancelledSleepCompletion(replacement: String) async throws {
+        let editor = EditorViewModel()
+        let gate = holdActivityExpiry(in: editor, cooperatesWithCancellation: false)
+        defer { editor.clearAgentActivity(); gate.cancelAll() }
+        if replacement == "write-write" {
+            editor.showAgentChanges(addedClipIds: ["first"], mutatedClipIds: [])
+        } else {
+            let revision = try #require(editor.beginAgentTimelineRead(
+                AgentActivityHighlight(readClipIds: ["first"])
+            ))
+            editor.endAgentTimelineRead(revision, succeeded: true)
+        }
+        let firstTask = try #require(editor.agentActivityClearTask)
+        await gate.waitForSleeps(1)
+
+        var readRevision: Int?
+        if replacement == "read-read" {
+            readRevision = try #require(editor.beginAgentTimelineRead(
+                AgentActivityHighlight(readClipIds: ["second"])
+            ))
+            #expect(editor.agentActivityClearTask == nil)
+        } else {
+            editor.showAgentChanges(addedClipIds: ["second"], mutatedClipIds: [])
+            let expected: Set<String> = replacement == "write-write" ? ["first", "second"] : ["second"]
+            #expect(editor.agentActivity.addedClipIds == expected)
+        }
+        let replacementActivity = editor.agentActivity
+        #expect(firstTask.isCancelled)
+
+        gate.finishSleep(0)
+        await firstTask.value
+
+        #expect(editor.agentActivity == replacementActivity)
+        if let readRevision {
+            #expect(editor.agentActivity.isActive)
+            editor.endAgentTimelineRead(readRevision, succeeded: true)
+        }
+        let secondTask = try #require(editor.agentActivityClearTask)
+        await gate.waitForSleeps(2)
+        gate.finishSleep(1)
+        await secondTask.value
+        #expect(editor.agentActivity.isEmpty)
+        #expect(editor.agentActivityClearTask == nil)
+        #expect(gate.pendingSleepCount == 0)
+    }
+
+    @Test(arguments: ["clear", "timeline"])
+    func clearingActivityCancelsPendingSleep(action: String) async throws {
+        let editor = EditorViewModel()
+        let gate = holdActivityExpiry(in: editor)
+        defer { editor.clearAgentActivity(); gate.cancelAll() }
+        editor.showAgentChanges(addedClipIds: ["clip"], mutatedClipIds: [])
+        let task = try #require(editor.agentActivityClearTask)
+        await gate.waitForSleeps(1)
+
+        if action == "timeline" {
+            let timeline = Fixtures.timeline()
+            editor.timelines.append(timeline)
+            editor.activateTimeline(timeline.id)
+        } else {
+            editor.clearAgentActivity()
+        }
+        let clearedActivity = editor.agentActivity
+        #expect(clearedActivity.isEmpty)
+        #expect(editor.agentActivityClearTask == nil)
+        #expect(task.isCancelled)
+        await task.value
+        #expect(gate.pendingSleepCount == 0)
+        #expect(editor.agentActivity == clearedActivity)
+
+        editor.clearAgentActivity()
+        #expect(editor.agentActivity == clearedActivity)
+    }
+
+    @Test func cancellationBeforeSleepStartsDoesNotAdmitWaiter() async throws {
+        let editor = EditorViewModel()
+        let gate = holdActivityExpiry(in: editor)
+        defer { editor.clearAgentActivity(); gate.cancelAll() }
+        editor.showAgentChanges(addedClipIds: ["clip"], mutatedClipIds: [])
+        let task = try #require(editor.agentActivityClearTask)
+        editor.clearAgentActivity()
+        let clearedActivity = editor.agentActivity
+
+        await task.value
+
+        #expect(gate.durations.isEmpty)
+        #expect(gate.pendingSleepCount == 0)
+        #expect(editor.agentActivity == clearedActivity)
+        #expect(editor.agentActivityClearTask == nil)
     }
 
     @Test func classifiesFiveThousandClipRipple() {
@@ -257,5 +404,63 @@ struct AgentActivityHighlightTests {
         editor.timelines.append(nextTimeline)
         editor.activateTimeline(nextTimeline.id)
         #expect(editor.agentActivity.isEmpty)
+    }
+}
+
+@MainActor
+private final class AgentActivitySleepGate {
+    private let cooperatesWithCancellation: Bool
+    private var sleepers: [UUID: CheckedContinuation<Void, any Error>] = [:]
+    private var sleepIds: [UUID] = []
+    private var observers: [(Int, CheckedContinuation<Void, Never>)] = []
+    private(set) var durations: [Duration] = []
+
+    var pendingSleepCount: Int { sleepers.count }
+
+    init(cooperatesWithCancellation: Bool) {
+        self.cooperatesWithCancellation = cooperatesWithCancellation
+    }
+
+    func sleep(for duration: Duration) async throws {
+        let id = UUID()
+        try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            try await withCheckedThrowingContinuation { continuation in
+                sleepers[id] = continuation
+                sleepIds.append(id)
+                durations.append(duration)
+                let ready = observers.filter { $0.0 <= durations.count }
+                observers.removeAll { $0.0 <= durations.count }
+                for (_, observer) in ready { observer.resume() }
+            }
+        } onCancel: {
+            Task { @MainActor in
+                guard self.cooperatesWithCancellation else { return }
+                self.sleepers.removeValue(forKey: id)?.resume(throwing: CancellationError())
+            }
+        }
+    }
+
+    func waitForSleeps(_ count: Int) async {
+        if durations.count >= count { return }
+        await withCheckedContinuation { observers.append((count, $0)) }
+    }
+
+    func finishSleep(_ index: Int) {
+        guard sleepIds.indices.contains(index),
+              let sleeper = sleepers.removeValue(forKey: sleepIds[index]) else {
+            Issue.record("No pending activity sleep at index \(index).")
+            return
+        }
+        sleeper.resume()
+    }
+
+    func cancelAll() {
+        let pending = sleepers.values
+        sleepers.removeAll()
+        for sleeper in pending { sleeper.resume(throwing: CancellationError()) }
+        let waiting = observers
+        observers.removeAll()
+        for (_, observer) in waiting { observer.resume() }
     }
 }

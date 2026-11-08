@@ -197,6 +197,9 @@ final class EditorViewModel {
     var pendingReplacements: Set<String> = []
     var agentActivity = AgentActivityHighlight()
     @ObservationIgnored var agentActivityClearTask: Task<Void, Never>?
+    @ObservationIgnored var agentActivitySleep: @MainActor @Sendable (Duration) async throws -> Void = {
+        try await Task.sleep(for: $0)
+    }
     var cropEditingActive: Bool = false
     var chromaKeySamplingClipId: String?
     /// Two-up in/out frames shown in the viewer while a slip drag is active.
