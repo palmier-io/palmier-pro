@@ -70,9 +70,6 @@ if ! security find-identity -v -p codesigning 2>/dev/null | grep -qF "$SIGNING_I
   SIGNING_IDENTITY="-"
 fi
 NOTARY_PROFILE="${NOTARY_PROFILE:-compositor-notary}"
-SENTRY_DSN="${SENTRY_DSN:-}"
-POSTHOG_PROJECT_TOKEN="${POSTHOG_PROJECT_TOKEN:-}"
-POSTHOG_HOST="${POSTHOG_HOST:-https://us.i.posthog.com}"
 PROVISION_PROFILE="${PROVISION_PROFILE:-$ROOT/scripts/Compositor_Pro_Developer_ID.provisionprofile}"
 # Fallback to legacy filename if present
 if [ ! -f "$PROVISION_PROFILE" ] && [ -f "$ROOT/scripts/Palmier_Pro_Developer_ID.provisionprofile" ]; then

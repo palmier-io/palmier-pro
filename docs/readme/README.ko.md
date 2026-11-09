@@ -6,7 +6,7 @@
 
 **AI를 위한 비디오 편집기.**
 
-<a href="https://github.com/palmier-io/compositor-pro/releases/latest/download/CompositorPro.dmg">
+<a href="https://github.com/compositor-pro/compositor-pro/releases/latest/download/CompositorPro.dmg">
   <img src="../../assets/macos-badge.png" alt="macOS용 Compositor Pro 다운로드" width="180" />
 </a>
 
@@ -14,7 +14,6 @@
 
 <a href="https://x.com/CompositorPro"><img src="https://img.shields.io/badge/Follow-%40CompositorPro-000000?style=flat&logo=x&logoColor=white" alt="X에서 팔로우" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Discord 참여" /></a>
-<a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 <br />
 
 <p>
@@ -42,7 +41,7 @@
 ---
 
 > [!IMPORTANT]
-> v0.7.6까지의 Compositor Pro 릴리스는 GPLv3로 공개되었습니다. 마지막 공개 소스 스냅샷은 [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source)입니다. v0.7.6 이후 릴리스는 독점 소프트웨어이며 소스 코드는 이곳에 공개되지 않습니다.
+> v0.7.6까지의 Compositor Pro 릴리스는 GPLv3로 공개되었습니다. 마지막 공개 소스 스냅샷은 [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source)입니다. v0.7.6 이후 릴리스는 독점 소프트웨어이며 소스 코드는 이곳에 공개되지 않습니다.
 
 Compositor Pro는 Mac용 비디오 편집기입니다. 사용자와 agent가 타임라인 안에서 함께 비디오를 생성하고 편집할 수 있습니다.
 
@@ -95,7 +94,7 @@ codex mcp add compositor-pro --url http://127.0.0.1:19789/mcp
 
 **어떤 Compositor Pro 버전이 오픈 소스인가요?**
 
-v0.7.6까지의 릴리스와 [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source)까지의 소스 코드는 GPLv3로 유지되며, 이후 릴리스는 독점 소프트웨어입니다.
+v0.7.6까지의 릴리스와 [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source)까지의 소스 코드는 GPLv3로 유지되며, 이후 릴리스는 독점 소프트웨어입니다.
 
 **무료인가요?**
 

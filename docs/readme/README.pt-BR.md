@@ -6,7 +6,7 @@
 
 **O editor de vídeo criado para IA.**
 
-<a href="https://github.com/palmier-io/compositor-pro/releases/latest/download/CompositorPro.dmg">
+<a href="https://github.com/compositor-pro/compositor-pro/releases/latest/download/CompositorPro.dmg">
   <img src="../../assets/macos-badge.png" alt="Baixar Compositor Pro para macOS" width="180" />
 </a>
 
@@ -14,7 +14,6 @@
 
 <a href="https://x.com/CompositorPro"><img src="https://img.shields.io/badge/Follow-%40CompositorPro-000000?style=flat&logo=x&logoColor=white" alt="Seguir no X" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Entrar no Discord" /></a>
-<a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 <br />
 
 <p>
@@ -42,7 +41,7 @@
 ---
 
 > [!IMPORTANT]
-> As versões do Compositor Pro até v0.7.6 foram publicadas sob a GPLv3. O snapshot público final do código-fonte é [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source). As versões posteriores a v0.7.6 são proprietárias e seu código-fonte não é publicado aqui.
+> As versões do Compositor Pro até v0.7.6 foram publicadas sob a GPLv3. O snapshot público final do código-fonte é [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source). As versões posteriores a v0.7.6 são proprietárias e seu código-fonte não é publicado aqui.
 
 Compositor Pro é um editor de vídeo para Mac. Você e seu agente podem gerar e editar vídeos juntos dentro da linha do tempo.
 
@@ -95,7 +94,7 @@ Incluímos um pacote [mcpb](https://github.com/modelcontextprotocol/mcpb) no app
 
 **Quais versões do Compositor Pro são open source?**
 
-As versões até v0.7.6 e o código-fonte até [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source) permanecem sob a GPLv3; as versões posteriores são proprietárias.
+As versões até v0.7.6 e o código-fonte até [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source) permanecem sob a GPLv3; as versões posteriores são proprietárias.
 
 **É gratuito?**
 

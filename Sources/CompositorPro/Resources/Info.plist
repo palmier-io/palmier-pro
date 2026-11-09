@@ -56,7 +56,7 @@
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>
-	<string>https://raw.githubusercontent.com/palmier-io/compositor-pro/main/appcast.xml</string>
+	<string>https://raw.githubusercontent.com/compositor-pro/compositor-pro/main/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>Jh56mT+7YZSRsLylQIPyP+4/ahRtTPzfQQaKDZoBsio=</string>
 	<key>UTExportedTypeDeclarations</key>

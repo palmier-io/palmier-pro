@@ -2,7 +2,7 @@
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
     <channel>
         <title>Compositor Pro</title>
-        <link>https://raw.githubusercontent.com/palmier-io/compositor-pro/main/appcast.xml</link>
+        <link>https://raw.githubusercontent.com/compositor-pro/compositor-pro/main/appcast.xml</link>
         <description>Updates for Compositor Pro</description>
         <language>en</language>
         <item>
@@ -12,7 +12,7 @@
             <sparkle:shortVersionString>0.1.2</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.2/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.2/CompositorPro.dmg"
                 length="8846332"
                 type="application/octet-stream"
                 sparkle:edSignature="SgSKI6XsOlixyKMhI4Id5iauE8KPH5fCVYJylRVQlUWIvyp3TPHredlmwW2RKCaBtBFgnWRmudoEIaoqOF3nBQ=="/>
@@ -24,7 +24,7 @@
             <sparkle:shortVersionString>0.1.3</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.3/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.3/CompositorPro.dmg"
                 length="8855055"
                 type="application/octet-stream"
                 sparkle:edSignature="qdBGG2ByBDn5SSaK4VrOGcQm1u5mCPXA3uNZ8QgpHbWIcKs+EwdSmAtYx0lL0SuGvb4OR3AbUCtnEpH+YLZXAw=="/>
@@ -36,7 +36,7 @@
             <sparkle:shortVersionString>0.1.4</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.4/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.4/CompositorPro.dmg"
                 length="8983089"
                 type="application/octet-stream"
                 sparkle:edSignature="Y9swrZMcat89/MpaQK3VvGgZ0CO9sFKGqs+ptCoiE5Js+N/sO4076FjmDUGKaE9GtUGLNZHnFWt9uG5VgJP2AA=="/>
@@ -48,7 +48,7 @@
             <sparkle:shortVersionString>0.1.5</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.5/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.5/CompositorPro.dmg"
                 length="9120914"
                 type="application/octet-stream"
                 sparkle:edSignature="u/O77OmMWUuAQMaZosLQWgS6DhhR2QFAgZfNZ9ool/r/Ex2uZBEjlacbqZykd/lwZeukkSIRExY8uYv0AT79AQ=="/>
@@ -60,7 +60,7 @@
             <sparkle:shortVersionString>0.1.6</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.6/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.6/CompositorPro.dmg"
                 length="9127310"
                 type="application/octet-stream"
                 sparkle:edSignature="Szt4N70RnD7ZnY3ZrjKgM030Il+9iIArcP0ceiCYK2xCjXML1N482o5ISNX8M1SLUqdr//39xt6EXr6jChvUCA=="/>
@@ -72,7 +72,7 @@
             <sparkle:shortVersionString>0.1.7</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.7/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.7/CompositorPro.dmg"
                 length="11320166"
                 type="application/octet-stream"
                 sparkle:edSignature="eQvvEZr/0YQNCJbUZ22nv9oXxdwZk8sKB7r5TfltG3FZN7Quh3HCrGgFClsFImq5VSCpdPWPL8yeUZ7dUB3KBQ=="/>
@@ -84,7 +84,7 @@
             <sparkle:shortVersionString>0.1.8</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.8/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.8/CompositorPro.dmg"
                 length="11320231"
                 type="application/octet-stream"
                 sparkle:edSignature="JvSM/2KolpBTvWYAXtnIuemXBRzUbwic1QGJ1MQZGKWMAXItPaIaMMfwECdmCVbU5VPYD4KZRxWFPgqfSZB2BQ=="/>
@@ -96,7 +96,7 @@
             <sparkle:shortVersionString>0.1.9</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.9/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.9/CompositorPro.dmg"
                 length="11408867"
                 type="application/octet-stream"
                 sparkle:edSignature="IdFWB53/JV8ymJVQAs0rC5Mibg1oo5aXbPjSsDvdENGYQSqzptQhkd4bqbq0ic/M5H5bMLn5Q0imc5xwOjXSAw=="/>
@@ -108,7 +108,7 @@
             <sparkle:shortVersionString>0.1.10</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.10/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.10/CompositorPro.dmg"
                 length="11461068"
                 type="application/octet-stream"
                 sparkle:edSignature="tto8z3h2yBojLhv+PwNtT6H/RoQEmVFYQYfPLCoVrMypbBTqpMMKPm0GWjdmjOzjdpMQEYEVlg7ZwpyBRRp3Bw=="/>
@@ -120,7 +120,7 @@
             <sparkle:shortVersionString>0.1.11</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.11/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.11/CompositorPro.dmg"
                 length="11438707"
                 type="application/octet-stream"
                 sparkle:edSignature="Bv7XAsda9dMopvSWzP+Fxb02Ce+ECWTblIT7ddIsG2uDm9/zzrVSkhDt2/KDGfBm9cL+Cky87JCOIZ+u/xQGBA=="/>
@@ -132,7 +132,7 @@
             <sparkle:shortVersionString>0.1.12</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.12/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.12/CompositorPro.dmg"
                 length="11534071"
                 type="application/octet-stream"
                 sparkle:edSignature="HJlm9S0fj0OfgxYxyI51mKY1iB1EVzIG2Q66jVOWaO/JSG0i2LAq/dA0o427I/epSOLsfPzfY9/EjNXx3SmpCQ=="/>
@@ -144,7 +144,7 @@
             <sparkle:shortVersionString>0.1.13</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.13/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.13/CompositorPro.dmg"
                 length="11543532"
                 type="application/octet-stream"
                 sparkle:edSignature="LdbKqjd5mthIT2rumHsgpqe6eD7C3W4WpDF87WY0KEN5ny7lU+RA5AXpiuJuWyPUrd5XXrUcwfpjzmTgKpdRAQ=="/>
@@ -156,7 +156,7 @@
             <sparkle:shortVersionString>0.1.14</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.14/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.14/CompositorPro.dmg"
                 length="11573173"
                 type="application/octet-stream"
                 sparkle:edSignature="DkX4CSXWwuBiyUrT2AzFAh3vLaYEYlLLRAedC2SxtH3ci4eU+JJ9VpG1s57n/BSdsEkUZhRstZRhcV0MbiUXAQ=="/>
@@ -168,7 +168,7 @@
             <sparkle:shortVersionString>0.1.15</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.15/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.15/CompositorPro.dmg"
                 length="11625394"
                 type="application/octet-stream"
                 sparkle:edSignature="slz2O4vunFh5+xHYehKsZe3XOKl5vpc0mu/LauD4vA3houai346eStg5L7IHUL2KP0sy3cBXUjz7ozhqAktHBw=="/>
@@ -180,7 +180,7 @@
             <sparkle:shortVersionString>0.1.16</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.16/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.16/CompositorPro.dmg"
                 length="11634773"
                 type="application/octet-stream"
                 sparkle:edSignature="oa+69h4iEb9PMYRHnrxg4LR87M+aW1JClly2VQnv8/Wm6VBo/qqV0hTY03qiEpO8xVwprXOrkGM0kEerTV/RDA=="/>
@@ -192,7 +192,7 @@
             <sparkle:shortVersionString>0.1.17</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.17/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.17/CompositorPro.dmg"
                 length="11740152"
                 type="application/octet-stream"
                 sparkle:edSignature="6FFi8yhSUbq5wnlGORUQ83QMcwE6ELsiB1fZvIjeaBEVbI6UkoFbFCcxj9+/rgX5K1mMVPk0wVCx7ZIHUHYLBQ=="/>
@@ -204,7 +204,7 @@
             <sparkle:shortVersionString>0.1.18</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.18/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.18/CompositorPro.dmg"
                 length="11740542"
                 type="application/octet-stream"
                 sparkle:edSignature="a8tOsvXXlKZFCwO+Ijk2QtbF9yTnYe+CMSxbLXn9KeY05ZcPOp6REIwHGibu6ZVptExri1MlOwV0tf6s3LfJAw=="/>
@@ -216,7 +216,7 @@
             <sparkle:shortVersionString>0.1.19</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.19/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.19/CompositorPro.dmg"
                 length="11879942"
                 type="application/octet-stream"
                 sparkle:edSignature="EF8R5yFdv9oAc88l0WbfFIw6APU/e5ShdpGaQKwKYOOD7TPV1Z9qBxHF96ltooAV8GtmYHKDlF5mogVDrqzgBQ=="/>
@@ -228,7 +228,7 @@
             <sparkle:shortVersionString>0.1.20</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.20/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.20/CompositorPro.dmg"
                 length="11932350"
                 type="application/octet-stream"
                 sparkle:edSignature="0U6vSN8aqVv/VYRc03XrTbD4Diihs6Nud2K0OVuB79pdBgcx1KFS8J/7bC1EW9PUigm276mJx6/fRj9EGbCODA=="/>
@@ -240,7 +240,7 @@
             <sparkle:shortVersionString>0.1.21</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.21/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.21/CompositorPro.dmg"
                 length="12736017"
                 type="application/octet-stream"
                 sparkle:edSignature="+BztzXps/vlvOpJdSwLHWhpsfsBsX5xOQzoWgNXnddHzTLdHBhAbrnkEqFC+/7bByr8FhpeMaDusEnW7ZetmCw=="/>
@@ -252,7 +252,7 @@
             <sparkle:shortVersionString>0.1.22</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.22/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.22/CompositorPro.dmg"
                 length="12736319"
                 type="application/octet-stream"
                 sparkle:edSignature="rTs0inaLa2Zx9c3QGBd+fSepYc01JsDn8F+Ik/2SkCXcDhogGP3MDxWNK7cWruQRCcm7DBW7TOdKTd3Tom2MAQ=="/>
@@ -264,7 +264,7 @@
             <sparkle:shortVersionString>0.1.23</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.23/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.23/CompositorPro.dmg"
                 length="12773757"
                 type="application/octet-stream"
                 sparkle:edSignature="g9oPaId/1fE5kN0QAN+IeQmeVVH74sM2wHRuE+sz/LnVNeeUzJqjrShcEYfWLAm59LmJyjXlv2ezjDkPUUEDAg=="/>
@@ -276,7 +276,7 @@
             <sparkle:shortVersionString>0.1.25</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.25/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.25/CompositorPro.dmg"
                 length="12832043"
                 type="application/octet-stream"
                 sparkle:edSignature="zrFGwYmh3UN/eOM1WK1vOur6NW6cZQB5QbEXZPsbSMbWt0iOF4IJkSpnsFCvlk2Re6Uog5ffoirkHP2r6IcuDg=="/>
@@ -288,7 +288,7 @@
             <sparkle:shortVersionString>0.1.27</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.27/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.27/CompositorPro.dmg"
                 length="12851544"
                 type="application/octet-stream"
                 sparkle:edSignature="4m2crjwfygujD4czWgqHOcpKmLYnWAPlDAIjvcqoLQ7qOfdGcT/blkJVFah5rrN55aoVsyF0GN09urg3cLkeBA=="/>
@@ -300,7 +300,7 @@
             <sparkle:shortVersionString>0.1.28</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.28/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.28/CompositorPro.dmg"
                 length="12853685"
                 type="application/octet-stream"
                 sparkle:edSignature="aTXR4RZ+85+B3V3NEye0KJIbt7FyT18TiJS62J/4TAXlaw5D2CV9eftaXrInU2bs8MZlq9zpUpDYJ0qi+YsoBQ=="/>
@@ -312,7 +312,7 @@
             <sparkle:shortVersionString>0.1.29</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.1.29/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.1.29/CompositorPro.dmg"
                 length="12853527"
                 type="application/octet-stream"
                 sparkle:edSignature="Iiyr6MY2HXHxS6uOu4uK7R0YHybIOM1dS97dwJoM4HWwUPbqJBghWiv1pLlifwO3nGM8ALJlBerVVqKfxJ17BQ=="/>
@@ -324,7 +324,7 @@
             <sparkle:shortVersionString>0.2.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.2.1/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.2.1/CompositorPro.dmg"
                 length="18219637"
                 type="application/octet-stream"
                 sparkle:edSignature="HXTAq4wXEpnyTW2j8IeiMwJkTRJ7fpwNAONaJjK4bORFHOHLytRPmUbKDTwZPgTzXMxetvvqMpGZcuLdbWT0Cg=="/>
@@ -336,7 +336,7 @@
             <sparkle:shortVersionString>0.2.2</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.2.2/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.2.2/CompositorPro.dmg"
                 length="18219743"
                 type="application/octet-stream"
                 sparkle:edSignature="1oPyjCrgc6g9SRrTuPHSaRFd2N8Ua6Wx0O76MMhkGjCiIlcnHkOfMo2xixU5y249h352DLQCUkkmOCfviJYnDQ=="/>
@@ -348,7 +348,7 @@
             <sparkle:shortVersionString>0.2.3</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.2.3/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.2.3/CompositorPro.dmg"
                 length="18282218"
                 type="application/octet-stream"
                 sparkle:edSignature="kkUdxYn9jD5+XJDI9KLmdsz8NiEWoFqCPwOfe7ZZD20VJSt/XMWu0bHdSuw6H4xNvM4WjgoFgqQrouBFy4UwCg=="/>
@@ -360,7 +360,7 @@
             <sparkle:shortVersionString>0.2.4</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.2.4/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.2.4/CompositorPro.dmg"
                 length="18232252"
                 type="application/octet-stream"
                 sparkle:edSignature="Ymo6/6AT98juEOBkErQon8tIaCNgFgOAHwMLaVhND0C/bLcXSk+ggYuynHAQpKo9zfMCkb+wTtf9ohIRjmdVAg=="/>
@@ -372,7 +372,7 @@
             <sparkle:shortVersionString>0.2.5</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.2.5/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.2.5/CompositorPro.dmg"
                 length="18257097"
                 type="application/octet-stream"
                 sparkle:edSignature="2wPm37WS9okgAxfMo2hC+p0vZ36H/I/HguSZXpihwuqj3R5iw+kOHb8B2nIGs8Gi4cEkwj7/FYbUd0XQTmBxBA=="/>
@@ -384,7 +384,7 @@
             <sparkle:shortVersionString>0.2.7</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.2.7/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.2.7/CompositorPro.dmg"
                 length="18296570"
                 type="application/octet-stream"
                 sparkle:edSignature="cgm+wExYx17VoXOQ4xLoMHj//O41UM0vwL3vC2zL+z/pewpp6O8B/25vplcV09wznMiRfod2Kx9etro5CSgtBQ=="/>
@@ -396,7 +396,7 @@
             <sparkle:shortVersionString>0.2.8</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.2.8/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.2.8/CompositorPro.dmg"
                 length="18357724"
                 type="application/octet-stream"
                 sparkle:edSignature="myu8d1g6RjvQKWnWRD2mwQYpWPZYyCHjYPZnsYhkaL/aLeAI4FFxTmdbKwafd4UnJx312tn7IinQ+bB7v8YpBA=="/>
@@ -408,7 +408,7 @@
             <sparkle:shortVersionString>0.2.9</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.2.9/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.2.9/CompositorPro.dmg"
                 length="20020566"
                 type="application/octet-stream"
                 sparkle:edSignature="BLORIDPJ4JVx4CjMXElvFYjY6hjYqguUNlmjvCdRgz06zuzA3GL9HPAf6VOBjTuCgtuBnTnI4Gfo39BnvALSAw=="/>
@@ -420,7 +420,7 @@
             <sparkle:shortVersionString>0.2.10</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.2.10/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.2.10/CompositorPro.dmg"
                 length="19989801"
                 type="application/octet-stream"
                 sparkle:edSignature="iEhBN5l+I6ujJv3/StFkqlOtIdblzCZ4blYcoCC+wCb2nZS67vvhQElrF+ncZneqb61s0F2obC83IKyC/A9dAw=="/>
@@ -432,7 +432,7 @@
             <sparkle:shortVersionString>0.2.11</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.2.11/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.2.11/CompositorPro.dmg"
                 length="20152718"
                 type="application/octet-stream"
                 sparkle:edSignature="Xo+YDGIR6SoZNml56L/lKeuZPLewz1G0fkJXhcsZ37tioctqnHY6I96MdQTi4/YCdlrIDQZR9gcA7Wm79ZxWDA=="/>
@@ -444,7 +444,7 @@
             <sparkle:shortVersionString>0.2.12</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.2.12/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.2.12/CompositorPro.dmg"
                 length="20209739"
                 type="application/octet-stream"
                 sparkle:edSignature="Kd8H37JCtJ7cT34EwWJkWaFFc2NzbmwlG7hKFH4C5TwLgpfp9SlE2v0EHo+xX69FBEDkMuG+gNQ/NnmX1HE7DA=="/>
@@ -456,7 +456,7 @@
             <sparkle:shortVersionString>0.2.13</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.2.13/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.2.13/CompositorPro.dmg"
                 length="20295549"
                 type="application/octet-stream"
                 sparkle:edSignature="+D+u332LHiGbwiqKOPth1Whob+VM7AhWoOfiZNRjbi64yDdwZwHCdaPZCZoJtun4/lLns296o7gSuj+Dk8X1CA=="/>
@@ -468,7 +468,7 @@
             <sparkle:shortVersionString>0.2.14</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.2.14/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.2.14/CompositorPro.dmg"
                 length="20347416"
                 type="application/octet-stream"
                 sparkle:edSignature="83CUUBHaLs1xLFgzfyCvYkzu6p8EE56KO+99mPHepW4kzNhtxD94DgUJkvPM0e/FDKyM9SFRv0T80vNxmr+RBw=="/>
@@ -480,7 +480,7 @@
             <sparkle:shortVersionString>0.2.15</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.2.15/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.2.15/CompositorPro.dmg"
                 length="20553135"
                 type="application/octet-stream"
                 sparkle:edSignature="EqlIK9izp6Hguf4Hqctjtgp32/Oprw52MlhvM3N7wzNafSngMBnqisXfNITOeReqetVlWw9M8Q4UhwDZN67vBA=="/>
@@ -492,7 +492,7 @@
             <sparkle:shortVersionString>0.2.16</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.2.16/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.2.16/CompositorPro.dmg"
                 length="20566999"
                 type="application/octet-stream"
                 sparkle:edSignature="5bR8jJNccH0V3ASJEKkwKe2/tISD4yZSDYakKewB3fhbkfsKmx5BYZHvoCiviX/SNDl8pDEE/ESGq0v0vO/NBg=="/>
@@ -504,7 +504,7 @@
             <sparkle:shortVersionString>0.2.17</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.2.17/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.2.17/CompositorPro.dmg"
                 length="20778554"
                 type="application/octet-stream"
                 sparkle:edSignature="N/AuMGF6mC/4KghTk3IYcQnplupD+i7+A5SSmSQh5LDdZW4pW/qofWB5Vjhs9wV8hhm93bXhLjV7EZYUfxEJBw=="/>
@@ -516,7 +516,7 @@
             <sparkle:shortVersionString>0.2.18</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.2.18/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.2.18/CompositorPro.dmg"
                 length="20779728"
                 type="application/octet-stream"
                 sparkle:edSignature="j80KswbWLjhWNzq2N+PiHIxZyM5dhoFs70m6espalwD8vDsskR2wOka7KqKLdeTOrD2+oeWt7/dKbGG2ymq9Ag=="/>
@@ -528,7 +528,7 @@
             <sparkle:shortVersionString>0.2.19</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.2.19/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.2.19/CompositorPro.dmg"
                 length="20893789"
                 type="application/octet-stream"
                 sparkle:edSignature="/Vfv0JiXHPGMWdJR/l5QhUByGdD2Ip2el11CRyIDG2gADLZfKYwyPc5wQ7E2Ut+0pWSRoJKHAXDv4an1SdqgBA=="/>
@@ -540,7 +540,7 @@
             <sparkle:shortVersionString>0.2.20</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.2.20/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.2.20/CompositorPro.dmg"
                 length="20893659"
                 type="application/octet-stream"
                 sparkle:edSignature="wz0g78GfHNs6ouIozr45YrGrnlgHN5qHMXJ1C+IOgJ6a5uciY8YEdynon53JNB9qkRnGt5mrkE+T45WXauQWDg=="/>
@@ -552,7 +552,7 @@
             <sparkle:shortVersionString>0.2.21</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.2.21/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.2.21/CompositorPro.dmg"
                 length="23032333"
                 type="application/octet-stream"
                 sparkle:edSignature="/pQTDqHNdwn7bjuevR+wXPxVgApnllSrK4lXxqDiCBaK2PfsqexMVXNUSNC0YIj027YBz/D0EoAzz7cJwCQ6Dw=="/>
@@ -564,7 +564,7 @@
             <sparkle:shortVersionString>0.2.22</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.2.22/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.2.22/CompositorPro.dmg"
                 length="24316778"
                 type="application/octet-stream"
                 sparkle:edSignature="nxAaHrQH8pEPRMXzf1kItsLp0jmss6XDvaHtAh84EZa5+sao5ul/mr18X7WBSbFz5K6gYaVpznisoBr3Rra5Dw=="/>
@@ -576,7 +576,7 @@
             <sparkle:shortVersionString>0.3.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.3.1/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.3.1/CompositorPro.dmg"
                 length="25832004"
                 type="application/octet-stream"
                 sparkle:edSignature="6XhzUl/CqashtL9+M18Huvlo/zudXZSz2+WRcl1J7DpTabTyHsm5cHuOR0ZMDzUtE3rubYjnaIPtuAVFkzbUBw=="/>
@@ -588,7 +588,7 @@
             <sparkle:shortVersionString>0.3.2</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.3.2/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.3.2/CompositorPro.dmg"
                 length="25848531"
                 type="application/octet-stream"
                 sparkle:edSignature="mqvPORT99hjmYsmMaAKCjOWfzPCbhM8iYf3ZfwuZdUmGo05paAwGJuNasE1usnB+pxEVyaxue9roE3mFUd0IAg=="/>
@@ -600,7 +600,7 @@
             <sparkle:shortVersionString>0.3.3</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.3.3/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.3.3/CompositorPro.dmg"
                 length="25864862"
                 type="application/octet-stream"
                 sparkle:edSignature="4zTEbAfhtsLIJkMjuQz5B4tMJmYjlV87W37ndEF+OH2bDWmqugs08MpZuu8kNQJTrJHBwdo1yQVATk7PlcGjCA=="/>
@@ -612,7 +612,7 @@
             <sparkle:shortVersionString>0.3.4</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.3.4/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.3.4/CompositorPro.dmg"
                 length="25894354"
                 type="application/octet-stream"
                 sparkle:edSignature="fgCOt8Ug94tL7zvwvZ4wD0EAe8ShHtOBEnKHUM4lUE1jso1ox2n9aqdqKbAz/Tuhgack0MrSFrg/0NZHtBTpCQ=="/>
@@ -624,7 +624,7 @@
             <sparkle:shortVersionString>0.3.5</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.3.5/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.3.5/CompositorPro.dmg"
                 length="26020915"
                 type="application/octet-stream"
                 sparkle:edSignature="9NYbd+iPIO0oLzUINMXHSurlXgOsp8FjX6pKoLkYi3Ta4qJo+q6LWVT3FZS0cpbi8Xwhl+/ET76Lm9vI9cdIBQ=="/>
@@ -636,7 +636,7 @@
             <sparkle:shortVersionString>0.3.6</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.3.6/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.3.6/CompositorPro.dmg"
                 length="26040642"
                 type="application/octet-stream"
                 sparkle:edSignature="lASb73bnDSIC+vo04vuxAwr6b18d8VE+W/D3qN0uCkeY6upHerxwWPh5WtRQlE0RKN+ZnrOKAAhvWNIqc8LqDw=="/>
@@ -648,7 +648,7 @@
             <sparkle:shortVersionString>0.4.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.4.0/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.4.0/CompositorPro.dmg"
                 length="26707189"
                 type="application/octet-stream"
                 sparkle:edSignature="44GnDktXJQbZf4aWrmv0i5MQPtYrH74ilapLaRLpGGwVKD9vVp/l7DNMVm8j3sFMcOckPcZKWAET2VZmf0fXCA=="/>
@@ -660,7 +660,7 @@
             <sparkle:shortVersionString>0.4.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.4.1/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.4.1/CompositorPro.dmg"
                 length="26777642"
                 type="application/octet-stream"
                 sparkle:edSignature="InkHzFfi8jKO4/ChywF4+sKc1nthKLspZq9UXOEIgMbuXDL9SQhbQxaNgMX5yawZ6+9lYr5S+5bJ6lga8cMDBA=="/>
@@ -672,7 +672,7 @@
             <sparkle:shortVersionString>0.4.2</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.4.2/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.4.2/CompositorPro.dmg"
                 length="26737572"
                 type="application/octet-stream"
                 sparkle:edSignature="aS2bvtX4WH4AtjCT+L55UXx5r0RofyEtuyLbcN42h7wGrF94/2ZZHWvYtzsOGKYsqBKJeqxw8+Hfo4rDotvEBQ=="/>
@@ -684,7 +684,7 @@
             <sparkle:shortVersionString>0.4.3</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.4.3/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.4.3/CompositorPro.dmg"
                 length="26877316"
                 type="application/octet-stream"
                 sparkle:edSignature="uuYBaYMmIVLdmREN2GZV4l2zwON1kj0zApdV4KoTVJQ6TU1ih79nhnau+sSXU8uNcKL+Nw4JCbFpb3T9/YL6CQ=="/>
@@ -696,7 +696,7 @@
             <sparkle:shortVersionString>0.4.4</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.4.4/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.4.4/CompositorPro.dmg"
                 length="26849883"
                 type="application/octet-stream"
                 sparkle:edSignature="2QeBI3gH4zdRT+fIKIAQhPsdisEZuWVe8ZEC+vGFQkINz8zuj2oTy4sLY+d3uA8EXoG5GNGQjN+MBKSxyL+LBw=="/>
@@ -708,7 +708,7 @@
             <sparkle:shortVersionString>0.4.5</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.4.5/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.4.5/CompositorPro.dmg"
                 length="27092760"
                 type="application/octet-stream"
                 sparkle:edSignature="cZIVpGH3IJIx00G1Lz93dnYb5mrWL3k+MqEpk2hVxC8iYacnDZjmtATJgEJQixo7d3A3g3J2E7KaxAFgfyl5AQ=="/>
@@ -720,7 +720,7 @@
             <sparkle:shortVersionString>0.5.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.5.1/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.5.1/CompositorPro.dmg"
                 length="27481771"
                 type="application/octet-stream"
                 sparkle:edSignature="ywjqGRSJAtaIHiefvyj+obBSdQDitTMe1t/DUXZ0/CvH3Ae0Y9G3RO3WWgVKE9sAasr02zF3GnbZqPO9QKaPDQ=="/>
@@ -732,7 +732,7 @@
             <sparkle:shortVersionString>0.5.2</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.5.2/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.5.2/CompositorPro.dmg"
                 length="27518680"
                 type="application/octet-stream"
                 sparkle:edSignature="JRQrM5vIONHp1wRyFHWrPYrmEX3H55pimwJLOCl21OpdR+l39aZLiqOX2I71rxBMdfANHdgBrhRp3GjraVLLCg=="/>
@@ -744,7 +744,7 @@
             <sparkle:shortVersionString>0.6.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.6.1/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.6.1/CompositorPro.dmg"
                 length="34400683"
                 type="application/octet-stream"
                 sparkle:edSignature="wozAtkDY+Tesrj/uFH2aLe7VW/t7+qD3PzT9aR+wHBPcoBaBiv4LfWYQVZnwGnHmWk0PcxlHYRQy9exyWD3ZBA=="/>
@@ -756,7 +756,7 @@
             <sparkle:shortVersionString>0.6.3</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.6.3/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.6.3/CompositorPro.dmg"
                 length="78392267"
                 type="application/octet-stream"
                 sparkle:edSignature="p9Ni0s5gILeyIIh95J2AHU6yF1UPlYuDOEVjrQ16wmzHDoZuH8dY+YvRjGLdfkuC9OlAfkvIV5q5ZbWOs1M+Dg=="/>
@@ -768,7 +768,7 @@
             <sparkle:shortVersionString>0.6.4</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.6.4/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.6.4/CompositorPro.dmg"
                 length="79131940"
                 type="application/octet-stream"
                 sparkle:edSignature="PqkQjgS9QAS4JpmUpqo9XjWmrB1bHQUuwJYvzV6Y3C1c4SDKstDxJJuQqQvjkgk66knUbrRmXylXbRcEX32IAA=="/>
@@ -780,7 +780,7 @@
             <sparkle:shortVersionString>0.6.5</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.6.5/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.6.5/CompositorPro.dmg"
                 length="79279181"
                 type="application/octet-stream"
                 sparkle:edSignature="shpV7qW1QbuES67DRbPN0j/E47VvGMslOhDTvuIdCW9Hu4QyThLhQRXggzKbMB5fIWjOdsYs719UZzhAV2P1Ag=="/>
@@ -792,7 +792,7 @@
             <sparkle:shortVersionString>0.6.6</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.6.6/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.6.6/CompositorPro.dmg"
                 length="80171499"
                 type="application/octet-stream"
                 sparkle:edSignature="VkTihaOjD5AekjC/bvv+lURFzGVnKZt+lgvsj0ayVW8PRETbC3qJMgRnI0BB4J4k8MVSMZwBb+ciobTbIxKDCQ=="/>
@@ -804,7 +804,7 @@
             <sparkle:shortVersionString>0.6.8</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.6.8/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.6.8/CompositorPro.dmg"
                 length="80168889"
                 type="application/octet-stream"
                 sparkle:edSignature="GmGdBnxTexpfL4jkItu9dBW/IRS/XbDdf38q0vwIBlhgrgqO1wsR0mmbbqYnBhhoXwfSrtWAz2W/LBJmJRdABQ=="/>
@@ -816,7 +816,7 @@
             <sparkle:shortVersionString>0.6.9</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.6.9/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.6.9/CompositorPro.dmg"
                 length="80264027"
                 type="application/octet-stream"
                 sparkle:edSignature="lHbWeK3GydUcn15skBVYtxhOm27jexwCN0HFAIttofuAb3/Y2KpeOJrxsUTGNEb04V6Dy9+DductRu+0Af2NAw=="/>
@@ -828,7 +828,7 @@
             <sparkle:shortVersionString>0.6.10</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.6.10/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.6.10/CompositorPro.dmg"
                 length="80250582"
                 type="application/octet-stream"
                 sparkle:edSignature="ZrVMyEXkA+AYMB7KZoTG+9hkv5DxkFXaqgHfopkQEqANFTuPzeUgOLiegjwoglkKZAxk7kRBLmUY8hV9KDqyBQ=="/>
@@ -840,7 +840,7 @@
             <sparkle:shortVersionString>0.6.11</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.6.11/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.6.11/CompositorPro.dmg"
                 length="80361992"
                 type="application/octet-stream"
                 sparkle:edSignature="XX+UsOTWZ/Fec9CCaBWxlyAFSP08p+/B87+85JbsJrWWPRPKIxD9I98xg3Y4qUgAVPUzYxRSc3/6S/7cN4GbBw=="/>
@@ -852,7 +852,7 @@
             <sparkle:shortVersionString>0.6.12</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.6.12/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.6.12/CompositorPro.dmg"
                 length="78976240"
                 type="application/octet-stream"
                 sparkle:edSignature="Qxcov6R31bJdLf1TSMvqzFFN06rvQVPpkQTKIbKS6SeQAtoh1PVJwMiZRQ4afU0JJ816qqe9mfmsLJPJGYmwBg=="/>
@@ -864,7 +864,7 @@
             <sparkle:shortVersionString>0.6.13</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.6.13/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.6.13/CompositorPro.dmg"
                 length="79034830"
                 type="application/octet-stream"
                 sparkle:edSignature="ire0piuN2ngeccHWT//VZy1r9pIyLPH+LVo+MPXhXFuKvw7Z1gKZemxZaKJVY/YvfXd9gpTKfMge478u8YjMBg=="/>
@@ -876,7 +876,7 @@
             <sparkle:shortVersionString>0.6.14</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.6.14/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.6.14/CompositorPro.dmg"
                 length="79246339"
                 type="application/octet-stream"
                 sparkle:edSignature="Y2AgWPaYUu2aL0HvZGwasPJK6cA1sFWEZK3YKKFlJwB0FJmTdyLftEJfZKLeCsb8QeYyokj0ZlbNnNieoAfbAQ=="/>
@@ -888,7 +888,7 @@
             <sparkle:shortVersionString>0.6.15</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.6.15/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.6.15/CompositorPro.dmg"
                 length="79424838"
                 type="application/octet-stream"
                 sparkle:edSignature="08CTH6ZMt9MraZuPoGEAbGm+AHe/C+GImONAzIldLp91iVrVPdPMbEVgDbRvkRpqfZCP2IUmjtyT6WP6p+A7Dg=="/>
@@ -900,7 +900,7 @@
             <sparkle:shortVersionString>0.6.16</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.6.16/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.6.16/CompositorPro.dmg"
                 length="79728965"
                 type="application/octet-stream"
                 sparkle:edSignature="svhseR0vKmUdPUet6X3589u0cCgE+3URU933R2dOXKUDS1eTY9jY4YM3dmPqcZfbpTeauRoe2AU9C/WxxpIXCQ=="/>
@@ -912,7 +912,7 @@
             <sparkle:shortVersionString>0.7.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.7.0/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.7.0/CompositorPro.dmg"
                 length="80470954"
                 type="application/octet-stream"
                 sparkle:edSignature="SbTYRLGkgFU/xXDp87jcEefKWq+H5qA33feFyauCcAsuVy/OyfELUY3AIDu/W2d2o4A8//uSuhTmXA5MHOqtAA=="/>
@@ -924,7 +924,7 @@
             <sparkle:shortVersionString>0.7.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.7.1/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.7.1/CompositorPro.dmg"
                 length="80493644"
                 type="application/octet-stream"
                 sparkle:edSignature="lix6EvgFTlLiwWAnh783awx0y4Z+HkV0z8SZziEz4CuKUqo5oMt5k9arBICsKbGddI1Lco7vVvEtwKumAe0TAA=="/>
@@ -936,7 +936,7 @@
             <sparkle:shortVersionString>0.7.2</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.7.2/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.7.2/CompositorPro.dmg"
                 length="80672731"
                 type="application/octet-stream"
                 sparkle:edSignature="1A0mQNgitCfXUH9c/G4/cK56SU8iWfvkTxeEEJKLqNO68T2Zt3qvTjlyQEjmt8MTSlVcXQKT7AsWdgTK9G+FCA=="/>
@@ -948,7 +948,7 @@
             <sparkle:shortVersionString>0.7.3</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.7.3/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.7.3/CompositorPro.dmg"
                 length="80940521"
                 type="application/octet-stream"
                 sparkle:edSignature="RvshcBDD5TrT1oDIth30tnlMOBH0Gpv8d41UZEWmSuSJLmuz3fqlM8mVRGZmV7OBRE96pcwAFvWkx9OOkXj0AA=="/>
@@ -960,7 +960,7 @@
             <sparkle:shortVersionString>0.7.4</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.7.4/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.7.4/CompositorPro.dmg"
                 length="80995235"
                 type="application/octet-stream"
                 sparkle:edSignature="F6TVjq1O4RJhvRn4faA1rX027cKuenZUJY5mnihoitUCbQB4R5HJgehegoMzC6JPMn94SiV/Ol5xw3+3XtJGCQ=="/>
@@ -972,7 +972,7 @@
             <sparkle:shortVersionString>0.7.5</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.7.5/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.7.5/CompositorPro.dmg"
                 length="82441057"
                 type="application/octet-stream"
                 sparkle:edSignature="3vQV+lRmn0PbzdP8udmTP6l1Zn7wLz04MruZ6xcN5hXrwctDdiH2GWn5QLCvNXipvPrdVRCBW7gnYPFK1v9mDA=="/>
@@ -984,7 +984,7 @@
             <sparkle:shortVersionString>0.7.6</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.7.6/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.7.6/CompositorPro.dmg"
                 length="83497230"
                 type="application/octet-stream"
                 sparkle:edSignature="Fov7cccnUkJKCddbuDKO+UGRbtdWNBnZisREPALReXAKTOIG3nP1W+I+bhU7IcXoK8FONWEl7r+VoXkQDMa2Cw=="/>
@@ -996,7 +996,7 @@
             <sparkle:shortVersionString>0.8.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.8.1/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.8.1/CompositorPro.dmg"
                 length="84474947"
                 type="application/octet-stream"
                 sparkle:edSignature="THNlW3ZZ36MyyRX2rWIxPKrt4HisY7+/v9c8X+k4J9Vvx4ens3mPKYzjP4cpEP7uHTh4KXaq2/gNBJ5xnoOmCA=="/>
@@ -1008,7 +1008,7 @@
             <sparkle:shortVersionString>0.9.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.9.0/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.9.0/CompositorPro.dmg"
                 length="135840141"
                 type="application/octet-stream"
                 sparkle:edSignature="ZtIgok6EaSVi3b3Uz3+9hsU/MWPGF4nnNAKG+dILoqObaprIGjVbWX3mkJ3n+xuDFmxXRrhLXYV6hYd2rhhvDQ=="/>
@@ -1020,7 +1020,7 @@
             <sparkle:shortVersionString>0.10.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.10.0/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.10.0/CompositorPro.dmg"
                 length="136544837"
                 type="application/octet-stream"
                 sparkle:edSignature="NOsu0LBDtmBE9E+tZYWwD3l+u+hXbRDz89rzetiiiRjXgGAe+gpiuXAe6BvV69fnApxinYCj8c06sU3N/qnLCg=="/>
@@ -1032,7 +1032,7 @@
             <sparkle:shortVersionString>0.10.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
-                url="https://github.com/palmier-io/compositor-pro/releases/download/v0.10.1/CompositorPro.dmg"
+                url="https://github.com/compositor-pro/compositor-pro/releases/download/v0.10.1/CompositorPro.dmg"
                 length="136747441"
                 type="application/octet-stream"
                 sparkle:edSignature="AjU26vX0Vo+6qIMlf4fFb9WPMrraVHzc92UznQZ28G2AGuw+Rffiv67gK3y5jkUWsCMSN+bSrkVUcFCJw0xpDg=="/>

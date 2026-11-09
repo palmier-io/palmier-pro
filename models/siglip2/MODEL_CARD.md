@@ -36,7 +36,7 @@ is a plain dot product. Minimum deployment target: macOS 15.
   embeddings drift if padding differs.
 - Conversion is parity-gated: every release's embeddings match the PyTorch
   reference at cosine ≥ 0.99 on a fixture set. Conversion source:
-  [palmier-io/compositor-pro `models/siglip2`](https://github.com/palmier-io).
+  [compositor-pro/compositor-pro `models/siglip2`](https://github.com/compositor-pro).
 
 ## Versioning
 

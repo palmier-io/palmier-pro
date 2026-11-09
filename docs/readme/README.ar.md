@@ -6,7 +6,7 @@
 
 **محرر فيديو مصمم لعصر الذكاء الاصطناعي.**
 
-<a href="https://github.com/palmier-io/compositor-pro/releases/latest/download/CompositorPro.dmg">
+<a href="https://github.com/compositor-pro/compositor-pro/releases/latest/download/CompositorPro.dmg">
   <img src="../../assets/macos-badge.png" alt="تنزيل Compositor Pro لنظام macOS" width="180" />
 </a>
 
@@ -14,7 +14,6 @@
 
 <a href="https://x.com/CompositorPro"><img src="https://img.shields.io/badge/Follow-%40CompositorPro-000000?style=flat&logo=x&logoColor=white" alt="تابع على X" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="انضم إلى Discord" /></a>
-<a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 <br />
 
 <p>
@@ -42,7 +41,7 @@
 ---
 
 > [!IMPORTANT]
-> نُشرت إصدارات Compositor Pro حتى v0.7.6 بموجب GPLv3. آخر لقطة عامة من الشفرة المصدرية هي [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source). الإصدارات اللاحقة لـ v0.7.6 احتكارية، ولا تُنشر شفرتها المصدرية هنا.
+> نُشرت إصدارات Compositor Pro حتى v0.7.6 بموجب GPLv3. آخر لقطة عامة من الشفرة المصدرية هي [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source). الإصدارات اللاحقة لـ v0.7.6 احتكارية، ولا تُنشر شفرتها المصدرية هنا.
 
 بالمي برو (Compositor Pro) هو محرر فيديو لنظام macOS. يتيح لك العمل جنبًا إلى جنب مع المساعد الذكي الخاص بك لإنشاء الفيديوهات وتحريرها داخل الخط الزمني (Timeline) نفسه.
 
@@ -94,7 +93,7 @@ codex mcp add compositor-pro --url http://127.0.0.1:19789/mcp
 
 **ما إصدارات Compositor Pro مفتوحة المصدر؟**
 
-تظل الإصدارات حتى v0.7.6 والشفرة المصدرية حتى [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source) خاضعة لـ GPLv3، أما الإصدارات اللاحقة فهي احتكارية.
+تظل الإصدارات حتى v0.7.6 والشفرة المصدرية حتى [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source) خاضعة لـ GPLv3، أما الإصدارات اللاحقة فهي احتكارية.
 
 **هل هو مجاني؟**
 

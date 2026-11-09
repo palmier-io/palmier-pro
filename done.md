@@ -567,12 +567,12 @@ Priorities describe importance, not isolated batches. Build the smallest end-to-
 
 - [x] Rename Palmier-brand artifacts to the Compositor Pro identity with backward-compatible legacy shims.
 
-**What:** 77 references to the `.palmier` project-package extension existed across source and tests, plus `mode: "palmier"` / `format: "Palmier"` in the export contract, the `X-Palmier-Project-Id` header, MCP server id `palmier-pro` (`MCPService.swift`, `mcpb/manifest.json`, help pane), author/homepage fields pointing at Palmier.io, a legacy `Documents/Palmier Pro` support directory, telemetry strings, and `BINARY_LICENSE.md` headers.
+**What:** 77 references to the `.palmier` project-package extension existed across source and tests, plus `mode: "palmier"` / `format: "Palmier"` in the export contract, the `X-Palmier-Project-Id` header, MCP server id `palmier-pro` (`MCPService.swift`, `mcpb/manifest.json`, help pane), author/homepage fields pointing at Palmier.io, a legacy `Documents/Compositor Pro` support directory, telemetry strings, and `BINARY_LICENSE.md` headers.
 
 **How:**
 - Decided the primary product identity: package type identifier `io.compositor.pro.project`, file extension `compositorpro`, UTI `com.compositorpro.project`, bundle name `Compositor Pro`.
 - Added backward-compatible legacy shims:
-  - `Project.legacyFileExtension = "palmier"` and `Project.legacyStorageDirectory = "Documents/Palmier Pro"`.
+  - `Project.legacyFileExtension = "palmier"` and `Project.legacyStorageDirectory = "Documents/Compositor Pro"`.
   - `AppState.openProjectFromPanel` accepts both `.compositorpro` and `.palmier` package formats.
   - `ProjectRegistryDisk.load` gracefully falls back to `Project.legacyStorageDirectory` when the default registry is not yet initialized.
   - `MediaTab+Drag.swift` retains `legacyFolderDragScheme`, `legacyAssetDragScheme`, and `legacyTimelineDragScheme` (`palmier-*://`).
@@ -588,11 +588,11 @@ Priorities describe importance, not isolated batches. Build the smallest end-to-
 
 **Verified:** `swift build --scratch-path .build-check --disable-automatic-resolution` passed cleanly. `VideoProjectLoadTests.legacyPalmierPackageOpensAndSavesUnderNewIdentity` passed, verifying that legacy `.palmier` packages open and can be saved as `.compositorpro`. Localization sync (`./scripts/localization/sync.sh`) passed with 1,396 strings synchronized.
 
-### R3. Re-skin the editor UI to look distinct from Palmier Pro
+### R3. Re-skin the editor UI to look distinct from Compositor Pro
 
 - [x] Ship a new editor skin in `AppTheme.swift` so Compositor Pro reads as its own product.
 
-**What:** The layout, palette, type scale, and motion language were inherited from the Palmier Pro codebase. A distinct look establishes Compositor Pro's product identity.
+**What:** The layout, palette, type scale, and motion language were inherited from the Compositor Pro codebase. A distinct look establishes Compositor Pro's product identity.
 
 **How:**
 - Re-skinned `AppTheme.swift` with a cool slate panel stack: `Background.base` (light: 238/241/244, dark: 15/23/25), `surface` (light: 228/233/238, dark: 21/32/36), `raised` (light: 220/228/235, dark: 27/42/48), and `prominent` (light: 255/255/255, dark: 36/53/61).

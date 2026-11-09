@@ -6,7 +6,7 @@
 
 **AI-এর জন্য তৈরি ভিডিও এডিটর।**
 
-<a href="https://github.com/palmier-io/compositor-pro/releases/latest/download/CompositorPro.dmg">
+<a href="https://github.com/compositor-pro/compositor-pro/releases/latest/download/CompositorPro.dmg">
   <img src="../../assets/macos-badge.png" alt="macOS-এর জন্য Compositor Pro ডাউনলোড করুন" width="180" />
 </a>
 
@@ -14,7 +14,6 @@
 
 <a href="https://x.com/CompositorPro"><img src="https://img.shields.io/badge/Follow-%40CompositorPro-000000?style=flat&logo=x&logoColor=white" alt="X-এ অনুসরণ করুন" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Discord-এ যোগ দিন" /></a>
-<a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 <br />
 
 <p>
@@ -42,7 +41,7 @@
 ---
 
 > [!IMPORTANT]
-> Compositor Pro-এর v0.7.6 পর্যন্ত releases GPLv3-এর অধীনে প্রকাশিত হয়েছিল। সর্বশেষ public source snapshot হলো [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source)। v0.7.6-এর পরের releases proprietary এবং তাদের source এখানে প্রকাশ করা হয় না।
+> Compositor Pro-এর v0.7.6 পর্যন্ত releases GPLv3-এর অধীনে প্রকাশিত হয়েছিল। সর্বশেষ public source snapshot হলো [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source)। v0.7.6-এর পরের releases proprietary এবং তাদের source এখানে প্রকাশ করা হয় না।
 
 Compositor Pro Mac-এর জন্য একটি ভিডিও এডিটর। আপনি এবং আপনার agent timeline-এর ভিতরে একসঙ্গে ভিডিও generate ও edit করতে পারেন।
 
@@ -95,7 +94,7 @@ App-এর সঙ্গে আমরা একটি [mcpb](https://github.com/m
 
 **Compositor Pro-এর কোন versions open source?**
 
-v0.7.6 পর্যন্ত releases এবং [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source) পর্যন্ত source GPLv3-এর অধীনে থাকবে; পরবর্তী releases proprietary।
+v0.7.6 পর্যন্ত releases এবং [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source) পর্যন্ত source GPLv3-এর অধীনে থাকবে; পরবর্তী releases proprietary।
 
 **এটি কি free?**
 

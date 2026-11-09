@@ -1,5 +1,6 @@
 > [!IMPORTANT]
-> Compositor Pro releases through v0.7.6, and source code through [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source), were published under GPLv3. Later binary releases are proprietary, and their corresponding source is not published. This repository preserves the historical source and hosts current binary releases and update metadata.
+> Compositor Pro releases are proprietary to Compositor Pro, and the app runs
+> fully offline. See `BINARY_LICENSE.md`.
 
 <div align="center">
 
@@ -7,7 +8,7 @@
 
 **The video editor built for AI.**
 
-<a href="https://github.com/palmier-io/compositor-pro/releases/latest/download/CompositorPro.dmg">
+<a href="https://github.com/compositor-pro/compositor-pro/releases/latest/download/CompositorPro.dmg">
   <img src="./assets/macos-badge.png" alt="Download Compositor Pro for macOS" width="180" />
 </a>
 
@@ -15,7 +16,6 @@
 
 <a href="https://x.com/CompositorPro"><img src="https://img.shields.io/badge/Follow-%40CompositorPro-000000?style=flat&logo=x&logoColor=white" alt="Follow on X" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Join Discord" /></a>
-<a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 
 <p>
   <strong>English</strong> ·

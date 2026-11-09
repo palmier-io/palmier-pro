@@ -6,7 +6,7 @@
 
 **Trình biên tập video được xây dựng cho AI.**
 
-<a href="https://github.com/palmier-io/compositor-pro/releases/latest/download/CompositorPro.dmg">
+<a href="https://github.com/compositor-pro/compositor-pro/releases/latest/download/CompositorPro.dmg">
   <img src="../../assets/macos-badge.png" alt="Tải Compositor Pro cho macOS" width="180" />
 </a>
 
@@ -14,7 +14,6 @@
 
 <a href="https://x.com/CompositorPro"><img src="https://img.shields.io/badge/Follow-%40CompositorPro-000000?style=flat&logo=x&logoColor=white" alt="Theo dõi trên X" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Tham gia Discord" /></a>
-<a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 <br />
 
 <p>
@@ -42,7 +41,7 @@
 ---
 
 > [!IMPORTANT]
-> Các bản phát hành Compositor Pro đến hết v0.7.6 được phát hành theo GPLv3. Ảnh chụp mã nguồn công khai cuối cùng là [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source). Các bản phát hành sau v0.7.6 là phần mềm độc quyền và mã nguồn của chúng không được công bố tại đây.
+> Các bản phát hành Compositor Pro đến hết v0.7.6 được phát hành theo GPLv3. Ảnh chụp mã nguồn công khai cuối cùng là [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source). Các bản phát hành sau v0.7.6 là phần mềm độc quyền và mã nguồn của chúng không được công bố tại đây.
 
 Compositor Pro là trình biên tập video cho Mac. Bạn và agent của bạn có thể cùng tạo và chỉnh sửa video ngay trong timeline.
 
@@ -95,7 +94,7 @@ Chúng tôi đóng gói một [mcpb](https://github.com/modelcontextprotocol/mcp
 
 **Những phiên bản Compositor Pro nào là mã nguồn mở?**
 
-Các bản phát hành đến hết v0.7.6 và mã nguồn đến [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source) vẫn theo GPLv3; các bản phát hành sau đó là phần mềm độc quyền.
+Các bản phát hành đến hết v0.7.6 và mã nguồn đến [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source) vẫn theo GPLv3; các bản phát hành sau đó là phần mềm độc quyền.
 
 **Có miễn phí không?**
 

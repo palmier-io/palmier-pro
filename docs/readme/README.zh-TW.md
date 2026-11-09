@@ -6,7 +6,7 @@
 
 **專為 AI 打造的影片剪輯器。**
 
-<a href="https://github.com/palmier-io/compositor-pro/releases/latest/download/CompositorPro.dmg">
+<a href="https://github.com/compositor-pro/compositor-pro/releases/latest/download/CompositorPro.dmg">
   <img src="../../assets/macos-badge.png" alt="下載 macOS 版 Compositor Pro" width="180" />
 </a>
 
@@ -14,7 +14,6 @@
 
 <a href="https://x.com/CompositorPro"><img src="https://img.shields.io/badge/Follow-%40CompositorPro-000000?style=flat&logo=x&logoColor=white" alt="在 X 上追蹤" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="加入 Discord" /></a>
-<a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 <br />
 
 <p>
@@ -42,7 +41,7 @@
 ---
 
 > [!IMPORTANT]
-> Compositor Pro v0.7.6 及之前的版本以 GPLv3 發布。最終的公開原始碼快照是 [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source)。v0.7.6 之後的版本為專有軟體，其原始碼不會在此發布。
+> Compositor Pro v0.7.6 及之前的版本以 GPLv3 發布。最終的公開原始碼快照是 [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source)。v0.7.6 之後的版本為專有軟體，其原始碼不會在此發布。
 
 Compositor Pro 是 Mac 的影片剪輯器。你和你的 agent 可以在時間軸中一起生成和剪輯影片。
 
@@ -95,7 +94,7 @@ app 內建一個 [mcpb](https://github.com/modelcontextprotocol/mcpb)，可在 C
 
 **哪些 Compositor Pro 版本是開源的？**
 
-Compositor Pro v0.7.6 及之前的版本，以及截至 [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source) 的原始碼，仍採用 GPLv3 授權；之後的版本為專有軟體。
+Compositor Pro v0.7.6 及之前的版本，以及截至 [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source) 的原始碼，仍採用 GPLv3 授權；之後的版本為專有軟體。
 
 **是否免費？**
 

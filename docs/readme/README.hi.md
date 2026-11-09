@@ -6,7 +6,7 @@
 
 **AI के लिए बनाया गया वीडियो एडिटर।**
 
-<a href="https://github.com/palmier-io/compositor-pro/releases/latest/download/CompositorPro.dmg">
+<a href="https://github.com/compositor-pro/compositor-pro/releases/latest/download/CompositorPro.dmg">
   <img src="../../assets/macos-badge.png" alt="macOS के लिए Compositor Pro डाउनलोड करें" width="180" />
 </a>
 
@@ -14,7 +14,6 @@
 
 <a href="https://x.com/CompositorPro"><img src="https://img.shields.io/badge/Follow-%40CompositorPro-000000?style=flat&logo=x&logoColor=white" alt="X पर फॉलो करें" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Discord से जुड़ें" /></a>
-<a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 <br />
 
 <p>
@@ -42,7 +41,7 @@
 ---
 
 > [!IMPORTANT]
-> Compositor Pro के v0.7.6 तक के releases GPLv3 के तहत प्रकाशित किए गए थे। अंतिम public source snapshot [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source) है। v0.7.6 के बाद के releases proprietary हैं और उनका source यहाँ प्रकाशित नहीं किया जाता।
+> Compositor Pro के v0.7.6 तक के releases GPLv3 के तहत प्रकाशित किए गए थे। अंतिम public source snapshot [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source) है। v0.7.6 के बाद के releases proprietary हैं और उनका source यहाँ प्रकाशित नहीं किया जाता।
 
 Compositor Pro Mac के लिए एक वीडियो एडिटर है। आप और आपका agent timeline के अंदर साथ मिलकर वीडियो generate और edit कर सकते हैं।
 
@@ -95,7 +94,7 @@ App के साथ एक [mcpb](https://github.com/modelcontextprotocol/mcpb)
 
 **Compositor Pro के कौन-से versions open source हैं?**
 
-v0.7.6 तक के releases और [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source) तक का source GPLv3 के तहत उपलब्ध रहेगा; बाद के releases proprietary हैं।
+v0.7.6 तक के releases और [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source) तक का source GPLv3 के तहत उपलब्ध रहेगा; बाद के releases proprietary हैं।
 
 **क्या यह free है?**
 

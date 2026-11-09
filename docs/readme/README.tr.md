@@ -6,7 +6,7 @@
 
 **Yapay zeka için tasarlanmış video editörü.**
 
-<a href="https://github.com/palmier-io/compositor-pro/releases/latest/download/CompositorPro.dmg">
+<a href="https://github.com/compositor-pro/compositor-pro/releases/latest/download/CompositorPro.dmg">
   <img src="../../assets/macos-badge.png" alt="Compositor Pro'yu macOS için indir" width="180" />
 </a>
 
@@ -14,7 +14,6 @@
 
 <a href="https://x.com/CompositorPro"><img src="https://img.shields.io/badge/Takip Et-%40CompositorPro-000000?style=flat&logo=x&logoColor=white" alt="X'te takip et" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Katıl -Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Discord'a katıl" /></a>
-<a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 <br />
 
 <p>
@@ -42,7 +41,7 @@
 ---
 
 > [!IMPORTANT]
-> Compositor Pro'nun v0.7.6 ve önceki sürümleri GPLv3 kapsamında yayımlandı. Herkese açık son kaynak kodu anlık görüntüsü [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source) dalıdır. v0.7.6'dan sonraki sürümler tescilli yazılımdır ve kaynak kodları burada yayımlanmaz.
+> Compositor Pro'nun v0.7.6 ve önceki sürümleri GPLv3 kapsamında yayımlandı. Herkese açık son kaynak kodu anlık görüntüsü [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source) dalıdır. v0.7.6'dan sonraki sürümler tescilli yazılımdır ve kaynak kodları burada yayımlanmaz.
 
 Compositor Pro, Mac için bir video editörüdür. Siz ve yapay zeka ajanınız, zaman çizelgesi (timeline) üzerinde videoları birlikte üretebilir ve düzenleyebilirsiniz.
 
@@ -97,7 +96,7 @@ Claude Desktop üzerinde tek tıkla Masaüstü Eklentisi (Desktop Extension) kur
 
 **Compositor Pro'nun hangi sürümleri açık kaynaklıdır?**
 
-v0.7.6'ya kadar olan sürümler ve [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source) dalına kadar olan kaynak kodu GPLv3 kapsamında kalır; sonraki sürümler tescillidir.
+v0.7.6'ya kadar olan sürümler ve [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source) dalına kadar olan kaynak kodu GPLv3 kapsamında kalır; sonraki sürümler tescillidir.
 
 **Ücretsiz mi?**
 

@@ -6,7 +6,7 @@
 
 **Видеоредактор, созданный для AI.**
 
-<a href="https://github.com/palmier-io/compositor-pro/releases/latest/download/CompositorPro.dmg">
+<a href="https://github.com/compositor-pro/compositor-pro/releases/latest/download/CompositorPro.dmg">
   <img src="../../assets/macos-badge.png" alt="Скачать Compositor Pro для macOS" width="180" />
 </a>
 
@@ -14,7 +14,6 @@
 
 <a href="https://x.com/CompositorPro"><img src="https://img.shields.io/badge/Follow-%40CompositorPro-000000?style=flat&logo=x&logoColor=white" alt="Подписаться в X" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Присоединиться к Discord" /></a>
-<a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 <br />
 
 <p>
@@ -42,7 +41,7 @@
 ---
 
 > [!IMPORTANT]
-> Релизы Compositor Pro до v0.7.6 включительно были опубликованы под лицензией GPLv3. Финальный общедоступный снимок исходного кода — [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source). Релизы после v0.7.6 являются проприетарными, и их исходный код здесь не публикуется.
+> Релизы Compositor Pro до v0.7.6 включительно были опубликованы под лицензией GPLv3. Финальный общедоступный снимок исходного кода — [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source). Релизы после v0.7.6 являются проприетарными, и их исходный код здесь не публикуется.
 
 Compositor Pro — видеоредактор для Mac. Вы и ваш agent можете вместе генерировать и редактировать видео прямо на таймлайне.
 
@@ -95,7 +94,7 @@ codex mcp add compositor-pro --url http://127.0.0.1:19789/mcp
 
 **Какие версии Compositor Pro являются open source?**
 
-Релизы до v0.7.6 включительно и исходный код вплоть до [`last-gpl-source`](https://github.com/palmier-io/compositor-pro/tree/last-gpl-source) остаются под GPLv3; более поздние релизы являются проприетарными.
+Релизы до v0.7.6 включительно и исходный код вплоть до [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source) остаются под GPLv3; более поздние релизы являются проприетарными.
 
 **Это бесплатно?**
 
