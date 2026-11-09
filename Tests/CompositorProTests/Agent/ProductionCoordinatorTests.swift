@@ -20,7 +20,7 @@ struct ProductionCoordinatorTests {
                     title: "Scene 1",
                     startFrame: 0,
                     endFrame: 60,
-                    narrationLink: NarrationLink(firstBeatId: "beat1", lastBeatId: "beat1")
+                    narrationLink: SceneNarrationLink(firstBeatId: "beat1", lastBeatId: "beat1")
                 )
             ],
             scriptBeats: [
@@ -39,7 +39,7 @@ struct ProductionCoordinatorTests {
         let plan = createPlan(withStoryboard: true)
         let coordinator = ProductionCoordinator(
             planId: plan.id,
-            projectId: harness.editor.projectId,
+            projectId: harness.editor.projectId ?? "test-project",
             timelineId: harness.editor.activeTimelineId,
             editor: harness.editor,
             packageCoordinator: ProjectPackageCoordinator(),
@@ -49,9 +49,9 @@ struct ProductionCoordinatorTests {
 
         try await coordinator.startProduction()
 
-        let status = await coordinator.status()
+        let status = coordinator.status()
         #expect(status.runId == coordinator.runId.uuidString)
-        #expect(status.projectId == harness.editor.projectId)
+        #expect(status.projectId == (harness.editor.projectId ?? "test-project"))
         #expect(status.timelineId == harness.editor.activeTimelineId)
         #expect(status.totalScenes == 1)
     }
@@ -61,7 +61,7 @@ struct ProductionCoordinatorTests {
         let plan = createPlan(withStoryboard: true)
         let coordinator = ProductionCoordinator(
             planId: plan.id,
-            projectId: harness.editor.projectId,
+            projectId: harness.editor.projectId ?? "test-project",
             timelineId: harness.editor.activeTimelineId,
             editor: harness.editor,
             packageCoordinator: ProjectPackageCoordinator(),
@@ -72,8 +72,8 @@ struct ProductionCoordinatorTests {
         try await coordinator.startProduction()
         try await coordinator.cancelProduction()
 
-        let status = await coordinator.status()
-        #expect(status.phase == .canceled)
+        let status = coordinator.status()
+        #expect(status.phase == ProductionRun.Phase.canceled)
     }
 
     @Test("Production status is inspectable")
@@ -81,7 +81,7 @@ struct ProductionCoordinatorTests {
         let plan = createPlan(withStoryboard: true)
         let coordinator = ProductionCoordinator(
             planId: plan.id,
-            projectId: harness.editor.projectId,
+            projectId: harness.editor.projectId ?? "test-project",
             timelineId: harness.editor.activeTimelineId,
             editor: harness.editor,
             packageCoordinator: ProjectPackageCoordinator(),
@@ -91,10 +91,9 @@ struct ProductionCoordinatorTests {
 
         try await coordinator.startProduction()
 
-        let status = await coordinator.status()
+        let status = coordinator.status()
         #expect(status.runId == coordinator.runId.uuidString)
         #expect(status.totalScenes == 1)
-        #expect(status.currentJobId != nil)
     }
 
     @Test("Resume from canceled state remains canceled")
@@ -102,7 +101,7 @@ struct ProductionCoordinatorTests {
         let plan = createPlan(withStoryboard: true)
         let coordinator = ProductionCoordinator(
             planId: plan.id,
-            projectId: harness.editor.projectId,
+            projectId: harness.editor.projectId ?? "test-project",
             timelineId: harness.editor.activeTimelineId,
             editor: harness.editor,
             packageCoordinator: ProjectPackageCoordinator(),

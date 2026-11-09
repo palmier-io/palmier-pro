@@ -30,12 +30,12 @@ struct StockDeliveryHistoryTests {
     @Test("Extracts canonical source IDs from media manifest")
     func extractsCanonicalSourceIds() {
         var manifest = MediaManifest()
-        let origin = MediaImportOrigin(provider: "pexels", assetId: "12345", landingPageUrl: nil, sourceId: "stock:pexels:12345")
+        let origin = MediaImportOrigin(provider: "pexels", assetId: "12345", landingPageURL: nil)
         let entry = MediaManifestEntry(
             id: "clip-1",
             name: "Clip 1",
             type: .video,
-            source: .file(url: URL(fileURLWithPath: "/tmp/sample.mp4")),
+            source: .external(absolutePath: "/tmp/sample.mp4"),
             duration: 5.0,
             importInput: MediaImportInput(origin: origin)
         )
