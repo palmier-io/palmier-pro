@@ -297,6 +297,8 @@ struct AgentPanelView: View {
         }
     }
 
+    private var reasoningStreaming: Bool { service.messages.last?.hasIncompleteReasoning == true }
+
     private var scrollingMessages: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -329,6 +331,7 @@ struct AgentPanelView: View {
             }
             .onChange(of: service.messages.count) { _, _ in scrollToBottom(proxy) }
             .onChange(of: service.isStreaming) { _, _ in scrollToBottom(proxy) }
+            .onChange(of: reasoningStreaming) { _, _ in scrollToBottom(proxy) }
             .overlay(alignment: .bottomTrailing) {
                 if isScrolledFromBottom {
                     scrollToBottomButton(proxy: proxy)

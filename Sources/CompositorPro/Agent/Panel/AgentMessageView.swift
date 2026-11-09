@@ -127,9 +127,7 @@ private struct ThinkingSummaryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            if isComplete {
-                header
-            }
+            header
 
             if !isComplete || isExpanded {
                 summary
