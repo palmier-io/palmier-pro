@@ -10,6 +10,52 @@ struct SpeechSynthesizerTests {
         #expect(SpeechSynthesizer.chunks(of: "One. Two! Three? Four") == ["One. Two! Three? Four"])
     }
 
+    @Test func prosodyPausesWhereANarratorWould() {
+        let segments = SpeechSynthesizer.prosodySegments(of: "One. Two! Three? Four")
+        #expect(segments.count == 4)
+        #expect(segments[0].pauseAfter == SpeechSynthesizer.sentencePause)
+        #expect(segments[1].pauseAfter == SpeechSynthesizer.expressivePause)
+        #expect(segments[2].pauseAfter == SpeechSynthesizer.expressivePause)
+        #expect(segments[3].pauseAfter == SpeechSynthesizer.clausePause)
+        #expect(segments.map(\.text).joined() == "One. Two! Three? Four")
+    }
+
+    @Test func prosodySlowsLongSentencesAndLiftsQuestions() {
+        let long = String(repeating: "word ", count: 40).trimmingCharacters(in: .whitespaces) + "."
+        let segments = SpeechSynthesizer.prosodySegments(of: "\(long) Really? Yes!")
+        #expect(segments[0].rateMultiplier < 1.0)
+        #expect(segments[1].pitchMultiplier > 1.0)
+        #expect(segments[2].pitchMultiplier > 1.0)
+        #expect(segments[2].rateMultiplier > 1.0)
+    }
+
+    @Test func decimalsDoNotSplitSentences() {
+        let segments = SpeechSynthesizer.prosodySegments(of: "Version 3.14 is ready. Go.")
+        #expect(segments.count == 2)
+        #expect(segments[0].text == "Version 3.14 is ready. ")
+    }
+
+    @Test func abbreviationsDoNotSplitSentences() {
+        let segments = SpeechSynthesizer.prosodySegments(of: "Meet me at e.g. noon. Go.")
+        #expect(segments.count == 2)
+        #expect(segments[0].text.hasSuffix("noon. "))
+    }
+
+    @Test func blankLineBreathesBetweenParagraphs() {
+        let segments = SpeechSynthesizer.prosodySegments(of: "First.\n\nSecond.")
+        #expect(segments.count == 2)
+        #expect(segments[0].pauseAfter == SpeechSynthesizer.breathPause)
+    }
+
+    @Test func chunkPausesStayWithTheirSentence() {
+        let text = String(repeating: "First sentence here. ", count: 20) + "Last? "
+        let groups = SpeechSynthesizer.renderChunks(of: text)
+        #expect(groups.count > 1)
+        #expect(groups.allSatisfy { $0.text.count <= SpeechSynthesizer.maxChunkCharacters })
+        #expect(groups.last?.pauseAfter == SpeechSynthesizer.expressivePause)
+        #expect(groups.map(\.text).joined() == text)
+    }
+
     @Test func longTextSplitsAtTheCeilingWithoutLosingCharacters() {
         let runOn = String(repeating: "word ", count: 4_000)
         let pieces = SpeechSynthesizer.chunks(of: runOn)

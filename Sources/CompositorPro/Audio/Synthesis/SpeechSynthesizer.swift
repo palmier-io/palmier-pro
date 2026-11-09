@@ -175,47 +175,221 @@ enum SpeechSynthesizer {
     }
 
 
+    // MARK: - Prosody
+
+    /// One speakable unit with the delivery it needs to sound human. Derived
+    /// from punctuation, so callers pass plain text and the pauses land where
+    /// a narrator would put them.
+    struct ProsodySegment: Sendable, Equatable {
+        var text: String
+        /// Silence after this segment, seconds.
+        var pauseAfter: Double
+        /// Multiplier over the caller's rate. 1.0 is the requested delivery.
+        var rateMultiplier: Double
+        /// Multiplier over the caller's pitch. 1.0 is the voice's natural pitch.
+        var pitchMultiplier: Double
+    }
+
+    static let sentencePause: Double = 0.45
+    static let expressivePause: Double = 0.6
+    static let breathPause: Double = 0.8
+    static let linePause: Double = 0.3
+    static let clausePause: Double = 0.15
+
     // MARK: - Chunking
+
+    /// Splits text into speakable segments with per-sentence pauses and pacing.
+    /// Whitespace is preserved exactly so words never run together. Segments
+    /// that are only whitespace are dropped. Deterministic: same text renders
+    /// the same delivery.
+    static func prosodySegments(of text: String) -> [ProsodySegment] {
+        let raws = splitSentences(text)
+        var segments: [ProsodySegment] = []
+        segments.reserveCapacity(raws.count)
+        for (index, raw) in raws.enumerated() {
+            guard !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            // A blank line is dropped as whitespace, so count the blank raws
+            // ahead: two consecutive newlines upgrade the pause to a breath.
+            var blanks = 0
+            for ahead in raws[(index + 1)...] {
+                guard ahead.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { break }
+                blanks += 1
+            }
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            let pause = blanks >= 2 ? breathPause : pauseAfter(trimmed: trimmed, raw: raw)
+            segments.append(ProsodySegment(
+                text: raw,
+                pauseAfter: pause,
+                rateMultiplier: rateFor(trimmed),
+                pitchMultiplier: pitchFor(trimmed)
+            ))
+        }
+        return segments
+    }
+
+    /// Sentence split that keeps the terminator and following space on the
+    /// sentence they belong to. A `.` only ends a sentence before whitespace,
+    /// a quote, or the end, so `3.14` stays intact.
+    private static func splitSentences(_ text: String) -> [String] {
+        var out: [String] = []
+        var current = ""
+        let chars = Array(text)
+        var i = 0
+        while i < chars.count {
+            let c = chars[i]
+            current.append(c)
+            if c == "\n" {
+                out.append(current)
+                current = ""
+            } else if c == "." || c == "!" || c == "?" {
+                if sentenceEnds(at: i, in: chars), !isAbbreviationDot(at: i, in: chars) {
+                    i = swallowTerminatorRun(i, in: chars, current: &current)
+                    i = keepTrailingSpace(i, in: chars, current: &current)
+                    out.append(current)
+                    current = ""
+                }
+            } else if c == "—" {
+                out.append(current)
+                current = ""
+            }
+            i += 1
+        }
+        if !current.isEmpty { out.append(current) }
+        return out
+    }
+
+    private static func sentenceEnds(at i: Int, in chars: [Character]) -> Bool {
+        guard i + 1 < chars.count else { return true }
+        let next = chars[i + 1]
+        return next == " " || next == "\n" || next == "\t" || next == "\""
+            || next == "'" || next == ")" || next == "]" || ".!?".contains(next)
+    }
+
+    /// A `.` between letters (`U.S.A.`) or digits (`3.14`) is not a sentence
+    /// end, and neither is a `.` followed by a lowercase word (`e.g. noon`):
+    /// sentences start uppercase. The final dot still ends the sentence when
+    /// the next word starts a new thought.
+    private static func isAbbreviationDot(at i: Int, in chars: [Character]) -> Bool {
+        guard chars[i] == "." else { return false }
+        guard i > 0, i + 1 < chars.count else { return false }
+        let prev = chars[i - 1]
+        let next = chars[i + 1]
+        if prev.isNumber, next.isNumber { return true }
+        if prev.isLetter, next.isLetter { return true }
+        if next == " ", i + 2 < chars.count, chars[i + 2].isLowercase { return true }
+        return false
+    }
+
+    private static func swallowTerminatorRun(_ i: Int, in chars: [Character], current: inout String) -> Int {
+        var j = i
+        while j + 1 < chars.count, ".!?".contains(chars[j + 1]) {
+            j += 1
+            current.append(chars[j])
+        }
+        return j
+    }
+
+    private static func keepTrailingSpace(_ i: Int, in chars: [Character], current: inout String) -> Int {
+        guard i + 1 < chars.count, chars[i + 1] == " " else { return i }
+        current.append(" ")
+        return i + 1
+    }
+
+    private static func pauseAfter(trimmed: String, raw: String) -> Double {
+        if trimmed.hasSuffix("...") || trimmed.hasSuffix("…") { return breathPause }
+        if trimmed.hasSuffix("!") || trimmed.hasSuffix("?") { return expressivePause }
+        if trimmed.hasSuffix(".") { return sentencePause }
+        if trimmed.hasSuffix(",") { return clausePause + 0.1 }
+        if trimmed.hasSuffix(":") || trimmed.hasSuffix(";") || trimmed.hasSuffix("—") {
+            return clausePause + 0.15
+        }
+        if raw.hasSuffix("\n") { return linePause }
+        return clausePause
+    }
+
+    /// Longer sentences slow slightly so they stay intelligible; exclamations
+    /// pick up the pace. Bounded to ±6% so the caller's rate still dominates.
+    private static func rateFor(_ trimmed: String) -> Double {
+        if trimmed.hasSuffix("!"), trimmed.count < 40 { return 1.06 }
+        if trimmed.hasSuffix("?") { return 1.03 }
+        if trimmed.count > 160 { return 0.94 }
+        if trimmed.count > 110 { return 0.97 }
+        return 1.0
+    }
+
+    /// Questions lift, exclamations lift less, statements fall a touch.
+    /// Bounded to ±8% so the caller's pitch still dominates.
+    private static func pitchFor(_ trimmed: String) -> Double {
+        if trimmed.hasSuffix("?") { return 1.08 }
+        if trimmed.hasSuffix("!") { return 1.05 }
+        if trimmed.hasSuffix(".") { return 0.99 }
+        return 1.0
+    }
 
     /// Splits on sentence terminators so each chunk breathes like a sentence, then merges
     /// short pieces and hard-splits run-on text that never terminates. Interior whitespace is
     /// preserved exactly: dropping the space after a full stop makes the voice run the last
     /// word of one sentence into the first word of the next.
     static func chunks(of text: String) -> [String] {
-        var sentences: [String] = []
-        var current = ""
-        for character in text {
-            current.append(character)
-            if ".!?\n".contains(character) {
-                sentences.append(current)
-                current = ""
-            }
-        }
-        if !current.isEmpty { sentences.append(current) }
+        segmentGroups(of: text).map { $0.map(\.text).joined() }
+    }
 
-        var merged: [String] = []
-        var pending = ""
-        for sentence in sentences where !sentence.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            if pending.count + sentence.count <= maxChunkCharacters {
-                pending += sentence
+    /// Groups prosody segments into render chunks that keep each sentence's
+    /// pause with its sentence. An oversized sentence with no terminator
+    /// splits mid-run at a space; the pause stays on the final piece.
+    static func renderChunks(of text: String) -> [(text: String, pauseAfter: Double)] {
+        segmentGroups(of: text).map { group in
+            (group.map(\.text).joined(), group.last?.pauseAfter ?? clausePause)
+        }
+    }
+
+    static func segmentGroups(of text: String) -> [[ProsodySegment]] {
+        var merged: [[ProsodySegment]] = []
+        var pending: [ProsodySegment] = []
+        var pendingCount = 0
+        for segment in prosodySegments(of: text) {
+            if pendingCount + segment.text.count <= maxChunkCharacters {
+                pending.append(segment)
+                pendingCount += segment.text.count
                 continue
             }
             if !pending.isEmpty { merged.append(pending) }
-            guard sentence.count > maxChunkCharacters else {
-                pending = sentence
+            guard segment.text.count > maxChunkCharacters else {
+                pending = [segment]
+                pendingCount = segment.text.count
                 continue
             }
-            var remainder = sentence
-            while remainder.count > maxChunkCharacters {
-                let head = String(remainder.prefix(maxChunkCharacters))
-                let split = head.lastIndex(of: " ") ?? head.endIndex
-                merged.append(String(head[head.startIndex..<split]))
-                remainder = String(remainder[split...])
+            let pieces = hardSplit(segment.text)
+            for piece in pieces.dropLast() {
+                merged.append([ProsodySegment(
+                    text: piece, pauseAfter: clausePause,
+                    rateMultiplier: segment.rateMultiplier,
+                    pitchMultiplier: segment.pitchMultiplier
+                )])
             }
-            pending = remainder
+            let last = pieces.last ?? ""
+            pending = [ProsodySegment(
+                text: last, pauseAfter: segment.pauseAfter,
+                rateMultiplier: segment.rateMultiplier,
+                pitchMultiplier: segment.pitchMultiplier
+            )]
+            pendingCount = last.count
         }
         if !pending.isEmpty { merged.append(pending) }
         return merged
+    }
+
+    private static func hardSplit(_ sentence: String) -> [String] {
+        var pieces: [String] = []
+        var remainder = sentence
+        while remainder.count > maxChunkCharacters {
+            let head = String(remainder.prefix(maxChunkCharacters))
+            let split = head.lastIndex(of: " ") ?? head.endIndex
+            pieces.append(String(head[head.startIndex..<split]))
+            remainder = String(remainder[split...])
+        }
+        pieces.append(remainder)
+        return pieces
     }
 
     // MARK: - Rendering
@@ -305,15 +479,23 @@ enum SpeechSynthesizer {
     private static func renderWithPiper(
         spec: Spec, model: PiperTTS.Model, isCancelled: () -> Bool
     ) throws -> RenderResult {
-        let parts = chunks(of: spec.text)
-        guard !parts.isEmpty else { throw SpeechError.emptyText }
+        let groups = segmentGroups(of: spec.text)
+        guard !groups.isEmpty else { throw SpeechError.emptyText }
         // Piper's length scale is the inverse of a rate multiplier.
-        let lengthScale = 1 / spec.rate.clamped(to: 0.5...2.0)
-        let rendered: [URL] = try parts.map { part in
+        let baseRate = spec.rate.clamped(to: 0.5...2.0)
+        let rendered: [URL] = try groups.map { group in
             if isCancelled() { throw CancellationError() }
-            return try PiperTTS.render(text: part, model: model, lengthScale: lengthScale, isCancelled: isCancelled)
+            // One subprocess per chunk keeps the engine count bounded; its
+            // sentences share the group's mean pacing, and the pause lands
+            // as silence between chunks.
+            let meanRate = group.map(\.rateMultiplier).reduce(0, +) / Double(max(1, group.count))
+            let text = group.map(\.text).joined()
+            return try PiperTTS.render(
+                text: text, model: model, lengthScale: 1 / (baseRate * meanRate),
+                isCancelled: isCancelled
+            )
         }
-        let url = try concatenate(rendered)
+        let url = try concatenate(rendered, pauses: groups.map { $0.last?.pauseAfter ?? 0 })
         return RenderResult(url: url, engine: .piper, voiceName: model.fileName)
     }
 
@@ -322,7 +504,8 @@ enum SpeechSynthesizer {
     /// A WAV header describes exactly one stream, so byte-concatenation would leave the reader
     /// seeing only the first chunk. The first file's format wins and every chunk must match it;
     /// Piper always renders 22050 Hz mono, so a mismatch means something went wrong upstream.
-    private static func concatenate(_ files: [URL]) throws -> URL {
+    /// `pauses` holds the silence after each chunk except the last.
+    private static func concatenate(_ files: [URL], pauses: [Double] = []) throws -> URL {
         guard let first = files.first else { throw SpeechError.emptyText }
         // One chunk is already a complete WAV, and it is the file being returned, so it must not
         // be swept up with the staging files.
@@ -335,7 +518,7 @@ enum SpeechSynthesizer {
         // the URL while the writer is still alive hands back a file advertising no audio.
         func write() throws {
             let destination = try AVAudioFile(forWriting: output, settings: format.settings)
-            for file in files {
+            for (index, file) in files.enumerated() {
                 let source = try AVAudioFile(forReading: file)
                 if source.processingFormat.sampleRate != format.sampleRate
                     || source.processingFormat.channelCount != format.channelCount {
@@ -347,6 +530,15 @@ enum SpeechSynthesizer {
                 ) else { continue }
                 try source.read(into: buffer)
                 if buffer.frameLength > 0 { try destination.write(from: buffer) }
+                if index < files.count - 1, index < pauses.count, pauses[index] > 0 {
+                    // Cap the pause so an ellipsis never inserts a full breath per chunk.
+                    let pause = min(pauses[index], 0.6)
+                    let frames = AVAudioFrameCount(max(1, Int((pause * format.sampleRate).rounded())))
+                    if let silence = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames) {
+                        silence.frameLength = frames
+                        try destination.write(from: silence)
+                    }
+                }
             }
         }
         try write()
@@ -355,7 +547,7 @@ enum SpeechSynthesizer {
 
     private static func renderWithSystemVoice(spec: Spec, isCancelled: () -> Bool) throws -> URL {
         let voice = try resolveVoice(spec: spec)
-        let parts = chunks(of: spec.text)
+        let groups = segmentGroups(of: spec.text)
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("speech-\(UUID().uuidString).wav")
 
@@ -368,25 +560,21 @@ enum SpeechSynthesizer {
             try {
                 let file = try AVAudioFile(forWriting: url, settings: voice.audioFileSettings)
                 let synthesizer = AVSpeechSynthesizer()
-                for part in parts {
+                let rate = spec.rate.clamped(to: 0.5...2.0)
+                let pitch = spec.pitch.clamped(to: 0.5...2.0)
+                for (groupIndex, group) in groups.enumerated() {
                     if isCancelled() { throw CancellationError() }
-                    // A chunk that yields no audio did not render. The engine reports this as an
-                    // immediate empty buffer, which is indistinguishable from a normal end of
-                    // stream unless it is checked against an actual frame count — so it is
-                    // retried rather than accepted as silence.
-                    var frames: AVAudioFramePosition = 0
-                    for attempt in 1...maxChunkAttempts {
-                        let utterance = AVSpeechUtterance(string: part)
-                        utterance.voice = voice
-                        utterance.rate = (AVSpeechUtteranceDefaultSpeechRate * Float(spec.rate))
-                            .clamped(to: AVSpeechUtteranceMinimumSpeechRate...AVSpeechUtteranceMaximumSpeechRate)
-                        utterance.pitchMultiplier = Float(spec.pitch).clamped(to: 0.5...2.0)
-                        frames = try write(synthesizer, utterance, into: file)
-                        if frames > 0 { break }
+                    for segment in group {
                         if isCancelled() { throw CancellationError() }
-                        if attempt == maxChunkAttempts { throw SpeechError.silentRender }
+                        written += try renderSegment(
+                            segment, voice: voice, rate: rate, pitch: pitch,
+                            synthesizer: synthesizer, into: file
+                        )
                     }
-                    written += frames
+                    let pause = group.last?.pauseAfter ?? 0
+                    if groupIndex < groups.count - 1, pause > 0 {
+                        written += try appendSilence(pause, into: file)
+                    }
                 }
             }()
             guard written > 0 else { throw SpeechError.silentRender }
@@ -395,6 +583,50 @@ enum SpeechSynthesizer {
             try? FileManager.default.removeItem(at: url)
             throw error
         }
+    }
+
+    /// Renders one sentence with its own pacing and lift, retrying a chunk
+    /// that yields no audio. The engine reports an empty render as an immediate
+    /// empty buffer, indistinguishable from a normal end of stream unless it is
+    /// checked against an actual frame count.
+    private static func renderSegment(
+        _ segment: ProsodySegment,
+        voice: AVSpeechSynthesisVoice,
+        rate: Double,
+        pitch: Double,
+        synthesizer: AVSpeechSynthesizer,
+        into file: AVAudioFile
+    ) throws -> AVAudioFramePosition {
+        var frames: AVAudioFramePosition = 0
+        for attempt in 1...maxChunkAttempts {
+            let utterance = AVSpeechUtterance(string: segment.text)
+            utterance.voice = voice
+            utterance.rate = (AVSpeechUtteranceDefaultSpeechRate * Float(rate * segment.rateMultiplier))
+                .clamped(to: AVSpeechUtteranceMinimumSpeechRate...AVSpeechUtteranceMaximumSpeechRate)
+            utterance.pitchMultiplier = Float(pitch * segment.pitchMultiplier).clamped(to: 0.5...2.0)
+            // Pause before a long sentence reads as a breath, not a stall.
+            if segment.text.trimmingCharacters(in: .whitespacesAndNewlines).count > 110 {
+                utterance.preUtteranceDelay = 0.08
+            }
+            // Language default is a full second: at chunk scale that inserts a
+            // dead second between every few sentences.
+            utterance.postUtteranceDelay = 0
+            frames = try write(synthesizer, utterance, into: file)
+            if frames > 0 { break }
+            if attempt == maxChunkAttempts { throw SpeechError.silentRender }
+        }
+        return frames
+    }
+
+    /// Digital silence matching the destination format, so sentence gaps do not
+    /// click when two voiced chunks join.
+    private static func appendSilence(_ seconds: Double, into file: AVAudioFile) throws -> AVAudioFramePosition {
+        let format = file.processingFormat
+        let frames = AVAudioFrameCount(max(1, Int((seconds * format.sampleRate).rounded())))
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames) else { return 0 }
+        buffer.frameLength = frames
+        try file.write(from: buffer)
+        return AVAudioFramePosition(frames)
     }
 
     private static func write(_ synthesizer: AVSpeechSynthesizer, _ utterance: AVSpeechUtterance, into file: AVAudioFile) throws -> AVAudioFramePosition {
