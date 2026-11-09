@@ -54,6 +54,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case generateThumbnail = "generate_thumbnail"
     case addOutro = "add_outro"
     case composeImage = "compose_image"
+    case buildMapScene = "build_map_scene"
     case removeImageBackground = "remove_image_background"
     case applyTextStyle = "apply_text_style"
     case duckAudio = "duck_audio"
@@ -1514,7 +1515,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .enhanceVoice,
-            description: "One-click voice enhancement for audio clips: chains denoise, de-breath, de-esser, and loudness match (BS.1770-4) so clips sit at a common -16 LUFS. amount scales the whole chain 0-1 (default 0.7); deess scales only the sibilance stage 0-1 (default 0.6). Denoise bakes and detection run in the background — the timeline updates automatically when each stage finishes. Replaces any standalone denoise or de-breath effects on the clips. Undoable.",
+            description: "Finish source audio locally: await denoise, de-breath, de-esser, and source loudness measurement, then apply the chain atomically as one undoable edit. Requires denoise capability; fails without mutation on unavailable media, insufficient audible material, cancellation, or a changed timeline/source. amount scales the whole chain 0-1 (default 0.7), including the gain toward -16 LUFS; deess scales sibilance reduction 0-1 (default 0.6). Replaces standalone denoise/de-breath effects. Gain is limited to +/-24 dB with warnings when the source target is unreachable. Use review_timeline to check the rendered mix; chain strength, clip volume, automation, and other tracks affect final loudness.",
             inputSchema: objectSchema(
                 properties: [
                     "clipIds": ["type": "array", "items": ["type": "string"], "description": "Audio clip ids from get_timeline."],

@@ -426,6 +426,7 @@ final class ToolExecutor {
         case .generateThumbnail: return try await generateThumbnail(editor, args)
         case .addOutro:          return try addOutro(editor, args)
         case .composeImage:      return try await composeImage(editor, args)
+        case .buildMapScene:     return try await buildMapScene(editor, args)
         case .removeImageBackground: return try await removeImageBackground(editor, args)
         case .applyTextStyle:      return try await applyTextStyle(editor, args)
         case .offsetAudio:        return try offsetAudio(editor, args)

@@ -252,6 +252,8 @@ Narrator intent and source-ABA guards committed as `d2397c5` (`[feat] Preserve a
 
 **Done when:** A Penang/Kulim/regional map remains geographically correct through zooms and successive reveals. Correcting a place changes only dependent scenes; continuous playback confirms legibility and attachment.
 
+**Map scene slice:** `build_map_scene` validates places against a 12-place Peninsular catalog (unknown/duplicate refused, aliases resolved), projects once (equirectangular), and bakes one Lottie scene whose pins, routes, sourced/illustrative links, and labels share a keyframed camera transform. Render tests prove labels follow the camera; MCP tests prove library registration, spec receipt, placement, and undo. [Contract and verification](docs/map-scenes.md). No region polygons, plan/ledger binding, plan-side spec persistence, or human playback proof yet; task 6 stays unchecked.
+
 ### 7. Build sourced data and evidence scenes
 
 - [ ] Support a small typed graphic family instead of decorative generated charts.
