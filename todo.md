@@ -39,6 +39,81 @@ Storyboard guidance now requires explicit review of narration, order, proposed v
 
 **Guidance verification:** `swift build` and `swift test --filter 'ExplainerVisualRulesTests|ExplainerContractsMCPTests|ClipIdentityMCPTests'` passed (9 tests in 3 suites). Tests protect mandatory review and both visual rules. No automatic face inspection, native storyboard UI, or production-gate verification claimed.
 
+## Rebrand & backend removal
+
+### R1. Remove Palmier-Pro backend integrations
+
+- [ ] Delete every call connection to the Palmier-Pro backend; run fully local.
+
+**What:** The repo still links Clerk, Convex, PostHog, and Sentry, plus an
+account/credits UI, a Convex `GenerationBackend`, hosted cloud transcription,
+and capability/credit logic gated by Palmier account state. Hosted services
+are already disabled (`HostedServices.enabled = false`) but the code and
+dependencies still compile, link, and surface in UI & tool contracts.
+
+**How:**
+- Delete `Backend/` and `Account/` (or reduce to local-only stubs with no
+  network surface), cloud-transcription hosted path, and hosted-generation
+  fallbacks. generation/transcription stay local (system + Piper + bundled
+  models); local-first tool receipts must never promise hosted behavior.
+- Drop the Palmier packages from `Package.swift` (Clerk ×2, Convex, Sentry,
+  PostHog) and the `ProductionTelemetry` trait; remove credential settings,
+  credit-cost estimation, sign-in/top-off sheets, and their `L10n` keys.
+- Keep `RuntimeCapabilities`/tool descriptions truthful about local-only
+  capabilities; no UI may reference plans, billing, or credits.
+
+**Done when:** The app builds with none of the backend packages linked, all
+MCP/UI paths work signed-out with no hosted capability, and no string in the
+binary names Palmier, Clerk, Convex, billing, or credits.
+
+### R2. Rename Palmier traces to compositor-pro
+
+- [ ] Rename Palmier-brand artifacts to the Compositor Pro identity.
+
+**What:** 77 references to the `.palmier` project-package extension exist
+across source and tests, plus `mode: "palmier"` / `format: "Palmier"` in the
+export contract, the `X-Palmier-Project-Id` header, MCP server id
+`palmier-pro` (`MCPService.swift`, `mcpb/manifest.json`, help pane), author /
+homepage fields pointing at Palmier.io, a legacy `Documents/Palmier Pro`
+support directory, telemetry strings, and `BINARY_LICENSE.md` headers.
+
+**How:**
+- Decide the product identity first: package type identifier, file extension,
+  UTI, bundle name — then migrate on load (rename-on-open, backward-compatible
+  open of `.palmier` files, preserve package contents). Do not break existing
+  user projects.
+- Rename contracts atomically: export `mode`, format/receipt fields, the MCP
+  server name, the project header, `mcpb/manifest.json` author/homepage, and
+  the legacy support-directory lookup (rename on access).
+- Sweep code, tests, docs, and localization marketing strings (welcome,
+  notifications, MCP instructions) to the new name; any surviving `.palmier`
+  string must be an explicit legacy migration shim with a comment.
+
+**Done when:** Grep for `palmier` across source, tests, docs, and configs
+matches only documented legacy shims; a `.palmier` project opens and saves
+under the new identity.
+
+### R3. Re-skin the editor UI to look distinct from Palmier Pro
+
+- [ ] Ship a new editor skin so Compositor Pro reads as its own product.
+
+**What:** The layout, palette, type scale, and motion language are inherited
+from the Palmier Pro codebase. A clone look is off-brand and confuses users
+who follow both products.
+
+**How:**
+- Define a new `AppTheme` design (palette, typography, spacing, radii, panel
+  structure, toolbar layout, timeline density) in one theme file following the
+  existing `AppTheme` token discipline — no hardcoded numeric styling.
+- Keep every feature reachable in the new layout (Captions style gallery,
+  Storyboard review, Account removal per R1, Export); preserve `L10n` keys and
+  keyboard behavior.
+- Ship screenshot pairs (old vs new: workspace, timeline, inspector, export)
+  with the change; user confirms the new skin is legible and distinct.
+
+**Done when:** The app renders with the new theme everywhere, AppTheme owns
+all styling constants, and user-reviewed screenshots confirm the distinct look.
+
 ## Signed app update
 
 - [ ] After implementation and repeated deep verification, build the release app with Developer ID signing, verify its signature/resources, and safely replace the existing installation.
