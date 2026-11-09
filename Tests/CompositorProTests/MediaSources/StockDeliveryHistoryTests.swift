@@ -27,6 +27,20 @@ struct StockDeliveryHistoryTests {
         #expect(!history.contains("s4"))
     }
 
+    @Test("Loads and saves through UserDefaults")
+    func persistsThroughDefaults() {
+        var history = StockDeliveryHistory()
+        history.add(sourceIds: ["s1"], outputFilename: "video1.mp4")
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        UserDefaults.standard.set(try? encoder.encode(history), forKey: StockDeliveryHistory.defaultsKey)
+
+        let loaded = StockDeliveryHistory.load()
+        #expect(loaded.entries.count == 1)
+        #expect(loaded.entries[0].outputFilename == "video1.mp4")
+        #expect(loaded.usedSourceIds == ["s1"])
+    }
+
     @Test("Extracts canonical source IDs from media manifest")
     func extractsCanonicalSourceIds() {
         var manifest = MediaManifest()
@@ -35,7 +49,7 @@ struct StockDeliveryHistoryTests {
             id: "clip-1",
             name: "Clip 1",
             type: .video,
-            source: .external(absolutePath: "/tmp/sample.mp4"),
+            source: .project(relativePath: "media/clip-1.mp4"),
             duration: 5.0,
             importInput: MediaImportInput(origin: origin)
         )
@@ -43,5 +57,10 @@ struct StockDeliveryHistoryTests {
 
         let ids = StockDeliveryHistory.sourceIds(manifest: manifest)
         #expect(ids.contains("stock:pexels:12345"))
+    }
+
+    @Test("Empty manifest yields no IDs")
+    func noManifestNoIds() {
+        #expect(StockDeliveryHistory.sourceIds(manifest: MediaManifest()).isEmpty)
     }
 }
