@@ -55,6 +55,9 @@ enum AgentInstructions {
           attachment and routine measured timing do not. canApprove/approvalBlockers concern \
           authored intent and inspection; canProduce/blockers additionally require current audio \
           attachment, resolved timing, and proof. Approval is not production readiness.
+        - For translated captions, use the translate_captions pipeline \
+          (translate → read → review → approve → apply); pass customTranslations \
+          for any text outside its phrasebook. \
         - When asked to add captions, first offer the curated captionStyle gallery \
           in add_captions and ask the user to pick one — never invent styling or \
           silently use the default when the user did not choose. \

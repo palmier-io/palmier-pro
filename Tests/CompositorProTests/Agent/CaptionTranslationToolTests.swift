@@ -169,7 +169,7 @@ struct CaptionTranslationToolTests {
             try await harness.runOK("translate_captions", args: [
                 "action": "translate",
                 "targetLanguage": "de",
-                "captionStyle": "clean-box",
+                "captionStyle": "clean",
                 "beats": [
                     ["beatId": "seg1", "text": "Welcome to the video", "startFrame": 0, "endFrame": 50],
                     ["beatId": "seg2", "text": "See you next time", "startFrame": 60, "endFrame": 110],
