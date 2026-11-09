@@ -511,6 +511,24 @@ Atomic narration preparation now has 19 parsed changed/new Swift files and autho
 
 **Done when:** The user can pick a caption style in the Captions panel and the captions generated from it look like that style; the Agent asks for a style when asked to add captions and applies the picked one. MCP readback shows the style on the caption clip and `update_text` can change it.
 
+### 16. Speed up export delivery (measured, no regressions)
+
+- [ ] Profile and optimize the export pipeline before claiming delivery speed.
+
+**What:** Long exports are the last production wait. Improve wall-clock delivery time on a representative timeline (90s+ landscape, the Gate A proof) without lowering output quality, losing per-frame fidelity, or breaking cancellation/resume.
+
+**How:**
+- Profile with Instruments (render, composition, encode, captions, Lottie bake) on a fixed comparable timeline: record time-to-first-frame, render throughput (fps), encode time, and total wall clock before changing anything.
+- Fix algorithmic waste first: repeated decoder/reader setup, per-frame CIContext/LUT rebuilds, uncached thumbnails, redundant composition rebuilds. Reuse expensive objects with explicit invalidation.
+- Parallelize bounded work: background rendering with bounded decoders/renderers, audio path overlap, encode overlap where the exporter allows. Bound by the actual scarce resource, never unbounded task-per-frame.
+- Cache frame results only with explicit keys (source bytes, transform/color revisions), capacity limits, and invalidation on timeline/media changes.
+- Keep cancellation cooperative per chunk; a cancelled export releases decoders and leaves no partial output claiming success.
+- Re-export a fixed fixture and compare rendered frames/loudness with the baseline; identical or better delivery within tolerance before any quality change is accepted.
+
+**Start here:** [ExportService.swift](Sources/CompositorPro/Export/ExportService.swift), [ExportQueue.swift](Sources/CompositorPro/Export/ExportQueue.swift), [CompositionBuilder.swift](Sources/CompositorPro/Preview/CompositionBuilder.swift), [TimelineRenderer.swift](Sources/CompositorPro/Preview/TimelineRenderer.swift), [LottieVideoGenerator.swift](Sources/CompositorPro/Preview/LottieVideoGenerator.swift).
+
+**Done when:** A representative export is measurably faster with recorded before/after workloads, Instruments evidence, and unchanged deterministic output checks; human playback confirms no dropped frames or audio glitches.
+
 ## Release gates
 
 Priorities describe importance, not isolated batches. Build the smallest end-to-end subset of each required layer before expanding it.
