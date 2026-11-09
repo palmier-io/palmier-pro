@@ -165,7 +165,7 @@ enum RuntimeCapabilities {
         let operations: [String: RuntimeCapability] = [
             "generate_video": hosted, "generate_image": hosted, "generate_audio": hosted,
             "cloud_transcription": cloudTranscription,
-            "upscale_media": hosted, "enhance_media": localUpscaleCapability,
+            "upscale_media": hosted, "enhance_media": localUpscaleCapability(bundledSpeech: RuntimeCapabilities.bundledSpeech, runtimeAvailable: MLXRuntime.isAvailable),
             "denoise_audio": denoising, "enhance_voice": denoising,
             "debreath_audio": .available, "match_loudness": .available,
             "generate_drone": .available, "generate_speech": speech(local),

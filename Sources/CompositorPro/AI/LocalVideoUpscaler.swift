@@ -1,3 +1,4 @@
+import AppKit
 import AVFoundation
 import CoreGraphics
 import CoreImage
@@ -86,9 +87,7 @@ enum LocalVideoUpscaler {
         try Task.checkCancellation()
         try await MLXRuntime.beginInference()
         defer { MLXRuntime.endInference() }
-        guard MLXRuntime.beginOperation() != nil else {
-            throw Error(message: "MLX operation gate closed; cannot upscale.")
-        }
+        try MLXRuntime.beginOperation()
         defer { MLXRuntime.endOperation() }
 
         let outWidth = width * scale.factor
@@ -132,9 +131,7 @@ enum LocalVideoUpscaler {
                 throw Error(message: "Could not decode image \(sourceURL.lastPathComponent).")
             }
             let upscaled = try upscaleCGImage(cgImage, scaleFactor: scale.factor)
-            let data = upscaled.tiffRepresentation?
-                .usingImageRepresentation([.tiffCompressionMethod: NSImageCompression.tiffLZW])
-                .tiffRepresentation ?? Data()
+            let data = NSBitmapImageRep(cgImage: upscaled).representation(using: .png, properties: [:]) ?? Data()
             try data.write(to: outputURL)
         } else {
             throw Error(message: "Core Image upscale requires macOS 26.")
@@ -152,7 +149,7 @@ enum LocalVideoUpscaler {
     ) async throws -> URL {
         try Task.checkCancellation()
 
-        let asset = AVAsset(url: sourceURL)
+        let asset = AVURLAsset(url: sourceURL)
         guard let videoTrack = try? await asset.loadTracks(withMediaType: .video).first else {
             throw Error(message: "No video track in \(sourceURL.lastPathComponent).")
         }
@@ -173,7 +170,7 @@ enum LocalVideoUpscaler {
         reader.startReading()
 
         let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
-        let outputSettings: [String: Any] = [
+        let writerOutputSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: outWidth,
             AVVideoHeightKey: outHeight,
@@ -181,7 +178,7 @@ enum LocalVideoUpscaler {
                 AVVideoAverageBitRateKey: 8_000_000,
             ],
         ]
-        let writerInput = AVAssetWriterInput(mediaType: .video, outputSettings: outputSettings)
+        let writerInput = AVAssetWriterInput(mediaType: .video, outputSettings: writerOutputSettings)
         writerInput.transform = transform
         writer.add(writerInput)
 
@@ -238,7 +235,7 @@ enum LocalVideoUpscaler {
         guard let outBuffer else {
             throw Error(message: "Could not create output pixel buffer.")
         }
-        CIContext().render(upscaled, to: outBuffer)
+        CIContext().render(CIImage(cgImage: upscaled), to: outBuffer)
         return outBuffer
     }
 
@@ -257,17 +254,17 @@ enum LocalVideoUpscaler {
             throw Error(message: "Could not decode image \(sourceURL.lastPathComponent).")
         }
         let upscaled = try upscaleCGImage(cgImage, scaleFactor: outWidth / width)
-        let data = upscaled.tiffRepresentation ?? Data()
+        let data = NSBitmapImageRep(cgImage: upscaled).representation(using: .png, properties: [:]) ?? Data()
         return data
     }
 
     private static func upscaleCGImage(_ image: CGImage, scaleFactor: Int) throws -> CGImage {
         let width = image.width * scaleFactor
         let height = image.height * scaleFactor
-        return try upscaleCGImage(image, to: CGSize(width: width, height: height))
+        return try upscaleCGImage(CIImage(cgImage: image), to: CGSize(width: width, height: height))
     }
 
-    private static func upscaleCGImage(_ image: CIImage, to size: CGSize) throws -> CGImage {
+    static func upscaleCGImage(_ image: CIImage, to size: CGSize) throws -> CGImage {
         let context = CIContext(options: [.useSoftwareRenderer: false])
         let scaleX = size.width / image.extent.width
         let scaleY = size.height / image.extent.height

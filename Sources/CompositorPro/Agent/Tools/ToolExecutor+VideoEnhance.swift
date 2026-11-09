@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreGraphics
+import CoreImage
 import Foundation
 
 extension ToolExecutor {
@@ -10,7 +11,7 @@ extension ToolExecutor {
         static let allowedKeys: Set<String> = ["clipIds", "scale", "approved"]
     }
 
-    func enhanceMedia(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+    func enhanceMedia(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         let input: EnhanceMediaInput = try decodeToolArgs(args, path: "enhance_media")
         guard !input.clipIds.isEmpty else { throw ToolError("clipIds is empty.") }
 
@@ -35,21 +36,21 @@ extension ToolExecutor {
         }
 
         if approved {
-            return try performEnhancement(editor: editor, clips: clips, assets: assets, scale: scale)
+            return try await performEnhancement(editor: editor, clips: clips, assets: assets, scale: scale)
         }
 
-        let previewResult = try generatePreviews(editor: editor, clips: clips, assets: assets, scale: scale)
+        let previewResult = try await generatePreviews(editor: editor, clips: clips, assets: assets, scale: scale)
         return previewResult
     }
 
     private func generatePreviews(
         editor: EditorViewModel, clips: [Clip], assets: [MediaAsset], scale: LocalVideoUpscaler.Scale
-    ) throws -> ToolResult {
+    ) async throws -> ToolResult {
         var previewBlocks: [ToolResult.Block] = []
         var meta: [[String: Any]] = []
 
         for (clip, asset) in zip(clips, assets) {
-            let previewFrames = try extractPreviewFrames(
+            let previewFrames = try await extractPreviewFrames(
                 editor: editor, clip: clip, asset: asset, scale: scale
             )
             previewBlocks.append(contentsOf: previewBlocksFrom(frames: previewFrames))
@@ -71,7 +72,7 @@ extension ToolExecutor {
 
     private func extractPreviewFrames(
         editor: EditorViewModel, clip: Clip, asset: MediaAsset, scale: LocalVideoUpscaler.Scale
-    ) throws -> [(before: CGImage, after: CGImage)] {
+    ) async throws -> [(before: CGImage, after: CGImage)] {
         let sourceWidth = asset.sourceWidth!
         let sourceHeight = asset.sourceHeight!
         let targetWidth = sourceWidth * scale.factor
@@ -83,21 +84,23 @@ extension ToolExecutor {
         let sampleFrames = min(4, clipDuration > 0 ? clipDuration : 1)
         var frames: [(before: CGImage, after: CGImage)] = []
 
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: asset.url))
+        generator.appliesPreferredTrackTransform = true
+
         for i in 0..<sampleFrames {
             try Task.checkCancellation()
             let frameIndex = clipStart + (clipDuration * (i + 1) / (sampleFrames + 1))
             let time = Double(frameIndex) / Double(fps)
-            guard let beforeImage = await Self.frameImage(url: asset.url, type: asset.type, atSeconds: time) else { continue }
+            let cmTime = CMTime(seconds: time, preferredTimescale: 600)
+            guard let beforeImage = try? await generator.image(at: cmTime).image else { continue }
 
-            let afterImage: CGImage
-            #if BUNDLED_SPEECH
-            afterImage = try upscaleFrameMLX(beforeImage, to: CGSize(width: targetWidth, height: targetHeight))
-            #else
-            afterImage = try upscaleFrameCoreImage(beforeImage, to: CGSize(width: targetWidth, height: targetHeight))
-            #endif
+            let afterImage = try LocalVideoUpscaler.upscaleCGImage(
+                CIImage(cgImage: beforeImage),
+                to: CGSize(width: targetWidth, height: targetHeight)
+            )
             frames.append((before: beforeImage, after: afterImage))
         }
-        return frames.isEmpty ? [(before: CGImage.null, after: CGImage.null)] : frames
+        return frames
     }
 
     private func previewBlocksFrom(frames: [(before: CGImage, after: CGImage)]) -> [ToolResult.Block] {
@@ -115,12 +118,13 @@ extension ToolExecutor {
 
     private func performEnhancement(
         editor: EditorViewModel, clips: [Clip], assets: [MediaAsset], scale: LocalVideoUpscaler.Scale
-    ) throws -> ToolResult {
+    ) async throws -> ToolResult {
         var warnings: [String] = []
         var changedClipIds: [String] = []
+        let snapshot = timelineSnapshot(editor)
 
         for (clip, asset) in zip(clips, assets) {
-            let result = try LocalVideoUpscaler.upscale(
+            let result = try await LocalVideoUpscaler.upscale(
                 mediaRef: asset.id,
                 sourceURL: asset.url,
                 width: asset.sourceWidth!,
@@ -160,7 +164,6 @@ extension ToolExecutor {
             )
         }
 
-        let snapshot = editor.timeline
         let extra: [String: Any] = [
             "enhancedClipIds": changedClipIds,
             "scale": scale.rawValue,

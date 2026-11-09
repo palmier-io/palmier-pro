@@ -254,7 +254,7 @@ extension ToolExecutor {
 
     // MARK: - Color helpers
 
-    fileprivate static func frameImage(url: URL, type: ClipType, atSeconds: Double) async -> CIImage? {
+    static func frameImage(url: URL, type: ClipType, atSeconds: Double) async -> CIImage? {
         if type == .image { return CIImage(contentsOf: url, options: [.colorSpace: NSNull()]) }
         let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
         generator.appliesPreferredTrackTransform = true

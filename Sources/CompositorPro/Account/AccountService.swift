@@ -3,7 +3,7 @@ import Foundation
 
 /// Local-only account facade after the backend teardown (R1).
 ///
-/// The hosted Palmier account (Clerk sign-in, Convex subscriptions, credits)
+/// Legacy hosted account (Clerk sign-in, Convex subscriptions, credits)
 /// is gone: this type keeps the capability/consumption surface consumers use,
 /// always signed out with no credits, so nothing in the app can mistake a
 /// local-only build for a signed-in product.
