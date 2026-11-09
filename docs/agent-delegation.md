@@ -66,6 +66,11 @@ Existing MCP tools remain the state-readback and shared-undo boundary.
 
 `AgentDelegationTests.parallelPreparationIsFasterThanSequentialExecution` runs four independent 150ms-latency tasks and requires delegation to finish at least 25% faster than the sequential sum with peak concurrency ≤2. Overlap is gate-proven, but wall-clock provider latency is not measured with a real model; treat the ratio as scheduling proof, not a speedup promise.
 
+Each completed delegation call logs `delegation prepared <n>/<n> tasks in
+<ms>ms` with counts and wall time; acceptance of experimental speedup requires
+medians from repeated real-provider runs per
+[delegation verification](delegation-verification.md).
+
 ## Manual verification — pending
 
 - In an isolated project, ask for two independent scene drafts from supplied

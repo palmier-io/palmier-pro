@@ -59,8 +59,19 @@ extension AgentService {
         let plansRevision = runEditor?.editPlansRevision
         do {
             let tasks = try AgentDelegationTool.tasks(from: input)
+            let started = ContinuousClock.now
             let receipt = try await delegation.run(tasks: tasks, client: client,
                 system: AgentInstructions.serverInstructions, requestContext: context)
+            let elapsedMs = Int((ContinuousClock.now - started).components.seconds * 1000)
+            let completed = receipt.tasks.filter { $0.status == .completed }.count
+            Log.agent.notice(
+                "delegation prepared \(completed)/\(receipt.tasks.count) tasks in \(elapsedMs)ms",
+                data: [
+                    "taskCount": receipt.tasks.count,
+                    "completed": completed,
+                    "fallbackRequired": receipt.fallbackRequired,
+                    "elapsedMs": elapsedMs,
+                ])
             try Task.checkCancellation()
             guard currentSessionId == context.conversationID, editor === runEditor,
                   runEditor?.visualReviewRevision == revision, runEditor?.editPlansRevision == plansRevision,
