@@ -1,85 +1,50 @@
-import Foundation
 import Combine
-@preconcurrency import ConvexMobile
+import Foundation
 
-/// The RPC layer for the backend
-@MainActor
+enum BackendUnavailableError: LocalizedError {
+    case hostedServicesRemoved
+
+    var errorDescription: String? {
+        "Hosted generation is not available in this build."
+    }
+}
+
+/// The account-backed generation backend was removed in the backend teardown
+/// (R1). Submissions fail fast; types remain for retained job bookkeeping.
 enum GenerationBackend {
-    static func subscribe(
-        jobId: String
-    ) -> AnyPublisher<BackendGenerationJob?, ClientError>? {
-        guard let convex = AccountService.shared.convex else { return nil }
-        return convex.subscribe(
-            to: "generations:byId",
-            with: ["id": jobId],
-            yielding: BackendGenerationJob?.self,
-        )
+    static func submit(
+        model: String,
+        params: BackendGenerationParams,
+        projectId: String? = nil
+    ) async throws -> String {
+        throw BackendUnavailableError.hostedServicesRemoved
+    }
+
+    static func enhanceDraft(sourceJobId: String) async throws -> String {
+        throw BackendUnavailableError.hostedServicesRemoved
+    }
+
+    static func subscribe(jobId: String) -> AnyPublisher<BackendGenerationJob?, Never>? {
+        nil
     }
 
     static func subscribeToProjectActivity(
         projectId: String
-    ) -> AnyPublisher<[BackendProjectActivityEntry], ClientError>? {
-        guard let convex = AccountService.shared.convex else { return nil }
-        return convex.subscribe(
-            to: "generations:projectActivity",
-            with: ["projectId": projectId],
-            yielding: [BackendProjectActivityEntry].self,
-        )
+    ) -> AnyPublisher<[BackendProjectActivityEntry], Never>? {
+        nil
     }
 
     static func uploadReference(
         fileURL: URL,
-        contentType: String,
+        contentType: String
     ) async throws -> String {
-        try HostedServices.accessAvailability.requireAvailable()
-        guard let convex = AccountService.shared.convex else {
-            throw BackendError.notConfigured
-        }
-        let storageId = try await BackendStorage.uploadStaged(fileURL: fileURL, contentType: contentType)
-        let result: UrlResponse = try await convex.action(
-            "uploads:commitUpload",
-            with: ["storageId": storageId],
-        )
-        return result.url
-    }
-
-    static func submit(
-        model: String,
-        params: BackendGenerationParams,
-        projectId: String? = nil,
-    ) async throws -> String {
-        try HostedServices.generationAvailability.requireAvailable()
-        guard let convex = AccountService.shared.convex else {
-            throw BackendError.notConfigured
-        }
-        let args: [String: ConvexEncodable?] = [
-            "model": model,
-            "params": params,
-            "projectId": projectId,
-        ]
-        let result: SubmitGenerationResult = try await convex.mutation(
-            "generations:submit",
-            with: args,
-        )
-        return result.jobId
-    }
-
-    static func enhanceDraft(sourceJobId: String) async throws -> String {
-        try HostedServices.generationAvailability.requireAvailable()
-        guard let convex = AccountService.shared.convex else {
-            throw BackendError.notConfigured
-        }
-        let result: SubmitGenerationResult = try await convex.mutation(
-            "generations:enhanceDraft",
-            with: ["sourceJobId": sourceJobId],
-        )
-        return result.jobId
+        throw BackendUnavailableError.hostedServicesRemoved
     }
 }
 
-// MARK: - Backend generation types
+// MARK: - Backend generation types (local, no Convex encoding)
 
-enum BackendGenerationParams: Encodable, ConvexEncodable, Sendable {
+enum BackendGenerationParams: Encodable, Sendable {
     case video(VideoGenerationParams)
     case image(ImageGenerationParams)
     case audio(AudioGenerationParams)
@@ -130,12 +95,4 @@ struct BackendProjectActivityEntry: Decodable, Sendable, Identifiable {
     var createdDate: Date {
         Date(timeIntervalSince1970: createdAt / 1_000)
     }
-}
-
-private struct UrlResponse: Decodable, Sendable {
-    let url: String
-}
-
-private struct SubmitGenerationResult: Decodable, Sendable {
-    let jobId: String
 }

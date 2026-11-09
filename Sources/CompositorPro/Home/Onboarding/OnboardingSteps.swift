@@ -145,7 +145,7 @@ struct OnboardingAccountStep: View {
         guard account.isSignedIn else {
             return L10n.string("Sign In")
         }
-        guard let firstName = account.account?.user.firstName else {
+        guard let firstName = account.user?.firstName else {
             return L10n.string("Welcome")
         }
         return L10n.string("Welcome, \(firstName)")
@@ -154,7 +154,7 @@ struct OnboardingAccountStep: View {
     private var detail: String {
         account.isSignedIn
             ? L10n.string("Watch the tutorial or start creating.")
-            : L10n.string("Sign in to receive 250 free credits for AI chat and generation.")
+            : L10n.string("Start creating or explore sample projects.")
     }
 
     private var failure: String? {

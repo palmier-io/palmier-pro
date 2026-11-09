@@ -1,6 +1,5 @@
 import Foundation
 @preconcurrency import Combine
-@preconcurrency import ConvexMobile
 
 /// Used by replace-clip callbacks so only the
 /// first successful asset of an N-image generation swaps the clip
@@ -50,7 +49,7 @@ final class GenerationService {
     private var suspensionWaiterCount = 0
     private let beforeTaskStart: @MainActor () async -> Void
     private let submitGeneration: @MainActor (String, BackendGenerationParams, String?) async throws -> String
-    private let subscribe: @MainActor (String) -> AnyPublisher<BackendGenerationJob?, ClientError>?
+    private let subscribe: @MainActor (String) -> AnyPublisher<BackendGenerationJob?, Never>?
     private let downloadMedia: @Sendable (URL) async throws -> DownloadedMedia
 
     struct DownloadedMedia: Sendable {
@@ -63,7 +62,7 @@ final class GenerationService {
         submitGeneration: @escaping @MainActor (String, BackendGenerationParams, String?) async throws -> String = {
             try await GenerationBackend.submit(model: $0, params: $1, projectId: $2)
         },
-        subscribe: @escaping @MainActor (String) -> AnyPublisher<BackendGenerationJob?, ClientError>? = {
+        subscribe: @escaping @MainActor (String) -> AnyPublisher<BackendGenerationJob?, Never>? = {
             GenerationBackend.subscribe(jobId: $0)
         },
         downloadMedia: @escaping @Sendable (URL) async throws -> DownloadedMedia = {
@@ -765,12 +764,6 @@ final class GenerationService {
 
     private func backendError(_ error: Error) -> (code: String?, message: String) {
         struct Payload: Decodable { let code: String?; let message: String? }
-        if case let ClientError.ConvexError(data) = error,
-           let json = data.data(using: .utf8),
-           let payload = try? JSONDecoder().decode(Payload.self, from: json),
-           let message = payload.message {
-            return (payload.code, message)
-        }
         return (nil, error.localizedDescription)
     }
 

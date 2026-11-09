@@ -73,7 +73,6 @@ struct TitleBarTrailingView: View {
                     : L10n.string("Export, \(activeCount) active, \(waitingCount) waiting")
             )
 
-            UserAvatarButton()
         }
     }
 

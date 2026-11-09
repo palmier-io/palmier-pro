@@ -190,11 +190,12 @@ final class AgentService {
             customKeys[custom.id] = customKey
         }
 
+        // Local-only routing: no hosted backend remains (R1).
         switch AgentRouting.route(
             model: settings.model,
             credentials: credentials,
-            hasHostedCredits: AccountService.shared.isSignedIn && AccountService.shared.hasCredits,
-            hasPaidPlan: AccountService.shared.isPaid,
+            hasHostedCredits: false,
+            hasPaidPlan: false,
             custom: settings.custom,
             customKey: customKey
         ) {
@@ -204,7 +205,7 @@ final class AgentService {
                 settings: settings
             )
         case .hosted:
-            return CompositorClient(settings: settings)
+            return nil
         case .unavailable:
             return nil
         }

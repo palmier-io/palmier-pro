@@ -1,6 +1,9 @@
 import AVFoundation
 import Foundation
 
+/// Hosted cloud transcription was removed in the backend teardown (R1). The
+/// cached hosted transcripts still validate as cached reads through the
+/// local path; fresh cloud work throws before any upload or submit.
 enum CloudTranscription {
     static func transcribe(
         fileURL: URL,
@@ -8,56 +11,14 @@ enum CloudTranscription {
         preferredLocale: Locale?,
         projectId: String?
     ) async throws -> TranscriptionResult {
-        let language = languageIdentifier(preferredLocale)
-        if let cached = await TranscriptCache.shared.cachedCloudTranscript(
-            for: fileURL,
-            range: range,
-            language: language
-        ) {
-            return cached
-        }
-
-        let tempAudioURL = try await Transcription.extractAudioTrack(
-            from: fileURL,
-            range: range,
-            fileExtension: "wav"
-        )
-        defer { try? FileManager.default.removeItem(at: tempAudioURL) }
-
-        let durationSeconds = try await transcriptionDuration(for: tempAudioURL, sourceRange: range)
-        let storageId = try await BackendStorage.uploadStaged(fileURL: tempAudioURL, contentType: "audio/wav")
-        let submitted = try await TranscriptionBackend.submit(
-            storageId: storageId,
-            durationSeconds: durationSeconds,
-            language: language,
-            projectId: projectId
-        )
-        let result = try await TranscriptionBackend.waitForResult(jobId: submitted.jobId)
-            .offsetting(by: range?.lowerBound ?? 0)
-        await TranscriptCache.shared.storeCloudTranscript(
-            result,
-            for: fileURL,
-            range: range,
-            language: language
-        )
-        return result
+        try HostedServices.cloudTranscriptionAvailability.requireAvailable()
+        // Unreachable: hosted services are excluded by design (R1).
+        fatalError("Hosted cloud transcription is unavailable")
     }
 
     static func languageIdentifier(_ preferredLocale: Locale?) -> String? {
         preferredLocale.flatMap { locale in
             locale.language.languageCode?.identifier ?? locale.identifier(.bcp47)
         }
-    }
-
-    private static func transcriptionDuration(
-        for audioURL: URL,
-        sourceRange: ClosedRange<Double>?
-    ) async throws -> Double {
-        if let sourceRange {
-            return max(0.01, sourceRange.upperBound - sourceRange.lowerBound)
-        }
-        let asset = AVURLAsset(url: audioURL)
-        let duration = try await asset.load(.duration).seconds
-        return max(0.01, duration.isFinite ? duration : 0.01)
     }
 }

@@ -193,10 +193,8 @@ enum AgentRouting {
             return .direct
         }
         if !credentials[model.provider].isEmpty { return .direct }
-        // Everything left would be served by Palmier's own backend, which this build does not offer.
-        guard hostedEnabled else { return .unavailable }
-        if model.requiresPaidHostedPlan && !hasPaidPlan { return .unavailable }
-        return hasHostedCredits ? .hosted : .unavailable
+        // Hosted access was removed in the backend teardown (R1): local-only routing.
+        return .unavailable
     }
 }
 

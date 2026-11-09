@@ -384,16 +384,12 @@ struct AgentPanelView: View {
         guard let error else { return nil }
         switch error {
         case .unauthenticated:
-            return ErrorCTA(title: L10n.string("Sign in")) {
-                SettingsWindowController.shared.show(tab: .account)
+            return ErrorCTA(title: L10n.string("Open Settings")) {
+                SettingsWindowController.shared.show(tab: .agent)
             }
         case .insufficientCredits:
-            return ErrorCTA(title: L10n.string("View plans")) {
-                SettingsWindowController.shared.show(tab: .account)
-            }
-        case .unavailable(let model) where model.requiresPaidHostedPlan && !AccountService.shared.isPaid:
-            return ErrorCTA(title: L10n.string("View plans")) {
-                SettingsWindowController.shared.show(tab: .account)
+            return ErrorCTA(title: L10n.string("Open Settings")) {
+                SettingsWindowController.shared.show(tab: .agent)
             }
         case .unavailable:
             return ErrorCTA(title: L10n.string("Open Settings")) {
@@ -499,12 +495,8 @@ struct AgentPanelView: View {
         return "gearshape"
     }
 
-    private func missingKeyPrimaryAction(account: AccountService) {
-        if !account.isSignedIn {
-            Task { await account.signInWithGoogle() }
-        } else {
-            SettingsWindowController.shared.show(tab: .account)
-        }
+    private func missingKeyPrimaryAction(account _: AccountService) {
+        SettingsWindowController.shared.show(tab: .agent)
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {

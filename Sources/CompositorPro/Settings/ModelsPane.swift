@@ -116,10 +116,9 @@ struct ModelsPane: View {
                 .foregroundStyle(locked ? AppTheme.Text.tertiaryColor : AppTheme.Text.primaryColor)
             Spacer(minLength: AppTheme.Spacing.lg)
             if locked {
-                Button(L10n.string("Subscribe")) {
-                    SettingsWindowController.shared.show(tab: .account)
-                }
-                .buttonStyle(.capsule(.secondary))
+                Text(L10n.string("Hosted models are unavailable in this build."))
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
             } else {
                 Toggle(String(), isOn: Binding(
                     get: { prefs.isEnabled(row.id) },

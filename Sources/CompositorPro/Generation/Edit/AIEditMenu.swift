@@ -91,11 +91,13 @@ struct AIEditMenu: View {
         action: EditAction,
         perform: @escaping () -> Void
     ) -> some View {
-        if action.requiresPaidPlan && !AccountService.shared.isPaid {
+        if action.requiresPaidPlan {
+            // Paid hosted paths were removed in the backend teardown (R1):
+            // hosted edit actions stay visible but locked to local-only messaging.
             Button {
-                SettingsWindowController.shared.show(tab: .account)
+                editor.agentPanelVisible = true
             } label: {
-                Label(L10n.string("\(title) (Paid)"), systemImage: "lock.fill")
+                Label(L10n.string("\(title) (Hosted)"), systemImage: "lock.fill")
             }
         } else {
             Button(title, action: perform)

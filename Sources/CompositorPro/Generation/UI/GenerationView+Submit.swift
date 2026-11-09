@@ -83,7 +83,7 @@ extension GenerationView {
 
     private var remainingCredits: Int? {
         guard let budget = AccountService.shared.budgetCredits else { return nil }
-        return max(0, budget - AccountService.shared.spentCredits)
+        return max(0, budget - (AccountService.shared.spentCredits ?? 0))
     }
 
     private var hasInsufficientCredits: Bool {
@@ -272,7 +272,7 @@ extension GenerationView {
 
     private func submitGeneration() throws {
         if currentModelLocked {
-            SettingsWindowController.shared.show(tab: .account)
+            SettingsWindowController.shared.show(tab: .general)
             return
         }
         let audioDuration: Int = {

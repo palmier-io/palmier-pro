@@ -1,6 +1,5 @@
 import Foundation
 import Combine
-@preconcurrency import ConvexMobile
 
 enum ModelKind: Sendable {
     case video(VideoModelConfig)
@@ -64,44 +63,15 @@ final class ModelCatalog {
     }
 
     private func startSubscription() {
-        guard let client = AccountService.shared.convex else { return }
-
-        subscription = client
-            .subscribe(
-                to: "models:list",
-                with: ["catalogVersion": Self.supportedCatalogVersion],
-                yielding: [CatalogEntry].self
-            )
-            .receive(on: DispatchQueue.main)
-            .sink(
-                receiveCompletion: { [weak self] completion in
-                    if case .failure(let err) = completion {
-                        self?.handleFailure(err)
-                    }
-                },
-                receiveValue: { [weak self] entries in
-                    self?.failureCount = 0
-                    self?.apply(entries)
-                }
-            )
+        // Hosted catalog was removed in the backend teardown (R1); the list stays
+        // empty and `HostedServices.generationAvailability` reports unavailable.
+        lastError = "The hosted model catalog is not configured in this build."
     }
 
-    private func handleFailure(_ err: ClientError) {
+    private func handleFailure(_ err: any Error) {
         failureCount += 1
         lastError = err.localizedDescription
-        // First failure goes to Sentry; retries only log locally.
-        if failureCount == 1 {
-            Log.generation.error("ModelCatalog subscription failed: \(err.localizedDescription)")
-        } else {
-            Log.generation.warning("ModelCatalog subscription failed (attempt \(self.failureCount)): \(err.localizedDescription)")
-        }
-        let delay = min(pow(2.0, Double(failureCount - 1)), 60)
-        retryTask?.cancel()
-        retryTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(delay))
-            guard !Task.isCancelled else { return }
-            self?.startSubscription()
-        }
+        Log.generation.warning("ModelCatalog subscription failed (attempt \(self.failureCount)): \(err.localizedDescription)")
     }
 
     private func apply(_ entries: [CatalogEntry]) {

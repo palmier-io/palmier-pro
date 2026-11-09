@@ -33,7 +33,8 @@ final class SampleProjectService {
         }
     }
 
-    private var baseURL: URL? { BackendConfig.convexHttpURL }
+    // The hosted sample catalog was removed with the backend (R1): local-only.
+    private var baseURL: URL? { nil }
 
     // MARK: - Listing
 

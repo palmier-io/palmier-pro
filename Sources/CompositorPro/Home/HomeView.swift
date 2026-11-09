@@ -75,7 +75,7 @@ private struct WelcomeTitle: View {
     }
 
     private var title: String {
-        if let first = account.account?.user.firstName {
+        if let first = account.user?.firstName {
             return L10n.string("Welcome to Compositor Pro, \(first)")
         }
         return L10n.string("Welcome to Compositor Pro")
@@ -88,21 +88,7 @@ private struct HomeSidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if account.isSignedIn {
-                IdentityStrip()
-            }
-
             VStack(alignment: .leading, spacing: 2) {
-                if !account.isSignedIn && !account.isMisconfigured {
-                    SidebarRowButton(
-                        label: account.isSigningIn
-                            ? L10n.string("Opening Google…")
-                            : L10n.string("Sign in with Google"),
-                        systemImage: "person.crop.circle",
-                        action: { Task { await account.signInWithGoogle() } }
-                    )
-                    .disabled(account.isSigningIn)
-                }
                 SidebarRowButton(
                     label: L10n.string("New Project"),
                     systemImage: "plus",

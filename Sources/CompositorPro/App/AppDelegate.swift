@@ -1,5 +1,4 @@
 import AppKit
-import ClerkKit
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -141,23 +140,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
+        // Auth callbacks belonged to the removed hosted backend (R1): ignore deep links.
         for url in urls {
-            Task { @MainActor in
-                do {
-                    let handled = try await Clerk.shared.handle(url)
-                    Log.account.notice(
-                        "auth callback \(handled ? "handled" : "ignored") url=\(Self.safeURLDescription(url))",
-                        telemetry: "Auth callback received",
-                        data: ["handled": handled, "url": Self.safeURLDescription(url)]
-                    )
-                } catch {
-                    Log.account.warning(
-                        "auth callback failed url=\(Self.safeURLDescription(url)) error=\(Log.detail(error))",
-                        telemetry: "Auth callback failed",
-                        data: ["error": error.localizedDescription, "url": Self.safeURLDescription(url)]
-                    )
-                }
-            }
+            Log.account.notice(
+                "ignored deep link url=\(Self.safeURLDescription(url))",
+                data: ["url": Self.safeURLDescription(url)])
         }
     }
 

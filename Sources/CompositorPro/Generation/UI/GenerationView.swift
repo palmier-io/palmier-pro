@@ -188,7 +188,6 @@ struct GenerationView: View {
             HStack(spacing: AppTheme.Spacing.sm) {
                 typeTabs
                 Spacer()
-                CreditSummaryView(style: .compact)
                 ProjectActivityButton()
                 Button {
                     editFolderId = nil
