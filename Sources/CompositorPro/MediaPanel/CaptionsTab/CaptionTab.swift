@@ -12,6 +12,22 @@ struct CaptionTab: View {
 
     @State private var style: TextStyle = .caption
     @State private var center = AppTheme.Caption.defaultCenter
+
+    /// Gallery selection bound to the project's persisted caption style.
+    private var selectedStyleId: String? {
+        editor.selectedCaptionStyleId
+    }
+
+    private func selectCaptionStyle(_ id: String?) {
+        editor.selectedCaptionStyleId = id
+        if let preset = id.flatMap(CaptionStyles.preset) {
+            let resolved = preset.resolved(canvasHeight: editor.timeline.height)
+            style = resolved.style
+            center = CGPoint(x: CGFloat(resolved.center.x), y: CGFloat(resolved.center.y))
+            animationPreset = resolved.animation.preset
+            if let highlight = resolved.animation.highlight { animationHighlight = highlight }
+        }
+    }
     @State private var selectedTrackId: String?
     @State private var selectedClipTargets: [String] = []
     @State private var provider: TranscriptionProvider = .cloud
@@ -408,7 +424,20 @@ struct CaptionTab: View {
     }
 
     private var styleSection: some View {
-        TextStyleControls(
+        VStack(alignment: .leading, spacing: 0) {
+            EditorPanelGroup(L10n.string("Style"), isExpanded: $styleExpanded) {
+                CaptionStyleGallery(selection: Binding(
+                    get: { selectedStyleId },
+                    set: { selectCaptionStyle($0) }
+                ))
+                if let selected = selectedStyleId.flatMap(CaptionStyles.preset), !selected.intent.isEmpty {
+                    Text(selected.intent)
+                        .font(.system(size: AppTheme.FontSize.xs))
+                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                        .padding(.top, AppTheme.Spacing.xs)
+                }
+            }
+            TextStyleControls(
             selection: TextStyleSelection(styles: [style], fallback: .caption),
             defaults: .caption,
             styleExpanded: $styleExpanded,
@@ -417,6 +446,7 @@ struct CaptionTab: View {
             afterAlignment: { captionPositionRow },
             afterColor: { EmptyView() }
         )
+        }
     }
 
     private var captionPositionRow: some View {

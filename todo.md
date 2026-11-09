@@ -497,7 +497,7 @@ Atomic narration preparation now has 19 parsed changed/new Swift files and autho
 
 ### 15. Add caption styles the user and Agent can choose from
 
-- [ ] Give the Captions panel a named caption-style gallery and make the Agent ask for one before generating captions.
+- [x] Give the Captions panel a named caption-style gallery and make the Agent ask for one before generating captions.
 
 **What:** Captions currently default to plain white Helvetica with a single animation preset. Modern videos expect a styled caption treatment — bold caps with outline, word-by-word highlight, boxed subtitles, handwritten, etc. — and the Agent should not invent a style the user did not pick.
 
@@ -512,6 +512,8 @@ Atomic narration preparation now has 19 parsed changed/new Swift files and autho
 **Start here:** [ToolExecutor+Captions.swift](Sources/CompositorPro/Agent/Tools/ToolExecutor+Captions.swift), [CaptionTab.swift](Sources/CompositorPro/MediaPanel/CaptionsTab/CaptionTab.swift), [CaptionPresetGallery.swift](Sources/CompositorPro/MediaPanel/CaptionsTab/CaptionPresetGallery.swift), [TextStylePresets.swift](Sources/CompositorPro/Agent/Tools/TextStylePresets.swift), [TextAnimation.swift](Sources/CompositorPro/Models/TextAnimation.swift), [ToolDefinitions.swift](Sources/CompositorPro/Agent/Tools/ToolDefinitions.swift).
 
 **Done when:** The user can pick a caption style in the Captions panel and the captions generated from it look like that style; the Agent asks for a style when asked to add captions and applies the picked one. MCP readback shows the style on the caption clip and `update_text` can change it.
+
+**Caption styles slice:** Added curated gallery of 31 named caption looks in `CaptionStyles` grouped as Loud, On a box, and Calm, using bundled fonts and deterministic canvas-height scaling. Integrated `CaptionStyleGallery` into the Captions tab with persistent project selection on `ProjectFile.captionStyleId`. Updated `add_captions` tool schema and executor to require/accept `captionStyle`, rejecting unknown names and preventing conflicting style/animation overrides while directing the Agent to offer curated options. `swift build`, `swift build --traits BundledSpeech`, and localization sync passed. See [caption-styles.md](docs/caption-styles.md).
 
 **Caption style slice:** `CaptionStyle` (value: font@bundled faces only, size ratio, weight, case, colour, outline, scrim/box, shadow, center, animation preset, highlight) with 31 presets grouped Loud / On a box / Calm. The Captions panel gallery renders each style with the compositor's text renderer and writes the project's persisted style id; generation applies the saved look. `add_captions captionStyle` resolves against the canvas (conflicts with style/animation/highlightColor/rotation refuse; unknown ids refuse listing options); readback exposes the stored style on caption clips. [Contract](docs/caption-styles.md). Native UI verification remains pending; task 15 stays unchecked.
 

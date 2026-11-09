@@ -8,6 +8,8 @@ struct ProjectFile: Codable, Sendable {
     var viewStates: [String: TimelineViewState]?
     var speakers: [SpeakerRegistryEntry]?
     var multicamGroups: [MulticamSource]?
+    /// Selected caption style from the Captions panel gallery; nil = app default.
+    var captionStyleId: String? = nil
 
     static func decode(_ data: Data) throws -> ProjectFile {
         let decoder = JSONDecoder()

@@ -1455,6 +1455,7 @@ enum ToolDefinitions {
                         "description": "Caption position and rotation; size is auto-fit per caption. x uses the selected text alignment edge.",
                         "properties": textTransformProperties(),
                     ],
+                    "captionStyle": ["type": "string", "enum": CaptionStyles.all.map(\.id), "description": "A named curated look: font, size, case, outline or box, position, and animation together (Loud: bold-pop, karaoke, typewriter, one-word, neon, 3d-pop, gradient, beast, comic, terminal, sticker; On a box: boxed, subtitle, soft-glass, magazine, paper, label, notebook, highlighter, highlight; Calm: clean, minimal, handwritten, serif, quiet, editorial, script-mix, cinema, lyric, duo, retro). When the user asked for captions without naming a look, offer the styles and ask which they want — never invent styling. Unknown names refuse with the list. Cannot combine with style, animation, or highlightColor."],
                     "censorProfanity": ["type": "boolean", "description": "Mask profanity."],
                     "maxWords": ["type": "integer", "minimum": 1, "description": "Max words per caption."],
                     "maxCharacters": [

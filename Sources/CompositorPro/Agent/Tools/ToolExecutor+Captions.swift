@@ -5,6 +5,7 @@ extension ToolExecutor {
     private static let addCaptionsAllowedKeys: Set<String> = Set([
         "style", "transform", "censorProfanity", "language", "animation", "highlightColor", "maxWords",
         "maxCharacters", "trackIndex", "maximumGapSeconds", "subtitleMediaRef", "platform",
+        "captionStyle",
     ])
 
     func addCaptions(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
@@ -29,8 +30,25 @@ extension ToolExecutor {
             )
         }
 
+        var presetStyle: CaptionStyle.Resolved?
+        if args["captionStyle"] != nil {
+            guard let styleId = args.string("captionStyle"), !styleId.isEmpty,
+                  let preset = CaptionStyles.preset(id: styleId) else {
+                throw ToolError("add_captions: captionStyle '\(args.string("captionStyle") ?? "")' is not a known style. Choose one of: \(CaptionStyles.availableIds).")
+            }
+            let stylingKeys = Set(args.keys).intersection(["style", "animation", "highlightColor"])
+            guard stylingKeys.isEmpty else {
+                throw ToolError("add_captions: captionStyle encodes style and animation together; remove \(stylingKeys.sorted().joined(separator: ", ")).")
+            }
+            if let transform = try parseTextTransform(args["transform"], path: "add_captions.transform"),
+               transform.x != nil || transform.rotation != nil || transform.rotationX != nil || transform.rotationY != nil {
+                throw ToolError("add_captions: captionStyle positions the captions; remove transform x/rotation.")
+            }
+            presetStyle = preset.resolved(canvasHeight: editor.timeline.height)
+        }
+
         let stylePatch = try parseTextStylePatch(args, path: "add_captions")
-        var style = TextStyle.caption
+        var style = presetStyle?.style ?? TextStyle.caption
         if let stylePatch { Self.applyTextStylePatch(stylePatch, to: &style) }
 
         let platform = try deliveryPlatform(args.string("platform"), path: "add_captions.platform")
@@ -38,7 +56,8 @@ extension ToolExecutor {
         // A caller-supplied position is honoured, but never left underneath the platform's
         // own interface.
         let placement = platform.defaultCaptionPlacement().clamped(into: platform.coveredArea)
-        var center = CGPoint(x: CGFloat(placement.centerX), y: CGFloat(placement.centerY))
+        var center = presetStyle.map { CGPoint(x: CGFloat($0.center.x), y: CGFloat($0.center.y)) }
+            ?? CGPoint(x: CGFloat(placement.centerX), y: CGFloat(placement.centerY))
         if let x = transform?.x { center.x = CGFloat(x) }
         if let y = transform?.y { center.y = CGFloat(y) }
         let clamped = DeliveryPlatform.CaptionPlacement(
@@ -46,7 +65,12 @@ extension ToolExecutor {
         ).clamped(into: platform.coveredArea)
         center = CGPoint(x: CGFloat(clamped.centerX), y: CGFloat(clamped.centerY))
 
-        let animation = try parseTextAnimation(preset: args.string("animation"), highlightColor: args.string("highlightColor"), path: "add_captions") ?? TextAnimation()
+        let animation: TextAnimation
+        if let presetStyle {
+            animation = presetStyle.animation
+        } else {
+            animation = try parseTextAnimation(preset: args.string("animation"), highlightColor: args.string("highlightColor"), path: "add_captions") ?? TextAnimation()
+        }
 
         let maxWords = try captionLimit("maxWords", from: args)
         let maxCharacters = try captionLimit("maxCharacters", from: args)
