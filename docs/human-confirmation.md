@@ -37,3 +37,4 @@ checklists are unverified, not passed.
 
 - [ ] `./scripts/preflight-signing.sh` reports ready.
 - [ ] After signing: `codesign -dv` shows Developer ID authority and the install replaces `/Applications/CompositorPro.app` intact.
+- [ ] Legacy projects: a pre-rename `.palmier` package opens in the new build; contents (timeline, media, plans) read back intact via in-memory MCP or `open` then `get_timeline`.

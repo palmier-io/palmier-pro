@@ -15,7 +15,7 @@
 			<string>Editor</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>io.palmier.project</string>
+				<string>io.compositor.project</string>
 			</array>
 			<key>LSTypeIsPackage</key>
 			<true/>
@@ -42,6 +42,7 @@
 			<string>io.compositor.pro</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
+				<string>compositor</string>
 				<string>palmier</string>
 			</array>
 		</dict>
@@ -68,11 +69,12 @@
 			<key>UTTypeDescription</key>
 			<string>Compositor Project</string>
 			<key>UTTypeIdentifier</key>
-			<string>io.palmier.project</string>
+			<string>io.compositor.project</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
 				<array>
+					<string>compositorpro</string>
 					<string>palmier</string>
 				</array>
 			</dict>
