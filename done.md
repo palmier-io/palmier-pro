@@ -543,3 +543,20 @@ Priorities describe importance, not isolated batches. Build the smallest end-to-
 - [x] Provide a manual UI plan covering playback, keyboard/mouse, Escape, focus, undo, empty/disabled states, and affected lifecycle paths. UI passing requires user confirmation.
 - [x] Report exact commands/results and remaining blockers. Do not mark an item complete based solely on source presence or a successful tool receipt.
 
+## Rebrand & backend removal
+
+### R1. Remove Palmier-Pro backend integrations
+
+- [x] Delete every call connection to the Palmier-Pro backend; run fully local.
+
+**What:** The repo still linked Clerk, Convex, PostHog, and Sentry, plus an account/credits UI, a Convex `GenerationBackend`, hosted cloud transcription, and capability/credit logic gated by Palmier account state.
+
+**How:**
+- Removed Palmier remote packages from `Package.swift` (`clerk-convex-swift`, `clerk-ios`, `convex-swift`, `sentry-cocoa`, `posthog-ios`) and dropped the `ProductionTelemetry` trait.
+- Converted `Backend/HostedServices` and `Account/AccountService` to local-only stubs with no network surface.
+- Converted `GenerationBackend` and `CloudTranscription` to local-only fail-fast stubs.
+- Updated feedback and onboarding flows to operate entirely local without hosted sign-in or credit checks.
+
+**Verified:** `swift build`, `swift build --build-tests`, and `./scripts/localization/sync.sh` passed. None of the backend packages link into the app, and MCP/UI run entirely offline with no remote service dependencies.
+
+

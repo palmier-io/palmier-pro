@@ -41,31 +41,6 @@ Storyboard guidance now requires explicit review of narration, order, proposed v
 
 ## Rebrand & backend removal
 
-### R1. Remove Palmier-Pro backend integrations
-
-- [ ] Delete every call connection to the Palmier-Pro backend; run fully local.
-
-**What:** The repo still links Clerk, Convex, PostHog, and Sentry, plus an
-account/credits UI, a Convex `GenerationBackend`, hosted cloud transcription,
-and capability/credit logic gated by Palmier account state. Hosted services
-are already disabled (`HostedServices.enabled = false`) but the code and
-dependencies still compile, link, and surface in UI & tool contracts.
-
-**How:**
-- Delete `Backend/` and `Account/` (or reduce to local-only stubs with no
-  network surface), cloud-transcription hosted path, and hosted-generation
-  fallbacks. generation/transcription stay local (system + Piper + bundled
-  models); local-first tool receipts must never promise hosted behavior.
-- Drop the Palmier packages from `Package.swift` (Clerk ×2, Convex, Sentry,
-  PostHog) and the `ProductionTelemetry` trait; remove credential settings,
-  credit-cost estimation, sign-in/top-off sheets, and their `L10n` keys.
-- Keep `RuntimeCapabilities`/tool descriptions truthful about local-only
-  capabilities; no UI may reference plans, billing, or credits.
-
-**Done when:** The app builds with none of the backend packages linked, all
-MCP/UI paths work signed-out with no hosted capability, and no string in the
-binary names Palmier, Clerk, Convex, billing, or credits.
-
 ### R2. Rename Palmier traces to compositor-pro
 
 - [ ] Rename Palmier-brand artifacts to the Compositor Pro identity.
