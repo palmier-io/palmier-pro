@@ -82,6 +82,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case updateText = "update_text"
     case addCaptions = "add_captions"
     case translateCaptions = "translate_captions"
+    case captionTemplates = "caption_templates"
 
     // Color & effects
     case applyColor = "apply_color"
@@ -1537,6 +1538,20 @@ enum ToolDefinitions {
                     "approveAll": ["type": "boolean", "description": "Review only. Convenience to approve all segments in the job."],
                     "trackIndex": ["type": "integer", "description": "Apply only. Optional timeline track index to insert caption track at (default 0)."],
                     "trackName": ["type": "string", "description": "Apply only. Optional name for the created caption track."],
+                ],
+                required: ["action"]
+            )
+        ),
+        AgentTool(
+            name: .captionTemplates,
+            description: "Presents caption templates filtered by social video output format (vertical 9:16 for Reels/TikTok/YouTube Shorts, horizontal 16:9 for YouTube) with preview thumbnails, format labels, safe area clearance, and typography styles. Selects and applies a template across all captions in the project in one undoable action.",
+            inputSchema: objectSchema(
+                properties: [
+                    "action": ["type": "string", "enum": ["list", "get", "apply"], "description": "Operation to perform: 'list' returns templates filtered by format; 'get' inspects a specific template; 'apply' styles all captions in the project per the chosen template."],
+                    "format": ["type": "string", "enum": ["all", "vertical", "horizontal", "reels", "tiktok", "youtube_shorts", "youtube"], "description": "Filter templates by social output format: 'vertical' (or 'reels', 'tiktok', 'youtube_shorts') for 9:16 vertical short-form; 'horizontal' (or 'youtube') for 16:9 landscape; 'all' for all templates. Default is 'all'."],
+                    "templateId": ["type": "string", "enum": CaptionStyles.all.map(\.id), "description": "Required for 'get' and 'apply'. Unique template identifier (e.g. 'bold-pop', 'karaoke', 'one-word', 'subtitle', 'clean', 'neon', 'boxed', 'beast', 'sticker', 'magazine', etc.)."],
+                    "trackIndex": ["type": "integer", "description": "Apply only. Optional specific timeline track index to apply the template to (defaults to all captions on the timeline)."],
+                    "clipIds": ["type": "array", "items": ["type": "string"], "description": "Apply only. Optional specific clip IDs to apply the template to (defaults to all captions on the timeline)."],
                 ],
                 required: ["action"]
             )

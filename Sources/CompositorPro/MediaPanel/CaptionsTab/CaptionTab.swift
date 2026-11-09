@@ -436,6 +436,16 @@ struct CaptionTab: View {
                         .foregroundStyle(AppTheme.Text.secondaryColor)
                         .padding(.top, AppTheme.Spacing.xs)
                 }
+                if let styleId = selectedStyleId {
+                    Button {
+                        try? editor.applyCaptionTemplate(templateId: styleId)
+                    } label: {
+                        Text(L10n.string("Apply to All Captions"))
+                            .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
+                    }
+                    .buttonStyle(.bordered)
+                    .padding(.top, AppTheme.Spacing.xs)
+                }
             }
             TextStyleControls(
             selection: TextStyleSelection(styles: [style], fallback: .caption),

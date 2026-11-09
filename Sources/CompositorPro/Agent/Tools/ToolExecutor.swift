@@ -460,6 +460,7 @@ final class ToolExecutor {
         case .updateText:    return try updateText(editor, args)
         case .addCaptions:   return try await addCaptions(editor, args)
         case .translateCaptions: return try await translateCaptions(editor, args)
+        case .captionTemplates: return try await captionTemplates(editor, args)
         case .exportProject: return try await exportProject(editor, args)
         case .manageExports: return try await manageExports(editor, args)
         case .planEdit:     return try await planEdit(editor, args)

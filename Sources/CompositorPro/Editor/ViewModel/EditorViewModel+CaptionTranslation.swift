@@ -281,7 +281,7 @@ extension EditorViewModel {
                 clip.captionGroupId = captionGroupId
                 clip.textStyle = resolved.style
                 clip.textAnimation = resolved.animation
-                clip.transform.centerY = (resolved.center.1 - 0.5) * 2.0
+                clip.transform.centerY = resolved.center.1
                 timeline.tracks[placedTrackIndex].clips.append(clip)
                 createdClipIds.append(clip.id)
             }
