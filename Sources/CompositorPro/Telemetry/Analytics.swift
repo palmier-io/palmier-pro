@@ -4,7 +4,7 @@ import Foundation
 /// instrumentation computes structured records, but nothing is enqueued or
 /// transmitted.
 ///
-/// Removed with the Palmier-Pro backend teardown (R1): previously these paths
+/// Removed with the backend teardown (R1): previously these paths
 /// shipped to PostHog when PRODUCTION_TELEMETRY was enabled.
 enum Analytics {
     typealias Payload = [String: Any]

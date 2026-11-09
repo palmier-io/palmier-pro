@@ -3,7 +3,7 @@ import Foundation
 /// Telemetry is local-only: events are computed but never transmitted.
 /// The API surface stays stable for callers, but captures drop on the floor.
 ///
-/// Removed with the Palmier-Pro backend teardown (R1): previously these paths
+/// Removed with the backend teardown (R1): previously these paths
 /// shipped to PostHog when PRODUCTION_TELEMETRY was enabled.
 enum Telemetry {
     typealias Payload = [String: Any]

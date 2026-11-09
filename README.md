@@ -13,7 +13,7 @@
 
 <sub><i>Requires macOS 26 (Tahoe) on Apple Silicon</i></sub>
 
-<a href="https://x.com/Palmier_io"><img src="https://img.shields.io/badge/Follow-%40Palmier__io-000000?style=flat&logo=x&logoColor=white" alt="Follow on X" /></a>
+<a href="https://x.com/CompositorPro"><img src="https://img.shields.io/badge/Follow-%40CompositorPro-000000?style=flat&logo=x&logoColor=white" alt="Follow on X" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Join Discord" /></a>
 <a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 
@@ -105,13 +105,13 @@ This repository no longer accepts code contributions. The published source remai
 ## Community &amp; Support
 
 - **Discord:** Join the community on **[Discord](https://discord.com/invite/SMVW6pKYmg)**.
-- **Twitter / X:** Follow **[@Palmier_io](https://x.com/Palmier_io)** for updates and announcements.
-- **Instagram:** Follow [@palmier.io](https://www.instagram.com/palmier.io) 
-- **Feedback &amp; Support:** Email founders@palmier.io.
+- **Twitter / X:** Follow **[@CompositorPro](https://x.com/CompositorPro)** for updates and announcements.
+- **Instagram:** Follow [@compositorpro](https://www.instagram.com/compositorpro) 
+- **Feedback &amp; Support:** Email support@compositor.pro.
 
 ## License
 
-Copyright (C) 2026 Palmier, Inc.
+Copyright (C) 2026 Compositor Pro
 
 The source code published in this repository remains available under [GPLv3](LICENSE).
 

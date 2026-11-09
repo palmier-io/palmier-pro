@@ -12,7 +12,7 @@
 
 <sub><i>需要搭载 Apple Silicon 的 macOS 26 (Tahoe)</i></sub>
 
-<a href="https://x.com/Palmier_io"><img src="https://img.shields.io/badge/Follow-%40Palmier__io-000000?style=flat&logo=x&logoColor=white" alt="在 X 上关注" /></a>
+<a href="https://x.com/CompositorPro"><img src="https://img.shields.io/badge/Follow-%40CompositorPro-000000?style=flat&logo=x&logoColor=white" alt="在 X 上关注" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="加入 Discord" /></a>
 <a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 <br />
@@ -114,12 +114,12 @@ Compositor Pro v0.7.6 及之前的版本，以及截至 [`last-gpl-source`](http
 ## 社区与支持
 
 - **Discord:** 在 **[Discord](https://discord.com/invite/SMVW6pKYmg)** 加入社区。
-- **Twitter / X:** 关注 **[@Palmier_io](https://x.com/Palmier_io)** 获取更新和公告。
-- **Instagram:** 关注 [@palmier.io](https://www.instagram.com/palmier.io)。
-- **反馈与支持:** 发送邮件至 founders@palmier.io。
+- **Twitter / X:** 关注 **[@CompositorPro](https://x.com/CompositorPro)** 获取更新和公告。
+- **Instagram:** 关注 [@compositorpro](https://www.instagram.com/compositorpro)。
+- **反馈与支持:** 发送邮件至 support@compositor.pro。
 
 ## 许可证
 
-Copyright (C) 2026 Palmier, Inc.
+Copyright (C) 2026 Compositor Pro
 
 此仓库中发布的源代码仍采用 [GPLv3](../../LICENSE) 许可。v0.7.6 之后的二进制版本为专有软件，受 [BINARY_LICENSE.md](../../BINARY_LICENSE.md) 约束。

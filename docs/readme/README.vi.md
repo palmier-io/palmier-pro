@@ -12,7 +12,7 @@
 
 <sub><i>Yêu cầu macOS 26 (Tahoe) trên Apple Silicon</i></sub>
 
-<a href="https://x.com/Palmier_io"><img src="https://img.shields.io/badge/Follow-%40Palmier__io-000000?style=flat&logo=x&logoColor=white" alt="Theo dõi trên X" /></a>
+<a href="https://x.com/CompositorPro"><img src="https://img.shields.io/badge/Follow-%40CompositorPro-000000?style=flat&logo=x&logoColor=white" alt="Theo dõi trên X" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Tham gia Discord" /></a>
 <a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 <br />
@@ -114,12 +114,12 @@ Kho lưu trữ này không còn nhận các đóng góp mã nguồn. Mã nguồn
 ## Cộng đồng và hỗ trợ
 
 - **Discord:** Tham gia cộng đồng trên **[Discord](https://discord.com/invite/SMVW6pKYmg)**.
-- **Twitter / X:** Theo dõi **[@Palmier_io](https://x.com/Palmier_io)** để nhận cập nhật và thông báo.
-- **Instagram:** Theo dõi [@palmier.io](https://www.instagram.com/palmier.io).
-- **Phản hồi và hỗ trợ:** Gửi email tới founders@palmier.io.
+- **Twitter / X:** Theo dõi **[@CompositorPro](https://x.com/CompositorPro)** để nhận cập nhật và thông báo.
+- **Instagram:** Theo dõi [@compositorpro](https://www.instagram.com/compositorpro).
+- **Phản hồi và hỗ trợ:** Gửi email tới support@compositor.pro.
 
 ## Giấy phép
 
-Copyright (C) 2026 Palmier, Inc.
+Copyright (C) 2026 Compositor Pro
 
 Mã nguồn được công bố trong kho lưu trữ này vẫn theo [GPLv3](../../LICENSE). Các bản phát hành nhị phân sau v0.7.6 là phần mềm độc quyền theo [BINARY_LICENSE.md](../../BINARY_LICENSE.md).

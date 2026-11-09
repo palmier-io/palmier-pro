@@ -12,7 +12,7 @@
 
 <sub><i>Apple Silicon 搭載の macOS 26 (Tahoe) が必要</i></sub>
 
-<a href="https://x.com/Palmier_io"><img src="https://img.shields.io/badge/Follow-%40Palmier__io-000000?style=flat&logo=x&logoColor=white" alt="X でフォロー" /></a>
+<a href="https://x.com/CompositorPro"><img src="https://img.shields.io/badge/Follow-%40CompositorPro-000000?style=flat&logo=x&logoColor=white" alt="X でフォロー" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Discord に参加" /></a>
 <a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 <br />
@@ -114,12 +114,12 @@ Apple Silicon 搭載の macOS 26 (Tahoe) のみです。
 ## コミュニティとサポート
 
 - **Discord:** **[Discord](https://discord.com/invite/SMVW6pKYmg)** でコミュニティに参加できます。
-- **Twitter / X:** 更新と告知は **[@Palmier_io](https://x.com/Palmier_io)** をフォローしてください。
-- **Instagram:** [@palmier.io](https://www.instagram.com/palmier.io) をフォローしてください。
-- **フィードバックとサポート:** founders@palmier.io にメールしてください。
+- **Twitter / X:** 更新と告知は **[@CompositorPro](https://x.com/CompositorPro)** をフォローしてください。
+- **Instagram:** [@compositorpro](https://www.instagram.com/compositorpro) をフォローしてください。
+- **フィードバックとサポート:** support@compositor.pro にメールしてください。
 
 ## ライセンス
 
-Copyright (C) 2026 Palmier, Inc.
+Copyright (C) 2026 Compositor Pro
 
 このリポジトリで公開されているソースコードは引き続き [GPLv3](../../LICENSE) のもとにあります。v0.7.6 より後のバイナリリリースはプロプライエタリであり、[BINARY_LICENSE.md](../../BINARY_LICENSE.md) が適用されます。

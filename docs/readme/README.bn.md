@@ -12,7 +12,7 @@
 
 <sub><i>Apple Silicon-এ macOS 26 (Tahoe) প্রয়োজন</i></sub>
 
-<a href="https://x.com/Palmier_io"><img src="https://img.shields.io/badge/Follow-%40Palmier__io-000000?style=flat&logo=x&logoColor=white" alt="X-এ অনুসরণ করুন" /></a>
+<a href="https://x.com/CompositorPro"><img src="https://img.shields.io/badge/Follow-%40CompositorPro-000000?style=flat&logo=x&logoColor=white" alt="X-এ অনুসরণ করুন" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Discord-এ যোগ দিন" /></a>
 <a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 <br />
@@ -114,12 +114,12 @@ Generative AI features-এর জন্য login এবং subscription প্�
 ## Community এবং support
 
 - **Discord:** **[Discord](https://discord.com/invite/SMVW6pKYmg)**-এ community-তে যোগ দিন।
-- **Twitter / X:** Updates এবং announcements-এর জন্য **[@Palmier_io](https://x.com/Palmier_io)** follow করুন।
-- **Instagram:** [@palmier.io](https://www.instagram.com/palmier.io) follow করুন।
-- **Feedback এবং support:** founders@palmier.io-এ email করুন।
+- **Twitter / X:** Updates এবং announcements-এর জন্য **[@CompositorPro](https://x.com/CompositorPro)** follow করুন।
+- **Instagram:** [@compositorpro](https://www.instagram.com/compositorpro) follow করুন।
+- **Feedback এবং support:** support@compositor.pro-এ email করুন।
 
 ## License
 
-Copyright (C) 2026 Palmier, Inc.
+Copyright (C) 2026 Compositor Pro
 
 এই repository-তে প্রকাশিত source [GPLv3](../../LICENSE)-এর অধীনে থাকবে। v0.7.6-এর পরের binary releases [BINARY_LICENSE.md](../../BINARY_LICENSE.md)-এর অধীনে proprietary।

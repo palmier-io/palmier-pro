@@ -47,7 +47,13 @@ if [ -f "$ROOT/$ENV_FILE" ]; then
   set +a
 fi
 
-SIGNING_IDENTITY="${SIGNING_IDENTITY:-Developer ID Application: Palmier, Inc. (MMFLRC7562)}"
+if [ -z "${SIGNING_IDENTITY:-}" ]; then
+  if security find-identity -v -p codesigning 2>/dev/null | grep -qF "Developer ID Application: Compositor Pro"; then
+    SIGNING_IDENTITY="Developer ID Application: Compositor Pro (MMFLRC7562)"
+  else
+    SIGNING_IDENTITY="Developer ID Application: Palmier, Inc. (MMFLRC7562)"
+  fi
+fi
 
 # A machine without the release identity in its keychain cannot sign with it, and
 # install_name_tool has already invalidated whatever signature the build produced. Leaving the

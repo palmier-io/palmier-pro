@@ -12,7 +12,7 @@
 
 <sub><i>Apple Silicon işlemcili cihazlarda macOS 26 (Tahoe) sürümü gerektirir</i></sub>
 
-<a href="https://x.com/Palmier_io"><img src="https://img.shields.io/badge/Takip Et-%40Palmier__io-000000?style=flat&logo=x&logoColor=white" alt="X'te takip et" /></a>
+<a href="https://x.com/CompositorPro"><img src="https://img.shields.io/badge/Takip Et-%40CompositorPro-000000?style=flat&logo=x&logoColor=white" alt="X'te takip et" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Katıl -Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Discord'a katıl" /></a>
 <a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 <br />
@@ -116,12 +116,12 @@ Bu depo artık kod katkılarını kabul etmemektedir. Yayımlanan kaynak kodu GP
 ## Topluluk & Destek
 
 - **Discord:** Topluluğa **[Discord](https://discord.com/invite/SMVW6pKYmg)** üzerinden katılın.
-- **Twitter / X:** Güncellemeler ve duyurular için **[@Palmier_io](https://x.com/Palmier_io)** hesabını takip edin.
-- **Instagram:** [@palmier.io](https://www.instagram.com/palmier.io) adresinden takip edin.
-- **Geri Bildirim & Destek:** founders@palmier.io adresine e-posta gönderin.
+- **Twitter / X:** Güncellemeler ve duyurular için **[@CompositorPro](https://x.com/CompositorPro)** hesabını takip edin.
+- **Instagram:** [@compositorpro](https://www.instagram.com/compositorpro) adresinden takip edin.
+- **Geri Bildirim & Destek:** support@compositor.pro adresine e-posta gönderin.
 
 ## Lisans
 
-Copyright (C) 2026 Palmier, Inc.
+Copyright (C) 2026 Compositor Pro
 
 Bu depoda yayımlanan kaynak kodu [GPLv3](../../LICENSE) kapsamında kalır. v0.7.6'dan sonraki ikili sürümler [BINARY_LICENSE.md](../../BINARY_LICENSE.md) kapsamında tescilli yazılımdır.
