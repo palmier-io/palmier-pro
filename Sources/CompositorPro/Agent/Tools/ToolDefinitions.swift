@@ -20,6 +20,7 @@ enum ToolName: String, CaseIterable, Sendable {
     // Planning
     case planEdit = "plan_edit"
     case applyPlan = "apply_plan"
+    case editPilot = "edit_pilot"
 
     // Media library
     case getMedia = "get_media"
@@ -203,7 +204,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .exportProject,
-            description: "Queues an export from the current project using the same modes as the Export dialog. mode defaults to video. video renders H.264, H.265, or ProRes; xml writes XMEML timeline XML; fcpxml writes FCPXML; palmier writes a self-contained .palmier project package. For timeline interchange, pick the format by the target editor: Premiere Pro -> xml; DaVinci Resolve or Final Cut Pro -> fcpxml (fcpxml also carries text, transforms, crop, opacity, and keyframes that xml cannot). Video exports render edge softness and edge rounding, Palmier project exports preserve them, and xml/fcpxml interchange omits them. Omit outputPath to write a unique file to ~/Downloads. Existing direct outputPath files are overwritten by default to match the UI save flow; pass overwrite=false to refuse. Video delivery of a timeline carrying an approved managed storyboard re-audits the current output for repeated or identity-unresolved visuals and refuses before queueing; edit-exchange modes are unaffected. Every mode returns status=started or status=queued with a jobId and destination path. Use manage_exports to check progress, warnings/results, or cancel by jobId; agent exports post a system notification on completion or failure.",
+            description: "Queues an export from the current project using the same modes as the Export dialog. mode defaults to video. video renders H.264, H.265, or ProRes; xml writes XMEML timeline XML; fcpxml writes FCPXML; palmier writes a self-contained .palmier project package. For timeline interchange, pick the format by the target editor: Premiere Pro -> xml; DaVinci Resolve or Final Cut Pro -> fcpxml (fcpxml also carries text, transforms, crop, opacity, and keyframes that xml cannot). Video exports render edge softness and edge rounding, Compositor project exports preserve them, and xml/fcpxml interchange omits them. Omit outputPath to write a unique file to ~/Downloads. Existing direct outputPath files are overwritten by default to match the UI save flow; pass overwrite=false to refuse. Video delivery of a timeline carrying an approved managed storyboard re-audits the current output for repeated or identity-unresolved visuals and refuses before queueing; edit-exchange modes are unaffected. Every mode returns status=started or status=queued with a jobId and destination path. Use manage_exports to check progress, warnings/results, or cancel by jobId; agent exports post a system notification on completion or failure.",
             inputSchema: objectSchema(
                 properties: [
                     "mode": ["type": "string", "enum": ["video", "xml", "fcpxml", "palmier"], "description": "Optional. Default video. Use xml for Premiere Pro, fcpxml for DaVinci Resolve or Final Cut Pro."],
@@ -376,6 +377,28 @@ enum ToolDefinitions {
             )
         ),
         AgentTool(
+            name: .editPilot,
+            description: "Direction to suggested timeline arrangement planner tool (CapCut EditPilot style). Analyzes imported library media and proposes a structured timeline arrangement — clip order, cut points, music sync points, and caption placement — from natural language direction ('fast-paced social summary with upbeat music sync'). Creator reviews and approves suggested edit blocks individually or all at once, then applies the approved arrangement to the timeline in one undoable action. Enforces visual uniqueness: no video or image source is ever reused within the arrangement.",
+            inputSchema: objectSchema(
+                properties: [
+                    "action": ["type": "string", "enum": ["propose", "read", "review", "approve_all", "apply"], "description": "Operation to perform: 'propose' analyzes media and creates a new arrangement plan; 'read' inspects an existing arrangement; 'review' updates block approval, trims, or captions; 'approve_all' approves all blocks; 'apply' commits the arrangement to the timeline in one undo step."],
+                    "direction": ["type": "string", "description": "Propose only. Creative direction, e.g. 'fast-paced social summary with upbeat music sync'."],
+                    "arrangementId": ["type": "string", "description": "Required for read, review, approve_all, and apply. Returned by propose."],
+                    "mediaRefs": ["type": "array", "items": ["type": "string"], "description": "Propose only. Optional subset of media asset IDs to consider. If omitted, uses all suitable imported visual media."],
+                    "musicMediaRef": ["type": "string", "description": "Propose only. Optional audio/music asset ID to sync cuts to. If omitted, uses library audio or rhythm estimation."],
+                    "targetDurationSeconds": ["type": "number", "description": "Propose only. Optional desired duration in seconds (e.g. 15.0 or 30.0)."],
+                    "pacing": ["type": "string", "enum": ["fast", "upbeat", "cinematic", "relaxed", "montage"], "description": "Propose only. Optional pacing style override. Inferred from direction if omitted."],
+                    "blockId": ["type": "string", "description": "Review only. ID of the specific block to review or update."],
+                    "isApproved": ["type": "boolean", "description": "Review only. Set approval status for the block."],
+                    "sourceStartSeconds": ["type": "number", "description": "Review only. Optional new start trim in source seconds."],
+                    "sourceEndSeconds": ["type": "number", "description": "Review only. Optional new end trim in source seconds."],
+                    "caption": ["type": "string", "description": "Review only. Optional caption text override."],
+                    "approveAll": ["type": "boolean", "description": "Review only. Convenience to approve all blocks in the arrangement."],
+                ],
+                required: ["action"]
+            )
+        ),
+        AgentTool(
             name: .getMedia,
             description: "The library inventory: media assets, folders, and timelines. Call before referencing any asset — every mediaRef in other tools comes from the asset ids returned here. Assets report name, type, durationSeconds, width/height/fps, hasAudio, folder path, and (for AI-generated assets) the generation prompt as a content hint. generationStatus appears only while an async generation/import is unresolved (preparing | generating | downloading | failed) — its absence means the asset is ready.\n\nFilters: ids (poll specific placeholders cheaply), folder (a path; includes subfolders), pending:true (only unresolved generations/imports). Filtered reads return just the matching assets; unfiltered reads also include folders (as paths) and timelines.",
             inputSchema: objectSchema(
@@ -431,7 +454,7 @@ enum ToolDefinitions {
                         "description": "Exactly one of url, path, bytes, or matte must be set. mimeType is required when bytes is set; for url it acts as a type-inference override.",
                         "properties": [
                             "url": ["type": "string", "description": "HTTPS URL. Pre-signed URLs are fine but must not expire mid-download."],
-                            "path": ["type": "string", "description": "Absolute local file or directory path, readable by the Palmier process. Files are referenced in place and must remain available. A directory is imported recursively and its folder structure is replicated as media folders."],
+                            "path": ["type": "string", "description": "Absolute local file or directory path, readable by the Compositor Pro process. Files are referenced in place and must remain available. A directory is imported recursively and its folder structure is replicated as media folders."],
                             "bytes": ["type": "string", "description": "Base64-encoded media data. Prefer url or path for anything over ~10MB."],
                             "matte": [
                                 "type": "object",
@@ -1685,7 +1708,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .findStockMedia,
-            description: "Searches free, openly-licensed sources for media to fill a gap in the cut — Creative Commons stills and sound effects with no setup at all, plus Pixabay stock video and Pexels stock photography and video once free API keys are added in Settings. Costs nothing and needs no account with Palmier.\n\nThis only searches; it never downloads. Each hit comes back with a direct `url` you pass to import_media (source.url), then place with add_clips. Use it when the library has no coverage of what the edit needs — search_media only finds what is already imported.\n\nEvery hit carries `license`, `licenseUrl`, `creator`, and a ready-made `attribution` line. Non-commercial and no-derivative results are filtered out, but attribution is still usually required, so read the license before publishing.\n\nVideo needs a configured keyed source; 'providers' reports per-source status, including which source was skipped and why. Phrase the query as a subject ('rain on a window at night'), not a style.",
+            description: "Searches free, openly-licensed sources for media to fill a gap in the cut — Creative Commons stills and sound effects with no setup at all, plus Pixabay stock video and Pexels stock photography and video once free API keys are added in Settings. Costs nothing and needs no account with Compositor Pro.\n\nThis only searches; it never downloads. Each hit comes back with a direct `url` you pass to import_media (source.url), then place with add_clips. Use it when the library has no coverage of what the edit needs — search_media only finds what is already imported.\n\nEvery hit carries `license`, `licenseUrl`, `creator`, and a ready-made `attribution` line. Non-commercial and no-derivative results are filtered out, but attribution is still usually required, so read the license before publishing.\n\nVideo needs a configured keyed source; 'providers' reports per-source status, including which source was skipped and why. Phrase the query as a subject ('rain on a window at night'), not a style.",
             inputSchema: objectSchema(
                 properties: [
                     "query": ["type": "string", "description": "What to look for, as a plain subject description."],
@@ -1811,7 +1834,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .sendFeedback,
-            description: "Report an agent limitation or bug to the Palmier team so they can improve the product. Use when you can't do what the user asked because a capability or tool is missing or behaves wrong, the result is clearly off, or the user is plainly hitting a rough edge. This sends directly — there is no user confirmation step — so write the report in English and PARAPHRASE in your own words: translate non-English user text to English, and never include verbatim user messages, prompts, file paths, media, transcript text, or any project content. App/OS version and your recent tool names are attached automatically. Use sparingly: at most once per distinct issue.",
+            description: "Report an agent limitation or bug to the Compositor Pro team so they can improve the product. Use when you can't do what the user asked because a capability or tool is missing or behaves wrong, the result is clearly off, or the user is plainly hitting a rough edge. This sends directly — there is no user confirmation step — so write the report in English and PARAPHRASE in your own words: translate non-English user text to English, and never include verbatim user messages, prompts, file paths, media, transcript text, or any project content. App/OS version and your recent tool names are attached automatically. Use sparingly: at most once per distinct issue.",
             inputSchema: objectSchema(
                 properties: [
                     "category": ["type": "string", "enum": ["missing_capability", "wrong_result", "confusing_ux", "failure", "suggestion"], "description": "What kind of problem this is."],
@@ -1888,13 +1911,13 @@ enum ToolDefinitions {
     /// MCP server only
     static let manageProject = AgentTool(
         name: .manageProject,
-        description: "List, open, create, or close Palmier projects for this MCP session. Set `action` to: `list` for known projects plus session-active and visible state; `open` with a name, id from list, or .palmier path; `create` with an optional name and initial fps/aspectRatio/quality; or `close` to save and close the session project, optionally targeting another open project by name/id/path. Opening or creating changes only this session's target. Closing always completes a final save first. This tool never deletes projects or files.",
+        description: "List, open, create, or close Palmier projects for this MCP session. Set `action` to: `list` for known projects plus session-active and visible state; `open` with a name, id from list, or .compositorpro path; `create` with an optional name and initial fps/aspectRatio/quality; or `close` to save and close the session project, optionally targeting another open project by name/id/path. Opening or creating changes only this session's target. Closing always completes a final save first. This tool never deletes projects or files.",
         inputSchema: objectSchema(
             properties: [
                 "action": ["type": "string", "enum": ["list", "open", "create", "close"], "description": "Project operation."],
                 "name": ["type": "string", "description": "Project name. For open/close, matched case-insensitively; for create, defaults to 'Untitled Project'."],
                 "id": ["type": "string", "description": "Project id returned by action='list'. Used by open or close."],
-                "path": ["type": "string", "description": "Filesystem path to a .palmier package. Used by open or close."],
+                "path": ["type": "string", "description": "Filesystem path to a .compositorpro package. Used by open or close."],
                 "fps": ["type": "integer", "description": "Create only. Optional timeline frame rate (1-120)."],
                 "aspectRatio": [
                     "type": "string",

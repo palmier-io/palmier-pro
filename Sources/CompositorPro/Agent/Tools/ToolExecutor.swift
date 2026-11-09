@@ -463,6 +463,7 @@ final class ToolExecutor {
         case .manageExports: return try await manageExports(editor, args)
         case .planEdit:     return try await planEdit(editor, args)
         case .applyPlan:    return try await applyPlan(editor, args)
+        case .editPilot:    return try await editPilot(editor, args)
         case .generateVideo: return try generate(editor, args, type: .video)
         case .generateImage: return try generate(editor, args, type: .image)
         case .generateAudio: return try await generateAudio(editor, args)
