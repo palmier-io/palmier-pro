@@ -362,13 +362,11 @@ struct CustomAgentModelPersistenceTests {
             _ = try #require(Self.savedID(added))
 
             let service = AgentService(userDefaults: defaults)
-            // The agent reads the credential from the Keychain, so give it a turn to land.
+            service.model = .custom
             for _ in 0..<50 where service.route != .direct {
                 try await Task.sleep(nanoseconds: 20_000_000)
             }
             #expect(service.canSelectModel(.custom))
-            // Routing is decided for the model actually selected, so ask as the custom entry.
-            service.model = .custom
             #expect(service.route == .direct)
 
             let models = CustomModelStore.load(defaults: defaults)
