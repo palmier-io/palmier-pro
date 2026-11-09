@@ -2,26 +2,20 @@ import AVFoundation
 import Foundation
 
 extension EditorViewModel {
-    /// Called after Settings clears disk caches: session memoization must not outlive them.
+    typealias AudioLoudnessAnalysis = @Sendable (URL, String, CMTimeRange) async throws -> LoudnessMeasurement
+
     func resetAnalysisSessionState() {
-        denoiseBaked.removeAll()
         denoiseFailed.removeAll()
-        breathBaked.removeAll()
         breathFailed.removeAll()
-        deessBaked.removeAll()
         deessFailed.removeAll()
         mediaVisualCache.resetSessionState()
-        enhancePendingEnhancements()
+        for id in openTimelineIds { videoEngine?.evictComposition(for: id) }
+        videoEngine?.rebuild()
     }
 
     func setDenoise(clipIds: Set<String>, enabled: Bool, amount: Double? = nil, actionName: String) throws {
         if enabled { try AudioEnhancer.availability.requireAvailable() }
         let clamped = amount.map { min(1, max(0, $0)) }
-        if enabled {
-            for id in clipIds {
-                if let ref = clipFor(id: id)?.mediaRef { denoiseFailed.remove(ref) }
-            }
-        }
         mutateClips(ids: clipIds, actionName: actionName) { clip in
             var stack = clip.effects ?? []
             if let i = stack.firstIndex(where: { $0.type == Clip.denoiseEffectType }) {
@@ -38,11 +32,6 @@ extension EditorViewModel {
 
     func setDebreath(clipIds: Set<String>, enabled: Bool, amount: Double? = nil, actionName: String) {
         let clamped = amount.map { min(1, max(0, $0)) }
-        if enabled {
-            for id in clipIds {
-                if let ref = clipFor(id: id)?.mediaRef { breathFailed.remove(ref) }
-            }
-        }
         mutateClips(ids: clipIds, actionName: actionName) { clip in
             var stack = clip.effects ?? []
             if let i = stack.firstIndex(where: { $0.type == Clip.debreathEffectType }) {
@@ -57,223 +46,148 @@ extension EditorViewModel {
         }
     }
 
-    /// Enables the one-click chain. Enhance subsumes the standalone denoise and
-    /// de-breath effects, so those are stripped to keep one owner per stage.
     func setEnhance(clipIds: Set<String>, enabled: Bool, amount: Double? = nil, deess: Double? = nil, actionName: String) throws {
         if enabled { try AudioEnhancer.availability.requireAvailable() }
-        let clampedAmount = amount.map { min(1, max(0, $0)) }
-        let clampedDeess = deess.map { min(1, max(0, $0)) }
-        if enabled {
-            for id in clipIds {
-                if let ref = clipFor(id: id)?.mediaRef {
-                    denoiseFailed.remove(ref)
-                    breathFailed.remove(ref)
-                    deessFailed.remove(ref)
-                }
-            }
-        }
         mutateClips(ids: clipIds, actionName: actionName) { clip in
-            var stack = clip.effects ?? []
-            if enabled {
-                stack.removeAll { $0.type == Clip.denoiseEffectType || $0.type == Clip.debreathEffectType }
-                if let i = stack.firstIndex(where: { $0.type == Clip.enhanceEffectType }) {
-                    stack[i].enabled = true
-                    if let clampedAmount { stack[i].params["amount"] = EffectParam(value: clampedAmount) }
-                    if let clampedDeess { stack[i].params["deess"] = EffectParam(value: clampedDeess) }
-                } else {
-                    stack.append(Effect(type: Clip.enhanceEffectType, enabled: true, params: [
-                        "amount": EffectParam(value: clampedAmount ?? Clip.defaultEnhanceAmount),
-                        "deess": EffectParam(value: clampedDeess ?? Clip.defaultEnhanceDeess),
-                    ]))
-                }
-            } else if let i = stack.firstIndex(where: { $0.type == Clip.enhanceEffectType }) {
-                stack[i].enabled = false
-            }
-            clip.effects = stack.isEmpty ? nil : stack
+            Self.configureEnhancement(&clip, enabled: enabled,
+                                      amount: amount.map { min(1, max(0, $0)) },
+                                      deess: deess.map { min(1, max(0, $0)) })
         }
     }
 
-    /// One-click voice enhance: measures source loudness, then applies the full chain
-    /// (denoise + de-breath + de-esser + loudness match) as a single undoable action.
-    func enhanceVoice(clipIds: Set<String>, amount: Double, deess: Double, actionName: String) throws {
+    @discardableResult
+    func enhanceVoice(clipIds: Set<String>, amount: Double, deess: Double, actionName: String) async throws -> [String] {
         try AudioEnhancer.availability.requireAvailable()
-        let ids = clipIds
-        let clampedAmount = min(1, max(0, amount))
-        let clampedDeess = min(1, max(0, deess))
-        loudnessInFlight.formUnion(ids)
-        let fps = timeline.fps
-        let targets: [(id: String, mediaRef: String, url: URL, range: CMTimeRange)] = ids.compactMap { id in
-            guard let clip = clipFor(id: id), clip.mediaType == .audio,
-                  let url = mediaResolver.resolveURL(for: clip.mediaRef),
-                  let range = try? LoudnessAnalyzer.sourceRange(for: clip, fps: fps)
-            else { return nil }
-            return (id, clip.mediaRef, url, range)
+        guard amount.isFinite, deess.isFinite, (0...1).contains(amount), (0...1).contains(deess) else {
+            throw AudioFinishingError(reason: "Enhancement amounts must be between 0 and 1.")
         }
-        Task.detached(priority: .utility) { [weak self] in
-            var gains: [String: Double] = [:]
-            for item in targets {
-                guard let measurement = try? await LoudnessAnalyzer.integratedLoudness(
-                    for: item.url, mediaRef: item.mediaRef, range: item.range
-                ), let lufs = measurement.integratedLUFS else { continue }
-                gains[item.id] = min(24.0, max(-24.0, -16.0 - lufs))
-            }
-            await MainActor.run { [self] in
-                guard let self else { return }
-                self.loudnessInFlight.subtract(ids)
-                self.undo.perform(actionName) {
-                    self.mutateClips(ids: ids, actionName: actionName) { clip in
-                        var stack = clip.effects ?? []
-                        stack.removeAll { $0.type == Clip.denoiseEffectType || $0.type == Clip.debreathEffectType }
-                        if let i = stack.firstIndex(where: { $0.type == Clip.enhanceEffectType }) {
-                            stack[i].enabled = true
-                            stack[i].params["amount"] = EffectParam(value: clampedAmount)
-                            stack[i].params["deess"] = EffectParam(value: clampedDeess)
-                        } else {
-                            stack.append(Effect(type: Clip.enhanceEffectType, enabled: true, params: [
-                                "amount": EffectParam(value: clampedAmount),
-                                "deess": EffectParam(value: clampedDeess),
-                            ]))
-                        }
-                        if let gain = gains[clip.id] {
-                            if let i = stack.firstIndex(where: { $0.type == Clip.loudnessEffectType }) {
-                                stack[i].enabled = true
-                                stack[i].params["gainDB"] = EffectParam(value: gain)
-                            } else {
-                                stack.append(Effect(type: Clip.loudnessEffectType, enabled: true, params: [
-                                    "gainDB": EffectParam(value: gain),
-                                ]))
-                            }
-                        }
-                        clip.effects = stack.isEmpty ? nil : stack
-                    }
-                }
-                self.videoEngine?.rebuild()
-            }
+        return try await finishAudio(clipIds: clipIds, targetLUFS: -16, actionName: actionName) { clip in
+            Self.configureEnhancement(&clip, enabled: true, amount: amount, deess: deess)
         }
     }
 
-    /// Measures each clip's source loudness and writes a gain that lands it on targetLUFS.
-    func matchLoudness(clipIds: Set<String>, targetLUFS: Double, actionName: String) {
-        let ids = clipIds
-        let target = min(14.0, max(-30.0, targetLUFS))
-        loudnessInFlight.formUnion(ids)
-        let fps = timeline.fps
-        let targets: [(id: String, mediaRef: String, url: URL, range: CMTimeRange)] = ids.compactMap { id in
-            guard let clip = clipFor(id: id), clip.mediaType == .audio,
-                  let url = mediaResolver.resolveURL(for: clip.mediaRef),
-                  let range = try? LoudnessAnalyzer.sourceRange(for: clip, fps: fps)
-            else { return nil }
-            return (id, clip.mediaRef, url, range)
+    @discardableResult
+    func matchLoudness(
+        clipIds: Set<String>, targetLUFS: Double, actionName: String,
+        analyze: @escaping AudioLoudnessAnalysis = { url, ref, range in
+            try await LoudnessAnalyzer.integratedLoudness(for: url, mediaRef: ref, range: range)
         }
-        Task.detached(priority: .utility) { [weak self] in
-            var gains: [String: Double] = [:]
-            for item in targets {
-                guard let measurement = try? await LoudnessAnalyzer.integratedLoudness(
-                    for: item.url, mediaRef: item.mediaRef, range: item.range
-                ), let lufs = measurement.integratedLUFS else { continue }
-                gains[item.id] = min(24.0, max(-24.0, target - lufs))
+    ) async throws -> [String] {
+        try await finishAudio(clipIds: clipIds, targetLUFS: targetLUFS, actionName: actionName, analyze: analyze) { _ in }
+    }
+
+    struct AudioFinishingError: LocalizedError {
+        let reason: String
+        var errorDescription: String? { reason }
+    }
+
+    private func finishAudio(
+        clipIds: Set<String>, targetLUFS: Double, actionName: String,
+        analyze: @escaping AudioLoudnessAnalysis = { url, ref, range in
+            try await LoudnessAnalyzer.integratedLoudness(for: url, mediaRef: ref, range: range)
+        },
+        configure: (inout Clip) -> Void
+    ) async throws -> [String] {
+        try Task.checkCancellation()
+        guard !clipIds.isEmpty, targetLUFS.isFinite, (-30...14).contains(targetLUFS) else {
+            throw AudioFinishingError(reason: "Select audio clips and a target between -30 and 14 LUFS.")
+        }
+        guard loudnessInFlight.isDisjoint(with: clipIds) else {
+            throw AudioFinishingError(reason: "Loudness matching is already running for these clips.")
+        }
+        let snapshot = timeline
+        let revision = timelineRenderRevision
+        let urls = mediaResolver.expectedURLMap()
+        var replacements: [String: Clip] = [:]
+        var targets: [AudioLoudnessTarget] = []
+        for id in clipIds.sorted() {
+            guard let clip = clipFor(id: id), clip.mediaType == .audio, clip.sourceClipType != .sequence,
+                  !missingMediaRefs.contains(clip.mediaRef), let url = urls[clip.mediaRef] else {
+                throw AudioFinishingError(reason: "Audio clip \(id) is unavailable or nested.")
             }
-            await MainActor.run { [self] in
-                guard let self else { return }
-                self.loudnessInFlight.subtract(ids)
-                guard !gains.isEmpty else { return }
-                self.undo.perform(actionName) {
-                    self.mutateClips(ids: Set(gains.keys), actionName: actionName) { clip in
-                        guard let gain = gains[clip.id] else { return }
-                        var stack = clip.effects ?? []
-                        if let i = stack.firstIndex(where: { $0.type == Clip.loudnessEffectType }) {
-                            stack[i].enabled = true
-                            stack[i].params["gainDB"] = EffectParam(value: gain)
-                        } else {
-                            stack.append(Effect(type: Clip.loudnessEffectType, enabled: true, params: [
-                                "gainDB": EffectParam(value: gain),
-                            ]))
-                        }
-                        clip.effects = stack.isEmpty ? nil : stack
-                    }
+            var replacement = clip
+            configure(&replacement)
+            replacements[id] = replacement
+            targets.append(AudioLoudnessTarget(id: id, mediaRef: clip.mediaRef, url: url,
+                                              range: try LoudnessAnalyzer.sourceRange(for: clip, fps: snapshot.fps)))
+        }
+        loudnessInFlight.formUnion(clipIds)
+        defer { loudnessInFlight.subtract(clipIds) }
+        let measured = try await Self.measureAudio(targets, targetLUFS: targetLUFS, analyze: analyze)
+        for (id, gain) in measured.gains {
+            guard var clip = replacements[id] else { continue }
+            Self.setAudioEffect(&clip, type: Clip.loudnessEffectType, enabled: true, values: ["gainDB": gain])
+            replacements[id] = clip
+        }
+        var preparation = snapshot
+        preparation.tracks = [Track(id: UUID().uuidString, type: .audio, clips: Array(replacements.values))]
+        _ = try await PreparedAudio.prepare(timeline: preparation, resolveTimeline: { _ in nil },
+                                            resolveURL: { urls[$0] }, missingMediaRefs: [])
+        return try await projectPackageCoordinator.withMutation { _ in
+            try await LoudnessAnalyzer.validateSourceVersions(measured.versions)
+            try Task.checkCancellation()
+            guard timelineRenderRevision == revision, timeline == snapshot,
+                  targets.allSatisfy({ mediaResolver.expectedURL(for: $0.mediaRef) == $0.url }) else {
+                throw AudioFinishingError(reason: "Timeline or source changed during audio finishing. Retry with the current clips.")
+            }
+            let changed = clipIds.filter { clipFor(id: $0) != replacements[$0] }
+            if !changed.isEmpty {
+                mutateClips(ids: changed, actionName: actionName) { clip in
+                    if let replacement = replacements[clip.id] { clip = replacement }
                 }
-                self.videoEngine?.rebuild()
             }
+            return measured.warnings
         }
     }
 
-    func enhancePendingEnhancements() {
-        for track in timeline.tracks {
-            for clip in track.clips where clip.hasDenoiseEnabled || clip.hasDebreathEnabled || clip.hasEnhanceEnabled {
-                enhanceAudioIfNeeded(for: clip)
-            }
-        }
+    private struct AudioLoudnessTarget: Sendable {
+        let id: String
+        let mediaRef: String
+        let url: URL
+        let range: CMTimeRange
     }
 
-    func enhanceAudioIfNeeded(for clip: Clip) {
-        let mediaRef = clip.mediaRef
-        guard !denoiseInFlight.contains(mediaRef), !denoiseFailed.contains(mediaRef),
-              !breathFailed.contains(mediaRef), !deessFailed.contains(mediaRef),
-              let url = mediaResolver.resolveURL(for: mediaRef)
-        else { return }
-        let enhanceActive = clip.hasEnhanceEnabled && clip.enhanceAmount > 0
-        let wantsDenoise = (clip.hasDenoiseEnabled && clip.denoiseAmount > 0) || enhanceActive
-        let wantsBreath = clip.hasDebreathEnabled || enhanceActive
-        let wantsDeess = enhanceActive
-        guard wantsDenoise || wantsBreath || wantsDeess else { return }
-        let denoiseDone = denoiseBaked.contains(mediaRef)
-        let breathDone = breathBaked.contains(mediaRef)
-        let deessDone = deessBaked.contains(mediaRef)
-        guard (wantsDenoise && !denoiseDone) || (wantsBreath && !breathDone) || (wantsDeess && !deessDone) else { return }
-        if wantsDenoise, AudioEnhancer.cachedDenoisedURL(for: url, mediaRef: mediaRef) != nil {
-            denoiseBaked.insert(mediaRef)
-        }
-        if wantsBreath, BreathDetector.cachedAnalysis(for: url, mediaRef: mediaRef) != nil {
-            breathBaked.insert(mediaRef)
-        }
-        if wantsDeess, DeEsser.cachedAnalysis(for: url, mediaRef: mediaRef) != nil {
-            deessBaked.insert(mediaRef)
-        }
-        let needsDenoise = wantsDenoise && !denoiseBaked.contains(mediaRef)
-        let needsBreath = wantsBreath && !breathBaked.contains(mediaRef)
-        let needsDeess = wantsDeess && !deessBaked.contains(mediaRef)
-        guard needsDenoise || needsBreath || needsDeess else { return }
-        denoiseInFlight.insert(mediaRef)
-        Task.detached(priority: .utility) { [weak self] in
-            var failed = false
-            if needsDenoise {
-                do {
-                    _ = try await AudioEnhancer.denoisedAudio(for: url, mediaRef: mediaRef)
-                } catch {
-                    failed = true
-                    Log.preview.error("denoise bake failed mediaRef=\(mediaRef): \(error.localizedDescription)")
-                }
+    @concurrent
+    private static func measureAudio(_ targets: [AudioLoudnessTarget], targetLUFS: Double, analyze: AudioLoudnessAnalysis) async throws
+        -> (gains: [String: Double], warnings: [String], versions: [URL: LoudnessAnalyzer.SourceVersion]) {
+        var gains: [String: Double] = [:]
+        var warnings: [String] = []
+        var versions: [URL: LoudnessAnalyzer.SourceVersion] = [:]
+        for url in Set(targets.map(\.url)) { versions[url] = try LoudnessAnalyzer.SourceVersion(url) }
+        for target in targets {
+            try Task.checkCancellation()
+            let measurement = try await analyze(target.url, target.mediaRef, target.range)
+            guard let lufs = measurement.integratedLUFS, lufs.isFinite else {
+                throw AudioFinishingError(reason: "Clip \(target.id) has insufficient audible material to measure loudness.")
             }
-            if needsBreath {
-                do {
-                    _ = try await BreathDetector.analysis(for: url, mediaRef: mediaRef)
-                } catch {
-                    failed = true
-                    Log.preview.error("breath detection failed mediaRef=\(mediaRef): \(error.localizedDescription)")
-                }
-            }
-            if needsDeess {
-                do {
-                    _ = try await DeEsser.analysis(for: url, mediaRef: mediaRef)
-                } catch {
-                    failed = true
-                    Log.preview.error("de-ess detection failed mediaRef=\(mediaRef): \(error.localizedDescription)")
-                }
-            }
-            await MainActor.run { [self] in
-                guard let self else { return }
-                self.denoiseInFlight.remove(mediaRef)
-                if failed {
-                    self.denoiseFailed.insert(mediaRef)
-                    self.breathFailed.insert(mediaRef)
-                    self.deessFailed.insert(mediaRef)
-                } else {
-                    if needsDenoise { self.denoiseBaked.insert(mediaRef) }
-                    if needsBreath { self.breathBaked.insert(mediaRef) }
-                    if needsDeess { self.deessBaked.insert(mediaRef) }
-                    self.videoEngine?.rebuild()
-                }
+            let requested = targetLUFS - lufs
+            let gain = min(24, max(-24, requested))
+            gains[target.id] = gain
+            if gain != requested {
+                warnings.append("Clip \(target.id): gain limited to \(gain) dB; source loudness target was not reached.")
             }
         }
+        return (gains, warnings, versions)
+    }
+
+    private static func configureEnhancement(_ clip: inout Clip, enabled: Bool, amount: Double?, deess: Double?) {
+        if enabled { clip.effects?.removeAll { $0.type == Clip.denoiseEffectType || $0.type == Clip.debreathEffectType } }
+        let exists = clip.effects?.contains { $0.type == Clip.enhanceEffectType } == true
+        let values: [String: Double?] = enabled ? [
+            "amount": exists ? amount : (amount ?? Clip.defaultEnhanceAmount),
+            "deess": exists ? deess : (deess ?? Clip.defaultEnhanceDeess),
+        ] : [:]
+        setAudioEffect(&clip, type: Clip.enhanceEffectType, enabled: enabled, values: values.compactMapValues { $0 })
+    }
+
+    private static func setAudioEffect(_ clip: inout Clip, type: String, enabled: Bool, values: [String: Double]) {
+        var stack = clip.effects ?? []
+        if let index = stack.firstIndex(where: { $0.type == type }) {
+            stack[index].enabled = enabled
+            for (key, value) in values { stack[index].params[key] = EffectParam(value: value) }
+        } else if enabled {
+            stack.append(Effect(type: type, enabled: true, params: values.mapValues { EffectParam(value: $0) }))
+        }
+        clip.effects = stack.isEmpty ? nil : stack
     }
 }

@@ -11,7 +11,7 @@ enum LoudnessAnalyzer {
         case sourceChanged
     }
 
-    private struct SourceVersion: Codable, Equatable {
+    struct SourceVersion: Codable, Equatable, Sendable {
         let url: String
         let size: UInt64
         let modified: Double
@@ -23,6 +23,14 @@ enum LoudnessAnalyzer {
             size = (attributes[.size] as? NSNumber)?.uint64Value ?? 0
             modified = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
             fileNumber = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0
+        }
+    }
+
+    @concurrent
+    static func validateSourceVersions(_ versions: [URL: SourceVersion]) async throws {
+        for (url, version) in versions {
+            try Task.checkCancellation()
+            guard try SourceVersion(url) == version else { throw AnalysisError.sourceChanged }
         }
     }
 

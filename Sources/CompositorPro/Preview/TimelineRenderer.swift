@@ -22,30 +22,44 @@ enum TimelineRenderer {
         includeAudio: Bool = true,
         preset: String = AVAssetExportPresetMediumQuality
     ) async throws -> URL {
-        guard timeline.fps > 0 else { throw RenderError(reason: "invalid fps") }
-        guard frameCount > 0 else { throw RenderError(reason: "empty selection") }
+        try await renderSnapshot(
+            timeline: timeline, mediaURLs: resolver.expectedURLMap(), resolveTimeline: resolveTimeline,
+            missingMediaRefs: missingMediaRefs, startFrame: startFrame, frameCount: frameCount,
+            shortSide: shortSide, includeAudio: includeAudio, preset: preset
+        )
+    }
+
+    @concurrent
+    private static func renderSnapshot(
+        timeline: Timeline, mediaURLs: [String: URL], resolveTimeline: @escaping @Sendable (String) -> Timeline?,
+        missingMediaRefs: Set<String>, startFrame: Int, frameCount: Int, shortSide: Int?, includeAudio: Bool, preset: String
+    ) async throws -> URL {
+        guard (1...120).contains(timeline.fps) else { throw RenderError(reason: "invalid fps") }
+        guard startFrame >= 0, frameCount > 0, startFrame <= timeline.totalFrames,
+              frameCount <= timeline.totalFrames - startFrame else { throw RenderError(reason: "invalid selection range") }
+        guard shortSide == nil || (2...4096).contains(shortSide!) else { throw RenderError(reason: "invalid render size") }
+        try Task.checkCancellation()
 
         let canvas = CGSize(width: timeline.width, height: timeline.height)
         let renderSize = Self.renderSize(canvas: canvas, shortSide: shortSide)
-        let mediaURLs = resolver.expectedURLMap()
-
+        var renderTimeline = timeline
+        if !includeAudio { renderTimeline.tracks.removeAll { $0.type == .audio } }
         let result = try await CompositionBuilder.build(
-            timeline: timeline,
+            timeline: renderTimeline,
             resolveURL: { mediaURLs[$0] },
             resolveTimeline: resolveTimeline,
             missingMediaRefs: missingMediaRefs,
             renderSize: renderSize
         )
+        guard result.offlineMediaRefs.isEmpty, result.unprocessableMediaRefs.isEmpty else {
+            throw RenderError(reason: "timeline contains missing or unreadable media")
+        }
 
         guard let session = AVAssetExportSession(asset: result.composition, presetName: preset) else {
             throw RenderError(reason: "export preset unsupported")
         }
         if includeAudio {
             session.audioMix = result.audioMix
-        } else {
-            for track in result.composition.tracks(withMediaType: .audio) {
-                result.composition.removeTrack(track)
-            }
         }
 
         session.videoComposition = result.videoComposition
@@ -58,12 +72,26 @@ enum TimelineRenderer {
 
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("timeline-render-\(UUID().uuidString).mp4")
-        try? FileManager.default.removeItem(at: outputURL)
-
         Log.generation.notice("timeline-render start frames=\(startFrame)..<\(startFrame + frameCount) fps=\(timeline.fps)")
-        try await session.export(to: outputURL, as: .mp4)
+        do {
+            try await session.export(to: outputURL, as: .mp4)
+            try Task.checkCancellation()
+            try AudioGainTap.validate(result.audioMix)
+        } catch {
+            if FileManager.default.fileExists(atPath: outputURL.path) {
+                do { try FileManager.default.removeItem(at: outputURL) }
+                catch { Log.export.warning("temporary render cleanup failed: \(error.localizedDescription)") }
+            }
+            throw error
+        }
         Log.generation.notice("timeline-render ok url=\(outputURL.lastPathComponent)")
         return outputURL
+    }
+
+    @concurrent
+    static func removeTemporaryRender(_ url: URL) async {
+        do { try FileManager.default.removeItem(at: url) }
+        catch { Log.export.warning("temporary render cleanup failed: \(error.localizedDescription)") }
     }
 
     /// Render size for the given short side

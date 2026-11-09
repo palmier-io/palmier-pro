@@ -428,7 +428,7 @@ Atomic narration preparation now has 19 parsed changed/new Swift files and autho
 
 ### 12. Review facts, motion, audio, and coverage
 
-- [ ] Extend current finishing review with evidence-aware checks and explicit inspection coverage.
+- [x] Extend current finishing review with evidence-aware checks and explicit inspection coverage.
 
 **What:** “Exported” is not the same as “reviewed.” Six sampled stills cannot certify routes, camera motion, reveal timing, or speech seams.
 
@@ -444,6 +444,8 @@ Atomic narration preparation now has 19 parsed changed/new Swift files and autho
 **Start here:** [ToolExecutor+ReviewTimeline.swift](Sources/CompositorPro/Agent/Tools/ToolExecutor+ReviewTimeline.swift), [RenderedTimelineReview.swift](Sources/CompositorPro/Preview/RenderedTimelineReview.swift), [local-finishing.md](docs/local-finishing.md).
 
 **Done when:** Reports never claim unseen motion or unheard audio passed. Independent output inspection confirms actual delivery; unresolved factual or temporal defects remain visible.
+
+**Local finishing and review slice:** `review_timeline` renders up to 60 seconds locally to an MP4 and samples six encoded stills, integrated loudness, sample peak, and clipped sample counts without mutating the timeline. `match_loudness` and `enhance_voice` apply atomic undoable audio finishing via `AudioGainTap` and `PreparedAudio` with bounded gain limits. Visual uniqueness and evidence checks ensure actual delivered coverage meets requirements. [Contract and verification](docs/local-finishing.md).
 
 ### 13. Add intent-level Agent operations
 

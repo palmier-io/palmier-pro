@@ -24,6 +24,7 @@ extension InspectorView {
                 speedSection(clips: audioClips)
             }
         }
+        .onDisappear { audioFinishingTask?.cancel() }
     }
 
     private func levelsSection(audios: [Clip]) -> some View {
@@ -171,15 +172,17 @@ extension InspectorView {
                         Toggle(String(), isOn: Binding(
                             get: { allOn },
                             set: { enabled in
-                                changeAudioEnhancement {
-                                    if enabled {
-                                        try editor.enhanceVoice(
+                                if enabled {
+                                    finishAudio {
+                                        try await editor.enhanceVoice(
                                             clipIds: Set(audios.map(\.id)),
                                             amount: (sharedClipValue(audios) { $0.enhanceAmount * 100 } ?? Clip.defaultEnhanceAmount * 100) / 100,
                                             deess: (sharedClipValue(audios) { $0.enhanceDeess * 100 } ?? Clip.defaultEnhanceDeess * 100) / 100,
                                             actionName: "Enable Enhance Voice"
                                         )
-                                    } else {
+                                    }
+                                } else {
+                                    changeAudioEnhancement {
                                         try editor.setEnhance(
                                             clipIds: Set(audios.map(\.id)), enabled: false, actionName: "Disable Enhance Voice"
                                         )
@@ -187,7 +190,7 @@ extension InspectorView {
                                 }
                             }
                         ))
-                        .disabled(!AudioEnhancer.availability.canStart && !allOn)
+                        .disabled(working || (!AudioEnhancer.availability.canStart && !allOn))
                         .toggleStyle(.switch)
                         .controlSize(.mini)
                         .labelsHidden()
@@ -249,6 +252,22 @@ extension InspectorView {
             ))
         } catch {
             NSApp.presentError(error)
+        }
+    }
+
+    private func finishAudio(_ operation: @escaping @MainActor () async throws -> [String]) {
+        audioFinishingTask?.cancel()
+        audioFinishingTask = Task { @MainActor in
+            do {
+                let warnings = try await operation()
+                if !warnings.isEmpty {
+                    NSApp.presentError(NSError(domain: "AudioEnhancement", code: 2,
+                                               userInfo: [NSLocalizedDescriptionKey: warnings.joined(separator: "\n")]))
+                }
+            } catch is CancellationError {
+            } catch {
+                NSApp.presentError(error)
+            }
         }
     }
 
@@ -340,11 +359,13 @@ extension InspectorView {
             ) {
                 HStack(spacing: AppTheme.Spacing.sm) {
                     Button {
-                        editor.matchLoudness(
-                            clipIds: Set(audios.map(\.id)),
-                            targetLUFS: -16.0,
-                            actionName: "Match Loudness"
-                        )
+                        finishAudio {
+                            try await editor.matchLoudness(
+                                clipIds: Set(audios.map(\.id)),
+                                targetLUFS: -16.0,
+                                actionName: "Match Loudness"
+                            )
+                        }
                     } label: {
                         Text(L10n.string("Match Loudness"))
                     }

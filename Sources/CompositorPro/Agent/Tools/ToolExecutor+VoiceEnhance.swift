@@ -45,7 +45,7 @@ extension ToolExecutor {
         static let allowedKeys: Set<String> = ["clipIds", "amount", "deess"]
     }
 
-    func enhanceVoice(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+    func enhanceVoice(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         let input: EnhanceVoiceInput = try decodeToolArgs(args, path: "enhance_voice")
         guard !input.clipIds.isEmpty else { throw ToolError("clipIds is empty.") }
         if let amount = input.amount, !(0...1).contains(amount) {
@@ -62,15 +62,17 @@ extension ToolExecutor {
         }
 
         let snapshot = timelineSnapshot(editor)
-        try editor.enhanceVoice(
+        let before = editor.timeline
+        let warnings = try await editor.enhanceVoice(
             clipIds: Set(input.clipIds),
             amount: input.amount ?? Clip.defaultEnhanceAmount,
             deess: input.deess ?? Clip.defaultEnhanceDeess,
             actionName: "Enhance Voice (Agent)"
         )
         return mutationResult(
-            editor, since: snapshot, touched: input.clipIds,
-            notes: ["The chain runs in the background — denoise bake, breath and sibilance detection, and loudness measurement; the preview updates automatically as stages finish."]
+            editor, since: snapshot, touched: before == editor.timeline ? [] : input.clipIds,
+            extra: ["noOp": before == editor.timeline, "warnings": warnings],
+            notes: warnings
         )
     }
 
@@ -80,7 +82,7 @@ extension ToolExecutor {
         static let allowedKeys: Set<String> = ["clipIds", "targetLUFS"]
     }
 
-    func matchLoudness(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+    func matchLoudness(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         let input: MatchLoudnessInput = try decodeToolArgs(args, path: "match_loudness")
         guard !input.clipIds.isEmpty else { throw ToolError("clipIds is empty.") }
         if let target = input.targetLUFS, !(-30...14).contains(target) {
@@ -94,14 +96,16 @@ extension ToolExecutor {
         }
 
         let snapshot = timelineSnapshot(editor)
-        editor.matchLoudness(
+        let before = editor.timeline
+        let warnings = try await editor.matchLoudness(
             clipIds: Set(input.clipIds),
             targetLUFS: input.targetLUFS ?? -16.0,
             actionName: "Match Loudness (Agent)"
         )
         return mutationResult(
-            editor, since: snapshot, touched: input.clipIds,
-            notes: ["Loudness is measured in the background; clips gain a volume offset that lands them on the target."]
+            editor, since: snapshot, touched: before == editor.timeline ? [] : input.clipIds,
+            extra: ["noOp": before == editor.timeline, "warnings": warnings],
+            notes: warnings
         )
     }
 }

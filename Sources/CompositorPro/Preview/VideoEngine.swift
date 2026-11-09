@@ -29,6 +29,8 @@ final class VideoEngine {
     private(set) var rebuildTask: Task<Void, Never>?
     private var rebuildGeneration = 0
     private var visualRefreshGeneration = 0
+    private(set) var visualRefreshTask: Task<Void, Never>?
+    private var preparedAudio = PreparedAudio()
     private(set) var sourcePreviewTask: Task<Void, Never>?
     private var sourcePreviewGeneration = 0
     private var sourceTrackStart: CMTime = .zero
@@ -291,6 +293,7 @@ final class VideoEngine {
         let involved: [Timeline]
         let involvedTotalFrames: [Int]
         let mediaURLs: [String: URL]
+        let originalURLs: [String: URL]
         let assetSizes: [String: CGSize]
         let missingMediaRefs: Set<String>
     }
@@ -323,6 +326,7 @@ final class VideoEngine {
             involved: involvedTimelines.map { $0.strippingTextClips() },
             involvedTotalFrames: involvedTimelines.map(\.totalFrames),
             mediaURLs: mediaURLs,
+            originalURLs: originalURLs,
             assetSizes: assetSizes,
             missingMediaRefs: missingMediaRefs
         )
@@ -338,7 +342,14 @@ final class VideoEngine {
         }
 
         let snapshot = involvedTimelines[0]
+        editor.denoiseFailed.removeAll()
+        editor.breathFailed.removeAll()
+        editor.deessFailed.removeAll()
+        editor.denoiseInFlight = Set(snapshot.tracks.flatMap(\.clips).filter {
+            $0.hasDenoiseEnabled || $0.hasDebreathEnabled || $0.hasEnhanceEnabled
+        }.map(\.mediaRef))
         rebuildTask = Task {
+            defer { if generation == rebuildGeneration { editor.denoiseInFlight.removeAll() } }
             let result: CompositionResult
             do {
                 result = try await CompositionBuilder.build(
@@ -348,21 +359,19 @@ final class VideoEngine {
                     resolveTimeline: resolveTimeline,
                     missingMediaRefs: missingMediaRefs,
                     renderSize: CGSize(width: snapshot.width, height: snapshot.height),
-                    // Breath and de-ess regions measure the real signal, so they read the
-                    // original even when preview decodes a proxy.
-                    resolveBreathRanges: { mediaRef in
-                        guard let url = originalURLs[mediaRef] else { return nil }
-                        return BreathDetector.cachedAnalysis(for: url, mediaRef: mediaRef)?.regions
-                    },
-                    resolveDeessRanges: { mediaRef in
-                        guard let url = originalURLs[mediaRef] else { return nil }
-                        return DeEsser.cachedAnalysis(for: url, mediaRef: mediaRef)?.regions
-                    }
+                    resolveAudioURL: { originalURLs[$0] }
                 )
             } catch {
                 guard generation == rebuildGeneration else { return }
                 rebuildTask = nil
                 if !Task.isCancelled {
+                    if let failure = error as? PreparedAudio.Failure {
+                        switch failure.stage {
+                        case .denoise: editor.denoiseFailed.insert(failure.mediaRef)
+                        case .breath: editor.breathFailed.insert(failure.mediaRef)
+                        case .deess: editor.deessFailed.insert(failure.mediaRef)
+                        }
+                    }
                     Log.preview.error("rebuild failed: \(error.localizedDescription)")
                 }
                 return
@@ -373,19 +382,27 @@ final class VideoEngine {
                   editor.activePreviewTab == .timeline,
                   editor.timeline.id == timelineId else { return }
 
-            let useCurrentVisuals = startingVisualRefreshGeneration != visualRefreshGeneration
-            let appliedTimelineResolver = useCurrentVisuals ? editor.timelineResolver() : resolveTimeline
-            let correctiveVisuals = useCurrentVisuals
-                ? CompositionBuilder.buildVisuals(
-                    timeline: editor.timeline,
-                    trackMappings: result.trackMappings,
-                    clipNaturalSizes: result.clipNaturalSizes,
-                    clipTransforms: result.clipTransforms,
-                    resolveTimeline: appliedTimelineResolver,
-                    compositionDuration: result.composition.duration,
-                    renderSize: CGSize(width: editor.timeline.width, height: editor.timeline.height)
-                )
-                : nil
+            var appliedGeneration = startingVisualRefreshGeneration
+            var correctiveVisuals: CompositionVisuals?
+            do {
+                while appliedGeneration != visualRefreshGeneration {
+                    appliedGeneration = visualRefreshGeneration
+                    correctiveVisuals = try await CompositionBuilder.buildVisuals(
+                        timeline: editor.timeline, trackMappings: result.trackMappings,
+                        clipNaturalSizes: result.clipNaturalSizes, clipTransforms: result.clipTransforms,
+                        resolveTimeline: editor.timelineResolver(), compositionDuration: result.composition.duration,
+                        renderSize: CGSize(width: editor.timeline.width, height: editor.timeline.height),
+                        preparedAudio: result.preparedAudio
+                    )
+                    guard generation == rebuildGeneration, !Task.isCancelled,
+                          editor.activePreviewTab == .timeline, editor.timeline.id == timelineId else { return }
+                }
+            } catch {
+                guard generation == rebuildGeneration else { return }
+                rebuildTask = nil
+                Log.preview.error("visual rebuild failed: \(error.localizedDescription)")
+                return
+            }
 
             rebuildTask = nil
             if result.offlineMediaRefs.isEmpty && result.unprocessableMediaRefs.isEmpty {
@@ -405,6 +422,10 @@ final class VideoEngine {
         rebuildGeneration &+= 1
         rebuildTask?.cancel()
         rebuildTask = nil
+        visualRefreshTask?.cancel()
+        visualRefreshTask = nil
+        visualRefreshGeneration &+= 1
+        editor?.denoiseInFlight.removeAll()
         return rebuildGeneration
     }
 
@@ -423,6 +444,7 @@ final class VideoEngine {
         clipNaturalSizes = result.clipNaturalSizes
         clipTransforms = result.clipTransforms
         compositionDuration = result.composition.duration
+        preparedAudio = result.preparedAudio
         editor.offlineMediaRefs = result.offlineMediaRefs
         editor.unprocessableMediaRefs = result.unprocessableMediaRefs
 
@@ -443,6 +465,7 @@ final class VideoEngine {
 
     func refreshVisuals(seekMode: PreviewSeekMode = .exact) {
         visualRefreshGeneration &+= 1
+        visualRefreshTask?.cancel()
         guard let editor, editor.activePreviewTab == .timeline,
               let currentItem = player.currentItem,
               !trackMappings.isEmpty else {
@@ -450,27 +473,35 @@ final class VideoEngine {
             return
         }
 
-        let (audioMix, videoComposition) = CompositionBuilder.buildVisuals(
-            timeline: editor.timeline,
-            trackMappings: trackMappings,
-            clipNaturalSizes: clipNaturalSizes,
-            clipTransforms: clipTransforms,
-            resolveTimeline: editor.timelineResolver(),
-            compositionDuration: compositionDuration,
-            renderSize: CGSize(width: editor.timeline.width, height: editor.timeline.height)
-        )
-        currentItem.audioMix = audioMix
-        currentItem.videoComposition = videoComposition
-        timelinePreviewTimelineId = editor.timeline.id
-        editor.timelineCompositionGeneration &+= 1
-        scrubAudioEngine.configure(asset: currentItem.asset, audioMix: audioMix, resetMeter: false)
-        switch Self.visualRefreshAction(isPlaying: editor.isPlaying, playbackRate: editor.playbackRate) {
-        case .meterPlayback:
-            scrubAudioEngine.meterPlayback(at: player.currentTime())
-        case .seekToActiveFrame:
-            seek(to: editor.activeFrame, mode: seekMode)
-        case .none:
-            break
+        let generation = visualRefreshGeneration
+        let snapshot = editor.timeline
+        let resolver = editor.timelineResolver()
+        visualRefreshTask = Task {
+            defer { if generation == visualRefreshGeneration { visualRefreshTask = nil } }
+            do {
+                let (audioMix, videoComposition) = try await CompositionBuilder.buildVisuals(
+                    timeline: snapshot, trackMappings: trackMappings,
+                    clipNaturalSizes: clipNaturalSizes, clipTransforms: clipTransforms,
+                    resolveTimeline: resolver, compositionDuration: compositionDuration,
+                    renderSize: CGSize(width: snapshot.width, height: snapshot.height),
+                    preparedAudio: preparedAudio
+                )
+                guard !Task.isCancelled, generation == visualRefreshGeneration,
+                      editor.activePreviewTab == .timeline, editor.timeline.id == snapshot.id,
+                      player.currentItem === currentItem else { return }
+                currentItem.audioMix = audioMix
+                currentItem.videoComposition = videoComposition
+                timelinePreviewTimelineId = snapshot.id
+                editor.timelineCompositionGeneration &+= 1
+                scrubAudioEngine.configure(asset: currentItem.asset, audioMix: audioMix, resetMeter: false)
+                switch Self.visualRefreshAction(isPlaying: editor.isPlaying, playbackRate: editor.playbackRate) {
+                case .meterPlayback: scrubAudioEngine.meterPlayback(at: player.currentTime())
+                case .seekToActiveFrame: seek(to: editor.activeFrame, mode: seekMode)
+                case .none: break
+                }
+            } catch {
+                if !Task.isCancelled { Log.preview.error("visual refresh failed: \(error.localizedDescription)") }
+            }
         }
     }
 

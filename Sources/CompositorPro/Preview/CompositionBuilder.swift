@@ -25,6 +25,7 @@ struct CompositionResult {
     let clipTransforms: [String: CGAffineTransform]
     let offlineMediaRefs: Set<String>
     let unprocessableMediaRefs: Set<String>
+    let preparedAudio: PreparedAudio
 }
 
 /// Builds an AVFoundation composition from a Timeline.
@@ -35,6 +36,7 @@ enum CompositionBuilder {
         var errorDescription: String? { "Invalid timeline: \(reason)" }
     }
 
+    @concurrent
     static func build(
         timeline: Timeline,
         resolveURL: @escaping @Sendable (String) -> URL?,
@@ -42,8 +44,7 @@ enum CompositionBuilder {
         resolveTimeline: @escaping @Sendable (String) -> Timeline? = { _ in nil },
         missingMediaRefs: Set<String> = [],
         renderSize: CGSize,
-        resolveBreathRanges: @escaping @Sendable (String) -> [BreathDetector.Region]? = { _ in nil },
-        resolveDeessRanges: @escaping @Sendable (String) -> [DeEsser.Region]? = { _ in nil },
+        resolveAudioURL: (@Sendable (String) -> URL?)? = nil,
         makeAsset: @escaping @Sendable (URL) -> AVURLAsset = { AVURLAsset(url: $0) },
         loadTracks: @escaping @Sendable (AVURLAsset, AVMediaType) async throws -> [AVAssetTrack] = {
             try await $0.loadTracks(withMediaType: $1)
@@ -54,6 +55,10 @@ enum CompositionBuilder {
             Log.preview.fault("build: invalid timeline fps=\(timeline.fps) size=\(timeline.width)x\(timeline.height)")
             throw InvalidTimelineError(reason: "fps=\(timeline.fps) size=\(timeline.width)x\(timeline.height)")
         }
+        let preparedAudio = try await PreparedAudio.prepare(
+            timeline: timeline, resolveTimeline: resolveTimeline,
+            resolveURL: resolveAudioURL ?? resolveURL, missingMediaRefs: missingMediaRefs
+        )
         let ctx = BuildContext(
             composition: AVMutableComposition(),
             timescale: CMTimeScale(timeline.fps),
@@ -65,6 +70,8 @@ enum CompositionBuilder {
             makeAsset: makeAsset,
             loadTracks: loadTracks
         )
+        ctx.preparedAudio = preparedAudio
+        ctx.resolveAudioURL = resolveAudioURL
 
         for (trackIdx, track) in timeline.tracks.enumerated() {
             // Text is composited at render, not as a track.
@@ -95,7 +102,7 @@ enum CompositionBuilder {
             }
         }
 
-        let (audioMix, videoComposition) = buildVisuals(
+        let (audioMix, videoComposition) = try await buildVisuals(
             timeline: timeline,
             trackMappings: ctx.trackMappings,
             clipNaturalSizes: ctx.clipNaturalSizes,
@@ -103,8 +110,7 @@ enum CompositionBuilder {
             resolveTimeline: resolveTimeline,
             compositionDuration: ctx.composition.duration,
             renderSize: renderSize,
-            resolveBreathRanges: resolveBreathRanges,
-            resolveDeessRanges: resolveDeessRanges
+            preparedAudio: preparedAudio
         )
 
         return CompositionResult(
@@ -115,7 +121,8 @@ enum CompositionBuilder {
             clipNaturalSizes: ctx.clipNaturalSizes,
             clipTransforms: ctx.clipTransforms,
             offlineMediaRefs: ctx.offlineMediaRefs,
-            unprocessableMediaRefs: ctx.unprocessableMediaRefs
+            unprocessableMediaRefs: ctx.unprocessableMediaRefs,
+            preparedAudio: preparedAudio
         )
     }
 
@@ -139,6 +146,8 @@ enum CompositionBuilder {
         var trackLoadOutcomes: [TrackLoadKey: LoadOutcome] = [:]
         var videoURLsBySourceURL: [URL: URL] = [:]
         var loadOutcomesByMedia: [MediaLoadKey: LoadOutcome] = [:]
+        var preparedAudio = PreparedAudio()
+        var resolveAudioURL: (@Sendable (String) -> URL?)?
 
         init(
             composition: AVMutableComposition,
@@ -180,7 +189,8 @@ enum CompositionBuilder {
 
         private func prepareSource(for clip: Clip, mediaType: AVMediaType) async throws -> LoadOutcome {
             guard !missingMediaRefs.contains(clip.mediaRef) else { return .offline }
-            guard let resolvedURL = resolveURL(clip.mediaRef) else { return .offline }
+            let resolver = mediaType == .audio ? (resolveAudioURL ?? resolveURL) : resolveURL
+            guard let resolvedURL = resolver(clip.mediaRef) else { return .offline }
 
             let mediaURL: URL
             if clip.mediaType == .image {
@@ -367,7 +377,7 @@ enum CompositionBuilder {
             if await insertClip(clip, sourceAsset: source.asset, sourceTrack: source.track,
                                 into: track, cursor: &cursor, timescale: ctx.timescale) {
                 inserted.append(clip)
-                if nest == nil, await insertDenoisedTwin(clip, parentTrackIndex: parentTrackIndex, ctx: ctx) {
+                if try await insertDenoisedTwin(clip, carrier: nest?.topCarrier, parentTrackIndex: parentTrackIndex, ctx: ctx) {
                     blendedClipIds.insert(clip.id)
                 }
             }
@@ -385,30 +395,30 @@ enum CompositionBuilder {
         ))
     }
 
-    private static func insertDenoisedTwin(_ clip: Clip, parentTrackIndex: Int, ctx: BuildContext) async -> Bool {
+    private static func insertDenoisedTwin(_ clip: Clip, carrier: Clip?, parentTrackIndex: Int, ctx: BuildContext) async throws -> Bool {
         let enhanceActive = clip.hasEnhanceEnabled && clip.enhanceAmount > 0
         guard (clip.hasDenoiseEnabled && clip.denoiseAmount > 0) || enhanceActive,
-              let resolved = ctx.resolveURL(clip.mediaRef),
-              let wetURL = AudioEnhancer.cachedDenoisedURL(for: resolved, mediaRef: clip.mediaRef)
+              let wetURL = ctx.preparedAudio.denoisedURLs[clip.mediaRef]
         else { return false }
         let asset = AVURLAsset(url: wetURL)
-        guard let sourceTrack = try? await asset.loadTracks(withMediaType: .audio).first,
+        guard let sourceTrack = try await asset.loadTracks(withMediaType: .audio).first,
               let compTrack = ctx.composition.addMutableTrack(
                   withMediaType: .audio,
                   preferredTrackID: kCMPersistentTrackID_Invalid
               )
-        else { return false }
+        else { throw AudioEnhancer.EnhanceError.noAudioTrack }
         var cursor = CMTime.zero
         guard await insertClip(
             clip, sourceAsset: asset, sourceTrack: sourceTrack,
             into: compTrack, cursor: &cursor, timescale: ctx.timescale
         ) else {
             ctx.composition.removeTrack(compTrack)
-            return false
+            throw AudioEnhancer.EnhanceError.writeFailed
         }
         ctx.trackMappings.append(TrackMapping(
             compositionTrack: compTrack,
-            kind: .timeline(trackIndex: parentTrackIndex, clipIds: [clip.id]),
+            kind: carrier.map { .nested(clips: [clip], carrier: $0, parentTrackIndex: parentTrackIndex) }
+                ?? .timeline(trackIndex: parentTrackIndex, clipIds: [clip.id]),
             naturalSize: .zero,
             endTime: .zero,
             isVideo: false,
@@ -596,6 +606,7 @@ enum CompositionBuilder {
     }
 
     /// Rebuild only visual properties (transforms, opacity, volume)
+    @concurrent
     static func buildVisuals(
         timeline: Timeline,
         trackMappings: [TrackMapping],
@@ -604,13 +615,12 @@ enum CompositionBuilder {
         resolveTimeline: @Sendable (String) -> Timeline? = { _ in nil },
         compositionDuration: CMTime,
         renderSize: CGSize,
-        resolveBreathRanges: @Sendable (String) -> [BreathDetector.Region]? = { _ in nil },
-        resolveDeessRanges: @Sendable (String) -> [DeEsser.Region]? = { _ in nil }
-    ) -> (audioMix: AVMutableAudioMix, videoComposition: AVVideoComposition) {
+        preparedAudio: PreparedAudio = PreparedAudio()
+    ) async throws -> (audioMix: AVMutableAudioMix, videoComposition: AVVideoComposition) {
         let timescale = CMTimeScale(timeline.fps)
 
         let audioMix = AVMutableAudioMix()
-        audioMix.inputParameters = trackMappings.filter { !$0.isVideo }.compactMap { mapping in
+        audioMix.inputParameters = try trackMappings.filter { !$0.isVideo }.compactMap { mapping in
             switch mapping.kind {
             case .blackBackground:
                 return nil
@@ -624,12 +634,12 @@ enum CompositionBuilder {
                 }
                 // Prefer the live carrier so nest volume/fade edits apply on refresh.
                 let liveCarrier = parentTrack.clips.first { $0.id == carrier.id } ?? carrier
+                var ramps: [PlannedRamp] = []
                 for clip in clips {
-                    let loudnessGain = clip.hasLoudnessMatchEnabled
-                        ? Float(VolumeScale.linearFromDb(clip.loudnessGainDB * (clip.hasEnhanceEnabled ? clip.enhanceAmount : 1)))
-                        : 1
-                    emitVolumeEnvelope(params: params, clip: clip, timescale: timescale, carrier: liveCarrier, gain: loudnessGain)
+                    ramps += audioRamps(clip: clip, mapping: mapping, carrier: liveCarrier,
+                                        timescale: timescale, preparedAudio: preparedAudio)
                 }
+                try applyAudioRamps(ramps, to: params)
                 return params
             case .timeline(let trackIndex, let clipIds):
                 guard timeline.tracks.indices.contains(trackIndex) else { return nil }
@@ -640,48 +650,14 @@ enum CompositionBuilder {
                     return params
                 }
                 var prevEndFrame = Int.min
+                var ramps: [PlannedRamp] = []
                 for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame }) {
                     if let clipIds, !clipIds.contains(clip.id) { continue }
                     guard clip.durationFrames > 0, clip.startFrame >= prevEndFrame else { continue }
-                    let enhanceActive = clip.hasEnhanceEnabled && clip.enhanceAmount > 0
-                    let denoiseAmount = enhanceActive ? clip.enhanceAmount : clip.denoiseAmount
-                    let wantsDenoise = (clip.hasDenoiseEnabled && clip.denoiseAmount > 0) || enhanceActive
-                    let strength = wantsDenoise ? Float(min(1, max(0, denoiseAmount))) : 0
-                    var gain: Float = mapping.wetAudio
-                        ? strength
-                        : (mapping.blendedClipIds.contains(clip.id) ? 1 - strength : 1)
-                    if clip.hasLoudnessMatchEnabled {
-                        let loudnessDB = clip.loudnessGainDB * (clip.hasEnhanceEnabled ? clip.enhanceAmount : 1)
-                        // linearFromDb allows up to +15 dB, which would push the ramp volume
-                        // past 1 and abort the process inside AVFoundation.
-                        gain = min(1, max(0, gain * Float(VolumeScale.linearFromDb(loudnessDB))))
-                    }
-                    var dips: [AudioGainDip] = []
-                    if enhanceActive {
-                        dips += gainDips(
-                            track: mapping.compositionTrack, clip: clip, timescale: timescale,
-                            regions: resolveBreathRanges(clip.mediaRef),
-                            depthDB: -24.0 * clip.enhanceAmount, fadeSeconds: 0.03
-                        )
-                        dips += gainDips(
-                            track: mapping.compositionTrack, clip: clip, timescale: timescale,
-                            regions: resolveDeessRanges(clip.mediaRef).map {
-                                $0.map { BreathDetector.Region(start: $0.start, end: $0.end) }
-                            },
-                            depthDB: -12.0 * clip.enhanceDeess, fadeSeconds: 0.01
-                        )
-                    } else if clip.hasDebreathEnabled {
-                        dips += gainDips(
-                            track: mapping.compositionTrack, clip: clip, timescale: timescale,
-                            regions: resolveBreathRanges(clip.mediaRef),
-                            depthDB: -24.0 * clip.debreathAmount, fadeSeconds: 0.03
-                        )
-                    }
-                    emitVolumeEnvelope(
-                        params: params, clip: clip, timescale: timescale, gain: gain, dips: dips
-                    )
+                    ramps += audioRamps(clip: clip, mapping: mapping, timescale: timescale, preparedAudio: preparedAudio)
                     prevEndFrame = clip.startFrame + clip.durationFrames
                 }
+                try applyAudioRamps(ramps, to: params)
                 return params
             }
         }
@@ -935,50 +911,73 @@ enum CompositionBuilder {
         }
     }
 
-    /// Resolves detected regions to dip ranges, clipped to both the clip and the track, since a
-    /// ramp outside the track's time range is itself an uncatchable AVFoundation exception.
-    private static func gainDips(
-        track: AVAssetTrack,
+    static func gainDips(
         clip: Clip,
         timescale: CMTimeScale,
         regions: [BreathDetector.Region]?,
         depthDB: Double,
         fadeSeconds: Double
     ) -> [AudioGainDip] {
-        guard depthDB < 0, let regions, !regions.isEmpty else { return [] }
+        guard depthDB.isFinite, depthDB < 0, timescale > 0, fadeSeconds.isFinite, fadeSeconds >= 0,
+              let regions, !regions.isEmpty,
+              (try? LoudnessAnalyzer.sourceRange(for: clip, fps: Int(timescale))) != nil else { return [] }
         let fps = Double(timescale)
         let dipGain = Float(VolumeScale.linearFromDb(depthDB))
-        let fadeFrames = max(1, Int((fadeSeconds * fps).rounded()))
-        let trackRange = track.timeRange
-        let trackStart = CMTimeGetSeconds(trackRange.start)
-        let trackEnd = CMTimeGetSeconds(trackRange.end)
-        guard trackEnd > trackStart else { return [] }
+        let fadeFrames = max(1, Int(min(Double(clip.durationFrames), fadeSeconds * fps).rounded()))
 
         var dips: [AudioGainDip] = []
         for region in regions {
-            let s0 = max(region.start, Double(clip.trimStartFrame))
-            let s1 = min(region.end, Double(clip.trimStartFrame + clip.sourceFramesConsumed))
+            guard region.start.isFinite, region.end.isFinite, region.start >= 0, region.end > region.start else { continue }
+            let s0 = max(region.start * fps, Double(clip.trimStartFrame))
+            let s1 = min(region.end * fps, Double(clip.trimStartFrame + clip.sourceFramesConsumed))
             guard s1 > s0 else { continue }
             let map = clip.timeMap
             let startFrame = max(clip.startFrame, clip.startFrame
                 + map.timelineOffset(forSourceOffset: s0 - Double(clip.trimStartFrame)))
             let endFrame = min(clip.endFrame, clip.startFrame
                 + map.timelineOffset(forSourceOffset: s1 - Double(clip.trimStartFrame)))
-            let startSeconds = Double(startFrame) / fps
-            let endSeconds = Double(endFrame) / fps
-            guard endSeconds > max(startSeconds, trackStart), startSeconds < trackEnd else { continue }
-            let from = max(startSeconds, trackStart)
-            let to = min(endSeconds, trackEnd)
-            let t0 = Int((from * fps).rounded())
-            let t1 = Int((to * fps).rounded())
+            let t0 = startFrame
+            let t1 = endFrame
             guard t1 > t0 else { continue }
-            let fadeInEnd = min(t0 + fadeFrames, t1)
-            let fadeOutStart = max(t0, t1 - fadeFrames)
+            let fade = min(fadeFrames, (t1 - t0) / 2)
+            let fadeInEnd = t0 + fade
+            let fadeOutStart = t1 - fade
             dips.append(AudioGainDip(
                 start: t0, fadeInEnd: fadeInEnd, fadeOutStart: fadeOutStart, end: t1, gain: dipGain
             ))
         }
         return dips
+    }
+
+    private static func audioRamps(
+        clip: Clip, mapping: TrackMapping, carrier: Clip? = nil,
+        timescale: CMTimeScale, preparedAudio: PreparedAudio
+    ) -> [PlannedRamp] {
+        let enhance = clip.hasEnhanceEnabled && clip.enhanceAmount > 0
+        let strength = Float(enhance ? clip.enhanceAmount : (clip.hasDenoiseEnabled ? clip.denoiseAmount : 0))
+        var gain: Float = mapping.wetAudio ? strength : (mapping.blendedClipIds.contains(clip.id) ? 1 - strength : 1)
+        if clip.hasLoudnessMatchEnabled {
+            gain *= Float(pow(10, clip.loudnessGainDB * (clip.hasEnhanceEnabled ? clip.enhanceAmount : 1) / 20))
+        }
+        var dips: [AudioGainDip] = []
+        if enhance || clip.hasDebreathEnabled {
+            dips += gainDips(
+                clip: clip, timescale: timescale, regions: preparedAudio.breaths[clip.mediaRef],
+                depthDB: -24 * (enhance ? clip.enhanceAmount : clip.debreathAmount), fadeSeconds: 0.03
+            )
+        }
+        if enhance {
+            dips += gainDips(
+                clip: clip, timescale: timescale,
+                regions: preparedAudio.sibilance[clip.mediaRef]?.map { .init(start: $0.start, end: $0.end) },
+                depthDB: -12 * clip.enhanceDeess, fadeSeconds: 0.01
+            )
+        }
+        var ramps: [PlannedRamp] = []
+        emitVolumeEnvelope(clip: clip, timescale: timescale, carrier: carrier, gain: gain, dips: dips) {
+            ramps.append(PlannedRamp(range: $0, from: $1, to: $2))
+        }
+        return ramps
     }
 
     /// A single planned volume ramp, in composition time.
@@ -996,14 +995,28 @@ enum CompositionBuilder {
     ) -> [PlannedRamp] {
         var out: [PlannedRamp] = []
         emitVolumeEnvelope(
-            params: nil, clip: clip, timescale: timescale, gain: gain, dips: dips,
+            clip: clip, timescale: timescale, gain: gain, dips: dips,
             collect: { range, from, to in out.append(PlannedRamp(range: range, from: from, to: to)) }
         )
-        return out
+        let headroom = audioHeadroom(for: out)
+        return out.map { PlannedRamp(range: $0.range, from: $0.from / headroom, to: $0.to / headroom) }
+    }
+
+    private static func audioHeadroom(for ramps: [PlannedRamp]) -> Float {
+        ramps.reduce(1) { max($0, $1.from, $1.to) }
+    }
+
+    private static func applyAudioRamps(_ ramps: [PlannedRamp], to parameters: AVMutableAudioMixInputParameters) throws {
+        let headroom = audioHeadroom(for: ramps)
+        if headroom > 1 { parameters.audioTapProcessor = try AudioGainTap.make(gain: headroom) }
+        for ramp in ramps {
+            parameters.setVolumeRamp(
+                fromStartVolume: ramp.from / headroom, toEndVolume: ramp.to / headroom, timeRange: ramp.range
+            )
+        }
     }
 
     private static func emitVolumeEnvelope(
-        params: AVMutableAudioMixInputParameters?,
         clip: Clip,
         timescale: CMTimeScale,
         carrier: Clip? = nil,
@@ -1020,15 +1033,12 @@ enum CompositionBuilder {
             carrier.map { $0.volumeAt(frame: absFrame) } ?? 1
         }
         if kfs.isEmpty && !hasFade && !carrierVaries && dips.isEmpty {
-            // AVFoundation throws an uncatchable exception when a ramp volume leaves [0, 1],
-            // and a caller-supplied gain can exceed it, so the constant path clamps too.
-            let volume = min(1, max(0, Float(clip.volumeAt(frame: clip.startFrame) * gainAt(clip.startFrame)) * gain))
+            let volume = max(0, Float(clip.volumeAt(frame: clip.startFrame) * gainAt(clip.startFrame)) * gain)
             let start = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
             let end = CMTime(value: CMTimeValue(clip.endFrame), timescale: timescale)
             guard volume.isFinite, end > start else { return }
             let range = CMTimeRange(start: start, end: end)
             collect?(range, volume, volume)
-            params?.setVolumeRamp(fromStartVolume: volume, toEndVolume: volume, timeRange: range)
             return
         }
 
@@ -1076,11 +1086,10 @@ enum CompositionBuilder {
                 let absolute = clip.startFrame + offset
                 let base = Float(clip.volumeAt(frame: absolute) * gainAt(absolute)) * gain
                 let attenuation = dips.reduce(1 as Float) { $0 * $1.multiplier(at: absolute) }
-                return min(1, max(0, base * attenuation))
+                return max(0, base * attenuation)
             },
             emit: { start, end, range in
                 collect?(range, start, end)
-                params?.setVolumeRamp(fromStartVolume: start, toEndVolume: end, timeRange: range)
             }
         )
     }
