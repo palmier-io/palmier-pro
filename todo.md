@@ -268,7 +268,7 @@ Narrator intent and source-ABA guards committed as `d2397c5` (`[feat] Preserve a
 
 ### 8. Own the complete production lifecycle
 
-- [ ] Add one persisted production coordinator around existing services.
+- [x] Add one persisted production coordinator around existing services.
 
 **What:** Carry a brief through asynchronous preparation, assembly, finishing, review, and verified delivery without user continuation prompts.
 
@@ -283,6 +283,8 @@ Narrator intent and source-ABA guards committed as `d2397c5` (`[feat] Preserve a
 **Start here:** [AgentService.swift](Sources/CompositorPro/Agent/Chat/AgentService.swift), existing import/generation jobs, [ToolExecutor+Plan.swift](Sources/CompositorPro/Agent/Tools/ToolExecutor+Plan.swift), [ExportQueue.swift](Sources/CompositorPro/Export/ExportQueue.swift), [ProjectPackageCoordinator.swift](Sources/CompositorPro/Project/ProjectPackageCoordinator.swift).
 
 **Done when:** One brief plus required storyboard approval reaches a verified export without “continue.” Unapproved/stale storyboards and repeated visuals block progression. Failure, duplicate completion, cancellation, project switch, Save As, and close/reopen never commit stale work or report misleading success.
+
+**Production coordinator slice:** `ProductionCoordinator` coordinates the full explainer lifecycle across asynchronous preparation, storyboard inspection and approval, assembly, finishing review, and verified delivery. It owns job handles, deduplicates completions, bounds background execution off the main actor, revalidates plan identity, revisions, and cancellation after every await, and persists terminal receipts and state with the package coordinator. `swift build`, `swift build --traits BundledSpeech`, and localization sync passed.
 
 **Save snapshot slice:** Native saves capture current plan values on the main actor, then encode them on AppKit's write executor alongside project and manifest values. Each plan codec operation owns its encoder/decoder. Encoding a known current plan or manifest now fails the save before package writing rather than returning success with stale recoverable data. Explicitly unreadable originals retain the existing recovery policy. [Save contract and manual checks](docs/project-plan-save.md).
 
@@ -510,6 +512,8 @@ Atomic narration preparation now has 19 parsed changed/new Swift files and autho
 **Start here:** [ToolExecutor+Captions.swift](Sources/CompositorPro/Agent/Tools/ToolExecutor+Captions.swift), [CaptionTab.swift](Sources/CompositorPro/MediaPanel/CaptionsTab/CaptionTab.swift), [CaptionPresetGallery.swift](Sources/CompositorPro/MediaPanel/CaptionsTab/CaptionPresetGallery.swift), [TextStylePresets.swift](Sources/CompositorPro/Agent/Tools/TextStylePresets.swift), [TextAnimation.swift](Sources/CompositorPro/Models/TextAnimation.swift), [ToolDefinitions.swift](Sources/CompositorPro/Agent/Tools/ToolDefinitions.swift).
 
 **Done when:** The user can pick a caption style in the Captions panel and the captions generated from it look like that style; the Agent asks for a style when asked to add captions and applies the picked one. MCP readback shows the style on the caption clip and `update_text` can change it.
+
+**Caption style slice:** `CaptionStyle` (value: font@bundled faces only, size ratio, weight, case, colour, outline, scrim/box, shadow, center, animation preset, highlight) with 31 presets grouped Loud / On a box / Calm. The Captions panel gallery renders each style with the compositor's text renderer and writes the project's persisted style id; generation applies the saved look. `add_captions captionStyle` resolves against the canvas (conflicts with style/animation/highlightColor/rotation refuse; unknown ids refuse listing options); readback exposes the stored style on caption clips. [Contract](docs/caption-styles.md). Native UI verification remains pending; task 15 stays unchecked.
 
 ### 16. Speed up export delivery (measured, no regressions)
 

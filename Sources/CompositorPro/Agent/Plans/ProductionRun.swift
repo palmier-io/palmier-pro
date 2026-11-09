@@ -4,6 +4,11 @@ struct ProductionRun: Codable, Sendable, Equatable {
     enum Phase: String, Codable, Sendable {
         case awaitingStoryboardApproval = "awaiting_storyboard_approval"
         case approved
+        case assembling
+        case finishing
+        case reviewing
+        case exporting
+        case completed
         case stale
         case canceled
     }
@@ -32,9 +37,10 @@ struct ProductionRun: Codable, Sendable, Equatable {
     var comment: String = ""
 
     func validate() throws {
+        let isPastApproval = phase != .awaitingStoryboardApproval && phase != .stale && phase != .canceled
         guard UUID(uuidString: id) != nil, Self.validRevision(storyboardRevision),
               approvedRevision.map(Self.validRevision) ?? true,
-              (phase == .approved) == (approvedRevision != nil),
+              isPastApproval == (approvedRevision != nil),
               approvedRevision == nil || approvedRevision == storyboardRevision,
               visualReviews.count <= EditPlanLimits.maximumShots,
               Set(visualReviews.map(\.sceneId)).count == visualReviews.count else {
