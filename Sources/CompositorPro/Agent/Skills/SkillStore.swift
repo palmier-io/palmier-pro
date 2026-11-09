@@ -437,16 +437,13 @@ final class SkillStore {
     }
 
     /// Copies under a `compositor-` prefix so we only overwrite our own prior copy.
-    /// Cleans up any prior legacy `palmier-` prefix copy if present.
     @discardableResult
     func copy(_ skill: Skill, to agent: SkillExternalAgent) -> URL? {
         let source = skill.path.deletingLastPathComponent()
         let dest = agent.skillsDirectory.appendingPathComponent("compositor-\(skill.id)", isDirectory: true)
-        let legacyDest = agent.skillsDirectory.appendingPathComponent("palmier-\(skill.id)", isDirectory: true)
         let fm = FileManager.default
         do {
             try fm.createDirectory(at: agent.skillsDirectory, withIntermediateDirectories: true)
-            if fm.fileExists(atPath: legacyDest.path) { try? fm.removeItem(at: legacyDest) }
             if fm.fileExists(atPath: dest.path) { try fm.removeItem(at: dest) }
             try fm.copyItem(at: source, to: dest)
             return dest

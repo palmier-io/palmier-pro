@@ -58,11 +58,6 @@ private struct ExportAnalyticsRun: Sendable {
         self.started = ContinuousClock.now
     }
 
-    /// Legacy shim for external callers
-    init(palmierContext context: ExportAnalyticsContext) {
-        self.init(compositorContext: context)
-    }
-
     func begin() {
         Analytics.capture(.exportStarted, properties: basePayload())
     }

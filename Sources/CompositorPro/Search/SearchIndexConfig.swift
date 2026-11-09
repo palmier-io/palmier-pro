@@ -3,20 +3,26 @@ import Foundation
 enum SearchIndexConfig {
     static let enabledDefaultsKey = "searchIndexEnabled"
     static let visualMatchCosineFloor: Float = 0.05
-    static let hostedURL = URL(string: "https://huggingface.co/palmier-io/siglip2-base-coreml/resolve/main")!
 
     static var enabled: Bool {
         get { UserDefaults.standard.object(forKey: enabledDefaultsKey) as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: enabledDefaultsKey) }
     }
 
+    /// The hosted Palmier model repository was removed in the backend teardown (R1);
+    /// the visual model now comes from the bundled `models/siglip2` resources.
     static var baseURL: URL {
         #if DEBUG
         if let raw = UserDefaults.standard.string(forKey: "searchIndexModelBaseURL"), let url = URL(string: raw) {
             return url
         }
         #endif
-        return hostedURL
+        // No hosted model host remains (R1). Weights must be re-hosted under a
+        // compositor namespace and pointed back here before visual search can
+        // reinstall; the bundled `models/siglip2` tree is the migration source.
+        // Until then install fails fast with a visible error instead of
+        // pretending to reach a server.
+        return Bundle.main.bundleURL
     }
 
     static let manifest = ModelDownloader.Manifest(
