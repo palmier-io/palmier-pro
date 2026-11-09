@@ -48,8 +48,10 @@ The parent applies valid findings through ordinary shared domain tools and
 spans a network await, and cancellation never undoes someone else's latest action.
 
 Structured child/timeout tasks are canceled and drained when the parent stops.
-Existing `makeAgentStream` cancellation signals the transport producer; the client
-protocol has no producer join handle, so provider cleanup remains cooperative.
+`makeAgentStream` returns an owned `AgentStreamOperation` whose producer is
+joined with `join()` on every exit (completion, failure, cancellation): workers
+cancel their deadline race, finish text, and join before reporting terminal
+results, so no producer outlives a drained run.
 Session switching, tab closure, deletion, editor rebinding, and document close
 cancel the owned run. Save-before-close awaits the run before its save snapshot.
 Late tool receipts go only to their originating conversation, and old cleanup
@@ -59,6 +61,10 @@ Hosted HTTP failures retain status and error code for denial classification.
 
 `delegate_work` is app-runtime-only, not a remotely exposed MCP mutation tool.
 Existing MCP tools remain the state-readback and shared-undo boundary.
+
+## Measured parallelism
+
+`AgentDelegationTests.parallelPreparationIsFasterThanSequentialExecution` runs four independent 150ms-latency tasks and requires delegation to finish at least 25% faster than the sequential sum with peak concurrency ≤2. Overlap is gate-proven, but wall-clock provider latency is not measured with a real model; treat the ratio as scheduling proof, not a speedup promise.
 
 ## Manual verification — pending
 

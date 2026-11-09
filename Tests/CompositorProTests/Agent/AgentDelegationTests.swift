@@ -53,6 +53,41 @@ struct AgentDelegationTests {
         #expect(await probe.active == 0)
     }
 
+    /// Measured-parallelism proof: with fixed injected latency, delegation
+    /// finishes four independent tasks materially faster than sequential
+    /// execution, without exceeding two in-flight workers.
+    @Test func parallelPreparationIsFasterThanSequentialExecution() async throws {
+        let probe = DelegationWorkerProbe()
+        let latency = Duration.milliseconds(150)
+        let worker: @Sendable (AgentDelegationTask, String, AgentRequestContext) async throws -> String = { task, _, _ in
+            _ = await probe.begin(task.id)
+            do {
+                try await Task.sleep(for: latency)
+                await probe.end()
+                return "Prepared \(task.id)"
+            } catch {
+                await probe.end(cancelled: error is CancellationError)
+                throw error
+            }
+        }
+        // Sequential baseline: same worker, one task at a time.
+        let tasks2 = Self.tasks(4)
+        let seqStart = ContinuousClock.now
+        for task in tasks2 {
+            _ = try await worker(task, "Prepare", Self.context())
+        }
+        let seq = ContinuousClock.now - seqStart
+
+        let delegation = AgentDelegation(worker: worker)
+        let parStart = ContinuousClock.now
+        let receipt = try await Self.run(delegation, tasks: tasks2)
+        let par = ContinuousClock.now - parStart
+
+        #expect(receipt.tasks.map(\.id) == tasks2.map(\.id))
+        #expect(await probe.peakActive <= 2)
+        #expect(par < seq * 3 / 4, "delegated \(par) should beat sequential \(seq) by a wide margin")
+    }
+
     @Test func unsupportedModelDisablesLaterBatchesWithoutStartingTheirWorkers() async throws {
         let probe = DelegationWorkerProbe()
         let delegation = AgentDelegation(worker: { task, _, _ in
