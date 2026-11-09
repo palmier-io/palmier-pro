@@ -19,7 +19,7 @@ struct ProjectDocumentIOTests {
     @Test func nativeSaveCopyIncludesMediaAndThumbnailAtNewDestination() async throws {
         try await withPackageTestFixture { fixture in
             try await makePackage(at: fixture.package, io: fixture.io)
-            let destination = fixture.root.appendingPathComponent("Copy.palmier", isDirectory: true)
+            let destination = fixture.root.appendingPathComponent("Copy.compositorpro", isDirectory: true)
             let document = configuredDocument(fixture)
             try await savePackageTestDocument(document, to: destination, operation: .saveToOperation)
             #expect(document.fileURL == fixture.package)

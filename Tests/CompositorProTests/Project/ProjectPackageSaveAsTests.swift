@@ -17,7 +17,7 @@ struct ProjectPackageSaveAsTests {
             editor.refreshProjectId()
             #expect(editor.projectRegistry === fixture.registry)
             #expect(editor.projectId == projectID.uuidString)
-            let destination = fixture.root.appendingPathComponent("Copy.palmier", isDirectory: true)
+            let destination = fixture.root.appendingPathComponent("Copy.compositorpro", isDirectory: true)
             let before = try await fixture.stage(Data("before".utf8))
             let after = try await fixture.stage(Data("after".utf8))
             let admitted = PackageTestSignal()
@@ -80,7 +80,7 @@ struct ProjectPackageSaveAsTests {
             try await fixture.registry.flush()
             let registryURL = fixture.root.appendingPathComponent("registry.json")
             let backup = fixture.root.appendingPathComponent("registry-backup.json")
-            let destination = fixture.root.appendingPathComponent("Copy.palmier", isDirectory: true)
+            let destination = fixture.root.appendingPathComponent("Copy.compositorpro", isDirectory: true)
             try await fixture.io.perform {
                 try FileManager.default.moveItem(at: registryURL, to: backup)
                 try FileManager.default.createDirectory(at: registryURL, withIntermediateDirectories: false)

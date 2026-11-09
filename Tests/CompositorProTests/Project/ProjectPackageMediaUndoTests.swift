@@ -34,7 +34,7 @@ struct ProjectPackageMediaUndoTests {
             editor.deleteMediaAssets(ids: [asset.id])
             #expect(editor.mediaAssets.isEmpty)
             #expect(undo.canUndo)
-            let destination = fixture.root.appendingPathComponent("Copy.palmier", isDirectory: true)
+            let destination = fixture.root.appendingPathComponent("Copy.compositorpro", isDirectory: true)
             try await savePackageTestDocument(document, to: destination, operation: .saveAsOperation)
             try await fixture.io.remove([fixture.package])
 

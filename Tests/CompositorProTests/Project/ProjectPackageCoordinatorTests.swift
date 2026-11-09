@@ -177,7 +177,7 @@ struct ProjectPackageCoordinatorTests {
         try await withPackageTestFixture { fixture in
             let editor = EditorViewModel()
             editor.projectURL = fixture.package
-            let rebased = fixture.root.appendingPathComponent("Rebased.palmier", isDirectory: true)
+            let rebased = fixture.root.appendingPathComponent("Rebased.compositorpro", isDirectory: true)
             let stage = try await fixture.stage()
             let coordinator = editor.projectPackageCoordinator
             var saveLease: ProjectPackageCoordinator.SaveLease?

@@ -51,9 +51,9 @@ struct SkillFrontmatterTests {
 
     @Test func displayPathUsesTheHomeDirectoryAbbreviation() {
         let path = URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent(".palmier/skills/captions/SKILL.md")
+            .appendingPathComponent(".compositorpro/skills/captions/SKILL.md")
         let skill = Skill(id: "captions", name: "Captions", description: "Create captions.", path: path)
 
-        #expect(skill.displayPath == "~/.palmier/skills/captions")
+        #expect(skill.displayPath == "~/.compositorpro/skills/captions")
     }
 }

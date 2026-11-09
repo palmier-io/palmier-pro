@@ -263,7 +263,7 @@ extension EditorViewModel {
         )
     }
 
-    /// Resolve a drag pasteboard payload (one `palmier-asset://<id>` per line).
+    /// Resolve a drag pasteboard payload (one `compositor-asset://<id>` per line).
     func assetsFromDragPayload(_ payload: String) -> [MediaAsset] {
         payload.split(separator: "\n").compactMap { line in
             guard let id = MediaTab.assetId(fromDragString: String(line)) else { return nil }

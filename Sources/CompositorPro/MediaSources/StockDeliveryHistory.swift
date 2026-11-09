@@ -80,6 +80,9 @@ struct StockDeliveryHistory: Sendable, Equatable, Codable {
         encoder.dateEncodingStrategy = .iso8601
         if let data = try? encoder.encode(self) { UserDefaults.standard.set(data, forKey: Self.defaultsKey) }
     }
+
+    /// Removes the persisted history so reads start empty.
+    static func reset() { UserDefaults.standard.removeObject(forKey: defaultsKey) }
 }
 
 extension StockDeliveryHistory: CustomStringConvertible {

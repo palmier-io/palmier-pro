@@ -104,6 +104,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case generateImage = "generate_image"
     case generateAudio = "generate_audio"
     case upscaleMedia = "upscale_media"
+    case enhanceMedia = "enhance_media"
 
     // Meta
     case sendFeedback = "send_feedback"
@@ -1887,6 +1888,18 @@ enum ToolDefinitions {
                     ],
                 ],
                 required: ["mediaRef"]
+            )
+        ),
+        AgentTool(
+            name: .enhanceMedia,
+            description: "Starts a local AI enhancement or upscaling job on one or more timeline clips. Enhances footage to the project resolution or higher with the local AI upscaler (2x or 4x scale). Requires approval before replacing originals. Call before/after preview frames to show the user. When approved, enhanced media replaces the originals via swap_clip_media. Only video and image clips are supported.",
+            inputSchema: objectSchema(
+                properties: [
+                    "clipIds": ["type": "array", "items": ["type": "string", "minLength": 1], "maxItems": 32, "description": "Clip ids (from get_timeline) to enhance. Up to 32 clips per batch."],
+                    "scale": ["type": "string", "enum": ["2x", "4x"], "description": "Upscale scale. Omit to use the default 2x."],
+                    "approved": ["type": "boolean", "description": "Set to true to replace the originals with the enhanced media. Omit for a before/after preview only. Must not be set for clips that are already upscaled."],
+                ],
+                required: ["clipIds"]
             )
         ),
         AgentTool(

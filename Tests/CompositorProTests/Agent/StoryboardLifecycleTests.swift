@@ -48,7 +48,7 @@ struct StoryboardLifecycleTests {
         case "cancel": task.cancel()
         case "timeline": harness.editor.timeline.width += 1
         case "manifest": harness.editor.mediaManifest.folders.append(.init(name: "New folder"))
-        case "project": harness.editor.projectURL = URL(fileURLWithPath: "/isolated/changed.palmier")
+        case "project": harness.editor.projectURL = URL(fileURLWithPath: "/isolated/changed.compositorpro")
         default:
             var current = try #require(harness.editor.editPlan(id: plan.id))
             current.goal = "Changed editorial intent"
@@ -92,7 +92,7 @@ struct StoryboardLifecycleTests {
         case "cancel-run": try harness.editor.cancelProductionReview(planId: plan.id)
         case "timeline": harness.editor.timeline.width += 1
         case "manifest": harness.editor.mediaManifest.folders.append(.init(name: "Changed media"))
-        case "project": harness.editor.projectURL = URL(fileURLWithPath: "/isolated/changed.palmier")
+        case "project": harness.editor.projectURL = URL(fileURLWithPath: "/isolated/changed.compositorpro")
         default:
             var current = try #require(harness.editor.editPlan(id: plan.id))
             current.scriptBeats?[0].text = "Concurrent user edit."

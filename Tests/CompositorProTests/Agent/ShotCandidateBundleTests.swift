@@ -205,16 +205,16 @@ struct ShotCandidateBundleTests {
     }
 
     @Test func usedSourceRankingDoesNotBlockUsableCandidates() {
-        let unused1 = remoteHit(id: "pexels-video-1")
-        let unused2 = remoteHit(id: "pexels-video-2")
+        let unused1 = remoteHit(id: "pixabay-video-1")
+        let unused2 = remoteHit(id: "pixabay-video-2")
         let bundle = ShotCandidateBuilder.build(
             kind: .video, visual: [], spoken: [],
-            remote: [unused1, unused2, remoteHit(id: "pexels-video-3")],
+            remote: [unused1, unused2, remoteHit(id: "pixabay-video-3")],
             assets: [:], limit: 2, usedSourceIds: Set(["stock:pexels:1"])
         )
         #expect(bundle.candidates.count == 2)
         #expect(bundle.droppedUsable == 1)
-        #expect(bundle.candidates[0].id == "stock:pexels:pexels-video-1")
-        #expect(bundle.candidates[1].id == "stock:pexels:pexels-video-2")
+        #expect(bundle.candidates[0].id == "stock:pixabay:pixabay-video-1")
+        #expect(bundle.candidates[1].id == "stock:pixabay:pixabay-video-2")
     }
 }

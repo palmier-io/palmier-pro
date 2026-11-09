@@ -263,15 +263,15 @@ struct AgentRequestContext: Equatable, Sendable {
     let projectID: String?
 
     func apply(to request: inout URLRequest, telemetryEnabled: Bool) {
-        request.setValue(conversationID.uuidString.lowercased(), forHTTPHeaderField: "X-Palmier-Conversation-Id")
-        request.setValue(traceID.uuidString.lowercased(), forHTTPHeaderField: "X-Palmier-Trace-Id")
-        request.setValue(spanID.uuidString.lowercased(), forHTTPHeaderField: "X-Palmier-Span-Id")
-        request.setValue(inputMessageID.uuidString.lowercased(), forHTTPHeaderField: "X-Palmier-Input-Message-Id")
-        request.setValue(outputMessageID.uuidString.lowercased(), forHTTPHeaderField: "X-Palmier-Output-Message-Id")
+        request.setValue(conversationID.uuidString.lowercased(), forHTTPHeaderField: "X-Compositor-Conversation-Id")
+        request.setValue(traceID.uuidString.lowercased(), forHTTPHeaderField: "X-Compositor-Trace-Id")
+        request.setValue(spanID.uuidString.lowercased(), forHTTPHeaderField: "X-Compositor-Span-Id")
+        request.setValue(inputMessageID.uuidString.lowercased(), forHTTPHeaderField: "X-Compositor-Input-Message-Id")
+        request.setValue(outputMessageID.uuidString.lowercased(), forHTTPHeaderField: "X-Compositor-Output-Message-Id")
         if let projectID, !projectID.isEmpty {
-            request.setValue(projectID, forHTTPHeaderField: "X-Palmier-Project-Id")
+            request.setValue(projectID, forHTTPHeaderField: "X-Compositor-Project-Id")
         }
-        request.setValue(telemetryEnabled ? "1" : "0", forHTTPHeaderField: "X-Palmier-Agent-Telemetry")
+        request.setValue(telemetryEnabled ? "1" : "0", forHTTPHeaderField: "X-Compositor-Agent-Telemetry")
     }
 }
 

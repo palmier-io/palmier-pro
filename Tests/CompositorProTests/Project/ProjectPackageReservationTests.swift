@@ -15,7 +15,7 @@ struct ProjectPackageReservationTests {
             let siblings = try await fixture.io.perform {
                 try FileManager.default.contentsOfDirectory(atPath: fixture.root.path)
             }
-            #expect(siblings == ["Proof.palmier"])
+            #expect(siblings == ["Proof.compositorpro"])
         }
     }
 

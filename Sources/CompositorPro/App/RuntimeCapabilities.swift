@@ -165,7 +165,8 @@ enum RuntimeCapabilities {
         let operations: [String: RuntimeCapability] = [
             "generate_video": hosted, "generate_image": hosted, "generate_audio": hosted,
             "cloud_transcription": cloudTranscription,
-            "upscale_media": hosted, "denoise_audio": denoising, "enhance_voice": denoising,
+            "upscale_media": hosted, "enhance_media": localUpscaleCapability,
+            "denoise_audio": denoising, "enhance_voice": denoising,
             "debreath_audio": .available, "match_loudness": .available,
             "generate_drone": .available, "generate_speech": speech(local),
             "inspect_media": .available, "inspect_timeline": .available,
@@ -184,5 +185,14 @@ enum RuntimeCapabilities {
                 "A chat API key does not enable hosted media generation. Keep required source type and language explicit; report unavailable coverage instead of silently substituting.",
             ],
         ]
+    }
+
+    /// Local upscale/media enhancement capability — available when BundledSpeech trait is
+    /// enabled and MLX runtime is present. `enhance_media` works without signing in or
+    /// adding credits; UI disables it gracefully when the trait is absent.
+    static func localUpscaleCapability(bundledSpeech: Bool, runtimeAvailable: Bool) -> RuntimeCapability {
+        if !bundledSpeech { return .init(status: .unavailable, reason: .speechBuildExcluded) }
+        if !runtimeAvailable { return .init(status: .unavailable, reason: .runtimeUnavailable) }
+        return .init(status: .available)
     }
 }

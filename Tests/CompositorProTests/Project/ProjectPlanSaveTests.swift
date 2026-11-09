@@ -75,7 +75,7 @@ struct ProjectPlanSaveTests {
 
     private func document(in root: URL) -> VideoProject {
         let document = PlanSaveProject()
-        document.fileURL = root.appendingPathComponent("Proof.palmier", isDirectory: true)
+        document.fileURL = root.appendingPathComponent("Proof.compositorpro", isDirectory: true)
         document.fileType = VideoProject.typeIdentifier
         let timeline = document.editorViewModel.timeline
         document.editorViewModel.editPlans = [.init(id: "plan", name: "Plan", timelineId: timeline.id,

@@ -116,6 +116,7 @@
 "App version %@ and macOS %@ are included." = "App version %@ and macOS %@ are included.";
 "Appearance" = "Appearance";
 "Apply" = "Apply";
+"Apply to All Captions" = "Apply to All Captions";
 "Approve Storyboard" = "Approve Storyboard";
 "Ask anything, or start with:" = "Ask anything, or start with:";
 "Ask the agent" = "Ask the agent";
@@ -259,6 +260,9 @@
 "Compatibility: %@" = "Compatibility: %@";
 "Completed" = "Completed";
 "Composed images" = "Composed images";
+"Compositor Pro couldn't load this clip's source file. It may be missing, on an ejected drive, or unreadable." = "Compositor Pro couldn't load this clip's source file. It may be missing, on an ejected drive, or unreadable.";
+"Compositor Pro couldn't load this source file. It may be missing, on an ejected drive, or unreadable." = "Compositor Pro couldn't load this source file. It may be missing, on an ejected drive, or unreadable.";
+"Compositor Pro loaded this clip's source file but couldn't prepare it for playback. The file may be corrupt or in an unsupported format." = "Compositor Pro loaded this clip's source file but couldn't prepare it for playback. The file may be corrupt or in an unsupported format.";
 "Compositor Project" = "Compositor Project";
 "Connect an agent" = "Connect an agent";
 "Connect an external agent to inspect and edit the open Compositor Pro project." = "Connect an external agent to inspect and edit the open Compositor Pro project.";
@@ -848,9 +852,6 @@
 "Overlay" = "Overlay";
 "Overline" = "Overline";
 "Padding" = "Padding";
-"Palmier couldn't load this clip's source file. It may be missing, on an ejected drive, or unreadable." = "Palmier couldn't load this clip's source file. It may be missing, on an ejected drive, or unreadable.";
-"Palmier couldn't load this source file. It may be missing, on an ejected drive, or unreadable." = "Palmier couldn't load this source file. It may be missing, on an ejected drive, or unreadable.";
-"Palmier loaded this clip's source file but couldn't prepare it for playback. The file may be corrupt or in an unsupported format." = "Palmier loaded this clip's source file but couldn't prepare it for playback. The file may be corrupt or in an unsupported format.";
 "Paste" = "Paste";
 "Paste Clip Settings" = "Paste Clip Settings";
 "Paste Settings" = "Paste Settings";
@@ -929,6 +930,7 @@
 "Redo" = "Redo";
 "Redo (⇧⌘Z)" = "Redo (⇧⌘Z)";
 "Reduce steady background noise, soften breaths, and even out level. These run in the packaged app; a command-line build needs the bundled speech models enabled." = "Reduce steady background noise, soften breaths, and even out level. These run in the packaged app; a command-line build needs the bundled speech models enabled.";
+"Reels & TikTok (9:16)" = "Reels & TikTok (9:16)";
 "Reference" = "Reference";
 "Reference Image" = "Reference Image";
 "References" = "References";
@@ -1092,7 +1094,6 @@
 "Side by Side" = "Side by Side";
 "Sign In" = "Sign In";
 "Sign in" = "Sign in";
-"Sign in to receive 250 free credits for AI chat and generation." = "Sign in to receive 250 free credits for AI chat and generation.";
 "Sign in to use AI" = "Sign in to use AI";
 "Sign in to use AI chat." = "Sign in to use AI chat.";
 "Sign in to use Cloud transcription." = "Sign in to use Cloud transcription.";
@@ -1100,8 +1101,6 @@
 "Sign in to use hosted generation." = "Sign in to use hosted generation.";
 "Sign in with Google" = "Sign in with Google";
 "Sign-in couldn’t be completed. Try again." = "Sign-in couldn’t be completed. Try again.";
-"Signed in" = "Signed in";
-"Signed out" = "Signed out";
 "Silence Detection" = "Silence Detection";
 "Size" = "Size";
 "Skill actions" = "Skill actions";
@@ -1222,7 +1221,7 @@
 "This is where all your footage and assets live." = "This is where all your footage and assets live.";
 "This is your preview panel to play a selected media or the whole timeline." = "This is your preview panel to play a selected media or the whole timeline.";
 "This model cannot cap the output at 60 FPS." = "This model cannot cap the output at 60 FPS.";
-"This model needs a hosted Palmier account, which this build does not use. Add your own API key in Settings, or pick a custom endpoint." = "This model needs a hosted Palmier account, which this build does not use. Add your own API key in Settings, or pick a custom endpoint.";
+"This model needs a hosted account, which this build does not use. Add your own API key in Settings, or pick a custom endpoint." = "This model needs a hosted account, which this build does not use. Add your own API key in Settings, or pick a custom endpoint.";
 "This permanently removes %@." = "This permanently removes %@.";
 "This source can’t replace the clip." = "This source can’t replace the clip.";
 "Three-Stack" = "Three-Stack";
@@ -1323,7 +1322,6 @@
 "Video to Music" = "Video to Music";
 "View" = "View";
 "View Skills" = "View Skills";
-"View plans" = "View plans";
 "Vignette" = "Vignette";
 "Visual" = "Visual";
 "Visual search is disabled in Settings." = "Visual search is disabled in Settings.";
@@ -1367,6 +1365,7 @@
 "You were not charged for this generation" = "You were not charged for this generation";
 "You're all set" = "You're all set";
 "YouTube" = "YouTube";
+"YouTube (16:9)" = "YouTube (16:9)";
 "Your Lottie animation is ready." = "Your Lottie animation is ready.";
 "Your audio clip is ready." = "Your audio clip is ready.";
 "Your image is ready." = "Your image is ready.";

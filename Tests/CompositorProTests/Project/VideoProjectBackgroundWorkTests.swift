@@ -207,7 +207,7 @@ struct VideoProjectBackgroundWorkTests {
             case .assetURL: original.url = source.appendingPathExtension("new")
             case .assetReplacement: editor.mediaAssets = [MediaAsset(entry: item, resolvedURL: source)]
             case .generation: original.generationStatus = .rendering
-            case .project: editor.projectURL = fixture.root.appendingPathComponent("New.palmier")
+            case .project: editor.projectURL = fixture.root.appendingPathComponent("New.compositorpro")
             }
             release.signal()
             await editor.projectPackageCoordinator.waitUntilIdle()
@@ -324,7 +324,7 @@ struct VideoProjectBackgroundWorkTests {
             case .assetURL: original.url = source.appendingPathExtension("new")
             case .assetReplacement: editor.mediaAssets = [MediaAsset(entry: editor.mediaManifest.entries[0], resolvedURL: source)]
             case .generation: original.generationStatus = .rendering
-            case .project: editor.projectURL = fixture.root.appendingPathComponent("New.palmier")
+            case .project: editor.projectURL = fixture.root.appendingPathComponent("New.compositorpro")
             }
             release.signal()
             await editor.projectPackageCoordinator.waitUntilIdle()

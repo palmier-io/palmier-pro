@@ -11,7 +11,7 @@ struct CompositorProjectExportTests {
     /// clip that exists, one external clip whose file is gone. Returns (source, dest, externalURL).
     private func makeFixture() throws -> (root: URL, source: URL, dest: URL, externalContents: String) {
         let root = fm.temporaryDirectory.appendingPathComponent("pp-export-\(UUID().uuidString)", isDirectory: true)
-        let source = root.appendingPathComponent("Source.palmier", isDirectory: true)
+        let source = root.appendingPathComponent("Source.compositorpro", isDirectory: true)
         let sourceMedia = source.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
         try fm.createDirectory(at: sourceMedia, withIntermediateDirectories: true)
 
@@ -21,7 +21,7 @@ struct CompositorProjectExportTests {
         let externalContents = "EXTERNAL-BYTES"
         try Data(externalContents.utf8).write(to: root.appendingPathComponent("external-clip.mov"))
 
-        return (root, source, root.appendingPathComponent("Packaged.palmier", isDirectory: true), externalContents)
+        return (root, source, root.appendingPathComponent("Packaged.compositorpro", isDirectory: true), externalContents)
     }
 
     private func manifest(externalPath: String) -> MediaManifest {

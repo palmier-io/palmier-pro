@@ -47,7 +47,7 @@ final class SampleProjectService {
 
     // MARK: - Materialization
 
-    /// Builds a new `.palmier` package for `slug` and returns its URL. Reports
+    /// Builds a new `.compositorpro` package for `slug` and returns its URL. Reports
     /// download progress (0...1) on the main actor. Cleans up a partial package
     /// if anything fails.
     func materialize(slug: String, onProgress: @escaping (Double) -> Void) async throws -> URL {

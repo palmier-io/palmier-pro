@@ -70,7 +70,7 @@ actor ProxyStore {
     private var tokens: [String: ProxyCancellationToken] = [:]
 
     /// Proxies are a cache, not project state: they live in the app's caches directory so
-    /// closing a project can never orphan them inside a `.palmier` package.
+    /// closing a project can never orphan them inside a `.compositorpro` package.
     static let diskCache = DiskCache(named: "Proxies")
 
     init(root: URL = ProxyStore.diskCache.directory) {

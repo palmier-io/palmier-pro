@@ -36,7 +36,7 @@ final class MCPService {
         let httpServer = MCPHTTPServer(port: Self.port) { [self] in
             let toolExecutor = await makeSessionToolExecutor()
             let server = Server(
-                name: "palmier-pro",
+                name: "compositor-pro",
                 version: "1.0.0",
                 instructions: AgentInstructions.serverInstructions + AgentInstructions.projectNavigation,
                 capabilities: .init(
@@ -101,13 +101,13 @@ final class MCPService {
         let resources = [
             Resource(
                 name: "Video Models",
-                uri: "palmier://models/video",
+                uri: "compositor://models/video",
                 description: "Available AI video generation models and their capabilities",
                 mimeType: "application/json"
             ),
             Resource(
                 name: "Image Models",
-                uri: "palmier://models/image",
+                uri: "compositor://models/image",
                 description: "Available AI image generation models and their capabilities",
                 mimeType: "application/json"
             ),
@@ -125,10 +125,10 @@ final class MCPService {
     @MainActor
     private static func readResource(uri: String) -> ReadResource.Result {
         switch uri {
-        case "palmier://models/video":
+        case "compositor://models/video":
             let json = ToolExecutor.jsonString(VideoModelConfig.allModels.map { ToolExecutor.videoModelInfo($0) }) ?? "[]"
             return .init(contents: [.text(json, uri: uri, mimeType: "application/json")])
-        case "palmier://models/image":
+        case "compositor://models/image":
             let json = ToolExecutor.jsonString(ImageModelConfig.allModels.map { ToolExecutor.imageModelInfo($0) }) ?? "[]"
             return .init(contents: [.text(json, uri: uri, mimeType: "application/json")])
         default:

@@ -49,7 +49,7 @@ struct ProjectAccessibilityTests {
 
     @Test func unreadableOrRemoteLocationsAreUnavailable() async throws {
         let file = makeKey()
-        let remote = makeKey(url: try #require(URL(string: "https://example.invalid/project.palmier")))
+        let remote = makeKey(url: try #require(URL(string: "https://example.invalid/project.compositorpro")))
         let probe = AccessibilityReadProbe()
         let unreadable = try await ProjectAccessibility.check([file]) { _ in false }
         let unsupported = try await ProjectAccessibility.check([remote], read: probe.read)
@@ -61,7 +61,7 @@ struct ProjectAccessibilityTests {
     @Test func freshBatchDetectsFileRemovalAndRestorationWithoutCachedMetadata() async throws {
         let files = AccessibilityTestFiles()
         let root = try await files.makeRoot()
-        let url = root.appendingPathComponent("Project.palmier", isDirectory: true)
+        let url = root.appendingPathComponent("Project.compositorpro", isDirectory: true)
         let key = makeKey(url: url)
         do {
             try await files.createDirectory(url)
@@ -131,7 +131,7 @@ struct ProjectAccessibilityTests {
         let files = AccessibilityTestFiles()
         let root = try await files.makeRoot()
         let entry = ProjectEntry(
-            id: UUID(), url: root.appendingPathComponent("Restored.palmier"),
+            id: UUID(), url: root.appendingPathComponent("Restored.compositorpro"),
             createdDate: Date(), lastOpenedDate: Date()
         )
         let fileURL = root.appendingPathComponent("registry.json")
@@ -163,7 +163,7 @@ struct ProjectAccessibilityTests {
         let executor = ToolExecutor(projectProvider: { nil }, stockProviders: [])
         #expect(executor.projectRegistry == nil)
         #expect(executor.projectAccessibilityCheck == nil)
-        let path = "/fixture-\(UUID().uuidString).palmier"
+        let path = "/fixture-\(UUID().uuidString).compositorpro"
         #expect(try await executor.resolveProjectURL(.path(path)) == URL(fileURLWithPath: path))
     }
 
@@ -245,7 +245,7 @@ struct ProjectAccessibilityTests {
         try await files.remove(fixture.root)
     }
 
-    private func makeKey(url: URL = URL(fileURLWithPath: "/project-\(UUID().uuidString).palmier")) -> ProjectAccessibility.Key {
+    private func makeKey(url: URL = URL(fileURLWithPath: "/project-\(UUID().uuidString).compositorpro")) -> ProjectAccessibility.Key {
         .init(ProjectEntry(id: UUID(), url: url, createdDate: Date(), lastOpenedDate: Date()))
     }
 }
@@ -308,7 +308,7 @@ private actor AccessibilityTestFiles {
         #expect(!Thread.isMainThread)
         let root = try makeRoot()
         do {
-            let url = root.appendingPathComponent("Restored.palmier", isDirectory: false)
+            let url = root.appendingPathComponent("Restored.compositorpro", isDirectory: false)
             let date = Date(timeIntervalSince1970: 1)
             let entry = ProjectEntry(id: UUID(), url: url, createdDate: date, lastOpenedDate: date)
             let registryURL = root.appendingPathComponent("registry.json", isDirectory: false)
@@ -317,7 +317,7 @@ private actor AccessibilityTestFiles {
             return AccessibilityRegistryDirectoryFixture(
                 root: root, registryURL: registryURL, entry: entry,
                 directoryURL: URL(fileURLWithPath: url.path, isDirectory: true),
-                destinationURL: root.appendingPathComponent("Renamed.palmier", isDirectory: false)
+                destinationURL: root.appendingPathComponent("Renamed.compositorpro", isDirectory: false)
             )
         } catch {
             try remove(root)

@@ -200,7 +200,7 @@ struct FCPXMLExporterTests {
             .components(separatedBy: "</asset>").first ?? ""
 
         #expect(!asset.contains("uid="))
-        #expect(!xml.contains("io.palmier.media.asset"))
+        #expect(!xml.contains("io.compositorpro.media.asset"))
     }
 
     @Test func oneSidedAvClipWrapsAssetInFullMediaCompoundClip() async throws {

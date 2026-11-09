@@ -59,7 +59,7 @@ extension ToolExecutor {
                 if !job.warnings.isEmpty {
                     row["warnings"] = job.warnings
                 }
-                if let report = job.palmierReport {
+                if let report = job.compositorReport {
                     row["result"] = report.toolPayload
                 }
                 return row
@@ -121,7 +121,7 @@ extension ToolExecutor {
 
         let timeline: Timeline
         if let id = input.timelineId {
-            guard mode != .palmier else {
+            guard mode != .compositor else {
                 throw ToolError("export_project: timelineId doesn't apply to palmier mode — the package carries every timeline")
             }
             guard let t = editor.timeline(for: id) else {
@@ -200,8 +200,8 @@ extension ToolExecutor {
                 editor, timeline: timeline, mode: mode, format: .fcpxml,
                 resolution: .matchTimeline, target: target, outputURL: outputURL
             )
-        case .palmier:
-            return try enqueuePalmierExport(editor, outputURL: outputURL)
+        case .compositor:
+            return try enqueueCompositorExport(editor, outputURL: outputURL)
         }
     }
 
@@ -265,7 +265,7 @@ extension ToolExecutor {
         return ["\(dropped) nested timeline \(clips) skipped because the source timeline is empty or missing."]
     }
 
-    private func enqueuePalmierExport(_ editor: EditorViewModel, outputURL: URL) throws -> ToolResult {
+    private func enqueueCompositorExport(_ editor: EditorViewModel, outputURL: URL) throws -> ToolResult {
         let submission = try exportQueue.enqueueCompositorProject(
             projectFile: editor.projectFileSnapshot(),
             manifest: editor.mediaManifest,
@@ -280,7 +280,7 @@ extension ToolExecutor {
             "status": submission.started ? "started" : "queued",
             "jobId": submission.jobID.uuidString,
             "queuePosition": submission.queuePosition,
-            "mode": ExportProjectMode.palmier.rawValue,
+            "mode": ExportProjectMode.compositor.rawValue,
             "path": outputURL.path,
             "note": "The export is available in the Export dialog.",
         ]
@@ -325,7 +325,7 @@ extension ToolExecutor {
         var isDirectory = ObjCBool(false)
         if fm.fileExists(atPath: expanded, isDirectory: &isDirectory),
            isDirectory.boolValue,
-           !(mode == .palmier && rawExtension == expectedExtension) {
+           !(mode == .compositor && rawExtension == expectedExtension) {
             throw ToolError("export_project: outputPath must include a filename")
         }
 
@@ -411,15 +411,16 @@ private enum ExportProjectMode: String {
     case video
     case xml
     case fcpxml
-    case palmier
+    case compositor
 
     init(named raw: String?) throws {
         guard let raw else {
             self = .video
             return
         }
-        guard let mode = Self(rawValue: raw.normalizedExportOption) else {
-            throw ToolError("export_project: mode must be video, xml, fcpxml, or palmier")
+        let normalized = raw == "palmier" ? ExportProjectMode.compositor.rawValue : raw
+        guard let mode = Self(rawValue: normalized.normalizedExportOption) else {
+            throw ToolError("export_project: mode must be video, xml, fcpxml, or compositor")
         }
         self = mode
     }
@@ -429,7 +430,7 @@ private enum ExportProjectMode: String {
         case .video: format?.fileExtension ?? ExportFormat.h264.fileExtension
         case .xml: "xml"
         case .fcpxml: "fcpxml"
-        case .palmier: Project.fileExtension
+        case .compositor: Project.fileExtension
         }
     }
 
@@ -444,7 +445,7 @@ private enum ExportProjectMode: String {
         case .video: format?.displayName ?? "Video"
         case .xml: "XML"
         case .fcpxml: "FCPXML"
-        case .palmier: "Compositor Project"
+        case .compositor: "Compositor Project"
         }
     }
 }

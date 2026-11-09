@@ -38,7 +38,7 @@ struct VideoProjectLoadTests {
 
     private func makeBundle(tracks: Int = 1) throws -> URL {
         let bundle = fm.temporaryDirectory
-            .appendingPathComponent("vp-load-\(UUID().uuidString).palmier", isDirectory: true)
+            .appendingPathComponent("vp-load-\(UUID().uuidString).compositorpro", isDirectory: true)
         try fm.createDirectory(at: bundle, withIntermediateDirectories: true)
         let timeline = Fixtures.timeline(
             tracks: (0..<tracks).map { _ in Fixtures.videoTrack(clips: [Fixtures.clip(start: 0, duration: 30)]) }
@@ -220,7 +220,7 @@ struct VideoProjectLoadTests {
     @Test func missingTimelineStillThrows() throws {
         // project.json is the required file — degrading it would hide real corruption.
         let bundle = fm.temporaryDirectory
-            .appendingPathComponent("vp-empty-\(UUID().uuidString).palmier", isDirectory: true)
+            .appendingPathComponent("vp-empty-\(UUID().uuidString).compositorpro", isDirectory: true)
         try fm.createDirectory(at: bundle, withIntermediateDirectories: true)
         defer { try? fm.removeItem(at: bundle) }
 
@@ -272,7 +272,7 @@ struct VideoProjectLoadTests {
         try original.write(to: source.appendingPathComponent(Project.manifestFilename))
 
         let dest = fm.temporaryDirectory
-            .appendingPathComponent("vp-dest-\(UUID().uuidString).palmier", isDirectory: true)
+            .appendingPathComponent("vp-dest-\(UUID().uuidString).compositorpro", isDirectory: true)
         defer { try? fm.removeItem(at: dest) }
 
         let snapshot = ProjectPackageSnapshot(

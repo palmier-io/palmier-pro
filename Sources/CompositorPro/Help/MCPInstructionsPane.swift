@@ -18,7 +18,7 @@ struct MCPInstructionsPane: View {
         """
         {
           "mcpServers": {
-            "palmier-pro": {
+            "compositor-pro": {
               "type": "http",
               "url": "\(mcpEndpoint)"
             }

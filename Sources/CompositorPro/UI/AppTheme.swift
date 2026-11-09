@@ -10,23 +10,25 @@ enum AppTheme {
     }
 
     // MARK: - Backgrounds
+    // Compositor Pro own identity (R3): cool slate stack with teal accent, distinct
+    // from the  warm-neutral inherited skin.
 
     enum Background {
         static let base = AppTheme.adaptive(
-            light: NSColor(red: 241/255, green: 240/255, blue: 237/255, alpha: 1),
-            dark: NSColor(red: 24/255, green: 25/255, blue: 28/255, alpha: 1)
+            light: NSColor(red: 238/255, green: 241/255, blue: 244/255, alpha: 1),
+            dark: NSColor(red: 15/255, green: 23/255, blue: 25/255, alpha: 1)
         )
         static let surface = AppTheme.adaptive(
-            light: NSColor(red: 245/255, green: 244/255, blue: 241/255, alpha: 1),
-            dark: NSColor(red: 30/255, green: 31/255, blue: 35/255, alpha: 1)
+            light: NSColor(red: 228/255, green: 233/255, blue: 238/255, alpha: 1),
+            dark: NSColor(red: 21/255, green: 32/255, blue: 36/255, alpha: 1)
         )
         static let raised = AppTheme.adaptive(
-            light: NSColor(red: 249/255, green: 248/255, blue: 245/255, alpha: 1),
-            dark: NSColor(red: 38/255, green: 39/255, blue: 44/255, alpha: 1)
+            light: NSColor(red: 220/255, green: 228/255, blue: 235/255, alpha: 1),
+            dark: NSColor(red: 27/255, green: 42/255, blue: 48/255, alpha: 1)
         )
         static let prominent = AppTheme.adaptive(
-            light: NSColor(red: 252/255, green: 251/255, blue: 248/255, alpha: 1),
-            dark: NSColor(red: 48/255, green: 49/255, blue: 55/255, alpha: 1)
+            light: NSColor(red: 255/255, green: 255/255, blue: 255/255, alpha: 1),
+            dark: NSColor(red: 36/255, green: 53/255, blue: 61/255, alpha: 1)
         )
 
         /// Alias — empty media slot is a raised plate.
@@ -82,32 +84,34 @@ enum AppTheme {
     // MARK: - Accent
 
     enum Accent {
-        static let timecodeNSColor = AppTheme.adaptive(
-            light: NSColor(red: 0.58, green: 0.29, blue: 0.02, alpha: 1),
-            dark: NSColor(red: 0.95, green: 0.6, blue: 0.2, alpha: 1)
-        )
-        static let timecodeColor = Color(timecodeNSColor)
-
+        /// Deep teal identity accent — own product hue distinct from the
+        /// inherited amber/grey skin (R3).
         static let primaryNSColor = AppTheme.adaptive(
-            light: NSColor(red: 48/255, green: 48/255, blue: 48/255, alpha: 1),
-            dark: NSColor(red: 236/255, green: 236/255, blue: 236/255, alpha: 1)
+            light: NSColor(srgbRed: 0.0, green: 0.48, blue: 0.53, alpha: 1),
+            dark: NSColor(srgbRed: 0.22, green: 0.85, blue: 0.92, alpha: 1)
         )
         static let primary = Color(primaryNSColor)
 
+        static let timecodeNSColor = AppTheme.adaptive(
+            light: NSColor(red: 0.42, green: 0.30, blue: 0.02, alpha: 1),
+            dark: NSColor(red: 0.91, green: 0.68, blue: 0.23, alpha: 1)
+        )
+        static let timecodeColor = Color(timecodeNSColor)
+
         static let playheadNSColor = AppTheme.adaptive(
-            light: NSColor(srgbRed: 1.0, green: 0.18, blue: 0.16, alpha: 1),
-            dark: NSColor(srgbRed: 1.0, green: 0.32, blue: 0.30, alpha: 1)
+            light: NSColor(srgbRed: 0.93, green: 0.16, blue: 0.14, alpha: 1),
+            dark: NSColor(srgbRed: 1.0, green: 0.36, blue: 0.33, alpha: 1)
         )
 
         static let link = Color(nsColor: .linkColor)
 
         /// Vibrant highlight used by the onboarding tour spotlight.
-        static let spotlight = Color(red: 1.0, green: 0.27, blue: 0.27)
+        static let spotlight = Color(red: 0.0, green: 0.62, blue: 0.74)
         static let spotlightGradient = LinearGradient(
             colors: [
-                Color(red: 1.0, green: 0.34, blue: 0.30),
-                Color(red: 0.95, green: 0.15, blue: 0.28),
-                Color(red: 1.0, green: 0.48, blue: 0.22),
+                Color(red: 0.0, green: 0.62, blue: 0.74),
+                Color(red: 0.1, green: 0.75, blue: 0.9),
+                Color(red: 0.3, green: 0.9, blue: 1.0),
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing

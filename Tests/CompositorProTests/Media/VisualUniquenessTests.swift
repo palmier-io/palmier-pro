@@ -235,7 +235,7 @@ struct VisualUniquenessTests {
         case "timeline": editor.timeline.name = "Changed"
         case "manifest": editor.mediaManifest.entries.append(entry())
         case "selection": editor.activeTimelineId = "other"
-        case "project": editor.projectURL = URL(fileURLWithPath: "/changed/project.palmier")
+        case "project": editor.projectURL = URL(fileURLWithPath: "/changed/project.compositorpro")
         default: task.cancel()
         }
         release.continuation.yield(())

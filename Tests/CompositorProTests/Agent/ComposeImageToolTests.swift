@@ -15,7 +15,7 @@ struct ComposeImageToolTests {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             return dir
         }.value
-        harness.editor.projectURL = root.appendingPathComponent("Test.palmier")
+        harness.editor.projectURL = root.appendingPathComponent("Test.compositorpro")
 
         var refs: [String] = []
         for index in 0 ..< count {

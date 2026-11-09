@@ -1,7 +1,7 @@
 import AVFoundation
 
 extension AVVideoComposition {
-    func palmierConfiguration() -> AVVideoComposition.Configuration {
+    func compositorConfiguration() -> AVVideoComposition.Configuration {
         var config = AVVideoComposition.Configuration()
         config.customVideoCompositorClass = customVideoCompositorClass
         config.frameDuration = frameDuration

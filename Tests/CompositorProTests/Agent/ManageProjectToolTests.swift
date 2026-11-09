@@ -42,8 +42,8 @@ struct ManageProjectToolTests {
         let harness = ToolHarness()
         let cases: [[String: Any]] = [
             ["action": "open"],
-            ["action": "open", "name": "A", "path": "/tmp/A.palmier"],
-            ["action": "close", "id": "A", "path": "/tmp/A.palmier"],
+            ["action": "open", "name": "A", "path": "/tmp/A.compositorpro"],
+            ["action": "close", "id": "A", "path": "/tmp/A.compositorpro"],
             ["action": "open", "name": ""],
             ["action": "close", "path": "   "],
             ["action": "open", "id": "not-a-project-id"],

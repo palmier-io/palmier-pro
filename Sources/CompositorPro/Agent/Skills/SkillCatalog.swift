@@ -1,6 +1,6 @@
 import Foundation
 
-/// One entry in the published catalog.json. `sha` is a content hash of the SKILL.md
+/// One entry in a skill catalog. `sha` is a content hash of the SKILL.md
 /// and is the version anchor: a changed sha means an update is available.
 struct SkillCatalogEntry: Codable, Identifiable, Sendable {
     let id: String
@@ -10,17 +10,19 @@ struct SkillCatalogEntry: Codable, Identifiable, Sendable {
     let path: String
 }
 
-/// Fetches the community skill catalog from the palmier-skills repo (raw GitHub CDN)
+/// Reads skills from a local catalog file only. The hosted community catalog
+/// was removed in the backend teardown (R1); use COMPOSITOR_SKILLS_BASE to
+/// point at a local file:// mirror.
 @Observable
 @MainActor
 final class SkillCatalog {
     static let shared = SkillCatalog()
 
-    /// Catalog source. Override with the PALMIER_SKILLS_BASE env var to test against a
-    /// local clone, e.g. file:///path/to/palmier-skills.
+    /// Catalog source. Override with the COMPOSITOR_SKILLS_BASE env var to test against a
+    /// local clone, e.g. file:///path/compositor-skills.
     static var base: String {
-        ProcessInfo.processInfo.environment["PALMIER_SKILLS_BASE"]
-            ?? "https://raw.githubusercontent.com/palmier-io/palmier-skills/main"
+        ProcessInfo.processInfo.environment["COMPOSITOR_SKILLS_BASE"]
+            ?? ""
     }
 
     private(set) var entries: [SkillCatalogEntry] = []
@@ -46,7 +48,9 @@ final class SkillCatalog {
 
     @discardableResult
     func refresh() async -> Bool {
-        guard !isLoading, let url = URL(string: "\(Self.base)/catalog.json") else { return false }
+        // Local-only: read the configured file:// mirror, never the network.
+        guard !isLoading, !Self.base.isEmpty, let url = URL(string: "\(Self.base)/catalog.json"),
+              url.isFileURL else { return false }
         isLoading = true
         defer { isLoading = false }
         do {
@@ -66,13 +70,9 @@ final class SkillCatalog {
         }
     }
 
-    /// Reads a catalog/body URL. File URLs are read directly
+    /// Reads a catalog/body file. Network URLs are refused.
     static func fetch(_ url: URL) async throws -> Data {
-        if url.isFileURL { return try Data(contentsOf: url) }
-        let (data, response) = try await URLSession.shared.data(from: url)
-        if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-            throw URLError(.badServerResponse)
-        }
-        return data
+        guard url.isFileURL else { throw URLError(.badServerResponse) }
+        return try Data(contentsOf: url)
     }
 }

@@ -52,8 +52,8 @@ struct BeatStoreTests {
     @Test func urlChangeRestartsHydrationWithCurrentURL() async throws {
         let loader = ControlledBeatCacheLoader()
         let store = makeStore(loader: loader)
-        let originalURL = URL(fileURLWithPath: "/tmp/original.palmier/Media/audio.wav")
-        let rebasedURL = URL(fileURLWithPath: "/tmp/rebased.palmier/Media/audio.wav")
+        let originalURL = URL(fileURLWithPath: "/tmp/original.compositorpro/Media/audio.wav")
+        let rebasedURL = URL(fileURLWithPath: "/tmp/rebased.compositorpro/Media/audio.wav")
         let asset = makeAsset(url: originalURL)
         let stale = BeatAnalysis(bpm: 90, beats: [0.5], downbeats: [])
         let current = BeatAnalysis(bpm: 120, beats: [1], downbeats: [1])
@@ -113,8 +113,8 @@ struct BeatStoreTests {
                 await tagLoader.load(sourceURL: sourceURL)
             }
         )
-        let originalURL = URL(fileURLWithPath: "/tmp/original.palmier/Media/audio.wav")
-        let rebasedURL = URL(fileURLWithPath: "/tmp/rebased.palmier/Media/audio.wav")
+        let originalURL = URL(fileURLWithPath: "/tmp/original.compositorpro/Media/audio.wav")
+        let rebasedURL = URL(fileURLWithPath: "/tmp/rebased.compositorpro/Media/audio.wav")
         let asset = makeAsset(url: originalURL)
         let analysis = BeatAnalysis(bpm: 120, beats: [0.5], downbeats: [0.5])
 

@@ -328,7 +328,7 @@ struct ShotCandidateExclusionMCPTests {
             harness.editor.undo.attach(undo)
             try await withProviderRequest(client, gate: gate) { request in
                 switch change {
-                case "project": harness.editor.projectURL = URL(fileURLWithPath: "/fixture/\(UUID().uuidString).palmier")
+                case "project": harness.editor.projectURL = URL(fileURLWithPath: "/fixture/\(UUID().uuidString).compositorpro")
                 case "plan": harness.editor.editPlans[0].notes = "Changed during retrieval"
                 case "source": source.inputIdentity = .init(contentSHA256: String(repeating: "c", count: 64), byteCount: 100)
                 default: source.url = URL(fileURLWithPath: "/fixture/\(UUID().uuidString).mov")

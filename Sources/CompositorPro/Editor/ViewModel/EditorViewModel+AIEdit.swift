@@ -130,6 +130,18 @@ extension EditorViewModel {
         seedGenerationPanel(asset: asset, stored: stored, replacementClipId: clipId)
     }
 
+    func beginAIEnhance(clipId: String) {
+        guard let (_, asset) = aiEditClipAsset(clipId) else { return }
+        let candidates = UpscaleModelConfig.models(for: asset.type)
+        guard let selected = candidates.first(where: { $0.supports(source: asset) }) else { return }
+        seedGenerationPanel(
+            asset: asset,
+            stored: EditSubmitter.upscaleSeed(for: asset, model: selected),
+            replacementClipId: clipId,
+            trimmedSource: aiEditTrimmedSource(clipId: clipId)
+        )
+    }
+
     func seedGenerationPanel(
         asset: MediaAsset,
         stored: GenerationInput,

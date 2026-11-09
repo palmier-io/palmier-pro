@@ -324,7 +324,7 @@ struct FolderEdgeCaseTests {
 
 // MARK: - Drag payload contract
 
-/// Locks in the `palmier-asset://` / `palmier-folder://` sentinel schemes that
+/// Locks in the `compositor-asset://` / `compositor-folder://` sentinel schemes that
 /// keep in-panel drags distinguishable from Finder file URLs. The 35586d4 fix
 /// switched the asset payload from a raw file:// URL to this scheme — if it
 /// reverts, the file-URL conformance check in handleProviderDrop would

@@ -169,7 +169,7 @@ struct MediaInputIdentityMCPTests {
         let directory = try await MediaInputIdentityFixtures.makeFiles()
         let harness = ToolHarness()
         harness.editor.timeline.settingsConfigured = true
-        harness.editor.projectURL = directory.appendingPathComponent("Identity.palmier")
+        harness.editor.projectURL = directory.appendingPathComponent("Identity.compositorpro")
         let server = Server(name: "media-identity", version: "1", capabilities: .init(tools: .init(listChanged: false)))
         await MCPService.registerTools(on: server, executor: harness.executor)
         let transports = await InMemoryTransport.createConnectedPair()

@@ -26,7 +26,7 @@ struct PackageTestFixture: Sendable {
     let io: ProjectPackageIO
     let registry: ProjectRegistry
 
-    var package: URL { root.appendingPathComponent("Proof.palmier", isDirectory: true) }
+    var package: URL { root.appendingPathComponent("Proof.compositorpro", isDirectory: true) }
 
     func stage(_ data: Data = Data("MEDIA".utf8)) async throws -> URL {
         let url = root.appendingPathComponent("stage-\(UUID().uuidString)")

@@ -18,11 +18,11 @@ struct MomentDragTests {
     }
 
     @Test func malformedSegmentsRejected() {
-        #expect(MediaTab.assetSegment(fromDragString: "palmier-asset://x#5-2") == nil)
-        #expect(MediaTab.assetSegment(fromDragString: "palmier-asset://x#-1-2") == nil)
-        #expect(MediaTab.assetSegment(fromDragString: "palmier-asset://x#junk") == nil)
-        #expect(MediaTab.assetSegment(fromDragString: "palmier-folder://x#1-2") == nil)
-        #expect(MediaTab.assetId(fromDragString: "palmier-asset://x#junk") == "x")
+        #expect(MediaTab.assetSegment(fromDragString: "compositor-asset://x#5-2") == nil)
+        #expect(MediaTab.assetSegment(fromDragString: "compositor-asset://x#-1-2") == nil)
+        #expect(MediaTab.assetSegment(fromDragString: "compositor-asset://x#junk") == nil)
+        #expect(MediaTab.assetSegment(fromDragString: "compositor-folder://x#1-2") == nil)
+        #expect(MediaTab.assetId(fromDragString: "compositor-asset://x#junk") == "x")
     }
 
     @Test func zeroPrefixedFractionsParse() {

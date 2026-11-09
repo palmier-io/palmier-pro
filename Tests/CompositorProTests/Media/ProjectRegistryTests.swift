@@ -25,7 +25,7 @@ struct ProjectRegistryTests {
             let registry = fixture.registry()
             try await registry.waitUntilLoaded()
 
-            registry.register(url.deletingLastPathComponent().appendingPathComponent("./Test.palmier"))
+            registry.register(url.deletingLastPathComponent().appendingPathComponent("./Test.compositorpro"))
 
             #expect(registry.entries.count == 1)
             #expect(registry.entries.first?.id == entry.id)
@@ -97,7 +97,7 @@ struct ProjectRegistryTests {
 
             registry.remove(fixture.project("Unknown"))
             registry.updateURL(from: fixture.project("Unknown"), to: fixture.project("Other"))
-            registry.updateURL(from: url, to: url.deletingLastPathComponent().appendingPathComponent("./Existing.palmier"))
+            registry.updateURL(from: url, to: url.deletingLastPathComponent().appendingPathComponent("./Existing.compositorpro"))
             try await registry.flush()
 
             #expect(registry.entries == [entry])
@@ -267,7 +267,7 @@ struct ProjectRegistryTests {
 
     @Test func projectEntryDerivesNameFromURL() {
         let entry = ProjectEntry(
-            id: UUID(), url: URL(fileURLWithPath: "/MyProject.palmier"),
+            id: UUID(), url: URL(fileURLWithPath: "/MyProject.compositorpro"),
             createdDate: Date(), lastOpenedDate: Date()
         )
         #expect(entry.name == "MyProject")

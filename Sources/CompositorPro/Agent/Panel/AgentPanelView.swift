@@ -405,7 +405,7 @@ struct AgentPanelView: View {
         case .unauthenticated:
             HostedServices.enabled
                 ? L10n.string("Sign in to use AI chat.")
-                : L10n.string("This model needs a hosted Palmier account, which this build does not use. Add your own API key in Settings, or pick a custom endpoint.")
+                : L10n.string("This model needs a hosted account, which this build does not use. Add your own API key in Settings, or pick a custom endpoint.")
         case .insufficientCredits(let message), .upstream(let message), .httpError(_, _, let message):
             message
         case .unavailable(let model):

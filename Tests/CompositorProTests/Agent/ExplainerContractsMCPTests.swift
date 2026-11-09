@@ -86,7 +86,7 @@ struct ExplainerContractsMCPTests {
                 "planId": .string("missing"), "commit": .bool(true),
             ])
             #expect(invalid.isError == true)
-            harness.editor.projectURL = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).palmier")
+            harness.editor.projectURL = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).compositorpro")
             let unsupported = try await client.callTool(name: "import_media", arguments: [
                 "source": .object(["bytes": .string("e30="), "mimeType": .string("application/unknown")]),
             ])

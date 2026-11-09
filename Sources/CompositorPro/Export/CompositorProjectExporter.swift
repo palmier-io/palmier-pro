@@ -1,6 +1,6 @@
 import Foundation
 
-/// Writes a self-contained `.palmier` package: every resolvable media reference is copied
+/// Writes a self-contained `.compositorpro` package: every resolvable media reference is copied
 /// into the new bundle's `media/` directory and rewritten to a project-relative source
 enum CompositorProjectExporter {
 

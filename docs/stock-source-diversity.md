@@ -44,6 +44,22 @@ Public documentation consulted for this implementation:
 
 Provider row-size bounds are request sizing, not silent adjustment of the user's validated result limit. A small Openverse page and a three-page budget can legitimately yield fewer than 50 eligible hits; the receipt retains any remaining continuation.
 
+## Delivery history
+
+`StockDeliveryHistory` is a bounded (50 entries) recent-output usage history persisted in `UserDefaults` under `compositor.pro.delivery-history`. Each entry records the output filename, the delivered-at date, and the canonical source identities used.
+
+Recording rules:
+
+- Only a job whose terminal status is `.completed` records a delivery (`ExportQueue.run`). Failed and canceled exports never pollute the history, so a retry does not deprioritize sources it did not actually deliver.
+- `enqueueVideo` captures `StockDeliveryHistory.sourceIds(resolver:timeline:)` at enqueue time: only the manifest entries the resolver actually resolved for clips on the exported timeline count. Unresolved media and manifest entries the timeline never referenced do not reach the history.
+- `enqueueCompositorProject` captures `StockDeliveryHistory.sourceIds(manifest:)`, since the delivered package carries the whole manifest.
+- Identities come from `VisualSourceAliases.sourceIds`: `media:<mediaRef>`, valid `sha256:<hash>`, and `stock:<provider>:<assetId>`.
+
+Consumption:
+
+- `find_shot_candidates` loads the history and passes `usedSourceIds` to `ShotCandidateBuilder.build`. Remote candidates whose canonical source appears in the history sort after unused ones; used sources remain fully eligible. This is a ranking signal only, not an exclusion: the hard no-repeat rule for a single output stays with the visual-uniqueness audit, and there is no global or permanent ban across projects.
+- The shortlist limit applies after ranking, so a heavily used history cannot starve usable candidates or pad the list with unusable ones.
+
 ## Verification and remaining work
 
 Offline tests cover canonical exclusions, alternate rendition URLs, filtering before limits, stable interleaving, two-worker admission, explicit skipped-page continuation, quotas, exhaustion, partial failures, denial/rate-limit no-retry behavior, deterministic cancellation gates, strict input bounds, provider page sizing, and URLProtocol-backed pagination response fixtures. Openverse coverage includes anonymous-depth refusal before HTTP, continuation preservation at the depth boundary, and parameterized subsecond/exact-duration limits with rounded-up receipts. Existing stock-provider fixtures include official pagination fields.

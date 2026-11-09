@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 enum ExportDestination: String, CaseIterable, Identifiable {
     case video = "Video"
     case timeline = "Timeline"
-    case palmierProject = "Compositor Project"
+    case compositorProject = "Compositor Project"
 
     var id: String { rawValue }
 
@@ -12,7 +12,7 @@ enum ExportDestination: String, CaseIterable, Identifiable {
         switch self {
         case .video: L10n.key("Video")
         case .timeline: L10n.key("Timeline")
-        case .palmierProject: L10n.key("Compositor Project")
+        case .compositorProject: L10n.key("Compositor Project")
         }
     }
 }
@@ -129,7 +129,7 @@ struct ExportView: View {
 
                     Divider().opacity(AppTheme.Opacity.moderate)
 
-                    if editor.timelines.count > 1, destination != .palmierProject {
+                    if editor.timelines.count > 1, destination != .compositorProject {
                         settingRow(label: L10n.string("Timeline")) {
                             Picker(String(), selection: $selectedTimelineId) {
                                 ForEach(editor.timelines) { timeline in
@@ -148,8 +148,8 @@ struct ExportView: View {
                         videoSettings
                     case .timeline:
                         timelineSettings
-                    case .palmierProject:
-                        palmierProjectSettings
+                    case .compositorProject:
+                        compositorProjectSettings
                     }
                 }
 
@@ -274,7 +274,7 @@ struct ExportView: View {
         .padding(.leading, AppTheme.IconSize.sm + AppTheme.Spacing.md)
     }
 
-    private var palmierProjectSettings: some View {
+    private var compositorProjectSettings: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
             Text(L10n.string("Saves a copy of this project with all media bundled inside, so it opens on any machine."))
                 .font(.system(size: AppTheme.FontSize.sm))
@@ -506,7 +506,7 @@ struct ExportView: View {
             case .timeline:
                 Text(verbatim: "\(exportTimeline.width)×\(exportTimeline.height)")
                 Text(verbatim: timelineFormat.extensionLabel)
-            case .palmierProject:
+            case .compositorProject:
                 HStack(spacing: AppTheme.Spacing.xs) {
                     Image(systemName: "shippingbox")
                     Text(verbatim: "~\(ByteCountFormatter.string(fromByteCount: palmierSummary.bytes, countStyle: .file))")
@@ -639,7 +639,7 @@ struct ExportView: View {
     private var exportFormat: ExportFormat {
         switch destination {
         case .timeline: timelineFormat.exportFormat
-        case .palmierProject: .xml   // Compositor Project has its own path; never rendered.
+        case .compositorProject: .xml   // Compositor Project has its own path; never rendered.
         case .video: codec.exportFormat
         }
     }
@@ -664,7 +664,7 @@ struct ExportView: View {
     }
 
     private func startExport() {
-        if destination == .palmierProject { startPalmierExport(); return }
+        if destination == .compositorProject { startCompositorExport(); return }
         submissionError = nil
         let format = exportFormat
         Telemetry.beginOperation("save_panel", data: ["flow": "video_export", "format": format.fileExtension])
@@ -706,7 +706,7 @@ struct ExportView: View {
         }
     }
 
-    private func startPalmierExport() {
+    private func startCompositorExport() {
         submissionError = nil
         Telemetry.beginOperation("save_panel", data: ["flow": "project_export"])
         let panel = NSSavePanel()

@@ -252,7 +252,7 @@ struct StoryboardPreviewSnapshotTests {
     @Test func projectSourcesUseImmutableExpectedURLMap() async throws {
         var (plan, manifest) = try StoryboardPreviewFixtures.inputs()
         manifest.entries[0].source = .project(relativePath: "media/video.mov")
-        let projectURL = URL(fileURLWithPath: "/preview-fixture/project.palmier")
+        let projectURL = URL(fileURLWithPath: "/preview-fixture/project.compositorpro")
         let snapshot = try await StoryboardPreviewSnapshot.make(plan: plan, manifest: manifest, projectURL: projectURL)
         let urls = MediaResolver.expectedURLMap(entries: manifest.entries, projectURL: projectURL)
         #expect(snapshot.sources.allSatisfy { $0.url == urls[$0.mediaRef] })

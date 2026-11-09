@@ -78,7 +78,7 @@ struct ProjectAccessibilityMCPTests {
             )
             try await withClient(executor) { client in
                 try await withPendingList(client, gate: gate) { request in
-                    let moved = fixture.root.appendingPathComponent("Moved.palmier")
+                    let moved = fixture.root.appendingPathComponent("Moved.compositorpro")
                     registry.updateURL(from: fixture.readable, to: moved)
                     try #require(registry.entries.first { $0.id == fixture.entries[0].id }?.url == moved.standardizedFileURL)
                     await gate.release()

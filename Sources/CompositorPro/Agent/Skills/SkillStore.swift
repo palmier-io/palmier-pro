@@ -50,7 +50,7 @@ private struct PersistedSkillLedger: Codable {
     let suppressed: [String]
 }
 
-/// Reads skills from `~/.palmier/skills/` — the single source of truth.
+/// Reads skills from `~/.compositor/skills/` — the single source of truth.
 @Observable
 @MainActor
 final class SkillStore {
@@ -76,7 +76,7 @@ final class SkillStore {
 
     nonisolated static var directory: URL {
         FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".palmier/skills", isDirectory: true)
+            .appendingPathComponent(".compositor/skills", isDirectory: true)
     }
 
     private var reloadGeneration = 0
@@ -303,7 +303,7 @@ final class SkillStore {
         }
     }
 
-    /// Resolves `~/.palmier/skills/<id>/` only when `id` is a single safe path component.
+    /// Resolves `~/.compositor/skills/<id>/` only when `id` is a single safe path component.
     nonisolated static func skillDirectory(
         for id: String,
         directory: URL = SkillStore.directory

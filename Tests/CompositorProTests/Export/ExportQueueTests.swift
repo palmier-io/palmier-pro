@@ -107,7 +107,7 @@ struct ExportQueueTests {
         #expect(queue.jobs(for: "project-a").isEmpty)
         #expect(queue.jobs(for: "project-b").map(\.id) == [second.jobID])
 
-        let url = temporaryURL("stable-project.palmier")
+        let url = temporaryURL("stable-project.compositorpro")
         let firstEditor = EditorViewModel()
         let secondEditor = EditorViewModel()
         firstEditor.projectURL = url
@@ -115,46 +115,42 @@ struct ExportQueueTests {
         #expect(firstEditor.exportQueueProjectID == secondEditor.exportQueueProjectID)
     }
 
-    @Test func recordsDeliveredSourceIdsAndSkipsFailures() async throws {
+    @Test func completedExportRecordsDeliveredSourceIds() async throws {
+        StockDeliveryHistory.reset()
         let queue = ExportQueue()
-        let manifest = MediaManifest(entries: [
-            .init(id: "vid", name: "Clip", type: .video, source: .external(absolutePath: "/tmp/vid.mp4"),
-                  duration: 5.0, importInput: .init(origin: .init(provider: "pixabay", assetId: "12345"))),
-            .init(id: "local", name: "Local", type: .video, source: .external(absolutePath: "/tmp/local.mp4"), duration: 5.0),
-        ])
-        let resolver = MediaResolver(manifest: { manifest }, projectURL: { nil })
-        let timeline = Fixtures.timeline(tracks: [
-            Fixtures.videoTrack(clips: [Fixtures.clip(id: "v", mediaRef: "vid", start: 0, duration: 30)]),
-        ])
-        let outputURL = temporaryURL("delivered.xml")
-        defer { try? FileManager.default.removeItem(at: outputURL) }
-        let submission = try queue.enqueueForTesting(outputURL: outputURL) { service in
-            await service.export(timeline: timeline, resolver: resolver, format: .xml,
-                                 resolution: .matchTimeline, outputURL: outputURL)
+        let outputURL = temporaryURL("delivered.mov")
+        defer {
+            try? FileManager.default.removeItem(at: outputURL)
+            StockDeliveryHistory.reset()
+        }
+        let submission = try queue.enqueueForTesting(
+            outputURL: outputURL,
+            sourceIds: ["stock:pixabay:12345", "media:local"]
+        ) { service in
+            service.commitOutputForTesting()
         }
         #expect(await waitUntil { queue.job(submission.jobID)?.status.isFinished == true })
         #expect(queue.job(submission.jobID)?.status == .completed)
-        #expect(queue.job(submission.jobID)?.sourceIds == Set(["stock:pixabay:12345"]))
+        #expect(queue.job(submission.jobID)?.sourceIds == Set(["stock:pixabay:12345", "media:local"]))
 
         let history = StockDeliveryHistory.load()
         #expect(history.entries.count == 1)
         #expect(history.entries[0].outputFilename == outputURL.lastPathComponent)
-        #expect(history.usedSourceIds == Set(["stock:pixabay:12345"]))
+        #expect(history.usedSourceIds == Set(["stock:pixabay:12345", "media:local"]))
     }
 
     @Test func failedExportDoesNotPolluteDeliveryHistory() async throws {
+        StockDeliveryHistory.reset()
         let queue = ExportQueue()
-        let manifest = MediaManifest(entries: [
-            .init(id: "vid", name: "Clip", type: .video, source: .external(absolutePath: "/tmp/vid.mp4"),
-                  duration: 5.0, importInput: .init(origin: .init(provider: "pixabay", assetId: "12345"))),
-        ])
-        let resolver = MediaResolver(manifest: { manifest }, projectURL: { nil })
-        let timeline = Fixtures.timeline(tracks: [
-            Fixtures.videoTrack(clips: [Fixtures.clip(id: "v", mediaRef: "vid", start: 0, duration: 30)]),
-        ])
-        let outputURL = temporaryURL("failed.xml")
-        defer { try? FileManager.default.removeItem(at: outputURL) }
-        let submission = try queue.enqueueForTesting(outputURL: outputURL) { service in
+        let outputURL = temporaryURL("failed.mov")
+        defer {
+            try? FileManager.default.removeItem(at: outputURL)
+            StockDeliveryHistory.reset()
+        }
+        let submission = try queue.enqueueForTesting(
+            outputURL: outputURL,
+            sourceIds: ["stock:pixabay:12345"]
+        ) { service in
             service.error = "decode failed"
         }
         #expect(await waitUntil { queue.job(submission.jobID)?.status.isFinished == true })
@@ -163,6 +159,29 @@ struct ExportQueueTests {
 
         let history = StockDeliveryHistory.load()
         #expect(history.entries.isEmpty, "a failed delivery does not record used sources")
+    }
+
+    @Test func canceledExportDoesNotPolluteDeliveryHistory() async throws {
+        StockDeliveryHistory.reset()
+        let queue = ExportQueue()
+        let outputURL = temporaryURL("canceled.mov")
+        defer {
+            try? FileManager.default.removeItem(at: outputURL)
+            StockDeliveryHistory.reset()
+        }
+        let submission = try queue.enqueueForTesting(
+            outputURL: temporaryURL("canceled-blocker.mov")
+        ) { _ in try? await Task.sleep(for: .seconds(30)) }
+        let canceled = try queue.enqueueForTesting(
+            outputURL: outputURL,
+            sourceIds: ["stock:pixabay:12345"]
+        ) { service in service.error = "never delivered" }
+        queue.cancel(canceled.jobID)
+        queue.cancel(submission.jobID)
+
+        #expect(await waitUntil { queue.job(canceled.jobID)?.status.isFinished == true })
+        #expect(queue.job(canceled.jobID)?.status == .canceled)
+        #expect(StockDeliveryHistory.load().entries.isEmpty)
     }
 
     @Test func lateProgressAndCancellationKeepCommittedExportCompleted() async throws {

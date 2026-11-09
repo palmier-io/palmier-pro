@@ -290,7 +290,7 @@ struct RecordingNarratorValidationTests {
                     var current = try #require(harness.editor.editPlan(id: planId))
                     current.scriptBeats?[0].text = "Concurrent edit."
                     try harness.editor.changeEditPlans(updates: [current], actionName: "Edit")
-                case "project": harness.editor.projectURL = asset.url.appendingPathComponent("different.palmier")
+                case "project": harness.editor.projectURL = asset.url.appendingPathComponent("different.compositorpro")
                 case "timeline": harness.editor.timeline.width += 1
                 case "selection": harness.editor.selectedMediaAssetIds = [asset.id]
                 case "asset": asset.url = asset.url.appendingPathExtension("relinked")

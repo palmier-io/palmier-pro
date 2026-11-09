@@ -52,7 +52,7 @@ struct GenerationDownloadLifecycleTests {
                 return .init(fileURL: stage, httpStatusCode: 200)
             })
             try await savePackageTestDocument(document)
-            let destination = fixture.root.appendingPathComponent("Copy.palmier", isDirectory: true)
+            let destination = fixture.root.appendingPathComponent("Copy.compositorpro", isDirectory: true)
             var fence: ProjectPackageCoordinator.SaveLease?
             coordinator.enqueueSave { fence = $0 }
             let saved = PackageTestSignal()

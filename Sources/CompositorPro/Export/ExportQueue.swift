@@ -42,7 +42,7 @@ struct ExportJob: Identifiable, Sendable {
     var progress: Double
     var error: String?
     var warnings: [String]
-    var palmierReport: CompositorProjectExporter.Report?
+    var compositorReport: CompositorProjectExporter.Report?
     /// Canonical source identities of the media the resolver used to render this job.
     var sourceIds: Set<String> = []
 }
@@ -236,9 +236,10 @@ final class ExportQueue {
     func enqueueForTesting(
         outputURL: URL,
         projectID: String = "test-project",
+        sourceIds: Set<String> = [],
         operation: @escaping Operation
     ) throws -> ExportQueueSubmission {
-        try enqueue(outputURL: outputURL, projectID: projectID, source: .manual, operation: operation)
+        try enqueue(outputURL: outputURL, projectID: projectID, source: .manual, sourceIds: sourceIds, operation: operation)
     }
 #endif
 
@@ -265,7 +266,7 @@ final class ExportQueue {
             status: .waiting,
             progress: 0,
             warnings: warnings,
-            palmierReport: nil,
+            compositorReport: nil,
             sourceIds: sourceIds
         ))
         operations[id] = operation
@@ -351,7 +352,7 @@ final class ExportQueue {
         jobs[index].progress = status == .completed ? 1 : service.progress
         jobs[index].error = service.error
         if let report = service.lastCompositorReport {
-            jobs[index].palmierReport = report
+            jobs[index].compositorReport = report
             jobs[index].warnings = report.warnings
         }
         operations[id] = nil
@@ -382,7 +383,7 @@ final class ExportQueue {
 
 private extension ExportJob {
     func warningCount(_ mediaReport: ExportRunReport?) -> Int {
-        if let palmierReport { return palmierReport.missing.count }
+        if let compositorReport { return compositorReport.missing.count }
         if let mediaReport {
             return mediaReport.offlineMediaRefs.count + mediaReport.unprocessableMediaRefs.count
         }

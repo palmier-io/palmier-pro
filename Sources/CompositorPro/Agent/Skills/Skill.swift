@@ -1,6 +1,6 @@
 import Foundation
 
-/// A skill is a folder under `~/.palmier/skills/<id>/` with a `SKILL.md` file
+/// A skill is a folder under `~/.compositor/skills/<id>/` with a `SKILL.md` file
 struct Skill: Identifiable, Sendable {
     enum Limits {
         static let maximumNameLength = 120

@@ -269,7 +269,7 @@ struct AssetThumbnailView: View {
                 .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
                 .foregroundStyle(AppTheme.MediaOverlay.secondaryColor)
         }
-        .help(L10n.string("Palmier couldn't load this source file. It may be missing, on an ejected drive, or unreadable."))
+        .help(L10n.string("Compositor Pro couldn't load this source file. It may be missing, on an ejected drive, or unreadable."))
     }
 
     private var isSelected: Bool {

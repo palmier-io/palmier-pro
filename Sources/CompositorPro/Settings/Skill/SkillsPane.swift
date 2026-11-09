@@ -61,7 +61,8 @@ struct SkillsPane: View {
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
 
-            if let url = URL(string: "https://github.com/palmier-io/palmier-skills") {
+            if let base = ProcessInfo.processInfo.environment["COMPOSITOR_SKILLS_BASE"],
+               let url = URL(string: base + "/README.md"), url.isFileURL {
                 Link(L10n.string("Browse Community Skills ↗"), destination: url)
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Accent.link)
