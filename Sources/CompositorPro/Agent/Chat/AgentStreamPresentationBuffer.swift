@@ -94,6 +94,9 @@ private struct AgentStreamReducer: Sendable {
 }
 
 actor AgentStreamPresentationBuffer {
+    /// No stream event for this long means the provider stream stalled; fail instead of waiting forever.
+    private static let idleTimeout: TimeInterval = 60
+
     private var reducer: AgentStreamReducer
     private var revision: UInt64 = 0
     private var isDirty = false
@@ -101,6 +104,7 @@ actor AgentStreamPresentationBuffer {
     private var isComplete = false
     private var continuation: AsyncThrowingStream<AgentStreamSnapshot, Error>.Continuation?
     private var timerTask: Task<Void, Never>?
+    private var watchdogTask: Task<Void, Never>?
 
     init(model: AgentModel) {
         reducer = AgentStreamReducer(model: model)
@@ -127,6 +131,7 @@ actor AgentStreamPresentationBuffer {
             publish()
         }
         scheduleIfNeeded()
+        scheduleIdleWatchdog()
     }
 
     @discardableResult
@@ -135,6 +140,8 @@ actor AgentStreamPresentationBuffer {
             isComplete = true
             timerTask?.cancel()
             timerTask = nil
+            watchdogTask?.cancel()
+            watchdogTask = nil
             publish()
             if let error {
                 continuation?.finish(throwing: error)
@@ -164,6 +171,24 @@ actor AgentStreamPresentationBuffer {
             guard !Task.isCancelled else { return }
             await self?.timerFired()
         }
+    }
+
+    private func scheduleIdleWatchdog() {
+        watchdogTask?.cancel()
+        watchdogTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(Self.idleTimeout))
+            } catch {
+                return
+            }
+            await self?.handleIdleTimeout()
+        }
+    }
+
+    private func handleIdleTimeout() {
+        watchdogTask = nil
+        if isComplete { return }
+        complete(throwing: AgentClientTransportError.timeout)
     }
 
     private func timerFired() {

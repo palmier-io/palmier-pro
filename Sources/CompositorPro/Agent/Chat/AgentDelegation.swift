@@ -394,6 +394,8 @@ actor AgentDelegation {
                 return status == 429 || status >= 500 ? .transientFailure : .persistentFailure
             case .streamError(_, let message):
                 return responseFailure(message) ?? .transientFailure
+            case .timeout:
+                return .timeout
             }
         }
         if let error = error as? AgentServiceError {

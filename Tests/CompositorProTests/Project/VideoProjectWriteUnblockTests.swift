@@ -89,6 +89,33 @@ struct VideoProjectWriteUnblockTests {
         }
     }
 
+    @Test func documentSaveUnblocksBeforeQueuedSaveCompletes() async throws {
+        try await withPackageTestFixture { fixture in
+            let document = UnblockCountingProject()
+            document.fileURL = fixture.package
+            document.fileType = VideoProject.typeIdentifier
+            let coordinator = document.editorViewModel.projectPackageCoordinator
+            let admitted = PackageTestSignal()
+            let release = PackageTestSignal()
+            let mutation = coordinator.startMutation { _ in
+                admitted.signal()
+                await release.wait()
+            } onFailure: { Issue.record($0) }
+            await admitted.wait()
+            let saved = PackageTestSignal()
+            document.save(to: fixture.package, ofType: VideoProject.typeIdentifier, for: .saveOperation) { error in
+                #expect(error == nil)
+                saved.signal()
+            }
+            #expect(document.writeProbe.withLock { $0.unblockCount } >= 1)
+            release.signal()
+            await saved.wait()
+            await mutation.value
+            let package = try await fixture.readPackage()
+            #expect(package.projectFile.timelines == document.editorViewModel.timelines)
+        }
+    }
+
     @Test func overlappingNativeSavesPreserveLatestSnapshot() async throws {
         try await withPackageTestFixture { fixture in
             let document = GatedSafeWriteProject()

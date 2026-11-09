@@ -53,23 +53,41 @@ async function readSSE(body, onMessage) {
 // so the request may have executed and must not be replayed.
 async function post(message, onMessage) {
   let delivered = false;
-  const deliver = (msg) => { delivered = true; onMessage(msg); };
+  const controller = new AbortController();
+  let timer = setTimeout(() => controller.abort(), REQUEST_REPLAY_MS);
+  const deliver = (msg) => {
+    delivered = true;
+    onMessage(msg);
+    clearTimeout(timer);
+    timer = setTimeout(() => controller.abort(), REQUEST_REPLAY_MS);
+  };
+  const clear = () => clearTimeout(timer);
+  let reject;
+  const onAbort = () => { clear(); reject(new Error('request timed out before response')); };
+  const timeoutPromise = new Promise((_, rej) => { reject = rej; controller.signal.addEventListener('abort', onAbort); });
   try {
-    const res = await fetch(URL_BASE, {
-      method: 'POST',
-      headers: headers(),
-      body: JSON.stringify(message),
-    });
+    const res = await Promise.race([
+      fetch(URL_BASE, {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify(message),
+        signal: controller.signal,
+      }),
+      timeoutPromise,
+    ]);
     if (res.status === 404) throw new Error('session expired');
     if (!res.ok && res.status !== 202) throw new Error(`HTTP ${res.status}`);
     const assigned = res.headers.get('mcp-session-id');
     if (assigned) sessionId = assigned;
     const type = (res.headers.get('content-type') || '').split(';')[0];
-    if (type === 'text/event-stream') await readSSE(res.body, deliver);
+    if (type === 'text/event-stream') await Promise.race([readSSE(res.body, deliver), timeoutPromise]);
     else if (type === 'application/json') deliver(await res.json());
   } catch (err) {
     err.delivered = delivered;
     throw err;
+  } finally {
+    clearTimeout(timer);
+    controller.signal.removeEventListener('abort', onAbort);
   }
 }
 

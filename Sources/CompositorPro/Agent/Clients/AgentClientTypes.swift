@@ -291,6 +291,7 @@ enum AgentClientTransportError: LocalizedError {
     case imageInputUnsupported(model: String)
     case httpError(provider: AgentProvider, status: Int, body: String)
     case streamError(provider: AgentProvider, message: String)
+    case timeout
 
     var errorDescription: String? {
         switch self {
@@ -302,6 +303,8 @@ enum AgentClientTransportError: LocalizedError {
             "\(provider.displayName) API error (\(status)): \(body.prefix(500))"
         case .streamError(let provider, let message):
             "\(provider.displayName) stream error: \(message)"
+        case .timeout:
+            "The agent stream timed out before the response completed."
         }
     }
 }

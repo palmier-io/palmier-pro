@@ -44,13 +44,23 @@ private final class ProjectCloseDecision: NSObject {
     }
 }
 
+private final class SaveReady: Sendable {
+    private let semaphore = DispatchSemaphore(value: 0)
+
+    func signal() { semaphore.signal() }
+
+    func wait() { semaphore.wait() }
+}
+
 class VideoProject: NSDocument {
 
     private struct SaveRequest {
+        let id = UUID()
         let url: URL
         let typeName: String
         let operation: NSDocument.SaveOperationType
         let completion: (Error?) -> Void
+        let ready = SaveReady()
     }
 
     private struct SaveContext: Sendable {
@@ -100,6 +110,10 @@ class VideoProject: NSDocument {
 
     // Published before super.save, read-only until its completion, then cleared on main.
     private nonisolated(unsafe) var saveContext: SaveContext?
+    private nonisolated(unsafe) var activeSaveRequest: SaveRequest?
+    private nonisolated(unsafe) var activeSaveLease: ProjectPackageCoordinator.SaveLease?
+    private var saveQueue: [SaveRequest] = []
+    private var directSaveInProgress = false
     private var saveTask: Task<Void, Never>?
     private var closeTask: Task<Void, Never>?
     private var nativeCloseTask: Task<Void, Never>?
@@ -192,6 +206,8 @@ class VideoProject: NSDocument {
     }
 
     override func save(to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType, completionHandler: @escaping (Error?) -> Void) {
+        // Keep the main thread available to MainActor save work while NSDocument is saving.
+        unblockUserInteraction()
         guard !editorViewModel.projectPackageCoordinator.isClosed else {
             completionHandler(CocoaError(.userCancelled))
             return
@@ -202,39 +218,51 @@ class VideoProject: NSDocument {
             operation: saveOperation,
             completion: completionHandler
         )
+        saveQueue.append(request)
         editorViewModel.projectPackageCoordinator.enqueueSave { lease in
             self.performSave(request, lease: lease)
         }
+        launchNextSaveIfNeeded()
     }
 
     private func performSave(_ request: SaveRequest, lease: ProjectPackageCoordinator.SaveLease) {
-        let coordinator = editorViewModel.projectPackageCoordinator
-        saveTask = Task { @MainActor in
-            let error: Error?
-            do {
-                let url = request.url
-                let date = try await coordinator.io.perform {
-                    do { return try url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
-                    catch let error as CocoaError where error.code == .fileNoSuchFile || error.code == .fileReadNoSuchFile { return nil }
-                }
-                if let date { fileModificationDate = date }
-                saveContext = captureSaveSnapshot()
-                let writeError = await withCheckedContinuation { continuation in
-                    super.save(to: request.url, ofType: request.typeName, for: request.operation) { error in
-                        continuation.resume(returning: error)
+        activeSaveLease = lease
+        saveContext = captureSaveSnapshot()
+        request.ready.signal()
+    }
+
+    private func launchNextSaveIfNeeded() {
+        guard !directSaveInProgress, let request = saveQueue.first else { return }
+        directSaveInProgress = true
+        activeSaveRequest = request
+        super.save(to: request.url, ofType: request.typeName, for: request.operation) { error in
+            Task { @MainActor in
+                var completionError = error
+                do {
+                    if error == nil {
+                        if self.saveContext?.manifest != nil { self.manifestLoadFailed = false }
+                        try await (self.registry ?? self.editorViewModel.projectRegistry)?.flush()
                     }
+                } catch let failure {
+                    completionError = failure
                 }
-                if writeError == nil {
-                    if saveContext?.manifest != nil { manifestLoadFailed = false }
-                    try await (registry ?? editorViewModel.projectRegistry)?.flush()
+                self.saveContext = nil
+                self.saveTask = nil
+                if let lease = self.activeSaveLease {
+                    self.activeSaveLease = nil
+                    self.activeSaveRequest = nil
+                    let coordinator = self.editorViewModel.projectPackageCoordinator
+                    coordinator.finishSave(lease) { request.completion(completionError) }
+                } else {
+                    self.activeSaveRequest = nil
+                    request.completion(completionError)
                 }
-                error = writeError
-            } catch let failure {
-                error = failure
+                self.directSaveInProgress = false
+                if let index = self.saveQueue.firstIndex(where: { $0.id == request.id }) {
+                    self.saveQueue.remove(at: index)
+                }
+                self.launchNextSaveIfNeeded()
             }
-            saveContext = nil
-            saveTask = nil
-            coordinator.finishSave(lease) { request.completion(error) }
         }
     }
 
@@ -363,6 +391,7 @@ class VideoProject: NSDocument {
     ) throws {
         // NSDocument otherwise blocks the main thread while super prepares a safe-save directory.
         unblockUserInteraction()
+        activeSaveRequest?.ready.wait()
         try super.writeSafely(to: url, ofType: typeName, for: saveOperation)
     }
 
