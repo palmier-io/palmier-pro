@@ -156,7 +156,7 @@ enum VoiceActivity {
     private static func removeStaleCaches(for mediaRef: String, keeping keep: URL) {
         let fm = FileManager.default
         guard let entries = try? fm.contentsOfDirectory(at: cache.directory, includingPropertiesForKeys: nil) else { return }
-        for entry in entries where entry.lastPathComponent.hasPrefix("\(mediaRef)_") && entry.lastPathComponent != keep.lastPathComponent {
+        for entry in entries where entry.lastPathComponent.hasPrefix("\(mediaRef)_") && entry.lastPathComponent.hasSuffix("_vad.json") && entry.lastPathComponent != keep.lastPathComponent {
             try? fm.removeItem(at: entry)
         }
     }

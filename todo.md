@@ -39,29 +39,6 @@ Storyboard guidance now requires explicit review of narration, order, proposed v
 
 **Guidance verification:** `swift build` and `swift test --filter 'ExplainerVisualRulesTests|ExplainerContractsMCPTests|ClipIdentityMCPTests'` passed (9 tests in 3 suites). Tests protect mandatory review and both visual rules. No automatic face inspection, native storyboard UI, or production-gate verification claimed.
 
-## Rebrand & backend removal
-
-### R3. Re-skin the editor UI to look distinct from Palmier Pro
-
-- [ ] Ship a new editor skin so Compositor Pro reads as its own product.
-
-**What:** The layout, palette, type scale, and motion language are inherited
-from the Palmier Pro codebase. A clone look is off-brand and confuses users
-who follow both products.
-
-**How:**
-- Define a new `AppTheme` design (palette, typography, spacing, radii, panel
-  structure, toolbar layout, timeline density) in one theme file following the
-  existing `AppTheme` token discipline — no hardcoded numeric styling.
-- Keep every feature reachable in the new layout (Captions style gallery,
-  Storyboard review, Account removal per R1, Export); preserve `L10n` keys and
-  keyboard behavior.
-- Ship screenshot pairs (old vs new: workspace, timeline, inspector, export)
-  with the change; user confirms the new skin is legible and distinct.
-
-**Done when:** The app renders with the new theme everywhere, AppTheme owns
-all styling constants, and user-reviewed screenshots confirm the distinct look.
-
 ## Signed app update
 
 - [ ] After implementation and repeated deep verification, build the release app with Developer ID signing, verify its signature/resources, and safely replace the existing installation.

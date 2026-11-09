@@ -588,6 +588,22 @@ Priorities describe importance, not isolated batches. Build the smallest end-to-
 
 **Verified:** `swift build --scratch-path .build-check --disable-automatic-resolution` passed cleanly. `VideoProjectLoadTests.legacyPalmierPackageOpensAndSavesUnderNewIdentity` passed, verifying that legacy `.palmier` packages open and can be saved as `.compositorpro`. Localization sync (`./scripts/localization/sync.sh`) passed with 1,396 strings synchronized.
 
+### R3. Re-skin the editor UI to look distinct from Palmier Pro
+
+- [x] Ship a new editor skin in `AppTheme.swift` so Compositor Pro reads as its own product.
+
+**What:** The layout, palette, type scale, and motion language were inherited from the Palmier Pro codebase. A distinct look establishes Compositor Pro's product identity.
+
+**How:**
+- Re-skinned `AppTheme.swift` with a cool slate panel stack: `Background.base` (light: 238/241/244, dark: 15/23/25), `surface` (light: 228/233/238, dark: 21/32/36), `raised` (light: 220/228/235, dark: 27/42/48), and `prominent` (light: 255/255/255, dark: 36/53/61).
+- Defined a deep-teal identity accent (`Accent.primaryNSColor` sRGB 0.0, 0.48, 0.53 light / 0.22, 0.85, 0.92 dark) and updated spotlight gradients ((0.0, 0.62, 0.74) -> (0.1, 0.75, 0.9) -> (0.3, 0.9, 1.0)).
+- Retained semantic styling for timecode, playhead, warnings, and error indicators.
+- Kept all features reachable (Captions style gallery, Storyboard review, Export, MCP inspection).
+- Renamed hero asset `assets/palmier-ui.png` to `assets/compositor-ui.png` matching `README.md`.
+- Maintained strict `AppTheme` token discipline with no hardcoded numeric styling.
+
+**Verified:** `swift build --scratch-path .build-check --disable-automatic-resolution` passed with 0 errors. All panels render using the new slate and teal theme tokens.
+
 ## Advanced Video & AI Editing Features
 
 ### Video background removal
