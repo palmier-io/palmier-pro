@@ -97,6 +97,7 @@ final class EditorViewModel {
     @ObservationIgnored private(set) var editPlansRevision: UInt64 = 0
     var editPlansLoadFailed = false
     var editPilotArrangements: [String: EditPilotArrangement] = [:]
+    var captionTranslationJobs: [String: CaptionTranslationJob] = [:]
     // MARK: - Denoise bake state (session-scoped, keyed by mediaRef)
 
     var denoiseInFlight: Set<String> = []

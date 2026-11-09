@@ -81,6 +81,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case addTexts = "add_texts"
     case updateText = "update_text"
     case addCaptions = "add_captions"
+    case translateCaptions = "translate_captions"
 
     // Color & effects
     case applyColor = "apply_color"
@@ -1497,6 +1498,47 @@ enum ToolDefinitions {
                     "highlightColor": ["type": "string", "description": "Active-word hex."],
                     "platform": ["type": "string", "enum": ["generic", "youtube", "tiktokShorts", "instagramReels"], "description": "Where the video is going. The platform's own interface covers part of the picture, so captions are narrowed and lifted clear of it — tiktokShorts and instagramReels keep the bottom fifth free, where their caption and button stacks sit. Defaults to generic, which keeps captions where they always were. Explicit transform values are still honoured, but are clamped clear of the interface."],
                 ])
+            )
+        ),
+        AgentTool(
+            name: .translateCaptions,
+            description: "Multilingual caption translation pipeline (CapCut auto captions + translation style). Takes script beats (from an EditPlan, direct beats array, or existing timeline captions), translates captions into target languages (e.g. Spanish, French, German, Japanese, Chinese, Hindi, Arabic, etc.), styles them per curated template (CaptionStyles like bold-pop, subtitle, typewriter, clean-box), and aligns them to narration timing. Returns translated caption segments with timestamps for creator review, then applies approved segments to the timeline on a dedicated caption track in one undoable action.",
+            inputSchema: objectSchema(
+                properties: [
+                    "action": ["type": "string", "enum": ["translate", "read", "review", "approve_all", "apply"], "description": "Operation to perform: 'translate' generates translated caption segments; 'read' inspects an existing translation job; 'review' updates segment translation, timing, or approval; 'approve_all' approves all segments; 'apply' places approved translated captions on the timeline in one undo step."],
+                    "targetLanguage": ["type": "string", "description": "Required for translate. Target language code (e.g. 'es', 'fr', 'de', 'ja', 'zh', 'hi', 'ar') or name ('Spanish', 'French', 'German', 'Japanese', etc.)."],
+                    "jobId": ["type": "string", "description": "Required for read, review, approve_all, and apply. Job ID returned by translate."],
+                    "planId": ["type": "string", "description": "Translate only. Optional EditPlan ID containing script beats and measured narration timing."],
+                    "captionStyle": ["type": "string", "enum": CaptionStyles.all.map(\.id), "description": "Translate only. Optional curated caption style template (e.g. 'bold-pop', 'subtitle', 'typewriter', 'clean-box'). Defaults to 'subtitle'."],
+                    "beats": [
+                        "type": "array",
+                        "description": "Translate only. Optional direct script beats array with text and optional timing.",
+                        "items": objectSchema(
+                            properties: [
+                                "beatId": ["type": "string", "description": "Unique beat identifier."],
+                                "text": ["type": "string", "description": "Original script/narration text."],
+                                "startFrame": ["type": "integer", "description": "Optional start frame."],
+                                "endFrame": ["type": "integer", "description": "Optional end frame."],
+                                "startSeconds": ["type": "number", "description": "Optional start in seconds."],
+                                "endSeconds": ["type": "number", "description": "Optional end in seconds."],
+                            ],
+                            required: ["text"]
+                        )
+                    ],
+                    "customTranslations": [
+                        "type": "object",
+                        "description": "Translate only. Optional key-value dictionary mapping beatId or source text to custom translated text.",
+                    ],
+                    "segmentId": ["type": "string", "description": "Review only. ID of the specific caption segment to review or update."],
+                    "translatedText": ["type": "string", "description": "Review only. Updated translated caption text."],
+                    "startFrame": ["type": "integer", "description": "Review only. Updated start frame."],
+                    "endFrame": ["type": "integer", "description": "Review only. Updated end frame."],
+                    "isApproved": ["type": "boolean", "description": "Review only. Approval status for the segment."],
+                    "approveAll": ["type": "boolean", "description": "Review only. Convenience to approve all segments in the job."],
+                    "trackIndex": ["type": "integer", "description": "Apply only. Optional timeline track index to insert caption track at (default 0)."],
+                    "trackName": ["type": "string", "description": "Apply only. Optional name for the created caption track."],
+                ],
+                required: ["action"]
             )
         ),
         AgentTool(
