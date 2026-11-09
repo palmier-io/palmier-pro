@@ -100,7 +100,7 @@ extension ToolExecutor {
         case .getTranscript, .getMulticam:
             if let clipId = args.string("clipId") { readClipIds.insert(clipId) }
             range = timelineReadWindow(args, editor: editor)
-        case .inspectTimeline:
+        case .inspectTimeline, .reviewTimeline:
             let start = max(0, args.int("startFrame") ?? 0)
             if start < Int.max {
                 let end = args.int("endFrame").flatMap { $0 > start ? $0 : nil } ?? start + 1

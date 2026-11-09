@@ -171,18 +171,13 @@ extension ToolExecutor {
             let clipIDsBefore = Set(editor.timeline.tracks.flatMap(\.clips).map(\.id))
             do {
                 try editor.undo.perform("Apply Plan (Agent)") {
+                    let result = try addClips(editor, ["entries": entries], matchSettings: false)
+                    guard !result.isError else { throw ToolError("Plan assembly failed.") }
                     if plan.status == .approved {
                         _ = try editor.changeEditPlanStatus(
                             id: plan.id, to: .ready,
                             actionName: "Apply Plan (Agent)", permitReserved: true
                         )
-                    }
-                    let result = try addClips(editor, ["entries": entries])
-                    guard !result.isError else {
-                        throw ToolError(result.content.compactMap { block in
-                            if case .text(let text) = block { return text }
-                            return nil
-                        }.joined(separator: " "))
                     }
                     _ = try editor.changeEditPlanStatus(
                         id: plan.id, to: .applied,
@@ -609,7 +604,6 @@ extension ToolExecutor {
         }
         let tracks = Set(timeline.tracks.map(\.id))
         for shot in shots {
-            try? Task.checkCancellation()
             if let trackId = shot.trackId, !tracks.contains(trackId) {
                 blockers.append("Shot '\(shot.id)' names unknown trackId '\(trackId)'.")
             }
@@ -643,6 +637,16 @@ extension ToolExecutor {
                 blockers.append("Shot '\(shot.id)' has candidate '\(candidateURL)' that has not been imported yet. Import it with import_media, then attach its mediaRef.")
             } else {
                 blockers.append("Shot '\(shot.id)' has no mediaRef and no candidateURL.")
+            }
+        }
+        if blockers.isEmpty {
+            do {
+                let entries = try assemblyEntries(plan: plan, editor: editor)
+                _ = try prepareClipAdditions(editor, ["entries": entries])
+            } catch let error as ToolError {
+                blockers.append(error.message)
+            } catch {
+                blockers.append(error.localizedDescription)
             }
         }
         return blockers

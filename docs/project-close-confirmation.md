@@ -98,6 +98,14 @@ All four repaired-scratch gates passed with `--disable-automatic-resolution --jo
 
 Live `swift build --disable-automatic-resolution --jobs 2` and the same focused `swift test` filter passed: 323 tests in 43 suites, with all source/test/package hashes unchanged. The live workspace includes unrelated finishing, speech, and credential work, so this is not selective full-suite evidence. All 15 merged paths match their approved hashes; 933 other source/test/package files were preserved. Selective commit must use frozen ToolExecutor bytes, leaving its unrelated live routes unstaged.
 
+Committed as `f6dbc7e`: frozen candidate bytes match the commit, all precommit working-tree bytes were preserved, and the index is empty. This commits the scoped-owner foundation, not complete native-domain admission or quit acceptance.
+
+## Pinned SDK drain foundation
+
+The isolated SDK 0.12.0 snapshot at revision `6132fd4b5b4217ce4717c4775e4607f5c3120129` adds explicit inbound admission, per-operation terminal receipts, fencing, and joined shutdown. HTTP dispatch returns both response and receipt; consuming exhausted SSE alone is not terminal proof. Parent verified canonical archive, exact six-file patch, LICENSE/manifest preservation, all 102 final hashes, exact harness source/test inputs, and final logs: 30 normal/TSan tests and all 573 SDK tests in 40 suites passed. Strict focused harness excludes an unchanged NetworkTransport capture warning; full SDK harness includes it with baseline warnings permitted. Published conformance/docc graph was not built.
+
+The SDK receipt retains handler cleanup and awaited Transport.send, not app NWConnection output. App admission must precede the first HTTP/session await; response consumption must start before waiting for the receipt; final stack-processing callbacks must be joined separately. SDK drain can remain pending for uncooperative work and does not imply every request succeeded or bytes reached a peer. App integration remains isolated and unverified. A delegated integration attempt failed on token quota before acceptance; parent continues inline without repeating the failed request.
+
 ## Manual close verification
 
 Use disposable saved projects, never production media. These scenarios remain unverified until the user confirms them:

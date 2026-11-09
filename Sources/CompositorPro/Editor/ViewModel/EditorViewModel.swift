@@ -100,10 +100,7 @@ final class EditorViewModel {
 
     var denoiseInFlight: Set<String> = []
     var denoiseFailed: Set<String> = []
-    var denoiseBaked: Set<String> = []
-    var breathBaked: Set<String> = []
     var breathFailed: Set<String> = []
-    var deessBaked: Set<String> = []
     var deessFailed: Set<String> = []
     var loudnessInFlight: Set<String> = []
     var speechAnalyzingCount: Int = 0
@@ -206,6 +203,8 @@ final class EditorViewModel {
     var slipPreview: SlipPreviewState?
     var captionPreviewConfiguration: CaptionPreviewConfiguration?
     var captionPreviewEnabled = true
+    /// Gallery style selected in the Captions panel; nil = app default for new captions.
+    var selectedCaptionStyleId: String?
     // Persistent across tab switches so a canceled generation cannot be re-started
     // while its transcription still drains.
     let captionGenerationController = CaptionGenerationController()
@@ -552,7 +551,6 @@ final class EditorViewModel {
     func notifyTimelineChanged(refreshVisuals: Bool = true) {
         selectedTimelineMarkerIds.formIntersection(timeline.markers.map(\.id))
         guard undo.isRegistrationEnabled else { return }
-        enhancePendingEnhancements()
         pendingRebuildTask?.cancel()
         pendingRebuildTask = nil
         if isPlaying {

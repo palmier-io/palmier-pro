@@ -141,6 +141,7 @@ struct TextClipPlaybackTests {
         engine.player.replaceCurrentItem(with: AVPlayerItem(asset: AVMutableComposition()))
         engine.rebuild()
         #expect(engine.rebuildTask == nil)
+        try await #require(engine.visualRefreshTask).value
 
         let cacheHitPlayerClip = try self.playerClip(id: text.id, engine: engine)
         let cacheHitBackground = try #require(cacheHitPlayerClip.textStyle).background

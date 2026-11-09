@@ -204,7 +204,7 @@ struct ParsedCrop: Decodable {
     }
 }
 
-fileprivate struct AddClipSpec {
+struct AddClipSpec {
     let asset: MediaAsset
     var trackId: String?
     let startFrame: Int
@@ -267,7 +267,7 @@ extension ToolExecutor {
 
     // MARK: add_clips
 
-    func addClips(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+    func prepareClipAdditions(_ editor: EditorViewModel, _ args: [String: Any]) throws -> [AddClipSpec] {
         let input: AddClipsInput = try decodeToolArgs(args, path: "add_clips")
         guard !input.entries.isEmpty else { throw ToolError("Missing or empty 'entries' array") }
         // Decodable doesn't reject unknown nested keys; check each raw entry.
@@ -315,18 +315,27 @@ extension ToolExecutor {
             let place = try resolvePlacement(p.asset, fps: editor.timeline.fps,
                                              durationFrames: p.entry.endFrame.map { $0 - p.entry.startFrame },
                                              source: p.entry.source, path: "entries[\(idx)]", framesLabel: "endFrame")
+            guard !p.entry.startFrame.addingReportingOverflow(place.duration).overflow else {
+                throw ToolError("entries[\(idx)]: timeline range overflows")
+            }
             specs.append(.init(asset: p.asset, trackId: p.trackId, startFrame: p.entry.startFrame,
                                durationFrames: place.duration, trimStartFrame: place.trimStart, trimEndFrame: place.trimEnd))
         }
 
+        return specs
+    }
+
+    func addClips(_ editor: EditorViewModel, _ args: [String: Any], matchSettings: Bool = true) throws -> ToolResult {
+        var specs = try prepareClipAdditions(editor, args)
+        let omittedCount = specs.filter { $0.trackId == nil }.count
         let snapshot = timelineSnapshot(editor)
         let actionName = specs.count == 1 ? "Add Clip (Agent)" : "Add Clips (Agent)"
         var settingsNote: String?
         try editor.undo.perform(actionName) {
-            settingsNote = applySettingsIfNeededForAgent(
+            settingsNote = matchSettings ? applySettingsIfNeededForAgent(
                 editor,
-                assets: prepared.map(\.asset).filter { $0.type != .sequence }
-            )
+                assets: specs.map(\.asset).filter { $0.type != .sequence }
+            ) : nil
             if omittedCount == specs.count {
                 let needsVideo = specs.contains { $0.asset.type != .audio }
                 let needsAudio = specs.contains { $0.asset.type == .audio }

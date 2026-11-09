@@ -38,6 +38,7 @@ struct InspectorClipSelection {
 
 struct InspectorView: View {
     @Environment(EditorViewModel.self) var editor
+    @State var audioFinishingTask: Task<Void, Never>?
 
     enum ClipTab: Hashable {
         case text

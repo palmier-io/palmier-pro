@@ -35,7 +35,6 @@ extension EditorViewModel {
         mediaAssets[i].url = newURL
         mediaAssets[i].importInput = MediaImportInput(sourcePath: newURL.path, createdAt: Date())
         denoiseFailed.remove(id)
-        denoiseBaked.remove(id)
         mediaVisualCache.invalidate(id)
         speakerAssignments.removeValue(forKey: id)
         if let j = mediaManifest.entries.firstIndex(where: { $0.id == id }) {

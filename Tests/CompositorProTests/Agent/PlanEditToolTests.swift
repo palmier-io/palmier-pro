@@ -132,6 +132,22 @@ struct PlanEditToolTests {
         #expect(checkpoints == 0)
     }
 
+    @Test func sourceTooShortIsBlockedBeforePlanStatusOrUndoChanges() async throws {
+        let harness = ToolHarness()
+        let asset = harness.addAsset(duration: 1)
+        _ = try await harness.runOK("plan_edit", args: Self.createPayload(planId: "short-source", mediaRef: asset.id))
+        _ = try await harness.runOK("plan_edit", args: ["action": "status", "planId": "short-source", "status": "approved"])
+        let manager = UndoManager()
+        harness.editor.undo.attach(manager)
+        let before = harness.editor.timeline
+        let result = try #require(try await harness.runOK("apply_plan", args: ["planId": "short-source"]) as? [String: Any])
+        #expect(result["ready"] as? Bool == false)
+        #expect((await harness.runRaw("apply_plan", args: ["planId": "short-source", "commit": true])).isError)
+        #expect(harness.editor.editPlan(id: "short-source")?.status == .approved)
+        #expect(harness.editor.timeline == before)
+        #expect(!manager.canUndo)
+    }
+
     @Test func updatePreservesIdentityAndIgnoresUnchangedPatches() async throws {
         let harness = ToolHarness()
         let undoManager = UndoManager()

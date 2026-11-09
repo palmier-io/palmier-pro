@@ -169,6 +169,7 @@
 "Buy more" = "Buy more";
 "Cache" = "Cache";
 "Cached — no credits used." = "Cached — no credits used.";
+"Calm" = "Calm";
 "Can't add captions from \"%@\" — %@" = "Can't add captions from \"%@\" — %@";
 "Can't add captions — \"%@\" is offline." = "Can't add captions — \"%@\" is offline.";
 "Can't delete every timeline — the project needs at least one." = "Can't delete every timeline — the project needs at least one.";
@@ -699,6 +700,7 @@
 "Local runs with Apple's SpeechAnalyzer. Cloud uses credits and a more accurate model with more capabilities." = "Local runs with Apple's SpeechAnalyzer. Cloud uses credits and a more accurate model with more capabilities.";
 "Log in for 250 free credits" = "Log in for 250 free credits";
 "Looks" = "Looks";
+"Loud" = "Loud";
 "Low" = "Low";
 "Lower the music exactly where someone is talking and bring it back afterwards, with an adjustable depth and a tail that keeps the music from pumping between words." = "Lower the music exactly where someone is talking and bring it back afterwards, with an adjustable depth and a tail that keeps the music from pumping between words.";
 "Lowers the volume of detected breath sounds while keeping the natural rhythm of speech." = "Lowers the volume of detected breath sounds while keeping the natural rhythm of speech.";
@@ -835,6 +837,7 @@
 "Off" = "Off";
 "Offset" = "Offset";
 "Older interchange format, best when Premiere Pro is the destination. Supports basic edits and keyframes, but not text, color, effects, edge softness, or edge rounding." = "Older interchange format, best when Premiere Pro is the destination. Supports basic edits and keyframes, but not text, color, effects, edge softness, or edge rounding.";
+"On a box" = "On a box";
 "On-device transcription is not available for %@." = "On-device transcription is not available for %@.";
 "One-click voice cleanup: denoise, de-breath, de-esser, and loudness match in a single chain." = "One-click voice cleanup: denoise, de-breath, de-esser, and loudness match in a single chain.";
 "Only available for AI-generated media" = "Only available for AI-generated media";
