@@ -133,8 +133,10 @@ extension ToolExecutor {
         }
         try Task.checkCancellation()
 
+        let history = StockDeliveryHistory.load()
         let bundle = await Self.buildShotCandidates(kind: kind, visual: visualInputs, spoken: spokenInputs,
-            remote: remoteHits, assets: assets, exclusions: exclusions, limit: limit)
+            remote: remoteHits, assets: assets, exclusions: exclusions, limit: limit,
+            usedSourceIds: history.usedSourceIds)
         try Task.checkCancellation()
         try requireCurrentSnapshot()
 
@@ -155,6 +157,9 @@ extension ToolExecutor {
         }
         if !exclusions.unresolved.isEmpty {
             warnings.append("Known source aliases were excluded; selected sources with unresolved identities cannot certify distinct alternatives.")
+        }
+        if !history.usedSourceIds.isEmpty {
+            warnings.append("Sources used in recent deliveries are ranked lower, not excluded; the no-repeat rule applies within one output only.")
         }
 
         var local: [String: Any] = ["included": includeLibrary, "scope": scope]
@@ -221,9 +226,10 @@ extension ToolExecutor {
     @concurrent
     private static func buildShotCandidates(kind: StockMediaKind, visual: [ShotCandidateBuilder.VisualInput],
         spoken: [ShotCandidateBuilder.SpokenInput], remote: [StockMediaHit], assets: [String: LibraryShotAsset],
-        exclusions: ShotCandidateExclusions, limit: Int) async -> ShotCandidateBundle {
+        exclusions: ShotCandidateExclusions, limit: Int, usedSourceIds: Set<String> = []) async -> ShotCandidateBundle {
         ShotCandidateBuilder.build(kind: kind, visual: visual, spoken: spoken, remote: remote, assets: assets,
-            limit: limit, aliases: exclusions.aliases, excludedSourceIds: exclusions.sourceIds)
+            limit: limit, aliases: exclusions.aliases, excludedSourceIds: exclusions.sourceIds,
+            usedSourceIds: usedSourceIds)
     }
 
     private func usesVisualEvidence(kind: StockMediaKind, scope: String) -> Bool {

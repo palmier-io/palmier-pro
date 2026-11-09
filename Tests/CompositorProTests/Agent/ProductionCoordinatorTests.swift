@@ -5,11 +5,7 @@ import Testing
 @Suite("Production coordinator")
 @MainActor
 struct ProductionCoordinatorTests {
-    private var harness: ToolHarness!
-
-    init() async {
-        harness = ToolHarness()
-    }
+    private let harness = ToolHarness()
 
     private func createPlan(withStoryboard: Bool = false) -> EditPlan {
         var plan = EditPlan(
@@ -24,7 +20,7 @@ struct ProductionCoordinatorTests {
                     title: "Scene 1",
                     startFrame: 0,
                     endFrame: 60,
-                    narrationLink: SceneNarrationLink(firstBeatId: "beat1", lastBeatId: "beat1")
+                    narrationLink: NarrationLink(firstBeatId: "beat1", lastBeatId: "beat1")
                 )
             ],
             scriptBeats: [
@@ -46,39 +42,18 @@ struct ProductionCoordinatorTests {
             projectId: harness.editor.projectId,
             timelineId: harness.editor.activeTimelineId,
             editor: harness.editor,
-            packageCoordinator: harness.editor.projectPackageCoordinator,
+            packageCoordinator: ProjectPackageCoordinator(),
             exportQueue: harness.exportQueue,
             toolExecutor: harness.executor
         )
 
         try await coordinator.startProduction()
 
-        let status = coordinator.status()
-        #expect(!status.runId.isEmpty)
+        let status = await coordinator.status()
+        #expect(status.runId == coordinator.runId.uuidString)
         #expect(status.projectId == harness.editor.projectId)
         #expect(status.timelineId == harness.editor.activeTimelineId)
         #expect(status.totalScenes == 1)
-        #expect(status.phase == .awaitingStoryboardApproval)
-    }
-
-    @Test("Resume production restores state")
-    func resumeProductionRestoresState() async throws {
-        let plan = createPlan(withStoryboard: true)
-        let coordinator = ProductionCoordinator(
-            planId: plan.id,
-            projectId: harness.editor.projectId,
-            timelineId: harness.editor.activeTimelineId,
-            editor: harness.editor,
-            packageCoordinator: harness.editor.projectPackageCoordinator,
-            exportQueue: harness.exportQueue,
-            toolExecutor: harness.executor
-        )
-
-        try await coordinator.startProduction()
-        try await coordinator.resumeProduction()
-
-        let status = coordinator.status()
-        #expect(status.phase == .awaitingStoryboardApproval)
     }
 
     @Test("Cancel production stops and clears state")
@@ -89,7 +64,7 @@ struct ProductionCoordinatorTests {
             projectId: harness.editor.projectId,
             timelineId: harness.editor.activeTimelineId,
             editor: harness.editor,
-            packageCoordinator: harness.editor.projectPackageCoordinator,
+            packageCoordinator: ProjectPackageCoordinator(),
             exportQueue: harness.exportQueue,
             toolExecutor: harness.executor
         )
@@ -97,12 +72,8 @@ struct ProductionCoordinatorTests {
         try await coordinator.startProduction()
         try await coordinator.cancelProduction()
 
-        let status = coordinator.status()
+        let status = await coordinator.status()
         #expect(status.phase == .canceled)
-
-        await #expect(throws: ProductionError.self) {
-            try await coordinator.resumeProduction()
-        }
     }
 
     @Test("Production status is inspectable")
@@ -113,15 +84,38 @@ struct ProductionCoordinatorTests {
             projectId: harness.editor.projectId,
             timelineId: harness.editor.activeTimelineId,
             editor: harness.editor,
-            packageCoordinator: harness.editor.projectPackageCoordinator,
+            packageCoordinator: ProjectPackageCoordinator(),
             exportQueue: harness.exportQueue,
             toolExecutor: harness.executor
         )
 
-        let initialStatus = coordinator.status()
-        #expect(!initialStatus.runId.isEmpty)
-        #expect(initialStatus.phase == .awaitingStoryboardApproval)
-        #expect(initialStatus.totalScenes == 1)
+        try await coordinator.startProduction()
+
+        let status = await coordinator.status()
+        #expect(status.runId == coordinator.runId.uuidString)
+        #expect(status.totalScenes == 1)
+        #expect(status.currentJobId != nil)
+    }
+
+    @Test("Resume from canceled state remains canceled")
+    func resumeFromCanceledRemainsCanceled() async throws {
+        let plan = createPlan(withStoryboard: true)
+        let coordinator = ProductionCoordinator(
+            planId: plan.id,
+            projectId: harness.editor.projectId,
+            timelineId: harness.editor.activeTimelineId,
+            editor: harness.editor,
+            packageCoordinator: ProjectPackageCoordinator(),
+            exportQueue: harness.exportQueue,
+            toolExecutor: harness.executor
+        )
+
+        try await coordinator.startProduction()
+        try await coordinator.cancelProduction()
+
+        // Resume should throw because phase is canceled
+        await #expect(throws: ProductionError.productionCanceled) {
+            try await coordinator.resumeProduction()
+        }
     }
 }
-

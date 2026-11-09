@@ -488,10 +488,21 @@ enum ShotCandidateBuilder {
             }
             return $0.id < $1.id
         }
+        // Remote catalog rows that already appear in the recent delivery history are ranked after
+        // sources not yet used, so repeated clips do not silently win every new brief.
+        let orderedRemote = remoteCandidates.sorted { a, b in
+            let aIds = VisualSourceAliases.sourceIds(mediaRef: a.mediaRef, inputId: a.inputId, origin: a.origin)
+            let bIds = VisualSourceAliases.sourceIds(mediaRef: b.mediaRef, inputId: b.inputId, origin: b.origin)
+            let aUsed = !usedSourceIds.isDisjoint(with: aIds)
+            let bUsed = !usedSourceIds.isDisjoint(with: bIds)
+            if aUsed != bUsed { return !aUsed }
+            guard a.providerID != b.providerID else { return a.id < b.id }
+            return a.providerID ?? "" < b.providerID ?? ""
+        }
         // Ready library rows need no download, so they precede remote catalog rows. Within each
         // evidence group, only source-provided ordering is used; no cross-mode score is invented.
         var seenSources = Set<String>()
-        let usable = (orderedVisual + orderedSpoken + remoteCandidates).filter { candidate in
+        let usable = (orderedVisual + orderedSpoken + orderedRemote).filter { candidate in
             let ids = VisualSourceAliases.sourceIds(mediaRef: candidate.mediaRef, inputId: candidate.inputId, origin: candidate.origin)
             let root = aliases.root(ids.first ?? candidate.id)
             guard seenSources.insert(root).inserted else {
@@ -511,6 +522,11 @@ enum ShotCandidateBuilder {
             skipped: skipped,
             droppedUsable: max(0, ranked.count - limited.count)
         )
+    }
+
+    private static func sourceIds(_ candidate: ShotCandidate) -> Set<String> {
+        Set(VisualSourceAliases.sourceIds(mediaRef: candidate.mediaRef, inputId: candidate.inputId,
+                                          origin: candidate.origin))
     }
 
     private static func shotKind(for type: ClipType) -> StockMediaKind? {
