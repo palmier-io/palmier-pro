@@ -9,6 +9,7 @@ enum ToolName: String, CaseIterable, Sendable {
     // Timelines
     case getTimeline = "get_timeline"
     case inspectTimeline = "inspect_timeline"
+    case reviewTimeline = "review_timeline"
     case createTimeline = "create_timeline"
     case setActiveTimeline = "set_active_timeline"
     case manageMarkers = "manage_markers"
@@ -55,6 +56,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case addOutro = "add_outro"
     case composeImage = "compose_image"
     case buildMapScene = "build_map_scene"
+    case buildGraphicScene = "build_graphic_scene"
     case removeImageBackground = "remove_image_background"
     case applyTextStyle = "apply_text_style"
     case duckAudio = "duck_audio"
@@ -142,6 +144,14 @@ enum ToolDefinitions {
             )
         ),
         AgentTool(
+            name: .reviewTimeline,
+            description: "Render and review up to 60 seconds of the current timeline locally, including prepared audio, effects, captions, transitions, and nested clips. Returns a playable temporary MP4 path, six stills decoded from that render, measured integrated loudness, sample peak, and clipped-sample count. Use after structural qc_timeline and before final export; review coverage must include the opening, key transitions, captions, and ending. Rejects missing media and stale timelines. Metrics and stills do not prove motion or intelligibility; the MP4 is available for playback. No timeline mutation or undo entry.",
+            inputSchema: objectSchema(properties: [
+                "startFrame": ["type": "integer", "minimum": 0, "description": "First frame, inclusive; default 0."],
+                "endFrame": ["type": "integer", "minimum": 1, "description": "Last frame, exclusive; default timeline end. Range must be at most 60 seconds."],
+            ])
+        ),
+        AgentTool(
             name: .createTimeline,
             description: "Creates a timeline and switches to it — every read and edit tool now targets it. Without 'from', the new timeline is empty and inherits fps/resolution from the previously active one. With 'from', it's a full copy of that timeline — the versioning primitive: copy, then edit the copy (\"a tighter cut\", \"a 9:16 version\") while the original stays intact; every clip and track id in the copy is NEW, so re-read get_timeline before editing. Undoable.\n\nUse timelines to organize a project: alternate versions, sections assembled separately, or reusable groups. A timeline can be placed inside another as a single clip (add_clips with the timelineId as mediaRef); it then appears as a clip with mediaType 'sequence'.",
             inputSchema: objectSchema(
@@ -209,11 +219,11 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .manageExports,
-            description: "Lists or cancels exports for the current project. action=list returns newest first with jobId, filename, path, status, progress percent, and any warnings/result. action=cancel requires the exact jobId returned by export_project or manage_exports list; a waiting job is removed from the queue and an active job begins canceling. Cancel only when the user asks, or to undo an export just queued with incorrect settings. Never infer that an export is stuck from elapsed time alone.",
+            description: "Lists, awaits, or cancels exports for the current project. action=wait suspends until the exact jobId completes, fails, or is canceled; use it after export_project to deliver the finished file in the same turn without polling or asking the user to continue. Canceling the wait does not cancel the export. action=list returns newest first with jobId, filename, path, status, progress percent, and warnings/result. action=cancel cancels the exact jobId. Cancel only when the user asks, or to undo an export just queued with incorrect settings. Never infer that an export is stuck from elapsed time alone.",
             inputSchema: objectSchema(
                 properties: [
-                    "action": ["type": "string", "enum": ["list", "cancel"]],
-                    "jobId": ["type": "string", "description": "Required for cancel. Exact jobId from export_project or manage_exports list."],
+                    "action": ["type": "string", "enum": ["list", "wait", "cancel"]],
+                    "jobId": ["type": "string", "description": "Required for wait or cancel. Exact jobId from export_project or manage_exports list."],
                 ],
                 required: ["action"]
             )
@@ -944,6 +954,96 @@ enum ToolDefinitions {
             )
         ),
         AgentTool(
+            name: .buildMapScene,
+            description: "Builds a locator / industrial-hub / relationship map for Malaysia (Peninsular mainland and Penang island) in one local step. Places resolve against a built-in catalog of approximate WGS-84 centroids (Penang, Kulim, Kuala Lumpur, Johor Bahru, ...); unknown or ambiguous names are refused with the known list, never guessed. One equirectangular projection owns every coordinate; camera keys move the whole plane, so pins, routes, and labels stay attached while zooming. Label positions, reveal frames, camera motion, and the baked video come from this one specification. Connections are illustrative unless you pass kind sourced with at least one claimId each. The result is a normal library video asset — pass addToTimeline:true and startFrame to place it in the same step, exactly like compose_image. Rebuild with corrected places to regenerate; the receipt carries the spec, digest, and catalog coordinates for readback. Coordinates are editorial approximations, not survey-grade.",
+            inputSchema: objectSchema(
+                properties: [
+                    "places": ["type": "array", "description": "Scene places. Each needs a catalog name (e.g. \"Kulim\", \"Penang\", \"Kuala Lumpur\"). Duplicate or unknown names are refused.", "items": ["type": "object", "description": "One place.", "properties": [
+                        "name": ["type": "string", "description": "Canonical catalog name."],
+                        "label": ["type": "string", "description": "On-screen label. Defaults to the canonical name."],
+                        "claimIds": ["type": "array", "description": "Factual claim ids backing this place's narration cue."],
+                        "revealFrame": ["type": "integer", "description": "Frame when this pin and label appear. Default 0."],
+                    ], "required": ["name"]]],
+                    "connections": ["type": "array", "description": "Routes between scene places.", "items": ["type": "object", "description": "One link.", "properties": [
+                        "from": ["type": "string", "description": "Start place (must be in places)."],
+                        "to": ["type": "string", "description": "End place (must be in places)."],
+                        "kind": ["type": "string", "enum": ["illustrative", "sourced"], "description": "illustrative draws a relationship line; sourced claims a measured flow and needs claimIds. Default illustrative."],
+                        "claimIds": ["type": "array", "description": "Claim ids for sourced links."],
+                        "revealFrame": ["type": "integer", "description": "Frame when this route appears. Default 0."],
+                    ], "required": ["from", "to"]]],
+                    "camera": ["type": "array", "description": "Camera keys: center place and zoom over time. The camera transforms the map, pins, routes, and labels together. Empty defaults to the first place at zoom 1.", "items": ["type": "object", "description": "One key.", "properties": [
+                        "frame": ["type": "integer", "description": "Frame of this key."],
+                        "place": ["type": "string", "description": "Catalog place the camera centers (need not be a scene place)."],
+                        "zoom": ["type": "number", "description": "Zoom multiplier 0.5–4. Default 1."],
+                    ], "required": ["frame", "place"]]],
+                    "durationFrames": ["type": "integer", "description": "Scene length in frames at 30fps. Default 240."],
+                    "width": ["type": "integer", "description": "Canvas width. Defaults to the timeline canvas."],
+                    "height": ["type": "integer", "description": "Canvas height. Defaults to the timeline canvas."],
+                    "name": ["type": "string", "description": "Name for the scene in the library."],
+                    "addToTimeline": ["type": "boolean", "description": "Place the baked scene on the timeline in the same step. Default false."],
+                    "startFrame": ["type": "integer", "description": "Where to place it when addToTimeline is true. Defaults to 0."],
+                ],
+                required: ["places"]
+            )
+        ),
+        AgentTool(
+            name: .buildGraphicScene,
+            description: "Builds a sourced data and evidence graphic scene (numeric comparison, source card, comparison line/bar chart, or dated policy timeline) in one local step from real structured inputs. Stores series, units, dates, citations, and claim IDs separately from styling. Rejects malformed data, non-finite values, incompatible units, fabricated attribution, and chronology violations before mutation. Automatically validates display/narration agreement (including GDP vs GDP per capita, nominal vs adjusted values, and announced vs realized investment). Bakes an alpha ProRes 4444 video asset into the library with deterministic animated reveals and holds, and optionally places it on the timeline in the same step. Pass planId to validate cited claims against the plan's sourceLedger and script beats.",
+            inputSchema: objectSchema(
+                properties: [
+                    "kind": ["type": "string", "enum": ["numeric_comparison", "source_card", "comparison_chart", "policy_timeline"], "description": "The typed graphic family member to build."],
+                    "title": ["type": "string", "description": "Main title displayed on the graphic."],
+                    "subtitle": ["type": "string", "description": "Optional secondary title or context note."],
+                    "items": ["type": "array", "description": "For numeric_comparison: 2-6 items to compare with label, value, unit, and optional claimIds/baseline.", "items": ["type": "object", "properties": [
+                        "label": ["type": "string", "description": "Item label."],
+                        "value": ["type": "number", "description": "Numeric finite value."],
+                        "unit": ["type": "string", "description": "Unit (e.g. 'USD', '%', 'RM')."],
+                        "claimIds": ["type": "array", "description": "Claim IDs backing this metric."],
+                        "baseline": ["type": "boolean", "description": "Whether this item is the comparison baseline."],
+                        "note": ["type": "string", "description": "Optional contextual annotation."],
+                    ], "required": ["label", "value", "unit"]]],
+                    "comparisonType": ["type": "string", "enum": ["standard", "nominal_vs_adjusted", "announced_vs_realized", "per_capita_vs_total", "year_over_year"], "description": "Semantic type of comparison."],
+                    "author": ["type": "string", "description": "For source_card: Author or publishing institution."],
+                    "publicationDate": ["type": "string", "description": "For source_card: YYYY or YYYY-MM-DD."],
+                    "accessedDate": ["type": "string", "description": "For source_card: YYYY or YYYY-MM-DD."],
+                    "url": ["type": "string", "description": "For source_card: Verifiable URL."],
+                    "documentReference": ["type": "string", "description": "For source_card: Document/report reference."],
+                    "quotation": ["type": "string", "description": "For source_card: Verbatim quote from source."],
+                    "paraphrase": ["type": "string", "description": "For source_card: Marked paraphrase."],
+                    "series": ["type": "array", "description": "For comparison_chart: 1-4 data series with name, points (label, value, claimIds), and optional unit.", "items": ["type": "object", "properties": [
+                        "name": ["type": "string", "description": "Series name."],
+                        "points": ["type": "array", "items": ["type": "object", "properties": [
+                            "label": ["type": "string", "description": "Point label or date."],
+                            "value": ["type": "number", "description": "Numeric value."],
+                            "claimIds": ["type": "array", "description": "Claim IDs."],
+                        ], "required": ["label", "value"]]],
+                        "unit": ["type": "string", "description": "Optional series-specific unit."],
+                    ], "required": ["name", "points"]]],
+                    "unit": ["type": "string", "description": "For comparison_chart: Primary unit for axis and values."],
+                    "chartType": ["type": "string", "enum": ["line", "bar"], "description": "Chart visual type. Default line."],
+                    "xAxisLabel": ["type": "string", "description": "Label for horizontal axis."],
+                    "yAxisLabel": ["type": "string", "description": "Label for vertical axis."],
+                    "events": ["type": "array", "description": "For policy_timeline: 2-12 chronological events with date, title, description, and claimIds.", "items": ["type": "object", "properties": [
+                        "date": ["type": "string", "description": "Date string (YYYY or YYYY-MM-DD)."],
+                        "title": ["type": "string", "description": "Event milestone title."],
+                        "description": ["type": "string", "description": "Optional event details."],
+                        "claimIds": ["type": "array", "description": "Claim IDs."],
+                        "tag": ["type": "string", "description": "Optional category tag."],
+                    ], "required": ["date", "title", "claimIds"]]],
+                    "durationFrames": ["type": "integer", "description": "Scene length in frames at 30fps. Default 180."],
+                    "width": ["type": "integer", "description": "Canvas width. Defaults to timeline canvas."],
+                    "height": ["type": "integer", "description": "Canvas height. Defaults to timeline canvas."],
+                    "name": ["type": "string", "description": "Asset name in media library."],
+                    "addToTimeline": ["type": "boolean", "description": "Place on timeline at startFrame. Default false."],
+                    "startFrame": ["type": "integer", "description": "Timeline frame placement."],
+                    "planId": ["type": "string", "description": "Optional plan ID to validate claims and narration agreement against."],
+                    "narrationText": ["type": "string", "description": "Optional narration text to validate display/narration agreement against."],
+                    "claimIds": ["type": "array", "description": "Claim IDs backing this graphic."],
+                ],
+                required: ["kind", "title"]
+            )
+        ),
+        AgentTool(
             name: .addOutro,
             description: "Builds the end of the film — rolling end credits, a subscribe card, or both — in one undoable step. Use this instead of building the sequence out of text clips and keyframes by hand, because the roll has to start clear of the bottom edge and exit clear of the top one, fade in and out, and land inside the platform's end-screen window; that arithmetic belongs here, not in the Agent. Give credits as a list of name/role pairs and they become a single centred roll that travels upward at a constant rate with a fade envelope. Give subscribe with a channel and handle for a held call-to-action card, kind 'subscribe' to ask or 'thanks' to acknowledge an existing subscriber. The picture keeps playing under the words — there is no held-still option, because a freeze can only hold a lead-in, not a whole tail. Platform 'youtube' enforces the 5-20 second end-screen window and will refuse a duration outside it rather than quietly producing something YouTube rejects. The outro occupies the tail of the existing edit rather than extending past it, so nothing you have already cut moves. This draws the visual card only: YouTube's clickable subscribe and video elements are attached at upload in YouTube Studio, so tell the user to add the click targets there. If they want attribution for stock or music, pass it as credits.",
             inputSchema: objectSchema(
@@ -1527,7 +1627,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .matchLoudness,
-            description: "Measure each audio clip's integrated loudness (BS.1770-4, K-weighted, gated) and apply a volume offset that lands it on targetLUFS, so all selected clips sit at the same perceived level. Measurement runs in the background and is cached per source file. Typical voice target is -16 LUFS. Undoable.",
+            description: "Await local BS.1770-4 integrated loudness measurement over each audio clip's trimmed source range, then apply source gain offsets together as one undoable edit. Typical voice target is -16 LUFS. Fails without mutation if any source cannot be measured, the timeline/source changes, or the request is canceled. Repeating an unchanged match is a no-op. Gain is limited to +/-24 dB, with explicit warnings when limited. Clip volume, enhancement strength, automation, speed, and overlapping tracks affect final mix loudness: verify it with review_timeline. Nested carriers must be finished in their child timeline.",
             inputSchema: objectSchema(
                 properties: [
                     "clipIds": ["type": "array", "items": ["type": "string"], "description": "Audio clip ids from get_timeline."],
@@ -1564,7 +1664,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .generateSpeech,
-            description: "Speaks text — or a clip's own transcript — with a local voice, adds it to the media library, and optionally places it on the timeline. Free and offline: no server, no sign-in, no credits, and unlike generate_audio it never spends anything.\n\nTwo engines. Piper is a local neural synthesizer and is much more natural than the macOS system voices; it is used automatically whenever a Piper voice is installed for the language, and the receipt reports which engine actually rendered. The system voices are always available as a fallback and cover every language macOS ships, including ones Piper has no model for. Check the returned engine before promising a particular quality.\n\nUse it to voice a narration, to read a script, or to turn existing dialogue into a new take. Omit text and pass clipId (or trackIndex) to speak that audio's transcript — the words come from the same transcript get_transcript and add_captions use, so a spoken take and its captions cannot disagree. startFrame/endFrame narrow which part of the transcript to read.\n\nvoice takes a name or identifier from list_speech_voices — which voices exist varies per Mac, so never guess one; omit it to use the best voice for language. language is a BCP-47 tag and picks the voice when voice is omitted — use it when the words are not in the system language. rate and pitch are multipliers (1.0 = normal). Pass placeAtFrame to also drop the clip on a new audio track at that frame; otherwise the audio only joins the media library.\n\nNot every language has an installed voice — notably Malayalam has none on macOS, so Malayalam text is read badly. Check the voice's language in the result before promising a language match.",
+            description: "Speaks text — or a clip's own transcript — with a local voice, adds it to the media library, and optionally places it on the timeline. Free and offline: no server, no sign-in, no credits, and unlike generate_audio it never spends anything.\n\nTwo engines. Piper is a local neural synthesizer and is much more natural than the macOS system voices; it is used automatically whenever a Piper voice is installed for the language, and the receipt reports which engine actually rendered. The system voices are always available as a fallback and cover every language macOS ships, including ones Piper has no model for. Check the returned engine before promising a particular quality.\n\nDelivery follows the punctuation: full stops pause, `!`/`?` pause longer and lift, commas breathe briefly, and long sentences slow slightly so they stay intelligible. End sentences with `.`/`!`/`?` and separate paragraphs with a blank line for a full breath — flat text with no punctuation reads flat.\n\nUse it to voice a narration, to read a script, or to turn existing dialogue into a new take. Omit text and pass clipId (or trackIndex) to speak that audio's transcript — the words come from the same transcript get_transcript and add_captions use, so a spoken take and its captions cannot disagree. startFrame/endFrame narrow which part of the transcript to read.\n\nvoice takes a name or identifier from list_speech_voices — which voices exist varies per Mac, so never guess one; omit it to use the best voice for language. language is a BCP-47 tag and picks the voice when voice is omitted — use it when the words are not in the system language. rate and pitch are multipliers (1.0 = normal). Pass placeAtFrame to also drop the clip on a new audio track at that frame; otherwise the audio only joins the media library.\n\nNot every language has an installed voice — notably Malayalam has none on macOS, so Malayalam text is read badly. Check the voice's language in the result before promising a language match.",
             inputSchema: objectSchema(
                 properties: [
                     "text": ["type": "string", "description": "Words to speak. Omit to speak a clip's transcript instead. Max \(SpeechSynthesizer.maxCharacters) characters."],

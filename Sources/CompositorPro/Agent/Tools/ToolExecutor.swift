@@ -328,7 +328,7 @@ final class ToolExecutor {
 
     private static func canReadInactiveProject(_ tool: ToolName) -> Bool {
         switch tool {
-        case .getTimeline, .inspectTimeline, .getMedia, .inspectMedia, .searchMedia,
+        case .getTimeline, .inspectTimeline, .reviewTimeline, .getMedia, .inspectMedia, .searchMedia,
              .getMulticam, .getTranscript, .detectBeats, .inspectColor, .listModels,
              .listSpeechVoices, .sendFeedback:
             true
@@ -403,13 +403,14 @@ final class ToolExecutor {
         case .getTranscript: return try await getTranscript(editor, args)
         case .detectBeats:   return try await detectBeats(editor, args)
         case .inspectTimeline: return try await inspectTimeline(editor, args)
+        case .reviewTimeline: return try await reviewTimeline(editor, args)
         case .searchMedia:   return try await searchMedia(editor, args)
         case .applyColor:    return try applyColor(editor, args)
         case .applyEffect:   return try applyEffect(editor, args)
         case .denoiseAudio:  return try denoiseAudio(editor, args)
         case .debreatheAudio: return try debreatheAudio(editor, args)
-        case .enhanceVoice: return try enhanceVoice(editor, args)
-        case .matchLoudness: return try matchLoudness(editor, args)
+        case .enhanceVoice: return try await enhanceVoice(editor, args)
+        case .matchLoudness: return try await matchLoudness(editor, args)
         case .generateDrone: return try await generateDrone(editor, args)
         case .listSpeechVoices: return try listSpeechVoices(args)
         case .generateSpeech: return try await generateSpeech(editor, args)
@@ -427,6 +428,7 @@ final class ToolExecutor {
         case .addOutro:          return try addOutro(editor, args)
         case .composeImage:      return try await composeImage(editor, args)
         case .buildMapScene:     return try await buildMapScene(editor, args)
+        case .buildGraphicScene: return try await buildGraphicScene(editor, args)
         case .removeImageBackground: return try await removeImageBackground(editor, args)
         case .applyTextStyle:      return try await applyTextStyle(editor, args)
         case .offsetAudio:        return try offsetAudio(editor, args)
@@ -458,7 +460,7 @@ final class ToolExecutor {
         case .updateText:    return try updateText(editor, args)
         case .addCaptions:   return try await addCaptions(editor, args)
         case .exportProject: return try await exportProject(editor, args)
-        case .manageExports: return try manageExports(editor, args)
+        case .manageExports: return try await manageExports(editor, args)
         case .planEdit:     return try await planEdit(editor, args)
         case .applyPlan:    return try await applyPlan(editor, args)
         case .generateVideo: return try generate(editor, args, type: .video)

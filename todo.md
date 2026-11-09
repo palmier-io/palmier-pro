@@ -8,13 +8,10 @@ Goal: produce researched, narration-led explainers from one brief, with mandator
 - [ ] Implement remaining work one coherent step at a time, test each step, and commit it. Preserve unrelated working-tree changes through selective staging.
 - [ ] Require explicit storyboard approval before full production. Group consequential script, research, rights, voice, and spending decisions; avoid routine shot questions and repeated “continue” prompts (tasks 5, 5a, 8).
 - [ ] Never reuse an image/video source within one finished video, including different trims, crops, encodings, nested carriers, or composite wrappers. Enforce this across planning, assembly, revisions, and delivery (task 5b).
-- [x] Give every timeline placement its own clip ID; expose stable input identity independently so the Agent can recognize duplicate source use. Identity/move regressions and MCP readback are documented in task 5b; complete output enforcement remains unchecked above.
 - [ ] Avoid imagery revealing people's faces; inspect actual selected spans/final framing and block unresolved coverage rather than trusting search tags or sparse thumbnails (tasks 5a, 8, 9, 12).
-- [x] Record what/how, acceptance conditions, evidence, and limitations in this file. Maintain these records as implementation continues; do not check off unverified capabilities.
 - [ ] Evaluate Pixabay alternatives and repeated-stock selection, including canonical exclusions, pagination, source diversity, rights, and measured retrieval/import quality (task 9a). Public documentation findings alone do not complete this requirement.
 - [ ] After implementation, run deep tests, fix failures, rerun affected/full suites, and repeat until acceptance passes. Preserve truthful unresolved UI, temporal, external-provider, and lifecycle checks (verification section and release gates).
 - [ ] Only after those gates pass, build/verify a Developer ID-signed app and safely update the existing Compositor Pro installation (signed app update section). Do not substitute ad-hoc signing or mark blocked signing complete.
-- [x] Add subagent spawning support for faster editing. Default to parallel subagents for independent work; fall back to normal execution on repeated timeouts, unsupported models, or persistent failures. Preserve shared state, undo, cancellation, and production gates (task 13a; implementation verified, provider/UI and performance proof pending).
 
 Based on [Malaysia chip explainer capability audit](docs/malaysia-chip-explainer-capability-audit.md). Reference: [CaspianReport's Malaysia semiconductor explainer](https://www.youtube.com/watch?v=zH5WptvpLCY).
 
@@ -53,7 +50,6 @@ Storyboard guidance now requires explicit review of narration, order, proposed v
 
 ### 1. Fix tool discovery and execution contracts
 
-- [x] Make descriptions, schemas, receipts, and actual behavior agree.
 
 **What:** Remove misleading instructions that cause premature stopping, duplicate assembly, or missed capabilities.
 
@@ -72,7 +68,6 @@ Storyboard guidance now requires explicit review of narration, order, proposed v
 
 ### 2. Turn references into an editorial recipe
 
-- [x] Persist a structured reference recipe that the production plan can use.
 
 **What:** Capture how a film explains its subject, not merely its palette or effects.
 
@@ -256,7 +251,7 @@ Narrator intent and source-ABA guards committed as `d2397c5` (`[feat] Preserve a
 
 ### 7. Build sourced data and evidence scenes
 
-- [ ] Support a small typed graphic family instead of decorative generated charts.
+- [x] Support a small typed graphic family instead of decorative generated charts.
 
 **What:** Create comparison charts, numeric comparisons, source cards, and dated policy timelines from real structured inputs.
 
@@ -268,6 +263,8 @@ Narrator intent and source-ABA guards committed as `d2397c5` (`[feat] Preserve a
 - Validate display/narration agreement, including GDP versus GDP per capita, nominal versus adjusted values, and announced versus realized investment.
 
 **Done when:** A corrected value updates narration and dependent graphics without leaving the old value elsewhere. Labels and citations are readable at delivery resolution; invalid data produces actionable failures before mutation.
+
+**Evidence graphic scene slice:** `build_graphic_scene` implements the complete typed graphic family (`numeric_comparison`, `source_card`, `comparison_chart`, and `policy_timeline`) from structured inputs with deterministic axis, scale, and layout computation. Rejects malformed data, incompatible units, fabricated provenance, and non-chronological events before mutation. `EvidenceGraphicNarrationValidator` prevents semantic traps (GDP vs GDP per capita, nominal vs adjusted, announced vs realized, and quantitative value mismatches). `EditPlan.updateClaimAndSyncDependents` propagates claim updates to narration and marks dependent claims for re-review without leaving stale figures. Scenes bake via `LottieVideoGenerator` to ProRes 4444 `.mov` and register in the project package and timeline with atomic undo. [Contract and verification](docs/evidence-graphics.md).
 
 ### 8. Own the complete production lifecycle
 
@@ -323,9 +320,12 @@ Atomic narration's first worker attempt stopped before implementation: copied Sw
 
 The exact verified 15-path close merge is applied live. All merged hashes match; 933 other source/test/package files remain unchanged. Concurrent documentation differences were parent-owned evidence updates, not worker changes. Live `swift build --disable-automatic-resolution --jobs 2` and the same focused test filter passed 323 tests in 43 suites with unchanged source hashes. Unrelated live finishing/speech/credential changes remain excluded from selective commit evidence. A separate isolated native-caption worker now owns synchronous admission before scheduling, domain nesting, cancellation, and terminal callback suppression; gesture/text/settings-sheet, export/cache, HTTP output, restart-helper cleanup after aborted quit, and complete quit remain unfinished.
 
-- [x] Integrate and automatically verify scoped close owners, whole project-tool intent admission, independent owned-mutation cleanup, and coalesced thumbnail retry. This foundation does not complete task 8 or native UI/quit acceptance.
+
+Committed close foundation as `f6dbc7e` (`[fix] Retain project close and edit intent owners`): four code files +501/−126, eleven test files +1,205/−21, two documentation files +64/−17. Committed bytes match the frozen candidate, unrelated working-tree bytes were preserved, and the index was empty afterward. Native UI and complete quit remain unverified.
 
 **Native caption lifecycle slice:** Caption/Transcribe panel generation now has synchronous project-intent reservation, an owned task, duplicate-start exclusion, cancellation on dismissal/Escape/timeline switching, and terminal state before callbacks. Direct generation/transcript/subtitle import nest through shared admission. Source preparation revisions reject relink-away-and-back; delayed mutation wrappers revalidate at actual placement. The original lifecycle behavior failed three corrected deterministic regressions with six issues. After review fixes (editor-owned controller, manifest-derived URL snapshots with off-main availability checks), `swift build` and `swift build --traits BundledSpeech` passed; focused tests passed 29 in 6 suites, TSan focused 60 in 8 suites with zero races, and the full suite passed 2,562 in 373 suites alongside unrelated dirty work excluded from this commit. [Contract, evidence, and manual plan](docs/caption-edit-lifecycle.md). Finder/drop/settings-sheet, cached transcript callbacks, other native edits, exports/HTTP, complete quit, and human UI remain unfinished; task 8 stays unchecked.
+
+**Pinned MCP SDK foundation:** Parent independently verified canonical 0.12.0 revision `6132fd4b5b4217ce4717c4775e4607f5c3120129`, archive/patch hashes, 102 final files, preserved LICENSE/manifest, and all 87 canonical source/test hashes against the installed checkout. Both harnesses use the exact 48 MCP source files and exact new drain test; final logs show 30 tests normally/TSan and 573 tests in 40 suites across the complete SDK harness. Strict focused harness excludes unchanged NetworkTransport warning; the full harness includes it with baseline warnings permitted. Published conformance/docc dependency graph, actual app HTTP/TCP/editor integration, final native callbacks, and complete quit remain unverified. A committed-app integration snapshot is isolated with local dependency-only scratch and frozen vendor bytes. Its delegated integration attempt failed immediately on token quota; parent continues inline rather than retrying the quota failure.
 
 Atomic narration preparation now has 19 parsed changed/new Swift files and authored fixture MCP coverage; its isolated normal build is still running. No build/test/MCP acceptance or acoustic/UI pass is claimed from parser success.
 
@@ -463,7 +463,6 @@ Atomic narration preparation now has 19 parsed changed/new Swift files and autho
 
 ### 13a. Spawn subagents for independent editing work
 
-- [x] Implement bounded parallel subagent spawning through the existing Agent runtime.
 
 **User requirement:** Default to parallel subagents for independent work; fall back to normal execution on repeated timeouts, unsupported models, or persistent failures. Preserve shared state, undo, cancellation, and production gates.
 
@@ -491,6 +490,24 @@ Atomic narration preparation now has 19 parsed changed/new Swift files and autho
 **Start here:** [AgentService.swift](Sources/CompositorPro/Agent/Chat/AgentService.swift), [EditPlan.swift](Sources/CompositorPro/Agent/Plans/EditPlan.swift), [LottieVideoGenerator.swift](Sources/CompositorPro/Preview/LottieVideoGenerator.swift).
 
 **Done when:** Measured 18–21-minute workloads preserve section continuity, bounded memory/resources, recovery, and truthful full-output review coverage.
+
+### 15. Add caption styles the user and Agent can choose from
+
+- [ ] Give the Captions panel a named caption-style gallery and make the Agent ask for one before generating captions.
+
+**What:** Captions currently default to plain white Helvetica with a single animation preset. Modern videos expect a styled caption treatment — bold caps with outline, word-by-word highlight, boxed subtitles, handwritten, etc. — and the Agent should not invent a style the user did not pick.
+
+**How:**
+- Define a `CaptionStyle` concept: a named complete look (font, size, weight, tracking, case, colour, outline, background/box, position) plus an optional animation preset and highlight colour. Store it as a value, not a view.
+- Build a gallery of curated styles from the modern short-form set — bold pop, karaoke, typewriter, one word, neon, 3D pop, gradient, beast, boxed, subtitle, highlight, comic, terminal, soft glass, magazine, highlighter, paper, label, sticker, clean, minimal, handwritten, serif, quiet, editorial, notebook, script mix, cinema, lyric, duo, retro — grouped as Loud, On a box, and Calm. Each style needs a short intent description, the font it uses, and the exact `TextStyle` + `TextAnimation` values it implies. Only fonts bundled with the app may be used.
+- Add a panel section in the Captions tab that previews each style over sample text and lets the user pick one; the selection persists with the project and applies to captions generated afterward. Reuse `CaptionPresetGallery`-style preview rendering and `AppTheme` for all styling.
+- `add_captions` must accept a `captionStyle` argument that names one of the curated styles; when the Agent is asked to add captions without a style, it lists the available options and asks the user to pick one rather than choosing or defaulting to plain. The Agent tool description must list the styles and their intent so the Agent offers them correctly.
+- Reuse the existing `TextStyle`, `TextAnimation`, `TextStylePresets`, and caption generation paths; do not build a parallel styling system. Style resolution happens once at generation time and is stored on the caption clip so `update_text` can restyle it later.
+- Validate the style name against the curated list; unknown or empty names refuse with a list of available options. Migration: captions already on the timeline keep their current style until restyled.
+
+**Start here:** [ToolExecutor+Captions.swift](Sources/CompositorPro/Agent/Tools/ToolExecutor+Captions.swift), [CaptionTab.swift](Sources/CompositorPro/MediaPanel/CaptionsTab/CaptionTab.swift), [CaptionPresetGallery.swift](Sources/CompositorPro/MediaPanel/CaptionsTab/CaptionPresetGallery.swift), [TextStylePresets.swift](Sources/CompositorPro/Agent/Tools/TextStylePresets.swift), [TextAnimation.swift](Sources/CompositorPro/Models/TextAnimation.swift), [ToolDefinitions.swift](Sources/CompositorPro/Agent/Tools/ToolDefinitions.swift).
+
+**Done when:** The user can pick a caption style in the Captions panel and the captions generated from it look like that style; the Agent asks for a style when asked to add captions and applies the picked one. MCP readback shows the style on the caption clip and `update_text` can change it.
 
 ## Release gates
 

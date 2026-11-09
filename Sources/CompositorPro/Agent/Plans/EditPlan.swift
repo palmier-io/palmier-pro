@@ -521,6 +521,50 @@ extension EditPlan {
         ]
     }
 
+    mutating func updateClaimAndSyncDependents(
+        claimId: String,
+        newValue: Double?,
+        newUnit: String?,
+        narrationUpdates: [String: String] = [:]
+    ) throws -> [String: Any] {
+        guard var ledger = sourceLedger else {
+            throw EditPlanValidationError.invalidReference("Plan has no sourceLedger.")
+        }
+        guard let claimIndex = ledger.claims.firstIndex(where: { $0.claimId == claimId }) else {
+            throw EditPlanValidationError.invalidReference("Claim '\(claimId)' not found in sourceLedger.")
+        }
+        let oldClaim = ledger.claims[claimIndex]
+        if let newValue { ledger.claims[claimIndex].value = newValue }
+        if let newUnit { ledger.claims[claimIndex].unit = try EditPlan.validatedName(newUnit) }
+        ledger.claims[claimIndex].status = .unresolved
+        sourceLedger = try ledger.validated(previous: sourceLedger)
+        sourceLedgerRevision = UUID().uuidString
+
+        var updatedBeats: [String] = []
+        if var beats = scriptBeats {
+            for (beatId, newText) in narrationUpdates {
+                if let bIdx = beats.firstIndex(where: { $0.beatId == beatId }) {
+                    beats[bIdx].text = try EditPlan.validatedText(newText, field: "script text")
+                    beats[bIdx] = try beats[bIdx].validated()
+                    updatedBeats.append(beatId)
+                }
+            }
+            scriptBeats = beats
+            narrationTiming = nil
+        }
+
+        let dependents = claimDependents(Set([claimId]))
+        return [
+            "claimId": claimId,
+            "oldValue": oldClaim.value as Any,
+            "newValue": newValue as Any,
+            "oldUnit": oldClaim.unit as Any,
+            "newUnit": newUnit as Any,
+            "updatedBeatIds": updatedBeats,
+            "dependents": dependents,
+        ]
+    }
+
     private func addNarrationReceipt(_ link: SceneNarrationLink?, to row: inout [String: Any]) {
         guard let link else { return }
         row["narrationLink"] = ["firstBeatId": link.firstBeatId, "lastBeatId": link.lastBeatId,
