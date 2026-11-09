@@ -1,14 +1,45 @@
 import Foundation
 
 extension ToolExecutor {
-    func manageExports(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+    // A timeline carrying an approved managed production re-audits its current
+    // output occurrences before video delivery, so manual edits or later imports
+    // after approval cannot evade the no-repeat rule. Other modes carry the edit
+    // itself, and untracked timelines keep the general-editing contract.
+    private static func requireProductionVisualUniqueness(editor: EditorViewModel, timeline: Timeline) async throws {
+        guard editor.editPlans.contains(where: { $0.timelineId == timeline.id && $0.productionRun != nil && $0.productionRun?.phase != .canceled }) else { return }
+        let manifest = editor.mediaManifest
+        let snapshot = timeline
+        let report: VisualUniquenessReport
+        do {
+            report = try await VisualUniqueness.audit(timeline: snapshot, timelines: editor.timelines, manifest: manifest)
+        } catch is CancellationError { throw CancellationError() }
+        try Task.checkCancellation()
+        guard editor.timeline(for: timeline.id) == snapshot, editor.mediaManifest == manifest else {
+            throw ToolError("export_project: timeline or media changed during visual identity review; retry against current state.")
+        }
+        guard report.conflicts.isEmpty, report.unresolved.isEmpty else {
+            throw ToolError("export_project: delivery refused — the production output repeats a visual source or has unresolved source identity (\(report.conflicts.count) conflict(s), \(report.unresolved.count) unresolved). Replace duplicates, then retry.")
+        }
+    }
+
+    func manageExports(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         let input: ManageExportsArgs = try decodeToolArgs(args, path: "manage_exports")
         let projectJobs = exportQueue.jobs(for: editor.exportQueueProjectID)
 
         switch input.action {
+        case "wait":
+            guard let rawID = input.jobId, let id = UUID(uuidString: rawID),
+                  projectJobs.contains(where: { $0.id == id }) else {
+                throw ToolError("manage_exports: wait requires a jobId from this project")
+            }
+            let job = try await exportQueue.waitForCompletion(id)
+            return try jsonResult([
+                "jobId": id.uuidString, "status": job.status.rawValue, "path": job.outputURL.path,
+                "warnings": job.warnings, "error": job.error as Any? ?? NSNull(),
+            ], tool: "manage_exports")
         case "list":
             guard input.jobId == nil else {
-                throw ToolError("manage_exports: jobId only applies to cancel")
+                throw ToolError("manage_exports: jobId only applies to cancel or wait")
             }
             let waitingIDs = exportQueue.jobs.filter { $0.status == .waiting }.map(\.id)
             let exports = projectJobs.reversed().map { job -> [String: Any] in
@@ -66,7 +97,7 @@ extension ToolExecutor {
                 "cancellationRequested": cancellationRequested,
             ], tool: "manage_exports")
         default:
-            throw ToolError("manage_exports: action must be list or cancel")
+            throw ToolError("manage_exports: action must be list, wait, or cancel")
         }
     }
 
@@ -141,6 +172,7 @@ extension ToolExecutor {
             guard timeline.totalFrames > 0 else {
                 throw ToolError("export_project: timeline is empty")
             }
+            try await Self.requireProductionVisualUniqueness(editor: editor, timeline: timeline)
             return try enqueueExport(
                 editor, timeline: timeline, mode: mode, format: format,
                 resolution: resolution, target: .default, outputURL: outputURL,
