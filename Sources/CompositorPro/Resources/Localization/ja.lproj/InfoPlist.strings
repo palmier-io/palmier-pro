@@ -1,4 +1,4 @@
 /* Text displayed by macOS for Compositor Pro project packages. */
 
-"CFBundleTypeName" = "Palmierプロジェクト";
-"UTTypeDescription" = "Palmierプロジェクト";
+"CFBundleTypeName" = "Compositorプロジェクト";
+"UTTypeDescription" = "Compositorプロジェクト";

@@ -378,7 +378,7 @@ final class AppState {
     func openProjectFromPanel() {
         Telemetry.beginOperation("open_panel", data: ["flow": "project_open"])
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [Self.projectContentType]
+        panel.allowedContentTypes = Self.openProjectContentTypes
         panel.canChooseDirectories = false
         panel.treatsFilePackagesAsDirectories = false
         panel.allowsMultipleSelection = false
@@ -394,6 +394,19 @@ final class AppState {
         UTType(Project.typeIdentifier)
             ?? UTType(filenameExtension: Project.fileExtension, conformingTo: .package)
             ?? .package
+    }()
+
+    private static let openProjectContentTypes: [UTType] = {
+        var types: [UTType] = []
+        if let primary = UTType(Project.typeIdentifier) ?? UTType(filenameExtension: Project.fileExtension, conformingTo: .package) {
+            types.append(primary)
+        }
+        // Legacy shim: allow opening .palmier packages
+        if let legacy = UTType(filenameExtension: Project.legacyFileExtension, conformingTo: .package) {
+            types.append(legacy)
+        }
+        if types.isEmpty { types.append(.package) }
+        return types
     }()
 
 }

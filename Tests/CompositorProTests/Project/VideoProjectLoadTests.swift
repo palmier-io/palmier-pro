@@ -94,6 +94,41 @@ struct VideoProjectLoadTests {
         #expect(contents.manifestUnreadable == false)
     }
 
+    @Test func legacyPalmierPackageOpensAndSavesUnderNewIdentity() throws {
+        let bundle = fm.temporaryDirectory
+            .appendingPathComponent("legacy-project-\(UUID().uuidString).\(Project.legacyFileExtension)", isDirectory: true)
+        try fm.createDirectory(at: bundle, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: bundle) }
+
+        let timeline = Fixtures.timeline(
+            tracks: [Fixtures.videoTrack(clips: [Fixtures.clip(start: 0, duration: 30)])]
+        )
+        try JSONEncoder().encode(timeline)
+            .write(to: bundle.appendingPathComponent(Project.timelineFilename))
+        try JSONEncoder().encode(sampleManifest())
+            .write(to: bundle.appendingPathComponent(Project.manifestFilename))
+
+        let contents = try VideoProject.readProjectPackage(at: bundle)
+        #expect(contents.manifest?.entries.count == 1)
+        #expect(contents.projectFile.timelines.first?.tracks.count == 1)
+
+        let newBundle = fm.temporaryDirectory
+            .appendingPathComponent("migrated-project-\(UUID().uuidString).\(Project.fileExtension)", isDirectory: true)
+        defer { try? fm.removeItem(at: newBundle) }
+
+        let snapshot = ProjectPackageSnapshot(
+            timeline: try JSONEncoder().encode(contents.projectFile),
+            manifest: try JSONEncoder().encode(contents.manifest),
+            thumbnail: nil,
+            chatSessionFiles: []
+        )
+        try VideoProject.writeProjectPackage(snapshot, to: newBundle, sourceURL: bundle)
+
+        let savedContents = try VideoProject.readProjectPackage(at: newBundle)
+        #expect(savedContents.manifest?.entries.count == 1)
+        #expect(savedContents.projectFile.timelines.first?.tracks.count == 1)
+    }
+
     @MainActor
     @Test func manifestRestorePublishesMediaAssetsOnce() {
         let document = VideoProject()

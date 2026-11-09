@@ -321,7 +321,7 @@ enum FCPXMLExporter {
 
         private func libraryNode(clips: [EmittableClip]) -> FCPXMLNode {
             FCPXMLNode(name: "library", children: [
-                FCPXMLNode(name: "event", attributes: [("name", "Palmier Export")], children: [
+                FCPXMLNode(name: "event", attributes: [("name", "Compositor Pro Export")], children: [
                     projectNode(clips: clips),
                 ]),
             ])

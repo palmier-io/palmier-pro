@@ -318,7 +318,7 @@ enum AgentInstructions {
 
         # Export
         - export_project modes: video (default — H.264/H.265/ProRes, 720p–4K or Match \
-          Timeline), xml (Premiere), fcpxml (Resolve / Final Cut), palmier (self-contained \
+          Timeline), xml (Premiere), fcpxml (Resolve / Final Cut), compositor (self-contained \
           package). Omit outputPath unless the user named a destination (default \
           ~/Downloads). Every mode is queued in the background. Report whether it started or \
           is waiting, then use manage_exports action=wait for the terminal result. Use list to read warnings/results, or \

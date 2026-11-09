@@ -79,7 +79,7 @@ Il modo più semplice è aprire nell'app `Help` -> `MCP Instructions` -> `Instal
 ```
 {
   "mcpServers": {
-    "palmier-pro": {
+    "compositor-pro": {
       "type": "http",
       "url": "http://127.0.0.1:19789/mcp"
     }

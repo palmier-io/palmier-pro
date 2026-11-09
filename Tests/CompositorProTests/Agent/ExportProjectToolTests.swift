@@ -107,9 +107,13 @@ struct ExportProjectToolTests {
 
         let unknown = await h.runRaw("export_project", args: ["mode": "xml", "outputPath": "/tmp/x.xml", "timelineId": "ffffffff"])
         #expect(unknown.isError)
-        let palmier = await h.runRaw("export_project", args: ["mode": "compositor", "outputPath": "/tmp/x.compositorpro", "timelineId": String(other.id.prefix(8))])
-        #expect(palmier.isError)
-        #expect(ToolHarness.textOf(palmier).contains("palmier"))
+        let compositor = await h.runRaw("export_project", args: ["mode": "compositor", "outputPath": "/tmp/x.compositorpro", "timelineId": String(other.id.prefix(8))])
+        #expect(compositor.isError)
+        #expect(ToolHarness.textOf(compositor).contains("compositor"))
+        // Legacy shim: "palmier" mode is accepted and normalized
+        let legacy = await h.runRaw("export_project", args: ["mode": "palmier", "outputPath": "/tmp/x.compositorpro", "timelineId": String(other.id.prefix(8))])
+        #expect(legacy.isError)
+        #expect(ToolHarness.textOf(legacy).contains("compositor"))
     }
 
     @Test func exportsXML() async throws {
@@ -135,13 +139,13 @@ struct ExportProjectToolTests {
             id: "missing", name: "Missing", type: .video,
             source: .external(absolutePath: "/tmp/missing-\(UUID().uuidString).mov"), duration: 1
         )]
-        let palmierURL = FileManager.default.temporaryDirectory
+        let compositorURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("export-tool-\(UUID().uuidString).compositorpro")
-        defer { try? FileManager.default.removeItem(at: palmierURL) }
-        let palmier = try await h.runOK("export_project", args: [
-            "mode": "compositor", "outputPath": palmierURL.path,
+        defer { try? FileManager.default.removeItem(at: compositorURL) }
+        let compositorExport = try await h.runOK("export_project", args: [
+            "mode": "compositor", "outputPath": compositorURL.path,
         ]) as? [String: Any]
-        try await waitForJob(from: palmier, in: h.exportQueue)
+        try await waitForJob(from: compositorExport, in: h.exportQueue)
         let listed = try await h.runOK("manage_exports", args: ["action": "list"]) as? [String: Any]
         let export = (listed?["exports"] as? [[String: Any]])?.first
         #expect((export?["warnings"] as? [String])?.count == 1)

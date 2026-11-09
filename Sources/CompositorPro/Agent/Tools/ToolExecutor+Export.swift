@@ -122,7 +122,7 @@ extension ToolExecutor {
         let timeline: Timeline
         if let id = input.timelineId {
             guard mode != .compositor else {
-                throw ToolError("export_project: timelineId doesn't apply to palmier mode — the package carries every timeline")
+                throw ToolError("export_project: timelineId doesn't apply to compositor mode — the package carries every timeline")
             }
             guard let t = editor.timeline(for: id) else {
                 throw ToolError("export_project: no timeline with id '\(id)'. get_timeline lists the project's timelines.")

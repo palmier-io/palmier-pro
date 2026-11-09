@@ -216,7 +216,7 @@ private actor ProjectAccessibilityMCPFiles {
         try fm.createDirectory(at: root, withIntermediateDirectories: false)
         let date = Date(timeIntervalSince1970: 1)
         let entries = ["Readable", "Missing", "Unreadable"].map {
-            ProjectEntry(id: UUID(), url: root.appendingPathComponent($0).appendingPathExtension("palmier"), createdDate: date, lastOpenedDate: date)
+            ProjectEntry(id: UUID(), url: root.appendingPathComponent($0).appendingPathExtension(Project.fileExtension), createdDate: date, lastOpenedDate: date)
         }
         let fixture = ProjectAccessibilityMCPFixture(root: root, files: self, entries: entries)
         do {

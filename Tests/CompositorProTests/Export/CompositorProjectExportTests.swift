@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import CompositorPro
 
-@Suite("Palmier project export (collect media)")
+@Suite("Compositor project export (collect media)")
 struct CompositorProjectExportTests {
 
     private let fm = FileManager.default

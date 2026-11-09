@@ -7,14 +7,24 @@ import UniformTypeIdentifiers
 extension MediaTab {
     static let folderDragScheme = "compositor-folder://"
     static let assetDragScheme = "compositor-asset://"
-    static let timelineDragScheme = "palmier-timeline://"
+    static let timelineDragScheme = "compositor-timeline://"
+    /// Legacy drag schemes for clipboard/drag backwards compatibility
+    static let legacyFolderDragScheme = "palmier-folder://"
+    static let legacyAssetDragScheme = "palmier-asset://"
+    static let legacyTimelineDragScheme = "palmier-timeline://"
 
     static func folderDragString(forFolderId id: String) -> String {
         folderDragScheme + id
     }
 
     static func folderId(fromDragString line: String) -> String? {
-        line.hasPrefix(folderDragScheme) ? String(line.dropFirst(folderDragScheme.count)) : nil
+        if line.hasPrefix(folderDragScheme) {
+            return String(line.dropFirst(folderDragScheme.count))
+        }
+        if line.hasPrefix(legacyFolderDragScheme) {
+            return String(line.dropFirst(legacyFolderDragScheme.count))
+        }
+        return nil
     }
 
     static func timelineDragString(forTimelineId id: String) -> String {
@@ -22,7 +32,13 @@ extension MediaTab {
     }
 
     static func timelineId(fromDragString line: String) -> String? {
-        line.hasPrefix(timelineDragScheme) ? String(line.dropFirst(timelineDragScheme.count)) : nil
+        if line.hasPrefix(timelineDragScheme) {
+            return String(line.dropFirst(timelineDragScheme.count))
+        }
+        if line.hasPrefix(legacyTimelineDragScheme) {
+            return String(line.dropFirst(legacyTimelineDragScheme.count))
+        }
+        return nil
     }
 
     static func assetDragString(forAssetId id: String) -> String {
@@ -35,12 +51,26 @@ extension MediaTab {
     }
 
     static func assetId(fromDragString line: String) -> String? {
-        guard line.hasPrefix(assetDragScheme) else { return nil }
-        return String(line.dropFirst(assetDragScheme.count).prefix(while: { $0 != "#" }))
+        if line.hasPrefix(assetDragScheme) {
+            return String(line.dropFirst(assetDragScheme.count).prefix(while: { $0 != "#" }))
+        }
+        if line.hasPrefix(legacyAssetDragScheme) {
+            return String(line.dropFirst(legacyAssetDragScheme.count).prefix(while: { $0 != "#" }))
+        }
+        return nil
     }
 
     static func assetSegment(fromDragString line: String) -> ClosedRange<Double>? {
-        guard line.hasPrefix(assetDragScheme), let hash = line.firstIndex(of: "#") else { return nil }
+        let prefixCount: Int
+        if line.hasPrefix(assetDragScheme) {
+            prefixCount = assetDragScheme.count
+        } else if line.hasPrefix(legacyAssetDragScheme) {
+            prefixCount = legacyAssetDragScheme.count
+        } else {
+            return nil
+        }
+        guard let hash = line.firstIndex(of: "#") else { return nil }
+        _ = prefixCount
         let parts = line[line.index(after: hash)...].split(separator: "-", omittingEmptySubsequences: false)
         guard parts.count == 2,
               let start = Double(parts[0]), let end = Double(parts[1]),

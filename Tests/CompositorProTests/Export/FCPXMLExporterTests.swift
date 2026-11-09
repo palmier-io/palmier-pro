@@ -73,7 +73,7 @@ struct FCPXMLExporterTests {
         #expect(xml.contains("name=\"FFVideoFormat1080p30\""))
         #expect(xml.contains("colorSpace=\"1-1-1 (Rec. 709)\""))
         #expect(xml.contains("<library>"))
-        #expect(xml.contains("<event name=\"Palmier Export\">"))
+        #expect(xml.contains("<event name=\"Compositor Pro Export\">"))
         #expect(xml.contains("<project name=\"\(timeline.name)\">"))
         #expect(xml.contains("<sequence format=\"r1\" duration=\"0s\""))
         #expect(xml.contains("<spine/>"))

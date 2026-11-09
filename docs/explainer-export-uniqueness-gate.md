@@ -1,6 +1,6 @@
 # Production export uniqueness gate
 
-Video delivery (`export_project` mode=video) of a timeline carrying an active managed production re-audits the **current** output snapshot with `VisualUniqueness.audit` before queueing. Timelines without a production run, canceled runs, and edit-exchange modes (`xml`, `fcpxml`, `palmier`) keep the general-editing contract: repeating media is allowed in experiments and interchange files.
+Video delivery (`export_project` mode=video) of a timeline carrying an active managed production re-audits the **current** output snapshot with `VisualUniqueness.audit` before queueing. Timelines without a production run, canceled runs, and edit-exchange modes (`xml`, `fcpxml`, `compositor` / legacy `palmier`) keep the general-editing contract: repeating media is allowed in experiments and interchange files.
 
 The audit covers retained content identities and provider source aliases across nested carriers, overlays, and coalesced continuous splits. Any conflict or unresolved identity/lineage refuses delivery with counts and the action `replace_repeated_source`. The gate compares the audited snapshot and media manifest after the off-main audit; timeline or media changes during review throw instead of enqueueing stale state. Refusal adds no export job, timeline edit, or undo action.
 

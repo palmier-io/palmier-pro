@@ -48,14 +48,19 @@ private struct ExportAnalyticsRun: Sendable {
         self.started = ContinuousClock.now
     }
 
-    init(palmierContext context: ExportAnalyticsContext) {
+    init(compositorContext context: ExportAnalyticsContext) {
         self.source = context.source
         self.projectId = context.projectId ?? "unknown"
         self.mode = "compositor"
-        self.format = "Palmier"
+        self.format = "Compositor"
         self.resolution = "n/a"
         self.timelineInput = context.timelineInput
         self.started = ContinuousClock.now
+    }
+
+    /// Legacy shim for external callers
+    init(palmierContext context: ExportAnalyticsContext) {
+        self.init(compositorContext: context)
     }
 
     func begin() {
@@ -375,7 +380,7 @@ final class ExportService {
     ) async -> CompositorProjectExporter.Report? {
         reset()
         defer { activeCancellation = nil }
-        let analytics = ExportAnalyticsRun(palmierContext: analyticsContext)
+        let analytics = ExportAnalyticsRun(compositorContext: analyticsContext)
 
         do {
             try checkCancellation()
@@ -383,7 +388,7 @@ final class ExportService {
             setPhase(.exporting)
             Log.export.notice(
                 "compositor export start url=\(outputURL.lastPathComponent)",
-                telemetry: "Palmier project export started",
+                telemetry: "Compositor project export started",
                 data: [
                     "timelines": projectFile.timelines.count,
                     "clips": projectFile.timelines.reduce(0) { $0 + $1.tracks.reduce(0) { $0 + $1.clips.count } },
@@ -408,7 +413,7 @@ final class ExportService {
             setProgress(1)
             Log.export.notice(
                 "compositor export ok collected=\(report.collected.count) missing=\(report.missing.count)",
-                telemetry: "Palmier project export finished",
+                telemetry: "Compositor project export finished",
                 data: ["collected": report.collected.count, "missing": report.missing.count]
             )
             analytics.finish()
@@ -421,7 +426,7 @@ final class ExportService {
                 self.error = Log.detail(error)
                 Log.export.error(
                     "compositor export failed: \(Log.detail(error))",
-                    telemetry: "Palmier project export failed",
+                    telemetry: "Compositor project export failed",
                     data: ["error": Log.detail(error)]
                 )
                 analytics.fail()

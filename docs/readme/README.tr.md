@@ -81,7 +81,7 @@ En kolay yol, uygulama içinden `Help` -> `MCP Instructions` -> `Install in Curs
 ```
 {
   "mcpServers": {
-    "palmier-pro": {
+    "compositor-pro": {
       "type": "http",
       "url": "http://127.0.0.1:19789/mcp"
     }

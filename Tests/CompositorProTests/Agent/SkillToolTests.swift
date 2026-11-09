@@ -149,7 +149,7 @@ struct SkillToolTests {
         _ operation: @MainActor (SkillToolHarness) async throws -> Void
     ) async throws {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("palmier-skill-tools-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("compositor-skill-tools-\(UUID().uuidString)", isDirectory: true)
         let harness = SkillToolHarness(directory: directory)
         await harness.store.reloadSkills()
         do {

@@ -19,8 +19,8 @@ elif printf '%s' "$identities" | grep -q "valid identities found" && ! printf '%
 fi
 
 echo "== Provision profile =="
-if [ -z "${PROVISION_PROFILE:-}" ] && [ ! -f scripts/Palmier_Pro_Developer_ID.provisionprofile ]; then
-  echo "MISSING: set PROVISION_PROFILE or place scripts/Palmier_Pro_Developer_ID.provisionprofile."
+if [ -z "${PROVISION_PROFILE:-}" ] && [ ! -f scripts/Compositor_Pro_Developer_ID.provisionprofile ] && [ ! -f scripts/Palmier_Pro_Developer_ID.provisionprofile ]; then
+  echo "MISSING: set PROVISION_PROFILE or place scripts/Compositor_Pro_Developer_ID.provisionprofile (or legacy Palmier_Pro_Developer_ID.provisionprofile)."
   failures=$((failures + 1))
 fi
 

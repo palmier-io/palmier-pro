@@ -69,7 +69,7 @@ Use `swift build --traits BundledSpeech` for changes that touch MLX, speech anal
 - The synchronous `FileIO` helpers do not provide an execution hop. Callers are responsible for invoking them from an off-main context.
 - Snapshot actor-owned model data before file work. Do not capture a main-actor model or mutate observable state from the file-I/O executor.
 - Stage complete output outside the live project package, prepare replacements on the destination volume, and atomically install the finished item.
-- Route all live `.palmier` package media installs and removals through `ProjectPackageCoordinator`. Do not write directly into a live package from feature code.
+- Route all live `.compositorpro` (and legacy `.palmier`) package media installs and removals through `ProjectPackageCoordinator`. Do not write directly into a live package from feature code.
 - Serialize operations that target the same package or destination. A save, import, generation result, thumbnail, removal, export, and close operation must not race each other.
 - Closing, Save As, and app termination must wait for admitted mutations, reject late commits, and preserve the latest successful state.
 - Use unique temporary paths and clean them on success, failure, and cancellation. Never delete or replace a destination until the complete replacement is ready.

@@ -69,7 +69,7 @@ struct ExportView: View {
     @State private var codec: VideoCodec = .h264
     @State private var resolution: ExportResolution = .matchTimeline
     @State private var submissionError: String?
-    @State private var palmierSummary: (collect: Int, missing: Int, bytes: Int64) = (0, 0, 0)
+    @State private var compositorSummary: (collect: Int, missing: Int, bytes: Int64) = (0, 0, 0)
     @State private var selectedTimelineId: String?
 
     private var exportTimeline: Timeline {
@@ -105,7 +105,7 @@ struct ExportView: View {
                 Self.computeCompositorSummary(entries: entries, projectURL: projectURL)
             }.value
             guard !Task.isCancelled else { return }
-            palmierSummary = summary
+            compositorSummary = summary
         }
     }
 
@@ -280,10 +280,10 @@ struct ExportView: View {
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
 
-            if palmierSummary.missing > 0 {
-                Text(palmierSummary.missing == 1
+            if compositorSummary.missing > 0 {
+                Text(compositorSummary.missing == 1
                     ? L10n.string("1 media file is missing and will be skipped.")
-                    : L10n.string("\(palmierSummary.missing) media files are missing and will be skipped."))
+                    : L10n.string("\(compositorSummary.missing) media files are missing and will be skipped."))
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Status.errorColor)
             }
@@ -509,7 +509,7 @@ struct ExportView: View {
             case .compositorProject:
                 HStack(spacing: AppTheme.Spacing.xs) {
                     Image(systemName: "shippingbox")
-                    Text(verbatim: "~\(ByteCountFormatter.string(fromByteCount: palmierSummary.bytes, countStyle: .file))")
+                    Text(verbatim: "~\(ByteCountFormatter.string(fromByteCount: compositorSummary.bytes, countStyle: .file))")
                 }
                 Text(verbatim: ".\(Project.fileExtension)")
             }

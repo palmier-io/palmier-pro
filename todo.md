@@ -41,33 +41,6 @@ Storyboard guidance now requires explicit review of narration, order, proposed v
 
 ## Rebrand & backend removal
 
-### R2. Rename Palmier traces to compositor-pro
-
-- [ ] Rename Palmier-brand artifacts to the Compositor Pro identity.
-
-**What:** 77 references to the `.palmier` project-package extension exist
-across source and tests, plus `mode: "palmier"` / `format: "Palmier"` in the
-export contract, the `X-Palmier-Project-Id` header, MCP server id
-`palmier-pro` (`MCPService.swift`, `mcpb/manifest.json`, help pane), author /
-homepage fields pointing at Palmier.io, a legacy `Documents/Palmier Pro`
-support directory, telemetry strings, and `BINARY_LICENSE.md` headers.
-
-**How:**
-- Decide the product identity first: package type identifier, file extension,
-  UTI, bundle name — then migrate on load (rename-on-open, backward-compatible
-  open of `.palmier` files, preserve package contents). Do not break existing
-  user projects.
-- Rename contracts atomically: export `mode`, format/receipt fields, the MCP
-  server name, the project header, `mcpb/manifest.json` author/homepage, and
-  the legacy support-directory lookup (rename on access).
-- Sweep code, tests, docs, and localization marketing strings (welcome,
-  notifications, MCP instructions) to the new name; any surviving `.palmier`
-  string must be an explicit legacy migration shim with a comment.
-
-**Done when:** Grep for `palmier` across source, tests, docs, and configs
-matches only documented legacy shims; a `.palmier` project opens and saves
-under the new identity.
-
 ### R3. Re-skin the editor UI to look distinct from Palmier Pro
 
 - [ ] Ship a new editor skin so Compositor Pro reads as its own product.

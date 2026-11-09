@@ -289,7 +289,9 @@ private struct RegistryFixture: Sendable {
     let files: RegistryTestFiles
 
     var fileURL: URL { root.appendingPathComponent("registry.json") }
-    func project(_ name: String) -> URL { root.appendingPathComponent(name).appendingPathExtension("palmier") }
+    func project(_ name: String) -> URL { root.appendingPathComponent(name).appendingPathExtension(Project.fileExtension) }
+    /// Legacy fixture helper
+    func legacyProject(_ name: String) -> URL { root.appendingPathComponent(name).appendingPathExtension(Project.legacyFileExtension) }
     @MainActor func registry() -> ProjectRegistry { ProjectRegistry(fileURL: fileURL) }
     func entry(url: URL, date: Date = Date(timeIntervalSince1970: 1)) -> ProjectEntry {
         ProjectEntry(id: UUID(), url: url, createdDate: date, lastOpenedDate: date)

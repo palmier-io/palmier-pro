@@ -563,6 +563,31 @@ Priorities describe importance, not isolated batches. Build the smallest end-to-
 
 **Verified:** `swift build`, `swift build --build-tests`, and `./scripts/localization/sync.sh` passed. None of the backend packages link into the app, and MCP/UI run entirely offline with no remote service dependencies.
 
+### R2. Rename Palmier traces to compositor-pro
+
+- [x] Rename Palmier-brand artifacts to the Compositor Pro identity with backward-compatible legacy shims.
+
+**What:** 77 references to the `.palmier` project-package extension existed across source and tests, plus `mode: "palmier"` / `format: "Palmier"` in the export contract, the `X-Palmier-Project-Id` header, MCP server id `palmier-pro` (`MCPService.swift`, `mcpb/manifest.json`, help pane), author/homepage fields pointing at Palmier.io, a legacy `Documents/Palmier Pro` support directory, telemetry strings, and `BINARY_LICENSE.md` headers.
+
+**How:**
+- Decided the primary product identity: package type identifier `io.compositor.pro.project`, file extension `compositorpro`, UTI `com.compositorpro.project`, bundle name `Compositor Pro`.
+- Added backward-compatible legacy shims:
+  - `Project.legacyFileExtension = "palmier"` and `Project.legacyStorageDirectory = "Documents/Palmier Pro"`.
+  - `AppState.openProjectFromPanel` accepts both `.compositorpro` and `.palmier` package formats.
+  - `ProjectRegistryDisk.load` gracefully falls back to `Project.legacyStorageDirectory` when the default registry is not yet initialized.
+  - `MediaTab+Drag.swift` retains `legacyFolderDragScheme`, `legacyAssetDragScheme`, and `legacyTimelineDragScheme` (`palmier-*://`).
+  - `SkillStore.swift` installs under `compositor-` prefix and migrates legacy `palmier-` directory.
+  - `export_project` tool accepts both `compositor` and legacy `palmier` mode, normalizing `"palmier"` to `"compositor"`.
+  - `ExportService.swift` retains legacy `init(palmierContext:)`.
+- Renamed MCP server to `compositor-pro` with resources `compositor://models/video` and `compositor://models/image`.
+- Renamed header `X-Palmier-Project-Id` to `X-Compositor-Project-Id`.
+- Updated `mcpb/manifest.json` author to `Compositor Pro` and homepage to `https://compositor.pro`.
+- Updated `BINARY_LICENSE.md` copyright and headers to Compositor Pro.
+- Synchronized all 27 `.lproj/Localizable.strings` and `InfoPlist.strings` files with zero remaining non-shim `palmier` references.
+- Verified that all surviving `palmier` occurrences in `Sources/` are documented legacy migration shims or historical repository identifiers.
+
+**Verified:** `swift build --scratch-path .build-check --disable-automatic-resolution` passed cleanly. `VideoProjectLoadTests.legacyPalmierPackageOpensAndSavesUnderNewIdentity` passed, verifying that legacy `.palmier` packages open and can be saved as `.compositorpro`. Localization sync (`./scripts/localization/sync.sh`) passed with 1,396 strings synchronized.
+
 ## Advanced Video & AI Editing Features
 
 ### Video background removal

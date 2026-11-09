@@ -14,7 +14,7 @@ Usage:
   python convert.py --out build/ [--precision fp16]
 Outputs:
   build/BeatThis.mlpackage      (validated against the original pipeline)
-  build/BeatThis.mlmodelc       (compiled; copy into Sources/PalmierPro/Resources/Models/)
+  build/BeatThis.mlmodelc       (compiled; copy into Sources/CompositorPro/Resources/Models/)
 
 Conversion is parity-gated twice: the patched torch model must match the
 original's logits (the einops rewrites are exact math), and the Core ML model
@@ -218,7 +218,7 @@ def main():
         check=True,
     )
     print(f"done: {package} and {compiled}")
-    print("copy BeatThis.mlmodelc into Sources/PalmierPro/Resources/Models/")
+    print("copy BeatThis.mlmodelc into Sources/CompositorPro/Resources/Models/")
 
 
 if __name__ == "__main__":

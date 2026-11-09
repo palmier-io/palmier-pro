@@ -50,7 +50,7 @@ struct AgentProviderTests {
         #expect(route(.sol, hasCredits: true, isPaid: true) == .hosted)
     }
 
-    /// With hosted services switched off, nothing may route to Palmier's own backend, and a
+    /// With hosted services switched off, nothing may route to a remote hosted backend, and a
     /// bring-your-own-key or custom endpoint must keep working.
     @Test func hostedRoutingIsUnavailableWhenTheBuildDoesNotOfferIt() {
         #expect(HostedServices.enabled == false)

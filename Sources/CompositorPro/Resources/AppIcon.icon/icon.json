@@ -25,7 +25,7 @@
           "glass": true,
           "hidden": false,
           "image-name": "compositor-logo.png",
-          "name": "palmier-logo",
+          "name": "compositor-logo",
           "position": {
             "scale": 0.55,
             "translation-in-points": [

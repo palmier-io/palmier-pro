@@ -31,7 +31,7 @@ struct StockDeliveryHistory: Sendable, Equatable, Codable {
 
     /// Canonical source identities of every manifest entry.
     ///
-    /// Used for palmier package exports, where the manifest is the delivered package.
+    /// Used for compositor package exports, where the manifest is the delivered package.
     static func sourceIds(manifest: MediaManifest) -> Set<String> {
         var ids = Set<String>()
         for entry in manifest.entries {

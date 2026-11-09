@@ -16,7 +16,7 @@ enum ExportTimelineAnalyticsSnapshot {
 
     private enum Provenance: String {
         case imported
-        case generated = "palmier_generated"
+        case generated = "compositor_generated"
         case upscaled = "ai_upscaled"
     }
 
