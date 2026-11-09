@@ -5,7 +5,6 @@ set -euo pipefail
 #   scripts/bundle.sh [release|debug]           # ad-hoc signed dev build
 #   scripts/bundle.sh debug --fast              # fastest: skip dSYM + deep sign, just env+build
 #   scripts/bundle.sh debug --speech             # include bundled speech and MLX
-#   scripts/bundle.sh debug --telemetry          # include production telemetry
 #   scripts/bundle.sh debug --all                # include all optional traits
 #   scripts/bundle.sh release --sign            # build + Developer ID codesign
 #   scripts/bundle.sh release --dist            # build + sign + notarize + staple + DMG
@@ -14,7 +13,6 @@ CONFIG="release"
 MODE="dev"
 ENABLE_ALL_TRAITS=false
 INCLUDE_BUNDLED_SPEECH=false
-INCLUDE_PRODUCTION_TELEMETRY=false
 for arg in "$@"; do
   case "$arg" in
     release|debug) CONFIG="$arg" ;;
@@ -22,11 +20,9 @@ for arg in "$@"; do
     --sign)        MODE="sign" ;;
     --dist)        MODE="dist" ;;
     --speech)      INCLUDE_BUNDLED_SPEECH=true ;;
-    --telemetry)   INCLUDE_PRODUCTION_TELEMETRY=true ;;
     --all)
       ENABLE_ALL_TRAITS=true
       INCLUDE_BUNDLED_SPEECH=true
-      INCLUDE_PRODUCTION_TELEMETRY=true
       ;;
     *) echo "unknown arg: $arg" >&2; exit 1 ;;
   esac
@@ -35,7 +31,6 @@ done
 if [ "$CONFIG" = "release" ]; then
   ENABLE_ALL_TRAITS=true
   INCLUDE_BUNDLED_SPEECH=true
-  INCLUDE_PRODUCTION_TELEMETRY=true
 fi
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -89,13 +84,6 @@ else
   if $INCLUDE_BUNDLED_SPEECH; then
     TRAITS="BundledSpeech"
   fi
-  if $INCLUDE_PRODUCTION_TELEMETRY; then
-    if [ -n "$TRAITS" ]; then
-      TRAITS="$TRAITS,ProductionTelemetry"
-    else
-      TRAITS="ProductionTelemetry"
-    fi
-  fi
   if [ -n "$TRAITS" ]; then
     BUILD_ARGS+=(--traits "$TRAITS")
   fi
@@ -112,38 +100,11 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Framewor
 cp "$BIN" "$APP/Contents/MacOS/CompositorPro"
 cp "$RESOURCES/Info.plist" "$APP/Contents/Info.plist"
 
-if [ -n "$SENTRY_DSN" ]; then
-  echo "==> Injecting SentryDSN into Info.plist"
-  /usr/libexec/PlistBuddy -c "Delete :SentryDSN" "$APP/Contents/Info.plist" 2>/dev/null || true
-  /usr/libexec/PlistBuddy -c "Add :SentryDSN string $SENTRY_DSN" "$APP/Contents/Info.plist"
-else
-  echo "==> SENTRY_DSN not set — telemetry will be a no-op in this build"
-fi
-
-if [ -n "$POSTHOG_PROJECT_TOKEN" ]; then
-  echo "==> Injecting PostHog analytics config into Info.plist"
-  /usr/libexec/PlistBuddy -c "Delete :PostHogProjectToken" "$APP/Contents/Info.plist" 2>/dev/null || true
-  /usr/libexec/PlistBuddy -c "Add :PostHogProjectToken string $POSTHOG_PROJECT_TOKEN" "$APP/Contents/Info.plist"
-  /usr/libexec/PlistBuddy -c "Delete :PostHogHost" "$APP/Contents/Info.plist" 2>/dev/null || true
-  /usr/libexec/PlistBuddy -c "Add :PostHogHost string $POSTHOG_HOST" "$APP/Contents/Info.plist"
-else
-  echo "==> POSTHOG_PROJECT_TOKEN not set — product analytics will be a no-op in this build"
-fi
-
-inject_plist() {
-  local key="$1" value="$2"
-  if [ -z "$value" ]; then
-    echo "!! $key not set in $ENV_FILE — app will fatalError on launch" >&2
-    return
-  fi
-  /usr/libexec/PlistBuddy -c "Delete :$key" "$APP/Contents/Info.plist" 2>/dev/null || true
-  /usr/libexec/PlistBuddy -c "Add :$key string $value" "$APP/Contents/Info.plist"
-}
-
-echo "==> Injecting backend config into Info.plist"
-inject_plist CompositorClerkPublishableKey "${CLERK_PUBLISHABLE_KEY:-}"
-inject_plist CompositorConvexDeploymentURL "${CONVEX_DEPLOYMENT_URL:-}"
-inject_plist CompositorConvexHttpURL "${CONVEX_HTTP_URL:-}"
+# Local-only build: no Sentry/PostHog config and no backend keys are injected.
+# Stale keys from older builds are stripped so nothing can leak into the bundle.
+for _stale_key in SentryDSN PostHogProjectToken PostHogHost CompositorClerkPublishableKey CompositorConvexDeploymentURL CompositorConvexHttpURL; do
+  /usr/libexec/PlistBuddy -c "Delete :$_stale_key" "$APP/Contents/Info.plist" 2>/dev/null || true
+done
 cp "$RESOURCES/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 cp -R "$SPARKLE_FW" "$APP/Contents/Frameworks/Sparkle.framework"
 
