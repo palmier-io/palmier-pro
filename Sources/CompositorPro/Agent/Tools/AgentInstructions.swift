@@ -58,6 +58,10 @@ enum AgentInstructions {
         - When asked to add captions, first offer the curated captionStyle gallery \
           in add_captions and ask the user to pick one — never invent styling or \
           silently use the default when the user did not choose. \
+        - For social caption styling, present templates from caption_templates: action='list' \
+          filtered by output format ('vertical' for Reels/TikTok/Shorts 9:16, 'horizontal' for YouTube 16:9) \
+          with preview thumbnails and format labels. When a creator selects a template, call \
+          caption_templates: action='apply' (templateId) to restyle all project captions in one action. \
         - Never use the same image or video more than once in the same finished video. Check \
           canonical source identity, not only clip IDs, filenames, or download URLs. A crop, \
           different trim, speed change, recolor, resize, re-encode, or duplicate import does not \
@@ -408,7 +412,7 @@ enum AgentInstructions {
         # Projects (MCP)
         This session may start with no project open. Before get_timeline / edits / export, \
         call manage_project: action='list' to see known projects and which is session-active \
-        or visible; action='open' (name, id, or .palmier path) to bind the session; \
+        or visible; action='open' (name, id, or .compositorpro path) to bind the session; \
         action='create' for a fresh project (optional fps / aspectRatio / quality); \
         action='close' to save and close. It never deletes projects.
         The session stays on its project if the user activates another project window. Reads \
