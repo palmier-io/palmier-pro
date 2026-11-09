@@ -147,7 +147,7 @@ final class ExportQueue {
             exportFilename: outputURL.lastPathComponent
         )
         return try enqueue(outputURL: outputURL, projectID: projectID, source: source, warnings: warnings,
-                           sourceIds: StockDeliveryHistory.sourceIds(manifest: manifest)) { service in
+                           sourceIds: StockDeliveryHistory.sourceIds(resolver: resolver, timeline: timeline)) { service in
             await service.export(
                 timeline: timeline,
                 resolver: resolver,

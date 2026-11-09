@@ -12,7 +12,10 @@ struct MediaManifest: Codable, Sendable, Equatable {
         folders = try c.decodeIfPresent([MediaFolder].self, forKey: .folders) ?? []
     }
 
-    init() {}
+    init(entries: [MediaManifestEntry] = [], folders: [MediaFolder] = []) {
+        self.entries = entries
+        self.folders = folders
+    }
 
     private enum CodingKeys: String, CodingKey { case version, entries, folders }
 }

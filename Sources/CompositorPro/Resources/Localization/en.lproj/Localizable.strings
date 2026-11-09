@@ -1,7 +1,6 @@
 /* Generated from app-owned UI copy. Translate values only in other locales. */
 
-"$%lld/mo" = "$%lld/mo";
-"$%lld–$%lld · Credits expire at renewal." = "$%lld–$%lld · Credits expire at renewal.";
+"%@ (Hosted)" = "%@ (Hosted)";
 "%@ (Paid)" = "%@ (Paid)";
 "%@ Preview cleanup failed: %@" = "%@ Preview cleanup failed: %@";
 "%@ could not be exported." = "%@ could not be exported.";
@@ -15,14 +14,12 @@
 "%@ · %lld" = "%@ · %lld";
 "%@, %lld skills" = "%@, %lld skills";
 "%@: %@." = "%@: %@.";
-"%lld / %lld credits" = "%lld / %lld credits";
 "%lld Lottie animations are ready in Compositor Pro." = "%lld Lottie animations are ready in Compositor Pro.";
 "%lld audio clips are ready in Compositor Pro." = "%lld audio clips are ready in Compositor Pro.";
 "%lld by timecode, %lld by audio" = "%lld by timecode, %lld by audio";
 "%lld clips" = "%lld clips";
 "%lld couldn't align" = "%lld couldn't align";
 "%lld credits" = "%lld credits";
-"%lld credits / month" = "%lld credits / month";
 "%lld credits estimated. Actual billing may differ." = "%lld credits estimated. Actual billing may differ.";
 "%lld credits needed. Only %lld remaining." = "%lld credits needed. Only %lld remaining.";
 "%lld credits refunded" = "%lld credits refunded";
@@ -31,14 +28,11 @@
 "%lld images are ready in Compositor Pro." = "%lld images are ready in Compositor Pro.";
 "%lld items" = "%lld items";
 "%lld media files are missing and will be skipped." = "%lld media files are missing and will be skipped.";
-"%lld of %lld credits remaining this period" = "%lld of %lld credits remaining this period";
 "%lld selected" = "%lld selected";
 "%lld subtitle files are ready in Compositor Pro." = "%lld subtitle files are ready in Compositor Pro.";
 "%lld text clips are ready in Compositor Pro." = "%lld text clips are ready in Compositor Pro.";
 "%lld videos are ready in Compositor Pro." = "%lld videos are ready in Compositor Pro.";
-"%lldk credits" = "%lldk credits";
 "(image payload)" = "(image payload)";
-"/ month" = "/ month";
 "0 credits" = "0 credits";
 "0 credits used" = "0 credits used";
 "1 clip" = "1 clip";
@@ -49,8 +43,6 @@
 "1 credit. %lld remaining after this generation." = "1 credit. %lld remaining after this generation.";
 "1 item" = "1 item";
 "1 media file is missing and will be skipped." = "1 media file is missing and will be skipped.";
-"= %lld credits" = "= %lld credits";
-"= 1 credit" = "= 1 credit";
 "A project holds its media and can hold more than one timeline. Duplicate a timeline to try a different cut or build a vertical version without disturbing the original, then switch between them by name." = "A project holds its media and can hold more than one timeline. Duplicate a timeline to try a different cut or build a vertical version without disturbing the original, then switch between them by name.";
 "A video editor built for AI. Generate, and edit all in one place." = "A video editor built for AI. Generate, and edit all in one place.";
 "AI Audio" = "AI Audio";
@@ -64,8 +56,6 @@
 "AI videos" = "AI videos";
 "API key" = "API key";
 "About Compositor Pro" = "About Compositor Pro";
-"Account" = "Account";
-"Account settings" = "Account settings";
 "Action Safe" = "Action Safe";
 "Activity unavailable" = "Activity unavailable";
 "Add Marker (M)" = "Add Marker (M)";
@@ -82,7 +72,6 @@
 "Add an email above to enable a reply" = "Add an email above to enable a reply";
 "Add any OpenAI-compatible model. Each keeps its own URL and key, so a local model and a hosted gateway can run side by side." = "Add any OpenAI-compatible model. Each keeps its own URL and key, so a local model and a hosted gateway can run side by side.";
 "Add captions" = "Add captions";
-"Add credits" = "Add credits";
 "Add credits to use Cloud." = "Add credits to use Cloud.";
 "Add credits to use hosted generation." = "Add credits to use hosted generation.";
 "Add emoji" = "Add emoji";
@@ -164,9 +153,6 @@
 "Build one image out of several of your own frames and stills: a mood board, a contact sheet, a poster frame, a title card. This assembles real pictures from the edit rather than inventing any, so give it a query and the visual index will find the shots that match. A grid suits contact sheets, a hero-and-strip suits posters. The lettering is identical to a thumbnail's. The result is a normal library asset." = "Build one image out of several of your own frames and stills: a mood board, a contact sheet, a poster frame, a title card. This assembles real pictures from the edit rather than inventing any, so give it a query and the visual index will find the shots that match. A grid suits contact sheets, a hero-and-strip suits posters. The lettering is identical to a thumbnail's. The result is a normal library asset.";
 "Build proxies for the 4K clips so scrubbing is smooth." = "Build proxies for the 4K clips so scrubbing is smooth.";
 "Build the end of the film in one step: a credits roll, a subscribe call to action, or both. The roll handles its own off-screen entry and exit, and platform timing is checked rather than assumed. Click targets are attached when you upload, not rendered." = "Build the end of the film in one step: a credits roll, a subscribe call to action, or both. The roll handles its own off-screen entry and exit, and platform timing is checked rather than assumed. Click targets are attached when you upload, not rendered.";
-"Buy" = "Buy";
-"Buy $%lld" = "Buy $%lld";
-"Buy more" = "Buy more";
 "Cache" = "Cache";
 "Cached — no credits used." = "Cached — no credits used.";
 "Calm" = "Calm";
@@ -186,7 +172,6 @@
 "Cancel key color sampling" = "Cancel key color sampling";
 "Canceled" = "Canceled";
 "Canceling" = "Canceling";
-"Cancels %@" = "Cancels %@";
 "Cannot move the same clip more than once." = "Cannot move the same clip more than once.";
 "Canvas" = "Canvas";
 "Canvas Guides" = "Canvas Guides";
@@ -310,8 +295,6 @@
 "Create a skill or browse the Community collection." = "Create a skill or browse the Community collection.";
 "Create matching sound for the video" = "Create matching sound for the video";
 "Creating…" = "Creating…";
-"Credits" = "Credits";
-"Credits cover AI generation and chat." = "Credits cover AI generation and chat.";
 "Crop" = "Crop";
 "Crop applies to one clip at a time" = "Crop applies to one clip at a time";
 "Cross dissolve between the two shots here, 20 frames." = "Cross dissolve between the two shots here, 20 frames.";
@@ -479,7 +462,6 @@
 "Feather" = "Feather";
 "Featured" = "Featured";
 "Features" = "Features";
-"Feedback" = "Feedback";
 "File" = "File";
 "File Type" = "File Type";
 "File missing" = "File missing";
@@ -589,6 +571,7 @@
 "Hold one frame for as long as you need. The picture stops while the audio underneath keeps playing, which is what makes it usable over speech." = "Hold one frame for as long as you need. The picture stops while the audio underneath keeps playing, which is what makes it usable over speech.";
 "Hold the frame just before the jump for 12 frames." = "Hold the frame just before the jump for 12 frames.";
 "Hosted generation is unavailable in this build. Signing in or adding credits will not enable it." = "Hosted generation is unavailable in this build. Signing in or adding credits will not enable it.";
+"Hosted models are unavailable in this build." = "Hosted models are unavailable in this build.";
 "How did you find Compositor Pro?" = "How did you find Compositor Pro?";
 "How much to lower detected breaths — lower it if speech sounds dull." = "How much to lower detected breaths — lower it if speech sounds dull.";
 "How strongly sibilance (\"s\" and \"sh\" sounds) is lowered." = "How strongly sibilance (\"s\" and \"sh\" sounds) is lowered.";
@@ -713,8 +696,6 @@
 "Main + Sidebar" = "Main + Sidebar";
 "Make a vertical poster frame for this video, with \"Summer\" as the headline." = "Make a vertical poster frame for this video, with \"Summer\" as the headline.";
 "Make vertical shorts" = "Make vertical shorts";
-"Manage credits" = "Manage credits";
-"Manage subscription" = "Manage subscription";
 "Manual setup" = "Manual setup";
 "Mark Beats" = "Mark Beats";
 "Mark Range End" = "Mark Range End";
@@ -964,7 +945,6 @@
 "Relink missing sources or wait for media preparation, then preview again." = "Relink missing sources or wait for media preparation, then preview again.";
 "Relinked %lld of %lld offline clips." = "Relinked %lld of %lld offline clips.";
 "Relink…" = "Relink…";
-"Remaining" = "Remaining";
 "Remove" = "Remove";
 "Remove %@" = "Remove %@";
 "Remove API key" = "Remove API key";
@@ -996,7 +976,6 @@
 "Reset All" = "Reset All";
 "Reset Clipping Indicators" = "Reset Clipping Indicators";
 "Reset: %@" = "Reset: %@";
-"Resets %@" = "Resets %@";
 "Resolution" = "Resolution";
 "Resolution must be at least 2 × 2 pixels." = "Resolution must be at least 2 × 2 pixels.";
 "Resolution must not exceed 8192 pixels on either edge." = "Resolution must not exceed 8192 pixels on either edge.";
@@ -1114,14 +1093,12 @@
 "Sign In" = "Sign In";
 "Sign in" = "Sign in";
 "Sign in to receive 250 free credits for AI chat and generation." = "Sign in to receive 250 free credits for AI chat and generation.";
-"Sign in to subscribe and use AI generation." = "Sign in to subscribe and use AI generation.";
 "Sign in to use AI" = "Sign in to use AI";
 "Sign in to use AI chat." = "Sign in to use AI chat.";
 "Sign in to use Cloud transcription." = "Sign in to use Cloud transcription.";
 "Sign in to use Cloud." = "Sign in to use Cloud.";
 "Sign in to use hosted generation." = "Sign in to use hosted generation.";
 "Sign in with Google" = "Sign in with Google";
-"Sign out" = "Sign out";
 "Sign-in couldn’t be completed. Try again." = "Sign-in couldn’t be completed. Try again.";
 "Signed in" = "Signed in";
 "Signed out" = "Signed out";
@@ -1167,6 +1144,7 @@
 "Square (1:1)" = "Square (1:1)";
 "Start" = "Start";
 "Start creating" = "Start creating";
+"Start creating or explore sample projects." = "Start creating or explore sample projects.";
 "Start creating, or explore these to get the most out of Compositor Pro." = "Start creating, or explore these to get the most out of Compositor Pro.";
 "Start from a named look — documentary, cinematic, warm film, noir and others — then adjust the individual clips that need to differ. A look is colour only, so it never changes pacing or sound." = "Start from a named look — documentary, cinematic, warm film, noir and others — then adjust the individual clips that need to differ. A look is colour only, so it never changes pacing or sound.";
 "Starts %@s into the group's clock; matched the master with %@%% confidence." = "Starts %@s into the group's clock; matched the master with %@%% confidence.";
@@ -1194,7 +1172,6 @@
 "Style" = "Style";
 "Style instructions (optional). e.g., warm and slow, British accent." = "Style instructions (optional). e.g., warm and slow, British accent.";
 "Subscribe" = "Subscribe";
-"Subscription" = "Subscription";
 "Subtitle" = "Subtitle";
 "Subtitle file is unavailable." = "Subtitle file is unavailable.";
 "Supported" = "Supported";
@@ -1317,11 +1294,6 @@
 "Update" = "Update";
 "Update available" = "Update available";
 "Updating %@" = "Updating %@";
-"Upgrade" = "Upgrade";
-"Upgrade to %@" = "Upgrade to %@";
-"Upgrade to Max" = "Upgrade to Max";
-"Upgrade to Pro" = "Upgrade to Pro";
-"Upgrade to add credits" = "Upgrade to add credits";
 "Uploading…" = "Uploading…";
 "Upscale" = "Upscale";
 "Upscale only works on video or images" = "Upscale only works on video or images";

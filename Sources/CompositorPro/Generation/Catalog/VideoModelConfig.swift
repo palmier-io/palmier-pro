@@ -30,7 +30,7 @@ struct VideoModelConfig: Identifiable, Sendable {
               !model.requiresSourceVideo,
               model.maxReferenceVideos > 0 else { return false }
         let id = model.id.lowercased()
-        return id.contains("minimax-h3") || id.contains("hailuo-03")
+        return id.contains("minimax-h3") || id.contains("hailuo-03") || id.contains("seedance-2-5")
     }
 
     static func nearestSupportedDuration(seconds: Double, in durations: [Int]) -> Int {

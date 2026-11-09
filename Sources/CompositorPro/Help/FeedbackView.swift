@@ -31,7 +31,7 @@ struct FeedbackView: View {
     }
 
     private var hasReplyEmail: Bool {
-        if account.isSignedIn { return account.account?.user.email != nil }
+        if account.isSignedIn { return account.user?.email != nil }
         return !trimmedEmail.isEmpty
     }
 
@@ -230,7 +230,7 @@ struct FeedbackView: View {
     }
 
     private var successDetailText: String {
-        let replyAddr = account.account?.user.email
+        let replyAddr = account.user?.email
             ?? (trimmedEmail.isEmpty ? nil : trimmedEmail)
         if let replyAddr, mayContact {
             return L10n.string("We read every message and may reach out at \(replyAddr).")

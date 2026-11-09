@@ -193,4 +193,28 @@ struct ShotCandidateBundleTests {
         #expect(bundle.candidates.first?.score == 0.5)
         #expect(bundle.skipped.map(\.reason).contains { $0.contains("Duplicate candidate") })
     }
+
+    @Test func usedStockSourcesRankBelowUnusedOnes() {
+        let used = remoteHit(id: "pixabay-video-used")
+        let unused = remoteHit(id: "pixabay-video-unused")
+        let bundle = ShotCandidateBuilder.build(
+            kind: .video, visual: [], spoken: [], remote: [used, unused],
+            assets: [:], limit: 8, usedSourceIds: Set(["stock:pixabay:pixabay-video-used"])
+        )
+        #expect(bundle.candidates.map(\.id) == ["stock:pixabay:pixabay-video-unused", "stock:pixabay:pixabay-video-used"])
+    }
+
+    @Test func usedSourceRankingDoesNotBlockUsableCandidates() {
+        let unused1 = remoteHit(id: "pexels-video-1")
+        let unused2 = remoteHit(id: "pexels-video-2")
+        let bundle = ShotCandidateBuilder.build(
+            kind: .video, visual: [], spoken: [],
+            remote: [unused1, unused2, remoteHit(id: "pexels-video-3")],
+            assets: [:], limit: 2, usedSourceIds: Set(["stock:pexels:1"])
+        )
+        #expect(bundle.candidates.count == 2)
+        #expect(bundle.droppedUsable == 1)
+        #expect(bundle.candidates[0].id == "stock:pexels:pexels-video-1")
+        #expect(bundle.candidates[1].id == "stock:pexels:pexels-video-2")
+    }
 }

@@ -28,6 +28,12 @@ struct MediaImportOrigin: Codable, Sendable, Equatable {
     let assetId: String
     let landingPageURL: String?
 
+    init(provider: String, assetId: String, landingPageURL: String? = nil) {
+        self.provider = provider
+        self.assetId = assetId
+        self.landingPageURL = landingPageURL
+    }
+
     var sourceId: String { "stock:\(provider):\(assetId)" }
 
     var receipt: [String: Any] {

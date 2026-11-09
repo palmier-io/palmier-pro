@@ -76,7 +76,7 @@ extension ToolExecutor {
             return .error("Couldn't send feedback: \(error.localizedDescription)")
         }
         feedbackState.sentKeys.insert(dedupeKey)
-        return .ok("Flagged this to the Palmier team. Thanks — this helps us improve the agent.")
+        return .ok("Feedback recorded. Thanks — this helps us improve the agent.")
     }
 
     private static var appVersion: String {

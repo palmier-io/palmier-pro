@@ -30,6 +30,8 @@ struct StockDeliveryHistory: Sendable, Equatable, Codable {
     func contains(_ sourceId: String) -> Bool { usedSourceIds.contains(sourceId) }
 
     /// Canonical source identities of every manifest entry.
+    ///
+    /// Used for palmier package exports, where the manifest is the delivered package.
     static func sourceIds(manifest: MediaManifest) -> Set<String> {
         var ids = Set<String>()
         for entry in manifest.entries {
@@ -38,6 +40,28 @@ struct StockDeliveryHistory: Sendable, Equatable, Codable {
                 inputId: entry.inputIdentity.flatMap { $0.isValid ? $0.inputId : nil },
                 origin: entry.importInput?.origin
             ))
+        }
+        return ids
+    }
+
+    /// Canonical source identities of the media the resolver resolved for one export.
+    ///
+    /// Only resolved clips count: a project manifest may hold media the export never used,
+    /// and unresolved media never reached the output.
+    static func sourceIds(resolver: MediaResolver, timeline: Timeline) -> Set<String> {
+        let manifest = resolver.manifestSnapshot()
+        let entries = manifest.entries
+        var ids = Set<String>()
+        for track in timeline.tracks {
+            for clip in track.clips {
+                guard resolver.resolveURL(for: clip.mediaRef) != nil,
+                      let entry = entries.first(where: { $0.id == clip.mediaRef }) else { continue }
+                ids.formUnion(VisualSourceAliases.sourceIds(
+                    mediaRef: entry.id,
+                    inputId: entry.inputIdentity.flatMap { $0.isValid ? $0.inputId : nil },
+                    origin: entry.importInput?.origin
+                ))
+            }
         }
         return ids
     }

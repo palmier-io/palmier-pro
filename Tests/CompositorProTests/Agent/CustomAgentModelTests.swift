@@ -427,7 +427,8 @@ struct CustomAgentModelPersistenceTests {
         return nil
     }
 
-    private func withDefaults(_ body: (UserDefaults) async throws -> Void) async throws {
+    @MainActor
+    private func withDefaults(_ body: @MainActor (UserDefaults) async throws -> Void) async throws {
         let suiteName = "CustomAgentModelTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
