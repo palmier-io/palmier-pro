@@ -25,6 +25,39 @@ struct ExportQueueTests {
         #expect(events == ["first-start", "first-finish", "second-start", "second-finish"])
     }
 
+    @Test func completionWaitReturnsTerminalFailureAndCanBeRepeated() async throws {
+        let queue = ExportQueue()
+        let submission = try enqueue(queue, UUID().uuidString) { service in service.error = "decode failed" }
+        let result = try await queue.waitForCompletion(submission.jobID)
+        #expect(result.status == .failed)
+        #expect(result.error == "decode failed")
+        #expect(try await queue.waitForCompletion(submission.jobID).status == .failed)
+    }
+
+    @Test(arguments: [false, true])
+    func cancelingWaitDoesNotCancelJob(afterRegistration: Bool) async throws {
+        let queue = ExportQueue()
+        let gate = AsyncSemaphore(value: 0)
+        let submission = try enqueue(queue, UUID().uuidString) { service in
+            try? await gate.wait()
+            service.error = "finished independently"
+        }
+        let (started, continuation) = AsyncStream<Void>.makeStream()
+        let waiter = Task {
+            continuation.yield(())
+            return try await queue.waitForCompletion(submission.jobID)
+        }
+        if afterRegistration {
+            var iterator = started.makeAsyncIterator()
+            _ = await iterator.next()
+        }
+        waiter.cancel()
+        await #expect(throws: CancellationError.self) { try await waiter.value }
+        #expect(queue.jobs.first?.status.isPending == true)
+        await gate.signal()
+        #expect(try await queue.waitForCompletion(submission.jobID).error == "finished independently")
+    }
+
     @Test func cancelingPreparingJobAdvancesQueueWithoutRunningIt() async throws {
         let queue = ExportQueue()
         var firstRan = false

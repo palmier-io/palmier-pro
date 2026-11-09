@@ -43,6 +43,8 @@ struct ExportJob: Identifiable, Sendable {
     var error: String?
     var warnings: [String]
     var palmierReport: CompositorProjectExporter.Report?
+    /// Canonical source identities of the media the resolver used to render this job.
+    var sourceIds: Set<String> = []
 }
 
 struct ExportQueueSubmission: Sendable {
@@ -53,9 +55,11 @@ struct ExportQueueSubmission: Sendable {
 
 enum ExportQueueError: LocalizedError {
     case destinationInUse(String)
+    case unknownJob
 
     var errorDescription: String? {
         switch self {
+        case .unknownJob: "Export job not found."
         case .destinationInUse(let filename):
             "An export to \(filename) is already waiting or in progress."
         }
@@ -73,14 +77,41 @@ final class ExportQueue {
     private var activeID: UUID?
     private var activeTask: Task<Void, Never>?
     private var activeService: ExportService?
+    private var completionWaiters: [UUID: [UUID: CheckedContinuation<ExportJob, Error>]] = [:]
 
     var hasActivity: Bool { jobs.contains { $0.status.isPending } }
     var isExportActive: Bool { activeID != nil }
 
     func waitWhileExportActive() async throws {
-        while isExportActive {
-            try await Task.sleep(for: .seconds(2))
+        while let id = activeID {
+            _ = try await waitForCompletion(id)
         }
+    }
+
+    func waitForCompletion(_ id: UUID) async throws -> ExportJob {
+        try Task.checkCancellation()
+        guard let job = job(id) else { throw ExportQueueError.unknownJob }
+        if job.status.isFinished { return job }
+        let token = UUID()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                if Task.isCancelled {
+                    continuation.resume(throwing: CancellationError())
+                } else {
+                    completionWaiters[id, default: [:]][token] = continuation
+                }
+            }
+        } onCancel: {
+            Task { @MainActor in
+                self.completionWaiters[id]?.removeValue(forKey: token)?.resume(throwing: CancellationError())
+                if self.completionWaiters[id]?.isEmpty == true { self.completionWaiters[id] = nil }
+            }
+        }
+    }
+
+    private func notifyCompletion(_ job: ExportJob) {
+        let waiters = completionWaiters.removeValue(forKey: job.id) ?? [:]
+        for waiter in waiters.values { waiter.resume(returning: job) }
     }
 
     func jobs(for projectID: String) -> [ExportJob] {
@@ -109,12 +140,14 @@ final class ExportQueue {
         warnings: [String] = []
     ) throws -> ExportQueueSubmission {
         let resolver = resolver.snapshot()
+        let manifest = resolver.manifestSnapshot()
         let analyticsInput = ExportTimelineAnalyticsInput(
             scope: .exportedTimeline(root: timeline, resolveTimeline: resolveTimeline),
-            manifest: resolver.manifestSnapshot(),
+            manifest: manifest,
             exportFilename: outputURL.lastPathComponent
         )
-        return try enqueue(outputURL: outputURL, projectID: projectID, source: source, warnings: warnings) { service in
+        return try enqueue(outputURL: outputURL, projectID: projectID, source: source, warnings: warnings,
+                           sourceIds: StockDeliveryHistory.sourceIds(manifest: manifest)) { service in
             await service.export(
                 timeline: timeline,
                 resolver: resolver,
@@ -152,7 +185,8 @@ final class ExportQueue {
             manifest: manifest,
             exportFilename: outputURL.lastPathComponent
         )
-        return try enqueue(outputURL: outputURL, projectID: projectID, source: source) { service in
+        return try enqueue(outputURL: outputURL, projectID: projectID, source: source,
+                           sourceIds: StockDeliveryHistory.sourceIds(manifest: manifest)) { service in
             await service.exportCompositorProject(
                 projectFile: projectFile,
                 manifest: manifest,
@@ -174,6 +208,7 @@ final class ExportQueue {
         case .waiting:
             operations[id] = nil
             jobs[index].status = .canceled
+            notifyCompletion(jobs[index])
             return true
         case .preparing, .exporting:
             if let activeService, !activeService.cancel() { return false }
@@ -212,6 +247,7 @@ final class ExportQueue {
         projectID: String,
         source: ExportJobSource,
         warnings: [String] = [],
+        sourceIds: Set<String> = [],
         operation: @escaping Operation
     ) throws -> ExportQueueSubmission {
         guard !isDestinationReserved(outputURL) else {
@@ -229,7 +265,8 @@ final class ExportQueue {
             status: .waiting,
             progress: 0,
             warnings: warnings,
-            palmierReport: nil
+            palmierReport: nil,
+            sourceIds: sourceIds
         ))
         operations[id] = operation
         startNext()
@@ -278,7 +315,12 @@ final class ExportQueue {
         let source = job(id)?.source
         let filename = job(id)?.filename
         let outputURL = job(id)?.outputURL
+        let deliverySourceIds = job(id)?.sourceIds ?? []
         finish(id, status: status, service: service)
+
+        if status == .completed, !deliverySourceIds.isEmpty, let filename {
+            recordDelivery(sourceIds: deliverySourceIds, filename: filename)
+        }
 
         guard source == .agent, let filename, let outputURL else { return }
         if status == .completed {
@@ -293,6 +335,16 @@ final class ExportQueue {
         }
     }
 
+    /// Records a successful delivery in the bounded local usage history.
+    ///
+    /// Failed and canceled exports never pollute the history, so a retry does not
+    /// deprioritize sources it did not actually deliver.
+    private func recordDelivery(sourceIds: Set<String>, filename: String) {
+        var history = StockDeliveryHistory.load()
+        history.add(sourceIds: sourceIds, outputFilename: filename)
+        history.save()
+    }
+
     private func finish(_ id: UUID, status: ExportJobStatus, service: ExportService) {
         guard let index = jobs.firstIndex(where: { $0.id == id }) else { return }
         jobs[index].status = status
@@ -303,6 +355,7 @@ final class ExportQueue {
             jobs[index].warnings = report.warnings
         }
         operations[id] = nil
+        notifyCompletion(jobs[index])
         activeID = nil
         activeTask = nil
         activeService = nil

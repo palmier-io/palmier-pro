@@ -94,10 +94,10 @@ struct CompositionBuildValidationTests {
 @Suite("CompositionBuilder.buildVisuals — instructions")
 struct CompositionBuildVisualInstructionTests {
 
-    @Test func videoCompositionDoesNotOverrideSourceColorimetry() {
+    @Test func videoCompositionDoesNotOverrideSourceColorimetry() async throws {
         let timeline = Fixtures.timeline(fps: 30, tracks: [])
 
-        let (_, videoComposition) = CompositionBuilder.buildVisuals(
+        let (_, videoComposition) = try await CompositionBuilder.buildVisuals(
             timeline: timeline,
             trackMappings: [],
             compositionDuration: .zero,
@@ -109,7 +109,7 @@ struct CompositionBuildVisualInstructionTests {
         #expect(videoComposition.colorYCbCrMatrix == nil)
     }
 
-    @Test func textInstructionsPreserveLayerOrderAcrossCaptionBoundaries() {
+    @Test func textInstructionsPreserveLayerOrderAcrossCaptionBoundaries() async throws {
         let topA = textClip(id: "top-a", start: 0, duration: 10)
         let topB = textClip(id: "top-b", start: 10, duration: 10)
         let bottom = textClip(id: "bottom", start: 0, duration: 20)
@@ -118,7 +118,7 @@ struct CompositionBuildVisualInstructionTests {
             Fixtures.videoTrack(clips: [bottom]),
         ])
 
-        let (_, videoComposition) = CompositionBuilder.buildVisuals(
+        let (_, videoComposition) = try await CompositionBuilder.buildVisuals(
             timeline: timeline,
             trackMappings: [],
             compositionDuration: CMTime(value: 20, timescale: 10),

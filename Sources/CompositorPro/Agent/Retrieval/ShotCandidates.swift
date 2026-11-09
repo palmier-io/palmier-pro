@@ -285,7 +285,8 @@ enum ShotCandidateBuilder {
         assets: [String: LibraryShotAsset],
         limit: Int,
         aliases: VisualSourceAliases? = nil,
-        excludedSourceIds: Set<String> = []
+        excludedSourceIds: Set<String> = [],
+        usedSourceIds: Set<String> = []
     ) -> ShotCandidateBundle {
         let aliases = aliases ?? VisualSourceAliases(sources: assets.values.map {
             .init(mediaRef: $0.id, inputId: $0.inputId, origin: $0.origin)

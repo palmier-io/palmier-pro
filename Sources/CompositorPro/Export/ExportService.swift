@@ -205,6 +205,7 @@ final class ExportService {
             await exportHDR(
                 timeline: timeline,
                 resolver: resolver,
+                resolveTimeline: resolveTimeline,
                 resolution: resolution,
                 missingMediaRefs: missingMediaRefs,
                 outputURL: outputURL,
@@ -274,6 +275,7 @@ final class ExportService {
                     }
                     setPhase(.exporting)
                     try await exportTask.value
+                    try AudioGainTap.validate(prepared.result.audioMix)
                 } onCancel: {
                     exportTask.cancel()
                 }
@@ -427,6 +429,7 @@ final class ExportService {
     private func exportHDR(
         timeline: Timeline,
         resolver: MediaResolver,
+        resolveTimeline: @escaping @Sendable (String) -> Timeline?,
         resolution: ExportResolution,
         missingMediaRefs: Set<String>,
         outputURL: URL,
@@ -435,9 +438,11 @@ final class ExportService {
         do {
             try checkCancellation()
             let renderSize = resolution.renderSize(for: CGSize(width: timeline.width, height: timeline.height))
+            let mediaURLs = resolver.expectedURLMap()
             let result = try await CompositionBuilder.build(
                 timeline: timeline,
-                resolveURL: { resolver.resolveURL(for: $0) },
+                resolveURL: { mediaURLs[$0] },
+                resolveTimeline: resolveTimeline,
                 missingMediaRefs: missingMediaRefs,
                 renderSize: renderSize
             )
@@ -454,6 +459,7 @@ final class ExportService {
                     inputs, renderSize: renderSize, transfer: .hlg, to: stagingURL,
                     onProgress: { [weak self] p in Task { @MainActor in self?.setProgress(p) } }
                 )
+                try AudioGainTap.validate(result.audioMix)
             }
             let outputSize = await Self.encodedVideoSize(of: outputURL) ?? renderSize
             lastReport = ExportRunReport(
@@ -512,13 +518,17 @@ final class ExportService {
     ) async throws -> T {
         try checkCancellation()
         let stagingURL = Self.stagingURL(for: outputURL)
-        defer { try? FileManager.default.removeItem(at: stagingURL) }
-        let result = try await operation(stagingURL)
-        try checkCancellation()
-        onCommit()
-        try Self.commit(stagingURL: stagingURL, to: outputURL)
-        didCommitOutput = true
-        return result
+        do {
+            let result = try await operation(stagingURL)
+            try checkCancellation()
+            onCommit()
+            try await Self.commit(stagingURL: stagingURL, to: outputURL)
+            didCommitOutput = true
+            return result
+        } catch {
+            await Self.removeStagingOutput(stagingURL)
+            throw error
+        }
     }
 
     private func checkCancellation() throws {
@@ -535,13 +545,22 @@ final class ExportService {
         return outputURL.deletingLastPathComponent().appendingPathComponent(name)
     }
 
-    private static func commit(stagingURL: URL, to outputURL: URL) throws {
+    @concurrent
+    private static func commit(stagingURL: URL, to outputURL: URL) async throws {
+        try Task.checkCancellation()
         let fm = FileManager.default
         if fm.fileExists(atPath: outputURL.path) {
             _ = try fm.replaceItemAt(outputURL, withItemAt: stagingURL)
         } else {
             try fm.moveItem(at: stagingURL, to: outputURL)
         }
+    }
+
+    @concurrent
+    private static func removeStagingOutput(_ url: URL) async {
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        do { try FileManager.default.removeItem(at: url) }
+        catch { Log.export.warning("export staging cleanup failed: \(error.localizedDescription)") }
     }
 
     private static func isCancellation(_ error: Error) -> Bool {
@@ -562,35 +581,13 @@ final class ExportService {
         let renderSize = resolution.renderSize(for: timelineCanvas)
         let mediaURLs = resolver.expectedURLMap()
 
-        for track in timeline.tracks {
-            for clip in track.clips where clip.hasDenoiseEnabled && clip.denoiseAmount > 0 {
-                try Task.checkCancellation()
-                guard !missingMediaRefs.contains(clip.mediaRef), let url = mediaURLs[clip.mediaRef] else { continue }
-                do {
-                    _ = try await AudioEnhancer.denoisedAudio(for: url, mediaRef: clip.mediaRef)
-                } catch is CancellationError {
-                    throw CancellationError()
-                } catch {
-                    Log.export.error("denoise bake failed — exporting original audio. mediaRef=\(clip.mediaRef): \(Log.detail(error))")
-                }
-            }
-        }
-
         try Task.checkCancellation()
         let result = try await CompositionBuilder.build(
             timeline: timeline,
             resolveURL: { mediaURLs[$0] },
             resolveTimeline: resolveTimeline,
             missingMediaRefs: missingMediaRefs,
-            renderSize: renderSize,
-            resolveBreathRanges: { mediaRef in
-                guard let url = mediaURLs[mediaRef] else { return nil }
-                return BreathDetector.cachedAnalysis(for: url, mediaRef: mediaRef)?.regions
-            },
-            resolveDeessRanges: { mediaRef in
-                guard let url = mediaURLs[mediaRef] else { return nil }
-                return DeEsser.cachedAnalysis(for: url, mediaRef: mediaRef)?.regions
-            }
+            renderSize: renderSize
         )
         try Task.checkCancellation()
 
