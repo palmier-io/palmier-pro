@@ -605,5 +605,21 @@ Priorities describe importance, not isolated batches. Build the smallest end-to-
 
 **Verified:** `swift build`, `swift build --build-tests`, localization sync (1,395 strings), and full test coverage in `CaptionTranslationToolTests.swift`.
 
+### Caption template library by social format — Organized by Reels/TikTok/YouTube Shorts
+
+- [x] Caption template library organized by social format with preview thumbnails and batch timeline styling.
+
+**What:** Matches CapCut's caption templates workflow: presenting caption templates filtered by output format (vertical 9:16 for Reels/TikTok/YouTube Shorts, horizontal 16:9 for YouTube) with format labels and preview thumbnails, allowing a creator to select a style once and apply it across all captions on the project in a single atomic action.
+
+**How:**
+- Created `CaptionTemplateLibrary` classifying 31 curated styles into social output formats (`vertical916` for Reels/TikTok/Shorts, `horizontal169` for YouTube, and `all`).
+- Configured safe-area positioning per platform (`centerYRatio: 0.72` clearing Reels/TikTok bottom interface and description rails; `0.84` for standard YouTube lower thirds).
+- Added `caption_templates` agent tool with `list` (filtered by social format with preview thumbnail metadata, colors, typography, and format labels), `get`, and `apply` actions.
+- Implemented `editor.applyCaptionTemplate(...)` to batch-style text/caption clips across the timeline with a single atomic undo transaction via `withTimelineSwap`.
+- Enhanced `CaptionStyleGallery` in the UI with social format filter pills (`All`, `Reels & TikTok (9:16)`, `YouTube (16:9)`), `9:16` / `16:9` thumbnail format badges, and a one-click "Apply to All Captions" action.
+
+**Verified:** `swift build`, `swift build --build-tests`, localization sync (1,398 strings), and full test coverage in `CaptionTemplatesToolTests.swift` verifying vertical/horizontal filtering, thumbnail metadata, single atomic undo/redo, and error handling.
+
+
 
 
