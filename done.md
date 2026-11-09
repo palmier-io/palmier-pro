@@ -559,4 +559,51 @@ Priorities describe importance, not isolated batches. Build the smallest end-to-
 
 **Verified:** `swift build`, `swift build --build-tests`, and `./scripts/localization/sync.sh` passed. None of the backend packages link into the app, and MCP/UI run entirely offline with no remote service dependencies.
 
+## Advanced Video & AI Editing Features
+
+### Video background removal
+
+- [x] Person segmentation and background removal for video clips.
+
+**What:** Real-time / offline background removal without greenscreen using Apple Vision / Core Image person segmentation, enabling transparent overlays, picture-in-picture, and custom composite backgrounds.
+
+**How:**
+- Integrated person segmentation into video compositing and export pipelines.
+- Supports alpha channel normalization and background color/matte replacement.
+- Exposes controls for threshold, smoothing, edge feathering, and invert mask.
+
+**Verified:** Compiled and verified through `CustomVideoCompositor` and `AlphaVideoNormalizer` suites.
+
+### EditPilot planner tool — Direction → suggested timeline arrangement
+
+- [x] Propose, review, and apply complete timeline arrangements from creative direction.
+
+**What:** Matches CapCut's EditPilot workflow: turning natural-language creative direction (e.g. "fast-paced social summary with upbeat music sync") into an organized timeline arrangement with clip selection, beat sync points, hook/body/CTA captions, and music integration.
+
+**How:**
+- Added `edit_pilot` tool with `propose`, `read`, `review`, `approve_all`, and `apply` actions.
+- Analyzes library media assets and attached music track beat analysis (`BeatStore` / `BeatAnalysis` for downbeats and BPM).
+- Generates structured edit blocks with source trims, timeline placement, and contextual captions.
+- Allows fine-grained review (trim adjustment, caption editing, individual block approval) or one-click approval.
+- Applies entire arrangement to timeline atomically in one undoable action via `withTimelineSwap`.
+
+**Verified:** `swift build`, `swift build --build-tests`, and test suite in `EditPilotToolTests.swift` covering proposal, beat alignment, review, approve all, and atomic undo/redo.
+
+### Caption translation pipeline — Script → multilingual captions → timeline
+
+- [x] Script beats to multilingual captions synced to narration timing with template styling.
+
+**What:** Matches CapCut's auto captions + translation workflow: taking script beats, translating captions into target languages (Spanish, French, German, Japanese, Chinese, Hindi, Arabic, etc.), styling them per curated template (`CaptionStyles`), and placing them on the timeline synced to narration timing.
+
+**How:**
+- Added `translate_captions` tool with `translate`, `read`, `review`, `approve_all`, and `apply` actions.
+- Created `CaptionTranslationPlan` supporting 19+ languages with BCP-47 codes, RTL awareness, phrase/word dictionaries, and casing preservation.
+- Aligns caption segments to measured speech anchors (`NarrationTiming.Anchor`) or estimated cadence (~2.5 words/sec).
+- Formats text clips using curated `CaptionStyles` presets (`bold-pop`, `subtitle`, `clean-box`, `typewriter`, etc.) with canvas-relative scaling and text animations.
+- Enables segment-level review of translated text, timing bounds, and approval.
+- Inserts a dedicated caption track and places all approved captions in a single atomic undo transaction via `withTimelineSwap`.
+
+**Verified:** `swift build`, `swift build --build-tests`, localization sync (1,395 strings), and full test coverage in `CaptionTranslationToolTests.swift`.
+
+
 
