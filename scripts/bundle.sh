@@ -48,11 +48,8 @@ if [ -f "$ROOT/$ENV_FILE" ]; then
 fi
 
 if [ -z "${SIGNING_IDENTITY:-}" ]; then
-  if security find-identity -v -p codesigning 2>/dev/null | grep -qF "Developer ID Application: Compositor Pro"; then
-    SIGNING_IDENTITY="Developer ID Application: Compositor Pro (MMFLRC7562)"
-  else
-    SIGNING_IDENTITY="Developer ID Application: Palmier, Inc. (MMFLRC7562)"
-  fi
+    # Default: the Compositor Pro release identity from your keychain, or ad-hoc below.
+  SIGNING_IDENTITY="Developer ID Application: Compositor Pro (MMFLRC7562)"
 fi
 
 # A machine without the release identity in its keychain cannot sign with it, and
