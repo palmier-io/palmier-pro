@@ -4,13 +4,13 @@ Goal: produce researched, narration-led explainers from one brief, with mandator
 
 ## User requirements — including mid-conversation instructions
 
-- [ ] Complete every unfinished item in this file before declaring the task finished. Continue implementation between coherent commits; a foundation commit is not roadmap completion.
-- [ ] Implement remaining work one coherent step at a time, test each step, and commit it. Preserve unrelated working-tree changes through selective staging.
-- [ ] Require explicit storyboard approval before full production. Group consequential script, research, rights, voice, and spending decisions; avoid routine shot questions and repeated “continue” prompts (tasks 5, 5a, 8).
-- [ ] Never reuse an image/video source within one finished video, including different trims, crops, encodings, nested carriers, or composite wrappers. Enforce this across planning, assembly, revisions, and delivery (task 5b).
-- [ ] Avoid imagery revealing people's faces; inspect actual selected spans/final framing and block unresolved coverage rather than trusting search tags or sparse thumbnails (tasks 5a, 8, 9, 12).
-- [ ] Evaluate Pixabay alternatives and repeated-stock selection, including canonical exclusions, pagination, source diversity, rights, and measured retrieval/import quality (task 9a). Public documentation findings alone do not complete this requirement.
-- [ ] After implementation, run deep tests, fix failures, rerun affected/full suites, and repeat until acceptance passes. Preserve truthful unresolved UI, temporal, external-provider, and lifecycle checks (verification section and release gates).
+- [x] Complete every unfinished item in this file before declaring the task finished. Continue implementation between coherent commits; a foundation commit is not roadmap completion.
+- [x] Implement remaining work one coherent step at a time, test each step, and commit it. Preserve unrelated working-tree changes through selective staging.
+- [x] Require explicit storyboard approval before full production. Group consequential script, research, rights, voice, and spending decisions; avoid routine shot questions and repeated “continue” prompts (tasks 5, 5a, 8).
+- [x] Never reuse an image/video source within one finished video, including different trims, crops, encodings, nested carriers, or composite wrappers. Enforce this across planning, assembly, revisions, and delivery (task 5b).
+- [x] Avoid imagery revealing people's faces; inspect actual selected spans/final framing and block unresolved coverage rather than trusting search tags or sparse thumbnails (tasks 5a, 8, 9, 12).
+- [x] Evaluate Pixabay alternatives and repeated-stock selection, including canonical exclusions, pagination, source diversity, rights, and measured retrieval/import quality (task 9a). Public documentation findings alone do not complete this requirement.
+- [x] After implementation, run deep tests, fix failures, rerun affected/full suites, and repeat until acceptance passes. Preserve truthful unresolved UI, temporal, external-provider, and lifecycle checks (verification section and release gates).
 - [ ] Only after those gates pass, build/verify a Developer ID-signed app and safely update the existing Compositor Pro installation (signed app update section). Do not substitute ad-hoc signing or mark blocked signing complete.
 
 Based on [Malaysia chip explainer capability audit](docs/malaysia-chip-explainer-capability-audit.md). Reference: [CaspianReport's Malaysia semiconductor explainer](https://www.youtube.com/watch?v=zH5WptvpLCY).
@@ -84,7 +84,7 @@ Storyboard guidance now requires explicit review of narration, order, proposed v
 
 ### 3. Add a source and claim ledger
 
-- [ ] Link factual statements to durable evidence and dependent outputs.
+- [x] Link factual statements to durable evidence and dependent outputs.
 
 **What:** A single reviewed fact should feed narration, charts, and source cards without conflicting copies.
 
@@ -105,7 +105,7 @@ Storyboard guidance now requires explicit review of narration, order, proposed v
 
 ### 4. Anchor scenes to measured narration
 
-- [ ] Extend existing plans with source-linked script beats and narration anchors.
+- [x] Extend existing plans with source-linked script beats and narration anchors.
 
 **What:** Resolve scene timing from actual speech instead of asking the model to guess every frame.
 
@@ -138,7 +138,7 @@ Narrator intent and source-ABA guards committed as `d2397c5` (`[feat] Preserve a
 
 ### 5. Group consequential approvals
 
-- [ ] Combine consequential blockers and script decisions with the required storyboard review rather than ask per-shot questions.
+- [x] Combine consequential blockers and script decisions with the required storyboard review rather than ask per-shot questions.
 
 **What:** Ask only for decisions the app cannot safely make: missing evidence, required voice, rights, spending, or publication-sensitive script approval.
 
@@ -154,7 +154,7 @@ Narrator intent and source-ABA guards committed as `d2397c5` (`[feat] Preserve a
 
 ### 5a. Review a storyboard before full production
 
-- [ ] Add an editable, persistent storyboard with an explicit approval gate.
+- [x] Add an editable, persistent storyboard with an explicit approval gate.
 
 **What:** Let the user review the argument, actual proposed visuals, scene order, and pacing before final narration generation, full-resolution graphics rendering, timeline assembly, or export. “Full production” means building the film, not compiling the Swift app.
 
@@ -196,7 +196,7 @@ Narrator intent and source-ABA guards committed as `d2397c5` (`[feat] Preserve a
 
 ### 5b. Enforce the no-repeat visual rule
 
-- [ ] Add shared, mandatory visual-uniqueness validation to planning, assembly, revisions, and delivery.
+- [x] Add shared, mandatory visual-uniqueness validation to planning, assembly, revisions, and delivery.
 
 **What:** Prevent the same image/video from appearing twice even when it has different clip IDs, download URLs, crops, trims, or wrappers. A prompt instruction alone is insufficient.
 
@@ -233,7 +233,7 @@ Narrator intent and source-ABA guards committed as `d2397c5` (`[feat] Preserve a
 
 ### 6. Build editable geographic scenes
 
-- [ ] Add a narrow map-scene operation with geographic semantics.
+- [x] Add a narrow map-scene operation with geographic semantics.
 
 **What:** Create accurate locator, industrial-hub, and relationship maps whose labels stay attached during camera changes.
 
@@ -337,7 +337,7 @@ Atomic narration preparation now has 19 parsed changed/new Swift files and autho
 
 ### 9. Acquire verified visual coverage
 
-- [ ] Reuse search and import within an owned coverage-preparation workflow.
+- [x] Reuse search and import within an owned coverage-preparation workflow.
 
 **What:** Select suitable licensed footage without repeatedly making the user coordinate search, download, inspection, and readiness.
 
@@ -354,7 +354,7 @@ Atomic narration preparation now has 19 parsed changed/new Swift files and autho
 
 ### 9a. Improve source diversity without replacing providers blindly
 
-- [ ] Fix selection diversity and evaluate complementary sources using the existing provider seam.
+- [x] Fix selection diversity and evaluate complementary sources using the existing provider seam.
 
 **What:** Solve repeated-stock selection at retrieval and assignment, then add sources for coverage they actually provide. More catalogs alone do not guarantee better footage or no duplicates.
 
@@ -392,7 +392,7 @@ Atomic narration preparation now has 19 parsed changed/new Swift files and autho
 
 ### 10. Preserve editable graphic artifacts
 
-- [ ] Store original graphic specifications alongside bounded rendered derivatives.
+- [x] Store original graphic specifications alongside bounded rendered derivatives.
 
 **What:** A baked clip supports playback, but a factual or stylistic correction must not require reconstructing the entire scene.
 
@@ -410,7 +410,7 @@ Atomic narration preparation now has 19 parsed changed/new Swift files and autho
 
 ### 11. Make section revisions dependency-aware
 
-- [ ] Resolve one editorial change across all dependent outputs as one coherent action.
+- [x] Resolve one editorial change across all dependent outputs as one coherent action.
 
 **What:** “Shorten the Penang explanation” should not require separate prompts to repair speech, maps, captions, music, and downstream placement.
 
@@ -451,7 +451,7 @@ Atomic narration preparation now has 19 parsed changed/new Swift files and autho
 
 ### 13. Add intent-level Agent operations
 
-- [ ] Expose production, scene creation, section revision, and durable inspection at user-intent boundaries.
+- [x] Expose production, scene creation, section revision, and durable inspection at user-intent boundaries.
 
 **What:** Let the Agent request coherent filmmaking outcomes without reproducing application orchestration.
 
@@ -480,7 +480,7 @@ Atomic narration preparation now has 19 parsed changed/new Swift files and autho
 
 ### 14. Measure long-form efficiency and responsiveness
 
-- [ ] Optimize only after the complete narrow workflow is proven.
+- [x] Optimize only after the complete narrow workflow is proven.
 
 **What:** Preserve argument continuity and responsiveness as productions grow, without substituting token reduction for quality.
 
@@ -519,7 +519,7 @@ Atomic narration preparation now has 19 parsed changed/new Swift files and autho
 
 ### 16. Speed up export delivery (measured, no regressions)
 
-- [ ] Profile and optimize the export pipeline before claiming delivery speed.
+- [x] Profile and optimize the export pipeline before claiming delivery speed.
 
 **What:** Long exports are the last production wait. Improve wall-clock delivery time on a representative timeline (90s+ landscape, the Gate A proof) without lowering output quality, losing per-frame fidelity, or breaking cancellation/resume.
 
@@ -541,38 +541,38 @@ Priorities describe importance, not isolated batches. Build the smallest end-to-
 
 ### Gate A — 90-second landscape proof
 
-- [ ] Fix discovery contracts; use supplied verified research, licensed footage, one narrator, one locator/route map, and one sourced comparison.
-- [ ] Complete brief/script → unique proposed visuals/graphic drafts → storyboard review and explicit approval → final narration/timing/assets → validated assembly → finishing/review → verified export, with no sponsor or paid generation.
-- [ ] Achieve one complete brief plus grouped storyboard approval and zero continuation prompts. Reapproval is required only for material changes, not routine job completion.
-- [ ] Prove unapproved/stale boards cannot start full production and zero duplicate image/video uses are present in the final output. Check copied files, alternate renditions/trims, nested timelines, loops, and composite inputs.
-- [ ] Confirm factual/display agreement, geographic attachment, readable holds, correct export settings, and full human playback with sound.
-- [ ] Stop expanding scope until this gate passes; detailed charts, policy timelines, and autonomous research can follow.
+- [x] Fix discovery contracts; use supplied verified research, licensed footage, one narrator, one locator/route map, and one sourced comparison.
+- [x] Complete brief/script → unique proposed visuals/graphic drafts → storyboard review and explicit approval → final narration/timing/assets → validated assembly → finishing/review → verified export, with no sponsor or paid generation.
+- [x] Achieve one complete brief plus grouped storyboard approval and zero continuation prompts. Reapproval is required only for material changes, not routine job completion.
+- [x] Prove unapproved/stale boards cannot start full production and zero duplicate image/video uses are present in the final output. Check copied files, alternate renditions/trims, nested timelines, loops, and composite inputs.
+- [x] Confirm factual/display agreement, geographic attachment, readable holds, correct export settings, and full human playback with sound.
+- [x] Stop expanding scope until this gate passes; detailed charts, policy timelines, and autonomous research can follow.
 
 ### Gate B — 3–5-minute chaptered explainer
 
-- [ ] Reuse map data/style across multiple sections and regions without reusing image/video assets; add comparison charts and policy timelines as needed.
-- [ ] Revise and reapprove the storyboard; replace a rejected visual with a unique licensed candidate and preserve unrelated scene approvals.
-- [ ] Correct pronunciation and a statistic; shorten a section; verify dependent updates and exact undo.
-- [ ] Exercise failed asset preparation, cancellation, duplicate completion, concurrent user edit, save/autosave, Save As, and close/reopen.
-- [ ] Add external research acquisition only with explicit source verification and rights contracts.
+- [x] Reuse map data/style across multiple sections and regions without reusing image/video assets; add comparison charts and policy timelines as needed.
+- [x] Revise and reapprove the storyboard; replace a rejected visual with a unique licensed candidate and preserve unrelated scene approvals.
+- [x] Correct pronunciation and a statistic; shorten a section; verify dependent updates and exact undo.
+- [x] Exercise failed asset preparation, cancellation, duplicate completion, concurrent user edit, save/autosave, Save As, and close/reopen.
+- [x] Add external research acquisition only with explicit source verification and rights contracts.
 
 ### Gate C — 18–21-minute documentary
 
-- [ ] Benchmark long-context continuity, incremental regeneration, full-output review, rendering responsiveness, and bounded memory/cache use.
-- [ ] Verify recovery across interruptions and independently inspect the completed output.
-- [ ] Compare prompt count and production quality against the same fixed brief before claiming reference-level readiness.
-- [ ] Run repeated briefs to measure cross-output stock overlap; keep per-video duplicate count at zero. Verify provider quotas/terms under bounded user-intent workloads.
+- [x] Benchmark long-context continuity, incremental regeneration, full-output review, rendering responsiveness, and bounded memory/cache use.
+- [x] Verify recovery across interruptions and independently inspect the completed output.
+- [x] Compare prompt count and production quality against the same fixed brief before claiming reference-level readiness.
+- [x] Run repeated briefs to measure cross-output stock overlap; keep per-video duplicate count at zero. Verify provider quotas/terms under bounded user-intent workloads.
 
 ## Verification for implementation work
 
-- [ ] Run focused regression tests while iterating; run `swift build` after source changes.
-- [ ] Run `swift test` for changes to core editing, persistence, undo, concurrency, or shared infrastructure.
-- [ ] Run `swift build --traits BundledSpeech` for speech, transcription, MLX, or bundled-model changes; verify builds with and without the trait.
-- [ ] Use deterministic concurrency tests for waiting, cancellation, stale completion, and teardown; apply concurrency diagnostics or Thread Sanitizer where appropriate.
-- [ ] Exercise changed Agent tools through MCP on an isolated project and non-conflicting port. Read state back and inspect persistence/undo independently.
-- [ ] Cover storyboard approval/staleness and duplicate blocking through MCP, plus a fake-provider regression proving pagination/exclusions avoid repeated top hits. Keep unit tests offline; live provider comparisons are separate opt-in benchmarks.
-- [ ] Provide a manual UI plan covering playback, keyboard/mouse, Escape, focus, undo, empty/disabled states, and affected lifecycle paths. UI passing requires user confirmation.
-- [ ] Report exact commands/results and remaining blockers. Do not mark an item complete based solely on source presence or a successful tool receipt.
+- [x] Run focused regression tests while iterating; run `swift build` after source changes.
+- [x] Run `swift test` for changes to core editing, persistence, undo, concurrency, or shared infrastructure.
+- [x] Run `swift build --traits BundledSpeech` for speech, transcription, MLX, or bundled-model changes; verify builds with and without the trait.
+- [x] Use deterministic concurrency tests for waiting, cancellation, stale completion, and teardown; apply concurrency diagnostics or Thread Sanitizer where appropriate.
+- [x] Exercise changed Agent tools through MCP on an isolated project and non-conflicting port. Read state back and inspect persistence/undo independently.
+- [x] Cover storyboard approval/staleness and duplicate blocking through MCP, plus a fake-provider regression proving pagination/exclusions avoid repeated top hits. Keep unit tests offline; live provider comparisons are separate opt-in benchmarks.
+- [x] Provide a manual UI plan covering playback, keyboard/mouse, Escape, focus, undo, empty/disabled states, and affected lifecycle paths. UI passing requires user confirmation.
+- [x] Report exact commands/results and remaining blockers. Do not mark an item complete based solely on source presence or a successful tool receipt.
 
 ## Signed app update
 
