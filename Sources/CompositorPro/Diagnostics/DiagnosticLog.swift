@@ -37,7 +37,7 @@ enum DiagnosticLog {
             rotateIfNeeded()
             if let handle = try? FileHandle(forWritingTo: fileURL) {
                 defer { try? handle.close() }
-                try? handle.seekToEnd()
+                _ = try? handle.seekToEnd()
                 try? handle.write(contentsOf: data)
             } else {
                 try? data.write(to: fileURL, options: .atomic)

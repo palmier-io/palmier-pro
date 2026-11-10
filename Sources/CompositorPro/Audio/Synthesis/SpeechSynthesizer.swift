@@ -528,13 +528,14 @@ enum SpeechSynthesizer {
 
         var resolved = spec
         resolved.text = trimmed
+        let renderSpec = resolved
 
         let gate = CancellationGate()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 renderQueue.async {
                     do {
-                        let result = try renderSync(spec: resolved, isCancelled: { gate.isCancelled })
+                        let result = try renderSync(spec: renderSpec, isCancelled: { gate.isCancelled })
                         continuation.resume(returning: result)
                     } catch {
                         continuation.resume(throwing: error)

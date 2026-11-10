@@ -104,10 +104,11 @@ struct StoryboardPreviewControllerTests {
         let snapshot = try await snapshot()
         let probe = PreviewLifecycleProbe(hold: true)
         let controller = controller(probe)
-        var current = true
-        let operation = controller.prepare(snapshot: { snapshot }, isCurrent: { current })
+        final class Box: @unchecked Sendable { var current = true }
+        let box = Box()
+        let operation = controller.prepare(snapshot: { snapshot }, isCurrent: { box.current })
         await probe.waitForStart()
-        current = false
+        box.current = false
         await probe.release()
         await operation.value
         #expect(controller.result == nil)

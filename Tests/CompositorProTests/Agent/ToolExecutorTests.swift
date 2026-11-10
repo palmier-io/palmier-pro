@@ -1960,7 +1960,8 @@ struct ToolExecutorClipTests {
         #expect(clip?["volumeDb"] as? Double == -6)
         #expect(clip?["speed"] as? Double == 2.0)
         #expect(clip?["keyframes"] == nil)
-        #expect(((json?["notes"] as? [String])?.first ?? "").contains("cleared existing keyframes"))
+        let notes = json?["notes"] as? [String]
+        #expect(notes?.first?.contains("cleared existing keyframes") == true)
     }
 
     @Test func applyColorEchoesGradeAndRoundTrips() async throws {

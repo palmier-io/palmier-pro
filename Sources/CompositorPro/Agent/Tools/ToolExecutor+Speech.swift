@@ -190,14 +190,12 @@ extension ToolExecutor {
 
         let snapshot = timelineSnapshot(editor)
         var newClipId: String?
-        var newTrackId: String?
         let trackName = input.trackName ?? "Voiceover"
-        try editor.undo.perform("Generate Speech (Agent)") {
+        editor.undo.perform("Generate Speech (Agent)") {
             let trackIndex = editor.insertTrack(at: editor.timeline.tracks.count, type: .audio)
             guard editor.timeline.tracks.indices.contains(trackIndex) else { return }
             let track = editor.timeline.tracks[trackIndex]
-            newTrackId = track.id
-            try? editor.setTrackName(id: track.id, to: trackName)
+            _ = try? editor.setTrackName(id: track.id, to: trackName)
             editor.addClips(assets: [asset], trackIndex: trackIndex, startFrame: placeAt)
             newClipId = editor.timeline.tracks[trackIndex].clips
                 .first(where: { $0.mediaRef == asset.id })?.id

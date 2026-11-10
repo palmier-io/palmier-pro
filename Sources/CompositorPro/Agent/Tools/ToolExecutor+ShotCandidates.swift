@@ -192,7 +192,7 @@ extension ToolExecutor {
         if !history.usedSourceIds.isEmpty {
             warnings.append("Sources used in recent deliveries are ranked lower, not excluded; the no-repeat rule applies within one output only.")
         }
-        if let verification {
+        if verification != nil {
             warnings.append("Candidates were verified against the shot requirement by decoding their own frames; unverified candidates were not measured.")
         }
 

@@ -140,7 +140,7 @@ extension EditorViewModel {
                     }
                 }
                 if modified {
-                    try? self.changeEditPlans(updates: [plan], actionName: "Attach Graphic (Agent)")
+                    _ = try? self.changeEditPlans(updates: [plan], actionName: "Attach Graphic (Agent)")
                 }
             }
 
