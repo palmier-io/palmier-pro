@@ -99,4 +99,26 @@ struct AudioMixRampTests {
         #expect(ramps.allSatisfy { $0.from <= 1.9 && $0.to <= 1.9 })
         #expect(ramps.contains { $0.from > 1 || $0.to > 1 })
     }
+
+    @Test(arguments: [(0.8, 1.2, 90, 96), (2.8, 3.2, 144, 150), (1.0, 3.0, 90, 150)])
+    func regionsCrossingTrimBoundariesAreClipped(region: (Double, Double, Int, Int)) {
+        let clip = Clip(mediaRef: "voice", mediaType: .audio, startFrame: 90,
+                        durationFrames: 60, trimStartFrame: 30)
+        let dips = CompositionBuilder.gainDips(
+            clip: clip, timescale: 30, regions: [.init(start: region.0, end: region.1)],
+            depthDB: -12, fadeSeconds: 0.03)
+        #expect(dips.count == 1)
+        #expect(dips.first?.start == region.2)
+        #expect(dips.first?.end == region.3)
+        let ramps = CompositionBuilder.planVolumeRamps(clip: clip, timescale: 30, dips: dips)
+        #expect(overlaps(ramps).isEmpty)
+        #expect(ramps.contains { $0.from < 1 || $0.to < 1 })
+    }
+
+    @Test func speechMappingIncludesTrimAndFractionalSpeed() {
+        let clip = Clip(mediaRef: "voice", mediaType: .audio, startFrame: 90,
+                        durationFrames: 120, trimStartFrame: 30, speed: 0.5)
+        let ranges = EditorViewModel.timelineFrames(from: [60..<66, 0..<30, 80..<120], clip: clip, fps: 30)
+        #expect(ranges == [150..<162, 190..<210])
+    }
 }

@@ -22,13 +22,10 @@ struct DuckingPlanTests {
         let result = try plan(spans: [100 ..< 160], parameters: .init(
             duckDb: -12, attackFrames: 6, holdFrames: 4, releaseFrames: 10, mergeGapFrames: 12
         ))
-        #expect(result.windows == [94 ..< 170])
-        #expect(result.keyframes.map(\.frame) == [94, 104, 160, 170])
+        #expect(result.windows == [94 ..< 174])
+        #expect(result.keyframes.map(\.frame) == [0, 94, 100, 164, 174])
         let values = result.keyframes.map(\.value)
-        #expect(abs(values[0] - 1.0) < 1e-9)
-        #expect(abs(values[1] - pow(10, -12.0 / 20)) < 1e-9)
-        #expect(abs(values[2] - values[1]) < 1e-9)
-        #expect(abs(values[3] - 1.0) < 1e-9)
+        #expect(values == [0, 0, -12, -12, 0])
     }
 
     @Test func speechInsideTheMergeGapBecomesOneSpan() throws {
@@ -36,7 +33,7 @@ struct DuckingPlanTests {
             duckDb: -12, attackFrames: 6, holdFrames: 0, releaseFrames: 10, mergeGapFrames: 12
         ))
         #expect(result.windows == [94 ..< 210])
-        #expect(result.keyframes.map(\.frame) == [94, 100, 200, 210])
+        #expect(result.keyframes.map(\.frame) == [0, 94, 100, 200, 210])
     }
 
     @Test func overlappingRampsCollapseIntoOneDuckingLevel() throws {
@@ -46,8 +43,8 @@ struct DuckingPlanTests {
         ))
         #expect(result.windows == [94 ..< 230])
         let frames = result.keyframes.map(\.frame)
-        #expect(frames == [94, 100, 190, 230])
-        #expect(result.keyframes.filter { abs($0.value - 1.0) < 1e-9 }.count == 2)
+        #expect(frames == [0, 94, 100, 190, 230])
+        #expect(result.keyframes.filter { $0.value < 0 }.map(\.frame) == [100, 190])
     }
 
     @Test func rampsClampToTheBedBounds() throws {
@@ -111,7 +108,7 @@ struct DuckingPlanTests {
 
     @Test func zeroDecibelsProducesAnEnvelopeThatChangesNothing() throws {
         let result = try plan(spans: [100 ..< 160], parameters: .init(duckDb: 0))
-        #expect(result.keyframes.allSatisfy { abs($0.value - 1.0) < 1e-9 })
+        #expect(result.isEmpty)
     }
 
     @Test func keyframesAreSortedAndUnique() throws {
@@ -120,6 +117,42 @@ struct DuckingPlanTests {
         #expect(frames == frames.sorted())
         #expect(Set(frames).count == frames.count)
         #expect(result.windows.count == 3)
+    }
+
+    @Test func duckingAttenuatesThroughTheClipVolumeContract() throws {
+        let result = try plan(spans: [100 ..< 160])
+        var clip = Clip(mediaRef: "bed", mediaType: .audio, startFrame: 30, durationFrames: 300)
+        clip.volumeTrack = KeyframeTrack(keyframes: result.keyframes)
+        #expect(abs(clip.rawVolumeAt(frame: 150) - pow(10, -12.0 / 20)) < 1e-9)
+        #expect(clip.rawVolumeAt(frame: 60) == 1)
+        #expect(clip.rawVolumeAt(frame: 250) == 1)
+    }
+
+    @Test func zeroAttackDoesNotDuckBeforeSpeech() throws {
+        let result = try plan(spans: [100 ..< 160], parameters: .init(attackFrames: 0))
+        let track = KeyframeTrack(keyframes: result.keyframes)
+        #expect(track.sample(at: 99, fallback: 0) == 0)
+        #expect(track.sample(at: 100, fallback: 0) == -12)
+    }
+
+    @Test func speechAtTheTailDoesNotRestoreGainDuringSpeech() throws {
+        let result = try plan(duration: 160, spans: [100 ..< 160])
+        let track = KeyframeTrack(keyframes: result.keyframes)
+        #expect(track.sample(at: 159, fallback: 0) == -12)
+        #expect(result.keyframes.allSatisfy { $0.frame < 160 })
+    }
+
+    @Test func overflowingBedRangeIsRefused() {
+        #expect(throws: DuckingPlan.Failure.self) {
+            try plan(bedStart: Int.max - 1, duration: 3, spans: [])
+        }
+    }
+
+    @Test func largeEnvelopeDurationsClampWithoutOverflow() throws {
+        let result = try plan(spans: [100 ..< 160], parameters: .init(
+            attackFrames: Int.max, holdFrames: Int.max, releaseFrames: Int.max, mergeGapFrames: Int.max))
+        #expect(result.windows == [0 ..< 300])
+        #expect(result.keyframes.allSatisfy { (0..<300).contains($0.frame) })
     }
 }
 

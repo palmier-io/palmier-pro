@@ -306,7 +306,7 @@ extension EditPlan {
             throw EditPlanValidationError.invalidReference("A source span needs both sourceStartSeconds and sourceEndSeconds.")
         }
         shot.requirement = try shot.requirement?.validated()
-        shot.rejections = try ShotRejection.validated(shot.rejections)
+        shot.rejections = try ShotRejection.validateAll(shot.rejections)
         return shot
     }
 
@@ -530,7 +530,7 @@ extension EditPlan {
             shots[index].referenceUse = try shots[index].referenceUse?.validated(recipe: referenceRecipe)
             shots[index].claimIds = try validatedClaimIDs(shots[index].claimIds)
             shots[index].narrationLink = try shots[index].narrationLink?.validated(beats: scriptBeats ?? [])
-            shots[index].rejections = try ShotRejection.validated(shots[index].rejections)
+            shots[index].rejections = try ShotRejection.validateAll(shots[index].rejections)
         }
     }
 

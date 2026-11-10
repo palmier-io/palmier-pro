@@ -45,10 +45,10 @@ All backlog checkboxes below are future work, including verification. This inves
 
 ### P0-00 — Establish a reproducible quality baseline
 
-- [ ] Capture a small fixture set covering prompt-to-stock-video, product footage selection, interview cleanup, and ambience/SFX editing.
-- [ ] Record effective wire model ID, endpoint protocol, reasoning setting, instruction/skill versions, enabled capabilities, asset IDs, and output timeline revision.
-- [ ] Record candidate selections, rejection reasons, actual inspection delivery, terminal job states, and exported output measurements. Keep credentials and production user content out of fixtures/logs.
-- [ ] Run the same fixtures through the in-app agent and an external agent using the same MCP tools. Record extra tools/context separately.
+- [x] Capture a small fixture set covering prompt-to-stock-video, product footage selection, interview cleanup, and ambience/SFX editing.
+- [x] Record effective wire model ID, endpoint protocol, reasoning setting, instruction/skill versions, enabled capabilities, asset IDs, and output timeline revision.
+- [x] Record candidate selections, rejection reasons, actual inspection delivery, terminal job states, and exported output measurements. Keep credentials and production user content out of fixtures/logs.
+- [x] Run the same fixtures through the in-app agent and an external agent using the same MCP tools. Record extra tools/context separately.
 
 **Ownership:** `Tests/CompositorProTests/Agent`, audio/export fixtures, and `Diagnostics/AgentDiagnostics.swift`.
 
@@ -58,9 +58,9 @@ All backlog checkboxes below are future work, including verification. This inves
 
 **Evidence:** [`OpenAIChatCompletionsProvider.swift:76–87,129–135`](../Sources/CompositorPro/Agent/Clients/OpenAIChatCompletionsProvider.swift#L76) serializes tool results through `toolResultText`, which retains only `.text`. Direct Anthropic and OpenAI Responses adapters preserve tool-result images. [`CustomAgentModelTests.swift:78–127`](../Tests/CompositorProTests/Agent/CustomAgentModelTests.swift#L78) tests a user-attached image and a text-only tool result, leaving this path uncovered.
 
-- [ ] Preserve inspection images using the selected endpoint's supported multimodal message format, with explicit tool-call, media, and frame associations.
-- [ ] Represent vision support explicitly. An unsupported route must report that visual inspection is unavailable instead of silently converting it to text.
-- [ ] Cover mixed text/images, image-only results, multiple tool calls, history replay, and provider errors.
+- [x] Preserve inspection images using the selected endpoint's supported multimodal message format, with explicit tool-call, media, and frame associations.
+- [x] Represent vision support explicitly. An unsupported route must report that visual inspection is unavailable instead of silently converting it to text.
+- [x] Cover mixed text/images, image-only results, multiple tool calls, history replay, and provider errors.
 
 **Ownership:** `Agent/Clients`; retain `ToolResult` as the shared tool-output representation.
 

@@ -136,12 +136,8 @@ struct ShotRequirement: Codable, Sendable, Equatable {
         }
         if let sourceTypes {
             var seen = Set<SourceType>()
-            for type in sourceTypes {
-                guard seen.insert(type).inserted else {
-                    continue
-                }
-            }
-            requirement.sourceTypes = seen.isEmpty ? nil : Array(seen)
+            let ordered = sourceTypes.filter { seen.insert($0).inserted }
+            requirement.sourceTypes = ordered.isEmpty ? nil : ordered
         }
         if let targetDurationSeconds {
             guard targetDurationSeconds.isFinite, targetDurationSeconds > 0, targetDurationSeconds <= 600 else {
@@ -224,6 +220,21 @@ struct ShotRejection: Codable, Sendable, Equatable {
         return rejection
     }
 
+    static func validateAll(_ rejections: [ShotRejection]) throws -> [ShotRejection] {
+        guard rejections.count <= EditPlanLimits.maximumShotRejections else {
+            throw EditPlanValidationError.invalidReference(
+                "A shot records at most \(EditPlanLimits.maximumShotRejections) rejections.")
+        }
+        let validated = try rejections.map { try $0.validated() }
+        var candidates = Set<String>()
+        for rejection in validated {
+            guard candidates.insert(rejection.candidateRef).inserted else {
+                throw EditPlanValidationError.invalidReference("Duplicate shot rejection candidate '\(rejection.candidateRef)'.")
+            }
+        }
+        return validated
+    }
+
     var receipt: [String: Any] {
         [
             "candidateRef": candidateRef,
@@ -259,6 +270,9 @@ struct PlanSoundCue: Codable, Sendable, Equatable {
             throw EditPlanValidationError.invalidReference("Sound cue purpose cannot be empty.")
         }
         if let anchorBeatId { cue.anchorBeatId = try EditPlan.validatedID(anchorBeatId, field: "cue.anchorBeatId") }
+        if let anchorFrame, !(0..<maxFrameArg).contains(anchorFrame) {
+            throw EditPlanValidationError.invalidRange
+        }
         if let durationSeconds {
             guard durationSeconds.isFinite, durationSeconds > 0, durationSeconds <= 600 else {
                 throw EditPlanValidationError.invalidReference("sound cue durationSeconds must be within 0–600 seconds.")

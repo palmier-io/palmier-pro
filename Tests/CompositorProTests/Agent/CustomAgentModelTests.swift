@@ -126,6 +126,43 @@ struct CustomAgentModelTests {
         #expect(!json.contains("hidden"))
     }
 
+    @Test func requestBodyPreservesMultimodalToolResultImages() throws {
+        let body = OpenAIChatCompletionsRequestBody.build(
+            modelID: "custom-vision",
+            system: "System prompt",
+            tools: [AgentToolSchema(name: "inspect_media", description: "Inspect", inputSchema: ["type": "object"])],
+            messages: [
+                AgentRequestMessage(role: .assistant, content: [
+                    .content(.toolUse(id: "call_img", name: "inspect_media", inputJSON: #"{"mediaRef":"asset-1"}"#)),
+                ]),
+                AgentRequestMessage(role: .user, content: [
+                    .content(.toolResult(
+                        toolUseId: "call_img",
+                        content: [
+                            .image(base64: "aW1nZGF0YQ==", mediaType: "image/png"),
+                            .text(#"{"mediaRef":"asset-1","frameTimestamps":[0.5]}"#),
+                        ],
+                        isError: false
+                    )),
+                ]),
+            ]
+        )
+        let messages = try #require(body["messages"] as? [[String: Any]])
+        #expect(messages.compactMap { $0["role"] as? String } == ["system", "assistant", "tool", "user"])
+
+        let toolMessage = try #require(messages.first { $0["role"] as? String == "tool" })
+        #expect(toolMessage["tool_call_id"] as? String == "call_img")
+        #expect((toolMessage["content"] as? String)?.contains("includes images") == true)
+
+        let userMessage = try #require(messages.first { $0["role"] as? String == "user" })
+        let parts = try #require(userMessage["content"] as? [[String: Any]])
+        let texts = parts.compactMap { $0["text"] as? String }
+        #expect(texts.contains { $0.contains("call_img") })
+        #expect(texts.contains { $0.contains("frameTimestamps") })
+        let imageUrls = parts.compactMap { ($0["image_url"] as? [String: String])?["url"] }
+        #expect(imageUrls == ["data:image/png;base64,aW1nZGF0YQ=="])
+    }
+
     @Test func toolResultErrorsAreLabelledForTheModel() throws {
         let body = OpenAIChatCompletionsRequestBody.build(
             modelID: "m",

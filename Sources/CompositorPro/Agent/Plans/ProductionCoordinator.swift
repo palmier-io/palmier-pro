@@ -356,7 +356,7 @@ final class ProductionCoordinator {
     }
 
     private func awaitExport(_ editor: EditorViewModel, jobId: String) async throws {
-        currentJobHandle = AnyJobHandle { try? await self.toolExecutor.manageExports(editor, ["action": "cancel", "jobId": jobId]) }
+        currentJobHandle = AnyJobHandle { _ = try? await self.toolExecutor.manageExports(editor, ["action": "cancel", "jobId": jobId]) }
         defer { currentJobHandle = nil }
         let waited = try await toolExecutor.manageExports(editor, ["action": "wait", "jobId": jobId])
         let payload = try Self.jsonPayload(waited)

@@ -134,6 +134,63 @@ struct CustomEndpointTransportTests {
         #expect(imageURL == "data:image/jpeg;base64,\(jpeg.base64EncodedString())")
     }
 
+    @Test func controlledImageRecognitionScenarioWithMisleadingFilename() async throws {
+        let context = try #require(CGContext(
+            data: nil, width: 8, height: 8, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+        ))
+        context.setFillColor(CGColor(srgbRed: 0, green: 1, blue: 0, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        let image = try #require(context.makeImage())
+        let jpeg = try #require(ImageEncoder.encodeJPEG(image, quality: 1))
+        let base64 = jpeg.base64EncodedString()
+        let misleadingName = "ocean_sunset.mov"
+        let metadata = #"{"mediaRef":"asset-sunset","name":"\#(misleadingName)","duration":5.0,"frameTimestamps":[0.0]}"#
+
+        let server = try await LoopbackServer { request in
+            let normalized = request.replacingOccurrences(of: "\\/", with: "/")
+            let hasImageData = normalized.contains("data:image/jpeg;base64,\(base64)")
+            let text = hasImageData
+                ? "Visual inspection confirmed green frame rather than misleading ocean sunset."
+                : "No image payload received; defaulted to filename ocean_sunset.mov."
+            return "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n"
+                + #"data: {"choices":[{"delta":{"content":"\#(text)"}}]}"#
+                + "\n\ndata: [DONE]\n\n"
+        }
+        defer { server.cancel() }
+        let endpoint = try #require(CustomModelStore.normalizedBaseURL(server.baseURL))
+        let client = Self.client(modelID: "vision-model", endpoint: endpoint, apiKey: "", supportsImages: true)
+        let messages = [
+            AgentRequestMessage(role: .assistant, content: [
+                .content(.toolUse(id: "inspect-misleading", name: "inspect_media", inputJSON: #"{"mediaRef":"asset-sunset"}"#)),
+            ]),
+            AgentRequestMessage(role: .user, content: [
+                .content(.toolResult(
+                    toolUseId: "inspect-misleading",
+                    content: [.image(base64: base64, mediaType: "image/jpeg"), .text(metadata)],
+                    isError: false
+                )),
+            ]),
+        ]
+
+        var responseText = ""
+        for event in try await transportEvents(client.stream(system: "", tools: [], messages: messages, context: Self.context)) {
+            if case .textDelta(let delta) = event {
+                responseText += delta
+            }
+        }
+
+        #expect(responseText.contains("Visual inspection confirmed green frame rather than misleading ocean sunset."))
+
+        let request = try #require(server.request)
+        let separator = try #require(request.range(of: "\r\n\r\n"))
+        let body = try #require(JSONSerialization.jsonObject(with: Data(request[separator.upperBound...].utf8)) as? [String: Any])
+        let wire = try #require(body["messages"] as? [[String: Any]])
+        let attachment = try #require(wire.last?["content"] as? [[String: Any]])
+        let urls = attachment.compactMap { ($0["image_url"] as? [String: String])?["url"] }
+        #expect(urls.contains("data:image/jpeg;base64,\(base64)"))
+    }
+
     @Test(arguments: [false, true])
     func textOnlyModelRefusesImagesBeforeSendingRequest(inToolResult: Bool) async throws {
         let server = try await LoopbackServer { _ in Self.sseResponse }
