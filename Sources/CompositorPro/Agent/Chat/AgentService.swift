@@ -658,6 +658,12 @@ final class AgentService {
                     streamError = .refusal(chosenModel)
                     break loop
                 }
+                if stopReason == .maxTokens && streamTimeoutRetries < 2 {
+                    streamTimeoutRetries += 1
+                    Log.agent.notice("chat stream turn=\(turnID) continued after output truncation retry=\(streamTimeoutRetries)")
+                    messages.append(AgentMessage(role: .user, blocks: [.text("Continue previous response.")]))
+                    continue loop
+                }
                 if stopReason == .toolUse {
                     await runPendingToolUses(assistantID: assistantID, conversationID: conversationID,
                                             runID: runID, runEditor: runEditor, settings: settings,
@@ -898,15 +904,37 @@ final class AgentService {
 
     private func apiMessages() async -> [AgentRequestMessage] {
         var result: [AgentRequestMessage] = []
-        for msg in messages {
+        let lastUserIndex = messages.lastIndex(where: { $0.role == .user })
+        for (index, msg) in messages.enumerated() {
             if msg.role == .system { continue }
             var content = msg.blocks.map(AgentRequestBlock.content)
             if msg.role == .user, !msg.mentions.isEmpty {
-                let inlined = await inlineImageBlocks(for: msg.mentions)
-                var hint = msg.contextHint ?? AgentMentionContext.hint(msg.mentions, editor: editor)
-                if let note = AgentMentionContext.inlineNote(for: inlined) { hint += " " + note }
-                content.insert(contentsOf: inlined.blocks, at: 0)
-                content.insert(.content(.text(hint)), at: 0)
+                let isRecent = lastUserIndex == nil || index >= (lastUserIndex! - 2)
+                if isRecent {
+                    let inlined = await inlineImageBlocks(for: msg.mentions)
+                    var hint = msg.contextHint ?? AgentMentionContext.hint(msg.mentions, editor: editor)
+                    if let note = AgentMentionContext.inlineNote(for: inlined) { hint += " " + note }
+                    content.insert(contentsOf: inlined.blocks, at: 0)
+                    content.insert(.content(.text(hint)), at: 0)
+                } else {
+                    let hint = msg.contextHint ?? AgentMentionContext.hint(msg.mentions, editor: editor)
+                    content.insert(.content(.text(hint + " [Historical image mentions omitted for context budget]")), at: 0)
+                }
+            }
+            let isOldTurn = lastUserIndex != nil && index < (lastUserIndex! - 4)
+            if isOldTurn {
+                content = content.map { block in
+                    if case let .content(inner) = block, case .toolResult(let id, let blocks, let isErr) = inner {
+                        let prunedBlocks = blocks.map { b -> ToolResult.Block in
+                            if case .image = b {
+                                return .text("[Inspection image pruned to fit context budget: superseded by current revision]")
+                            }
+                            return b
+                        }
+                        return .content(.toolResult(toolUseId: id, content: prunedBlocks, isError: isErr))
+                    }
+                    return block
+                }
             }
             guard !content.isEmpty else { continue }
             result.append(AgentRequestMessage(role: msg.role == .user ? .user : .assistant, content: content))

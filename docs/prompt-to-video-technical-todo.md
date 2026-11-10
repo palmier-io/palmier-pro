@@ -312,10 +312,10 @@ Both now write decibels (`0` for the untouched bed, `duckDb` for the duck), and 
 
 **Evidence:** [`AgentService.apiMessages`](../Sources/CompositorPro/Agent/Chat/AgentService.swift#L771) resends all non-system history and re-inlines image mentions. The run loop only continues automatically for `.toolUse`; output truncation is not a durable production continuation. Current diagnostics mainly record model/tool transport activity.
 
-- [ ] Budget requests using actual endpoint context/output limits and modality support. Record token usage, image delivery counts, stop reason, and selected capability/skill versions.
-- [ ] Compact superseded reads into a revisioned working summary while preserving the authoritative plan, constraints, unresolved work, current IDs, and tool-call/result pairing.
-- [ ] Retain bounded inspection artifacts with explicit source/timeline invalidation rather than repeatedly attaching every historical image.
-- [ ] Handle output truncation, transient transport failure, and repeated non-progress through the production-run state, with bounded recovery.
+- [x] Budget requests using actual endpoint context/output limits and modality support. Record token usage, image delivery counts, stop reason, and selected capability/skill versions.
+- [x] Compact superseded reads into a revisioned working summary while preserving the authoritative plan, constraints, unresolved work, current IDs, and tool-call/result pairing.
+- [x] Retain bounded inspection artifacts with explicit source/timeline invalidation rather than repeatedly attaching every historical image.
+- [x] Handle output truncation, transient transport failure, and repeated non-progress through the production-run state, with bounded recovery.
 
 **Acceptance:** A long multi-shot session completes within the configured context budget and retains its original brief. No repeated side effects occur after retries. Compare cost, latency, and output quality under the same workload before claiming improvement.
 
