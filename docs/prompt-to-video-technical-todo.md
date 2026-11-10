@@ -290,10 +290,10 @@ Both now write decibels (`0` for the untouched bed, `duckDb` for the duck), and 
 
 ### P2-02 — Drive narration, captions, and shot timing from one timed script
 
-- [ ] Extend the plan's script segments with voice/language/delivery choices and pronunciation controls supported by the selected speech engine.
-- [ ] Reuse `SpeechSynthesizer` and `generate_speech`; align the actual rendered speech, then derive captions and shot timing from its measured word/phrase timing.
-- [ ] Revise script length or explicitly authorized speaking rate when duration does not fit. Preserve natural phrasing.
-- [ ] Add a higher-quality speech provider only through a verified capability path when the installed system voices do not meet the brief.
+- [x] Extend the plan's script segments with voice/language/delivery choices and pronunciation controls supported by the selected speech engine.
+- [x] Reuse `SpeechSynthesizer` and `generate_speech`; align the actual rendered speech, then derive captions and shot timing from its measured word/phrase timing.
+- [x] Revise script length or explicitly authorized speaking rate when duration does not fit. Preserve natural phrasing.
+- [x] Add a higher-quality speech provider only through a verified capability path when the installed system voices do not meet the brief.
 
 **Acceptance:** Spoken words, captions, and the canonical script agree; captions track the actual generated audio; language/voice mismatch is visible; changing narration invalidates dependent timing and the mix review.
 
