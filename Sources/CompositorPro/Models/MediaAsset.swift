@@ -185,6 +185,15 @@ final class MediaAsset: Identifiable {
             generationStatus: generationStatus.manifestValue,
             importInput: importInput,
             inputIdentity: inputIdentity,
+            
+            // Stock provenance - carry over from import
+            providerAssetId: importInput?.origin?.assetId,
+            providerLandingURL: importInput?.origin?.landingPageURL,
+            providerCreator: nil,
+            providerLicense: nil,
+            providerAttribution: nil,
+            providerRetrievalDate: Date(),
+            providerCredits: nil,
         )
     }
 

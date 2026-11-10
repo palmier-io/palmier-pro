@@ -204,19 +204,22 @@ extension EditorViewModel {
 
 extension EditPlan {
     func hasSameStoryboardIntent(as other: EditPlan) -> Bool {
-        storyboardIntent == other.storyboardIntent
+        // The brief is part of the intent: a changed brief changes what the storyboard must show.
+        storyboardIntent == other.storyboardIntent && brief == other.brief
     }
 
     mutating func invalidateStoryboardApproval(comparedTo previous: EditPlan) {
         guard !hasSameStoryboardIntent(as: previous), productionRun?.phase != .canceled else { return }
         productionRun?.phase = .stale
         productionRun?.approvedRevision = nil
+        productionRun?.verifiedTimelineRevision = nil
     }
 
     static func ensureGlobalIDs(_ plans: [EditPlan]) throws {
         var seen = Set<String>()
         for plan in plans {
-            for id in [plan.id] + plan.sections.map(\.id) + plan.shots.map(\.id) + (plan.scriptBeats ?? []).map(\.beatId) {
+            for id in [plan.id] + plan.sections.map(\.id) + plan.shots.map(\.id)
+                + (plan.scriptBeats ?? []).map(\.beatId) + (plan.soundCues ?? []).map(\.cueId) {
                 guard seen.insert(id).inserted else { throw EditPlanValidationError.duplicateId(id) }
             }
         }

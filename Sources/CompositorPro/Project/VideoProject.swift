@@ -248,18 +248,20 @@ class VideoProject: NSDocument {
                 }
                 self.saveContext = nil
                 self.saveTask = nil
+                self.directSaveInProgress = false
+                if let index = self.saveQueue.firstIndex(where: { $0.id == request.id }) {
+                    self.saveQueue.remove(at: index)
+                }
                 if let lease = self.activeSaveLease {
                     self.activeSaveLease = nil
                     self.activeSaveRequest = nil
                     let coordinator = self.editorViewModel.projectPackageCoordinator
-                    coordinator.finishSave(lease) { request.completion(completionError) }
+                    coordinator.finishSave(lease) {
+                        DispatchQueue.main.async { request.completion(completionError) }
+                    }
                 } else {
                     self.activeSaveRequest = nil
-                    request.completion(completionError)
-                }
-                self.directSaveInProgress = false
-                if let index = self.saveQueue.firstIndex(where: { $0.id == request.id }) {
-                    self.saveQueue.remove(at: index)
+                    DispatchQueue.main.async { request.completion(completionError) }
                 }
                 self.launchNextSaveIfNeeded()
             }
@@ -542,12 +544,12 @@ class VideoProject: NSDocument {
     }
 
     private func scheduleProjectCheckpointAutosave() {
-        guard fileURL != nil, !projectCheckpointAutosaveScheduled, !isSavingBeforeClose else { return }
+        guard fileURL != nil, !projectCheckpointAutosaveScheduled, !isSavingBeforeClose, !AppDelegate.shared.isTerminating else { return }
         projectCheckpointAutosaveScheduled = true
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.projectCheckpointAutosaveScheduled = false
-            guard self.fileURL != nil, !self.isSavingBeforeClose else { return }
+            guard self.fileURL != nil, !self.isSavingBeforeClose, !AppDelegate.shared.isTerminating else { return }
             self.autosave(withImplicitCancellability: false) { error in
                 if let error {
                     Log.project.error("project checkpoint autosave failed: \(error.localizedDescription)")
@@ -645,7 +647,7 @@ class VideoProject: NSDocument {
         }
     }
 
-    private func closeImmediately(using lease: ProjectPackageCoordinator.CloseLease) throws {
+    func closeImmediately(using lease: ProjectPackageCoordinator.CloseLease) throws {
         guard !editorViewModel.projectPackageCoordinator.isClosed else {
             try confirmClosed()
             return
@@ -656,6 +658,7 @@ class VideoProject: NSDocument {
         if let nativeLease = nativeCloseLease { completeCloseRequests(for: nativeLease, shouldClose: true) }
         editorViewModel.detachProxyStore()
         DispatchQueue.main.async {
+            guard !AppDelegate.shared.isTerminating else { return }
             if AppState.shared.activeProject === self {
                 Task { @MainActor in
                     do { try await AppState.shared.closeProject(self) }

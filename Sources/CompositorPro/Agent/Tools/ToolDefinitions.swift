@@ -291,6 +291,17 @@ enum ToolDefinitions {
                                     "sourceStartSeconds": ["type": "number", "description": "Optional selected source span, with sourceEndSeconds."],
                                     "sourceEndSeconds": ["type": "number", "description": "Optional selected source span, with sourceStartSeconds."],
                                     "notes": ["type": "string", "description": "Optional shot note."],
+                                    "requirement": shotRequirementSchema,
+                                    "rejections": [
+                                        "type": "array",
+                                        "maxItems": EditPlanLimits.maximumShotRejections,
+                                        "description": "Candidates already rejected for this shot after inspection, with the inspection-based reason and evidence.",
+                                        "items": objectSchema(properties: [
+                                            "candidateRef": ["type": "string", "description": "Stable candidate id that was rejected (local mediaRef or stock source id)."],
+                                            "reason": ["type": "string", "enum": ["wrong_subject", "wrong_action", "wrong_location", "insufficient_duration", "wrong_shape", "generated_material", "duplicate", "not_usable"]],
+                                            "evidence": ["type": "string", "description": "What inspection showed and led to the rejection."],
+                                        ], required: ["candidateRef", "reason", "evidence"]),
+                                    ],
                                     "referenceUse": referenceUseSchema,
                                     "claimIds": claimIdsSchema,
                                     "narrationLink": sceneNarrationLinkSchema,
@@ -310,20 +321,8 @@ enum ToolDefinitions {
                             "scriptBeats": scriptBeatsSchema,
                             "narrationIntent": narrationIntentSchema,
                             "narration": narrationSourceSchema,
-                            "brief": ["type": "object", "description": "Replacement brief: audience, durationSeconds, aspectFormat, tone, language, realism (real_footage_only|real_or_generated|generated_allowed|illustrative), deliveryConstraints, inferredChoices."],
-                            "soundCues": [
-                                "type": "array",
-                                "description": "Replacement motivated sound cues with stable IDs, roles (voice|music|ambience|sfx), one timing anchor each.",
-                                "items": objectSchema(properties: [
-                                    "cueId": ["type": "string", "description": "Optional stable cue id. Omit for a generated id."],
-                                    "role": ["type": "string", "enum": ["voice", "music", "ambience", "sfx"]],
-                                    "purpose": ["type": "string", "description": "Audible purpose of the cue. Required."],
-                                    "anchorBeatId": ["type": "string", "description": "Narrative beat the cue anchors to. Mutually exclusive with anchorFrame."],
-                                    "anchorFrame": ["type": "integer", "description": "Timeline frame the cue anchors to. Mutually exclusive with anchorBeatId."],
-                                    "durationSeconds": ["type": "number"],
-                                    "notes": ["type": "string"],
-                                ]),
-                            ],
+                            "brief": planBriefSchema,
+                            "soundCues": soundCuesSchema,
                             "sections": [
                                 "type": "array",
                                 "description": "Complete replacement sections. Preserve existing sectionIds to keep them; omitted ids become new sections.",
@@ -354,6 +353,17 @@ enum ToolDefinitions {
                                     "sourceStartSeconds": ["type": "number", "description": "Optional selected source span, with sourceEndSeconds."],
                                     "sourceEndSeconds": ["type": "number", "description": "Optional selected source span, with sourceStartSeconds."],
                                     "notes": ["type": "string", "description": "Optional shot note."],
+                                    "requirement": shotRequirementSchema,
+                                    "rejections": [
+                                        "type": "array",
+                                        "maxItems": EditPlanLimits.maximumShotRejections,
+                                        "description": "Candidates already rejected for this shot after inspection, with the inspection-based reason and evidence.",
+                                        "items": objectSchema(properties: [
+                                            "candidateRef": ["type": "string", "description": "Stable candidate id that was rejected (local mediaRef or stock source id)."],
+                                            "reason": ["type": "string", "enum": ["wrong_subject", "wrong_action", "wrong_location", "insufficient_duration", "wrong_shape", "generated_material", "duplicate", "not_usable"]],
+                                            "evidence": ["type": "string", "description": "What inspection showed and led to the rejection."],
+                                        ], required: ["candidateRef", "reason", "evidence"]),
+                                    ],
                                     "referenceUse": referenceUseSchema,
                                     "claimIds": claimIdsSchema,
                                     "narrationLink": sceneNarrationLinkSchema,
@@ -1832,7 +1842,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .findShotCandidates,
-            description: "Find footage worth cutting by combining ready library evidence with downloadable stock catalog rows. Returns a deterministic shortlist with one candidate per known source identity, not one per trim. Ranks usable local matches first and reports skipped rows with reasons. Pass excludedSourceIds to request distinct alternatives; planId also excludes the plan's selected mediaRef sources by default. Manifest-wide aliases connect media refs, valid content hashes, and retained stock origins across local and remote results. Unknown identities remain unresolved blockers, never wildcard exclusions; search does not verify identity freshness or perceptual similarity. Returns evidence, source spans and durations where known, cached library or provider dimensions where available, and remote license, attribution, thumbnailUrl and landingPageUrl where supplied. Unknown metadata is omitted, not measured during search. Catalog matches and thumbnails do not verify visual content: use inspect_media after import to inspect the actual source. It never changes plans, selections, approvals, or undo, and never downloads, imports, or places media: import a remote url with import_media, then place mediaRef with add_clips. Requesting alternatives does not authorize automatic plan retargeting. Query visual captions or exact spoken words; kind is required because visual and spoken evidence differ.",
+            description: "Find footage worth cutting by combining ready library evidence with downloadable stock catalog rows. Returns a deterministic shortlist with one candidate per known source identity, not one per trim. Ranks usable local matches first and reports skipped rows with reasons. Pass excludedSourceIds to request distinct alternatives; planId also excludes the plan's selected mediaRef sources by default. Manifest-wide aliases connect media refs, valid content hashes, and retained stock origins across local and remote results. Unknown identities remain unresolved blockers, never wildcard exclusions; search does not verify identity freshness or perceptual similarity. Returns evidence, source spans and durations where known, cached library or provider dimensions where available, and remote license, attribution, thumbnailUrl and landingPageUrl where supplied. Unknown metadata is omitted, not measured during search. Catalog matches and thumbnails do not verify visual content: use inspect_media after import to inspect the actual source. Pass planId together with shotId to verify the shortlist against that shot's requirement: frames are decoded from the library candidates' own sources and scored against the shot's subject, action, location, exclusions, required span, and motion, and each candidate then carries an acceptance decision plus the measurements behind it. Verified candidates that fail the requirement are reported as rejected with their reason instead of silently ranking first, and candidates rejected for this shot earlier are not offered again. Remote rows stay unverified until they are imported. It never changes plans, selections, approvals, or undo, and never downloads, imports, or places media: import a remote url with import_media, then place mediaRef with add_clips. Requesting alternatives does not authorize automatic plan retargeting. Query visual captions or exact spoken words; kind is required because visual and spoken evidence differ.",
             inputSchema: objectSchema(
                 properties: [
                     "query": ["type": "string", "description": "Subject caption for visual search or exact words for spoken matching."],
@@ -1841,6 +1851,7 @@ enum ToolDefinitions {
                     "mediaRef": ["type": "string", "description": "Optional. Restrict library matches to one asset. Remote stock is unrestricted."],
                     "excludedSourceIds": ["type": "array", "items": ["type": "string", "minLength": 1, "maxLength": VisualSourceAliases.maximumSourceIdLength], "maxItems": ShotCandidateExclusions.maximumExplicitSourceIds, "uniqueItems": true, "description": "Optional canonical exclusion set: media:<mediaRef>, sha256:<64 lowercase hex digits>, or stock:<provider>:<assetId>. At most 256 distinct IDs. Excludes all known manifest aliases before shortlist limits; URLs and candidate span IDs are not identities."],
                     "planId": ["type": "string", "minLength": 1, "maxLength": VisualSourceAliases.maximumEntityIdLength, "description": "Optional existing plan ID. Its selected mediaRef sources and all known aliases are excluded in addition to excludedSourceIds. Does not change the plan or its approval."],
+                    "shotId": ["type": "string", "minLength": 1, "maxLength": VisualSourceAliases.maximumEntityIdLength, "description": "Optional shot ID inside planId. Adds verification of the shortlist against that shot's requirement and hides candidates already rejected for that shot. The plan is not changed."],
                     "includeLibrary": ["type": "boolean", "description": "Include imported media (default true)."],
                     "includeRemote": ["type": "boolean", "description": "Include downloadable stock (default true)."],
                     "orientation": ["type": "string", "enum": ["landscape", "portrait", "square"], "description": "Optional remote image or video aspect ratio. Excludes hits without matching known dimensions. Not valid for audio."],
@@ -2231,29 +2242,33 @@ enum ToolDefinitions {
     }
 
     private static var planBriefSchema: [String: Any] {
-        objectSchema(properties: [
+        var schema = objectSchema(properties: [
             "audience": ["type": "string", "description": "Intended viewer of the film, plain text."],
-            "durationSeconds": ["type": "number", "minimum": 0.1, "maximum": 14400, "description": "Requested runtime in seconds. Receipts report planSeconds and deltaSeconds; never silently stretch shots to fit."],
+            "durationSeconds": ["type": "number", "exclusiveMinimum": 0, "maximum": 14400, "description": "Requested runtime in seconds. Receipts report planSeconds and deltaSeconds; never silently stretch shots to fit."],
             "aspectFormat": ["type": "string", "description": "Output shape intent, e.g. 16:9, 9:16, 1:1. The timeline owns the real geometry."],
             "tone": ["type": "string", "description": "Intended tone, e.g. calm, urgent, documentary."],
             "language": ["type": "string", "description": "BCP-47 language tag for narration and captions."],
-            "realism": ["type": "string", "enum": ["real_footage_only", "real_or_generated", "generated_allowed", "illustrative"], "description": "Source-material requirement. real_footage_only blocks generated selections; receipt reports substitutions explicitly."],
+            "realism": ["type": "string", "enum": PlanBrief.Realism.allCases.map(\.rawValue), "description": "Source-material requirement. realFootageOnly excludes generated selections; report material substitutions explicitly."],
             "deliveryConstraints": ["type": "string", "description": "Free-form delivery constraints, e.g. loudness target, no burned-in captions."],
-            "inferredChoices": ["type": "object", "description": "Choices inferred from the user's prompt, recorded so they stay editable and visible."],
+            "inferredChoices": ["type": "object", "maxProperties": 32, "additionalProperties": ["type": "string", "minLength": 1, "maxLength": PlanBrief.maxComboboxLength], "description": "Choices inferred from the user's prompt, recorded so they stay editable and visible."],
         ])
+        schema["additionalProperties"] = false
+        return schema
     }
 
     private static var soundCuesSchema: [String: Any] {
-        ["type": "array", "maxItems": 128, "description": "Motivated sound cues with stable IDs, roles, and one timing anchor each (anchorBeatId or anchorFrame, not both).",
-         "items": objectSchema(properties: [
+        var cue = objectSchema(properties: [
             "cueId": ["type": "string", "description": "Stable cue ID, unique across plan elements."],
-            "role": ["type": "string", "enum": ["voice", "music", "ambience", "sfx"]],
+            "role": ["type": "string", "enum": PlanSoundCue.Role.allCases.map(\.rawValue)],
             "purpose": ["type": "string", "description": "Audible purpose, e.g. 'door close lands on the shot's action'."],
             "anchorBeatId": ["type": "string", "description": "Script beat the cue anchors to."],
-            "anchorFrame": ["type": "integer", "minimum": 0, "maximum": maxFrameArg, "description": "Timeline frame the cue anchors to."],
-            "durationSeconds": ["type": "number", "minimum": 0.1, "maximum": 600, "description": "Intended cue length in seconds."],
+            "anchorFrame": ["type": "integer", "minimum": 0, "maximum": maxFrameArg - 1, "description": "Timeline frame the cue anchors to."],
+            "durationSeconds": ["type": "number", "exclusiveMinimum": 0, "maximum": 600, "description": "Intended cue length in seconds."],
             "notes": ["type": "string", "description": "Optional editorial note."],
-         ], required: ["role", "purpose"])]
+        ], required: ["cueId", "role", "purpose"])
+        cue["additionalProperties"] = false
+        cue["not"] = ["required": ["anchorBeatId", "anchorFrame"]]
+        return ["type": "array", "maxItems": 128, "description": "Motivated sound cues with stable IDs and roles. Use at most one timing anchor (anchorBeatId or anchorFrame); omit while timing is unresolved.", "items": cue]
     }
 
     private static var shotRequirementSchema: [String: Any] {
@@ -2262,11 +2277,11 @@ enum ToolDefinitions {
             "subject": ["type": "string", "description": "Required on-screen subject."],
             "action": ["type": "string", "description": "Required on-screen action."],
             "location": ["type": "string", "description": "Required named location; verify provenance before claiming it."],
-            "shotSize": ["type": "string", "enum": ["extreme_wide", "wide", "medium", "medium_close", "close_up", "extreme_close_up", "insert"]],
-            "motion": ["type": "string", "enum": ["static_", "pan", "tilt", "push", "handheld", "aerial", "follow"], "description": "Required on-screen motion. static_ means a locked-off frame."],
-            "sourceTypes": ["type": "array", "items": ["type": "string", "enum": ["stock_video", "stock_image", "library", "generated", "screen_recording", "archival"]], "description": "Acceptable source kinds; missing coverage must be reported instead of silently substituting."],
+            "shotSize": ["type": "string", "enum": ShotRequirement.ShotSize.allCases.map(\.rawValue)],
+            "motion": ["type": "string", "enum": ShotRequirement.Motion.allCases.map(\.rawValue), "description": "Required on-screen motion. static_ means a locked-off frame."],
+            "sourceTypes": ["type": "array", "items": ["type": "string", "enum": ShotRequirement.SourceType.allCases.map(\.rawValue)], "description": "Acceptable source kinds; missing coverage must be reported instead of silently substituting."],
             "exclusions": ["type": "array", "items": ["type": "string"], "description": "Subject/action/look exclusions, e.g. 'no generated imagery', 'no watermark'."],
-            "targetDurationSeconds": ["type": "number", "minimum": 0.1, "maximum": 600],
+            "targetDurationSeconds": ["type": "number", "exclusiveMinimum": 0, "maximum": 600],
             "handleSeconds": ["type": "number", "minimum": 0, "maximum": 30, "description": "Source handles wanted either side of the selected span."],
         ], required: ["narrativePurpose"])
     }

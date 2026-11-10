@@ -125,7 +125,9 @@ final class ProductionCoordinator {
                 comment: "Plan not found",
                 currentJobId: nil,
                 exportJobId: nil,
-                terminalReceipt: nil
+                terminalReceipt: nil,
+                reviewFindings: [],
+                verifiedTimelineRevision: nil
             )
         }
 
@@ -143,7 +145,9 @@ final class ProductionCoordinator {
             comment: run?.comment ?? comment,
             currentJobId: currentJobHandle?.id.uuidString,
             exportJobId: terminalReceipt?.exportJobId,
-            terminalReceipt: terminalReceipt
+            terminalReceipt: terminalReceipt,
+            reviewFindings: run?.reviewFindings ?? [],
+            verifiedTimelineRevision: run?.verifiedTimelineRevision
         )
     }
 
@@ -263,7 +267,48 @@ final class ProductionCoordinator {
             try await attachToExport(editor, jobId: jobID)
             return
         }
+        let findings = try runDeterministicChecks(editor: editor)
+        try persistFindings(editor, findings: findings)
+        if findings.contains(where: { $0.severity == .error }) {
+            throw ProductionError.exportBlocked(findings)
+        }
         try await submitAndAwaitExport(editor)
+    }
+
+    /// Deterministic delivery checks over the current plan: empty timelines
+    /// and unavailable shot media must surface as error findings before any
+    /// export is submitted.
+    private func runDeterministicChecks(editor: EditorViewModel) throws -> [ProductionRun.Finding] {
+        guard let plan = editor.editPlan(id: planId) else { return [] }
+        var findings: [ProductionRun.Finding] = []
+        if plan.shots.isEmpty {
+            findings.append(ProductionRun.Finding(
+                severity: .error,
+                kind: "emptyTimeline",
+                message: "The production timeline has no shots to assemble, inspect, or deliver.",
+                fix: "create_timeline"))
+        }
+        for shot in plan.shots {
+            if let mediaRef = shot.mediaRef, editor.mediaAssetsById[mediaRef] == nil {
+                findings.append(ProductionRun.Finding(
+                    shotId: shot.id,
+                    timelineRevision: storyboardRevision,
+                    severity: .error,
+                    kind: "missingMedia",
+                    message: "Shot '\(shot.id)' ('\(shot.title)') references media '\(mediaRef)' that is not available.",
+                    fix: "import_media"))
+            }
+        }
+        return findings
+    }
+
+    private func persistFindings(_ editor: EditorViewModel, findings: [ProductionRun.Finding]) throws {
+        guard var plan = editor.editPlan(id: planId), var run = plan.productionRun else { return }
+        run.reviewFindings = findings
+        run.verifiedTimelineRevision = storyboardRevision
+        try run.validate()
+        plan.productionRun = run
+        try editor.commitProductionRun(run, plan: plan, actionName: "Production Quality Check")
     }
 
     /// Waits for a previously submitted export and persists the terminal receipt.
@@ -415,6 +460,8 @@ struct ProductionStatus: Sendable {
     let currentJobId: String?
     let exportJobId: String?
     let terminalReceipt: ProductionRun.TerminalReceipt?
+    let reviewFindings: [ProductionRun.Finding]
+    let verifiedTimelineRevision: String?
 }
 
 enum ProductionError: LocalizedError, Equatable {
@@ -428,6 +475,7 @@ enum ProductionError: LocalizedError, Equatable {
     case invalidState(String)
     case approvalBlocked(String)
     case exportFailed(String)
+    case exportBlocked([ProductionRun.Finding])
     case toolError(String)
     case editorNotAvailable
     case revisionMismatch(String)
@@ -444,6 +492,8 @@ enum ProductionError: LocalizedError, Equatable {
         case .invalidState(let reason): return "Invalid state: \(reason)"
         case .approvalBlocked(let reason): return "Approval blocked: \(reason)"
         case .exportFailed(let reason): return "Export failed: \(reason)"
+        case .exportBlocked(let findings):
+            return "Export blocked by quality findings: \(findings.map { "\($0.severity.rawValue)/\($0.kind): \($0.message)" }.joined(separator: "; "))"
         case .toolError(let reason): return "Tool error: \(reason)"
         case .editorNotAvailable: return "Editor not available"
         case .revisionMismatch(let reason): return "Revision mismatch: \(reason)"

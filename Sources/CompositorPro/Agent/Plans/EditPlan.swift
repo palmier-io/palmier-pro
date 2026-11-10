@@ -17,6 +17,7 @@ enum EditPlanLimits {
     static let maximumIDLength = 200
     static let maximumSections = 64
     static let maximumShots = 256
+    static let maximumShotRejections = 32
     static let maximumPlans = 100
 }
 
@@ -45,6 +46,7 @@ struct EditPlanShot: Codable, Sendable, Equatable, Identifiable {
     var sourceEndSeconds: Double?
     var notes: String = ""
     var requirement: ShotRequirement?
+    var rejections: [ShotRejection] = []
     var referenceUse: ReferenceRecipeUse?
     var claimIds: [String]?
     var narrationLink: SceneNarrationLink?
@@ -159,6 +161,8 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
         soundCues = try container.decodeIfPresent([PlanSoundCue].self, forKey: .soundCues)
     }
 }
+
+
 
 enum EditPlanValidationError: Error, Equatable {
     case invalidName
@@ -302,6 +306,7 @@ extension EditPlan {
             throw EditPlanValidationError.invalidReference("A source span needs both sourceStartSeconds and sourceEndSeconds.")
         }
         shot.requirement = try shot.requirement?.validated()
+        shot.rejections = try ShotRejection.validated(shot.rejections)
         return shot
     }
 
@@ -452,6 +457,7 @@ extension EditPlan {
                 if let end = shot.sourceEndSeconds { row["sourceEndSeconds"] = end }
                 if !shot.notes.isEmpty { row["notes"] = shot.notes }
                 if let requirement = shot.requirement { row["requirement"] = requirement.receipt }
+                if !shot.rejections.isEmpty { row["rejections"] = shot.rejections.map { $0.receipt } }
                 if let use = shot.referenceUse { row["referenceUse"] = use.receipt() }
                 if let claimIds = shot.claimIds { row["claimIds"] = claimIds }
                 addNarrationReceipt(shot.narrationLink, to: &row)
@@ -474,9 +480,6 @@ extension EditPlan {
                         throw EditPlanValidationError.invalidReference(
                             "Sound cue '\(cue.cueId)' anchors to unknown beat '\(anchorBeatId)'.")
                     }
-                }
-                if let anchorFrame = cue.anchorFrame {
-                    try EditPlan.validatedFrames(start: anchorFrame, end: anchorFrame + 1)
                 }
                 validated.append(cue)
             }
@@ -527,6 +530,7 @@ extension EditPlan {
             shots[index].referenceUse = try shots[index].referenceUse?.validated(recipe: referenceRecipe)
             shots[index].claimIds = try validatedClaimIDs(shots[index].claimIds)
             shots[index].narrationLink = try shots[index].narrationLink?.validated(beats: scriptBeats ?? [])
+            shots[index].rejections = try ShotRejection.validated(shots[index].rejections)
         }
     }
 
@@ -549,7 +553,8 @@ extension EditPlan {
     /// advisory editorial intent; the storyboard approval gate owns fit.
     var durationMatchReceipt: [String: Any]? {
         guard let brief, let durationSeconds = brief.durationSeconds, fps > 0 else { return nil }
-        guard let lastEnd = sections.map(\.endFrame).max(), lastEnd > 0 else { return nil }
+        let ends = shots.isEmpty ? sections.map(\.endFrame) : resolvedShotsSafe().map(\.endFrame)
+        guard let lastEnd = ends.max(), lastEnd > 0 else { return nil }
         let planSeconds = Double(lastEnd) / Double(fps)
         let delta = abs(planSeconds - durationSeconds)
         return [
@@ -648,13 +653,16 @@ struct StoryboardIntent: Encodable, Sendable, Equatable {
     var ledger: SourceClaimLedger?
     var recipe: ReferenceRecipe?
     var narration: NarrationIntent?
+    var brief: PlanBrief?
+    var soundCues: [PlanSoundCue]
 }
 
 extension EditPlan {
     var storyboardIntent: StoryboardIntent {
         StoryboardIntent(planId: id, timelineId: timelineId, fps: fps, width: width, height: height,
             goal: goal, notes: notes, sections: sections, shots: shots, script: scriptBeats ?? [],
-            ledger: sourceLedger, recipe: referenceRecipe, narration: narrationIntent)
+            ledger: sourceLedger, recipe: referenceRecipe, narration: narrationIntent,
+            brief: brief, soundCues: soundCues ?? [])
     }
 }
 

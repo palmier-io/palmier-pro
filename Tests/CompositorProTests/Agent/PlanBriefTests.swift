@@ -121,4 +121,101 @@ struct PlanBriefTests {
         #expect(receiptJSON.contains("\"requirement\""))
         #expect(receiptJSON.contains("durationMatch"))
     }
+
+    @Test func shotRejectionsSurviveValidationReceiptsAndRoundTrip() throws {
+        var plan = briefPlan()
+        plan.shots[0].rejections = [ShotRejection(
+            candidateRef: "asset-rejected", reason: .wrongAction,
+            evidence: "Container cranes were visible but no loading motion.")]
+        try plan.validateArtifacts()
+        try EditPlan.ensureUniqueIDs(plan)
+        let receiptJSON = try #require(ToolExecutor.jsonString(plan.receipt(includeDetails: true)))
+        #expect(receiptJSON.contains("\"rejections\""))
+        #expect(receiptJSON.contains("asset-rejected"))
+        #expect(receiptJSON.contains("wrong_action"))
+        #expect(receiptJSON.contains("Container cranes"))
+
+        let decoded = try #require(EditPlanStore.decode(EditPlanStore.encode([plan])).first)
+        #expect(decoded.shots == plan.shots)
+        let shot = decoded.shots.first
+        #expect(shot?.rejections.first?.candidateRef == "asset-rejected")
+        #expect(shot?.rejections.first?.evidence == "Container cranes were visible but no loading motion.")
+    }
+
+    @Test func shotRejectionRequiresInspectionEvidence() throws {
+        #expect(throws: EditPlanValidationError.self) {
+            try ShotRejection(candidateRef: "asset-x", reason: .wrongSubject, evidence: "   ").validated()
+        }
+    }
+
+    @Test func duplicateShotRejectionCandidatesAreRefused() throws {
+        var plan = briefPlan()
+        plan.shots[0].rejections = [
+            ShotRejection(candidateRef: "asset-x", reason: .wrongSubject, evidence: "Subject mismatch."),
+            ShotRejection(candidateRef: "asset-x", reason: .wrongAction, evidence: "Action mismatch."),
+        ]
+        #expect(throws: EditPlanValidationError.self) {
+            try plan.validateArtifacts()
+        }
+    }
+
+    @Test func shotRejectionsRespectTheAdvertisedLimit() throws {
+        var plan = briefPlan()
+        plan.shots[0].rejections = (0..<33).map {
+            ShotRejection(candidateRef: "asset-\($0)", reason: .wrongSubject, evidence: "Subject mismatch.")
+        }
+        #expect(throws: EditPlanValidationError.self) {
+            try plan.validateArtifacts()
+        }
+    }
+
+    @Test func briefChangesInvalidateStoryboardApproval() {
+        let revision = String(repeating: "a", count: 64)
+        var before = briefPlan()
+        before.productionRun = ProductionRun(phase: .approved, storyboardRevision: revision, approvedRevision: revision)
+        var after = before
+        after.brief?.realism = .illustrative
+        after.invalidateStoryboardApproval(comparedTo: before)
+        #expect(after.productionRun?.phase == .stale)
+        #expect(after.productionRun?.approvedRevision == nil)
+    }
+
+    @Test func durationMatchUsesShotsWithoutSections() throws {
+        var plan = briefPlan()
+        plan.sections = []
+        let match = try #require(plan.durationMatchReceipt)
+        #expect(match["planSeconds"] as? Double == 3)
+    }
+
+    @Test func durationMatchUsesShotTimingInsteadOfSectionEstimates() throws {
+        var plan = briefPlan()
+        plan.sections[0].endFrame = 900
+        let match = try #require(plan.durationMatchReceipt)
+        #expect(match["planSeconds"] as? Double == 3)
+    }
+
+    @Test func soundCueChangesInvalidateStoryboardApproval() {
+        let revision = String(repeating: "a", count: 64)
+        var before = briefPlan()
+        before.productionRun = ProductionRun(phase: .approved, storyboardRevision: revision, approvedRevision: revision)
+        var after = before
+        after.soundCues?[0].purpose = "Keep the opening quiet."
+        after.invalidateStoryboardApproval(comparedTo: before)
+        #expect(after.productionRun?.phase == .stale)
+        #expect(after.productionRun?.approvedRevision == nil)
+    }
+
+    @Test(arguments: [-1, maxFrameArg, Int.max])
+    func invalidCueFramesAreRefusedWithoutOverflow(frame: Int) {
+        #expect(throws: EditPlanValidationError.self) {
+            try PlanSoundCue(cueId: "invalid-frame", role: .sfx, purpose: "Impact.", anchorFrame: frame).validated()
+        }
+    }
+
+    @Test func sourceTypeNormalizationPreservesOrder() throws {
+        let requirement = ShotRequirement(narrativePurpose: "Establish.", sourceTypes: [.stockVideo, .library, .stockImage, .stockVideo])
+        let normalized = try requirement.validated()
+        #expect(normalized.sourceTypes == [.stockVideo, .library, .stockImage])
+        #expect(try normalized.validated() == normalized)
+    }
 }

@@ -163,6 +163,23 @@ extension EditorViewModel {
         })
     }
 
+    @discardableResult
+    func recordProductionReview(
+        planId: String,
+        findings: [ProductionRun.Finding],
+        source: ProductionRun.Finding.Source = .editorial,
+        verifiedTimelineRevision: String? = nil
+    ) throws -> [ProductionRun.Finding] {
+        guard let plan = editPlan(id: planId), var run = plan.productionRun else {
+            throw EditPlanValidationError.invalidReference("No production run exists for this plan.")
+        }
+        try run.replaceFindings(findings, source: source)
+        run.verifiedTimelineRevision = verifiedTimelineRevision
+        try run.validate()
+        try commitProductionRun(run, plan: plan, actionName: L10n.string("Record Production Review"))
+        return run.reviewFindings
+    }
+
     func commitProductionRun(_ run: ProductionRun, plan: EditPlan, actionName: String) throws {
         var next = plan
         next.productionRun = run

@@ -13,9 +13,10 @@ extension ToolExecutor {
         let limit: Int?
         let excludedSourceIds: [String]?
         let planId: String?
+        let shotId: String?
         static let allowedKeys: Set<String> = [
             "query", "kind", "scope", "mediaRef", "includeLibrary", "includeRemote",
-            "orientation", "maxDurationSeconds", "limit", "excludedSourceIds", "planId",
+            "orientation", "maxDurationSeconds", "limit", "excludedSourceIds", "planId", "shotId",
         ]
     }
 
@@ -70,6 +71,20 @@ extension ToolExecutor {
             guard let selectedPlan = editor.editPlan(id: planId) else { throw ToolError("Unknown planId '\(planId)'.") }
             plan = selectedPlan
         }
+        if input.shotId != nil, plan == nil {
+            throw ToolError("shotId requires planId so the shot's requirement can be read.")
+        }
+        var planShot: EditPlanShot?
+        if let shotId = input.shotId {
+            guard let plan else { throw ToolError("shotId requires planId.") }
+            guard VisualSourceAliases.isValidEntityId(shotId) else { throw ToolError("shotId must be a nonempty stable ID of at most 200 characters without whitespace or colons.") }
+            guard let shot = plan.shots.first(where: { $0.id == shotId }) else { throw ToolError("Unknown shotId '\(shotId)' in plan '\(plan.id)'.") }
+            planShot = shot
+        }
+        let requirement = planShot?.requirement
+        // Verification rejects candidates, so retrieval asks for a bounded superset and the
+        // shortlist limit applies after the rejections are known.
+        let retrievalLimit = requirement == nil ? limit : min(limit * 3, 40)
 
         var restrict: Set<String>?
         if let mediaRef = input.mediaRef {
@@ -98,7 +113,7 @@ extension ToolExecutor {
         var remoteRequest: StockMediaQuery?
         if includeRemote {
             remoteRequest = try StockMediaQuery(text: text, kind: kind, orientation: input.orientation,
-                maxDurationSeconds: input.maxDurationSeconds, limit: limit,
+                maxDurationSeconds: input.maxDurationSeconds, limit: retrievalLimit,
                 excludedSourceIds: Set(exclusions.stockSourceIds)).normalized()
         }
         let eligible = snapshot.eligible
@@ -106,9 +121,9 @@ extension ToolExecutor {
         var spokenInputs: [ShotCandidateBuilder.SpokenInput] = []
         var indexStatus: [String: Any]?
         if includeLibrary, usesVisualEvidence(kind: kind, scope: scope), !eligible.isEmpty {
-            let fetch = await fetchVisualCandidates(editor, query: text, limit: limit, restrict: eligible)
+            let fetch = await fetchVisualCandidates(editor, query: text, limit: retrievalLimit, restrict: eligible)
             indexStatus = fetch.index
-            visualInputs = try await ShotCandidateRetrieval.visual(eligible: eligible, exclusions: exclusions, limit: limit,
+            visualInputs = try await ShotCandidateRetrieval.visual(eligible: eligible, exclusions: exclusions, limit: retrievalLimit,
                 initial: fetch.hits.map { .init(assetID: $0.assetID, startSeconds: $0.shotStart, endSeconds: $0.shotEnd, score: $0.score) }) { [self] count, refs in
                     await self.fetchVisualShotInputs(editor, query: text, limit: count, restrict: refs)
                 }
@@ -116,7 +131,7 @@ extension ToolExecutor {
         if includeLibrary, usesSpokenEvidence(kind: kind, scope: scope) {
             let candidates = urls.filter { eligible.contains($0.id) }
             spokenInputs = try await ShotCandidateRetrieval.spoken(query: text, assets: candidates, exclusions: exclusions,
-                representedMediaRefs: visualInputs.map(\.assetID), limit: limit)
+                representedMediaRefs: visualInputs.map(\.assetID), limit: retrievalLimit)
         }
         try Task.checkCancellation()
 
@@ -134,11 +149,25 @@ extension ToolExecutor {
         try Task.checkCancellation()
 
         let history = StockDeliveryHistory.load()
-        let bundle = await Self.buildShotCandidates(kind: kind, visual: visualInputs, spoken: spokenInputs,
-            remote: remoteHits, assets: assets, exclusions: exclusions, limit: limit,
+        var bundle = await Self.buildShotCandidates(kind: kind, visual: visualInputs, spoken: spokenInputs,
+            remote: remoteHits, assets: assets, exclusions: exclusions, limit: retrievalLimit,
             usedSourceIds: history.usedSourceIds)
         try Task.checkCancellation()
         try requireCurrentSnapshot()
+
+        var verification: [String: Any]?
+        if let requirement {
+            let verified = await verifyShotCandidates(
+                editor,
+                bundle: bundle,
+                requirement: requirement,
+                shotId: input.shotId,
+                priorRejections: planShot?.rejections ?? [],
+                limit: limit
+            )
+            bundle = verified.bundle
+            verification = verified.verification
+        }
 
         var warnings: [String] = []
         if !includeLibrary { warnings.append("Local library search was disabled.") }
@@ -161,6 +190,9 @@ extension ToolExecutor {
         if !history.usedSourceIds.isEmpty {
             warnings.append("Sources used in recent deliveries are ranked lower, not excluded; the no-repeat rule applies within one output only.")
         }
+        if let verification {
+            warnings.append("Candidates were verified against the shot requirement by decoding their own frames; unverified candidates were not measured.")
+        }
 
         var local: [String: Any] = ["included": includeLibrary, "scope": scope]
         if let mediaRef = input.mediaRef { local["mediaRef"] = mediaRef }
@@ -179,6 +211,7 @@ extension ToolExecutor {
             "skipped": bundle.skipped.map { $0.receipt() },
             "local": local,
             "remote": remote,
+            "verification": verification as Any,
             "noOp": true,
             "exclusions": [
                 "sourceIds": exclusions.sourceIds.sorted(),
@@ -186,7 +219,7 @@ extension ToolExecutor {
                 "planId": input.planId.map { $0 as Any } ?? NSNull(),
                 "scope": "retained_source_identity",
                 "identityFreshness": "not_checked",
-                "perceptualSimilarity": "not_checked",
+                "perceptualSimilarity": verification == nil ? "not_checked" : "measured_against_shot_requirement",
                 "unresolved": exclusions.unresolved.map { ["reason": $0.reason, "mediaRef": $0.mediaRef ?? ""] },
             ],
             "warnings": warnings,
@@ -200,6 +233,126 @@ extension ToolExecutor {
                                       restrict: Set<String>) async -> [ShotCandidateBuilder.VisualInput] {
         let fetched = await fetchVisualCandidates(editor, query: query, limit: limit, restrict: restrict)
         return fetched.hits.map { .init(assetID: $0.assetID, startSeconds: $0.shotStart, endSeconds: $0.shotEnd, score: $0.score) }
+    }
+
+    /// Verifies the shortlist against the shot requirement by decoding the candidates' own frames.
+    /// Availability and rank stay in the candidate; this pass only adds an editorial decision.
+    private func verifyShotCandidates(
+        _ editor: EditorViewModel,
+        bundle: ShotCandidateBundle,
+        requirement: ShotRequirement,
+        shotId: String?,
+        priorRejections: [ShotRejection],
+        limit: Int
+    ) async -> (bundle: ShotCandidateBundle, verification: [String: Any]) {
+        var skipped = bundle.skipped
+        var previouslyRejected: [[String: Any]] = []
+
+        var pending = bundle.candidates
+        if !priorRejections.isEmpty {
+            pending = pending.filter { candidate in
+                guard let rejection = ShotVerifier.priorRejection(matching: candidate, in: priorRejections) else { return true }
+                previouslyRejected.append([
+                    "candidateId": candidate.id,
+                    "reason": rejection.reason.rawValue,
+                    "evidence": rejection.evidence,
+                ])
+                skipped.append(.init(id: candidate.id, source: candidate.source,
+                                     reason: "Rejected earlier for this shot: \(rejection.reason.rawValue)."))
+                return false
+            }
+        }
+
+        let embedder = VisualModelLoader.shared.embedder
+        var inspectable: [(candidate: ShotCandidate, url: URL, type: ClipType)] = []
+        for candidate in pending {
+            guard let mediaRef = candidate.mediaRef, let asset = editor.mediaAssetsById[mediaRef] else { continue }
+            inspectable.append((candidate, asset.url, asset.type))
+        }
+        let inspectedTargets = Array(inspectable.prefix(ShotVerifier.maximumInspections))
+        var inspections: [String: ShotInspection] = [:]
+        var index = 0
+        while index < inspectedTargets.count {
+            let upper = min(index + 2, inspectedTargets.count)
+            let chunk = Array(inspectedTargets[index..<upper])
+            let results = await withTaskGroup(of: (String, ShotInspection?).self, returning: [(String, ShotInspection?)].self) { group in
+                for target in chunk {
+                    group.addTask {
+                        let inspection = await ShotVerifier.inspect(
+                            candidate: target.candidate,
+                            requirement: requirement,
+                            mediaURL: target.url,
+                            mediaType: target.type,
+                            embedder: embedder
+                        )
+                        return (target.candidate.id, inspection)
+                    }
+                }
+                var collected: [(String, ShotInspection?)] = []
+                for await result in group { collected.append(result) }
+                return collected
+            }
+            for (candidateId, inspection) in results {
+                if let inspection { inspections[candidateId] = inspection }
+            }
+            index = upper
+        }
+
+        var best = ShotVerifier.BestScores()
+        for inspection in inspections.values {
+            best.record(inspection.subjectScore, for: .subject)
+            best.record(inspection.actionScore, for: .action)
+            best.record(inspection.locationScore, for: .location)
+        }
+
+        var accepted: [ShotCandidate] = []
+        var rejected: [[String: Any]] = []
+        for candidate in pending {
+            var verified = candidate
+            let inspection = inspections[candidate.id]
+            verified.inspection = inspection
+            if candidate.source == .stock {
+                verified.acceptance = .unverified("Remote candidate is not imported; its content cannot be inspected before download.")
+            } else if let inspection {
+                verified.acceptance = ShotVerifier.acceptance(
+                    candidate: candidate,
+                    requirement: requirement,
+                    inspection: inspection,
+                    best: best
+                )
+            } else {
+                verified.acceptance = .unverified("Not inspected: the verification budget for this call was spent on higher ranked candidates.")
+            }
+            switch verified.acceptance {
+            case .rejected(let reason, let evidence):
+                rejected.append([
+                    "candidateId": candidate.id,
+                    "mediaRef": candidate.mediaRef as Any,
+                    "reason": reason.rawValue,
+                    "evidence": evidence,
+                ])
+                skipped.append(.init(id: candidate.id, source: candidate.source,
+                                     reason: "Rejected for this shot: \(reason.rawValue). \(evidence)"))
+            case .accepted, .unverified:
+                accepted.append(verified)
+            }
+        }
+
+        let limited = Array(accepted.prefix(max(1, limit)))
+        let verification: [String: Any] = [
+            "shotId": shotId as Any,
+            "requirement": requirement.receipt,
+            "inspectedCandidateIds": inspections.keys.sorted(),
+            "inspectionBudget": ShotVerifier.maximumInspections,
+            "rejected": rejected,
+            "previouslyRejected": previouslyRejected,
+            "similarityFloor": ShotVerifier.similarityFloor,
+            "similarityMargin": ShotVerifier.similarityMargin,
+        ]
+        return (
+            ShotCandidateBundle(candidates: limited, skipped: skipped, droppedUsable: bundle.droppedUsable + max(0, accepted.count - limited.count)),
+            verification
+        )
     }
 
     private func shotLibraryAssets(_ editor: EditorViewModel) -> [LibraryShotAsset] {

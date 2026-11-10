@@ -182,8 +182,8 @@ final class ProjectPackageCoordinator {
             assertionFailure("Unbalanced project save completion")
             return
         }
-        completion()
         activeSave = nil
+        completion()
         advance()
     }
 

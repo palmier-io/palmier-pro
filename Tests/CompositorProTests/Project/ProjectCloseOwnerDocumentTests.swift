@@ -167,6 +167,30 @@ struct ProjectCloseOwnerDocumentTests {
         }
     }
 
+    @Test func quitLeaseClosesImmediatelyAndClearsDocumentControllerRegistry() async throws {
+        try await withPackageTestFixture { fixture in
+            let document = configure(fixture)
+            try await savePackageTestDocument(document)
+            NSDocumentController.shared.addDocument(document)
+            defer {
+                document.releaseSave.signal()
+                NSDocumentController.shared.removeDocument(document)
+            }
+            let lease = try #require(document.beginClosing())
+            Task {
+                await document.saveEntered.wait()
+                document.releaseSave.signal()
+            }
+            try await document.saveBeforeClosing(using: lease)
+            let coordinator = document.editorViewModel.projectPackageCoordinator
+            try await coordinator.waitUntilIdle(for: lease)
+            #expect(coordinator.canFinishClosing)
+            try document.closeImmediately(using: lease)
+            #expect(coordinator.isClosed)
+            #expect(!NSDocumentController.shared.documents.contains { $0 === document })
+        }
+    }
+
     private func configure(_ fixture: PackageTestFixture) -> CloseOwnerDocument {
         let document = CloseOwnerDocument(registry: fixture.registry)
         document.fileURL = fixture.package

@@ -84,6 +84,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     try validateOwners()
                 }
                 await SkillStore.shared.prepareForTermination()
+                AppState.shared.stopMCPService()
                 try validateOwners()
                 if !MLXRuntime.beginTermination() {
                     await MLXRuntime.waitUntilIdle()
@@ -103,6 +104,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     return !coordinator.isClosed && !coordinator.canFinishClosing
                 }
                 try validateOwners()
+                for owner in closeOwners where !owner.project.editorViewModel.projectPackageCoordinator.isClosed {
+                    try owner.project.closeImmediately(using: owner.lease)
+                }
                 terminationTask = nil
                 sender.reply(toApplicationShouldTerminate: true)
             } catch {

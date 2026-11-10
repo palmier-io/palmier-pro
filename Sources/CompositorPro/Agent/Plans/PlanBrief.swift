@@ -180,6 +180,59 @@ struct ShotRequirement: Codable, Sendable, Equatable {
     }
 }
 
+/// Track completion status of creative brief fields and shot requirements
+struct BriefCompletionStatus: Codable, Sendable, Equatable {
+    var completedFields: Set<String> = []
+    var pendingShots: Set<String> = []
+    var unresolvedConstraints: [String: [String]] = [:]  // shotId -> list of issues
+    var lastUserEdit: Date?
+    var briefRevision: Int = 0
+}
+
+/// A candidate rejection recorded during shot retrieval.
+struct ShotRejection: Codable, Sendable, Equatable {
+    enum Reason: String, Codable, Sendable, CaseIterable {
+        case wrongSubject = "wrong_subject"
+        case wrongAction = "wrong_action"
+        case wrongLocation = "wrong_location"
+        case insufficientDuration = "insufficient_duration"
+        case wrongShape = "wrong_shape"
+        case generatedMaterial = "generated_material"
+        case duplicate = "duplicate"
+        case notUsable = "not_usable"
+    }
+
+    var candidateRef: String
+    var reason: Reason
+    var evidence: String
+
+    init(candidateRef: String, reason: Reason, evidence: String) {
+        self.candidateRef = candidateRef
+        self.reason = reason
+        self.evidence = evidence
+    }
+
+    func validated() throws -> Self {
+        var rejection = self
+        rejection.candidateRef = try EditPlan.validatedID(rejection.candidateRef, field: "shot rejection candidateRef")
+        let evidence = rejection.evidence.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !evidence.isEmpty, evidence.count <= EditPlanLimits.maximumTextLength,
+              evidence.rangeOfCharacter(from: .controlCharacters.union(.newlines)) == nil else {
+            throw EditPlanValidationError.invalidText(field: "shot rejection evidence")
+        }
+        rejection.evidence = evidence
+        return rejection
+    }
+
+    var receipt: [String: Any] {
+        [
+            "candidateRef": candidateRef,
+            "reason": reason.rawValue,
+            "evidence": evidence,
+        ]
+    }
+}
+
 /// One motivated sound cue on the plan: role, purpose, and a single timing
 /// anchor — either a narrative beat or a timeline frame, never both.
 struct PlanSoundCue: Codable, Sendable, Equatable {

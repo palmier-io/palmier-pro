@@ -37,6 +37,15 @@ struct MediaManifestEntry: Codable, Sendable, Equatable, Identifiable {
     var generationStatus: String?
     var importInput: MediaImportInput?
     var inputIdentity: MediaInputIdentity?
+    
+    // Stock provenance
+    var providerAssetId: String?
+    var providerLandingURL: String?
+    var providerCreator: String?
+    var providerLicense: String?
+    var providerAttribution: String?
+    var providerRetrievalDate: Date?
+    var providerCredits: Int?
 }
 
 struct MediaImportInput: Codable, Sendable, Equatable {

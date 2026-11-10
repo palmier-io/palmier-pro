@@ -6,6 +6,81 @@ import Testing
 @Suite("Explainer tool contracts")
 @MainActor
 struct ExplainerContractsMCPTests {
+    @Test func briefAndCueSchemasMatchCreateUpdateAndDomainRules() async throws {
+        try await withClient { client, _ in
+            let (tools, _) = try await client.listTools()
+            let tool = try #require(tools.first { $0.name == "plan_edit" })
+            let properties = try #require(tool.inputSchema.objectValue?["properties"]?.objectValue)
+            let create = try #require(properties["plan"]?.objectValue?["properties"]?.objectValue)
+            let update = try #require(properties["patch"]?.objectValue?["properties"]?.objectValue)
+            #expect(create["brief"] == update["brief"])
+            #expect(create["soundCues"] == update["soundCues"])
+            let realism = try #require(create["brief"]?.objectValue?["properties"]?.objectValue?["realism"]?.objectValue?["enum"]?.arrayValue)
+            #expect(realism == PlanBrief.Realism.allCases.map { .string($0.rawValue) })
+            let cue = try #require(create["soundCues"]?.objectValue?["items"]?.objectValue)
+            #expect(cue["required"]?.arrayValue?.contains(.string("cueId")) == true)
+            let anchor = try #require(cue["properties"]?.objectValue?["anchorFrame"]?.objectValue)
+            #expect(anchor["maximum"]?.intValue == maxFrameArg - 1)
+        }
+    }
+
+    @Test(arguments: PlanBrief.Realism.allCases)
+    func briefAndCuesRoundTripThroughMCP(realism: PlanBrief.Realism) async throws {
+        try await withClient { client, harness in
+            let cue: Value = .object([
+                "cueId": .string("sound-opening"), "role": .string("ambience"),
+                "purpose": .string("Establish the room."), "anchorFrame": .int(0),
+                "durationSeconds": .double(0.05),
+            ])
+            let brief: Value = .object(["realism": .string(realism.rawValue), "durationSeconds": .double(0.05)])
+            let created = try await client.callTool(name: "plan_edit", arguments: [
+                "action": .string("create"), "plan": .object([
+                    "planId": .string("brief-cue-plan"), "name": .string("Sound purpose"),
+                    "brief": brief, "soundCues": .array([cue]),
+                ]),
+            ])
+            #expect(created.isError != true)
+            let original = try #require(harness.editor.editPlan(id: "brief-cue-plan"))
+            #expect(original.brief?.realism == realism)
+            #expect(original.soundCues?.first?.cueId == "sound-opening")
+            let repeated = try await client.callTool(name: "plan_edit", arguments: [
+                "action": .string("update"), "planId": .string(original.id),
+                "patch": .object(["brief": brief, "soundCues": .array([cue])]),
+            ])
+            #expect(repeated.isError != true)
+            #expect(try json(repeated.content)["noOp"] as? Bool == true)
+            let read = try await client.callTool(name: "plan_edit", arguments: [
+                "action": .string("read"), "planId": .string(original.id),
+            ])
+            #expect(try json(read.content)["brief"] as? [String: Any] != nil)
+            let restored = try #require(EditPlanStore.decode(EditPlanStore.encode(harness.editor.editPlans)).first)
+            #expect(restored.brief == original.brief)
+            #expect(restored.soundCues == original.soundCues)
+        }
+    }
+
+    @Test(arguments: [
+        ["role": Value.string("sfx"), "purpose": .string("Close the door.")],
+        ["cueId": Value.string("cue"), "role": .string("sfx"), "purpose": .string("Close the door."), "anchorFrame": .int(maxFrameArg)],
+        ["cueId": Value.string("cue"), "role": .string("sfx"), "purpose": .string("Close the door."), "anchorFrame": .int(Int.max)],
+    ])
+    func invalidCueLeavesPlanAndUndoUnchangedThroughMCP(cue: [String: Value]) async throws {
+        try await withClient { client, harness in
+            let undo = UndoManager()
+            undo.groupsByEvent = false
+            harness.editor.undo.attach(undo)
+            let result = try await client.callTool(name: "plan_edit", arguments: [
+                "action": .string("create"), "plan": .object([
+                    "planId": .string("invalid-cue-plan"), "name": .string("Invalid cue"),
+                    "soundCues": .array([.object(cue)]),
+                ]),
+            ])
+            #expect(result.isError == true)
+            #expect(harness.editor.editPlans.isEmpty)
+            #expect(!undo.canUndo)
+        }
+    }
+
     @Test func discoveryDescribesAssemblyImportAndRequestedRuntime() async throws {
         try await withClient { client, _ in
             let (tools, _) = try await client.listTools()
@@ -145,6 +220,83 @@ struct ExplainerContractsMCPTests {
                 #expect(!mapped.isEmpty)
                 #expect(mapped.allSatisfy { $0.startFrame == expectedStart }, "row=\(row)")
             }
+        }
+    }
+
+    @Test func productionFindingsAreInspectableThroughMCP() async throws {
+        try await withClient { client, harness in
+            let created = try await client.callTool(name: "plan_edit", arguments: [
+                "action": .string("create"), "plan": .object([
+                    "planId": .string("review-findings-plan"), "name": .string("Review findings"),
+                ]),
+            ])
+            #expect(created.isError != true)
+            let planId = try #require(json(created.content)["planId"] as? String)
+            let storedPlan = harness.editor.editPlan(id: planId)
+            let plan = try #require(storedPlan)
+            var run = ProductionRun(storyboardRevision: String(repeating: "a", count: 64))
+            let finding = ProductionRun.Finding(id: "review-finding", severity: .error, kind: "missingMedia", message: "Restore the selected source.", fix: "import_media")
+            run.reviewFindings = [finding]
+            try harness.editor.commitProductionRun(run, plan: plan, actionName: "Seed review")
+            let read = try await client.callTool(name: "plan_edit", arguments: [
+                "action": .string("read"), "planId": .string(planId),
+            ])
+            #expect(read.isError != true)
+            let production = try #require(json(read.content)["productionRun"] as? [String: Any])
+            let findings = try #require(production["reviewFindings"] as? [[String: Any]])
+            #expect(findings.count == 1)
+            #expect(findings.first?["id"] as? String == finding.id)
+            #expect(findings.first?["kind"] as? String == finding.kind)
+            #expect(findings.first?["severity"] as? String == "error")
+            #expect(harness.editor.editPlan(id: planId)?.productionRun?.reviewFindings == [finding])
+        }
+    }
+
+    @Test func shotRejectionsPersistAndUndoThroughMCP() async throws {
+        try await withClient { client, harness in
+            let rejection: Value = .object([
+                "candidateRef": .string("stock:fixture:wrong-shot"), "reason": .string("wrong_action"),
+                "evidence": .string("Inspected frames show a closed door, not the requested door close."),
+            ])
+            let created = try await client.callTool(name: "plan_edit", arguments: [
+                "action": .string("create"), "plan": .object([
+                    "planId": .string("door-plan"), "name": .string("Door close"), "shots": .array([.object([
+                        "shotId": .string("door-shot"), "title": .string("Door closes"),
+                        "startFrame": .int(0), "endFrame": .int(60), "rejections": .array([rejection]),
+                        "requirement": .object(["narrativePurpose": .string("End the scene."), "action": .string("Door closes")]),
+                    ])]),
+                ]),
+            ])
+            #expect(created.isError != true)
+            let planId = try #require(json(created.content)["planId"] as? String)
+            let storedPlan = harness.editor.editPlan(id: planId)
+            let original = try #require(storedPlan)
+            let undo = UndoManager()
+            undo.groupsByEvent = false
+            harness.editor.undo.attach(undo)
+            let patch: [String: Value] = [
+                "action": .string("update"), "planId": .string(planId), "patch": .object([
+                    "shots": .array([.object([
+                        "shotId": .string("door-shot"), "title": .string("Door closes"),
+                        "startFrame": .int(0), "endFrame": .int(60), "rejections": .array([]),
+                        "requirement": .object(["narrativePurpose": .string("End the scene."), "action": .string("Door closes")]),
+                    ])]),
+                ]),
+            ]
+            let updated = try await client.callTool(name: "plan_edit", arguments: patch)
+            #expect(updated.isError != true)
+            #expect(harness.editor.editPlan(id: planId)?.shots.first?.rejections.isEmpty == true)
+            let repeated = try await client.callTool(name: "plan_edit", arguments: patch)
+            #expect(try json(repeated.content)["noOp"] as? Bool == true)
+            let undone = try await client.callTool(name: "undo")
+            #expect(undone.isError != true)
+            #expect(harness.editor.editPlan(id: planId) == original)
+            #expect(!undo.canUndo)
+            let read = try await client.callTool(name: "plan_edit", arguments: ["action": .string("read"), "planId": .string(planId)])
+            let rows = try #require(json(read.content)["shots"] as? [[String: Any]])
+            #expect((rows.first?["rejections"] as? [[String: Any]])?.count == 1)
+            let restored = try #require(EditPlanStore.decode(EditPlanStore.encode(harness.editor.editPlans)).first)
+            #expect(restored.shots == original.shots)
         }
     }
 

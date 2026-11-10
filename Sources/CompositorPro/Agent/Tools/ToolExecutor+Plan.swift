@@ -58,6 +58,7 @@ extension ToolExecutor {
         let sourceEndSeconds: Double?
         let notes: String?
         let requirement: ShotRequirement?
+        let rejections: [ShotRejection]?
         let referenceUse: ReferenceRecipeUse?
         let claimIds: [String]?
         let narrationLink: SceneNarrationLink?
@@ -83,7 +84,7 @@ extension ToolExecutor {
     private static let sectionObjectKeys: Set<String> = ["sectionId", "title", "summary", "startFrame", "endFrame", "referenceUse", "claimIds", "narrationLink"]
     private static let shotObjectKeys: Set<String> = [
         "shotId", "title", "startFrame", "endFrame", "trackId", "mediaRef",
-        "candidateURL", "license", "attribution", "sourceStartSeconds", "sourceEndSeconds", "notes", "requirement", "referenceUse", "claimIds", "narrationLink",
+        "candidateURL", "license", "attribution", "sourceStartSeconds", "sourceEndSeconds", "notes", "requirement", "rejections", "referenceUse", "claimIds", "narrationLink",
     ]
 
     func planEdit(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
@@ -464,6 +465,7 @@ extension ToolExecutor {
             sourceEndSeconds: draft.sourceEndSeconds,
             notes: draft.notes ?? "",
             requirement: draft.requirement,
+            rejections: draft.rejections ?? [],
             referenceUse: draft.referenceUse,
             claimIds: draft.claimIds,
             narrationLink: draft.narrationLink
@@ -525,6 +527,18 @@ extension ToolExecutor {
                singular == "shot" {
                 try validatePlanValue(requirement, allowed: ["narrativePurpose", "subject", "action", "location", "shotSize", "motion", "sourceTypes", "exclusions", "targetDurationSeconds", "handleSeconds"], path: "\(path)[\(index)].requirement")
             }
+            if singular == "shot", let rejections = (item as? [String: Any])?["rejections"] {
+                try validatePlanRejections(rejections, path: "\(path)[\(index)].rejections")
+            }
+        }
+    }
+
+    private func validatePlanRejections(_ value: Any, path: String) throws {
+        guard let items = value as? [Any] else {
+            throw ToolError("\(path) must be an array of shot rejection objects.")
+        }
+        for (index, item) in items.enumerated() {
+            try validatePlanValue(item, allowed: ["candidateRef", "reason", "evidence"], path: "\(path)[\(index)]")
         }
     }
 

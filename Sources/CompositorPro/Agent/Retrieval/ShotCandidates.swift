@@ -59,6 +59,12 @@ struct ShotCandidate: Sendable, Equatable, Identifiable {
     var inputId: String? = nil
     var inputIdentityState: String = "unresolved"
     var origin: MediaImportOrigin? = nil
+    /// Rank the provider gave this row, kept apart from the merged shortlist rank.
+    var providerRank: Int? = nil
+    /// Editorial decision against the shot requirement this candidate was retrieved for.
+    var acceptance: ShotAcceptance = .unverified("not_inspected")
+    /// Measurements taken from the candidate's own decoded frames.
+    var inspection: ShotInspection? = nil
 
     func receipt() -> [String: Any] {
         var out: [String: Any] = [
@@ -82,6 +88,7 @@ struct ShotCandidate: Sendable, Equatable, Identifiable {
         if let sourceEndSeconds { out["sourceEndSeconds"] = sourceEndSeconds }
         if let score { out["score"] = score }
         if let rank { out["rank"] = rank }
+        if let providerRank { out["providerRank"] = providerRank }
         if !blockers.isEmpty { out["blockers"] = blockers }
         if let width { out["width"] = width }
         if let height { out["height"] = height }
@@ -90,6 +97,8 @@ struct ShotCandidate: Sendable, Equatable, Identifiable {
         if let inputId { out["inputId"] = inputId }
         out["inputIdentityState"] = inputIdentityState
         if let origin { out["origin"] = origin.receipt }
+        out["acceptance"] = acceptance.receipt
+        if let inspection { out["inspection"] = inspection.receipt }
         return out
     }
 }
@@ -431,8 +440,11 @@ enum ShotCandidateBuilder {
             }
         }
 
+        var providerRanks: [String: Int] = [:]
         for hit in remote {
             let id = "stock:\(hit.providerID):\(hit.id)"
+            let providerRank = (providerRanks[hit.providerID] ?? 0) + 1
+            providerRanks[hit.providerID] = providerRank
             guard hit.kind == kind else {
                 addSkipped(id: id, source: .stock, reason: "Remote hit is \(hit.kind.rawValue); shot retrieval needs \(kind.rawValue) media.")
                 continue
@@ -473,7 +485,8 @@ enum ShotCandidateBuilder {
                 height: positiveDimension(hit.height),
                 thumbnailURL: hit.thumbnailURL.flatMap(httpsURL),
                 landingPageURL: hit.landingPageURL.flatMap(httpsURL),
-                origin: hit.origin
+                origin: hit.origin,
+                providerRank: providerRank
             )
             append(&candidate, to: &remoteCandidates)
         }
@@ -499,10 +512,14 @@ enum ShotCandidateBuilder {
             guard a.providerID != b.providerID else { return a.id < b.id }
             return a.providerID ?? "" < b.providerID ?? ""
         }
+        // A provider with many rows must not fill the whole shortlist. Each provider contributes
+        // its best row before any provider contributes a second one, so the limit still compares
+        // providers rather than counting one of them.
+        let diversifiedRemote = interleaveByProvider(orderedRemote)
         // Ready library rows need no download, so they precede remote catalog rows. Within each
         // evidence group, only source-provided ordering is used; no cross-mode score is invented.
         var seenSources = Set<String>()
-        let usable = (orderedVisual + orderedSpoken + orderedRemote).filter { candidate in
+        let usable = (orderedVisual + orderedSpoken + diversifiedRemote).filter { candidate in
             let ids = VisualSourceAliases.sourceIds(mediaRef: candidate.mediaRef, inputId: candidate.inputId, origin: candidate.origin)
             let root = aliases.root(ids.first ?? candidate.id)
             guard seenSources.insert(root).inserted else {
@@ -527,6 +544,32 @@ enum ShotCandidateBuilder {
     private static func sourceIds(_ candidate: ShotCandidate) -> Set<String> {
         Set(VisualSourceAliases.sourceIds(mediaRef: candidate.mediaRef, inputId: candidate.inputId,
                                           origin: candidate.origin))
+    }
+
+    /// Orders rows so every provider appears once before any provider appears twice.
+    /// Provider rank inside each provider is preserved.
+    static func interleaveByProvider(_ candidates: [ShotCandidate]) -> [ShotCandidate] {
+        var grouped: [String: [ShotCandidate]] = [:]
+        var providerOrder: [String] = []
+        for candidate in candidates {
+            let provider = candidate.providerID ?? ""
+            if grouped[provider] == nil { providerOrder.append(provider) }
+            grouped[provider, default: []].append(candidate)
+        }
+        var result: [ShotCandidate] = []
+        var index = 0
+        while result.count < candidates.count {
+            var added = false
+            for provider in providerOrder {
+                let rows = grouped[provider] ?? []
+                guard index < rows.count else { continue }
+                result.append(rows[index])
+                added = true
+            }
+            guard added else { break }
+            index += 1
+        }
+        return result
     }
 
     private static func shotKind(for type: ClipType) -> StockMediaKind? {
