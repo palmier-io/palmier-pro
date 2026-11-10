@@ -1,49 +1,83 @@
-# Explainer production TODO
+# Adoption Plan: HyperFrames → Compositor Pro
 
-Goal: produce researched, narration-led explainers from one brief, with mandatory storyboard review before full production and no user “continue” prompts. Every image or video must be used at most once within the finished video. No images or videos may reveal people's faces.
+## Overview
+Integrate HyperFrames' catalog, CLI, and agent skills into Compositor Pro to expand video‑creation capabilities while preserving native editing power.
 
-Completed tasks, release gates, and verification evidence have been moved to [done.md](done.md).
+## Phasing
 
-## Remaining user requirements
+### Phase 1 (Weeks 0‑4) – Quick Wins
+- [ ] HyperFrames catalog wrapper (Swift package)
+- [ ] CLI (`compositor-pro init`, `preview`, `render`)
+- [ ] WebView‑based live preview
+- [ ] `/hyperframes` agent skill
 
-- [ ] Only after those gates pass, build/verify a Developer ID-signed app and safely update the existing Compositor Pro installation (signed app update section). Do not substitute ad-hoc signing or mark blocked signing complete.
+### Phase 2 (Weeks 4‑12) – Mid‑term
+- [ ] Adapter import tool (GSAP/Lottie → keyframes)
+- [ ] Deterministic rendering test harness (Git LFS baselines)
+- [ ] Optional AWS Lambda remote rendering
+- [ ] `frame.md` design spec parser / wizard
 
-Based on [Malaysia chip explainer capability audit](docs/malaysia-chip-explainer-capability-audit.md). Reference: [CaspianReport's Malaysia semiconductor explainer](https://www.youtube.com/watch?v=zH5WptvpLCY).
+### Phase 3 (Weeks 12‑24) – Advanced
+- [ ] Hybrid authoring (native + HTML composition)
+- [ ] Extended catalog & community contribution
+- [ ] Cross‑platform (Windows/Linux) support
+- [ ] Performance optimizations
 
-## Implementation principles
+## Key Tasks
 
-- Reuse existing edit plans, retrieval, speech, assembly, finishing, export, package coordination, and undo. Do not build a parallel editor.
-- The model chooses the argument, evidence, and scene purpose. The app owns timing, rendering, dependencies, jobs, and delivery state.
-- Authored script, claims, and graphic specifications each have one authoritative owner. Resolved timing and rendered media are derived outputs with explicit revision keys and invalidation.
-- UI and Agent callers use the same domain operations. Validate before mutation; commit coherent changes through shared undo.
-- Keep filesystem work, media processing, and blocking framework calls off the main actor. Route live package changes through `ProjectPackageCoordinator`.
-- Start with supplied research, licensed assets, one narrator, landscape output, and no paid generation. A built-in browser, voice cloning, sponsor recreation, and exact channel-style copying are not initial requirements.
-- Fewer user prompts is the objective, not fewer internal tool calls. Measure both separately.
-- Storyboard approval is an intentional review checkpoint, not a “continue” prompt. Combine script approval and consequential blockers into that review where possible.
+| # | Task | Responsibility | Est. Effort |
+|---|------|----------------|------------|
+| 1 | Add HyperFrames catalog wrapper | Swift team | 1 wk |
+| 2 | CLI (`compositor-pro`) commands | CLI engineer | 1 wk |
+| 3 | Catalog browser UI (drag‑and‑drop) | UI engineer | 2 wk |
+|  points | `hyperframes` agent skill | Agent skill maintainer | 1 wk |
+| 5 | Adapter import tool | Animation engineer | 2 wk |
+| 6 | Deterministic rendering test harness | QA engineer | 2 wk |
+| 7 | AWS Lambda optional backend | Backend engineer | 3 wk |
+| 8 | `frame.md` parser & wizard | Designer / product | 2 wk |
+| 9 | CLI cross‑platform support | DevOps | 2 wk |
+|10 | Documentation & migration guide | Technical writer | 1 wk |
+|11 | Integration tests & benchmarks | QA / SRE | 1 wk |
 
-## Golden rule for the Agent — mandatory visual uniqueness
+## Success Criteria
+- ≥70 % of HyperFrames catalog accessible in UI.
+- Agent can request video (e.g., “10‑second product intro”) and get a fully authored, renderable project within ~2 min of LLM + 30 s render.
+- ≥90 % existing tests pass; new tests cover added functionality.
+- Clear docs for CLI commands and UI.
 
-> Never use the same image or video more than once in the same finished video. Check canonical source identity, not only clip IDs, filenames, or download URLs. A crop, different trim, speed change, recolor, resize, re-encode, or duplicate import does not make it a new asset. If unique suitable coverage is unavailable, report a blocker; never silently repeat footage.
+## Dependencies
+- Node.js, npm, FFmpeg (for HyperFrames CLI).
+- Swift Package Manager.
+- CI pipeline for Git LFS baselines.
 
-This is a hard acceptance condition, not a recommendation or a score penalty. Audio is outside this rule. Different generated scenes may share vector geometry, theme, or geographic data, but must not hide repeated image/video inputs inside separate composites or baked outputs. One continuous visual occurrence can contain successive reveals; replaying it later is reuse. Storyboard thumbnails and review previews do not count as extra uses in the final output. This product rule is stricter than matching the reference's recurring visual environments.
+## Risks & Mitigation
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| Complexity of headless Chrome | High | Use battle‑tested HyperFrames engine. |
+| User adoption (HTML authoring) | Medium | Dual UI: native timeline + optional HTML composer. |
+| CI overhead (Git LFS) | Medium | Optional; enforce only for regression tests. |
+| Licensing | Low | Both projects Apache 2.0. |
 
-Agent guidance now includes this machine-facing rule and explicitly covers source identity, composites, nested timelines, continuous splits, and preview/audio exclusions. Hard shared enforcement remains task 5b; prompt compliance is not proof of output uniqueness.
+## Next Steps
+1. Create a dedicated branch for Phase 1.
+2. Implement HyperFrames catalog wrapper and unit tests.
+3. Design and implement basic CLI commands.
+4. Wire up the Agent skill `/hyperframes`.
+5. Set up CI pipeline for baseline video rendering.
 
-## Golden rule for the Agent — no revealed faces
+## Files to Modify / Add
+- `Sources/CompositorPro/HyperFramesCatalog/` (new Swift package)
+- `Sources/CompositorPro/CLI/` (new command entry)
+- `Sources/CompositorPro/Preview/` (WebView integration)
+- `Sources/CompositorPro/Agent/Skills/Hyperframes/` (new skill)
+- `Sources/CompositorPro/Tools/AdapterImport/` (new tool)
+- Tests under `Tests/CompositorProTests/` for new modules.
 
-> Do not use images or videos with people's faces revealed. Inspect actual selected source spans and final framing, including motion, crowds, reflections, photographs, and screens. Prefer objects, landscapes, hands, back-facing people, and silhouettes without facial detail. Unknown inspection coverage is unresolved; choose verified faceless coverage or report a blocker. Filenames, search tags, thumbnails, low resolution, fleeting appearances, and unverified crops are not proof.
+## Documentation
+- `TODO.md` – work tracking (this file).
+- `docs/adoption.md` – detailed design notes.
+- UI mockups for catalog browser and preview.
+- CLI usage documentation.
 
-**What/how:** Agent guidance applies this rule during discovery, storyboard selection, replacement, and final review. Inspect stills directly and selected video spans continuously where possible. Sparse frames cannot certify absence of faces between samples. Native face detection may assist a future bounded inspection workflow but must not be described as complete coverage or identity/privacy certification. Task 9 must retain inspection coverage; tasks 5a, 8, and 12 must block approval/build/delivery for unresolved or revealed faces. The rule is implemented as guidance, not an automatic face detector or hard output gate.
-
-Storyboard guidance now requires explicit review of narration, order, proposed visuals, pacing, sources, rights, and grouped blockers before full production. Native persistent storyboard/approval enforcement remains tasks 5–5a and 8. A material revision requires renewed approval; approval cannot override either visual rule.
-
-**Guidance verification:** `swift build` and `swift test --filter 'ExplainerVisualRulesTests|ExplainerContractsMCPTests|ClipIdentityMCPTests'` passed (9 tests in 3 suites). Tests protect mandatory review and both visual rules. No automatic face inspection, native storyboard UI, or production-gate verification claimed.
-
-## Signed app update
-
-- [ ] After implementation and repeated deep verification, build the release app with Developer ID signing, verify its signature/resources, and safely replace the existing installation.
-- [ ] Preserve the current app until the complete signed replacement is ready; never substitute an ad-hoc build for the requested signed release.
-
-**Preflight (2026-11-08):** Existing installation is `/Applications/CompositorPro.app`, bundle ID `io.compositor.pro`, version `0.7.6`. `security find-identity -v -p codesigning` returned `0 valid identities found`. Developer ID certificate and matching private key must be restored or unlocked through Keychain Access before signing. The bundle script's default `scripts/Compositor_Pro_Developer_ID.provisionprofile` (or legacy `Palmier_Pro_Developer_ID.provisionprofile`) is also absent; configured overrides were not inspected. No release signing, app replacement, or installed-runtime verification performed. Implementation, full production gates, and manual UI review remain incomplete.
-
-**Repeated signing preflight:** Still `0 valid identities found`. No `SIGNING_IDENTITY`, `PROVISION_PROFILE`, or `NOTARY_PROFILE` environment override is configured, and no repository `.provisionprofile` exists. Signed release remains blocked; the installed app remains untouched.
+---
+*Plan created on 2025‑11‑10.*
