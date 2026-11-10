@@ -301,10 +301,10 @@ Both now write decibels (`0` for the untouched bed, `duckDb` for the duck), and 
 
 **Evidence:** [`SkillStore`](../Sources/CompositorPro/Agent/Skills/SkillStore.swift#L171) supports automatically synchronized skills, with instructions loaded on demand. Their installed versions/content are part of the runtime environment, so their presence alone does not establish a reproducible filmmaking baseline.
 
-- [ ] Start with one tested playbook for a narrated B-roll film, then add interview, product, and montage workflows after each works end to end.
-- [ ] Encode shot-selection judgment, continuity, pacing, restrained transitions, title hierarchy, color consistency, and role-specific audio treatment alongside tool procedures.
-- [ ] Keep a versioned minimal baseline available offline using shared resource lookup. Preserve installed/user-authored skill ownership.
-- [ ] Store reusable user style preferences/reference selections explicitly, separate from one project's transient chat.
+- [x] Start with one tested playbook for a narrated B-roll film, then add interview, product, and montage workflows after each works end to end.
+- [x] Encode shot-selection judgment, continuity, pacing, restrained transitions, title hierarchy, color consistency, and role-specific audio treatment alongside tool procedures.
+- [x] Keep a versioned minimal baseline available offline using shared resource lookup. Preserve installed/user-authored skill ownership.
+- [x] Store reusable user style preferences/reference selections explicitly, separate from one project's transient chat.
 
 **Acceptance:** The same fixture and pinned playbook produce a coherent cut across supported model routes. Improvements are demonstrated by blind human comparison. Recipes adapt to the supplied footage rather than applying identical effects/cadence to every film.
 

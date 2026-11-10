@@ -150,6 +150,18 @@ final class SkillStore {
                 shas[id] = parsed.sha
             }
         }
+        for playbook in FilmmakingPlaybooks.all {
+            guard !bodies.keys.contains(playbook.id) else { continue }
+            let skill = Skill(
+                id: playbook.id,
+                name: playbook.name,
+                description: playbook.description,
+                path: directory.appendingPathComponent(playbook.id).appendingPathComponent("SKILL.md")
+            )
+            found.append(skill)
+            bodies[playbook.id] = playbook.content
+            shas[playbook.id] = sha12(Data(playbook.content.utf8))
+        }
         return SkillScan(skills: found.sorted { $0.id < $1.id }, bodies: bodies, shas: shas)
     }
 
