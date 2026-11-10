@@ -64,6 +64,7 @@ final class SkillStore {
 
     private(set) var skills: [Skill] = []
     private let storageDirectory: URL
+    private let includeBuiltins: Bool
 
     private var ledger: SkillLedger?
 
@@ -83,10 +84,11 @@ final class SkillStore {
     private var syncTask: Task<Void, Never>?
     private var mutationTask: Task<Void, Never>?
 
-    private convenience init() { self.init(directory: Self.directory) }
+    private convenience init() { self.init(directory: Self.directory, includeBuiltins: true) }
 
-    init(directory: URL) {
+    init(directory: URL, includeBuiltins: Bool = true) {
         storageDirectory = directory
+        self.includeBuiltins = includeBuiltins
         Task { await reloadSkills() }
     }
 
@@ -94,8 +96,9 @@ final class SkillStore {
         reloadGeneration += 1
         let generation = reloadGeneration
         let directory = storageDirectory
+        let includeBuiltins = self.includeBuiltins
         let result = await Task.detached(priority: .utility) {
-            (Self.scan(directory: directory), Self.loadLedger(directory: directory))
+            (Self.scan(directory: directory, includeBuiltins: includeBuiltins), Self.loadLedger(directory: directory))
         }.value
         guard generation == reloadGeneration else { return }
         apply(result.0)
@@ -134,7 +137,7 @@ final class SkillStore {
         )
     }
 
-    nonisolated static func scan(directory: URL = SkillStore.directory) -> SkillScan {
+    nonisolated static func scan(directory: URL = SkillStore.directory, includeBuiltins: Bool = true) -> SkillScan {
         let fm = FileManager.default
         var found: [Skill] = []
         var bodies: [String: String] = [:]
@@ -150,17 +153,19 @@ final class SkillStore {
                 shas[id] = parsed.sha
             }
         }
-        for playbook in FilmmakingPlaybooks.all {
-            guard !bodies.keys.contains(playbook.id) else { continue }
-            let skill = Skill(
-                id: playbook.id,
-                name: playbook.name,
-                description: playbook.description,
-                path: directory.appendingPathComponent(playbook.id).appendingPathComponent("SKILL.md")
-            )
-            found.append(skill)
-            bodies[playbook.id] = playbook.content
-            shas[playbook.id] = sha12(Data(playbook.content.utf8))
+        if includeBuiltins {
+            for playbook in FilmmakingPlaybooks.all {
+                guard !bodies.keys.contains(playbook.id) else { continue }
+                let skill = Skill(
+                    id: playbook.id,
+                    name: playbook.name,
+                    description: playbook.description,
+                    path: directory.appendingPathComponent(playbook.id).appendingPathComponent("SKILL.md")
+                )
+                found.append(skill)
+                bodies[playbook.id] = playbook.content
+                shas[playbook.id] = sha12(Data(playbook.content.utf8))
+            }
         }
         return SkillScan(skills: found.sorted { $0.id < $1.id }, bodies: bodies, shas: shas)
     }

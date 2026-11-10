@@ -262,8 +262,19 @@ extension ProjectListContext {
     @MainActor
     init(entries: [ProjectEntry], open: [VideoProject], active: VideoProject?, visible: VideoProject?) {
         self.entries = entries
-        self.open = open.map { Document(identity: ObjectIdentifier($0), url: $0.fileURL) }
-        self.active = active.map { Document(identity: ObjectIdentifier($0), url: $0.fileURL) }
-        self.visible = visible.map { Document(identity: ObjectIdentifier($0), url: $0.fileURL) }
+        let knownURLs = Set(entries.map { $0.url.standardizedFileURL })
+        let relevantOpen = open.filter { doc in
+            guard let url = doc.fileURL?.standardizedFileURL else { return false }
+            return knownURLs.contains(url)
+        }
+        self.open = relevantOpen.map { Document(identity: ObjectIdentifier($0), url: $0.fileURL) }
+        self.active = active.flatMap { doc in
+            guard let url = doc.fileURL?.standardizedFileURL, knownURLs.contains(url) else { return nil }
+            return Document(identity: ObjectIdentifier(doc), url: doc.fileURL)
+        }
+        self.visible = visible.flatMap { doc in
+            guard let url = doc.fileURL?.standardizedFileURL, knownURLs.contains(url) else { return nil }
+            return Document(identity: ObjectIdentifier(doc), url: doc.fileURL)
+        }
     }
 }

@@ -11,7 +11,7 @@ private final class SkillToolHarness {
 
     init(directory: URL) {
         self.directory = directory
-        let store = SkillStore(directory: directory)
+        let store = SkillStore(directory: directory, includeBuiltins: false)
         self.store = store
         executor = ToolExecutor(editor: editor, skillStore: store)
     }
