@@ -257,6 +257,23 @@ extension ToolExecutor {
             "fps": timeline.fps,
             "note": "The export is available in the Export dialog.",
         ]
+        let usedMediaRefs = Set(timeline.tracks.flatMap(\.clips).map(\.mediaRef))
+        let usedCredits = editor.mediaManifest.entries
+            .filter { usedMediaRefs.contains($0.id) && $0.providerAttribution != nil }
+            .compactMap { entry -> [String: Any]? in
+                guard let attribution = entry.providerAttribution else { return nil }
+                var credit: [String: Any] = [
+                    "mediaRef": entry.id,
+                    "attribution": attribution,
+                ]
+                if let creator = entry.providerCreator { credit["creator"] = creator }
+                if let license = entry.providerLicense { credit["license"] = license }
+                if let landingURL = entry.providerLandingURL { credit["landingURL"] = landingURL }
+                return credit
+            }
+        if !usedCredits.isEmpty {
+            payload["credits"] = usedCredits
+        }
         if let deliveredSize {
             payload["deliveredSize"] = "\(Int(deliveredSize.width))x\(Int(deliveredSize.height))"
         }

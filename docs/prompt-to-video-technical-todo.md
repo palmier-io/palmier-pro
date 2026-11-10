@@ -323,10 +323,10 @@ Both now write decibels (`0` for the untouched bed, `duckDb` for the duck), and 
 
 **Evidence:** [`MediaManifestEntry`](../Sources/CompositorPro/Models/MediaManifest.swift#L20) has no stock-license/attribution record. [`finishImportedAsset`](../Sources/CompositorPro/Agent/Tools/ToolExecutor+Import.swift#L258) clears transient `importInput`. The current stock workflow asks the model to retain attribution in conversation; plan candidate provenance alone does not establish permanent asset provenance.
 
-- [ ] Persist provider asset ID, landing/source URL, creator, license/attribution, retrieval date, and content identity with imported stock assets.
-- [ ] Keep provenance when a candidate becomes a `mediaRef`, moves folders, is reused in a different plan, or survives deletion of the originating chat/plan.
-- [ ] Include used-source credits/provenance in project packaging and an export receipt or credits document.
-- [ ] Route installs and saves through `ProjectPackageCoordinator` and existing manifest persistence.
+- [x] Persist provider asset ID, landing/source URL, creator, license/attribution, retrieval date, and content identity with imported stock assets.
+- [x] Keep provenance when a candidate becomes a `mediaRef`, moves folders, is reused in a different plan, or survives deletion of the originating chat/plan.
+- [x] Include used-source credits/provenance in project packaging and an export receipt or credits document.
+- [x] Route installs and saves through `ProjectPackageCoordinator` and existing manifest persistence.
 
 **Acceptance:** Import → placement → save → reopen → Save As → package/export retains credits for every used stock asset. Repeated import of the same identified content does not create contradictory provenance.
 

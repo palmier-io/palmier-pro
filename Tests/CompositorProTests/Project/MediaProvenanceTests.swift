@@ -65,4 +65,24 @@ struct MediaProvenanceTests {
         let decoded = try JSONDecoder().decode(MediaImportOrigin.self, from: data)
         #expect(decoded == origin)
     }
+
+    @Test func reconstructedAssetRestoresProvenanceFromManifest() throws {
+        var entry = MediaManifestEntry(
+            id: "stock-1", name: "Forest.mp4", type: .video,
+            source: .external(absolutePath: "/tmp/Forest.mp4"), duration: 5.0
+        )
+        entry.providerAssetId = "forest-123"
+        entry.providerLandingURL = "https://example.com/forest"
+        entry.providerCreator = "Jane Doe"
+        entry.providerLicense = "CC BY 4.0"
+        entry.providerAttribution = "Forest by Jane Doe"
+        entry.providerRetrievalDate = Date(timeIntervalSince1970: 1_700_000_100)
+
+        let asset = MediaAsset(entry: entry, resolvedURL: URL(fileURLWithPath: "/tmp/Forest.mp4"))
+        #expect(asset.importInput?.origin?.assetId == "forest-123")
+        #expect(asset.importInput?.origin?.creator == "Jane Doe")
+        #expect(asset.importInput?.origin?.license == "CC BY 4.0")
+        #expect(asset.importInput?.origin?.attribution == "Forest by Jane Doe")
+        #expect(asset.importInput?.createdAt == Date(timeIntervalSince1970: 1_700_000_100))
+    }
 }

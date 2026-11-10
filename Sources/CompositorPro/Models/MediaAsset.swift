@@ -160,6 +160,19 @@ final class MediaAsset: Identifiable {
         self.cachedRemoteURL = entry.cachedRemoteURL
         self.cachedRemoteURLExpiresAt = entry.cachedRemoteURLExpiresAt
         self.importInput = entry.importInput
+        if self.importInput?.origin == nil, let assetId = entry.providerAssetId {
+            var input = self.importInput ?? MediaImportInput()
+            input.origin = MediaImportOrigin(
+                provider: "stock",
+                assetId: assetId,
+                landingPageURL: entry.providerLandingURL,
+                creator: entry.providerCreator,
+                license: entry.providerLicense,
+                attribution: entry.providerAttribution
+            )
+            input.createdAt = entry.providerRetrievalDate
+            self.importInput = input
+        }
         self.inputIdentity = entry.inputIdentity.flatMap { $0.isValid ? $0 : nil }
         let restoredStatus = GenerationStatus(serialized: entry.generationStatus)
         self.generationStatus = restoredStatus == .preparing && !canResumeGeneration ? .none : restoredStatus
