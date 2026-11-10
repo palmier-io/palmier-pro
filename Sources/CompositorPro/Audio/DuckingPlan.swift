@@ -1,19 +1,14 @@
 import Foundation
 
-/// Volume envelope for an audio bed playing under dialogue, computed from speech spans.
-///
-/// Pure: no audio decoding, no model inference, no timeline access. The caller supplies speech
-/// spans in absolute timeline frames and receives the keyframes to write, so the same
-/// arithmetic backs preview, agent application, and tests.
 struct DuckingPlan: Sendable, Equatable {
-    struct Parameters: Sendable, Equatable {
+    struct Parameters: Codable, Sendable, Equatable {
         /// Negative gain applied while speech is present.
         var duckDb: Double = -12
-        /// Frames from speech onset to full duck.
+        /// Lookahead frames before speech onset.
         var attackFrames: Int = 6
         /// Extra frames the bed stays ducked after speech ends.
         var holdFrames: Int = 6
-        /// Frames from speech offset back to bed level.
+        /// Recovery frames after the hold.
         var releaseFrames: Int = 18
         /// Speech closer together than this becomes one span, so a pause between words
         /// does not pump the bed.
@@ -24,13 +19,19 @@ struct DuckingPlan: Sendable, Equatable {
 
     enum Failure: Error, Equatable, CustomStringConvertible {
         case emptyClip
+        case invalidBedRange
         case nonFiniteDecibels(Double)
+        case positiveDecibels
+        case excessiveAttenuation
         case negativeFrames(String)
 
         var description: String {
             switch self {
             case .emptyClip: "The bed clip has no duration."
+            case .invalidBedRange: "The bed frame range is invalid or overflowing."
             case .nonFiniteDecibels(let db): "duckDb must be a finite number (got \(db))."
+            case .positiveDecibels: "duckDb must be zero or negative."
+            case .excessiveAttenuation: "duckDb must be at least -96 dB."
             case .negativeFrames(let field): "\(field) must be >= 0."
             }
         }
@@ -38,7 +39,7 @@ struct DuckingPlan: Sendable, Equatable {
 
     /// Half-open [start, end) in absolute timeline frames: where the bed sits below its own level.
     var windows: [Range<Int>]
-    /// Volume keyframes in clip-relative frames. Values are linear gain, 1.0 = untouched.
+    /// Clip-relative volume keyframes in dB, matching Clip.volumeTrack.
     var keyframes: [Keyframe<Double>]
     /// Speech spans dropped for falling outside the bed or being empty.
     var ignoredSpans: Int
@@ -59,14 +60,18 @@ struct DuckingPlan: Sendable, Equatable {
         parameters: Parameters = .default
     ) throws -> DuckingPlan {
         guard bedDurationFrames > 0 else { throw Failure.emptyClip }
+        let end = bedStartFrame.addingReportingOverflow(bedDurationFrames)
+        guard bedStartFrame >= 0, !end.overflow else { throw Failure.invalidBedRange }
         guard parameters.duckDb.isFinite else { throw Failure.nonFiniteDecibels(parameters.duckDb) }
+        guard parameters.duckDb <= 0 else { throw Failure.positiveDecibels }
+        guard parameters.duckDb >= -96 else { throw Failure.excessiveAttenuation }
         guard parameters.attackFrames >= 0, parameters.holdFrames >= 0,
               parameters.releaseFrames >= 0, parameters.mergeGapFrames >= 0 else {
             throw Failure.negativeFrames("attackFrames, holdFrames, releaseFrames and mergeGapFrames")
         }
 
         let bedStart = bedStartFrame
-        let bedEnd = bedStartFrame + bedDurationFrames
+        let bedEnd = end.partialValue
         var ignored = 0
         var clipped: [Range<Int>] = []
         for span in speechSpans {
@@ -79,30 +84,35 @@ struct DuckingPlan: Sendable, Equatable {
             }
         }
 
-        let duck = pow(10, parameters.duckDb / 20)
+        guard parameters.duckDb < 0 else {
+            return DuckingPlan(windows: [], keyframes: [], ignoredSpans: ignored)
+        }
         let speechPlateaus = merge(clipped, joiningGapsShorterThan: parameters.mergeGapFrames)
         let windows = mergeRamps(
             speechPlateaus.map { plateau in
-                Window(
-                    ramp: max(bedStart, plateau.lowerBound - parameters.attackFrames)
-                        ..< min(bedEnd, plateau.upperBound + parameters.releaseFrames),
+                let holdEnd = plateau.upperBound + min(parameters.holdFrames, bedEnd - plateau.upperBound)
+                return Window(
+                    ramp: (plateau.lowerBound - min(parameters.attackFrames, plateau.lowerBound - bedStart))
+                        ..< (holdEnd + min(parameters.releaseFrames, bedEnd - holdEnd)),
                     speech: plateau
                 )
             }
         )
 
         var track = KeyframeTrack<Double>()
+        // Bed level (0 dB) before the first attack, so the envelope starts at unity gain.
+        // No speech means no envelope at all, not a single flat keyframe.
+        if !windows.isEmpty { add(0, at: 0, to: &track, interpolation: .hold) }
         for window in windows {
-            let duckIn = min(window.ramp.upperBound, window.speech.lowerBound + parameters.holdFrames)
-            let duckOut = max(duckIn, min(window.ramp.upperBound, window.speech.upperBound))
-            add(1.0, at: window.ramp.lowerBound - bedStart, to: &track, interpolation: .smooth)
-            add(duck, at: duckIn - bedStart, to: &track, interpolation: .hold)
-            add(duck, at: duckOut - bedStart, to: &track, interpolation: .smooth)
-            add(1.0, at: window.ramp.upperBound - bedStart, to: &track, interpolation: .smooth)
+            let duckOut = window.speech.upperBound + min(parameters.holdFrames, bedEnd - window.speech.upperBound)
+            add(0, at: window.ramp.lowerBound - bedStart, to: &track, interpolation: .smooth)
+            add(parameters.duckDb, at: window.speech.lowerBound - bedStart, to: &track, interpolation: .hold)
+            if duckOut < bedEnd {
+                add(parameters.duckDb, at: duckOut - bedStart, to: &track, interpolation: .smooth)
+                add(0, at: min(window.ramp.upperBound - bedStart, bedDurationFrames - 1),
+                    to: &track, interpolation: .hold)
+            }
         }
-        // A clip-relative frame at durationFrames is past the last sample; the clip normalizer
-        // would clamp it, so drop the trailing bed-level restore instead of letting it surprise.
-        track.keyframes.removeAll { $0.frame >= bedDurationFrames && $0.value == 1.0 }
 
         return DuckingPlan(
             windows: windows.map(\.ramp),

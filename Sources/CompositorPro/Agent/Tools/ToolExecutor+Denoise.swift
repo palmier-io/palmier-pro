@@ -26,11 +26,13 @@ extension ToolExecutor {
         let snapshot = timelineSnapshot(editor)
         let actionName = enabled ? "Denoise Audio (Agent)" : "Disable Denoise (Agent)"
         if !enabled {
+            let before = editor.timeline
             try editor.undo.perform(actionName) {
                 try editor.setDenoise(clipIds: Set(input.clipIds), enabled: false, amount: nil, actionName: actionName)
             }
             let notes = ["Denoise disabled."]
-            return mutationResult(editor, since: snapshot, touched: input.clipIds, notes: notes)
+            return mutationResult(editor, since: snapshot, touched: before == editor.timeline ? [] : input.clipIds,
+                                  extra: ["noOp": before == editor.timeline], notes: notes)
         }
         let (jobId, isNew) = try await editor.startEnhancementJob(
             clipIds: Set(input.clipIds),
@@ -39,7 +41,7 @@ extension ToolExecutor {
             actionName: actionName
         )
         let notes = ["Denoise job started: \(jobId.uuidString). \(isNew ? "New job." : "Reusing existing job.") Check status with get_enhancement_job_status."]
-        return mutationResult(editor, since: snapshot, touched: input.clipIds, extra: ["jobId": jobId.uuidString, "isNew": isNew], notes: notes)
+        return mutationResult(editor, since: snapshot, touched: [], extra: ["jobId": jobId.uuidString, "isNew": isNew], notes: notes)
     }
 
     fileprivate struct GetEnhancementJobStatusInput: DecodableToolArgs {

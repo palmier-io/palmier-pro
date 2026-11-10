@@ -182,8 +182,10 @@ final class ProjectPackageCoordinator {
             assertionFailure("Unbalanced project save completion")
             return
         }
-        activeSave = nil
+        // The lease stays active while the completion runs: a save enqueued from it must wait
+        // for the current save's fence instead of overlapping it.
         completion()
+        activeSave = nil
         advance()
     }
 

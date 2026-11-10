@@ -123,8 +123,11 @@ struct SourceTimeMap: Sendable, Equatable {
         return capped * sign
     }
 
-    /// Clip-relative timeline offset for a source offset, rounded to whole frames.
-    func timelineOffset(forSourceOffset source: Double) -> Int {
+    /// Clip-relative timeline offset for a source offset, with configurable rounding rule.
+    func timelineOffset(
+        forSourceOffset source: Double,
+        rounding: FloatingPointRoundingRule = .toNearestOrAwayFromZero
+    ) -> Int {
         guard durationFrames > 0, let first = profile.first else { return 0 }
         let span = durationFrames - frozenFrames
         guard span > 0 else { return 0 }
@@ -134,7 +137,7 @@ struct SourceTimeMap: Sendable, Equatable {
         let total = Self.integrate(profile, over: 0 ..< span)
         let target = min(max(source, 0), total)
         if profile.count == 1 {
-            let offset = Int((target / max(first.speed, 1e-12)).rounded())
+            let offset = Int((target / max(first.speed, 1e-12)).rounded(rounding))
             return min(max(offset, 0), span) + frozenFrames
         }
         var consumed = 0.0
@@ -146,7 +149,7 @@ struct SourceTimeMap: Sendable, Equatable {
                 consumed += segment
                 continue
             }
-            let within = Self.segmentOffset(a: a, b: b, source: target - consumed)
+            let within = Self.segmentOffset(a: a, b: b, source: target - consumed, rounding: rounding)
             return min(max(within, a.offset), span) + frozenFrames
         }
         return durationFrames
@@ -261,10 +264,13 @@ struct SourceTimeMap: Sendable, Equatable {
     }
 
     /// Offset into the segment `a → b` at which `source` frames past `a` have been consumed.
-    private static func segmentOffset(a: SpeedPoint, b: SpeedPoint, source: Double) -> Int {
+    private static func segmentOffset(
+        a: SpeedPoint, b: SpeedPoint, source: Double,
+        rounding: FloatingPointRoundingRule = .toNearestOrAwayFromZero
+    ) -> Int {
         let span = Double(b.offset - a.offset)
         guard span > 0 else {
-            return a.offset + Int((source / max(a.speed, 1e-12)).rounded())
+            return a.offset + Int((source / max(a.speed, 1e-12)).rounded(rounding))
         }
         let slope = (b.speed - a.speed) / span
         // source = a.speed*x + slope/2 * x^2
@@ -276,6 +282,6 @@ struct SourceTimeMap: Sendable, Equatable {
             guard discriminant >= 0 else { return a.offset }
             x = (-a.speed + sqrt(discriminant)) / slope
         }
-        return a.offset + Int(min(max(x, 0), span).rounded())
+        return a.offset + Int(min(max(x, 0), span).rounded(rounding))
     }
 }

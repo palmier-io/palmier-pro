@@ -30,17 +30,17 @@ struct StockDeliveryHistoryTests {
 
     @Test("Loads and saves through UserDefaults")
     func persistsThroughDefaults() {
-        StockDeliveryHistory.reset()
+        let store = UserDefaults(suiteName: "compositor-pro.tests.history.\(UUID().uuidString)") ?? .standard
         var history = StockDeliveryHistory()
         history.add(sourceIds: ["s1"], outputFilename: "video1.mp4")
-        history.save()
+        history.save(to: store)
 
-        let loaded = StockDeliveryHistory.load()
+        let loaded = StockDeliveryHistory.load(store: store)
         #expect(loaded.entries.count == 1)
         #expect(loaded.entries[0].outputFilename == "video1.mp4")
         #expect(loaded.usedSourceIds == Set(["s1"]))
-        StockDeliveryHistory.reset()
-        #expect(StockDeliveryHistory.load().entries.isEmpty)
+        StockDeliveryHistory.reset(store: store)
+        #expect(StockDeliveryHistory.load(store: store).entries.isEmpty)
     }
 
     @Test("Extracts canonical source IDs from media manifest")

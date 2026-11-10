@@ -95,30 +95,22 @@ struct LoudnessAnalyzerTests {
         #expect(tp <= -3 && tp >= -10)
     }
 
-    // @Test func stereoSignalUsesChannelWeights() async throws {
-//     let left = sine(frequency: 1_000, amplitude: 0.1, seconds: 5)
-//     let right = sine(frequency: 1_000, amplitude: 0.1, seconds: 5)
-//     let url = FileManager.default.temporaryDirectory
-//         .appendingPathComponent("loudness-stereo-\(UUID().uuidString).wav")
-//     defer { try? FileManager.default.removeItem(at: url) }
-//     let format = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2)!
-//     let file = try AVAudioFile(forWriting: url, settings: format.settings)
-//     let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(left.count))!
-//     buffer.frameLength = AVAudioFrameCount(left.count)
-//     for i in 0..<left.count {
-//         buffer.floatChannelData![0][i] = left[i]
-//         buffer.floatChannelData![1][i] = right[i]
-//     }
-//     try file.write(from: buffer)
-//
-//     let cache = FileManager.default.temporaryDirectory
-//         .appendingPathComponent("loudness-cache-\(UUID().uuidString)", isDirectory: true)
-//     defer { try? FileManager.default.removeItem(at: cache) }
-//     let measurement = try await LoudnessAnalyzer.integratedLoudness(
-//         for: url, mediaRef: UUID().uuidString, cacheDirectory: cache
-//     )
-//     #expect(measurement.status == .measured)
-//     let lufs = try #require(measurement.integratedLUFS)
-//     #expect(lufs > -25 && lufs < -20)
-// }
+    @Test func cacheIdentityIncludesStartTimescale() async throws {
+        let samples = sine(frequency: 1_000, amplitude: 0.3, seconds: 1)
+            + sine(frequency: 1_000, amplitude: 0.1, seconds: 1)
+        let url = try writeWAV(samples)
+        let cache = FileManager.default.temporaryDirectory.appendingPathComponent("loudness-cache-\(UUID().uuidString)")
+        defer {
+            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: cache)
+        }
+        let duration = CMTime(value: 12, timescale: 30)
+        let quiet = try await LoudnessAnalyzer.integratedLoudness(
+            for: url, mediaRef: "source", range: CMTimeRange(start: CMTime(value: 30, timescale: 30), duration: duration),
+            cacheDirectory: cache)
+        let loud = try await LoudnessAnalyzer.integratedLoudness(
+            for: url, mediaRef: "source", range: CMTimeRange(start: CMTime(value: 30, timescale: 60), duration: duration),
+            cacheDirectory: cache)
+        #expect(try #require(loud.integratedLUFS) - #require(quiet.integratedLUFS) > 9)
+    }
 }

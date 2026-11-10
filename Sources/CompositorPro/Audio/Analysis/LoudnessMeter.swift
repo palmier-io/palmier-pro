@@ -17,12 +17,9 @@ struct LoudnessMeasurement: Codable, Sendable, Equatable {
 
 struct LoudnessMeter {
     static let sampleRate = 48_000.0
-    static let blockDuration = 0.4 // 400 ms per BS.1770
-    static let hopDuration = 0.1 // 100 ms overlap (75% overlap)
-    static let blockFrames = Int(sampleRate * blockDuration) // 19200
-    static let hopFrames = Int(sampleRate * hopDuration) // 4800
-    static let minimumBlocks = 10 // 4 seconds minimum per BS.1770
-    static let minimumFrames = minimumBlocks * hopFrames // 192000? No, let's use block-based
+    static let blockFrames = 19_200
+    static let hopFrames = 4_800
+    static let minimumFrames = blockFrames
     static let absoluteGateDB = -70.0
     static let absoluteGateEnergy = pow(10, (absoluteGateDB + 0.691) / 10)
     static let relativeGateOffsetDB = -10.0
@@ -50,6 +47,7 @@ struct LoudnessMeter {
 
     private struct Channel {
         let weight: Double
+        var peak = TruePeakMeter()
         var shelf = Filter(
             b0: 1.53512485958697, b1: -2.69169618940638, b2: 1.19839281085285,
             a1: -1.69065929318241, a2: 0.73248077421585
@@ -58,17 +56,54 @@ struct LoudnessMeter {
 
         mutating func energy(_ sample: Float) throws -> Double {
             guard sample.isFinite else { throw MeasurementError.invalidSample }
+            peak.consume(Double(sample))
             let filtered = highpass.process(shelf.process(Double(sample)))
             return weight * filtered * filtered
         }
     }
 
+    private struct TruePeakMeter {
+        private static let delayCount = 13
+        private static let phases: [[(delay: Int, weight: Double)]] = (1..<4).map { phase in
+            stride(from: phase, through: 48, by: 4).compactMap { tap in
+                let x = Double(tap - 24) * .pi / 4
+                let weight = sin(x) / x * 0.5 * (1 - cos(2 * .pi * Double(tap) / 48))
+                return abs(weight) > 1e-6 ? (tap / 4, weight) : nil
+            }
+        }
+        private var delay = [Double](repeating: 0, count: delayCount)
+        private var index = 0
+        private var maximum = 0.0
+
+        mutating func consume(_ sample: Double) {
+            delay[index] = sample
+            maximum = max(maximum, abs(sample))
+            for phase in Self.phases {
+                var value = 0.0
+                for tap in phase {
+                    let position = index - tap.delay
+                    value += delay[position < 0 ? position + Self.delayCount : position] * tap.weight
+                }
+                maximum = max(maximum, abs(value))
+            }
+            index = index + 1 == Self.delayCount ? 0 : index + 1
+        }
+
+        var completedPeak: Double {
+            var tail = self
+            for _ in 0..<Self.delayCount { tail.consume(0) }
+            return tail.maximum
+        }
+    }
+
     private var channels: [Channel]
-    private var blockEnergy = 0.0
-    private var blockFrameCount = 0
+    private var hopEnergy = 0.0
+    private var hopFrameCount = 0
+    private var windowHops = [Double](repeating: 0, count: 4)
+    private var hopIndex = 0
+    private var filledHops = 0
     private var frameCount: Int64 = 0
     private var blockEnergies: [Double] = []
-    private var truePeak: Float = 0
 
     init(format: AVAudioFormat) throws {
         self.channels = try Self.channelWeights(for: format).map { Channel(weight: $0) }
@@ -79,92 +114,57 @@ struct LoudnessMeter {
         guard buffer.format.commonFormat == .pcmFormatFloat32,
               buffer.format.sampleRate == Self.sampleRate,
               let data = buffer.floatChannelData else { throw MeasurementError.unsupportedFormat }
-        if channels.count != (buffer.format.isInterleaved ? 1 : Int(buffer.format.channelCount)) {
+        if channels.count != Int(buffer.format.channelCount) {
             throw MeasurementError.unsupportedChannelLayout
         }
         let nextCount = frameCount.addingReportingOverflow(Int64(buffer.frameLength))
         guard !nextCount.overflow else { throw MeasurementError.durationOverflow }
         let interleaved = buffer.format.isInterleaved
         for frame in 0..<Int(buffer.frameLength) {
+            if frame.isMultiple(of: 1_024) { try Task.checkCancellation() }
             var frameEnergy = 0.0
-            var framePeak: Float = 0
             for channel in channels.indices {
                 let sample = interleaved ? data[0][frame * channels.count + channel] : data[channel][frame]
                 frameEnergy += try channels[channel].energy(sample)
-                framePeak = max(framePeak, abs(sample))
             }
-            blockEnergy += frameEnergy
-            blockFrameCount += 1
-            truePeak = max(truePeak, framePeak)
+            hopEnergy += frameEnergy
+            hopFrameCount += 1
 
-            if blockFrameCount == Self.blockFrames {
-                if blockEnergy > 0 {
-                    blockEnergies.append(blockEnergy / Double(Self.blockFrames))
+            if hopFrameCount == Self.hopFrames {
+                windowHops[hopIndex] = hopEnergy
+                hopIndex = (hopIndex + 1) % windowHops.count
+                filledHops = min(windowHops.count, filledHops + 1)
+                if filledHops == windowHops.count {
+                    blockEnergies.append(windowHops.reduce(0, +) / Double(Self.blockFrames))
                 }
-                blockEnergy = 0
-                blockFrameCount = 0
+                hopEnergy = 0
+                hopFrameCount = 0
             }
         }
         frameCount = nextCount.partialValue
     }
 
     var measurement: LoudnessMeasurement {
-        let minFramesForMeasurement = Self.blockFrames * Self.minimumBlocks
-        if frameCount < minFramesForMeasurement {
-            return .init(
-                status: .insufficientDuration,
-                integratedLUFS: nil,
-                truePeakDBFS: nil,
-                analyzedFrames: frameCount,
-                sampleRate: Self.sampleRate
-            )
+        let peak = channels.reduce(0.0) { max($0, $1.peak.completedPeak) }
+        let peakDB = peak > 0 ? 20 * log10(peak) : nil
+        func result(_ status: LoudnessMeasurement.Status, lufs: Double? = nil) -> LoudnessMeasurement {
+            .init(status: status, integratedLUFS: lufs, truePeakDBFS: peakDB,
+                  analyzedFrames: frameCount, sampleRate: Self.sampleRate)
         }
-        guard !blockEnergies.isEmpty else {
-            return .init(
-                status: .belowGate,
-                integratedLUFS: nil,
-                truePeakDBFS: truePeak > 0 ? 20 * log10(Double(truePeak)) : nil,
-                analyzedFrames: frameCount,
-                sampleRate: Self.sampleRate
-            )
-        }
+        guard frameCount >= Self.minimumFrames else { return result(.insufficientDuration) }
 
         let absoluteGate = Self.absoluteGateEnergy
-        let aboveAbsolute = blockEnergies.filter { $0 > absoluteGate }
-        guard !aboveAbsolute.isEmpty else {
-            return .init(
-                status: .belowGate,
-                integratedLUFS: nil,
-                truePeakDBFS: truePeak > 0 ? 20 * log10(Double(truePeak)) : nil,
-                analyzedFrames: frameCount,
-                sampleRate: Self.sampleRate
-            )
-        }
+        let aboveAbsolute = blockEnergies.filter { $0 >= absoluteGate }
+        guard !aboveAbsolute.isEmpty else { return result(.belowGate) }
 
         let meanEnergy = aboveAbsolute.reduce(0, +) / Double(aboveAbsolute.count)
         let relativeGate = max(absoluteGate, meanEnergy * pow(10, Self.relativeGateOffsetDB / 10))
-        let aboveRelative = aboveAbsolute.filter { $0 > relativeGate }
-        guard !aboveRelative.isEmpty else {
-            return .init(
-                status: .belowGate,
-                integratedLUFS: nil,
-                truePeakDBFS: truePeak > 0 ? 20 * log10(Double(truePeak)) : nil,
-                analyzedFrames: frameCount,
-                sampleRate: Self.sampleRate
-            )
-        }
+        let aboveRelative = aboveAbsolute.filter { $0 >= relativeGate }
+        guard !aboveRelative.isEmpty else { return result(.belowGate) }
 
         let gatedMeanEnergy = aboveRelative.reduce(0, +) / Double(aboveRelative.count)
         let integratedLUFS = -0.691 + 10 * log10(gatedMeanEnergy)
-        let truePeakDBFS = truePeak > 0 ? 20 * log10(Double(truePeak)) : nil
-
-        return .init(
-            status: .measured,
-            integratedLUFS: integratedLUFS.isFinite ? integratedLUFS : nil,
-            truePeakDBFS: truePeakDBFS?.isFinite == true ? truePeakDBFS : nil,
-            analyzedFrames: frameCount,
-            sampleRate: Self.sampleRate
-        )
+        return result(.measured, lufs: integratedLUFS)
     }
 
     static func channelWeights(for format: AVAudioFormat) throws -> [Double] {

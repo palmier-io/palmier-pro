@@ -121,4 +121,85 @@ struct AudioMixRampTests {
         let ranges = EditorViewModel.timelineFrames(from: [60..<66, 0..<30, 80..<120], clip: clip, fps: 30)
         #expect(ranges == [150..<162, 190..<210])
     }
+
+    @Test func oneSecondTrimShiftsTwoSecondEventToOneSecondIntoClip() {
+        let clip = Clip(mediaRef: "voice", mediaType: .audio, startFrame: 0,
+                        durationFrames: 90, trimStartFrame: 30)
+        let dips = CompositionBuilder.gainDips(
+            clip: clip, timescale: 30, regions: [.init(start: 2.0, end: 2.2)],
+            depthDB: -24, fadeSeconds: 0.03)
+        #expect(dips.count == 1)
+        #expect(dips.first?.start == 30)
+        #expect(dips.first?.end == 36)
+        let ramps = CompositionBuilder.planVolumeRamps(clip: clip, timescale: 30, dips: dips)
+        #expect(overlaps(ramps).isEmpty)
+    }
+
+    @Test func fractionalSpeedAndNonzeroStart() {
+        let clip = Clip(mediaRef: "voice", mediaType: .audio, startFrame: 100,
+                        durationFrames: 60, trimStartFrame: 45, speed: 1.5)
+        let dips = CompositionBuilder.gainDips(
+            clip: clip, timescale: 30, regions: [.init(start: 2.5, end: 3.0)],
+            depthDB: -18, fadeSeconds: 0.03)
+        #expect(dips.count == 1)
+        #expect(dips.first?.start == 120)
+        #expect(dips.first?.end == 130)
+        let ramps = CompositionBuilder.planVolumeRamps(clip: clip, timescale: 30, dips: dips)
+        #expect(overlaps(ramps).isEmpty)
+    }
+
+    @Test func splitClipsSmoothlyAttenuateAcrossCut() {
+        let clip1 = Clip(mediaRef: "voice", mediaType: .audio, startFrame: 0,
+                         durationFrames: 60, trimStartFrame: 0)
+        let clip2 = Clip(mediaRef: "voice", mediaType: .audio, startFrame: 60,
+                         durationFrames: 60, trimStartFrame: 60)
+        let event = BreathDetector.Region(start: 1.8, end: 2.2)
+        let dips1 = CompositionBuilder.gainDips(clip: clip1, timescale: 30, regions: [event],
+                                                depthDB: -24, fadeSeconds: 0.03)
+        let dips2 = CompositionBuilder.gainDips(clip: clip2, timescale: 30, regions: [event],
+                                                depthDB: -24, fadeSeconds: 0.03)
+        #expect(dips1.first?.start == 54)
+        #expect(dips1.first?.end == 60)
+        #expect(dips1.first?.fadeOutStart == 60)
+        #expect(dips2.first?.start == 60)
+        #expect(dips2.first?.end == 66)
+        #expect(dips2.first?.fadeInEnd == 60)
+        let ramps1 = CompositionBuilder.planVolumeRamps(clip: clip1, timescale: 30, dips: dips1)
+        let ramps2 = CompositionBuilder.planVolumeRamps(clip: clip2, timescale: 30, dips: dips2)
+        #expect(overlaps(ramps1).isEmpty)
+        #expect(overlaps(ramps2).isEmpty)
+        #expect(overlaps(ramps1 + ramps2).isEmpty)
+    }
+
+    @Test func nestedTimelineWithDipsAndCarrierRampsPreservesContiguity() {
+        var child = Clip(mediaRef: "child_voice", mediaType: .audio, startFrame: 0, durationFrames: 120)
+        child.volumeTrack = .init(keyframes: [.init(frame: 0, value: 0), .init(frame: 60, value: -6), .init(frame: 120, value: 0)])
+        var carrier = Clip(mediaRef: "carrier", mediaType: .audio, startFrame: 30, durationFrames: 120)
+        carrier.fadeInFrames = 15
+        carrier.fadeOutFrames = 15
+        let dips = [CompositionBuilder.AudioGainDip(start: 40, fadeInEnd: 45, fadeOutStart: 70, end: 75, gain: 0.2)]
+        let ramps = CompositionBuilder.planVolumeRamps(clip: child, timescale: 30, carrier: carrier, gain: 1, dips: dips)
+        #expect(overlaps(ramps).isEmpty)
+        #expect(ramps.first?.range.start == CMTime(value: 0, timescale: 30))
+        #expect(ramps.last?.range.end == CMTime(value: 120, timescale: 30))
+    }
+
+    @Test func overlappingBreathsAndSibilanceDipsPreserveNonOverlappingRamps() {
+        var clip = Clip(mediaRef: "voice", mediaType: .audio, startFrame: 0, durationFrames: 90)
+        clip.fadeInFrames = 10
+        clip.fadeOutFrames = 10
+        let breathDips = CompositionBuilder.gainDips(
+            clip: clip, timescale: 30,
+            regions: [.init(start: 0.2, end: 0.6), .init(start: 0.4, end: 0.8)],
+            depthDB: -24, fadeSeconds: 0.03)
+        let deessDips = CompositionBuilder.gainDips(
+            clip: clip, timescale: 30,
+            regions: [.init(start: 0.3, end: 0.5)],
+            depthDB: -12, fadeSeconds: 0.01)
+        let allDips = breathDips + deessDips
+        let ramps = CompositionBuilder.planVolumeRamps(clip: clip, timescale: 30, dips: allDips)
+        #expect(overlaps(ramps).isEmpty)
+        #expect(ramps.first?.range.start == CMTime(value: 0, timescale: 30))
+        #expect(ramps.last?.range.end == CMTime(value: 90, timescale: 30))
+    }
 }

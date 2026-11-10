@@ -308,7 +308,7 @@ extension ToolExecutor {
     private static func importOrigin(_ value: Any?) throws -> MediaImportOrigin? {
         guard let value else { return nil }
         guard let raw = value as? [String: Any] else { throw ToolError("source.origin must be an object") }
-        try validateUnknownKeys(raw, allowed: ["provider", "assetId", "landingPageUrl", "sourceId"], path: "source.origin")
+        try validateUnknownKeys(raw, allowed: ["provider", "assetId", "landingPageUrl", "sourceId", "creator", "license", "attribution"], path: "source.origin")
         guard let provider = raw["provider"] as? String,
               ["pexels", "pixabay", "openverse"].contains(provider),
               let assetId = raw["assetId"] as? String, !assetId.isEmpty, assetId.count <= 256,
@@ -322,11 +322,27 @@ extension ToolExecutor {
                   url.user == nil, url.password == nil else { throw ToolError("source.origin.landingPageUrl must be an HTTPS URL") }
             page = MediaImportInput.provenanceURL(url)
         }
-        let origin = MediaImportOrigin(provider: provider, assetId: assetId, landingPageURL: page)
+        let creator = try importCreditField(raw["creator"], field: "source.origin.creator")
+        let license = try importCreditField(raw["license"], field: "source.origin.license")
+        let attribution = try importCreditField(raw["attribution"], field: "source.origin.attribution")
+        let origin = MediaImportOrigin(provider: provider, assetId: assetId, landingPageURL: page,
+                                       creator: creator, license: license, attribution: attribution)
         if let sourceId = raw["sourceId"], sourceId as? String != origin.sourceId {
             throw ToolError("source.origin.sourceId does not match provider and assetId")
         }
         return origin
+    }
+
+    /// Credit text travels with the asset, so it must be a bounded single line.
+    private static func importCreditField(_ value: Any?, field: String) throws -> String? {
+        guard let value, !(value is NSNull) else { return nil }
+        guard let string = value as? String else { throw ToolError("\(field) must be a string") }
+        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 2_000,
+              trimmed.rangeOfCharacter(from: .controlCharacters) == nil else {
+            throw ToolError("\(field) must be 1–2000 characters without control characters")
+        }
+        return trimmed
     }
 
     private func applyImportMetadata(editor: EditorViewModel, asset: MediaAsset, name: String?, folderId: String?) {

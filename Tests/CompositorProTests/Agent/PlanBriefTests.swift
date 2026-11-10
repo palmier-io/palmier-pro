@@ -218,4 +218,50 @@ struct PlanBriefTests {
         #expect(normalized.sourceTypes == [.stockVideo, .library, .stockImage])
         #expect(try normalized.validated() == normalized)
     }
+
+    @Test func sectionRoleRoundTripsAndAppearsInReceipt() throws {
+        for role in SectionRole.allCases {
+            let section = EditPlanSection(
+                id: "section-\(role.rawValue)",
+                title: "Section \(role.rawValue)",
+                summary: "Summary",
+                startFrame: 0,
+                endFrame: 90,
+                role: role
+            )
+            let encoded = try JSONEncoder().encode(section)
+            let decoded = try JSONDecoder().decode(EditPlanSection.self, from: encoded)
+            #expect(decoded.role == role)
+        }
+        var plan = briefPlan()
+        plan.sections[0].role = .hook
+        let receipt = plan.receipt(includeDetails: true)
+        let sections = try #require(receipt["sections"] as? [[String: Any]])
+        #expect(sections.first?["role"] as? String == "hook")
+    }
+
+    @Test func soundCueMediaRefAndTrackIdRoundTrip() throws {
+        let cue = PlanSoundCue(
+            cueId: "cue-voice",
+            role: .voice,
+            purpose: "Voiceover narration",
+            anchorFrame: 10,
+            durationSeconds: 2.5,
+            notes: "Clear and loud",
+            mediaRef: "asset-voice",
+            trackId: "track-voice"
+        )
+        let validated = try cue.validated()
+        #expect(validated.mediaRef == "asset-voice")
+        #expect(validated.trackId == "track-voice")
+
+        let encoded = try JSONEncoder().encode(cue)
+        let decoded = try JSONDecoder().decode(PlanSoundCue.self, from: encoded)
+        #expect(decoded.mediaRef == "asset-voice")
+        #expect(decoded.trackId == "track-voice")
+
+        let receipt = cue.receipt
+        #expect(receipt["mediaRef"] as? String == "asset-voice")
+        #expect(receipt["trackId"] as? String == "track-voice")
+    }
 }

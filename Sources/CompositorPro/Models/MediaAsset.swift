@@ -185,14 +185,14 @@ final class MediaAsset: Identifiable {
             generationStatus: generationStatus.manifestValue,
             importInput: importInput,
             inputIdentity: inputIdentity,
-            
-            // Stock provenance - carry over from import
+
+            // Stock provenance travels with the asset so credits survive reuse and repackaging.
             providerAssetId: importInput?.origin?.assetId,
             providerLandingURL: importInput?.origin?.landingPageURL,
-            providerCreator: nil,
-            providerLicense: nil,
-            providerAttribution: nil,
-            providerRetrievalDate: Date(),
+            providerCreator: importInput?.origin?.creator,
+            providerLicense: importInput?.origin?.license,
+            providerAttribution: importInput?.origin?.attribution,
+            providerRetrievalDate: importInput?.createdAt,
             providerCredits: nil,
         )
     }

@@ -82,4 +82,67 @@ struct FindShotCandidatesToolTests {
         #expect(!undoManager.canUndo)
         #expect(checkpoints == 0)
     }
+
+    @Test func shotIdRequiresAPlanAndAKnownShot() async throws {
+        let harness = ToolHarness()
+        let withoutPlan = await harness.runRaw("find_shot_candidates", args: [
+            "query": "harbor", "kind": "video", "shotId": "shot-1",
+        ])
+        #expect(withoutPlan.isError)
+        #expect(ToolHarness.textOf(withoutPlan).contains("shotId requires planId"))
+
+        let unknownPlan = await harness.runRaw("find_shot_candidates", args: [
+            "query": "harbor", "kind": "video", "planId": "plan-missing", "shotId": "shot-1",
+        ])
+        #expect(unknownPlan.isError)
+        #expect(ToolHarness.textOf(unknownPlan).contains("Unknown planId"))
+    }
+
+    @Test func verifyingAgainstAShotRequirementReportsAcceptanceAndChangesNothing() async throws {
+        let harness = ToolHarness()
+        let undoManager = UndoManager()
+        harness.editor.undo.attach(undoManager)
+        var checkpoints = 0
+        harness.editor.onProjectCheckpointRequired = { checkpoints += 1 }
+        let asset = harness.makeAsset(name: "Harbor.mov", type: .video, duration: 8)
+
+        let timelineId = harness.editor.activeTimelineId
+        let plan = EditPlan(
+            id: "plan-verify",
+            name: "Harbor explainer",
+            timelineId: timelineId,
+            fps: harness.editor.timeline.fps,
+            width: harness.editor.timeline.width,
+            height: harness.editor.timeline.height,
+            shots: [EditPlanShot(
+                id: "shot-verify", title: "Harbor", startFrame: 0, endFrame: 90,
+                requirement: ShotRequirement(
+                    narrativePurpose: "Establish the harbor.",
+                    subject: "container harbor", action: "cranes loading",
+                    targetDurationSeconds: 3, handleSeconds: 0))])
+        _ = try harness.editor.changeEditPlans(creates: [plan], actionName: "Create Plan")
+        let beforeCheckpoints = checkpoints
+        let beforeUndo = undoManager.canUndo
+
+        let payload = try await harness.runOK("find_shot_candidates", args: [
+            "query": "harbor", "kind": "video",
+            "planId": "plan-verify", "shotId": "shot-verify",
+            "includeRemote": false,
+        ]) as? [String: Any]
+
+        let verification = try #require(payload?["verification"] as? [String: Any])
+        #expect(verification["shotId"] as? String == "shot-verify")
+        #expect((verification["requirement"] as? [String: Any])?["subject"] as? String == "container harbor")
+
+        let candidates = try #require(payload?["candidates"] as? [[String: Any]])
+        for candidate in candidates {
+            let acceptance = try #require(candidate["acceptance"] as? [String: Any])
+            #expect(acceptance["state"] as? String != "rejected")
+        }
+        // Verification reads the plan; it never edits it, its approval, or undo.
+        #expect(harness.editor.editPlan(id: "plan-verify")?.shots.first?.id == "shot-verify")
+        #expect(checkpoints == beforeCheckpoints)
+        #expect(undoManager.canUndo == beforeUndo)
+        #expect(asset.id.isEmpty == false)
+    }
 }

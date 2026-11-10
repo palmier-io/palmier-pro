@@ -27,11 +27,19 @@ struct MediaImportOrigin: Codable, Sendable, Equatable {
     let provider: String
     let assetId: String
     let landingPageURL: String?
+    /// Credit line for the source. Kept with the origin so it survives the trip to the manifest.
+    let creator: String?
+    let license: String?
+    let attribution: String?
 
-    init(provider: String, assetId: String, landingPageURL: String? = nil) {
+    init(provider: String, assetId: String, landingPageURL: String? = nil,
+         creator: String? = nil, license: String? = nil, attribution: String? = nil) {
         self.provider = provider
         self.assetId = assetId
         self.landingPageURL = landingPageURL
+        self.creator = creator
+        self.license = license
+        self.attribution = attribution
     }
 
     var sourceId: String { "stock:\(provider):\(assetId)" }
@@ -39,6 +47,9 @@ struct MediaImportOrigin: Codable, Sendable, Equatable {
     var receipt: [String: Any] {
         var out: [String: Any] = ["provider": provider, "assetId": assetId, "sourceId": sourceId]
         if let landingPageURL { out["landingPageUrl"] = landingPageURL }
+        if let creator { out["creator"] = creator }
+        if let license { out["license"] = license }
+        if let attribution { out["attribution"] = attribution }
         return out
     }
 }

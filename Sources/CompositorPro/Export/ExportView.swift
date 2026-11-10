@@ -698,7 +698,10 @@ struct ExportView: View {
                     outputURL: url,
                     source: .manual,
                     projectID: editor.exportQueueProjectID,
-                    analyticsProjectID: editor.projectId
+                    analyticsProjectID: editor.projectId,
+                    prepareProcessing: { [weak editor] in
+                        try await editor?.awaitEnhancementJobsForTimeline(exportTimeline)
+                    }
                 )
             } catch {
                 submissionError = error.localizedDescription

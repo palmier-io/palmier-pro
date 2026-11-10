@@ -59,9 +59,13 @@ final class ToolHarness {
         duration: Double = 5,
         hasAudio: Bool = false
     ) -> MediaAsset {
+        let url = URL(fileURLWithPath: "/tmp/test-\(id).mov")
+        if !FileManager.default.fileExists(atPath: url.path) {
+            try? Data("stub-\(id)".utf8).write(to: url)
+        }
         let asset = MediaAsset(
             id: id,
-            url: URL(fileURLWithPath: "/tmp/test-\(id).mov"),
+            url: url,
             type: type,
             name: "stub-\(id)",
             duration: duration

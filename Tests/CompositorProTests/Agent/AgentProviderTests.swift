@@ -45,9 +45,9 @@ struct AgentProviderTests {
         #expect(route(.sonnet5, key: .openAI) == .unavailable)
         #expect(route(.luna, key: .anthropic) == .unavailable)
         #expect(route(.fable5, key: .anthropic, hasCredits: true) == .direct)
-        #expect(route(.terra, hasCredits: true) == .hosted)
+        #expect(route(.terra, hasCredits: true) == .unavailable)
         #expect(route(.fable5, hasCredits: true) == .unavailable)
-        #expect(route(.sol, hasCredits: true, isPaid: true) == .hosted)
+        #expect(route(.sol, hasCredits: true, isPaid: true) == .unavailable)
     }
 
     /// With hosted services switched off, nothing may route to a remote hosted backend, and a

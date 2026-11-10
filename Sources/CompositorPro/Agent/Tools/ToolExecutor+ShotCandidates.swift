@@ -163,7 +163,9 @@ extension ToolExecutor {
                 requirement: requirement,
                 shotId: input.shotId,
                 priorRejections: planShot?.rejections ?? [],
-                limit: limit
+                limit: limit,
+                aspectFormat: plan?.brief?.aspectFormat ?? input.orientation,
+                usedMediaRefs: Set(plan?.shots.filter { $0.id != input.shotId }.compactMap(\.mediaRef) ?? [])
             )
             bundle = verified.bundle
             verification = verified.verification
@@ -243,7 +245,9 @@ extension ToolExecutor {
         requirement: ShotRequirement,
         shotId: String?,
         priorRejections: [ShotRejection],
-        limit: Int
+        limit: Int,
+        aspectFormat: String? = nil,
+        usedMediaRefs: Set<String> = []
     ) async -> (bundle: ShotCandidateBundle, verification: [String: Any]) {
         var skipped = bundle.skipped
         var previouslyRejected: [[String: Any]] = []
@@ -263,11 +267,11 @@ extension ToolExecutor {
             }
         }
 
-        let embedder = VisualModelLoader.shared.embedder
-        var inspectable: [(candidate: ShotCandidate, url: URL, type: ClipType)] = []
+        let embedder = visualSearchModel.embedder
+        var inspectable: [(candidate: ShotCandidate, url: URL, type: ClipType, duration: Double)] = []
         for candidate in pending {
             guard let mediaRef = candidate.mediaRef, let asset = editor.mediaAssetsById[mediaRef] else { continue }
-            inspectable.append((candidate, asset.url, asset.type))
+            inspectable.append((candidate, asset.url, asset.type, asset.resolvedDuration))
         }
         let inspectedTargets = Array(inspectable.prefix(ShotVerifier.maximumInspections))
         var inspections: [String: ShotInspection] = [:]
@@ -314,11 +318,15 @@ extension ToolExecutor {
             if candidate.source == .stock {
                 verified.acceptance = .unverified("Remote candidate is not imported; its content cannot be inspected before download.")
             } else if let inspection {
+                let assetDuration = inspectable.first { $0.candidate.id == candidate.id }?.duration
                 verified.acceptance = ShotVerifier.acceptance(
                     candidate: candidate,
                     requirement: requirement,
                     inspection: inspection,
-                    best: best
+                    best: best,
+                    assetDurationSeconds: assetDuration,
+                    aspectFormat: aspectFormat,
+                    usedMediaRefs: usedMediaRefs
                 )
             } else {
                 verified.acceptance = .unverified("Not inspected: the verification budget for this call was spent on higher ranked candidates.")

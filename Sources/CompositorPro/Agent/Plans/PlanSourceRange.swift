@@ -27,10 +27,8 @@ enum PlanSourceRangeError: Error, LocalizedError, Sendable {
 
 enum PlanSourceRange {
     static func frames(seconds: Double, fps: Int) throws -> Int {
-        guard (1...120).contains(fps), seconds.isFinite, seconds >= 0 else { throw PlanSourceRangeError.invalidTime }
-        let value = seconds * Double(fps)
-        guard value.isFinite, value <= Double(maxFrameArg) else { throw PlanSourceRangeError.invalidTime }
-        return Int(value)
+        do { return try ClipPlacement.frames(seconds: seconds, fps: fps) }
+        catch { throw PlanSourceRangeError.invalidTime }
     }
 
     static func inspection(shot: EditPlanShot, fps: Int, type: ClipType, duration: Double) throws -> Range<Int>? {

@@ -140,7 +140,7 @@ enum ShotVerifier {
         mediaType: ClipType,
         embedder: VisualEmbedder?
     ) async -> ShotInspection? {
-        try? await Task.checkCancellation()
+        if Task.isCancelled { return nil }
         let samples = sampleTimes(candidate: candidate, mediaType: mediaType)
         guard !samples.isEmpty else { return nil }
 
@@ -245,16 +245,52 @@ enum ShotVerifier {
         candidate: ShotCandidate,
         requirement: ShotRequirement,
         inspection: ShotInspection?,
-        best: BestScores
+        best: BestScores,
+        assetDurationSeconds: Double? = nil,
+        aspectFormat: String? = nil,
+        usedMediaRefs: Set<String> = []
     ) -> ShotAcceptance {
         if let reason = sourceTypeMismatch(candidate: candidate, requirement: requirement) {
             return .rejected(reason: reason, evidence: "Source type does not match the shot requirement.")
         }
-        if let rejection = durationRejection(candidate: candidate, requirement: requirement, inspection: inspection) {
+        if let mediaRef = candidate.mediaRef, usedMediaRefs.contains(mediaRef) {
+            return .rejected(reason: .duplicate, evidence: "Source '\(mediaRef)' is already selected in another shot of the plan.")
+        }
+        if let motion = requirement.motion, motion != .static_ {
+            if candidate.kind == .image {
+                return .rejected(reason: .wrongAction, evidence: "Shot requirement requires camera motion (\(motion.rawValue)); still image cannot provide motion.")
+            }
+            if let inspection, inspection.motion == .still {
+                return .rejected(reason: .wrongAction, evidence: "Shot requirement requires camera motion (\(motion.rawValue)); inspected video frames show static content.")
+            }
+        }
+        if let aspect = aspectFormat?.lowercased() {
+            let width = candidate.width ?? inspection?.pixelWidth
+            let height = candidate.height ?? inspection?.pixelHeight
+            if let width, let height, width > 0, height > 0 {
+                let isPortrait = height > width
+                let isLandscape = width > height
+                if (aspect == "9:16" || aspect == "portrait" || aspect == "vertical") && isLandscape && Double(width) > Double(height) * 1.05 {
+                    return .rejected(reason: .wrongShape, evidence: "Source is landscape (\(width)x\(height)), but brief requires portrait/vertical (\(aspect)).")
+                } else if (aspect == "16:9" || aspect == "landscape" || aspect == "horizontal") && isPortrait && Double(height) > Double(width) * 1.05 {
+                    return .rejected(reason: .wrongShape, evidence: "Source is portrait (\(width)x\(height)), but brief requires landscape/horizontal (\(aspect)).")
+                }
+            }
+        }
+        if let rejection = durationRejection(candidate: candidate, requirement: requirement,
+                                             inspection: inspection, assetDurationSeconds: assetDurationSeconds) {
             return rejection
         }
         guard let inspection else {
             return .unverified("The source was not inspected; content cannot be certified.")
+        }
+        for (exclusion, score) in inspection.exclusionScores {
+            if score >= similarityFloor {
+                let lower = exclusion.lowercased()
+                let isGen = lower.contains("generated") || lower.contains("ai") || lower.contains("illustration") || lower.contains("cgi")
+                let reason: ShotRejection.Reason = isGen ? .generatedMaterial : .wrongSubject
+                return .rejected(reason: reason, evidence: "Inspected content depicts excluded concept '\(exclusion)' (similarity \(format(score)) >= \(format(similarityFloor))).")
+            }
         }
         for criterion in Criterion.allCases {
             guard let score = score(for: criterion, in: inspection), requirementText(criterion, in: requirement) != nil else {
@@ -316,23 +352,26 @@ enum ShotVerifier {
         return verifiable ? .notUsable : nil
     }
 
-    /// The candidate must hold the required span plus the handles the shot asks for.
+    /// The source must hold the required span plus the handles the shot asks for.
+    /// The source's own length is the limit; the refined span only says where to place the cut.
     static func durationRejection(
         candidate: ShotCandidate,
         requirement: ShotRequirement,
-        inspection: ShotInspection?
+        inspection: ShotInspection?,
+        assetDurationSeconds: Double? = nil
     ) -> ShotAcceptance? {
         guard let target = requirement.targetDurationSeconds else { return nil }
         let handles = max(0, requirement.handleSeconds ?? 0)
         let required = target + handles * 2
-        let available = inspection?.usableSpanSeconds
+        let available = assetDurationSeconds
+            ?? inspection?.usableSpanSeconds
             ?? candidate.sourceEndSeconds.flatMap { end in candidate.sourceStartSeconds.map { start in end - start } }
             ?? candidate.durationSeconds
         guard let available else { return nil }
         guard available + 0.001 < required else { return nil }
         return .rejected(
             reason: .insufficientDuration,
-            evidence: "Usable span \(format(available))s is shorter than the required \(format(required))s."
+            evidence: "The source holds \(format(available))s but the shot needs \(format(required))s."
         )
     }
 

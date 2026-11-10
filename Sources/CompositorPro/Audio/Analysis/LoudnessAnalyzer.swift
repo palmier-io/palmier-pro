@@ -18,12 +18,29 @@ enum LoudnessAnalyzer {
         let fileNumber: UInt64
 
         init(_ url: URL) throws {
-            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-            self.url = url.standardizedFileURL.absoluteString
-            size = (attributes[.size] as? NSNumber)?.uint64Value ?? 0
-            modified = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
-            fileNumber = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0
+            do {
+                let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+                self.url = url.standardizedFileURL.absoluteString
+                size = (attributes[.size] as? NSNumber)?.uint64Value ?? 0
+                modified = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+                fileNumber = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0
+            } catch {
+                // Source file missing or unreadable: report a zero version so change detection
+                // still agrees across reads instead of throwing a raw file error.
+                self.url = url.standardizedFileURL.absoluteString
+                size = 0; modified = 0; fileNumber = 0
+            }
         }
+    }
+
+    @concurrent
+    static func sourceVersions(for urls: [URL]) async throws -> [URL: SourceVersion] {
+        var versions: [URL: SourceVersion] = [:]
+        for url in Set(urls) {
+            try Task.checkCancellation()
+            versions[url] = try SourceVersion(url)
+        }
+        return versions
     }
 
     @concurrent
@@ -35,7 +52,7 @@ enum LoudnessAnalyzer {
     }
 
     private struct CacheKey: Encodable {
-        let version = 3
+        let version = 4
         let source: SourceVersion
         let mediaRef: String
         let range: String
@@ -89,7 +106,7 @@ enum LoudnessAnalyzer {
         try Task.checkCancellation()
         let source = try SourceVersion(sourceURL)
         let directory = (cacheDirectory ?? DiskCache.rootDirectory.appendingPathComponent("AudioAnalysis/Loudness", isDirectory: true))
-        let rangeKey = range.map { "\($0.start.value)/$0.start.timescale):\($0.duration.value)/\($0.duration.timescale)" } ?? "whole"
+        let rangeKey = range.map { "\($0.start.value)/\($0.start.timescale):\($0.duration.value)/\($0.duration.timescale)" } ?? "whole"
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         let key = try encoder.encode(CacheKey(source: source, mediaRef: mediaRef, range: rangeKey))
@@ -143,14 +160,14 @@ enum LoudnessAnalyzer {
     private static func valid(_ measurement: LoudnessMeasurement) -> Bool {
         switch measurement.status {
         case .measured:
-            measurement.analyzedFrames >= LoudnessMeter.blockFrames * LoudnessMeter.minimumBlocks
+            measurement.analyzedFrames >= LoudnessMeter.minimumFrames
                 && measurement.integratedLUFS?.isFinite == true
         case .belowGate:
-            measurement.analyzedFrames >= LoudnessMeter.blockFrames * LoudnessMeter.minimumBlocks
+            measurement.analyzedFrames >= LoudnessMeter.minimumFrames
                 && measurement.integratedLUFS == nil
         case .insufficientDuration:
             measurement.analyzedFrames >= 0
-                && measurement.analyzedFrames < LoudnessMeter.blockFrames * LoudnessMeter.minimumBlocks
+                && measurement.analyzedFrames < LoudnessMeter.minimumFrames
                 && measurement.integratedLUFS == nil
         }
     }

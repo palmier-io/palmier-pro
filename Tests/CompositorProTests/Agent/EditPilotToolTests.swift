@@ -25,6 +25,12 @@ struct EditPilotToolTests {
         return (harness, visualAssets, musicAsset)
     }
 
+    /// Tool output shortens UUIDs to unique >=8-char prefixes; an output id matches a full id when it is a prefix.
+    private func shortIdMatchesFull(_ short: String?, _ full: String?) -> Bool {
+        guard let short, let full else { return false }
+        return full.hasPrefix(short) && short.count >= 8
+    }
+
     @Test("Proposes arrangement from creative direction with beat sync and captions")
     func proposeArrangementFromDirection() async throws {
         let (harness, visuals, music) = makeHarnessWithMedia(count: 3, hasMusic: true)
@@ -56,13 +62,13 @@ struct EditPilotToolTests {
 
         // Music track detected and attached
         let musicTrack = try #require(result["musicTrack"] as? [String: Any])
-        #expect(musicTrack["mediaRef"] as? String == music?.id)
+        #expect(shortIdMatchesFull(musicTrack["mediaRef"] as? String, music?.id))
         #expect(musicTrack["bpm"] as? Double == 120.0)
 
         // Check visual uniqueness: each block has a distinct mediaRef
         let refs = blocks.compactMap { $0["mediaRef"] as? String }
         #expect(Set(refs).count == blocks.count)
-        #expect(refs == visuals.map(\.id))
+        #expect(refs.count == visuals.count && zip(refs, visuals.map(\.id)).allSatisfy(shortIdMatchesFull))
     }
 
     @Test("Enforces visual uniqueness — never reuses an image/video source within arrangement")
@@ -181,8 +187,8 @@ struct EditPilotToolTests {
         // Check timeline state
         #expect(harness.editor.timeline.tracks.count > initialTimelineTracksCount)
         let allClips = harness.editor.timeline.tracks.flatMap(\.clips)
-        #expect(allClips.contains { $0.id == videoClipIds[0] })
-        #expect(allClips.contains { $0.id == textClipIds[0] })
+        #expect(allClips.contains { $0.id.hasPrefix(videoClipIds[0]) && videoClipIds[0].count >= 8 })
+        #expect(allClips.contains { $0.id.hasPrefix(textClipIds[0]) && textClipIds[0].count >= 8 })
         #expect(allClips.contains { $0.mediaRef == music?.id })
 
         // Check undo capability: exactly one undo step reverses the entire arrangement
@@ -191,13 +197,13 @@ struct EditPilotToolTests {
 
         #expect(harness.editor.timeline.tracks.count == initialTimelineTracksCount)
         let clipsAfterUndo = harness.editor.timeline.tracks.flatMap(\.clips)
-        #expect(!clipsAfterUndo.contains { $0.id == videoClipIds[0] })
+        #expect(!clipsAfterUndo.contains { $0.id.hasPrefix(videoClipIds[0]) && videoClipIds[0].count >= 8 })
 
         // Redo restores everything
         #expect(undoManager.canRedo)
         undoManager.redo()
         let clipsAfterRedo = harness.editor.timeline.tracks.flatMap(\.clips)
-        #expect(clipsAfterRedo.contains { $0.id == videoClipIds[0] })
+        #expect(clipsAfterRedo.contains { $0.id.hasPrefix(videoClipIds[0]) && videoClipIds[0].count >= 8 })
     }
 
     @Test("Error cases: empty library, invalid trims, nonexistent arrangement")

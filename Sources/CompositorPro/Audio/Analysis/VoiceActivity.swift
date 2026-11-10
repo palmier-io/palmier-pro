@@ -5,7 +5,7 @@ import SpeechVAD
 
 /// Silero VAD speech detection; results cache as JSON sidecars keyed to the source file (AudioEnhancer's scheme).
 enum VoiceActivity {
-    static let cache = DiskCache(named: "AudioAnalysis")
+    static let cache = DiskCache(named: "AudioAnalysis/VoiceActivity")
     static let chunkDuration = Double(chunkSize) / Double(sampleRate)
     private static let sampleRate = 16_000
     private static let chunkSize = 512

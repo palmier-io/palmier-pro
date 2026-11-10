@@ -5,6 +5,14 @@ struct RuntimeCapability: Sendable, Equatable {
         case available, unavailable, needsPreparation, unknown
     }
 
+    enum BlockerKind: String, Sendable, Equatable {
+        case buildExclusion = "build_exclusion"
+        case missingModelDownload = "missing_model_download"
+        case missingProviderCredential = "missing_provider_credential"
+        case unsupportedModality = "unsupported_modality"
+        case temporaryProviderFailure = "temporary_provider_failure"
+    }
+
     enum Reason: String, Sendable {
         case hostedBuildExcluded = "hosted_build_excluded"
         case speechBuildExcluded = "bundled_speech_excluded"
@@ -23,6 +31,22 @@ struct RuntimeCapability: Sendable, Equatable {
         case unsupportedModality = "unsupported_modality"
         case clientDependent = "client_dependent"
         case onDemandModel = "on_demand_model"
+        case temporaryProviderFailure = "temporary_provider_failure"
+
+        var blockerKind: BlockerKind {
+            switch self {
+            case .hostedBuildExcluded, .speechBuildExcluded, .runtimeUnavailable:
+                .buildExclusion
+            case .modelNotInstalled, .modelPreparing, .modelNotChecked, .onDemandModel, .voiceUnavailable:
+                .missingModelDownload
+            case .backendUnconfigured, .authenticationRequired, .creditsRequired, .credentialMissing:
+                .missingProviderCredential
+            case .unsupportedModality, .clientDependent, .disabled:
+                .unsupportedModality
+            case .modelFailed, .temporaryProviderFailure, .catalogUnavailable:
+                .temporaryProviderFailure
+            }
+        }
 
         var messageKey: String {
             switch self {
@@ -43,6 +67,7 @@ struct RuntimeCapability: Sendable, Equatable {
             case .unsupportedModality: L10n.key("The selected chat model is configured without image input.")
             case .clientDependent: L10n.key("Image input support is undeclared. The selected endpoint or MCP client must support images.")
             case .onDemandModel: L10n.key("The denoising model is prepared on demand and may require a download. Model readiness is checked during execution.")
+            case .temporaryProviderFailure: L10n.key("The remote provider reported a temporary failure. Try again in a moment.")
             }
         }
     }
@@ -58,6 +83,7 @@ struct RuntimeCapability: Sendable, Equatable {
         var value: [String: Any] = ["status": status.rawValue, "canStart": canStart]
         if let reason {
             value["reason"] = reason.rawValue
+            value["blockerKind"] = reason.blockerKind.rawValue
             // Only the UI resolves this source message into a translation.
             value["message"] = reason.messageKey
         }
@@ -134,6 +160,10 @@ enum RuntimeCapabilities {
         }
     }
 
+    static func visualInspection(imageInputSupported: Bool?) -> RuntimeCapability {
+        imageInput(supported: imageInputSupported)
+    }
+
     @MainActor
     static func visualSearch(_ model: any VisualSearchModelLoading) -> RuntimeCapability {
         guard model.enabled else { return .init(status: .unavailable, reason: .disabled) }
@@ -157,11 +187,43 @@ enum RuntimeCapabilities {
     }
 
     @MainActor
+    static func recommendations(
+        local: LocalInputs, visualModel: any VisualSearchModelLoading,
+        imageInputSupported: Bool?, hosted: RuntimeCapability, denoising: RuntimeCapability
+    ) -> [String] {
+        var items: [String] = []
+        if !hosted.canStart {
+            items.append("Hosted generation is excluded in this build; use local library footage, stock media, and local speech.")
+        }
+        if !denoising.canStart {
+            if denoising.reason == .speechBuildExcluded {
+                items.append("Voice denoising requires building with '--traits BundledSpeech'; use loudness matching and de-breathing for audio cleanup.")
+            } else if denoising.reason == .runtimeUnavailable {
+                items.append("MLX runtime is unavailable in this environment; run the packaged app on Apple Silicon to use local voice enhancement.")
+            }
+        }
+        if !stockVideo(local).canStart {
+            items.append("Stock video search is unconfigured; add a free Pexels or Pixabay API key in Settings, or use local footage.")
+        }
+        if !speech(local).canStart {
+            items.append("No speech voice found; install a macOS system voice or install Piper TTS to generate narration.")
+        }
+        if let supported = imageInputSupported, !supported {
+            items.append("The configured agent model does not support images; visual inspection of frames is unavailable.")
+        }
+        if !visualSearch(visualModel).canStart {
+            items.append("Visual search model is not ready; search footage using spoken transcripts until the model finishes preparing.")
+        }
+        return items
+    }
+
+    @MainActor
     static func receipt(
         local: LocalInputs, visualModel: any VisualSearchModelLoading,
         imageInputSupported: Bool?, hosted: RuntimeCapability, cloudTranscription: RuntimeCapability,
         denoising: RuntimeCapability
     ) -> [String: Any] {
+        let visualInspectionCap = visualInspection(imageInputSupported: imageInputSupported)
         let operations: [String: RuntimeCapability] = [
             "generate_video": hosted, "generate_image": hosted, "generate_audio": hosted,
             "cloud_transcription": cloudTranscription,
@@ -169,7 +231,8 @@ enum RuntimeCapabilities {
             "denoise_audio": denoising, "enhance_voice": denoising,
             "debreath_audio": .available, "match_loudness": .available,
             "generate_drone": .available, "generate_speech": speech(local),
-            "inspect_media": .available, "inspect_timeline": .available,
+            "inspect_media": .available, "inspect_timeline": visualInspectionCap,
+            "visual_inspection": visualInspectionCap,
             "visual_search": visualSearch(visualModel),
             "stock_video_search": stockVideo(local),
             "stock_image_search": .available, "stock_audio_search": .available,
@@ -179,6 +242,10 @@ enum RuntimeCapabilities {
             "agentImageInput": imageInput(supported: imageInputSupported).receipt,
             "stockProviders": ["openverse": true, "pexels": local.pexelsConfigured, "pixabay": local.pixabayConfigured],
             "speechLanguages": ["system": local.systemSpeechLanguages, "piper": local.piperLanguages],
+            "recommendations": recommendations(
+                local: local, visualModel: visualModel, imageInputSupported: imageInputSupported,
+                hosted: hosted, denoising: denoising
+            ),
             "notes": [
                 "Availability describes prerequisites, not a guarantee that a remote provider or media request will succeed.",
                 "Specific models, voices, languages, references, and credit costs are validated again when executing.",

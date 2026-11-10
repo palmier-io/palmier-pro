@@ -378,6 +378,7 @@ extension EditPlan {
     }
 
     func narrationProductionBlockers(entries: [String: MediaManifestEntry], unavailable: Set<String>) -> [String] {
+        guard scriptBeats != nil else { return [] }
         var blockers: [String] = []
         if case .localSpeech(let speech) = narrationIntent?.narrator {
             let verified = narrationSynthesisProof?.matches(

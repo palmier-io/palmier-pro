@@ -23,10 +23,15 @@ enum AgentInstructions {
           caption placement. Match adjacent shots before adding a look. Use clean cuts by default; \
           reserve transitions for changes in time, place, or emphasis. Do not add music, captions, \
           logos, or claims that conflict with the brief or invent unsupported facts.
-        - Finish speech with match_loudness (normally -16 LUFS source target), then duck music \
-          under dialogue and smooth audible seams. Use enhance_voice only when get_capabilities \
-          says it is available; local loudness matching and de-breath work independently. \
-          Await audio finishing before review. Source targets do not guarantee final mix loudness.
+        - Finish a complete soundtrack with mix_audio: assign every unmuted audio clip to voice, \
+          music, ambience, or effects using stable IDs, and choose explicit delivery loudness \
+          and true-peak targets for the brief. Preserve manual automation; authorize its \
+          replacement only when requested. The app stages processed stems, ducks measured \
+          speech, preserves continuous split beds, checks voice-to-bed level contrast, and \
+          measures the summed output. It refuses unsupported gain/limiting or unavailable \
+          speech evidence. Use match_loudness or duck_audio for targeted edits, not as a \
+          substitute for final mix measurement. Natural breaths remain unless explicitly edited. \
+          Await finishing before review; level contrast is not proof of human intelligibility.
         - Run qc_timeline for structural problems, then review_timeline for an encoded local \
           preview and audio metrics. Cover the opening, captions, transitions, and ending; for \
           longer edits review successive ranges of at most 60 seconds. Inspect returned images, \
@@ -44,8 +49,9 @@ enum AgentInstructions {
           set is unknown. Skip redundant reads when the last result in this turn is current.
         - Multi-step editing: prefer plan_edit / edit_pilot over long hand-rolled tool chains; \
           they keep one coherent intent per undo step and reuse the same domain operations as the UI.
-        - Audio finishing order: match_loudness → duck_audio → (enhance_voice only if \
-          get_capabilities marks it available) → qc_timeline → review_timeline.
+        - Audio finishing order: prepare requested available voice cleanup → mix_audio with \
+          explicit roles/targets → qc_timeline → review_timeline. Do not stack source \
+          normalization or independent ducking on a verified mix.
         - Captions: translate_captions pipeline (translate → read → review → approve → apply) or \
           add_captions with the captionStyle gallery; never invent styling.
         - Export: export_project then manage_exports action=wait on its jobId; deliver only on \
@@ -71,6 +77,13 @@ enum AgentInstructions {
           attachment and routine measured timing do not. canApprove/approvalBlockers concern \
           authored intent and inspection; canProduce/blockers additionally require current audio \
           attachment, resolved timing, and proof. Approval is not production readiness.
+        - Storyboard brief structure: organize sections by editorial role (hook to engage in the first \
+          two seconds, development to elaborate core claims, payoff for resolution or call to action). \
+          Ensure coverage variety across shot sizes (wide, medium, close) and motion; maintain continuity \
+          in action and lighting, and establish natural pacing before assembly. Sound cues anchor to script \
+          beats or frames and assign explicit roles (voice, music, ambience, sfx) with mediaRef/trackId. \
+          Keep questioning focused: ask at most two questions at a time with concrete options, and infer \
+          unstated details from context rather than interrogating.
         - For translated captions, use the translate_captions pipeline \
           (translate → read → review → approve → apply); pass customTranslations \
           for any text outside its phrasebook. \

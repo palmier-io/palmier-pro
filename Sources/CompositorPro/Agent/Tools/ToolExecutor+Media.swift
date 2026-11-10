@@ -373,25 +373,39 @@ extension ToolExecutor {
 
     private func readAudio(editor: EditorViewModel, asset: MediaAsset, args: [String: Any], mapping: (clip: Clip, fps: Int)? = nil, preferredLocale: Locale? = nil) async throws -> ToolResult {
         let range = try Self.sourceRange(args, duration: asset.duration)
-        let transcript: TranscriptionResult
-        do {
-            transcript = try await Self.withinSeconds(Self.transcriptionBudgetSeconds) {
-                try await TranscriptCache.shared.transcript(
-                    for: asset.url, isVideo: false, range: range, preferredLocale: preferredLocale
+        let cmRange = range.map {
+            CMTimeRange(
+                start: CMTime(seconds: $0.lowerBound, preferredTimescale: 600),
+                end: CMTime(seconds: $0.upperBound, preferredTimescale: 600)
+            )
+        }
+        let audioAnalysis = try await AudioSourceAnalyzer.analyze(url: asset.url, range: cmRange)
+        var meta = Self.baseMeta(for: asset)
+        if let range { meta["timeRange"] = [range.lowerBound, range.upperBound] }
+        meta["audioAnalysis"] = audioAnalysis.receipt
+
+        if audioAnalysis.speechDetected || args["language"] != nil || args.bool("wordTimestamps") == true {
+            do {
+                let transcript = try await Self.withinSeconds(Self.transcriptionBudgetSeconds) {
+                    try await TranscriptCache.shared.transcript(
+                        for: asset.url, isVideo: false, range: range, preferredLocale: preferredLocale
+                    )
+                }
+                let transcription = Self.transcriptionMeta(
+                    from: transcript, mapping: mapping, includeWords: args.bool("wordTimestamps") ?? false
                 )
+                for (k, v) in transcription { meta[k] = v }
+            } catch {
+                try Task.checkCancellation()
+                if audioAnalysis.contentType == "sfx" || audioAnalysis.contentType == "music" || audioAnalysis.contentType == "silence" {
+                    meta["transcription"] = "none"
+                } else {
+                    throw ToolError("Transcription failed: \(error.localizedDescription)")
+                }
             }
-        } catch {
-            try Task.checkCancellation()
-            throw ToolError("Transcription failed: \(error.localizedDescription)")
         }
         try Task.checkCancellation()
 
-        var meta = Self.baseMeta(for: asset)
-        if let range { meta["timeRange"] = [range.lowerBound, range.upperBound] }
-        let transcription = Self.transcriptionMeta(
-            from: transcript, mapping: mapping, includeWords: args.bool("wordTimestamps") ?? false
-        )
-        for (k, v) in transcription { meta[k] = v }
         if let mapping { meta["timelineMapping"] = Self.timelineMappingMeta(clip: mapping.clip, fps: mapping.fps) }
         guard let metaJSON = Self.jsonString(roundJSONFloatingPointNumbers(meta, toPlaces: 3)) else {
             throw ToolError("Failed to encode metadata")

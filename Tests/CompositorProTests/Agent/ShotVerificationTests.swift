@@ -118,13 +118,24 @@ struct ShotVerificationTests {
         #expect(acceptance == .accepted)
     }
 
-    @Test func spanShorterThanTheRequiredDurationIsRejected() {
+    @Test func sourceShorterThanTheRequiredDurationIsRejected() {
         let acceptance = ShotVerifier.acceptance(
             candidate: candidate(start: 0, end: 1),
             requirement: requirement(targetDurationSeconds: 3),
             inspection: inspection(subject: 0.30, action: 0.30, location: 0.30, usableSpan: 1),
-            best: .init(subject: 0.30, action: 0.30, location: 0.30))
+            best: .init(subject: 0.30, action: 0.30, location: 0.30),
+            assetDurationSeconds: 1)
         #expect(acceptance.rejectionReason == .insufficientDuration)
+    }
+
+    @Test func longSourceCoversTheRequiredDurationEvenWhenTheIndexSpanIsShort() {
+        let acceptance = ShotVerifier.acceptance(
+            candidate: candidate(start: 0, end: 1),
+            requirement: requirement(targetDurationSeconds: 3),
+            inspection: inspection(subject: 0.30, action: 0.30, location: 0.30, usableSpan: 1),
+            best: .init(subject: 0.30, action: 0.30, location: 0.30),
+            assetDurationSeconds: 12)
+        #expect(acceptance == .accepted)
     }
 
     @Test func handlesAreCountedAgainstTheRequiredDuration() {
@@ -132,7 +143,8 @@ struct ShotVerificationTests {
             candidate: candidate(start: 0, end: 3),
             requirement: requirement(targetDurationSeconds: 3, handleSeconds: 1),
             inspection: inspection(subject: 0.30, action: 0.30, location: 0.30, usableSpan: 3),
-            best: .init(subject: 0.30, action: 0.30, location: 0.30))
+            best: .init(subject: 0.30, action: 0.30, location: 0.30),
+            assetDurationSeconds: 3)
         #expect(acceptance.rejectionReason == .insufficientDuration)
     }
 
@@ -205,5 +217,86 @@ struct ShotVerificationTests {
                               origin: MediaImportOrigin(provider: "pexels", assetId: "9"))
         let stockRejection = ShotRejection(candidateRef: "stock:pexels:9", reason: .wrongAction, evidence: "A dog.")
         #expect(ShotVerifier.priorRejection(matching: stock, in: [stockRejection]) != nil)
+    }
+
+    @Test func duplicateCandidateIsRejectedWhenMediaRefAlreadyUsed() {
+        let req = requirement()
+        let result = ShotVerifier.acceptance(
+            candidate: candidate(mediaRef: "asset-1"),
+            requirement: req,
+            inspection: inspection(),
+            best: .init(subject: nil, action: nil, location: nil),
+            usedMediaRefs: ["asset-1"]
+        )
+        guard case .rejected(let reason, _) = result else {
+            Issue.record("Expected rejection for duplicate mediaRef")
+            return
+        }
+        #expect(reason == .duplicate)
+    }
+
+    @Test func motionLedShotRejectsStillImageAndStaticVideo() {
+        var req = requirement()
+        req.motion = .pan
+        let imageCandidate = candidate(kind: .image)
+        let imgResult = ShotVerifier.acceptance(
+            candidate: imageCandidate,
+            requirement: req,
+            inspection: inspection(),
+            best: .init(subject: nil, action: nil, location: nil)
+        )
+        guard case .rejected(let imgReason, _) = imgResult else {
+            Issue.record("Expected rejection for image candidate in motion-led shot")
+            return
+        }
+        #expect(imgReason == .wrongAction)
+
+        var staticInspection = inspection()
+        staticInspection.motion = .still
+        let videoResult = ShotVerifier.acceptance(
+            candidate: candidate(kind: .video),
+            requirement: req,
+            inspection: staticInspection,
+            best: .init(subject: nil, action: nil, location: nil)
+        )
+        guard case .rejected(let vidReason, _) = videoResult else {
+            Issue.record("Expected rejection for static video in motion-led shot")
+            return
+        }
+        #expect(vidReason == .wrongAction)
+    }
+
+    @Test func shapeMismatchRejectsCandidate() {
+        let req = requirement()
+        let landscapeInspection = inspection()
+        let portraitResult = ShotVerifier.acceptance(
+            candidate: candidate(),
+            requirement: req,
+            inspection: landscapeInspection,
+            best: .init(subject: nil, action: nil, location: nil),
+            aspectFormat: "9:16"
+        )
+        guard case .rejected(let reason, _) = portraitResult else {
+            Issue.record("Expected rejection for shape mismatch")
+            return
+        }
+        #expect(reason == .wrongShape)
+    }
+
+    @Test func generatedMaterialExclusionRejectsCandidate() {
+        let req = requirement()
+        var insp = inspection()
+        insp.exclusionScores = ["AI Generated": 0.85]
+        let result = ShotVerifier.acceptance(
+            candidate: candidate(),
+            requirement: req,
+            inspection: insp,
+            best: .init(subject: nil, action: nil, location: nil)
+        )
+        guard case .rejected(let reason, _) = result else {
+            Issue.record("Expected rejection for generated material exclusion")
+            return
+        }
+        #expect(reason == .generatedMaterial)
     }
 }

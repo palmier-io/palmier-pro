@@ -88,6 +88,8 @@ extension ToolExecutor {
     private func performSpeechGeneration(
         _ editor: EditorViewModel, _ args: [String: Any], lease: ProjectPackageCoordinator.MutationLease
     ) async throws -> ToolResult {
+        let local = try await capabilityInputLoader()
+        try RuntimeCapabilities.speech(local).requireAvailable()
         let input: GenerateSpeechInput = try decodeToolArgs(args, path: "generate_speech")
 
         if let rate = input.rate, !(0.5...2.0).contains(rate) {

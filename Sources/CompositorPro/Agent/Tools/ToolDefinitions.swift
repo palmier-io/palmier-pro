@@ -61,6 +61,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case removeImageBackground = "remove_image_background"
     case applyTextStyle = "apply_text_style"
     case duckAudio = "duck_audio"
+    case mixAudio = "mix_audio"
     case applyTransition = "apply_transition"
     case removeTransition = "remove_transition"
     case syncClips = "sync_clips"
@@ -284,6 +285,7 @@ enum ToolDefinitions {
                                     "startFrame": ["type": "integer", "description": "Timeline frame, inclusive."],
                                     "endFrame": ["type": "integer", "description": "Timeline frame, exclusive. Must be greater than startFrame."],
                                     "trackId": ["type": "string", "description": "Optional existing track id."],
+                                    "sourceAudio": ["type": "string", "enum": ["linked", "omit"], "description": "Video/sequence source audio policy. Defaults to linked without narration, omit with narration. Resolved policy appears in the assembly receipt."],
                                     "mediaRef": ["type": "string", "description": "Optional imported asset id. Mutually exclusive with candidateURL."],
                                     "candidateURL": ["type": "string", "description": "Optional HTTPS source that has not been imported yet. Mutually exclusive with mediaRef."],
                                     "license": ["type": "string", "description": "Required with candidateURL or for a managed storyboard's imported selection."],
@@ -346,6 +348,7 @@ enum ToolDefinitions {
                                     "startFrame": ["type": "integer", "description": "Timeline frame, inclusive."],
                                     "endFrame": ["type": "integer", "description": "Timeline frame, exclusive. Must be greater than startFrame."],
                                     "trackId": ["type": "string", "description": "Optional existing track id."],
+                                    "sourceAudio": ["type": "string", "enum": ["linked", "omit"], "description": "Video/sequence source audio policy. Defaults to linked without narration, omit with narration. Resolved policy appears in the assembly receipt."],
                                     "mediaRef": ["type": "string", "description": "Optional imported asset id. Mutually exclusive with candidateURL."],
                                     "candidateURL": ["type": "string", "description": "Optional HTTPS source that has not been imported yet. Mutually exclusive with mediaRef."],
                                     "license": ["type": "string", "description": "Required with candidateURL or for a managed storyboard's imported selection."],
@@ -403,11 +406,14 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .applyPlan,
-            description: "Validates an approved plan against the current timeline and referenced media. Managed storyboard runs also require explicit current revision approval, verified source bytes, full-selection inspection, resolved rights, and no source conflicts. commit:false (default) checks readiness without editing. commit:true assembles the planned clips and marks the plan applied as one undoable action; it refuses unresolved media or blockers. Scripts require measured, aligned narration. Linked scene ranges use resolvedTiming, not estimated frames; attached narration assembles with the shots. Changed narration files and ranges shorter than minimum readable holds block readiness. Returns added clip IDs. An already-applied plan returns noOp:true without assembling again. Do not place its shots separately after a successful commit.",
+            description: "Prepares and assembles an approved plan through the shared editor operation. Resolves source bytes, spans, layout, stable tracks, linked source audio, overlap, and settings before any edit. Managed runs additionally require current explicit storyboard approval and complete source inspection. commit:false returns readiness, blockers, planned shot-to-clip IDs, cue frames, and a session-local preparationId without mutation. commit:true consumes that preparation or prepares current state, rechecks revisions and source bytes, then commits one undoable cut. Occupied explicit ranges are refused; omitted tracks create dedicated lanes. Scripts require measured aligned narration. Repeating an unchanged assembly returns a truthful no-op after validation, not merely because its status says applied. shotIds revises only owned shots; manually changed or missing shots are protected unless replaceManualEdits is explicitly authorized. Unrelated links and transitions are never overwritten. Do not place shots separately after success.",
             inputSchema: objectSchema(
                 properties: [
                     "planId": ["type": "string", "description": "Exact plan id from a plan_edit receipt."],
                     "commit": ["type": "boolean", "description": "Validate and assemble the approved plan as one undoable action, then mark it applied. Defaults to false (readiness check only)."],
+                    "preparationId": ["type": "string", "description": "commit:true only. Exact ready preparation from this editor session and the same shotIds/replacement request. Any intervening source, plan, project, timeline, or settings change is refused."],
+                    "shotIds": ["type": "array", "minItems": 1, "maxItems": EditPlanLimits.maximumShots, "uniqueItems": true, "items": ["type": "string"], "description": "Optional unique subset of existing shot IDs to revise after a full assembly. Other shots and unrelated edits remain untouched."],
+                    "replaceManualEdits": ["type": "boolean", "description": "Explicitly authorize replacement of manually changed or removed owned shots in this request. Defaults to false. Does not authorize overwriting unrelated clips, links, or transitions."],
                 ],
                 required: ["planId"]
             )
@@ -1187,19 +1193,49 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .duckAudio,
-            description: "Lowers a music or ambience bed under whatever dialogue is playing, as one undo step. Speech regions are found with on-device voice-activity detection on the source clips, then written as a volume envelope on the bed with attack, hold and release ramps. This is how you get a mix a viewer can follow: bed down while people talk, back up in the gaps. bedClipId is the clip to duck — a music bed, ambience or a room tone. sourceClipIds defaults to every other audio clip overlapping the bed; list them to duck under specific dialogue only, for example one speaker. Refuses when the bed already has volume keyframes, so pass overwrite:true to replace an existing envelope rather than silently stacking on it. When speech detection is unavailable the whole source clip is treated as speech and the receipt says speechDetection:unavailable — check it, because the bed then stays down across all of that clip. The envelope is baked keyframes: later dialogue edits do not re-derive it, re-run duck_audio to re-fit. Undo removes the whole envelope in one step.",
+            description: "Duck a music or ambience bed beneath dialogue as one undoable edit. Cached transcript or voice-activity timing is mapped through the source clips' trim and speed. The attack looks ahead to reach the requested gain at speech onset; hold and release smooth short pauses. sourceClipIds defaults to other audible overlapping audio clips. Existing volume automation is refused unless overwrite:true explicitly replaces it. Unavailable timing fails by default; allowWholeClipFallback:true explicitly permits holding the bed down across entire source clips and reports that approximation. Silence is not treated as failed detection. Cancellation, close, or changed project/timeline/sources prevents a late edit. Envelopes do not automatically follow later dialogue edits; re-run after changes.",
             inputSchema: objectSchema(
                 properties: [
                     "bedClipId": ["type": "string", "description": "The clip whose volume is lowered: music bed, ambience or room tone."],
-                    "sourceClipIds": ["type": "array", "items": ["type": "string"], "description": "Dialogue clips that trigger the duck. Defaults to every other audio clip overlapping the bed."],
-                    "duckDb": ["type": "number", "description": "Gain below the bed's own level while speech plays. Negative; -12 is a natural default."],
-                    "attackFrames": ["type": "integer", "description": "Frames from speech onset to full duck (default 6)."],
-                    "holdFrames": ["type": "integer", "description": "Extra frames held down after speech ends (default 6)."],
-                    "releaseFrames": ["type": "integer", "description": "Frames from speech offset back to bed level (default 18)."],
-                    "mergeGapFrames": ["type": "integer", "description": "Speech closer than this is one span, so a pause between words does not pump the bed (default 12)."],
+                    "sourceClipIds": ["type": "array", "items": ["type": "string", "minLength": 1], "minItems": 1, "maxItems": 256, "uniqueItems": true, "description": "Dialogue clips that trigger the duck. Defaults to other audible overlapping audio clips."],
+                    "duckDb": ["type": "number", "minimum": -96, "maximum": 0, "description": "Gain reduction in dB (default -12). Zero is a no-op."],
+                    "attackFrames": ["type": "integer", "minimum": 0, "maximum": maxFrameArg, "description": "Lookahead frames before speech onset (default 6)."],
+                    "holdFrames": ["type": "integer", "minimum": 0, "maximum": maxFrameArg, "description": "Extra frames held down after speech ends (default 6)."],
+                    "releaseFrames": ["type": "integer", "minimum": 0, "maximum": maxFrameArg, "description": "Recovery frames after the hold (default 18)."],
+                    "mergeGapFrames": ["type": "integer", "minimum": 0, "maximum": maxFrameArg, "description": "Merge speech pauses up to this many frames (default 12)."],
                     "overwrite": ["type": "boolean", "description": "Replace an existing volume envelope on the bed instead of refusing."],
+                    "allowWholeClipFallback": ["type": "boolean", "description": "Permit whole-clip approximation only when speech analysis is unavailable (default false). Does not conceal decode failures or cancellation."],
                 ],
                 required: ["bedClipId"]
+            )
+        ),
+        AgentTool(
+            name: .mixAudio,
+            description: "Finish an explicitly role-assigned voice/music/ambience/effects mix as one measured, undoable action. Assign every clip on an unmuted audio track by stable clipId, including linked audio IDs. Stages voice, music, and ambience from processed clip loudness; short effects use sample peaks. Defaults are relative to the chosen delivery target: voice -1 LU, music -12 LU, ambience -18 LU; effect peaks stay at or below -12 dBFS. Per-clip level overrides remain editable. Uses cached transcript or measured voice activity for music lookahead/hold/release ducking; never certifies whole-clip approximations. Preserves voice automation, natural breaths, existing processing, and clip placement/J-L continuity. Adds missing bed head/tail fades, limited to available duration and reported. Manual music automation is protected unless replaceAutomation=true; only unchanged envelopes owned by an earlier mix may be replaced automatically. voiceDenoiseAmount is optional and otherwise preserves processing. Measures the summed output through playback/export processing, adjusts gain against the requested loudness and true-peak targets, and refuses impossible headroom rather than silently clamping. Does not implement a limiter. Unavailable media, unfinished enhancement, cancellation, close, Save As, and concurrent edits prevent a late commit. Returns persisted roles, targets, output revision, metrics, warnings, changed/noOp; verified retries do not stack gain or add undo entries. Human audition remains necessary for subjective intelligibility.",
+            inputSchema: objectSchema(
+                properties: [
+                    "roles": [
+                        "type": "array", "minItems": 1, "maxItems": 256,
+                        "items": objectSchema(properties: [
+                            "clipId": ["type": "string", "minLength": 1, "maxLength": 128],
+                            "role": ["type": "string", "enum": AudioRole.allCases.map(\.rawValue)],
+                            "targetLUFS": ["type": "number", "minimum": -65, "maximum": -5, "description": "Optional processed clip-level target for voice, music, or ambience; not valid for effects."],
+                            "peakDBFS": ["type": "number", "minimum": -60, "maximum": 0, "description": "Optional effects-only sample-peak staging target; final gain also respects delivery true peak."],
+                        ], required: ["clipId", "role"]),
+                    ],
+                    "targetLUFS": ["type": "number", "minimum": -60, "maximum": -5, "description": "Required delivery loudness. Choose for the film/platform; -16 is one example, not a universal preset."],
+                    "truePeakDBTP": ["type": "number", "minimum": -20, "maximum": 0, "description": "Required delivery true-peak ceiling; for example -1 dBTP."],
+                    "toleranceLU": ["type": "number", "minimum": 0.1, "maximum": 2, "description": "Allowed loudness deviation (default 1 LU)."],
+                    "voiceDenoiseAmount": ["type": "number", "minimum": 0, "maximum": 1, "description": "Optional denoise blend on non-nested voice clips without enhance_voice. Omit to preserve processing; zero disables independent denoise. Never removes breaths."],
+                    "bedFadeFrames": ["type": "integer", "minimum": 0, "maximum": maxFrameArg - 1, "description": "Missing music/ambience head/tail fades (default half a second). Existing fades are preserved; short-clip adjustment is reported."],
+                    "duckDb": ["type": "number", "exclusiveMinimum": -60, "maximum": 0, "description": "Music attenuation during measured speech (default -12 dB)."],
+                    "attackFrames": ["type": "integer", "minimum": 0, "maximum": maxFrameArg - 1, "description": "Speech lookahead (default 0.2 seconds at timeline fps)."],
+                    "holdFrames": ["type": "integer", "minimum": 0, "maximum": maxFrameArg - 1, "description": "Post-speech hold (default 0.2 seconds)."],
+                    "releaseFrames": ["type": "integer", "minimum": 0, "maximum": maxFrameArg - 1, "description": "Music recovery (default 0.6 seconds)."],
+                    "mergeGapFrames": ["type": "integer", "minimum": 0, "maximum": maxFrameArg - 1, "description": "Smooth speech pauses up to this duration (default 0.4 seconds)."],
+                    "replaceAutomation": ["type": "boolean", "description": "Explicitly authorize replacing manual volume keyframes on music that needs speech ducking (default false)."],
+                ],
+                required: ["roles", "targetLUFS", "truePeakDBTP"]
             )
         ),
         AgentTool(

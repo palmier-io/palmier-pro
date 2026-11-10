@@ -301,12 +301,6 @@ private final class ProjectRegistryDisk: Sendable {
             do {
                 data = try Data(contentsOf: fileURL)
             } catch let error as CocoaError where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile {
-                // Legacy migration: check legacy storage directory if default registry file is not found
-                let legacyURL = Project.legacyStorageDirectory.appendingPathComponent(Project.registryFilename)
-                if let legacyData = try? Data(contentsOf: legacyURL),
-                   let legacyEntries = try? JSONDecoder().decode([ProjectEntry].self, from: legacyData) {
-                    return legacyEntries
-                }
                 return []
             }
             return try JSONDecoder().decode([ProjectEntry].self, from: data)

@@ -28,12 +28,57 @@ struct CompositionResult {
     let preparedAudio: PreparedAudio
 }
 
+struct AudioCompositionResult {
+    let composition: AVMutableComposition
+    let audioMix: AVMutableAudioMix
+    let audioContentRanges: [CMTimeRange]
+    let offlineMediaRefs: Set<String>
+    let unprocessableMediaRefs: Set<String>
+}
+
 /// Builds an AVFoundation composition from a Timeline.
 enum CompositionBuilder {
 
     struct InvalidTimelineError: LocalizedError {
         let reason: String
         var errorDescription: String? { "Invalid timeline: \(reason)" }
+    }
+
+    @concurrent
+    static func buildAudio(
+        timeline: Timeline,
+        resolveURL: @escaping @Sendable (String) -> URL?,
+        resolveTimeline: @escaping @Sendable (String) -> Timeline? = { _ in nil }
+    ) async throws -> AudioCompositionResult {
+        guard (1...120).contains(timeline.fps), timeline.width > 0, timeline.height > 0 else {
+            throw InvalidTimelineError(reason: "invalid audio timeline settings")
+        }
+        let prepared = try await PreparedAudio.prepare(timeline: timeline, resolveTimeline: resolveTimeline,
+                                                       resolveURL: resolveURL, missingMediaRefs: [])
+        let context = BuildContext(
+            composition: AVMutableComposition(), timescale: CMTimeScale(timeline.fps),
+            renderSize: CGSize(width: timeline.width, height: timeline.height), resolveURL: resolveURL,
+            resolveSourceSize: { _ in nil }, resolveTimeline: resolveTimeline, missingMediaRefs: [],
+            makeAsset: { AVURLAsset(url: $0) }, loadTracks: { try await $0.loadTracks(withMediaType: $1) }
+        )
+        context.preparedAudio = prepared
+        for (index, track) in timeline.tracks.enumerated() where track.type == .audio && !track.muted {
+            try Task.checkCancellation()
+            try await insertAudioLane(clips: track.clips.sorted { $0.startFrame < $1.startFrame },
+                                      parentTrackIndex: index, nest: nil, depth: 0, ctx: context)
+        }
+        let audioContentRanges = PreparedAudio.audibleClips(timeline: timeline, resolveTimeline: resolveTimeline).map { clip in
+            CMTimeRange(start: CMTime(value: Int64(clip.startFrame), timescale: context.timescale),
+                        duration: CMTime(value: Int64(clip.durationFrames), timescale: context.timescale))
+        }
+        try Task.checkCancellation()
+        return AudioCompositionResult(
+            composition: context.composition,
+            audioMix: try makeAudioMix(timeline: timeline, trackMappings: context.trackMappings,
+                                      timescale: context.timescale, preparedAudio: prepared),
+            audioContentRanges: audioContentRanges,
+            offlineMediaRefs: context.offlineMediaRefs, unprocessableMediaRefs: context.unprocessableMediaRefs
+        )
     }
 
     @concurrent
@@ -380,6 +425,8 @@ enum CompositionBuilder {
                 if try await insertDenoisedTwin(clip, carrier: nest?.topCarrier, parentTrackIndex: parentTrackIndex, ctx: ctx) {
                     blendedClipIds.insert(clip.id)
                 }
+            } else {
+                ctx.unprocessableMediaRefs.insert(clip.mediaRef)
             }
         }
         guard let compTrack else { return }
@@ -619,6 +666,23 @@ enum CompositionBuilder {
     ) async throws -> (audioMix: AVMutableAudioMix, videoComposition: AVVideoComposition) {
         let timescale = CMTimeScale(timeline.fps)
 
+        let audioMix = try makeAudioMix(timeline: timeline, trackMappings: trackMappings,
+                                       timescale: timescale, preparedAudio: preparedAudio)
+        var vcConfig = AVVideoComposition.Configuration()
+        vcConfig.renderSize = renderSize
+        vcConfig.frameDuration = CMTime(value: 1, timescale: timescale)
+        vcConfig.customVideoCompositorClass = CustomVideoCompositor.self
+        vcConfig.instructions = compositorInstructions(
+            timeline: timeline, trackMappings: trackMappings, clipNaturalSizes: clipNaturalSizes,
+            clipTransforms: clipTransforms, resolveTimeline: resolveTimeline,
+            compositionDuration: compositionDuration, renderSize: renderSize
+        )
+        return (audioMix, AVVideoComposition(configuration: vcConfig))
+    }
+
+    private static func makeAudioMix(
+        timeline: Timeline, trackMappings: [TrackMapping], timescale: CMTimeScale, preparedAudio: PreparedAudio
+    ) throws -> AVMutableAudioMix {
         let audioMix = AVMutableAudioMix()
         audioMix.inputParameters = try trackMappings.filter { !$0.isVideo }.compactMap { mapping in
             switch mapping.kind {
@@ -662,21 +726,7 @@ enum CompositionBuilder {
             }
         }
 
-        var vcConfig = AVVideoComposition.Configuration()
-        vcConfig.renderSize = renderSize
-        vcConfig.frameDuration = CMTime(value: 1, timescale: timescale)
-
-        vcConfig.customVideoCompositorClass = CustomVideoCompositor.self
-        vcConfig.instructions = compositorInstructions(
-            timeline: timeline,
-            trackMappings: trackMappings,
-            clipNaturalSizes: clipNaturalSizes,
-            clipTransforms: clipTransforms,
-            resolveTimeline: resolveTimeline,
-            compositionDuration: compositionDuration,
-            renderSize: renderSize
-        )
-        return (audioMix, AVVideoComposition(configuration: vcConfig))
+        return audioMix
     }
 
     /// One instruction per segment between clip boundaries, layers bottom → top.
@@ -900,7 +950,7 @@ enum CompositionBuilder {
         var gain: Float
 
         func multiplier(at frame: Int) -> Float {
-            if frame <= start || frame >= end { return 1 }
+            if frame < start || frame > end { return 1 }
             if frame < fadeInEnd {
                 let t = Float(frame - start) / Float(max(1, fadeInEnd - start))
                 return 1 + (gain - 1) * t
@@ -927,14 +977,15 @@ enum CompositionBuilder {
         var dips: [AudioGainDip] = []
         for region in regions {
             guard region.start.isFinite, region.end.isFinite, region.start >= 0, region.end > region.start else { continue }
-            let startFrameOpt = clip.timelineFrame(sourceSeconds: region.start, fps: fps)
-            let endFrameOpt = clip.timelineFrame(sourceSeconds: region.end, fps: fps)
-            guard let startFrame = startFrameOpt, let endFrame = endFrameOpt, endFrame > startFrame else { continue }
-            let t0 = startFrame
-            let t1 = endFrame
+            guard let range = clip.timelineRange(sourceStartSeconds: region.start,
+                                                 sourceEndSeconds: region.end,
+                                                 fps: fps) else { continue }
+            let t0 = range.lowerBound
+            let t1 = range.upperBound
             let fade = min(fadeFrames, (t1 - t0) / 2)
-            let fadeInEnd = t0 + fade
-            let fadeOutStart = t1 - fade
+            let fadeInEnd = region.start * Double(fps) <= Double(clip.trimStartFrame) + 1e-4 ? t0 : t0 + fade
+            let sourceEnd = Double(clip.trimStartFrame) + clip.timeMap.sourceOffset(atTimelineOffset: clip.durationFrames)
+            let fadeOutStart = region.end * Double(fps) >= sourceEnd - 1e-4 ? t1 : t1 - fade
             dips.append(AudioGainDip(
                 start: t0, fadeInEnd: fadeInEnd, fadeOutStart: fadeOutStart, end: t1, gain: dipGain
             ))
@@ -983,12 +1034,13 @@ enum CompositionBuilder {
     static func planVolumeRamps(
         clip: Clip,
         timescale: CMTimeScale,
+        carrier: Clip? = nil,
         gain: Float = 1,
         dips: [AudioGainDip] = []
     ) -> [PlannedRamp] {
         var out: [PlannedRamp] = []
         emitVolumeEnvelope(
-            clip: clip, timescale: timescale, gain: gain, dips: dips,
+            clip: clip, timescale: timescale, carrier: carrier, gain: gain, dips: dips,
             collect: { range, from, to in out.append(PlannedRamp(range: range, from: from, to: to)) }
         )
         return out
@@ -1008,7 +1060,7 @@ enum CompositionBuilder {
         }
     }
 
-    private static func emitVolumeEnvelope(
+    static func emitVolumeEnvelope(
         clip: Clip,
         timescale: CMTimeScale,
         carrier: Clip? = nil,
@@ -1063,11 +1115,14 @@ enum CompositionBuilder {
         }
 
         for dip in dips {
-            extraOffsets.append(dip.start - clip.startFrame)
-            extraOffsets.append(dip.fadeInEnd - clip.startFrame)
-            extraOffsets.append(dip.fadeOutStart - clip.startFrame)
-            extraOffsets.append(dip.end - clip.startFrame)
+            extraOffsets.append(contentsOf: [
+                dip.start - clip.startFrame,
+                dip.fadeInEnd - clip.startFrame,
+                dip.fadeOutStart - clip.startFrame,
+                dip.end - clip.startFrame
+            ])
         }
+        extraOffsets = extraOffsets.filter { $0 > 0 && $0 < clip.durationFrames }
 
         emitEnvelopeRamps(
             clip: clip,

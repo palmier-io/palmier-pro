@@ -1,6 +1,17 @@
 import CryptoKit
 import Foundation
 
+struct MaterialSubstitution: Codable, Sendable, Equatable {
+    var sceneId: String
+    var requestedKind: String
+    var actualKind: String
+    var reason: String
+
+    var receipt: [String: Any] {
+        ["sceneId": sceneId, "requestedKind": requestedKind, "actualKind": actualKind, "reason": reason]
+    }
+}
+
 struct StoryboardCard: Sendable {
     var shot: EditPlanShot
     var narration: String
@@ -17,6 +28,7 @@ struct StoryboardCard: Sendable {
     var inspectionRange: Range<Int>?
     var playbackRange: Range<Int>?
     var fps: Int
+    var materialSubstitution: MaterialSubstitution? = nil
 
     var receipt: [String: Any] {
         var row: [String: Any] = ["sceneId": shot.id, "title": shot.title, "narration": narration,
@@ -48,6 +60,9 @@ struct StoryboardCard: Sendable {
         if let start = shot.sourceStartSeconds, let end = shot.sourceEndSeconds {
             row["sourceSpan"] = [start, end]
         }
+        if let materialSubstitution {
+            row["materialSubstitution"] = materialSubstitution.receipt
+        }
         return row
     }
 }
@@ -62,15 +77,22 @@ struct StoryboardReport: Sendable {
     var narrationIntent: NarrationIntent?
     var uniqueness: VisualUniquenessReport
     var approvedRevision: String?
+    var materialSubstitutions: [MaterialSubstitution] = []
 
     var canApprove: Bool { approvalBlockers.isEmpty }
-    var canProduce: Bool { phase == .approved && approvedRevision == revision && blockers.isEmpty }
+    var canProduce: Bool {
+        phase != .awaitingStoryboardApproval && phase != .stale && phase != .canceled
+            && approvedRevision == revision && blockers.isEmpty
+    }
 
     var receipt: [String: Any] {
         var row: [String: Any] = ["planId": planId, "storyboardRevision": revision, "phase": phase.rawValue,
          "canApprove": canApprove, "canProduce": canProduce, "approvalBlockers": approvalBlockers,
          "blockers": blockers, "cards": cards.map(\.receipt), "visualIdentity": uniqueness.receipt, "deliveryVerified": false]
         if let narrationIntent { row["narrationIntent"] = narrationIntent.receipt }
+        if !materialSubstitutions.isEmpty {
+            row["materialSubstitutions"] = materialSubstitutions.map(\.receipt)
+        }
         return row
     }
 }
@@ -110,11 +132,16 @@ enum StoryboardResolver {
             }
         }
         let beats = plan.scriptBeats ?? []
+        let requiresNarration = plan.scriptBeats != nil
         guard Set(beats.map(\.beatId)).count == beats.count else { throw EditPlanValidationError.invalidReference("Duplicate script beat IDs.") }
         let indices = Dictionary(uniqueKeysWithValues: beats.enumerated().map { ($0.element.beatId, $0.offset) })
         var cards: [StoryboardCard] = []
         var approvalBlockers: [String] = []
         var occurrences: [VisualOccurrence] = []
+        var materialSubstitutions: [MaterialSubstitution] = []
+        let realism = plan.brief?.realism
+        let requiresRealFootage = realism == .realFootageOnly
+        let hostedGenerationAvailable = HostedServices.generationAvailability.canStart
         for shot in plan.shots {
             try Task.checkCancellation()
             _ = try EditPlan.validatedShot(shot)
@@ -133,7 +160,7 @@ enum StoryboardResolver {
                         derivedBlockers.insert("narration_timing_unresolved")
                     }
                 }
-            } else { blockers.append("missing_scene_narration_link") }
+            } else if requiresNarration { blockers.append("missing_scene_narration_link") }
             var playbackShot = shot
             if let resolvedRange {
                 playbackShot.startFrame = resolvedRange.lowerBound
@@ -180,6 +207,34 @@ enum StoryboardResolver {
                     isImage: entry.type == .image))
             }
             if shot.license?.isEmpty != false || shot.attribution?.isEmpty != false { blockers.append("unresolved_rights") }
+            let isGenerated = entry?.generationInput != nil
+            var cardSubstitution: MaterialSubstitution?
+            if requiresRealFootage && isGenerated {
+                blockers.append("unpermitted_generated_footage")
+                cardSubstitution = MaterialSubstitution(
+                    sceneId: shot.id, requestedKind: "real_footage", actualKind: "generated",
+                    reason: "Brief requires real footage only; generated asset selected."
+                )
+            } else if !hostedGenerationAvailable {
+                let requestedGenerated = shot.requirement?.sourceTypes?.contains(.generated) == true
+                if requestedGenerated && entry == nil {
+                    blockers.append("generation_unavailable")
+                } else if requestedGenerated, let entry, !isGenerated {
+                    cardSubstitution = MaterialSubstitution(
+                        sceneId: shot.id, requestedKind: "generated",
+                        actualKind: entry.importInput?.origin != nil ? "stock" : "library",
+                        reason: "Hosted generation is unavailable in this runtime; existing footage substituted."
+                    )
+                }
+            } else if let types = shot.requirement?.sourceTypes, !types.contains(.generated) && isGenerated {
+                cardSubstitution = MaterialSubstitution(
+                    sceneId: shot.id, requestedKind: "existing_footage", actualKind: "generated",
+                    reason: "Shot requirement requested existing footage; generated asset selected."
+                )
+            }
+            if let cardSubstitution {
+                materialSubstitutions.append(cardSubstitution)
+            }
             let review = plan.productionRun?.visualReviews.first { $0.sceneId == shot.id && $0.selectionRevision == selectionRevision }
             if let review {
                 if review.facesRevealed { blockers.append("revealed_faces") }
@@ -193,18 +248,19 @@ enum StoryboardResolver {
             let claims = Set((shot.claimIds ?? []) + linked.flatMap { $0.claimIds ?? [] }).sorted()
             approvalBlockers += blockers.filter { !derivedBlockers.contains($0) }.map { "\(shot.id):\($0)" }
             cards.append(StoryboardCard(shot: shot, narration: linked.map(\.narrationText).joined(separator: "\n\n"),
-                purpose: linked.map(\.purpose).joined(separator: "\n"), claimIds: claims,
+                purpose: linked.isEmpty ? shot.requirement?.narrativePurpose ?? "" : linked.map(\.purpose).joined(separator: "\n"), claimIds: claims,
                 selectionRevision: selectionRevision, inputId: entry?.inputIdentity?.inputId,
                 sourceId: entry?.importInput?.origin?.sourceId, mediaType: entry?.type, blockers: blockers,
                 review: review, resolvedRange: resolvedRange, beats: linked,
-                inspectionRange: inspectionRange, playbackRange: playbackRange, fps: plan.fps))
+                inspectionRange: inspectionRange, playbackRange: playbackRange, fps: plan.fps,
+                materialSubstitution: cardSubstitution))
         }
         let content = Content(intent: plan.storyboardIntent, selections: cards.map(\.selectionRevision))
         let revision = try digest(content)
         let uniqueness = try await VisualUniqueness.audit(occurrences: occurrences, manifest: manifest)
         var blockers = cards.flatMap { card in card.blockers.map { "\(card.shot.id):\($0)" } }
         if cards.isEmpty { approvalBlockers.append("empty_storyboard") }
-        if beats.isEmpty { approvalBlockers.append("missing_script") }
+        if requiresNarration && beats.isEmpty { approvalBlockers.append("missing_script") }
         approvalBlockers += plan.unresolvedClaimIDs.map { "unresolved_claim:\($0)" }
         if !uniqueness.conflicts.isEmpty { approvalBlockers.append("repeated_visual_sources") }
         if !uniqueness.unresolved.isEmpty { approvalBlockers.append("unresolved_visual_identity") }
@@ -218,7 +274,7 @@ enum StoryboardResolver {
                 || entries[recording.mediaRef]?.type != .audio {
                 approvalBlockers.append("unavailable_recording_narrator")
             }
-        } else { approvalBlockers.append("missing_narration_intent") }
+        } else if requiresNarration { approvalBlockers.append("missing_narration_intent") }
         for blocker in approvalBlockers where !blockers.contains(blocker) { blockers.append(blocker) }
         blockers += plan.narrationProductionBlockers(entries: entries, unavailable: unavailable)
         let run = plan.productionRun
@@ -228,7 +284,8 @@ enum StoryboardResolver {
         try Task.checkCancellation()
         return StoryboardReport(planId: plan.id, revision: revision, phase: phase, cards: cards,
                                 blockers: blockers, approvalBlockers: approvalBlockers, narrationIntent: plan.narrationIntent,
-                                uniqueness: uniqueness, approvedRevision: run?.approvedRevision)
+                                uniqueness: uniqueness, approvedRevision: run?.approvedRevision,
+                                materialSubstitutions: materialSubstitutions)
     }
 
     private static func digest(_ value: some Encodable) throws -> String {

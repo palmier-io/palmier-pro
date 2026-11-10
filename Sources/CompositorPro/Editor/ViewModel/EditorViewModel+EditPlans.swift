@@ -41,6 +41,9 @@ extension EditorViewModel {
         var next = before
 
         for var plan in creates {
+            guard plan.assembly == nil else {
+                throw EditPlanValidationError.invalidReference("Assembly ownership is created only by applying a plan.")
+            }
             guard plan.productionRun == nil else {
                 throw EditPlanValidationError.invalidReference("Prepare a storyboard before creating production review state.")
             }
@@ -69,6 +72,9 @@ extension EditorViewModel {
                 throw EditPlanValidationError.invalidReference("Unknown planId '\(plan.id)'.")
             }
             let current = next[index]
+            guard plan.assembly == current.assembly else {
+                throw EditPlanValidationError.invalidReference("Assembly ownership changes require the shared assembly operation.")
+            }
             if plan.narrationIntent?.narrator != current.narrationIntent?.narrator
                 || (plan.productionRun != nil && plan.narration != current.narration) {
                 if !synthesizedNarrationPublication {
@@ -123,6 +129,9 @@ extension EditorViewModel {
             normalized.status = current.status
             normalized.updatedAt = current.updatedAt
             normalized.invalidateStoryboardApproval(comparedTo: current)
+            if !normalized.hasSameStoryboardIntent(as: current), current.status != .superseded {
+                normalized.status = .proposed
+            }
             guard normalized != current else { continue }
             normalized.updatedAt = Date()
             next[index] = normalized

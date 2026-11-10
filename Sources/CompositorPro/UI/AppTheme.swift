@@ -19,7 +19,7 @@ enum AppTheme {
             dark: NSColor(red: 15/255, green: 23/255, blue: 25/255, alpha: 1)
         )
         static let surface = AppTheme.adaptive(
-            light: NSColor(red: 228/255, green: 233/255, blue: 238/255, alpha: 1),
+            light: NSColor(red: 214/255, green: 222/255, blue: 230/255, alpha: 1),
             dark: NSColor(red: 21/255, green: 32/255, blue: 36/255, alpha: 1)
         )
         static let raised = AppTheme.adaptive(
@@ -27,7 +27,7 @@ enum AppTheme {
             dark: NSColor(red: 27/255, green: 42/255, blue: 48/255, alpha: 1)
         )
         static let prominent = AppTheme.adaptive(
-            light: NSColor(red: 255/255, green: 255/255, blue: 255/255, alpha: 1),
+            light: NSColor(red: 248/255, green: 248/255, blue: 248/255, alpha: 1),
             dark: NSColor(red: 36/255, green: 53/255, blue: 61/255, alpha: 1)
         )
 

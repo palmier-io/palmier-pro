@@ -20,9 +20,10 @@ extension ToolExecutor {
         let releaseFrames: Int?
         let mergeGapFrames: Int?
         let overwrite: Bool?
+        let allowWholeClipFallback: Bool?
         static let allowedKeys: Set<String> = [
             "bedClipId", "sourceClipIds", "duckDb", "attackFrames", "holdFrames",
-            "releaseFrames", "mergeGapFrames", "overwrite",
+            "releaseFrames", "mergeGapFrames", "overwrite", "allowWholeClipFallback",
         ]
     }
 
@@ -79,7 +80,8 @@ extension ToolExecutor {
                 holdFrames: input.holdFrames ?? defaults.holdFrames,
                 releaseFrames: input.releaseFrames ?? defaults.releaseFrames,
                 mergeGapFrames: input.mergeGapFrames ?? defaults.mergeGapFrames,
-                overwrite: input.overwrite ?? false
+                overwrite: input.overwrite ?? false,
+                allowWholeClipFallback: input.allowWholeClipFallback ?? true
             )
             var payload: [String: Any] = [
                 "bedClipId": receipt.bedClipId,
@@ -88,7 +90,9 @@ extension ToolExecutor {
                 "duckedRanges": receipt.duckedRanges.map { ["startFrame": $0.lowerBound, "endFrame": $0.upperBound] },
                 "keyframesWritten": receipt.keyframesWritten,
                 "ignoredSpans": receipt.ignoredSpans,
-                "changed": true,
+                "changed": receipt.changed,
+                "noOp": !receipt.changed,
+                "speechDetectionByClip": receipt.speechDetection,
             ]
             var notes = ["One undo step removes the whole envelope, not one keyframe at a time."]
             if receipt.usedWholeClipFallback {
@@ -99,7 +103,7 @@ extension ToolExecutor {
                         + "speechDetection:unavailable rather than silently approximated."
                 )
             } else {
-                payload["speechDetection"] = "voiceActivity"
+                payload["speechDetection"] = "measured_timing"
             }
             if !receipt.sourceClipIds.isEmpty, input.sourceClipIds == nil {
                 notes.append("Sources defaulted to every overlapping audio clip other than the bed.")

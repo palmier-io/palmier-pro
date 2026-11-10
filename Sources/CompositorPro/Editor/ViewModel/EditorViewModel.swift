@@ -95,6 +95,7 @@ final class EditorViewModel {
         didSet { editPlansRevision &+= 1 }
     }
     @ObservationIgnored private(set) var editPlansRevision: UInt64 = 0
+    @ObservationIgnored var preparedPlanAssembly: PreparedPlanAssembly?
     var editPlansLoadFailed = false
     var editPilotArrangements: [String: EditPilotArrangement] = [:]
     var captionTranslationJobs: [String: CaptionTranslationJob] = [:]
@@ -116,11 +117,14 @@ final class EditorViewModel {
         let params: JobParams
         let sourceVersions: [String: LoudnessAnalyzer.SourceVersion]
         let startedAt: Date
+        var completedAt: Date?
         var status: Status
         var stage: Stage
         var errors: [String]
         var warnings: [String]
         var changedClipIds: Set<String>
+        let timelineId: String
+        let timelineRevision: Int
 
         enum JobType: String, Sendable { case denoise, debreath, enhance, loudness }
         enum Stage: String, Sendable { case queued, analyzing, applying, completed, failed, cancelled }
@@ -142,6 +146,8 @@ final class EditorViewModel {
 
     var enhancementJobs: [UUID: EnhancementJob] = [:]
     @ObservationIgnored var enhancementJobFingerprints: [String: UUID] = [:]
+    @ObservationIgnored var enhancementJobTasks: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored var audioMixOperation: AudioMixOperation?
 
     var speechAnalyzingCount: Int = 0
     var speakerRegistry: [SpeakerRegistryEntry] = []
@@ -628,54 +634,25 @@ final class EditorViewModel {
         trimEndFrame: Int? = nil
     ) -> [String] {
         guard timeline.tracks.indices.contains(trackIndex) else { return [] }
+        let clips: ClipPlacement.Clips
+        do {
+            let start = try sourceSegment.map { try ClipPlacement.frames(seconds: $0.lowerBound, fps: timeline.fps) }
+                ?? max(0, trimStartFrame ?? 0)
+            clips = try ClipPlacement.make(source: .init(asset: asset), trackType: timeline.tracks[trackIndex].type,
+                fps: timeline.fps, canvasWidth: timeline.width, canvasHeight: timeline.height,
+                startFrame: startFrame, durationFrames: durationFrames, trimStartFrame: start,
+                trimEndFrame: sourceSegment == nil ? trimEndFrame : nil, addLinkedAudio: addLinkedAudio)
+        } catch { return [] }
         prepareMediaVisuals(for: asset)
-        let targetIsVideo = timeline.tracks[trackIndex].type == .video
-        let shouldLink = addLinkedAudio && targetIsVideo && asset.hasAudio
-            && (asset.type == .video || asset.type == .sequence)
-        let linkGroupId: String? = shouldLink ? UUID().uuidString : nil
-        let trimStart = sourceSegment.map { secondsToFrame(seconds: $0.lowerBound, fps: timeline.fps) } ?? 0
-        let totalSourceFrames = secondsToFrame(seconds: asset.duration, fps: timeline.fps)
-
-        // sourceSegment (source seconds) and explicit trim frames are mutually exclusive; callers pass one.
-        let applyTrim: (inout Clip) -> Void = { clip in
-            if sourceSegment != nil {
-                // tail trim is what's left after head trim and visible span
-                let consumed = clip.timeMap.sourceFramesConsumed
-                clip.trimStartFrame = trimStart
-                clip.trimEndFrame = max(0, totalSourceFrames - trimStart - consumed)
-            } else {
-                let start = max(0, trimStartFrame ?? 0)
-                clip.trimStartFrame = start
-                if totalSourceFrames > 0 {
-                    // Use actual remaining source for tail trim if not set; clamp to available.
-                    let consumed = clip.timeMap.sourceFramesConsumed
-                    let remainingTail = max(0, totalSourceFrames - start - consumed)
-                    clip.trimEndFrame = min(trimEndFrame ?? remainingTail, remainingTail)
-                } else if let t = trimEndFrame {
-                    clip.trimEndFrame = t
-                }
-            }
-        }
-
-        var clip = Clip(mediaRef: asset.id, mediaType: asset.type, sourceClipType: asset.type, startFrame: startFrame, durationFrames: durationFrames, transform: fitTransform(for: asset))
-        clip.linkGroupId = linkGroupId
-        applyTrim(&clip)
-        timeline.tracks[trackIndex].clips.append(clip)
+        timeline.tracks[trackIndex].clips.append(clips.primary)
         sortClips(trackIndex: trackIndex)
-        var ids = [clip.id]
-
-        if let gid = linkGroupId {
+        if let audio = clips.linkedAudio {
             let audioTrackIdx = linkedAudioTrackIndex.flatMap { timeline.tracks.indices.contains($0) ? $0 : nil }
                 ?? resolveOrCreateAudioTrack(startFrame: startFrame, duration: durationFrames)
-            guard timeline.tracks.indices.contains(audioTrackIdx) else { return ids }
-            var audioClip = Clip(mediaRef: asset.id, mediaType: .audio, sourceClipType: asset.type, startFrame: startFrame, durationFrames: durationFrames)
-            audioClip.linkGroupId = gid
-            applyTrim(&audioClip)
-            timeline.tracks[audioTrackIdx].clips.append(audioClip)
+            timeline.tracks[audioTrackIdx].clips.append(audio)
             sortClips(trackIndex: audioTrackIdx)
-            ids.append(audioClip.id)
         }
-        return ids
+        return clips.ids
     }
 
     /// Creates clips sequentially; callers clear the target range first.
@@ -763,17 +740,8 @@ final class EditorViewModel {
     }
 
     func fitTransform(sourceWidth: Int, sourceHeight: Int, canvasWidth: Int, canvasHeight: Int) -> Transform {
-        guard sourceWidth > 0, sourceHeight > 0, canvasWidth > 0, canvasHeight > 0 else { return Transform() }
-        let canvasAspect = Double(canvasWidth) / Double(canvasHeight)
-        let relativeAspect = (Double(sourceWidth) / Double(sourceHeight)) / canvasAspect
-        let sourceAspect = relativeAspect * canvasAspect
-        if abs(canvasAspect - sourceAspect) < Defaults.aspectTolerance {
-            return Transform()
-        }
-        if relativeAspect > 1 {
-            return Transform(width: 1.0, height: 1.0 / relativeAspect)
-        }
-        return Transform(width: relativeAspect, height: 1.0)
+        ClipPlacement.fitTransform(sourceWidth: sourceWidth, sourceHeight: sourceHeight,
+                                   canvasWidth: canvasWidth, canvasHeight: canvasHeight)
     }
 
     func mediaCanvasAspect(for asset: MediaAsset, canvasWidth: Int, canvasHeight: Int) -> Double? {

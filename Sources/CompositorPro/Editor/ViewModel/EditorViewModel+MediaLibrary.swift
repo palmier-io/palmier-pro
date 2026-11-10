@@ -759,7 +759,9 @@ extension EditorViewModel {
         } catch {
             guard isCurrent() else { return false }
             asset.generationStatus = .failed("Could not identify media file.")
-            unprocessableMediaRefs.insert(asset.id)
+            // The bytes are readable; only the content identity failed. The asset stays retryable,
+            // so it must not be reported as unprocessable media.
+            unprocessableMediaRefs.remove(asset.id)
             recordManifestMetadata(for: asset, batching: batchManifestUpdate)
             onTerminalPublication?(asset.preparationContext)
             Log.project.warning("media identity failed asset=\(asset.id) error=\(error.localizedDescription)")

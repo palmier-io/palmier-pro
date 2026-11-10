@@ -24,6 +24,7 @@ struct Timeline: Codable, Sendable, Equatable, Identifiable {
     var tracks: [Track] = []
     var markers: [TimelineMarker] = []
     var transitions: [TimelineTransition] = []
+    var audioMix: AudioMixState?
 
     var totalFrames: Int {
         var maxFrame = 0
@@ -68,7 +69,7 @@ struct Timeline: Codable, Sendable, Equatable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, fps, width, height, settingsConfigured, folderId, tracks, markers, transitions
+        case id, name, fps, width, height, settingsConfigured, folderId, tracks, markers, transitions, audioMix
     }
 }
 
@@ -85,7 +86,8 @@ extension Timeline {
             folderId: try? c.decode(String.self, forKey: .folderId),
             tracks: try c.decode([Track].self, forKey: .tracks),
             markers: (try? c.decode([TimelineMarker].self, forKey: .markers)) ?? [],
-            transitions: (try? c.decode([TimelineTransition].self, forKey: .transitions)) ?? []
+            transitions: (try? c.decode([TimelineTransition].self, forKey: .transitions)) ?? [],
+            audioMix: try c.decodeIfPresent(AudioMixState.self, forKey: .audioMix)
         )
     }
 }
@@ -423,13 +425,50 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     }
 
     /// Source-seconds → project-timeline-frame through this clip's placement, trim, and speed.
-    func timelineFrame(sourceSeconds t: Double, fps: Int) -> Int? {
+    func timelineFrame(
+        sourceSeconds t: Double,
+        fps: Int,
+        rounding: FloatingPointRoundingRule = .toNearestOrAwayFromZero
+    ) -> Int? {
+        guard t.isFinite, t >= 0, (1...120).contains(fps), hasValidSourceMapping else { return nil }
         let sourceFrame = t * Double(fps)
         let offsetFromTrim = sourceFrame - Double(trimStartFrame)
         guard offsetFromTrim >= 0 else { return nil }
-        let frame = startFrame + timeMap.timelineOffset(forSourceOffset: offsetFromTrim)
+        let frame = startFrame + timeMap.timelineOffset(forSourceOffset: offsetFromTrim, rounding: rounding)
         guard frame >= startFrame && frame < endFrame else { return nil }
         return frame
+    }
+
+    /// Source-seconds [start, end) → absolute project-timeline-frames through placement, trim, and speed.
+    func timelineRange(sourceStartSeconds: Double, sourceEndSeconds: Double, fps: Int) -> Range<Int>? {
+        guard sourceStartSeconds.isFinite, sourceEndSeconds.isFinite, (1...120).contains(fps) else { return nil }
+        return timelineRange(sourceStartFrame: sourceStartSeconds * Double(fps),
+                             sourceEndFrame: sourceEndSeconds * Double(fps))
+    }
+
+    func timelineRange(sourceStartFrame: Double, sourceEndFrame: Double) -> Range<Int>? {
+        guard sourceStartFrame.isFinite, sourceEndFrame.isFinite, sourceStartFrame >= 0,
+              sourceEndFrame > sourceStartFrame, hasValidSourceMapping else { return nil }
+        let map = timeMap
+        let trim = Double(trimStartFrame)
+        let lower = max(trim, sourceStartFrame)
+        let upper = min(trim + map.sourceOffset(atTimelineOffset: durationFrames), sourceEndFrame)
+        guard lower < upper else { return nil }
+        let start = max(startFrame, startFrame + map.timelineOffset(forSourceOffset: lower - trim, rounding: .down))
+        let end = min(endFrame, startFrame + map.timelineOffset(forSourceOffset: upper - trim, rounding: .up))
+        if start < end {
+            return start..<end
+        }
+        if start < endFrame {
+            return start..<min(endFrame, start + 1)
+        }
+        return max(startFrame, endFrame - 1)..<endFrame
+    }
+
+    private var hasValidSourceMapping: Bool {
+        startFrame >= 0 && trimStartFrame >= 0 && durationFrames > 0
+            && durationFrames <= Int.max / 2_000 && !startFrame.addingReportingOverflow(durationFrames).overflow
+            && speed.isFinite && (SourceTimeMap.minimumSpeed...SourceTimeMap.maximumSpeed).contains(speed)
     }
 }
 

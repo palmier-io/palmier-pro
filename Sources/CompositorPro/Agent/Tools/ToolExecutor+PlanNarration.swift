@@ -40,20 +40,4 @@ extension ToolExecutor {
         )) ?? "{}")
     }
 
-    func verifyPlanNarration(_ editor: EditorViewModel, plan: EditPlan) async throws {
-        guard plan.scriptBeats != nil else { return }
-        let session = try PlanNarrationSession(editor: editor, planId: plan.id)
-        try await editor.verifyPlanNarrationAttachment(session: session)
-        guard let timing = plan.narrationTiming, timing.unresolvedBeatIds.isEmpty else {
-            throw ToolError("Narration alignment is unresolved. Use plan_edit action=measure_narration before assembly.")
-        }
-        try timing.validated(beats: plan.scriptBeats ?? [], revision: plan.narrationRevision)
-        let fingerprint = try await NarrationTimingService.fingerprint(session.sourceURL)
-        try Task.checkCancellation()
-        guard self.editor === editor else { throw ToolError("Project binding changed during narration verification.") }
-        try session.validateCurrent(in: editor)
-        guard fingerprint == timing.sourceFingerprint else {
-            throw ToolError("Narration file changed since measurement. Measure the current source before assembly.")
-        }
-    }
 }

@@ -65,8 +65,11 @@ struct AudioMixToolTests {
         #expect(tail.keyframes.first?.frame == 72)
         #expect(head.keyframes.first?.frame == 72)
         #expect(tail.keyframes.map(\.frame) == head.keyframes.map(\.frame))
+        // The volume track holds decibels, so compare the gains they encode.
         for (a, b) in zip(tail.keyframes, head.keyframes) {
-            #expect(abs(a.value * a.value + b.value * b.value - 1) < 1e-6)
+            let outgoing = VolumeScale.linearFromDb(a.value)
+            let incoming = VolumeScale.linearFromDb(b.value)
+            #expect(abs(outgoing * outgoing + incoming * incoming - 1) < 1e-2)
         }
     }
 
@@ -172,15 +175,17 @@ struct AudioMixToolTests {
         #expect(ranges.count == 1)
         // No detection for the stub file, so the whole dialogue clip counts as speech.
         #expect(ranges[0]["startFrame"] as? Int == 55)
-        #expect(ranges[0]["endFrame"] as? Int == 162)
+        #expect(ranges[0]["endFrame"] as? Int == 165)
 
         let updated = try #require(harness.editor.timeline.tracks.flatMap(\.clips)
             .first { $0.id == bed.id }?.volumeTrack)
-        // Speech runs 60–150; attack starts 5 frames early, hold ends 3 frames after speech,
-        // release lands 12 frames later.
-        #expect(updated.keyframes.map(\.frame) == [55, 63, 150, 162])
-        #expect(abs(updated.keyframes[0].value - 1) < 1e-9)
-        #expect(abs(updated.keyframes[1].value - pow(10, -9.0 / 20)) < 1e-6)
+        // Speech runs 60–150; the attack starts 5 frames early and reaches the duck gain at
+        // the speech start, the hold keeps the bed ducked 3 frames past the speech end, and the
+        // release recovers over the next 12 frames. The volume track holds decibels.
+        #expect(updated.keyframes.map(\.frame) == [0, 55, 60, 153, 165])
+        #expect(abs(updated.keyframes[0].value - 0) < 1e-9)
+        #expect(abs(updated.keyframes[2].value - -9) < 1e-9)
+        #expect(abs(updated.keyframes[4].value - 0) < 1e-9)
 
         undoManager.undo()
         #expect(harness.editor.timeline.tracks.flatMap(\.clips).first { $0.id == bed.id }?.volumeTrack == nil)
@@ -201,7 +206,9 @@ struct AudioMixToolTests {
         #expect(overwritten?["changed"] as? Bool == true)
         let track = try #require(harness.editor.timeline.tracks.flatMap(\.clips)
             .first { $0.id == bed.id }?.volumeTrack)
-        #expect(abs(track.keyframes[1].value - pow(10, -18.0 / 20)) < 1e-6)
+        // The duck gain sits at the speech start; the frame before it is the attack ramp.
+        // The volume track holds decibels.
+        #expect(abs(track.keyframes[2].value - -18) < 1e-9)
     }
 
     @Test func duckingRejectsTheBedAsItsOwnSource() async throws {
@@ -231,6 +238,35 @@ struct AudioMixToolTests {
             "bedClipId": bed.id, "duckDb": "loud",
         ])
         #expect(result.isError)
+    }
+
+    @Test func duckingSucceedsWhenAudioFilesAreAbsentOrUnreadable() async throws {
+        let (harness, bed, dialogue) = try await bedWithDialogue()
+        let undoManager = UndoManager()
+        harness.editor.undo.attach(undoManager)
+
+        // Simulate absent source media file on disk
+        if let asset = harness.editor.mediaAssetsById[dialogue.mediaRef] {
+            try? FileManager.default.removeItem(at: asset.url)
+        }
+
+        let receipt = try await harness.runOK("duck_audio", args: [
+            "bedClipId": bed.id, "duckDb": -9, "attackFrames": 5,
+            "holdFrames": 3, "releaseFrames": 12, "allowWholeClipFallback": true,
+        ]) as? [String: Any]
+
+        #expect(receipt?["speechDetection"] as? String == "unavailable")
+        let ranges = try #require(receipt?["duckedRanges"] as? [[String: Any]])
+        #expect(ranges.count == 1)
+        #expect(ranges[0]["startFrame"] as? Int == 55)
+        #expect(ranges[0]["endFrame"] as? Int == 165)
+
+        let updated = try #require(harness.editor.timeline.tracks.flatMap(\.clips)
+            .first { $0.id == bed.id }?.volumeTrack)
+        #expect(updated.keyframes.map(\.frame) == [0, 55, 60, 153, 165])
+
+        undoManager.undo()
+        #expect(harness.editor.timeline.tracks.flatMap(\.clips).first { $0.id == bed.id }?.volumeTrack == nil)
     }
 
     @Test func endToEndOverMCPWithUndo() async throws {

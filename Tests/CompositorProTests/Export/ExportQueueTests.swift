@@ -116,12 +116,11 @@ struct ExportQueueTests {
     }
 
     @Test func completedExportRecordsDeliveredSourceIds() async throws {
-        StockDeliveryHistory.reset()
-        let queue = ExportQueue()
+        let store = isolatedDefaults()
+        let queue = ExportQueue(historyStore: store)
         let outputURL = temporaryURL("delivered.mov")
         defer {
             try? FileManager.default.removeItem(at: outputURL)
-            StockDeliveryHistory.reset()
         }
         let submission = try queue.enqueueForTesting(
             outputURL: outputURL,
@@ -133,19 +132,18 @@ struct ExportQueueTests {
         #expect(queue.job(submission.jobID)?.status == .completed)
         #expect(queue.job(submission.jobID)?.sourceIds == Set(["stock:pixabay:12345", "media:local"]))
 
-        let history = StockDeliveryHistory.load()
+        let history = StockDeliveryHistory.load(store: store)
         #expect(history.entries.count == 1)
         #expect(history.entries[0].outputFilename == outputURL.lastPathComponent)
         #expect(history.usedSourceIds == Set(["stock:pixabay:12345", "media:local"]))
     }
 
     @Test func failedExportDoesNotPolluteDeliveryHistory() async throws {
-        StockDeliveryHistory.reset()
-        let queue = ExportQueue()
+        let store = isolatedDefaults()
+        let queue = ExportQueue(historyStore: store)
         let outputURL = temporaryURL("failed.mov")
         defer {
             try? FileManager.default.removeItem(at: outputURL)
-            StockDeliveryHistory.reset()
         }
         let submission = try queue.enqueueForTesting(
             outputURL: outputURL,
@@ -157,17 +155,16 @@ struct ExportQueueTests {
         #expect(queue.job(submission.jobID)?.status == .failed)
         #expect(queue.job(submission.jobID)?.sourceIds == Set(["stock:pixabay:12345"]))
 
-        let history = StockDeliveryHistory.load()
+        let history = StockDeliveryHistory.load(store: store)
         #expect(history.entries.isEmpty, "a failed delivery does not record used sources")
     }
 
     @Test func canceledExportDoesNotPolluteDeliveryHistory() async throws {
-        StockDeliveryHistory.reset()
-        let queue = ExportQueue()
+        let store = isolatedDefaults()
+        let queue = ExportQueue(historyStore: store)
         let outputURL = temporaryURL("canceled.mov")
         defer {
             try? FileManager.default.removeItem(at: outputURL)
-            StockDeliveryHistory.reset()
         }
         let submission = try queue.enqueueForTesting(
             outputURL: temporaryURL("canceled-blocker.mov")
@@ -181,7 +178,7 @@ struct ExportQueueTests {
 
         #expect(await waitUntil { queue.job(canceled.jobID)?.status.isFinished == true })
         #expect(queue.job(canceled.jobID)?.status == .canceled)
-        #expect(StockDeliveryHistory.load().entries.isEmpty)
+        #expect(StockDeliveryHistory.load(store: store).entries.isEmpty)
     }
 
     @Test func lateProgressAndCancellationKeepCommittedExportCompleted() async throws {
@@ -222,6 +219,11 @@ struct ExportQueueTests {
 
     private func temporaryURL(_ name: String) -> URL {
         FileManager.default.temporaryDirectory.appendingPathComponent("export-queue-\(name)")
+    }
+
+    /// A private defaults suite, so parallel tests never share one delivery history.
+    private func isolatedDefaults() -> UserDefaults {
+        UserDefaults(suiteName: "compositor-pro.tests.delivery-history.\(UUID().uuidString)") ?? .standard
     }
 
     private func waitUntil(_ condition: @escaping @MainActor () -> Bool) async -> Bool {

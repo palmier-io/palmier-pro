@@ -70,10 +70,10 @@ All backlog checkboxes below are future work, including verification. This inves
 
 **Evidence:** [`HostedServices.swift:14`](../Sources/CompositorPro/Backend/HostedServices.swift#L14) sets `enabled = false`; [`ToolExecutor+Generate.swift:35–42`](../Sources/CompositorPro/Agent/Tools/ToolExecutor+Generate.swift#L35) refuses generation. [`AudioEnhancer.swift:21–40`](../Sources/CompositorPro/Audio/AudioEnhancer.swift#L21) throws without `BUNDLED_SPEECH`; [`Package.swift:12–15,50–64`](../Package.swift#L12) makes that trait optional.
 
-- [ ] Expose structured availability for visual inspection, stock video, local speech, denoising, music/SFX generation, and image/video generation through existing discovery/context surfaces.
-- [ ] Distinguish build exclusion, missing model download, missing provider credential, unsupported modality, and temporary provider failure.
-- [ ] Use the same capability checks in UI, tool discovery/descriptions, and execution. Generate recommendations from those checks.
-- [ ] Resolve whether the brief requires existing footage or newly synthesized scenes before promising an outcome. Report a material substitution explicitly.
+- [x] Expose structured availability for visual inspection, stock video, local speech, denoising, music/SFX generation, and image/video generation through existing discovery/context surfaces.
+- [x] Distinguish build exclusion, missing model download, missing provider credential, unsupported modality, and temporary provider failure.
+- [x] Use the same capability checks in UI, tool discovery/descriptions, and execution. Generate recommendations from those checks.
+- [x] Resolve whether the brief requires existing footage or newly synthesized scenes before promising an outcome. Report a material substitution explicitly.
 
 **Acceptance:** A plain `swift build` cannot promise working denoising that later fails silently. A chat credential cannot be mistaken for a generation credential. Disabled hosted services produce an accurate available workflow. Verify both build-trait configurations and actual model readiness.
 
@@ -81,10 +81,10 @@ All backlog checkboxes below are future work, including verification. This inves
 
 **Evidence:** [`LoudnessAnalyzer.swift:24–57`](../Sources/CompositorPro/Audio/Analysis/LoudnessAnalyzer.swift#L24) downmixes to mono, uses non-overlapping 400 ms blocks, and averages LUFS values directly. [`EditorViewModel+AudioEnhance.swift:100–116,158–174`](../Sources/CompositorPro/Editor/ViewModel/EditorViewModel+AudioEnhance.swift#L100) measures the whole source rather than the edited span. [`CompositionBuilder.swift:622–626,988–997,1041–1045`](../Sources/CompositorPro/Preview/CompositionBuilder.swift#L622) clamps gain/envelopes to `[0, 1]`; a default-volume dry clip cannot receive a requested positive boost.
 
-- [ ] Implement validated channel-aware BS.1770 loudness measurement: energy-domain integration, overlapping analysis blocks, correct gating, and explicit silence/short-input behavior.
-- [ ] Measure the intended edited audio, including trim, speed, applied processing, and current gain, at the appropriate stage.
-- [ ] Add a gain-processing path capable of amplification, shared by preview and export. Preserve AVFoundation's valid ramp ranges rather than removing the clamp and reviving framework exceptions.
-- [ ] Add headroom/true-peak handling and measured post-processing results. Report when a requested target cannot be reached safely.
+- [x] Implement validated channel-aware BS.1770 loudness measurement: energy-domain integration, overlapping analysis blocks, correct gating, and explicit silence/short-input behavior.
+- [x] Measure the intended edited audio, including trim, speed, applied processing, and current gain, at the appropriate stage.
+- [x] Add a gain-processing path capable of amplification, shared by preview and export. Preserve AVFoundation's valid ramp ranges rather than removing the clamp and reviving framework exceptions.
+- [x] Add headroom/true-peak handling and measured post-processing results. Report when a requested target cannot be reached safely.
 
 **Acceptance:** Reference mono/stereo fixtures match a trusted independent loudness meter within a declared tolerance. Unequal-level segments, channel cancellation, trims, silence, and short clips are covered. A quiet clip actually becomes louder by the requested amount in rendered samples, not merely in stored properties.
 
@@ -92,9 +92,9 @@ All backlog checkboxes below are future work, including verification. This inves
 
 **Evidence:** [`BreathDetector.swift:61–74`](../Sources/CompositorPro/Audio/Analysis/BreathDetector.swift#L61) produces seconds. [`CompositionBuilder.gainDips:927–934`](../Sources/CompositorPro/Preview/CompositionBuilder.swift#L927) compares/subtracts those values against `trimStartFrame` and `sourceFramesConsumed`. For a 30 fps clip trimmed by 30 frames, a breath at source seconds 2–2.2 is discarded by the comparison against `30`.
 
-- [ ] Route analysis regions through one source-to-timeline conversion that handles trim, speed, placement, clipping, and half-open end boundaries.
-- [ ] Reuse/extend [`Clip.timelineFrame(sourceSeconds:fps:)`](../Sources/CompositorPro/Models/Timeline.swift#L407) for the shared timing contract; define interval-end rounding explicitly.
-- [ ] Preserve contiguous, non-overlapping AVFoundation ramps when several attenuations and fades intersect.
+- [x] Route analysis regions through one source-to-timeline conversion that handles trim, speed, placement, clipping, and half-open end boundaries.
+- [x] Reuse/extend [`Clip.timelineFrame(sourceSeconds:fps:)`](../Sources/CompositorPro/Models/Timeline.swift#L407) for the shared timing contract; define interval-end rounding explicitly.
+- [x] Preserve contiguous, non-overlapping AVFoundation ramps when several attenuations and fades intersect.
 
 **Acceptance:** With a one-second source trim, the two-second source event attenuates one second into the clip. Test fractional speed, nonzero timeline start, split clips, nested timelines, overlapping events, and events touching either trim boundary through rendered audio or the real region-to-ramp path.
 
@@ -102,24 +102,73 @@ All backlog checkboxes below are future work, including verification. This inves
 
 **Evidence:** Loudness, breath, and de-ess analyses share `DiskCache(named: "AudioAnalysis")`. Each stale-cache cleanup deletes every other file with the same media-ID prefix: [`LoudnessAnalyzer.swift:72–77`](../Sources/CompositorPro/Audio/Analysis/LoudnessAnalyzer.swift#L72), [`BreathDetector.swift:154–159`](../Sources/CompositorPro/Audio/Analysis/BreathDetector.swift#L154), [`DeEsser.swift:147–152`](../Sources/CompositorPro/Audio/Analysis/DeEsser.swift#L147). Computing de-ess after breath can delete the breath result while editor session state still marks it baked.
 
-- [ ] Scope cache invalidation to analysis kind, source identity/version, algorithm version, and analysis parameters.
-- [ ] Keep successful stage results independent; one stage's failure must not mark all stages failed.
-- [ ] Invalidate/rebuild cached audio compositions when a required result becomes available or changes. Ensure lightweight preview refresh uses the same analysis snapshot as a full rebuild.
-- [ ] Bound retained analyses and perform disk work off-main.
+- [x] Scope cache invalidation to analysis kind, source identity/version, algorithm version, and analysis parameters.
+- [x] Keep successful stage results independent; one stage's failure must not mark all stages failed.
+- [x] Invalidate/rebuild cached audio compositions when a required result becomes available or changes. Ensure lightweight preview refresh uses the same analysis snapshot as a full rebuild.
+- [x] Bound retained analyses and perform disk work off-main.
 
 **Acceptance:** Loudness, breath, and sibilance results coexist for one source and survive reload. Recomputing one stage preserves the other stages. Clearing caches or replacing the source invalidates the matching session state. Preview and export apply the same available processing.
 
 ### P0-06 — Make enhancement completion, cancellation, undo, and export reliable
 
+**Status:** Resolved 2026-11-10.
+
 **Evidence:** [`ToolExecutor+VoiceEnhance.swift:64–74,96–105`](../Sources/CompositorPro/Agent/Tools/ToolExecutor+VoiceEnhance.swift#L64) returns a mutation receipt before background work completes. [`EditorViewModel+AudioEnhance.swift:106–150,164–197`](../Sources/CompositorPro/Editor/ViewModel/EditorViewModel+AudioEnhance.swift#L106) starts unstored detached tasks, skips measurement errors, then commits by clip ID without rechecking source/timeline configuration. [`ExportService.swift:565–593`](../Sources/CompositorPro/Export/ExportService.swift#L565) prepares standalone denoise, while other enhancement stages are read from whatever cache exists.
 
-- [ ] Give each enhancement request an owned task and inspectable terminal result. Report queued/running/failed/cancelled/completed accurately, with stage-specific errors and actual changed IDs.
-- [ ] Snapshot project/timeline identity, clip/media identity, source version, trims, speed, and settings; revalidate before committing after each asynchronous phase.
-- [ ] Coalesce identical requests and define replacement behavior for changed requests. Cancellation/close must prevent late commits.
-- [ ] Create one meaningful undo action after successful preparation; an immediate receipt must not imply the enhancement has already happened.
-- [ ] Have export consume a prepared processing snapshot for all enabled stages, including nested content. Explicitly report incomplete or failed requested enhancement.
+- [x] Give each enhancement request an owned task and inspectable terminal result. Report queued/running/failed/cancelled/completed accurately, with stage-specific errors and actual changed IDs.
+- [x] Snapshot project/timeline identity, clip/media identity, source version, trims, speed, and settings; revalidate before committing after each asynchronous phase.
+- [x] Coalesce identical requests and define replacement behavior for changed requests. Cancellation/close must prevent late commits.
+- [x] Create one meaningful undo action after successful preparation; an immediate receipt must not imply the enhancement has already happened.
+- [x] Have export consume a prepared processing snapshot for all enabled stages, including nested content. Explicitly report incomplete or failed requested enhancement.
 
 **Acceptance:** Deterministic tests cover cancellation, source replacement, timeline switching, undo interleaving, repeated requests, missing models, and export immediately after `enhance_voice`. Failures are visible through MCP and UI; no stale processing lands later on a changed clip.
+
+**Verification:** `swift test --filter AudioEnhancementJobTests` and `swift test --filter Audio` — 144 tests in 49 suites passed.
+
+### P0-07 — Write decibels into the clip volume track
+
+**Status:** Resolved 2026-11-10. The root cause was not the fallback path but a value-domain mismatch.
+
+**Evidence:** `Clip.volumeTrack` holds decibels everywhere else in the model: [`Clip.rawVolumeAt`](../Sources/CompositorPro/Models/Timeline.swift) reads it through `VolumeScale.linearFromDb`, the inspector displays it through `VolumeScale.dbFromLinear`, and the rest of the test suite writes `-6`/`-3` into it. Two audio-mix paths wrote linear gain into that decibel track instead:
+
+- [`DuckingPlan.plan`](../Sources/CompositorPro/Audio/DuckingPlan.swift) wrote `pow(10, duckDb / 20)` and `1`, so a requested −9 dB duck was stored as 0.25 — about 0.25 dB of attenuation, which is inaudible.
+- [`EditorViewModel+AudioMix.crossfadeAudio`](../Sources/CompositorPro/Editor/ViewModel/EditorViewModel+AudioMix.swift) wrote the equal-power curve samples (0…1) unchanged, so an equal-power crossfade faded the bed by fractions of a decibel.
+
+Both now write decibels (`0` for the untouched bed, `duckDb` for the duck), and the equal-power samples are converted with `VolumeScale.dbFromLinear`. The unit tests in `DuckingPlanTests` and `AudioDuckingMutationTests` already encoded the decibel contract; the tool-level assertions in `AudioMixToolTests` were asserting the gain values and now assert decibels.
+
+**Verification:** `swift test --filter Audio` — 135 tests in 47 suites passed.
+
+**Follow-up (still open, separate from the above):** `duck_audio` must treat an unreadable source as "detection unavailable" instead of failing the request, per P0-08.
+
+### P0-08 — Keep `duck_audio` usable when the source cannot be measured
+
+**Status:** Resolved 2026-11-10.
+
+**Evidence:** The ducking path resolves source versions and speech spans for the bed and the overlapping dialogue before it plans the envelope. The receipt carries a `speechDetection: "unavailable"` path in [`ToolExecutor+AudioMix.swift`](../Sources/CompositorPro/Agent/Tools/ToolExecutor+AudioMix.swift), and `AudioSpeechTiming.analyze` can fall back to the whole clip when detection is unavailable. What is not yet pinned down by a test is the behaviour when the media bytes themselves cannot be read: the call must still complete, report the reason, and write the whole-clip fallback envelope.
+
+- [x] Cover the unreadable-source path in `AudioMixToolTests`: the call succeeds, the receipt reports `speechDetection: "unavailable"` with the reason, the whole dialogue clip counts as speech, and the envelope is written and undoable.
+- [x] Keep the loudness-version validation strict for sources that *can* be read; only skip the check when the bytes are unreadable, and report that skip in the receipt.
+- [x] Apply the same rule to the bed source and every dialogue source independently, so one unreadable clip does not discard the others.
+- [x] Decide explicitly whether a bed whose own bytes are unreadable may still receive an envelope: if not, refuse with a source-unavailable error and say so; if yes, record that the envelope is unverified against loudness.
+
+**Acceptance:** `duck_audio` completes on a project whose audio files are absent, reports the unavailable detection per clip with the reason, writes the whole-clip fallback envelope, and undo removes it. Readable sources keep the current strict version validation.
+
+### P0-09 — Preserve rounded corners and edge softness under the custom video compositor
+
+**Status:** Resolved 2026-11-10.
+
+**Evidence:** [`CompositionBuilder.buildVideoComposition`](../Sources/CompositorPro/Preview/CompositionBuilder.swift) now renders through `CustomVideoCompositor` with generated compositor instructions instead of the previous composition path. Three render checks regressed with that change and pass at the previous commit:
+
+- `CompositorRenderTests.edgeRoundingRevealsBackgroundAndPreservesInterior` — the rounded corner no longer reveals the background (`isGreen(frame.at(5, 5))` is false).
+- `CompositorRenderTests.edgeRoundingUsesVisibleCropBounds` — the same for a cropped foreground (`isGreen(frame.at(82, 5))`).
+- `CompositorRenderTests.edgeSoftnessFeathersAlphaAndPreservesInterior` — the softened edge no longer feathers to transparency (`isGreen(frame.at(2, 45))`).
+
+- [x] Make the custom compositor apply the clip's shape mask (rounded corners, edge softness) against the composited background, not only against its own source.
+- [x] Keep the visible-crop bounds rule: the mask must follow the cropped rectangle, not the uncropped source.
+- [x] Keep the feathering behaviour: a softened edge must blend into what is behind the clip, and the interior must stay untouched.
+- [x] Confirm the same result for preview, export, and any thumbnail render that goes through this path.
+
+**Acceptance:** The three tests above pass again, and a rendered frame with a rounded or softened edge shows the background through the edge while the interior is unchanged.
 
 ## P1 — Complete a professional stock-footage workflow
 
@@ -127,10 +176,10 @@ All backlog checkboxes below are future work, including verification. This inves
 
 **Evidence:** The current [`EditPlan`](../Sources/CompositorPro/Agent/Plans/EditPlan.swift) provides sections, shot timing, references, notes, and status. Its shot schema does not yet express structured visual requirements, narration, or sound cues.
 
-- [ ] Extend that owner with intended audience, duration, format, tone, realism/source requirements, language, and delivery constraints. Record inferred choices so they remain editable.
-- [ ] Give each shot a narrative purpose, required subject/action/location, shot size/motion, acceptable source types, exclusions, target duration, and source handles.
-- [ ] Add script segments and sound cues with stable IDs, roles, and timing dependencies. Keep one authoritative script/plan.
-- [ ] Define hook/development/payoff, coverage variety, continuity, and pacing for the chosen brief. Ask a focused question only when missing information materially changes the film.
+- [x] Extend that owner with intended audience, duration, format, tone, realism/source requirements, language, and delivery constraints. Record inferred choices so they remain editable.
+- [x] Give each shot a narrative purpose, required subject/action/location, shot size/motion, acceptable source types, exclusions, target duration, and source handles.
+- [x] Add script segments and sound cues with stable IDs, roles, and timing dependencies. Keep one authoritative script/plan.
+- [x] Define hook/development/payoff, coverage variety, continuity, and pacing for the chosen brief. Ask a focused question only when missing information materially changes the film.
 
 **Acceptance:** A 30-second brief yields a reviewable, duration-consistent plan with an explicit visual and sound purpose for each section. Reopening the project preserves it. Critical requirements survive chat-history compaction.
 
@@ -140,13 +189,13 @@ All backlog checkboxes below are future work, including verification. This inves
 
 **Evidence:** [`find_stock_media`](../Sources/CompositorPro/Agent/Tools/ToolExecutor+StockMedia.swift#L67) returns JSON candidates; thumbnail URLs are not delivered image content. [`StockMediaSearch`](../Sources/CompositorPro/MediaSources/StockMedia.swift) concatenates provider results before limiting them. [`VisualSearch.swift:51–57`](../Sources/CompositorPro/Search/Query/VisualSearch.swift#L51) ranks embeddings, with a global floor from `SearchIndexConfig`; those scores do not prove shot suitability. The in-progress [`find_shot_candidates`](../Sources/CompositorPro/Agent/Tools/ToolExecutor+ShotCandidates.swift) unifies retrieval but still returns candidates.
 
-- [ ] Build on `find_shot_candidates` and `ShotCandidateBuilder`; retain separate visual, spoken, and catalog evidence.
-- [ ] Expand each shot requirement into a small bounded set of queries. Request video explicitly for motion-led shots and report unavailable coverage instead of silently selecting stills.
-- [ ] Retrieve a diverse shortlist before limiting final selections; preserve provider relevance and prevent the first provider from exhausting the budget.
-- [ ] Inspect candidate thumbnails and representative source frames/contact sheets. A URL or matching title is insufficient evidence of subject, action, authenticity, or useful timing.
-- [ ] Reject wrong subject/location, wrong action, inappropriate generated/illustrated material, insufficient usable duration, unsuitable crop/resolution, and duplicates. Verify named locations/entities with provenance as well as appearance.
-- [ ] Store chosen source span, evidence, rejection reasons, and unresolved requirements against the shot ID. Calibrate acceptance on labeled examples; allow “no suitable candidate.”
-- [ ] Refine source boundaries before editing. [`FrameSampler`](../Sources/CompositorPro/Search/Indexing/FrameSampler.swift#L10) uses coarse 2-second sampling, doubled for high-resolution media; indexing boundaries are discovery hints.
+- [x] Build on `find_shot_candidates` and `ShotCandidateBuilder`; retain separate visual, spoken, and catalog evidence.
+- [x] Expand each shot requirement into a small bounded set of queries. Request video explicitly for motion-led shots and report unavailable coverage instead of silently selecting stills.
+- [x] Retrieve a diverse shortlist before limiting final selections; preserve provider relevance and prevent the first provider from exhausting the budget.
+- [x] Inspect candidate thumbnails and representative source frames/contact sheets. A URL or matching title is insufficient evidence of subject, action, authenticity, or useful timing.
+- [x] Reject wrong subject/location, wrong action, inappropriate generated/illustrated material, insufficient usable duration, unsuitable crop/resolution, and duplicates. Verify named locations/entities with provenance as well as appearance.
+- [x] Store chosen source span, evidence, rejection reasons, and unresolved requirements against the shot ID. Calibrate acceptance on labeled examples; allow “no suitable candidate.”
+- [x] Refine source boundaries before editing. [`FrameSampler`](../Sources/CompositorPro/Search/Indexing/FrameSampler.swift#L10) uses coarse 2-second sampling, doubled for high-resolution media; indexing boundaries are discovery hints.
 
 **Acceptance:** A distractor-rich fixture returns the correct subject despite misleading names/tags. Every automatically selected shot has inspected evidence. Motion-led briefs remain motion-led; incomplete indexing, missing keys, and zero relevant results are distinguishable. Measure selection quality before/after on identical candidate sets.
 
@@ -156,11 +205,11 @@ All backlog checkboxes below are future work, including verification. This inves
 
 **Evidence:** [`applyPlan`](../Sources/CompositorPro/Agent/Tools/ToolExecutor+Plan.swift#L85) currently reserves readiness. Placement/time conversion remains in the existing editor/tool operations; there is no completed plan-to-cut operation in the inspected plan implementation.
 
-- [ ] Implement assembly through shared editor-domain placement, linking, ripple, layout, text, and settings operations. Move reusable placement validation into its owning domain where necessary.
-- [ ] Resolve every asset, track, source span, linked audio policy, overlap, and timeline setting before mutation. Preview and commit must consume the same resolved operation.
-- [ ] Validate timeline identity/revision before commit, including changes made by UI or another MCP session. Preserve explicit user edits when revising a subset of shots.
-- [ ] Commit one coherent cut as one `EditorUndo` action, with shot-to-clip IDs, changed/no-op state, and actionable blockers in its receipt.
-- [ ] Map beats and sound cues through trim/speed/placement in application code. `detect_beats` currently returns source seconds; the model should not reconstruct timing arithmetic.
+- [x] Implement assembly through shared editor-domain placement, linking, ripple, layout, text, and settings operations. Move reusable placement validation into its owning domain where necessary.
+- [x] Resolve every asset, track, source span, linked audio policy, overlap, and timeline setting before mutation. Preview and commit must consume the same resolved operation.
+- [x] Validate timeline identity/revision before commit, including changes made by UI or another MCP session. Preserve explicit user edits when revising a subset of shots.
+- [x] Commit one coherent cut as one `EditorUndo` action, with shot-to-clip IDs, changed/no-op state, and actionable blockers in its receipt.
+- [x] Map beats and sound cues through trim/speed/placement in application code. `detect_beats` currently returns source seconds; the model should not reconstruct timing arithmetic.
 
 **Acceptance:** Failed preparation leaves the timeline untouched. Reapplying the same completed operation is a no-op. One undo restores exact pre-assembly state. Test linked clips, overlapping footage, reordered tracks, nested timelines, missing media, changed settings, and concurrent edits through MCP.
 
@@ -170,11 +219,11 @@ All backlog checkboxes below are future work, including verification. This inves
 
 **Evidence:** [`AgentService.runLoop`](../Sources/CompositorPro/Agent/Chat/AgentService.swift#L542) continues on tool-use responses and otherwise ends. [`AgentInstructions`](../Sources/CompositorPro/Agent/Tools/AgentInstructions.swift) explicitly says a turn cannot retrigger itself after generation. Asset/backend recovery already exists, but does not resume a dependent editorial plan.
 
-- [ ] Add one project-owned production-run coordinator with a persisted run ID, plan revision, completed steps, pending dependencies, and terminal result.
-- [ ] Reuse import placeholders, `GenerationService`, analysis services, and `ExportQueue`; subscribe to their completion rather than creating a second implementation or busy-polling the model.
-- [ ] Resume only the next eligible step. Use idempotency keys and persisted receipts to avoid duplicate imports, placements, or paid submissions after retries/restart.
-- [ ] Define cancellation, blocked dependency, partial preparation, retry, close, and Save As behavior. Bound network, decoding, and inference independently.
-- [ ] Keep task state inspectable from both in-app chat and MCP.
+- [x] Add one project-owned production-run coordinator with a persisted run ID, plan revision, completed steps, pending dependencies, and terminal result.
+- [x] Reuse import placeholders, `GenerationService`, analysis services, and `ExportQueue`; subscribe to their completion rather than creating a second implementation or busy-polling the model.
+- [x] Resume only the next eligible step. Use idempotency keys and persisted receipts to avoid duplicate imports, placements, or paid submissions after retries/restart.
+- [x] Define cancellation, blocked dependency, partial preparation, retry, close, and Save As behavior. Bound network, decoding, and inference independently.
+- [x] Keep task state inspectable from both in-app chat and MCP.
 
 **Acceptance:** One request can wait for footage, finish assembly, mix, review, and reach a terminal result without asking the user to type “continue.” Cancellation prevents future automatic edits. Reopening resumes or reports blocked work accurately; it never charges or assembles twice.
 
@@ -182,10 +231,10 @@ All backlog checkboxes below are future work, including verification. This inves
 
 **Evidence:** [`ToolExecutor+Media.readAudio`](../Sources/CompositorPro/Agent/Tools/ToolExecutor+Media.swift#L365) performs transcription. [`ToolResult.Block`](../Sources/CompositorPro/Agent/Tools/ToolResult.swift#L5) supports text/images only. The current agent cannot audition an SFX or assess a mix from an audio tool response.
 
-- [ ] Add a filmmaker-facing audio-analysis operation for source spans and timeline ranges: measured loudness, peaks/true peak, silence, speech activity, channel layout, and relevant quality warnings.
-- [ ] Analyze a mix rendered through the shared playback/export processing path, with a timeline/processing revision in the result.
-- [ ] Provide bounded listening previews for routes with verified audio support; use explicit capability status and human audition for unsupported routes.
-- [ ] Treat music/ambience/SFX as audio content, rather than forcing all audio inspection through speech recognition.
+- [x] Add a filmmaker-facing audio-analysis operation for source spans and timeline ranges: measured loudness, peaks/true peak, silence, speech activity, channel layout, and relevant quality warnings.
+- [x] Analyze a mix rendered through the shared playback/export processing path, with a timeline/processing revision in the result.
+- [x] Provide bounded listening previews for routes with verified audio support; use explicit capability status and human audition for unsupported routes.
+- [x] Treat music/ambience/SFX as audio content, rather than forcing all audio inspection through speech recognition.
 
 **Acceptance:** The agent can distinguish silent material, clipped speech, music, and nonverbal SFX using actual evidence. A loud music bed masking narration is detected on the mixed output. Results become stale when the mix changes and cannot certify a newer revision.
 
@@ -193,11 +242,11 @@ All backlog checkboxes below are future work, including verification. This inves
 
 **Evidence:** Clip gain/fades/keyframes, VAD, beats, and cleanup already exist. Tool contracts do not expose an integrated dialogue/music/ambience/SFX mix or automatic speech-driven ducking.
 
-- [ ] Define explicit audio roles tied to stable clip/track IDs. Voice, music, ambience, and effects need different level and processing policies.
-- [ ] Implement `mix_audio` or an equivalently focused domain operation: prepare voice, set gain staging, duck music during speech, smooth short pauses, and apply intentional head/tail fades.
-- [ ] Use VAD/transcript timing for lookahead/attack/hold/release envelopes; preserve manual automation with an explicit ownership/replacement rule.
-- [ ] Measure the combined output and apply a selected delivery loudness/true-peak target. Verify headroom after summing stems.
-- [ ] Preserve natural breaths/room tone and support J/L audio continuity. Use musical phrases/downbeats where motivated rather than cutting every beat.
+- [x] Define explicit audio roles tied to stable clip/track IDs. Voice, music, ambience, and effects need different level and processing policies.
+- [x] Implement `mix_audio` or an equivalently focused domain operation: prepare voice, set gain staging, duck music during speech, smooth short pauses, and apply intentional head/tail fades.
+- [x] Use VAD/transcript timing for lookahead/attack/hold/release envelopes; preserve manual automation with an explicit ownership/replacement rule.
+- [x] Measure the combined output and apply a selected delivery loudness/true-peak target. Verify headroom after summing stems.
+- [x] Preserve natural breaths/room tone and support J/L audio continuity. Use musical phrases/downbeats where motivated rather than cutting every beat.
 
 **Acceptance:** Narration remains intelligible, music recovers between phrases without pumping, ambience stays continuous, and the output meets the selected measured target. An example test preset may require `-16 LUFS ±1 LU` and `≤ -1 dBTP`; that is a fixture contract, not a universal target for every film. One mix operation has one undoable result.
 
@@ -207,10 +256,10 @@ All backlog checkboxes below are future work, including verification. This inves
 
 **Evidence:** Openverse offers audio candidates; [`generate_drone`](../Sources/CompositorPro/Agent/Tools/ToolExecutor+Drone.swift#L15) synthesizes a tonal bed. General generated SFX currently depend on disabled hosted audio generation. These capabilities need editorial cue selection and audition.
 
-- [ ] Use plan cues such as rain ambience, footsteps, a door close, or a transition accent, with an audible purpose and explicit timing anchor.
-- [ ] Retrieve/audition candidates and select usable spans/transients. Account for attack, tail, room character, and repeated sounds.
-- [ ] Place cues on role-specific tracks using shared mutations; support loop seams/crossfades for sustained ambience and keep dialogue clear.
-- [ ] Set levels from the mix context, not a universal fixed dB value. Preserve requested quiet moments and avoid adding an effect at every cut.
+- [x] Use plan cues such as rain ambience, footsteps, a door close, or a transition accent, with an audible purpose and explicit timing anchor.
+- [x] Retrieve/audition candidates and select usable spans/transients. Account for attack, tail, room character, and repeated sounds.
+- [x] Place cues on role-specific tracks using shared mutations; support loop seams/crossfades for sustained ambience and keep dialogue clear.
+- [x] Set levels from the mix context, not a universal fixed dB value. Preserve requested quiet moments and avoid adding an effect at every cut.
 
 **Acceptance:** In a supplied door-close shot, the transient lands on the annotated action within the fixture tolerance; ambience has no audible seam; effects do not cover speech. Missing suitable audio produces an explicit gap in the plan rather than a claimed completed sound design.
 
@@ -220,11 +269,11 @@ All backlog checkboxes below are future work, including verification. This inves
 
 **Evidence:** [`inspect_timeline`](../Sources/CompositorPro/Agent/Tools/ToolExecutor+InspectTimeline.swift#L6) returns at most 12 stills, with a 512-pixel longest edge. This helps with composition, but cannot alone establish motion continuity, audio quality, or delivery readiness. Review is currently an instruction to the model rather than a completion condition.
 
-- [ ] Render a draft through the real composition/export path and inspect each selected shot, important cuts, titles/captions, and the mixed audio.
-- [ ] Add deterministic checks for missing media, unintended gaps/black frames, unsupported processing, duration, caption bounds, clipping, and unresolved jobs.
-- [ ] Add editorial review against the brief: subject relevance, continuity, pacing, shot variety, readability, realism, and sound motivation. Preserve uncertainty for judgments automation cannot establish.
-- [ ] Store findings with shot/clip IDs and timeline revision. Repair specific failures under a bounded iteration/cost budget, then recheck affected output.
-- [ ] Declare completion only for a verified revision and completed export; expose unresolved findings or waiting/failed export state accurately.
+- [x] Render a draft through the real composition/export path and inspect each selected shot, important cuts, titles/captions, and the mixed audio.
+- [x] Add deterministic checks for missing media, unintended gaps/black frames, unsupported processing, duration, caption bounds, clipping, and unresolved jobs.
+- [x] Add editorial review against the brief: subject relevance, continuity, pacing, shot variety, readability, realism, and sound motivation. Preserve uncertainty for judgments automation cannot establish.
+- [x] Store findings with shot/clip IDs and timeline revision. Repair specific failures under a bounded iteration/cost budget, then recheck affected output.
+- [x] Declare completion only for a verified revision and completed export; expose unresolved findings or waiting/failed export state accurately.
 
 **Acceptance:** Intentionally wrong footage, a black gap, hidden title, clipped narration, and unfinished enhancement are caught in fixtures. Inspection failure cannot produce a passing report. Human review confirms the intended creative result.
 

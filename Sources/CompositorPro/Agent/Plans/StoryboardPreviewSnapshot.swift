@@ -138,7 +138,8 @@ struct StoryboardPreviewSnapshot: Sendable {
                     }
                     throw StoryboardPreviewError.unresolvedTiming
                 }
-                let transform = transforms[ref] ?? Transform()
+                let transform = transforms[ref] ?? ClipPlacement.fitTransform(sourceWidth: entry.sourceWidth,
+                    sourceHeight: entry.sourceHeight, canvasWidth: plan.width, canvasHeight: plan.height)
                 guard [transform.centerX, transform.centerY, transform.width, transform.height,
                        transform.rotation, transform.rotationX, transform.rotationY].allSatisfy(\.isFinite),
                       transform.width > 0, transform.height > 0,
@@ -146,9 +147,15 @@ struct StoryboardPreviewSnapshot: Sendable {
                       Transform.tiltRotationRange.contains(transform.rotationY) else {
                     throw StoryboardPreviewError.unsupportedLayout
                 }
-                clips.append(Clip(id: "preview-scene:\(card.shot.id)", mediaRef: ref, mediaType: entry.type,
-                    sourceClipType: entry.type, startFrame: range.lowerBound, durationFrames: range.count,
-                    trimStartFrame: playback.lowerBound, volume: 0, transform: transform))
+                let source = ClipPlacement.Source(mediaRef: ref, type: entry.type, durationSeconds: entry.duration,
+                    hasAudio: false, width: entry.sourceWidth, height: entry.sourceHeight)
+                var clip = try ClipPlacement.make(source: source, trackType: .video, fps: plan.fps,
+                    canvasWidth: plan.width, canvasHeight: plan.height, startFrame: range.lowerBound,
+                    durationFrames: range.count, trimStartFrame: playback.lowerBound, addLinkedAudio: false,
+                    primaryId: "preview-scene:\(card.shot.id)").primary
+                clip.volume = 0
+                clip.transform = transform
+                clips.append(clip)
                 visualEnd = range.upperBound
             }
             var tracks = [Track(id: "storyboard-preview-video:\(plan.id)", type: .video, clips: clips)]
@@ -173,8 +180,11 @@ struct StoryboardPreviewSnapshot: Sendable {
                 let audioShot = EditPlanShot(id: "preview-narration", title: "Narration", startFrame: intent.startFrame,
                     endFrame: visualEnd, mediaRef: narration.mediaRef)
                 _ = try PlanSourceRange.playback(shot: audioShot, fps: plan.fps, type: entry.type, duration: entry.duration)
-                let audio = Clip(id: "preview-narration:\(plan.id)", mediaRef: narration.mediaRef, mediaType: .audio,
-                    sourceClipType: .audio, startFrame: intent.startFrame, durationFrames: duration)
+                let source = ClipPlacement.Source(mediaRef: narration.mediaRef, type: .audio, durationSeconds: entry.duration,
+                    hasAudio: true, width: nil, height: nil)
+                let audio = try ClipPlacement.make(source: source, trackType: .audio, fps: plan.fps,
+                    canvasWidth: plan.width, canvasHeight: plan.height, startFrame: intent.startFrame,
+                    durationFrames: duration, primaryId: "preview-narration:\(plan.id)").primary
                 tracks.append(Track(id: "storyboard-preview-audio:\(plan.id)", type: .audio, clips: [audio]))
             }
             let sources = try selectedRefs.sorted().map { ref -> Source in

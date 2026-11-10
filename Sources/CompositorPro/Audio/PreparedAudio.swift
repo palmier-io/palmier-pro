@@ -8,6 +8,22 @@ struct PreparedAudio: Sendable {
     private static let gate = AsyncSemaphore(value: 1)
 
     enum Stage: Sendable { case denoise, breath, deess }
+
+    static func validateProcessing(_ clip: Clip) throws {
+        let supported: Set<String> = [Clip.denoiseEffectType, Clip.debreathEffectType, Clip.loudnessEffectType, Clip.enhanceEffectType]
+        var seen = Set<String>()
+        for effect in clip.effects ?? [] where effect.enabled {
+            guard supported.contains(effect.type), seen.insert(effect.type).inserted,
+                  effect.params.values.allSatisfy({ $0.value?.isFinite ?? true }) else {
+                throw AudioFinishingError(reason: "Clip '\(clip.id)' has unsupported, duplicated, or invalid audio processing '\(effect.type)'.")
+            }
+        }
+        guard [clip.denoiseAmount, clip.debreathAmount, clip.enhanceAmount, clip.enhanceDeess].allSatisfy({
+            $0.isFinite && (0...1).contains($0)
+        }), clip.loudnessGainDB.isFinite, abs(clip.loudnessGainDB) <= 48, clip.freezeFrames == 0 else {
+            throw AudioFinishingError(reason: "Clip '\(clip.id)' has unsupported audio processing parameters or freeze timing.")
+        }
+    }
     struct Failure: LocalizedError {
         let mediaRef: String
         let stage: Stage
@@ -61,6 +77,7 @@ struct PreparedAudio: Sendable {
         var result = PreparedAudio()
         for clip in audibleClips(timeline: timeline, resolveTimeline: resolveTimeline) {
             try Task.checkCancellation()
+            try validateProcessing(clip)
             guard !missingMediaRefs.contains(clip.mediaRef), let url = resolveURL(clip.mediaRef) else { continue }
             let enhance = clip.hasEnhanceEnabled && clip.enhanceAmount > 0
             var stage = Stage.denoise

@@ -72,12 +72,19 @@ final class ExportQueue {
     static let shared = ExportQueue()
 
     typealias Operation = @MainActor (ExportService) async -> Void
+    /// Where the delivery history is kept. Tests inject an isolated store so parallel
+    /// runs do not share one history.
+    private let historyStore: UserDefaults
     private(set) var jobs: [ExportJob] = []
     private var operations: [UUID: Operation] = [:]
     private var activeID: UUID?
     private var activeTask: Task<Void, Never>?
     private var activeService: ExportService?
     private var completionWaiters: [UUID: [UUID: CheckedContinuation<ExportJob, Error>]] = [:]
+
+    init(historyStore: UserDefaults = .standard) {
+        self.historyStore = historyStore
+    }
 
     var hasActivity: Bool { jobs.contains { $0.status.isPending } }
     var isExportActive: Bool { activeID != nil }
@@ -137,7 +144,8 @@ final class ExportQueue {
         source: ExportJobSource,
         projectID: String,
         analyticsProjectID: String?,
-        warnings: [String] = []
+        warnings: [String] = [],
+        prepareProcessing: (@Sendable () async throws -> Void)? = nil
     ) throws -> ExportQueueSubmission {
         let resolver = resolver.snapshot()
         let manifest = resolver.manifestSnapshot()
@@ -148,22 +156,33 @@ final class ExportQueue {
         )
         return try enqueue(outputURL: outputURL, projectID: projectID, source: source, warnings: warnings,
                            sourceIds: StockDeliveryHistory.sourceIds(resolver: resolver, timeline: timeline)) { service in
-            await service.export(
-                timeline: timeline,
-                resolver: resolver,
-                resolveTimeline: resolveTimeline,
-                format: format,
-                resolution: resolution,
-                fcpxmlVersion: fcpxmlVersion,
-                fcpxmlTarget: fcpxmlTarget,
-                missingMediaRefs: missingMediaRefs,
-                outputURL: outputURL,
-                analyticsContext: ExportAnalyticsContext(
-                    source: source.rawValue,
-                    projectId: analyticsProjectID,
-                    timelineInput: analyticsInput
+            do {
+                if let prepareProcessing {
+                    try await prepareProcessing()
+                }
+                await service.export(
+                    timeline: timeline,
+                    resolver: resolver,
+                    resolveTimeline: resolveTimeline,
+                    format: format,
+                    resolution: resolution,
+                    fcpxmlVersion: fcpxmlVersion,
+                    fcpxmlTarget: fcpxmlTarget,
+                    missingMediaRefs: missingMediaRefs,
+                    outputURL: outputURL,
+                    analyticsContext: ExportAnalyticsContext(
+                        source: source.rawValue,
+                        projectId: analyticsProjectID,
+                        timelineInput: analyticsInput
+                    )
                 )
-            )
+            } catch {
+                if error is CancellationError {
+                    service.wasCancelled = true
+                } else {
+                    service.error = error.localizedDescription
+                }
+            }
         }
     }
 
@@ -341,9 +360,9 @@ final class ExportQueue {
     /// Failed and canceled exports never pollute the history, so a retry does not
     /// deprioritize sources it did not actually deliver.
     private func recordDelivery(sourceIds: Set<String>, filename: String) {
-        var history = StockDeliveryHistory.load()
+        var history = StockDeliveryHistory.load(store: historyStore)
         history.add(sourceIds: sourceIds, outputFilename: filename)
-        history.save()
+        history.save(to: historyStore)
     }
 
     private func finish(_ id: UUID, status: ExportJobStatus, service: ExportService) {

@@ -70,13 +70,15 @@ struct PlanEditToolTests {
     }
 
     @Test func approvedPlanAppliesAsOneReversibleTimelineChange() async throws {
+        let directory = try await PlanAssemblyFixtures.makeDirectory()
+        do {
         let harness = ToolHarness()
         let undoManager = UndoManager()
         harness.editor.undo.attach(undoManager)
         var checkpoints = 0
         harness.editor.onProjectCheckpointRequired = { checkpoints += 1 }
 
-        let harnessed = harness.addAsset(id: "asset-ready", type: .video, duration: 8)
+        let harnessed = PlanAssemblyFixtures.addSource(to: harness.editor, directory: directory, id: "asset-ready")
         _ = try await harness.runOK("plan_edit", args: Self.createPayload(planId: "plan-undo", mediaRef: harnessed.id))
         _ = try await harness.runOK("plan_edit", args: [
             "action": "status", "planId": "plan-undo", "status": "approved",
@@ -92,6 +94,11 @@ struct PlanEditToolTests {
         undoManager.undo()
         #expect(harness.editor.editPlan(id: "plan-undo")?.status == .approved)
         #expect(harness.editor.timeline == before)
+        } catch {
+            try await AudioFinishingFixtures.remove(directory)
+            throw error
+        }
+        try await AudioFinishingFixtures.remove(directory)
     }
 
     @Test func invalidRequestsDoNotCreatePlansOrUndoEntries() async throws {

@@ -92,6 +92,9 @@ final class ProductionCoordinator {
         approvedRevision = run.approvedRevision
         visualReviews = run.visualReviews
         comment = run.comment
+        // The persisted receipt is the delivered truth: a reopened run must not claim
+        // a fresh delivery or resubmit an export.
+        terminalReceipt = run.terminalReceipt
 
         try await executeNextPhase()
     }
@@ -144,8 +147,8 @@ final class ProductionCoordinator {
             totalScenes: plan.shots.count,
             comment: run?.comment ?? comment,
             currentJobId: currentJobHandle?.id.uuidString,
-            exportJobId: terminalReceipt?.exportJobId,
-            terminalReceipt: terminalReceipt,
+            exportJobId: run?.terminalReceipt?.exportJobId ?? run?.exportJobId ?? terminalReceipt?.exportJobId,
+            terminalReceipt: run?.terminalReceipt ?? terminalReceipt,
             reviewFindings: run?.reviewFindings ?? [],
             verifiedTimelineRevision: run?.verifiedTimelineRevision
         )
@@ -217,14 +220,47 @@ final class ProductionCoordinator {
             try await runPrepareStoryboard()
         case .approved:
             try await runApplyPlan()
+            try await runFinishAudio()
             try await runExport()
         case .assembling:
+            try await runFinishAudio()
+            try await runExport()
+        case .finishing:
+            try await runExport()
+        case .reviewing:
             try await runExport()
         case .stale:
             try await runPrepareStoryboard()
         default:
             break
         }
+    }
+
+    private func runFinishAudio() async throws {
+        guard let editor else { throw ProductionError.editorNotAvailable }
+        let audibleClips = editor.timeline.tracks.filter { $0.type == .audio && !$0.muted }.flatMap(\.clips)
+        guard !audibleClips.isEmpty else { return }
+        if editor.timeline.audioMix != nil { return }
+        phase = .finishing
+        var roles: [[String: Any]] = []
+        for clip in audibleClips {
+            let role: String
+            if clip.id.hasPrefix("narration") || clip.mediaRef.contains("voice") || clip.mediaRef.contains("narrat") {
+                role = "voice"
+            } else if clip.mediaRef.contains("music") || clip.mediaRef.contains("bed") {
+                role = "music"
+            } else if clip.mediaRef.contains("ambien") {
+                role = "ambience"
+            } else {
+                role = "effects"
+            }
+            roles.append(["clipId": clip.id, "role": role])
+        }
+        _ = try? await toolExecutor.mixAudio(editor, [
+            "roles": roles,
+            "targetLUFS": -16.0,
+            "truePeakDBTP": -1.0,
+        ])
     }
 
     private func runPrepareStoryboard() async throws {
@@ -267,45 +303,118 @@ final class ProductionCoordinator {
             try await attachToExport(editor, jobId: jobID)
             return
         }
-        let findings = try runDeterministicChecks(editor: editor)
-        try persistFindings(editor, findings: findings)
-        if findings.contains(where: { $0.severity == .error }) {
-            throw ProductionError.exportBlocked(findings)
+        let structuralFindings = try runDeterministicChecks(editor: editor)
+        try persistFindings(editor, findings: structuralFindings)
+        // Every open error finding blocks the export, including editorial ones recorded earlier.
+        let openErrors = (editor.editPlan(id: planId)?.productionRun?.reviewFindings ?? [])
+            .filter { $0.severity == .error }
+        if !openErrors.isEmpty {
+            throw ProductionError.exportBlocked(openErrors)
         }
         try await submitAndAwaitExport(editor)
     }
 
-    /// Deterministic delivery checks over the current plan: empty timelines
-    /// and unavailable shot media must surface as error findings before any
-    /// export is submitted.
+    /// Deterministic delivery checks over the current project: an empty output
+    /// timeline and unavailable shot media must surface as error findings before
+    /// any export is submitted.
     private func runDeterministicChecks(editor: EditorViewModel) throws -> [ProductionRun.Finding] {
         guard let plan = editor.editPlan(id: planId) else { return [] }
         var findings: [ProductionRun.Finding] = []
-        if plan.shots.isEmpty {
+        let timeline = editor.timeline
+
+        if timeline.tracks.allSatisfy({ $0.clips.isEmpty }) {
             findings.append(ProductionRun.Finding(
                 severity: .error,
                 kind: "emptyTimeline",
                 message: "The production timeline has no shots to assemble, inspect, or deliver.",
-                fix: "create_timeline"))
+                fix: "create_timeline",
+                source: .structural))
         }
+
         for shot in plan.shots {
-            if let mediaRef = shot.mediaRef, editor.mediaAssetsById[mediaRef] == nil {
+            if let mediaRef = shot.mediaRef, editor.mediaAssetsById[mediaRef] == nil || editor.missingMediaRefs.contains(mediaRef) {
                 findings.append(ProductionRun.Finding(
                     shotId: shot.id,
                     timelineRevision: storyboardRevision,
                     severity: .error,
                     kind: "missingMedia",
                     message: "Shot '\(shot.id)' ('\(shot.title)') references media '\(mediaRef)' that is not available.",
-                    fix: "import_media"))
+                    fix: "import_media",
+                    source: .structural))
             }
         }
+
+        for cue in plan.soundCues ?? [] {
+            if let mediaRef = cue.mediaRef, editor.mediaAssetsById[mediaRef] == nil || editor.missingMediaRefs.contains(mediaRef) {
+                findings.append(ProductionRun.Finding(
+                    timelineRevision: storyboardRevision,
+                    severity: .error,
+                    kind: "missingMedia",
+                    message: "Sound cue '\(cue.cueId)' ('\(cue.purpose)') references media '\(mediaRef)' that is not available.",
+                    fix: "import_media",
+                    source: .structural))
+            }
+        }
+
+        for (trackIdx, track) in timeline.tracks.enumerated() where track.type == .video && !track.hidden {
+            let sorted = track.clips.sorted { $0.startFrame < $1.startFrame }
+            if let first = sorted.first, first.startFrame > 0 {
+                findings.append(ProductionRun.Finding(
+                    severity: .error,
+                    kind: "blackGap",
+                    message: "Black gap of \(first.startFrame) frames at head of video track \(trackIdx).",
+                    fix: "get_timeline",
+                    source: .structural))
+            }
+            for (a, b) in zip(sorted, sorted.dropFirst()) where b.startFrame > a.endFrame {
+                findings.append(ProductionRun.Finding(
+                    severity: .error,
+                    kind: "blackGap",
+                    message: "Black gap of \(b.startFrame - a.endFrame) frames between clips on video track \(trackIdx).",
+                    fix: "get_timeline",
+                    source: .structural))
+            }
+        }
+
+        for (trackIdx, track) in timeline.tracks.enumerated() where track.hidden && !track.clips.isEmpty {
+            findings.append(ProductionRun.Finding(
+                severity: .error,
+                kind: "hiddenTrack",
+                message: "Track \(trackIdx) with \(track.clips.count) clip(s) is hidden.",
+                fix: "manage_tracks",
+                source: .structural))
+        }
+
+        if editor.enhancementJobs.values.contains(where: { $0.status == .running || $0.status == .queued }) {
+            findings.append(ProductionRun.Finding(
+                severity: .error,
+                kind: "unfinishedEnhancement",
+                message: "Clips on the timeline have unfinished AI enhancement jobs.",
+                fix: "get_enhancement_job_status",
+                source: .structural))
+        }
+
+        let audibleClips = timeline.tracks.filter { $0.type == .audio && !$0.muted }.flatMap(\.clips)
+        if audibleClips.contains(where: { $0.volume > 2.0 }) {
+            findings.append(ProductionRun.Finding(
+                severity: .error,
+                kind: "clippedNarration",
+                message: "Audio track volume exceeds safe ceiling and risks digital clipping.",
+                fix: "mix_audio",
+                source: .rendered))
+        }
+
         return findings
     }
 
+    /// Records the structural findings on the run. Editorial findings recorded earlier
+    /// are kept: a structural pass replaces only its own findings.
     private func persistFindings(_ editor: EditorViewModel, findings: [ProductionRun.Finding]) throws {
         guard var plan = editor.editPlan(id: planId), var run = plan.productionRun else { return }
-        run.reviewFindings = findings
-        run.verifiedTimelineRevision = storyboardRevision
+        try run.replaceFindings(findings, source: .structural)
+        // The timeline is only verified while no error finding is open.
+        let hasOpenError = run.reviewFindings.contains { $0.severity == .error }
+        run.verifiedTimelineRevision = hasOpenError ? nil : storyboardRevision
         try run.validate()
         plan.productionRun = run
         try editor.commitProductionRun(run, plan: plan, actionName: "Production Quality Check")

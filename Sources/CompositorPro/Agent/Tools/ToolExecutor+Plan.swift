@@ -39,6 +39,7 @@ extension ToolExecutor {
         let summary: String?
         let startFrame: Int?
         let endFrame: Int?
+        let role: String?
         let referenceUse: ReferenceRecipeUse?
         let claimIds: [String]?
         let narrationLink: SceneNarrationLink?
@@ -62,6 +63,7 @@ extension ToolExecutor {
         let referenceUse: ReferenceRecipeUse?
         let claimIds: [String]?
         let narrationLink: SceneNarrationLink?
+        let sourceAudio: PlanSourceAudio?
     }
 
     fileprivate struct EditPlanPatch: Decodable {
@@ -81,10 +83,10 @@ extension ToolExecutor {
 
     private static let planObjectKeys: Set<String> = ["planId", "name", "goal", "timelineId", "sections", "shots", "notes", "referenceRecipe", "sourceLedger", "scriptBeats", "narrationIntent", "narration", "brief", "soundCues"]
     private static let planPatchKeys: Set<String> = ["name", "goal", "sections", "shots", "notes", "referenceRecipe", "sourceLedger", "scriptBeats", "narrationIntent", "narration", "brief", "soundCues"]
-    private static let sectionObjectKeys: Set<String> = ["sectionId", "title", "summary", "startFrame", "endFrame", "referenceUse", "claimIds", "narrationLink"]
+    private static let sectionObjectKeys: Set<String> = ["sectionId", "title", "summary", "startFrame", "endFrame", "role", "referenceUse", "claimIds", "narrationLink"]
     private static let shotObjectKeys: Set<String> = [
         "shotId", "title", "startFrame", "endFrame", "trackId", "mediaRef",
-        "candidateURL", "license", "attribution", "sourceStartSeconds", "sourceEndSeconds", "notes", "requirement", "rejections", "referenceUse", "claimIds", "narrationLink",
+        "candidateURL", "license", "attribution", "sourceStartSeconds", "sourceEndSeconds", "notes", "requirement", "rejections", "referenceUse", "claimIds", "narrationLink", "sourceAudio",
     ]
 
     func planEdit(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
@@ -135,85 +137,35 @@ extension ToolExecutor {
         guard let planId = input.planId, !planId.isEmpty else {
             throw ToolError("apply_plan requires planId.")
         }
-        guard let plan = editor.editPlan(id: planId) else {
-            throw ToolError("Unknown planId '\(planId)'.")
-        }
-        try Task.checkCancellation()
-        guard plan.timelineId == editor.activeTimelineId else {
-            throw ToolError("Plan '\(plan.id)' belongs to timeline '\(plan.timelineId)'. Switch to that timeline before applying it.")
-        }
-        if plan.status == .applied {
-            return .ok(Self.jsonString(plan.receipt(includeDetails: true).merging(
-                ["applied": true, "ready": true, "noOp": true],
-                uniquingKeysWith: { _, new in new }
-            )) ?? "{}")
-        }
-        guard plan.status == .approved || plan.status == .ready else {
-            throw ToolError("Only an approved or ready plan can be applied. Mark it approved first.")
-        }
-        try Task.checkCancellation()
-        guard plan.fps == editor.timeline.fps,
-              plan.width == editor.timeline.width,
-              plan.height == editor.timeline.height else {
-            throw ToolError("Plan '\(plan.id)' no longer matches the timeline geometry. Revise the plan before applying it.")
-        }
-        var blockers = readinessBlockers(plan: plan, editor: editor)
-        let productionRevision = editor.visualReviewRevision
-        let timelineIdBefore = editor.activeTimelineId
-        let timelineRevisionBefore = editor.timelineRenderRevision
-        if plan.productionRun != nil {
-            let board = try await editor.verifiedStoryboardReport(planId: plan.id)
-            blockers += board.blockers
-            if !board.canProduce { blockers.append("Explicit approval of the current storyboard is required before production.") }
-        }
-        if plan.scriptBeats != nil, blockers.isEmpty {
-            do { try await verifyPlanNarration(editor, plan: plan) }
-            catch is CancellationError { throw CancellationError() }
-            catch { blockers.append((error as? ToolError)?.message ?? error.localizedDescription) }
-        }
         let commit = input.commit ?? false
-        guard editor.editPlan(id: plan.id) == plan, editor.visualReviewRevision == productionRevision,
-              editor.activeTimelineId == timelineIdBefore,
-              editor.timelineRenderRevision == timelineRevisionBefore else {
-            throw ToolError("Plan, storyboard, timeline, or its revision changed during readiness checks; retry with current state.")
+        guard commit || input.preparationId == nil else {
+            throw ToolError("preparationId is only valid with commit:true.")
         }
-        if commit {
-            guard blockers.isEmpty else {
-                throw ToolError("Plan '\(plan.id)' is not ready: \(blockers.joined(separator: " "))")
+        let request = PlanAssembly.Request(shotIds: input.shotIds, replaceManualEdits: input.replaceManualEdits ?? false)
+        do {
+            let prepared: EditorViewModel.PreparedPlanAssembly
+            if let id = input.preparationId {
+                prepared = try editor.preparedAssembly(id: id, planId: planId, request: request)
+            } else {
+                prepared = try await editor.preparePlanAssembly(planId: planId, request: request, prepare: planAssemblyPreparing)
             }
-            let entries = try assemblyEntries(plan: plan, editor: editor)
-            let clipIDsBefore = Set(editor.timeline.tracks.flatMap(\.clips).map(\.id))
-            do {
-                try editor.undo.perform("Apply Plan (Agent)") {
-                    let result = try addClips(editor, ["entries": entries], matchSettings: false)
-                    guard !result.isError else { throw ToolError("Plan assembly failed.") }
-                    if plan.status == .approved {
-                        _ = try editor.changeEditPlanStatus(
-                            id: plan.id, to: .ready,
-                            actionName: "Apply Plan (Agent)", permitReserved: true
-                        )
-                    }
-                    _ = try editor.changeEditPlanStatus(
-                        id: plan.id, to: .applied,
-                        actionName: "Apply Plan (Agent)", permitReserved: true
-                    )
-                }
-                let applied = editor.editPlan(id: plan.id) ?? plan
-                let addedClipIDs = Set(editor.timeline.tracks.flatMap(\.clips).map(\.id)).subtracting(clipIDsBefore)
-                let shotClipIDs = Self.assemblyReceiptShots(plan: applied, editor: editor, addedClipIDs: addedClipIDs)
-                return .ok(Self.jsonString(applied.receipt(includeDetails: true).merging(
-                    ["applied": true, "ready": true, "noOp": false, "addedClipIds": Array(addedClipIDs).sorted(),
-                     "shotAssembly": shotClipIDs],
-                    uniquingKeysWith: { _, new in new }
-                )) ?? "{}")
-            } catch let error as EditPlanValidationError {
-                throw ToolError(error.errorDescription ?? "Invalid plan status change.")
+            try Task.checkCancellation()
+            guard self.editor === editor else { throw ToolError("Project binding changed during plan preparation.") }
+            if commit {
+                let result = try await editor.commitPlanAssembly(prepared)
+                return .ok(Self.jsonString(result.receipt) ?? "{}")
             }
+            var receipt = prepared.preparation.input.plan.receipt(includeDetails: true)
+            receipt.merge(["applied": false, "ready": prepared.preparation.blockers.isEmpty,
+                           "blockers": prepared.preparation.blockers, "noOp": true], uniquingKeysWith: { _, new in new })
+            if let resolved = prepared.preparation.resolved {
+                receipt.merge(resolved.previewReceipt, uniquingKeysWith: { _, new in new })
+                receipt["preparationId"] = prepared.id
+            }
+            return .ok(Self.jsonString(receipt) ?? "{}")
+        } catch let error as EditPlanValidationError {
+            throw ToolError(error.errorDescription ?? "Invalid plan assembly.")
         }
-        return .ok(Self.jsonString(plan.receipt(includeDetails: true).merging(
-            ["applied": false, "ready": blockers.isEmpty, "blockers": blockers, "noOp": true],
-            uniquingKeysWith: { _, new in new }
-        )) ?? "{}")
     }
 
     private func createEditPlan(_ editor: EditorViewModel, input: PlanEditInput) async throws -> ToolResult {
@@ -440,6 +392,7 @@ extension ToolExecutor {
             summary: draft.summary ?? "",
             startFrame: start,
             endFrame: end,
+            role: draft.role.flatMap(SectionRole.init(rawValue:)),
             referenceUse: draft.referenceUse,
             claimIds: draft.claimIds,
             narrationLink: draft.narrationLink
@@ -468,7 +421,8 @@ extension ToolExecutor {
             rejections: draft.rejections ?? [],
             referenceUse: draft.referenceUse,
             claimIds: draft.claimIds,
-            narrationLink: draft.narrationLink
+            narrationLink: draft.narrationLink,
+            sourceAudio: draft.sourceAudio
         )
     }
 
@@ -549,7 +503,7 @@ extension ToolExecutor {
 
     private func validatePlanSoundCues(_ value: Any?, path: String) throws {
         guard let value else { return }
-        try validatePlanArray(value, allowed: ["cueId", "role", "purpose", "anchorBeatId", "anchorFrame", "durationSeconds", "notes"], singular: "sound cue", path: path)
+        try validatePlanArray(value, allowed: ["cueId", "role", "purpose", "anchorBeatId", "anchorFrame", "durationSeconds", "notes", "mediaRef", "trackId"], singular: "sound cue", path: path)
     }
 
     private func validateReferenceRecipe(_ value: Any?, path: String) throws {
@@ -593,147 +547,13 @@ extension ToolExecutor {
         }
     }
 
-    @MainActor private static func assemblyReceiptShots(
-        plan: EditPlan,
-        editor: EditorViewModel,
-        addedClipIDs: Set<String>
-    ) -> [[String: Any]] {
-        let clips = editor.timeline.tracks.flatMap(\.clips).filter { addedClipIDs.contains($0.id) }
-        var rows: [[String: Any]] = []
-        for shot in plan.resolvedShotsSafe() {
-            guard let mediaRef = shot.mediaRef else { continue }
-            let clipIDs = clips
-                .filter { $0.mediaRef == mediaRef && $0.startFrame == shot.startFrame }
-                .map(\.id)
-            rows.append(["shotId": shot.id, "clipIds": clipIDs])
-        }
-        if let narration = plan.narration, let intent = plan.narrationIntent {
-            let clipIDs = clips
-                .filter { $0.mediaRef == narration.mediaRef && $0.startFrame == intent.startFrame }
-                .map(\.id)
-            if !clipIDs.isEmpty {
-                rows.append(["scene": "narration", "clipIds": clipIDs])
-            }
-        }
-        return rows
-    }
-
-    private func assemblyEntries(plan: EditPlan, editor: EditorViewModel) throws -> [[String: Any]] {
-        let shots = try plan.resolvedShots()
-        let allOmitTracks = shots.allSatisfy { $0.trackId == nil }
-        var entries = try shots.map { shot in
-            guard let mediaRef = shot.mediaRef,
-                  let asset = editor.mediaAssetsById[mediaRef] else {
-                throw ToolError("Shot '\(shot.id)' has no ready mediaRef.")
-            }
-            _ = try PlanSourceRange.playback(shot: shot, fps: plan.fps, type: asset.type, duration: asset.resolvedDuration)
-            var entry: [String: Any] = ["mediaRef": mediaRef, "startFrame": shot.startFrame]
-            if let sourceStart = shot.sourceStartSeconds, let sourceEnd = shot.sourceEndSeconds {
-                entry["source"] = [sourceStart, sourceEnd]
-            } else {
-                entry["endFrame"] = shot.endFrame
-            }
-            if !allOmitTracks {
-                let trackId = shot.trackId ?? editor.timeline.tracks.first(where: { asset.type.isCompatible(with: $0.type) })?.id
-                guard let trackId,
-                      let trackIndex = editor.timeline.tracks.firstIndex(where: { $0.id == trackId }) else {
-                    throw ToolError("Shot '\(shot.id)' has no compatible destination track.")
-                }
-                entry["trackIndex"] = trackIndex
-            }
-            return entry
-        }
-        if let narration = plan.narration, let intent = plan.narrationIntent, let timing = plan.narrationTiming {
-            let duration = try timing.duration.frame(fps: plan.fps, rounding: .roundTowardZero)
-            guard duration > 0, intent.startFrame <= maxFrameArg - duration else { throw ToolError("Narration duration exceeds timeline bounds.") }
-            var entry: [String: Any] = ["mediaRef": narration.mediaRef, "startFrame": intent.startFrame,
-                                         "endFrame": intent.startFrame + duration]
-            if !allOmitTracks {
-                guard let index = editor.timeline.tracks.firstIndex(where: { $0.type == .audio }) else {
-                    throw ToolError("Plan narration requires a compatible audio track when shot tracks are explicit.")
-                }
-                entry["trackIndex"] = index
-            }
-            entries.append(entry)
-        }
-        return entries
-    }
-
-    private func readinessBlockers(plan: EditPlan, editor: EditorViewModel) -> [String] {
-        var blockers: [String] = []
-        for claimId in plan.unresolvedClaimIDs {
-            blockers.append("Claim '\(claimId)' is unresolved; review its supporting evidence before assembly.")
-        }
-        let timeline = editor.timeline
-        if plan.scriptBeats != nil, plan.narrationTiming == nil || plan.narrationTiming?.unresolvedBeatIds.isEmpty == false {
-            blockers.append("Narration alignment is unresolved; measure the current script and audio before assembly.")
-        }
-        let shots: [EditPlanShot]
-        do {
-            shots = try plan.resolvedShots()
-            for section in plan.sections {
-                if let link = section.narrationLink { _ = try plan.resolvedNarrationRange(link) }
-            }
-        } catch {
-            blockers.append(error.localizedDescription)
-            return blockers
-        }
-        if plan.shots.isEmpty {
-            blockers.append("The plan has no shots to validate.")
-        }
-        let tracks = Set(timeline.tracks.map(\.id))
-        for shot in shots {
-            if let trackId = shot.trackId, !tracks.contains(trackId) {
-                blockers.append("Shot '\(shot.id)' names unknown trackId '\(trackId)'.")
-            }
-            if let mediaRef = shot.mediaRef {
-                guard let asset = editor.mediaAssetsById[mediaRef] else {
-                    blockers.append("Shot '\(shot.id)' names unknown mediaRef '\(mediaRef)'.")
-                    continue
-                }
-                if editor.missingMediaRefs.contains(mediaRef) || editor.unprocessableMediaRefs.contains(mediaRef) {
-                    blockers.append("Shot '\(shot.id)' points at media '\(mediaRef)' that is missing or unreadable.")
-                }
-                switch asset.generationStatus {
-                case .none:
-                    break
-                case .failed(let message):
-                    blockers.append("Shot '\(shot.id)' points at failed media '\(mediaRef)': \(message)")
-                default:
-                    blockers.append("Shot '\(shot.id)' points at media '\(mediaRef)' that is still \(asset.generationStatus.serialized).")
-                }
-                if let trackId = shot.trackId,
-                   let track = timeline.tracks.first(where: { $0.id == trackId }),
-                   !asset.type.isCompatible(with: track.type) {
-                    blockers.append("Shot '\(shot.id)' media type '\(asset.type.rawValue)' is incompatible with track '\(trackId)'.")
-                }
-                do {
-                    _ = try PlanSourceRange.playback(shot: shot, fps: plan.fps, type: asset.type, duration: asset.resolvedDuration)
-                } catch {
-                    blockers.append("Shot '\(shot.id)': \(error.localizedDescription)")
-                }
-            } else if let candidateURL = shot.candidateURL {
-                blockers.append("Shot '\(shot.id)' has candidate '\(candidateURL)' that has not been imported yet. Import it with import_media, then attach its mediaRef.")
-            } else {
-                blockers.append("Shot '\(shot.id)' has no mediaRef and no candidateURL.")
-            }
-        }
-        if blockers.isEmpty {
-            do {
-                let entries = try assemblyEntries(plan: plan, editor: editor)
-                _ = try prepareClipAdditions(editor, ["entries": entries])
-            } catch let error as ToolError {
-                blockers.append(error.message)
-            } catch {
-                blockers.append(error.localizedDescription)
-            }
-        }
-        return blockers
-    }
 }
 
 private struct ApplyPlanInput: DecodableToolArgs {
     let planId: String?
     let commit: Bool?
-    static let allowedKeys: Set<String> = ["planId", "commit"]
+    let preparationId: String?
+    let shotIds: [String]?
+    let replaceManualEdits: Bool?
+    static let allowedKeys: Set<String> = ["planId", "commit", "preparationId", "shotIds", "replaceManualEdits"]
 }

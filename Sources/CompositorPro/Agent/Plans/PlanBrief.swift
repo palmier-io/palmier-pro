@@ -1,5 +1,14 @@
 import Foundation
 
+/// Editorial role for a section within the plan brief.
+enum SectionRole: String, Codable, Sendable, CaseIterable {
+    case hook
+    case development
+    case payoff
+    case context
+    case callToAction = "call_to_action"
+}
+
 /// Filmmaking brief recorded on the plan: intended audience, format, tone,
 /// realism requirements, language, and delivery constraints. Every field is
 /// optional and editable; inferred choices are recorded so the model's guesses
@@ -176,15 +185,6 @@ struct ShotRequirement: Codable, Sendable, Equatable {
     }
 }
 
-/// Track completion status of creative brief fields and shot requirements
-struct BriefCompletionStatus: Codable, Sendable, Equatable {
-    var completedFields: Set<String> = []
-    var pendingShots: Set<String> = []
-    var unresolvedConstraints: [String: [String]] = [:]  // shotId -> list of issues
-    var lastUserEdit: Date?
-    var briefRevision: Int = 0
-}
-
 /// A candidate rejection recorded during shot retrieval.
 struct ShotRejection: Codable, Sendable, Equatable {
     enum Reason: String, Codable, Sendable, CaseIterable {
@@ -261,6 +261,8 @@ struct PlanSoundCue: Codable, Sendable, Equatable {
     var anchorFrame: Int?
     var durationSeconds: Double?
     var notes: String?
+    var mediaRef: String?
+    var trackId: String?
 
     func validated() throws -> Self {
         var cue = self
@@ -282,6 +284,8 @@ struct PlanSoundCue: Codable, Sendable, Equatable {
             let trimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
             cue.notes = trimmed.isEmpty ? nil : try EditPlan.validatedText(trimmed, field: "sound cue notes")
         }
+        if let mediaRef { cue.mediaRef = try EditPlan.validatedID(mediaRef, field: "cue.mediaRef") }
+        if let trackId { cue.trackId = try EditPlan.validatedID(trackId, field: "cue.trackId") }
         if cue.anchorBeatId != nil, cue.anchorFrame != nil {
             throw EditPlanValidationError.invalidReference(
                 "Sound cue '\(cue.cueId)' has one timing anchor: anchorBeatId or anchorFrame, not both.")
@@ -295,6 +299,8 @@ struct PlanSoundCue: Codable, Sendable, Equatable {
         if let anchorFrame { row["anchorFrame"] = anchorFrame }
         if let durationSeconds { row["durationSeconds"] = durationSeconds }
         if let notes { row["notes"] = notes }
+        if let mediaRef { row["mediaRef"] = mediaRef }
+        if let trackId { row["trackId"] = trackId }
         return row
     }
 }

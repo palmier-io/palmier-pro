@@ -1,6 +1,6 @@
 import Foundation
 
-enum AudioMixError: Error, Equatable, CustomStringConvertible {
+enum AudioMixError: Error, LocalizedError, Equatable, CustomStringConvertible {
     case unknownClip(String)
     case notAudio(String)
     case sameClip
@@ -13,6 +13,11 @@ enum AudioMixError: Error, Equatable, CustomStringConvertible {
     case noDialogueOverlap
     case bedIsItsOwnSource(clipId: String)
     case noAudioInTimeline
+    case sourceUnavailable(String)
+    case staleState
+    case duplicateSources
+
+    var errorDescription: String? { description }
 
     var description: String {
         switch self {
@@ -33,6 +38,9 @@ enum AudioMixError: Error, Equatable, CustomStringConvertible {
         case .noDialogueOverlap: "No dialogue audio overlaps the bed, so there is nothing to duck under."
         case .bedIsItsOwnSource(let id): "Clip \(id) cannot duck under itself; list the dialogue clips as sources."
         case .noAudioInTimeline: "The timeline has no audio clips."
+        case .sourceUnavailable(let id): "Audio source '\(id)' is unavailable or still processing."
+        case .staleState: "Project, timeline, or audio sources changed during preparation. Retry with current state."
+        case .duplicateSources: "Dialogue source IDs must be nonempty and unique."
         }
     }
 }
@@ -56,6 +64,8 @@ extension EditorViewModel {
         /// True when speech could not be detected and whole-clip spans were used instead.
         var usedWholeClipFallback: Bool
         var ignoredSpans: Int
+        var changed: Bool
+        var speechDetection: [String: String]
     }
 
     /// Crossfades two adjacent audio clips on one track, as one undo step. A `linear` or `smooth`
@@ -116,10 +126,13 @@ extension EditorViewModel {
                 if curve == "equalpower" {
                     let from = updated.startFrame + updated.durationFrames - durationFrames
                     for sample in samples {
+                        // The clip volume track holds decibels, so the equal-power gain
+                        // samples have to be converted before they are written.
+                        let gain = max(0, index == 0 ? sample.outgoing : sample.incoming)
                         updated.upsertKeyframe(
                             in: \Clip.volumeTrack,
                             frame: from + sample.frameOffset,
-                            value: max(0, index == 0 ? sample.outgoing : sample.incoming)
+                            value: VolumeScale.dbFromLinear(gain)
                         )
                     }
                 } else {
@@ -146,11 +159,6 @@ extension EditorViewModel {
         )
     }
 
-    /// Writes a dialogue-aware volume envelope on a bed clip, as one undo step.
-    ///
-    /// `sources` defaults to every other audio clip overlapping the bed. Speech spans come from
-    /// cached voice-activity analysis; when detection is unavailable the whole source clip is used
-    /// as one span and the receipt says so, so the caller can judge the result.
     @discardableResult
     func duckAudio(
         bedId: String,
@@ -160,58 +168,84 @@ extension EditorViewModel {
         holdFrames: Int = DuckingPlan.Parameters.default.holdFrames,
         releaseFrames: Int = DuckingPlan.Parameters.default.releaseFrames,
         mergeGapFrames: Int = DuckingPlan.Parameters.default.mergeGapFrames,
-        overwrite: Bool = false
+        overwrite: Bool = false,
+        allowWholeClipFallback: Bool = false,
+        resolveSpeech: @Sendable ([AudioSpeechTiming.Source], Int, Bool) async throws -> AudioSpeechTiming.Result = {
+            try await AudioSpeechTiming.analyze($0, fps: $1, allowWholeClipFallback: $2)
+        }
     ) async throws -> DuckingReceipt {
+        try await projectPackageCoordinator.withIntent { _ in
+        try Task.checkCancellation()
+        let snapshot = timeline
+        let revision = visualReviewRevision
         guard let bedLocation = findClip(id: bedId) else { throw AudioMixError.unknownClip(bedId) }
         let bed = timeline.tracks[bedLocation.trackIndex].clips[bedLocation.clipIndex]
-        guard bed.mediaType == .audio else { throw AudioMixError.notAudio(bedId) }
-        if bed.volumeTrack?.isActive == true, !overwrite {
-            throw AudioMixError.alreadyHasVolumeAutomation(clipId: bedId)
-        }
-
-        let sources = try sourceClips(dialogueOverlapping: bed, explicitIds: sourceIds)
-        let spans = try await speechSpans(for: sources)
-        guard !spans.isEmpty else { throw AudioMixError.noDialogueOverlap }
-
+        guard bed.mediaType == .audio, timeline.tracks[bedLocation.trackIndex].type == .audio,
+              !timeline.tracks[bedLocation.trackIndex].muted else { throw AudioMixError.notAudio(bedId) }
         let parameters = DuckingPlan.Parameters(
             duckDb: duckDb, attackFrames: attackFrames, holdFrames: holdFrames,
             releaseFrames: releaseFrames, mergeGapFrames: mergeGapFrames
         )
+        _ = try DuckingPlan.plan(bedStartFrame: bed.startFrame, bedDurationFrames: bed.durationFrames,
+                                speechSpans: [], parameters: parameters)
+        if duckDb == 0 {
+            return DuckingReceipt(bedClipId: bedId, duckedRanges: [], keyframesWritten: 0, sourceClipIds: [],
+                                  duckDb: 0, usedWholeClipFallback: false, ignoredSpans: 0,
+                                  changed: false, speechDetection: [:])
+        }
+        if bed.volumeTrack?.isActive == true, !overwrite {
+            throw AudioMixError.alreadyHasVolumeAutomation(clipId: bedId)
+        }
+        guard let bedAsset = mediaAssetsById[bed.mediaRef], bedAsset.generationStatus == .none,
+              (allowWholeClipFallback || !missingMediaRefs.contains(bed.mediaRef)),
+              !unprocessableMediaRefs.contains(bed.mediaRef) else {
+            throw AudioMixError.sourceUnavailable(bed.mediaRef)
+        }
+        let bedURL = bedAsset.url
+        let sources = try sourceClips(dialogueOverlapping: bed, explicitIds: sourceIds, allowAbsent: allowWholeClipFallback)
+        let bedVersions = try await LoudnessAnalyzer.sourceVersions(for: [bedURL])
+        let spans = try await resolveSpeech(sources.map { .init(clip: $0.clip, url: $0.url) }, snapshot.fps, allowWholeClipFallback)
+        try Task.checkCancellation()
+        guard !spans.ranges.isEmpty else { throw AudioMixError.noDialogueOverlap }
         let plan = try DuckingPlan.plan(
             bedStartFrame: bed.startFrame,
             bedDurationFrames: bed.durationFrames,
-            speechSpans: spans.map { $0.timeline },
+            speechSpans: spans.ranges,
             parameters: parameters
         )
         guard !plan.isEmpty else { throw AudioMixError.noDialogueOverlap }
-
-        // Revalidate: speech detection awaited, so the bed may have moved or gone.
-        guard let current = findClip(id: bedId),
-              timeline.tracks[current.trackIndex].clips[current.clipIndex].startFrame == bed.startFrame,
-              timeline.tracks[current.trackIndex].clips[current.clipIndex].durationFrames == bed.durationFrames
-        else {
-            throw AudioMixError.unknownClip(bedId)
+        try await LoudnessAnalyzer.validateSourceVersions(bedVersions)
+        try await LoudnessAnalyzer.validateSourceVersions(spans.sourceVersions)
+        try Task.checkCancellation()
+        guard !projectPackageCoordinator.isClosing, visualReviewRevision == revision, timeline == snapshot,
+              activeTimelineId == snapshot.id, mediaAssetsById[bed.mediaRef] === bedAsset, bedAsset.url == bedURL,
+              bedAsset.generationStatus == .none, sources.allSatisfy({ source in
+                  mediaAssetsById[source.clip.mediaRef] === source.asset && source.asset.url == source.url
+                      && source.asset.generationStatus == .none && (allowWholeClipFallback || !missingMediaRefs.contains(source.clip.mediaRef))
+                      && !unprocessableMediaRefs.contains(source.clip.mediaRef)
+              }) else {
+            throw AudioMixError.staleState
         }
-        let location = current
-        withTimelineSwap(actionName: "Ducking") {
-            var updated = timeline.tracks[location.trackIndex].clips[location.clipIndex]
-            if overwrite { updated.volumeTrack = nil }
-            for keyframe in plan.keyframes {
-                updated.volumeTrack = updated.volumeTrack ?? KeyframeTrack<Double>()
-                updated.volumeTrack!.upsert(keyframe)
+        let track = KeyframeTrack(keyframes: plan.keyframes)
+        let changed = bed.volumeTrack != track
+        if changed {
+            withTimelineSwap(actionName: L10n.string("Ducking")) {
+                timeline.tracks[bedLocation.trackIndex].clips[bedLocation.clipIndex].volumeTrack = track
             }
-            timeline.tracks[location.trackIndex].clips[location.clipIndex] = updated
+            onProjectCheckpointRequired?()
         }
-        onProjectCheckpointRequired?()
         return DuckingReceipt(
             bedClipId: bedId,
             duckedRanges: plan.windows,
             keyframesWritten: plan.keyframes.count,
             sourceClipIds: sources.map { $0.clip.id },
             duckDb: duckDb,
-            usedWholeClipFallback: spans.contains { $0.wholeClipFallback },
-            ignoredSpans: plan.ignoredSpans
+            usedWholeClipFallback: spans.usedWholeClipFallback,
+            ignoredSpans: plan.ignoredSpans,
+            changed: changed,
+            speechDetection: Dictionary(uniqueKeysWithValues: spans.timings.map { ($0.clipId, $0.method.rawValue) })
         )
+        }
     }
 
     // MARK: - Speech spans
@@ -219,67 +253,35 @@ extension EditorViewModel {
     private struct SourceClip {
         var clip: Clip
         var asset: MediaAsset
+        var url: URL
     }
 
-    private struct SpeechSpan {
-        var timeline: Range<Int>
-        var wholeClipFallback: Bool
-    }
-
-    private func sourceClips(dialogueOverlapping bed: Clip, explicitIds: [String]?) throws -> [SourceClip] {
-        if let explicitIds, !explicitIds.isEmpty {
+    private func sourceClips(dialogueOverlapping bed: Clip, explicitIds: [String]?, allowAbsent: Bool = false) throws -> [SourceClip] {
+        if let explicitIds {
+            guard !explicitIds.isEmpty, Set(explicitIds).count == explicitIds.count else { throw AudioMixError.duplicateSources }
             return try explicitIds.map { id in
                 guard id != bed.id else { throw AudioMixError.bedIsItsOwnSource(clipId: id) }
                 guard let location = findClip(id: id) else { throw AudioMixError.unknownClip(id) }
                 let clip = timeline.tracks[location.trackIndex].clips[location.clipIndex]
-                guard clip.mediaType == .audio else { throw AudioMixError.notAudio(id) }
-                guard let asset = mediaAssetsById[clip.mediaRef] else { throw AudioMixError.unknownClip(id) }
-                return SourceClip(clip: clip, asset: asset)
+                guard clip.mediaType == .audio, !timeline.tracks[location.trackIndex].muted,
+                      clip.sourceClipType != .sequence else { throw AudioMixError.notAudio(id) }
+                return try audioSource(for: clip, allowAbsent: allowAbsent)
             }
         }
         let candidates = timeline.tracks
+            .filter { $0.type == .audio && !$0.muted }
             .flatMap(\.clips)
             .filter { $0.id != bed.id && $0.mediaType == .audio && $0.startFrame < bed.endFrame && $0.endFrame > bed.startFrame }
         guard !candidates.isEmpty else { throw AudioMixError.noDialogueOverlap }
-        return candidates.compactMap { clip in
-            mediaAssetsById[clip.mediaRef].map { SourceClip(clip: clip, asset: $0) }
-        }
+        return try candidates.map { try audioSource(for: $0, allowAbsent: allowAbsent) }
     }
-
-    /// Voice-activity spans mapped into timeline frames. Detection and file reads stay off the
-    /// main actor; only the resulting frame ranges cross back.
-    private func speechSpans(for sources: [SourceClip]) async throws -> [SpeechSpan] {
-        let fps = Double(timeline.fps)
-        guard fps > 0 else { return [] }
-        let requests: [(clip: Clip, url: URL, mediaRef: String)] = sources.compactMap { source in
-            return (source.clip, source.asset.url, source.asset.id)
+    private func audioSource(for clip: Clip, allowAbsent: Bool = false) throws -> SourceClip {
+        guard clip.sourceClipType != .sequence, let asset = mediaAssetsById[clip.mediaRef],
+              asset.generationStatus == .none, (allowAbsent || !missingMediaRefs.contains(clip.mediaRef)),
+              !unprocessableMediaRefs.contains(clip.mediaRef) else {
+            throw AudioMixError.sourceUnavailable(clip.mediaRef)
         }
-        let detected = await Task.detached(priority: .userInitiated) { () -> [Int: [Range<Int>]] in
-            var result: [Int: [Range<Int>]] = [:]
-            for (index, request) in requests.enumerated() {
-                if let analysis = try? await VoiceActivity.analysis(
-                    for: request.url, mediaRef: request.mediaRef
-                ) {
-                    result[index] = analysis.segments.map { span in
-                        let lower = Int((span.start * fps).rounded())
-                        let upper = Int((span.end * fps).rounded())
-                        return lower ..< max(lower + 1, upper)
-                    }
-                }
-            }
-            return result
-        }.value
-
-        var spans: [SpeechSpan] = []
-        for (index, request) in requests.enumerated() {
-            let clip = request.clip
-            let fallback = detected[index] == nil
-            let sourceFrames = detected[index]
-                ?? [0 ..< clip.timeMap.sourceFramesConsumed]
-            spans.append(contentsOf: Self.timelineFrames(from: sourceFrames, clip: clip, fps: fps)
-                .map { SpeechSpan(timeline: $0, wholeClipFallback: fallback) })
-        }
-        return spans
+        return SourceClip(clip: clip, asset: asset, url: asset.url)
     }
 
     /// Source frames → absolute timeline frames through the clip's own mapping and start.
@@ -288,13 +290,8 @@ extension EditorViewModel {
         clip: Clip,
         fps: Double
     ) -> [Range<Int>] {
-        let map = clip.timeMap
         return frames.compactMap { span in
-            let lower = clip.startFrame
-                + map.timelineOffset(forSourceOffset: Double(span.lowerBound))
-            let upper = clip.startFrame
-                + map.timelineOffset(forSourceOffset: Double(span.upperBound))
-            return lower < upper ? lower ..< upper : nil
+            clip.timelineRange(sourceStartFrame: Double(span.lowerBound), sourceEndFrame: Double(span.upperBound))
         }
     }
 }

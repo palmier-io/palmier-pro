@@ -23,25 +23,38 @@ extension ToolExecutor {
 
         let enabled = input.enabled ?? true
         let snapshot = timelineSnapshot(editor)
+        let before = editor.timeline
         let actionName = enabled ? "De-Breath Audio (Agent)" : "Disable De-Breath (Agent)"
-        editor.undo.perform(actionName) {
-            editor.setDebreath(
-                clipIds: Set(input.clipIds),
-                enabled: enabled,
-                amount: input.strength,
-                actionName: actionName
+        if !enabled {
+            editor.undo.perform(actionName) {
+                editor.setDebreath(
+                    clipIds: Set(input.clipIds),
+                    enabled: false,
+                    amount: nil,
+                    actionName: actionName
+                )
+            }
+            return mutationResult(
+                editor, since: snapshot, touched: before == editor.timeline ? [] : input.clipIds,
+                extra: ["noOp": before == editor.timeline],
+                notes: ["De-breath disabled."]
             )
         }
-        var notes: [String] = []
-        if enabled {
-            let warnings = try await editor.awaitEnhancementAnalysis(clipIds: Set(input.clipIds))
-            notes = warnings.isEmpty
-                ? ["Breath analysis complete."]
-                : warnings
-        } else {
-            notes = ["De-breath disabled."]
-        }
-        return mutationResult(editor, since: snapshot, touched: input.clipIds, notes: notes)
+        let (jobId, _) = try await editor.startEnhancementJob(
+            clipIds: Set(input.clipIds),
+            type: .debreath,
+            params: .debreath(amount: input.strength),
+            actionName: actionName
+        )
+        let job = try await editor.awaitEnhancementJob(jobId)
+        let notes = job.warnings.isEmpty
+            ? ["Breath analysis complete."]
+            : job.warnings
+        return mutationResult(
+            editor, since: snapshot, touched: before == editor.timeline ? [] : Array(job.changedClipIds),
+            extra: ["noOp": before == editor.timeline, "jobId": jobId.uuidString, "warnings": job.warnings],
+            notes: notes
+        )
     }
 
     fileprivate struct EnhanceVoiceInput: DecodableToolArgs {

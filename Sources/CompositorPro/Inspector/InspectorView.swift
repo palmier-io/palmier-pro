@@ -1194,8 +1194,12 @@ enum VolumeScale {
     static let ceilingDb: Double = 15
 
     static func dbFromLinear(_ linear: Double) -> Double {
+        min(ceilingDb, max(floorDb, exactDBFromLinear(linear)))
+    }
+
+    static func exactDBFromLinear(_ linear: Double) -> Double {
         guard linear > 0 else { return floorDb }
-        return min(ceilingDb, max(floorDb, 20 * log10(linear)))
+        return 20 * log10(linear)
     }
 
     static func linearFromDb(_ db: Double) -> Double {

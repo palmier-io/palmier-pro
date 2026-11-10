@@ -27,6 +27,7 @@ struct EditPlanSection: Codable, Sendable, Equatable, Identifiable {
     var summary: String = ""
     var startFrame: Int
     var endFrame: Int
+    var role: SectionRole? = nil
     var referenceUse: ReferenceRecipeUse?
     var claimIds: [String]?
     var narrationLink: SceneNarrationLink?
@@ -50,6 +51,7 @@ struct EditPlanShot: Codable, Sendable, Equatable, Identifiable {
     var referenceUse: ReferenceRecipeUse?
     var claimIds: [String]?
     var narrationLink: SceneNarrationLink?
+    var sourceAudio: PlanSourceAudio?
 }
 
 struct EditPlan: Codable, Sendable, Equatable, Identifiable {
@@ -78,12 +80,13 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
     var productionRun: ProductionRun?
     var brief: PlanBrief?
     var soundCues: [PlanSoundCue]?
+    var assembly: PlanAssemblyState?
 
     private enum CodingKeys: String, CodingKey {
         case id, name, goal, timelineId, fps, width, height, status
         case sections, shots, notes, createdAt, updatedAt, referenceRecipe, sourceLedger, sourceLedgerRevision
         case scriptBeats, narrationIntent, narration, narrationRevision, narrationTiming, narrationSynthesisProof
-        case productionRun, brief, soundCues
+        case productionRun, brief, soundCues, assembly
     }
 
     init(
@@ -159,6 +162,7 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
         productionRun = try container.decodeIfPresent(ProductionRun.self, forKey: .productionRun)
         brief = try container.decodeIfPresent(PlanBrief.self, forKey: .brief)
         soundCues = try container.decodeIfPresent([PlanSoundCue].self, forKey: .soundCues)
+        assembly = try container.decodeIfPresent(PlanAssemblyState.self, forKey: .assembly)
     }
 }
 
@@ -401,6 +405,7 @@ extension EditPlan {
         ]
         if !goal.isEmpty { out["goal"] = goal }
         if let productionRun { out["productionRun"] = productionRun.receipt }
+        if let assembly { out["assembly"] = assembly.receipt }
         if let brief { out["brief"] = brief.receipt }
         if let soundCues { out["soundCues"] = soundCues.map { $0.receipt } }
         out["durationMatch"] = durationMatchReceipt
@@ -436,6 +441,7 @@ extension EditPlan {
                     "startFrame": section.startFrame,
                     "endFrame": section.endFrame,
                 ]
+                if let role = section.role { row["role"] = role.rawValue }
                 if let use = section.referenceUse { row["referenceUse"] = use.receipt() }
                 if let claimIds = section.claimIds { row["claimIds"] = claimIds }
                 addNarrationReceipt(section.narrationLink, to: &row)
@@ -449,6 +455,7 @@ extension EditPlan {
                     "endFrame": shot.endFrame,
                 ]
                 if let trackId = shot.trackId { row["trackId"] = trackId }
+                row["sourceAudio"] = (shot.sourceAudio ?? (narration == nil ? .linked : .omit)).rawValue
                 if let mediaRef = shot.mediaRef { row["mediaRef"] = mediaRef }
                 if let candidateURL = shot.candidateURL { row["candidateURL"] = candidateURL }
                 if let license = shot.license { row["license"] = license }
@@ -470,11 +477,12 @@ extension EditPlan {
 
     mutating func validateArtifacts() throws {
         try productionRun?.validate()
+        try assembly?.validate()
         brief = try brief?.validated()
         soundCues = try soundCues.map { cues in
             var validated: [PlanSoundCue] = []
             for cue in cues {
-                var cue = try cue.validated()
+                let cue = try cue.validated()
                 if let anchorBeatId = cue.anchorBeatId {
                     guard (scriptBeats ?? []).contains(where: { $0.beatId == anchorBeatId }) else {
                         throw EditPlanValidationError.invalidReference(

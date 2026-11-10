@@ -63,6 +63,48 @@ struct RuntimeCapabilityTests {
         #expect(RuntimeCapabilities.speech(.init(piperInstalled: true, piperLanguages: ["en-US"])).canStart)
         #expect(RuntimeCapabilities.speech(.init(systemSpeechLanguages: ["en-US"])).canStart)
     }
+
+    @Test func blockerKindDistinguishesAllCategories() {
+        #expect(RuntimeCapability.Reason.hostedBuildExcluded.blockerKind == .buildExclusion)
+        #expect(RuntimeCapability.Reason.speechBuildExcluded.blockerKind == .buildExclusion)
+        #expect(RuntimeCapability.Reason.runtimeUnavailable.blockerKind == .buildExclusion)
+
+        #expect(RuntimeCapability.Reason.modelNotInstalled.blockerKind == .missingModelDownload)
+        #expect(RuntimeCapability.Reason.modelPreparing.blockerKind == .missingModelDownload)
+        #expect(RuntimeCapability.Reason.modelNotChecked.blockerKind == .missingModelDownload)
+        #expect(RuntimeCapability.Reason.onDemandModel.blockerKind == .missingModelDownload)
+        #expect(RuntimeCapability.Reason.voiceUnavailable.blockerKind == .missingModelDownload)
+
+        #expect(RuntimeCapability.Reason.backendUnconfigured.blockerKind == .missingProviderCredential)
+        #expect(RuntimeCapability.Reason.authenticationRequired.blockerKind == .missingProviderCredential)
+        #expect(RuntimeCapability.Reason.creditsRequired.blockerKind == .missingProviderCredential)
+        #expect(RuntimeCapability.Reason.credentialMissing.blockerKind == .missingProviderCredential)
+
+        #expect(RuntimeCapability.Reason.unsupportedModality.blockerKind == .unsupportedModality)
+        #expect(RuntimeCapability.Reason.clientDependent.blockerKind == .unsupportedModality)
+        #expect(RuntimeCapability.Reason.disabled.blockerKind == .unsupportedModality)
+
+        #expect(RuntimeCapability.Reason.modelFailed.blockerKind == .temporaryProviderFailure)
+        #expect(RuntimeCapability.Reason.temporaryProviderFailure.blockerKind == .temporaryProviderFailure)
+        #expect(RuntimeCapability.Reason.catalogUnavailable.blockerKind == .temporaryProviderFailure)
+    }
+
+    @Test func visualInspectionAvailabilityReflectsImageSupport() {
+        let available = RuntimeCapabilities.visualInspection(imageInputSupported: true)
+        #expect(available.canStart)
+        #expect(available.status == .available)
+
+        let unavailable = RuntimeCapabilities.visualInspection(imageInputSupported: false)
+        #expect(!unavailable.canStart)
+        #expect(unavailable.status == .unavailable)
+        #expect(unavailable.reason == .unsupportedModality)
+        #expect(unavailable.reason?.blockerKind == .unsupportedModality)
+
+        let unknown = RuntimeCapabilities.visualInspection(imageInputSupported: nil)
+        #expect(unknown.status == .unknown)
+        #expect(unknown.reason == .clientDependent)
+        #expect(unknown.reason?.blockerKind == .unsupportedModality)
+    }
 }
 
 @MainActor
@@ -179,6 +221,59 @@ struct CapabilityToolTests {
         let result = await task.value
         #expect(result.isError)
         startSignal.finish()
+    }
+
+    @Test func receiptIncludesBlockerKindAndRecommendations() async throws {
+        let executor = ToolExecutor(projectProvider: { nil }, capabilityInputLoader: {
+            .init(pixabayConfigured: true, systemSpeechLanguages: ["en-US"])
+        })
+        try await withClient(executor) { client in
+            let response = try await client.callTool(name: "get_capabilities", arguments: [:])
+            let body = try decode(response)
+            let operations = try #require(body["operations"] as? [String: [String: Any]])
+            #expect(operations["generate_video"]?["blockerKind"] as? String == "build_exclusion")
+            #expect(operations["visual_inspection"] != nil)
+            #expect(operations["inspect_timeline"] != nil)
+            let recommendations = try #require(body["recommendations"] as? [String])
+            #expect(!recommendations.isEmpty)
+            #expect(recommendations.contains { $0.contains("Hosted generation is excluded") })
+        }
+    }
+
+    @Test func speechExecutionRefusesWhenCapabilityUnavailable() async throws {
+        let h = ToolHarness()
+        let executor = ToolExecutor(editor: h.editor, capabilityInputLoader: { .init() })
+        try await withClient(executor) { client in
+            let response = try await client.callTool(name: "generate_speech", arguments: ["text": .string("Test line")])
+            #expect(response.isError == true)
+            let error = try decode(response)
+            #expect(error["reason"] as? String == "voice_unavailable")
+            #expect(error["blockerKind"] as? String == "missing_model_download")
+        }
+    }
+
+    @Test func materialSubstitutionsResolvedFromBriefAndCapabilities() async throws {
+        let harness = ToolHarness()
+        let genAsset = harness.addAsset(type: .video)
+        genAsset.generationInput = GenerationInput(prompt: "Sun", model: "model", duration: 5, aspectRatio: "16:9", resolution: "1080p")
+        harness.editor.mediaAssets = [genAsset]
+        harness.editor.mediaManifest.entries = [genAsset.toManifestEntry(projectURL: nil)]
+
+        let shot = EditPlanShot(id: "shot1", title: "Scene 1", startFrame: 0, endFrame: 60, mediaRef: genAsset.id,
+                                license: "MIT", attribution: "AI",
+                                narrationLink: .init(firstBeatId: "beat1", lastBeatId: "beat1"))
+        let script = [ScriptBeat(beatId: "beat1", text: "Hello", purpose: "Intro")]
+        var plan = EditPlan(name: "Plan", timelineId: harness.editor.activeTimelineId, fps: 30, width: 1920, height: 1080,
+                            shots: [shot], scriptBeats: script,
+                            brief: PlanBrief(realism: .realFootageOnly))
+        try harness.editor.changeEditPlans(creates: [plan], actionName: "Create")
+
+        let board = try await StoryboardResolver.resolve(plan: plan, manifest: harness.editor.mediaManifest)
+        #expect(board.approvalBlockers.contains("shot1:unpermitted_generated_footage"))
+        let matching = board.materialSubstitutions.first { $0.sceneId == "shot1" }
+        let sub = try #require(matching)
+        #expect(sub.requestedKind == "real_footage")
+        #expect(sub.actualKind == "generated")
     }
 
     private func decode(_ response: (content: [Tool.Content], isError: Bool?)) throws -> [String: Any] {

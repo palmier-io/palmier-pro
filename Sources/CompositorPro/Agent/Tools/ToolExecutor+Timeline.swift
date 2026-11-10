@@ -534,7 +534,7 @@ extension ToolExecutor {
         var out = clip
         if let linearVolume = (clip["volume"] as? NSNumber)?.doubleValue {
             out.removeValue(forKey: "volume")
-            let volumeDb = VolumeScale.dbFromLinear(linearVolume)
+            let volumeDb = VolumeScale.exactDBFromLinear(linearVolume)
             if !nearlyEqual([volumeDb], [0]) { out["volumeDb"] = volumeDb }
         }
         var keyframes: [String: Any] = [:]

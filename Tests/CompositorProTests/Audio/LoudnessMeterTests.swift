@@ -37,6 +37,14 @@ struct LoudnessMeterTests {
         #expect(abs(measured - -16.5) <= 0.1)
     }
 
+    @Test func overlappingGatedBlocksMatchAShortBurstReference() throws {
+        let input = try buffer(frames: 192_000) { frame, _ in
+            guard (16_800..<21_600).contains(frame) else { return 0 }
+            return Float(0.1 * sin(2 * .pi * 1_000 * Double(frame) / 48_000))
+        }
+        #expect(abs(try #require(try measurement(input).integratedLUFS) - -30.0) <= 0.1)
+    }
+
     @Test func oneSecondIsEnoughForIntegratedLoudness() throws {
         let input = try buffer(frames: 48_000) { frame, _ in
             Float(0.1 * sin(2 * .pi * 1_000 * Double(frame) / 48_000))
@@ -71,5 +79,18 @@ struct LoudnessMeterTests {
         let result = try measurement(input)
         #expect(result.status == .insufficientDuration)
         #expect(abs(try #require(result.truePeakDBFS) - -6.02) <= 0.1)
+    }
+
+    @Test func arbitraryBufferBoundariesDoNotChangeMeasurements() throws {
+        let signal: (Int, Int) -> Float = { frame, _ in
+            Float(0.8 * sin(2 * .pi * 12_000 * Double(frame) / 48_000 + .pi / 4))
+        }
+        let whole = try measurement(buffer(frames: 48_000, sample: signal))
+        let head = try buffer(frames: 12_345, sample: signal)
+        let tail = try buffer(frames: 35_655) { frame, channel in signal(frame + 12_345, channel) }
+        var meter = try LoudnessMeter(format: head.format)
+        try meter.consume(head)
+        try meter.consume(tail)
+        #expect(meter.measurement == whole)
     }
 }

@@ -26,6 +26,8 @@ final class ToolExecutor {
     let skillStore: SkillStore
     let visualSearchModel: any VisualSearchModelLoading
     let narrationTimingService: NarrationTimingService
+    let audioMixFinishing: EditorViewModel.AudioMixFinishing
+    let planAssemblyPreparing: EditorViewModel.PlanAssemblyPreparing
     var narrationRender: (@Sendable (LocalSpeechNarrator, String, String, @escaping @Sendable () -> Bool) async throws -> SpeechSynthesizer.PinnedRenderEvidence)?
     var narrationTranscribe: (@Sendable (URL, String?) async throws -> TranscriptionResult?)?
     let capabilityInputLoader: @Sendable () async throws -> RuntimeCapabilities.LocalInputs
@@ -54,6 +56,8 @@ final class ToolExecutor {
         visualSearchModel: any VisualSearchModelLoading = VisualModelLoader.shared,
         capabilityInputLoader: @escaping @Sendable () async throws -> RuntimeCapabilities.LocalInputs = RuntimeCapabilities.LocalInputs.load,
         narrationTimingService: NarrationTimingService = .shared,
+        audioMixFinishing: @escaping EditorViewModel.AudioMixFinishing = { try await AudioMixFinisher.finish($0, request: $1, replaceAutomation: $2) },
+        planAssemblyPreparing: @escaping EditorViewModel.PlanAssemblyPreparing = { try await PlanAssembly.prepare($0) },
         narrationRender: (@Sendable (LocalSpeechNarrator, String, String, @escaping @Sendable () -> Bool) async throws -> SpeechSynthesizer.PinnedRenderEvidence)? = nil,
         narrationTranscribe: (@Sendable (URL, String?) async throws -> TranscriptionResult?)? = nil,
         stockProviders: [any StockMediaProvider] = StockMediaSearch.defaultProviders,
@@ -70,6 +74,8 @@ final class ToolExecutor {
         self.visualSearchModel = visualSearchModel
         self.capabilityInputLoader = capabilityInputLoader
         self.narrationTimingService = narrationTimingService
+        self.audioMixFinishing = audioMixFinishing
+        self.planAssemblyPreparing = planAssemblyPreparing
         self.narrationRender = narrationRender
         self.narrationTranscribe = narrationTranscribe
         self.stockProviders = stockProviders
@@ -84,6 +90,8 @@ final class ToolExecutor {
         visualSearchModel: any VisualSearchModelLoading = VisualModelLoader.shared,
         capabilityInputLoader: @escaping @Sendable () async throws -> RuntimeCapabilities.LocalInputs = RuntimeCapabilities.LocalInputs.load,
         narrationTimingService: NarrationTimingService = .shared,
+        audioMixFinishing: @escaping EditorViewModel.AudioMixFinishing = { try await AudioMixFinisher.finish($0, request: $1, replaceAutomation: $2) },
+        planAssemblyPreparing: @escaping EditorViewModel.PlanAssemblyPreparing = { try await PlanAssembly.prepare($0) },
         narrationRender: (@Sendable (LocalSpeechNarrator, String, String, @escaping @Sendable () -> Bool) async throws -> SpeechSynthesizer.PinnedRenderEvidence)? = nil,
         narrationTranscribe: (@Sendable (URL, String?) async throws -> TranscriptionResult?)? = nil,
         stockProviders: [any StockMediaProvider] = StockMediaSearch.defaultProviders,
@@ -102,6 +110,8 @@ final class ToolExecutor {
         self.visualSearchModel = visualSearchModel
         self.capabilityInputLoader = capabilityInputLoader
         self.narrationTimingService = narrationTimingService
+        self.audioMixFinishing = audioMixFinishing
+        self.planAssemblyPreparing = planAssemblyPreparing
         self.narrationRender = narrationRender
         self.narrationTranscribe = narrationTranscribe
         self.stockProviders = stockProviders
@@ -486,6 +496,7 @@ final class ToolExecutor {
         case .setClipSpeedRamp: return try setClipSpeedRamp(editor, args)
         case .crossfadeAudio:   return try crossfadeAudio(editor, args)
         case .duckAudio:        return try await duckAudio(editor, args)
+        case .mixAudio:         return try await mixAudio(editor, args)
         case .applyTransition:  return try applyTransition(editor, args)
         case .removeTransition: return try removeTransition(editor, args)
         case .swapClipMedia:    return try swapClipMedia(editor, args)

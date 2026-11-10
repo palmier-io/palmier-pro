@@ -220,16 +220,16 @@ extension ToolExecutor {
             ? nestExportWarnings(editor, timeline: timeline)
             : []
 
-        // Wait for any pending enhancement jobs on clips in this timeline to complete
-        let allClipIds = timeline.tracks.flatMap { $0.clips.map(\.id) }
-        if !allClipIds.isEmpty {
-            try await editor.awaitEnhancementJobsForClips(Set(allClipIds))
+        let resolveTimeline = editor.timelineResolver()
+        let audibleClips = PreparedAudio.audibleClips(timeline: timeline, resolveTimeline: resolveTimeline)
+        if !audibleClips.isEmpty {
+            try await editor.awaitEnhancementJobsForClips(Set(audibleClips.map(\.id)))
         }
 
         let submission = try exportQueue.enqueueVideo(
             timeline: timeline,
             resolver: editor.mediaResolver,
-            resolveTimeline: editor.timelineResolver(),
+            resolveTimeline: resolveTimeline,
             format: format,
             resolution: resolution,
             fcpxmlTarget: target,
@@ -238,7 +238,10 @@ extension ToolExecutor {
             source: .agent,
             projectID: editor.exportQueueProjectID,
             analyticsProjectID: editor.projectId,
-            warnings: warnings
+            warnings: warnings,
+            prepareProcessing: { [weak editor] in
+                try await editor?.awaitEnhancementJobsForTimeline(timeline)
+            }
         )
 
         var payload: [String: Any] = [

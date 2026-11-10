@@ -66,23 +66,23 @@ struct StockDeliveryHistory: Sendable, Equatable, Codable {
         return ids
     }
 
-    /// Loads the bounded history from the user defaults.
-    static func load() -> Self {
-        guard let data = UserDefaults.standard.data(forKey: defaultsKey) else { return Self() }
+    /// Loads the bounded history from the store.
+    static func load(store: UserDefaults = .standard) -> Self {
+        guard let data = store.data(forKey: defaultsKey) else { return Self() }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return (try? decoder.decode(Self.self, from: data)) ?? Self()
     }
 
-    /// Persists the bounded history to the user defaults.
-    func save() {
+    /// Persists the bounded history to the store.
+    func save(to store: UserDefaults = .standard) {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        if let data = try? encoder.encode(self) { UserDefaults.standard.set(data, forKey: Self.defaultsKey) }
+        if let data = try? encoder.encode(self) { store.set(data, forKey: Self.defaultsKey) }
     }
 
     /// Removes the persisted history so reads start empty.
-    static func reset() { UserDefaults.standard.removeObject(forKey: defaultsKey) }
+    static func reset(store: UserDefaults = .standard) { store.removeObject(forKey: defaultsKey) }
 }
 
 extension StockDeliveryHistory: CustomStringConvertible {

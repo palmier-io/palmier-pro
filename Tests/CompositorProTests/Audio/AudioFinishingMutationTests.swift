@@ -55,6 +55,22 @@ struct AudioFinishingMutationTests {
         try await AudioFinishingFixtures.remove(directory)
     }
 
+    @Test func reportsWhenTargetExceedsTruePeakHeadroom() async throws {
+        let directory = try await AudioFinishingFixtures.makeDirectory()
+        let source = directory.appendingPathComponent("tone.wav")
+        let editor = EditorViewModel()
+        let clip = Fixtures.clip(id: "voice", mediaRef: "tone", mediaType: .audio, start: 0, duration: 60)
+        editor.timeline = Fixtures.timeline(tracks: [Fixtures.audioTrack(clips: [clip])])
+        editor.mediaManifest.entries = [MediaManifestEntry(id: "tone", name: "Tone", type: .audio,
+                                                          source: .external(absolutePath: source.path), duration: 3)]
+        let warnings = try await editor.matchLoudness(clipIds: [clip.id], targetLUFS: -14, actionName: "Match") { _, _, _ in
+            LoudnessMeasurement(status: .measured, integratedLUFS: -20, truePeakDBFS: -0.5,
+                                analyzedFrames: 96_000, sampleRate: 48_000)
+        }
+        #expect(warnings.contains { $0.contains("exceeds 0 dBFS headroom") })
+        try await AudioFinishingFixtures.remove(directory)
+    }
+
     private nonisolated static func verifyBackgroundExecution() {
         #expect(!Thread.isMainThread)
     }

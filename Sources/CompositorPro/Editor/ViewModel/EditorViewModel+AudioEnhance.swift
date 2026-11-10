@@ -1,15 +1,50 @@
 import AVFoundation
 import Foundation
 
+struct AudioFinishingError: LocalizedError {
+    let reason: String
+    var errorDescription: String? { reason }
+}
+
 extension EditorViewModel {
     typealias AudioLoudnessAnalysis = @Sendable (URL, String, CMTimeRange) async throws -> LoudnessMeasurement
 
+    struct ClipFinishingSnapshot: Sendable, Equatable {
+        let id: String
+        let mediaRef: String
+        let startFrame: Int
+        let durationFrames: Int
+        let trimStartFrame: Int
+        let trimEndFrame: Int
+        let speed: Double
+        let speedTrack: KeyframeTrack<Double>?
+        let volume: Double
+        let effects: [Effect]?
+        let sourceURL: URL
+        let sourceVersion: LoudnessAnalyzer.SourceVersion
+    }
+
+    struct TimelineFinishingSnapshot: Sendable {
+        let timelineId: String
+        let revision: Int
+        let fps: Int
+        let clips: [String: ClipFinishingSnapshot]
+    }
+
     func resetAnalysisSessionState() {
+        for task in enhancementJobTasks.values { task.cancel() }
+        enhancementJobTasks.removeAll()
+        for id in enhancementJobs.keys {
+            if enhancementJobs[id]?.status == .running || enhancementJobs[id]?.status == .queued {
+                enhancementJobs[id]?.status = .cancelled
+                enhancementJobs[id]?.stage = .cancelled
+            }
+        }
         denoiseFailed.removeAll()
         breathFailed.removeAll()
         deessFailed.removeAll()
-        enhancementJobs.removeAll()
         enhancementJobFingerprints.removeAll()
+        loudnessInFlight.removeAll()
         mediaVisualCache.resetSessionState()
         for id in openTimelineIds { videoEngine?.evictComposition(for: id) }
         videoEngine?.rebuild()
@@ -17,18 +52,21 @@ extension EditorViewModel {
 
     // MARK: - Enhancement job management
 
-    /// Creates a fingerprint for deduplication: clipIds + mediaRefs + type + params + source versions
-    private func enhancementFingerprint(clipIds: Set<String>, type: EnhancementJob.JobType, params: EnhancementJob.JobParams) -> String {
-        let mediaRefs = clipIds.compactMap { clipFor(id: $0)?.mediaRef }.sorted()
-        let versions = mediaRefs.compactMap { ref -> String? in
-            guard let url = mediaResolver.expectedURL(for: ref) else { return nil }
-            do { return try LoudnessAnalyzer.SourceVersion(url).url } catch { return nil }
-        }.sorted()
+    private func enhancementFingerprint(
+        clipIds: Set<String>, type: EnhancementJob.JobType, params: EnhancementJob.JobParams
+    ) -> String {
+        let clips = clipIds.compactMap { clipFor(id: $0) }.sorted { $0.id < $1.id }
+        let clipDetails = clips.map {
+            "\($0.id):\($0.mediaRef):\($0.startFrame):\($0.durationFrames):\($0.trimStartFrame):\($0.trimEndFrame):\($0.speed)"
+        }.joined(separator: ";")
+        let versions = clips.compactMap { clip -> String? in
+            guard let url = mediaResolver.expectedURL(for: clip.mediaRef) else { return nil }
+            return (try? LoudnessAnalyzer.SourceVersion(url))?.url
+        }.joined(separator: ",")
         let paramStr = "\(params.amount ?? 0)-\(params.deess ?? 0)-\(params.targetLUFS ?? 0)-\(params.enabled)"
-        return "\(type.rawValue)|\(clipIds.sorted().joined(separator: ","))|\(mediaRefs.joined(separator: ","))|\(versions.joined(separator: ","))|\(paramStr)"
+        return "\(timeline.id)|\(type.rawValue)|\(clipDetails)|\(versions)|\(paramStr)"
     }
 
-    /// Finds an existing job with the same fingerprint that's still running/queued
     private func existingJob(fingerprint: String) -> EnhancementJob? {
         guard let jobId = enhancementJobFingerprints[fingerprint],
               let job = enhancementJobs[jobId],
@@ -36,21 +74,22 @@ extension EditorViewModel {
         return job
     }
 
-    /// Starts or reuses an enhancement job. Returns (jobId, isNewJob).
     @discardableResult
     func startEnhancementJob(
         clipIds: Set<String>,
         type: EnhancementJob.JobType,
         params: EnhancementJob.JobParams,
-        actionName: String
+        actionName: String,
+        analyze: AudioLoudnessAnalysis? = nil
     ) async throws -> (UUID, Bool) {
-        // Validate clips exist and are audio
+        guard !projectPackageCoordinator.isClosing else {
+            throw AudioFinishingError(reason: "Project is closing.")
+        }
         let clips = clipIds.compactMap { clipFor(id: $0) }
         guard clips.count == clipIds.count else { throw AudioFinishingError(reason: "One or more clips not found.") }
         guard clips.allSatisfy({ $0.mediaType == .audio && $0.sourceClipType != .sequence }) else {
             throw AudioFinishingError(reason: "Enhancement only supports non-nested audio clips.")
         }
-        // Check for missing media
         let urls = mediaResolver.expectedURLMap()
         let missingRefs = clips.compactMap { clip in
             missingMediaRefs.contains(clip.mediaRef) || urls[clip.mediaRef] == nil ? clip.mediaRef : nil
@@ -58,16 +97,44 @@ extension EditorViewModel {
         guard missingRefs.isEmpty else {
             throw AudioFinishingError(reason: "Missing media for: \(missingRefs.joined(separator: ", "))")
         }
+        if type == .denoise || type == .enhance {
+            try AudioEnhancer.availability.requireAvailable()
+        }
+
+        var versions: [String: LoudnessAnalyzer.SourceVersion] = [:]
+        var clipSnapshots: [String: ClipFinishingSnapshot] = [:]
+        for clip in clips {
+            guard let url = urls[clip.mediaRef] else { continue }
+            let version = try LoudnessAnalyzer.SourceVersion(url)
+            versions[clip.mediaRef] = version
+            clipSnapshots[clip.id] = ClipFinishingSnapshot(
+                id: clip.id, mediaRef: clip.mediaRef,
+                startFrame: clip.startFrame, durationFrames: clip.durationFrames,
+                trimStartFrame: clip.trimStartFrame, trimEndFrame: clip.trimEndFrame,
+                speed: clip.speed, speedTrack: clip.speedTrack,
+                volume: clip.volume, effects: clip.effects,
+                sourceURL: url, sourceVersion: version
+            )
+        }
+
+        let snapshot = TimelineFinishingSnapshot(
+            timelineId: timeline.id,
+            revision: timelineRenderRevision,
+            fps: timeline.fps,
+            clips: clipSnapshots
+        )
 
         let fingerprint = enhancementFingerprint(clipIds: clipIds, type: type, params: params)
         if let existing = existingJob(fingerprint: fingerprint) {
             return (existing.id, false)
         }
 
-        // Capture source versions for revalidation
-        var versions: [String: LoudnessAnalyzer.SourceVersion] = [:]
-        for clip in clips {
-            if let url = urls[clip.mediaRef] { versions[clip.mediaRef] = try LoudnessAnalyzer.SourceVersion(url) }
+        for existing in enhancementJobs.values where (existing.status == .queued || existing.status == .running) && !existing.clipIds.isDisjoint(with: clipIds) {
+            cancelEnhancementJob(existing.id)
+        }
+
+        if type == .loudness || type == .enhance {
+            loudnessInFlight.formUnion(clipIds)
         }
 
         let job = EnhancementJob(
@@ -78,82 +145,199 @@ extension EditorViewModel {
             params: params,
             sourceVersions: versions,
             startedAt: Date(),
+            completedAt: nil,
             status: .queued,
             stage: .queued,
             errors: [],
             warnings: [],
-            changedClipIds: []
+            changedClipIds: [],
+            timelineId: timeline.id,
+            timelineRevision: timelineRenderRevision
         )
         enhancementJobs[job.id] = job
         enhancementJobFingerprints[fingerprint] = job.id
 
-        // Run the job asynchronously
         let jobId = job.id
-        Task.detached(priority: .userInitiated) { [weak self] in
-            await self?.runEnhancementJob(jobId: jobId)
+        let task = Task { [weak self] () -> Void in
+            guard let self else { return }
+            await self.runEnhancementJob(jobId: jobId, snapshot: snapshot, actionName: actionName, customAnalyze: analyze)
         }
+        enhancementJobTasks[jobId] = task
         return (jobId, true)
     }
 
-    private func runEnhancementJob(jobId: UUID) async {
-        await updateJobStatus(jobId, status: .running, stage: .analyzing)
+    private func runEnhancementJob(
+        jobId: UUID,
+        snapshot: TimelineFinishingSnapshot,
+        actionName: String,
+        customAnalyze: AudioLoudnessAnalysis?
+    ) async {
+        updateJobStatus(jobId, status: .running, stage: .analyzing)
         do {
-            var job = try await getJob(jobId)
-            let clips = job.clipIds.compactMap { clipFor(id: $0) }
+            try Task.checkCancellation()
+            let job = try await getJob(jobId)
             let urls = mediaResolver.expectedURLMap()
             let missing = missingMediaRefs
 
+            try revalidateSnapshot(snapshot)
+
+            var stageWarnings: [String] = []
+            var replacements: [String: Clip] = [:]
+
             switch job.type {
             case .denoise:
-                for clip in clips {
+                for clipSnap in snapshot.clips.values {
                     try Task.checkCancellation()
-                    guard let url = urls[clip.mediaRef] else { continue }
-                    _ = try await AudioEnhancer.denoisedAudio(for: url, mediaRef: clip.mediaRef)
-                    await appendChanged(jobId, clip.id)
+                    _ = try await AudioEnhancer.denoisedAudio(for: clipSnap.sourceURL, mediaRef: clipSnap.mediaRef)
                 }
-            case .debreath, .enhance:
-                // Run through PreparedAudio to get all analyses
-                let prepTimeline = Timeline(fps: timeline.fps, width: timeline.width, height: timeline.height,
+                for (id, _) in snapshot.clips {
+                    guard var clip = clipFor(id: id) else { continue }
+                    var stack = clip.effects ?? []
+                    let amount = job.params.amount ?? Clip.defaultDenoiseAmount
+                    if let i = stack.firstIndex(where: { $0.type == Clip.denoiseEffectType }) {
+                        stack[i].enabled = true
+                        stack[i].params["amount"] = EffectParam(value: amount)
+                    } else {
+                        stack.append(Effect(type: Clip.denoiseEffectType, enabled: true, params: ["amount": EffectParam(value: amount)]))
+                    }
+                    clip.effects = stack
+                    replacements[id] = clip
+                }
+
+            case .debreath:
+                for clipSnap in snapshot.clips.values {
+                    try Task.checkCancellation()
+                    _ = try await BreathDetector.analysis(for: clipSnap.sourceURL, mediaRef: clipSnap.mediaRef)
+                }
+                for (id, _) in snapshot.clips {
+                    guard var clip = clipFor(id: id) else { continue }
+                    var stack = clip.effects ?? []
+                    let amount = job.params.amount ?? Clip.defaultDebreathAmount
+                    if let i = stack.firstIndex(where: { $0.type == Clip.debreathEffectType }) {
+                        stack[i].enabled = true
+                        stack[i].params["amount"] = EffectParam(value: amount)
+                    } else {
+                        stack.append(Effect(type: Clip.debreathEffectType, enabled: true, params: ["amount": EffectParam(value: amount)]))
+                    }
+                    clip.effects = stack
+                    replacements[id] = clip
+                }
+
+            case .enhance:
+                let clips = snapshot.clips.values.compactMap { clipFor(id: $0.id) }
+                let prepTimeline = Timeline(fps: snapshot.fps, width: timeline.width, height: timeline.height,
                                             tracks: [Track(id: UUID().uuidString, type: .audio, clips: clips)])
-                let result = try await PreparedAudio.prepare(
+                let prepared = try await PreparedAudio.prepare(
                     timeline: prepTimeline, resolveTimeline: { _ in nil },
                     resolveURL: { urls[$0] }, missingMediaRefs: missing
                 )
-                // Verify we got what we needed
                 for ref in job.mediaRefs {
-                    try Task.checkCancellation()
-                    if job.type == .enhance {
-                        if result.denoisedURLs[ref] == nil { await appendWarning(jobId, "Denoising unavailable for \(ref)") }
-                        if result.breaths[ref] == nil { await appendWarning(jobId, "Breath detection unavailable for \(ref)") }
-                        if result.sibilance[ref] == nil { await appendWarning(jobId, "De-ess analysis unavailable for \(ref)") }
-                    } else if job.type == .debreath {
-                        if result.breaths[ref] == nil { await appendWarning(jobId, "Breath detection unavailable for \(ref)") }
-                    }
-                    await appendChanged(jobId, clips.first { $0.mediaRef == ref }?.id ?? "")
+                    if prepared.denoisedURLs[ref] == nil { stageWarnings.append("Denoising unavailable for \(ref)") }
+                    if prepared.breaths[ref] == nil { stageWarnings.append("Breath detection unavailable for \(ref)") }
+                    if prepared.sibilance[ref] == nil { stageWarnings.append("De-ess analysis unavailable for \(ref)") }
                 }
-            case .loudness:
-                let targets = clips.compactMap { clip -> AudioLoudnessTarget? in
-                    guard let url = urls[clip.mediaRef] else { return nil }
-                    let range = try? LoudnessAnalyzer.sourceRange(for: clip, fps: timeline.fps)
-                    return range.map { AudioLoudnessTarget(id: clip.id, mediaRef: clip.mediaRef, url: url, range: $0) }
+
+                var targets: [AudioLoudnessTarget] = []
+                for clipSnap in snapshot.clips.values {
+                    guard let clip = clipFor(id: clipSnap.id) else { continue }
+                    let range = try LoudnessAnalyzer.sourceRange(for: clip, fps: snapshot.fps)
+                    targets.append(AudioLoudnessTarget(id: clip.id, mediaRef: clip.mediaRef, url: clipSnap.sourceURL, range: range))
                 }
-                guard !targets.isEmpty else { await appendError(jobId, "No valid clips for loudness analysis"); return }
-                let measured = try await Self.measureAudio(targets, targetLUFS: job.params.targetLUFS ?? -16, analyze: { url, ref, range in
+                let analyze = customAnalyze ?? { url, ref, range in
                     try await LoudnessAnalyzer.integratedLoudness(for: url, mediaRef: ref, range: range)
-                })
-                for (id, gain) in measured.gains {
-                    try Task.checkCancellation()
+                }
+                let measured = try await Self.measureAudio(targets, targetLUFS: -16, analyze: analyze)
+                stageWarnings.append(contentsOf: measured.warnings)
+
+                for (id, _) in snapshot.clips {
                     guard var clip = clipFor(id: id) else { continue }
-                    Self.setAudioEffect(&clip, type: Clip.loudnessEffectType, enabled: true, values: ["gainDB": gain])
-                    mutateClips(ids: [id], actionName: "Match Loudness (Job)") { $0 = clip }
-                    await appendChanged(jobId, id)
+                    Self.configureEnhancement(&clip, enabled: true, amount: job.params.amount, deess: job.params.deess)
+                    if let gain = measured.gains[id] {
+                        Self.setAudioEffect(&clip, type: Clip.loudnessEffectType, enabled: true, values: ["gainDB": gain])
+                    }
+                    replacements[id] = clip
+                }
+
+            case .loudness:
+                var targets: [AudioLoudnessTarget] = []
+                for clipSnap in snapshot.clips.values {
+                    guard let clip = clipFor(id: clipSnap.id) else { continue }
+                    let range = try LoudnessAnalyzer.sourceRange(for: clip, fps: snapshot.fps)
+                    targets.append(AudioLoudnessTarget(id: clip.id, mediaRef: clip.mediaRef, url: clipSnap.sourceURL, range: range))
+                }
+                let analyze = customAnalyze ?? { url, ref, range in
+                    try await LoudnessAnalyzer.integratedLoudness(for: url, mediaRef: ref, range: range)
+                }
+                let measured = try await Self.measureAudio(targets, targetLUFS: job.params.targetLUFS ?? -16, analyze: analyze)
+                stageWarnings.append(contentsOf: measured.warnings)
+
+                for (id, _) in snapshot.clips {
+                    guard var clip = clipFor(id: id) else { continue }
+                    if let gain = measured.gains[id] {
+                        Self.setAudioEffect(&clip, type: Clip.loudnessEffectType, enabled: true, values: ["gainDB": gain])
+                    }
+                    replacements[id] = clip
                 }
             }
-            await finishJob(jobId, success: true)
+
+            try Task.checkCancellation()
+            updateJobStatus(jobId, stage: .applying)
+
+            let changedIds = try await projectPackageCoordinator.withMutation { _ -> [String] in
+                try Task.checkCancellation()
+                try revalidateSnapshot(snapshot)
+
+                let changed = snapshot.clips.keys.filter { clipFor(id: $0) != replacements[$0] }
+                if !changed.isEmpty {
+                    mutateClips(ids: Set(changed), actionName: actionName) { clip in
+                        if let rep = replacements[clip.id] { clip = rep }
+                    }
+                }
+                return changed
+            }
+
+            for id in changedIds { appendChanged(jobId, id) }
+            for warning in stageWarnings { appendWarning(jobId, warning) }
+            finishJob(jobId, success: true)
         } catch is CancellationError {
-            await finishJob(jobId, success: false, error: "Cancelled")
+            finishJob(jobId, success: false, error: "Cancelled")
         } catch {
-            await finishJob(jobId, success: false, error: error.localizedDescription)
+            finishJob(jobId, success: false, error: error.localizedDescription)
+        }
+    }
+
+    private func revalidateSnapshot(_ snapshot: TimelineFinishingSnapshot) throws {
+        guard !projectPackageCoordinator.isClosing else {
+            throw AudioFinishingError(reason: "Project is closing.")
+        }
+        guard timeline.id == snapshot.timelineId else {
+            throw AudioFinishingError(reason: "Timeline switched during audio finishing. Retry with the current timeline.")
+        }
+        let urls = mediaResolver.expectedURLMap()
+        for (clipId, clipSnap) in snapshot.clips {
+            guard let currentClip = clipFor(id: clipId) else {
+                throw AudioFinishingError(reason: "Clip '\(clipId)' was removed during audio finishing.")
+            }
+            guard currentClip.mediaRef == clipSnap.mediaRef,
+                  currentClip.startFrame == clipSnap.startFrame,
+                  currentClip.durationFrames == clipSnap.durationFrames,
+                  currentClip.trimStartFrame == clipSnap.trimStartFrame,
+                  currentClip.trimEndFrame == clipSnap.trimEndFrame,
+                  currentClip.speed == clipSnap.speed,
+                  currentClip.speedTrack == clipSnap.speedTrack else {
+                throw AudioFinishingError(reason: "Clip '\(clipId)' timing or source range changed during audio finishing.")
+            }
+            guard currentClip.volume == clipSnap.volume,
+                  currentClip.effects == clipSnap.effects else {
+                throw AudioFinishingError(reason: "Clip '\(clipId)' settings changed during audio finishing.")
+            }
+            guard let url = urls[clipSnap.mediaRef], url == clipSnap.sourceURL else {
+                throw AudioFinishingError(reason: "Source URL for clip '\(clipId)' changed during audio finishing.")
+            }
+            let currentVersion = try LoudnessAnalyzer.SourceVersion(url)
+            guard currentVersion == clipSnap.sourceVersion else {
+                throw AudioFinishingError(reason: "Source media for clip '\(clipId)' was modified during audio finishing.")
+            }
         }
     }
 
@@ -167,13 +351,6 @@ extension EditorViewModel {
         guard var job = enhancementJobs[id] else { return }
         if let status { job.status = status }
         if let stage { job.stage = stage }
-        enhancementJobs[id] = job
-    }
-
-    @MainActor
-    private func appendError(_ id: UUID, _ error: String) {
-        guard var job = enhancementJobs[id] else { return }
-        job.errors.append(error)
         enhancementJobs[id] = job
     }
 
@@ -193,14 +370,28 @@ extension EditorViewModel {
 
     @MainActor
     private func finishJob(_ id: UUID, success: Bool, error: String? = nil) {
+        enhancementJobTasks.removeValue(forKey: id)
         guard var job = enhancementJobs[id] else { return }
-        if let error { job.errors.append(error) }
-        job.status = success ? .completed : .failed
-        job.stage = success ? .completed : .failed
+        job.completedAt = Date()
+        if job.type == .loudness || job.type == .enhance {
+            loudnessInFlight.subtract(job.clipIds)
+        }
+        if let error {
+            if error == "Cancelled" || job.status == .cancelled {
+                job.status = .cancelled
+                job.stage = .cancelled
+            } else {
+                job.errors.append(error)
+                job.status = .failed
+                job.stage = .failed
+            }
+        } else {
+            job.status = success ? .completed : .failed
+            job.stage = success ? .completed : .failed
+        }
         enhancementJobs[id] = job
-        // Clean up fingerprint after a delay to allow quick re-submission to dedupe
         let fingerprint = enhancementFingerprint(clipIds: job.clipIds, type: job.type, params: job.params)
-        Task { try? await Task.sleep(for: .seconds(5)); await removeFingerprint(fingerprint) }
+        removeFingerprint(fingerprint)
     }
 
     @MainActor
@@ -209,10 +400,18 @@ extension EditorViewModel {
     }
 
     func cancelEnhancementJob(_ id: UUID) {
+        enhancementJobTasks[id]?.cancel()
+        enhancementJobTasks.removeValue(forKey: id)
         guard var job = enhancementJobs[id] else { return }
+        if job.type == .loudness || job.type == .enhance {
+            loudnessInFlight.subtract(job.clipIds)
+        }
+        job.completedAt = Date()
         job.status = .cancelled
         job.stage = .cancelled
         enhancementJobs[id] = job
+        let fingerprint = enhancementFingerprint(clipIds: job.clipIds, type: job.type, params: job.params)
+        removeFingerprint(fingerprint)
     }
 
     func getEnhancementJobStatus(_ id: UUID) -> (status: String, stage: String, errors: [String], warnings: [String], changed: [String], progress: Double)? {
@@ -222,9 +421,7 @@ extension EditorViewModel {
             case .queued: return 0
             case .analyzing: return 0.3
             case .applying: return 0.7
-            case .completed: return 1.0
-            case .failed: return 1.0
-            case .cancelled: return 1.0
+            case .completed, .failed, .cancelled: return 1.0
             }
         }()
         return (job.status.rawValue, job.stage.rawValue, job.errors, job.warnings, Array(job.changedClipIds), progress)
@@ -237,9 +434,7 @@ extension EditorViewModel {
                 case .queued: return 0
                 case .analyzing: return 0.3
                 case .applying: return 0.7
-                case .completed: return 1.0
-                case .failed: return 1.0
-                case .cancelled: return 1.0
+                case .completed, .failed, .cancelled: return 1.0
                 }
             }()
             return (job.id, job.type.rawValue, job.status.rawValue, job.clipIds.count, progress, job.startedAt)
@@ -247,42 +442,48 @@ extension EditorViewModel {
         return jobs.sorted { $0.startedAt < $1.startedAt }.map { ($0.id, $0.type, $0.status, $0.clipCount, $0.progress) }
     }
 
-    /// Waits for all running/queued enhancement jobs for the given clip IDs to complete.
-    /// Returns warnings from completed jobs. Throws if any job fails or is cancelled.
+    @discardableResult
+    func awaitEnhancementJob(_ id: UUID) async throws -> EnhancementJob {
+        let jobTask = enhancementJobTasks[id]
+        await withTaskCancellationHandler {
+            await jobTask?.value
+        } onCancel: { [self] in
+            // The handler runs off the actor, so the cancellation hops back to the main actor.
+            Task { @MainActor in cancelEnhancementJob(id) }
+        }
+        guard let job = enhancementJobs[id] else {
+            throw AudioFinishingError(reason: "Job not found: \(id)")
+        }
+        if job.status == .cancelled || Task.isCancelled {
+            throw CancellationError()
+        }
+        if job.status == .failed {
+            let errorMsg = job.errors.isEmpty ? "Enhancement failed." : job.errors.joined(separator: "; ")
+            throw AudioFinishingError(reason: errorMsg)
+        }
+        return job
+    }
+
+    @discardableResult
     func awaitEnhancementJobsForClips(_ clipIds: Set<String>) async throws -> [String] {
         var allWarnings: [String] = []
-        
-        while true {
-            let pendingJobs = enhancementJobs.values.filter { job in
-                !job.clipIds.isDisjoint(with: clipIds) &&
-                (job.status == .queued || job.status == .running)
-            }
-            if pendingJobs.isEmpty { break }
-            
-            // Wait for the first pending job to complete
-            let jobId = pendingJobs.first!.id
-            var lastStage = pendingJobs.first!.stage
-            while true {
-                try Task.checkCancellation()
-                try await Task.sleep(for: .milliseconds(100))
-                guard let job = enhancementJobs[jobId] else { break }
-                if job.stage != lastStage || job.stage == .completed || job.stage == .failed || job.stage == .cancelled {
-                    lastStage = job.stage
-                    if job.stage == .completed {
-                        allWarnings.append(contentsOf: job.warnings)
-                    } else if job.stage == .failed || job.stage == .cancelled {
-                        throw AudioFinishingError(reason: "Enhancement job \(jobId) \(job.stage.rawValue): \(job.errors.joined(separator: "; "))")
-                    }
-                    break
-                }
-            }
+        let matchingJobs = enhancementJobs.values.filter { job in
+            !job.clipIds.isDisjoint(with: clipIds) && (job.status == .queued || job.status == .running)
         }
-        
-        // Collect warnings from completed jobs
-        for job in enhancementJobs.values where !job.clipIds.isDisjoint(with: clipIds) {
-            allWarnings.append(contentsOf: job.warnings)
+        for job in matchingJobs {
+            try Task.checkCancellation()
+            let completed = try await awaitEnhancementJob(job.id)
+            allWarnings.append(contentsOf: completed.warnings)
         }
         return allWarnings
+    }
+
+    @discardableResult
+    func awaitEnhancementJobsForTimeline(_ timeline: Timeline) async throws -> [String] {
+        let resolve = timelineResolver()
+        let audibleClips = PreparedAudio.audibleClips(timeline: timeline, resolveTimeline: resolve)
+        guard !audibleClips.isEmpty else { return [] }
+        return try await awaitEnhancementJobsForClips(Set(audibleClips.map(\.id)))
     }
 
     func setDenoise(clipIds: Set<String>, enabled: Bool, amount: Double? = nil, actionName: String) throws {
@@ -333,83 +534,33 @@ extension EditorViewModel {
         guard amount.isFinite, deess.isFinite, (0...1).contains(amount), (0...1).contains(deess) else {
             throw AudioFinishingError(reason: "Enhancement amounts must be between 0 and 1.")
         }
-        return try await finishAudio(clipIds: clipIds, targetLUFS: -16, actionName: actionName) { clip in
-            Self.configureEnhancement(&clip, enabled: true, amount: amount, deess: deess)
-        }
+        let (jobId, _) = try await startEnhancementJob(
+            clipIds: clipIds,
+            type: .enhance,
+            params: .enhance(amount: amount, deess: deess),
+            actionName: actionName
+        )
+        let job = try await awaitEnhancementJob(jobId)
+        return job.warnings
     }
 
     @discardableResult
     func matchLoudness(
         clipIds: Set<String>, targetLUFS: Double, actionName: String,
-        analyze: @escaping AudioLoudnessAnalysis = { url, ref, range in
-            try await LoudnessAnalyzer.integratedLoudness(for: url, mediaRef: ref, range: range)
-        }
+        analyze: AudioLoudnessAnalysis? = nil
     ) async throws -> [String] {
-        try await finishAudio(clipIds: clipIds, targetLUFS: targetLUFS, actionName: actionName, analyze: analyze) { _ in }
-    }
-
-    struct AudioFinishingError: LocalizedError {
-        let reason: String
-        var errorDescription: String? { reason }
-    }
-
-    private func finishAudio(
-        clipIds: Set<String>, targetLUFS: Double, actionName: String,
-        analyze: @escaping AudioLoudnessAnalysis = { url, ref, range in
-            try await LoudnessAnalyzer.integratedLoudness(for: url, mediaRef: ref, range: range)
-        },
-        configure: (inout Clip) -> Void
-    ) async throws -> [String] {
-        try Task.checkCancellation()
         guard !clipIds.isEmpty, targetLUFS.isFinite, (-30...14).contains(targetLUFS) else {
             throw AudioFinishingError(reason: "Select audio clips and a target between -30 and 14 LUFS.")
         }
-        guard loudnessInFlight.isDisjoint(with: clipIds) else {
-            throw AudioFinishingError(reason: "Loudness matching is already running for these clips.")
-        }
-        let snapshot = timeline
-        let revision = timelineRenderRevision
-        let urls = mediaResolver.expectedURLMap()
-        var replacements: [String: Clip] = [:]
-        var targets: [AudioLoudnessTarget] = []
-        for id in clipIds.sorted() {
-            guard let clip = clipFor(id: id), clip.mediaType == .audio, clip.sourceClipType != .sequence,
-                  !missingMediaRefs.contains(clip.mediaRef), let url = urls[clip.mediaRef] else {
-                throw AudioFinishingError(reason: "Audio clip \(id) is unavailable or nested.")
-            }
-            var replacement = clip
-            configure(&replacement)
-            replacements[id] = replacement
-            targets.append(AudioLoudnessTarget(id: id, mediaRef: clip.mediaRef, url: url,
-                                              range: try LoudnessAnalyzer.sourceRange(for: clip, fps: snapshot.fps)))
-        }
-        loudnessInFlight.formUnion(clipIds)
-        defer { loudnessInFlight.subtract(clipIds) }
-        let measured = try await Self.measureAudio(targets, targetLUFS: targetLUFS, analyze: analyze)
-        for (id, gain) in measured.gains {
-            guard var clip = replacements[id] else { continue }
-            Self.setAudioEffect(&clip, type: Clip.loudnessEffectType, enabled: true, values: ["gainDB": gain])
-            replacements[id] = clip
-        }
-        var preparation = snapshot
-        preparation.tracks = [Track(id: UUID().uuidString, type: .audio, clips: Array(replacements.values))]
-        _ = try await PreparedAudio.prepare(timeline: preparation, resolveTimeline: { _ in nil },
-                                            resolveURL: { urls[$0] }, missingMediaRefs: [])
-        return try await projectPackageCoordinator.withMutation { _ in
-            try await LoudnessAnalyzer.validateSourceVersions(measured.versions)
-            try Task.checkCancellation()
-            guard timelineRenderRevision == revision, timeline == snapshot,
-                  targets.allSatisfy({ mediaResolver.expectedURL(for: $0.mediaRef) == $0.url }) else {
-                throw AudioFinishingError(reason: "Timeline or source changed during audio finishing. Retry with the current clips.")
-            }
-            let changed = clipIds.filter { clipFor(id: $0) != replacements[$0] }
-            if !changed.isEmpty {
-                mutateClips(ids: changed, actionName: actionName) { clip in
-                    if let replacement = replacements[clip.id] { clip = replacement }
-                }
-            }
-            return measured.warnings
-        }
+        let (jobId, _) = try await startEnhancementJob(
+            clipIds: clipIds,
+            type: .loudness,
+            params: .loudness(targetLUFS: targetLUFS),
+            actionName: actionName,
+            analyze: analyze
+        )
+        let job = try await awaitEnhancementJob(jobId)
+        return job.warnings
     }
 
     private struct AudioLoudnessTarget: Sendable {
@@ -438,14 +589,19 @@ extension EditorViewModel {
             if gain != requested {
                 warnings.append("Clip \(target.id): gain limited to \(gain) dB; source loudness target was not reached.")
             }
+            if let truePeak = measurement.truePeakDBFS, truePeak.isFinite {
+                let projectedPeak = truePeak + gain
+                if projectedPeak > 0 {
+                    warnings.append("Clip \(target.id): target loudness \(targetLUFS) LUFS cannot be reached safely; gain of \(String(format: "%.1f", gain)) dB exceeds 0 dBFS headroom (projected true-peak \(String(format: "%.1f", projectedPeak)) dBTP).")
+                } else if projectedPeak > -1.0 {
+                    warnings.append("Clip \(target.id): target loudness \(targetLUFS) LUFS leaves less than 1 dB true-peak headroom (projected true-peak \(String(format: "%.1f", projectedPeak)) dBTP).")
+                }
+            }
         }
         return (gains, warnings, versions)
     }
 
-    /// Awaits breath and de-ess analysis for the given clips.
-    /// Returns warnings for any clips where analysis failed.
     func awaitEnhancementAnalysis(clipIds: Set<String>) async throws -> [String] {
-        // Capture required data on main actor
         let clipIdsArray = Array(clipIds)
         let clips = clipIdsArray.compactMap { clipFor(id: $0) }
         guard !clips.isEmpty else { return [] }
@@ -508,7 +664,7 @@ extension EditorViewModel {
         setAudioEffect(&clip, type: Clip.enhanceEffectType, enabled: enabled, values: values.compactMapValues { $0 })
     }
 
-    private static func setAudioEffect(_ clip: inout Clip, type: String, enabled: Bool, values: [String: Double]) {
+    nonisolated static func setAudioEffect(_ clip: inout Clip, type: String, enabled: Bool, values: [String: Double]) {
         var stack = clip.effects ?? []
         if let index = stack.firstIndex(where: { $0.type == type }) {
             stack[index].enabled = enabled

@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 /// Pulsing dots shown while the agent is reasoning.

@@ -70,4 +70,32 @@ struct AudioFinishingRenderTests {
         }
         try await AudioFinishingFixtures.remove(directory)
     }
+
+    @Test func trimmedSourceEventAttenuatesOneSecondIntoClip() async throws {
+        let directory = try await AudioFinishingFixtures.makeDirectory()
+        do {
+            let source = directory.appendingPathComponent("tone.wav")
+            var clip = Fixtures.clip(mediaRef: "tone", mediaType: .audio, start: 0, duration: 90, trimStart: 30)
+            clip.effects = [Effect(type: Clip.debreathEffectType, enabled: true, params: ["amount": EffectParam(value: 1)])]
+            let timeline = Fixtures.timeline(tracks: [Fixtures.audioTrack(clips: [clip])])
+            let built = try await CompositionBuilder.build(timeline: timeline, resolveURL: { _ in source },
+                                                            renderSize: CGSize(width: 320, height: 180))
+            let (mix, _) = try await CompositionBuilder.buildVisuals(
+                timeline: timeline, trackMappings: built.trackMappings,
+                compositionDuration: built.composition.duration, renderSize: CGSize(width: 320, height: 180),
+                preparedAudio: PreparedAudio(breaths: ["tone": [.init(start: 2.0, end: 3.0)]])
+            )
+            let session = try #require(AVAssetExportSession(asset: built.composition, presetName: AVAssetExportPresetAppleM4A))
+            session.audioMix = mix
+            let output = directory.appendingPathComponent("trimmed_dip.m4a")
+            try await session.export(to: output, as: .m4a)
+            let dry = try await AudioFinishingFixtures.rms(output, range: 0.2...0.8)
+            let dip = try await AudioFinishingFixtures.rms(output, range: 1.2...1.8)
+            #expect(20 * log10(dip / dry) < -20)
+        } catch {
+            try await AudioFinishingFixtures.remove(directory)
+            throw error
+        }
+        try await AudioFinishingFixtures.remove(directory)
+    }
 }
