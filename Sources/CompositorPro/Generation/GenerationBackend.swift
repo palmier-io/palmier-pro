@@ -12,11 +12,16 @@ enum BackendUnavailableError: LocalizedError {
 /// The account-backed generation backend was removed in the backend teardown
 /// (R1). Submissions fail fast; types remain for retained job bookkeeping.
 enum GenerationBackend {
+    @MainActor static var provider: (any GenerationProvider)? = nil
+
     static func submit(
         model: String,
         params: BackendGenerationParams,
         projectId: String? = nil
     ) async throws -> String {
+        if let currentProvider = await MainActor.run(body: { provider }) {
+            return try await currentProvider.submit(model: model, params: params, projectId: projectId)
+        }
         throw BackendUnavailableError.hostedServicesRemoved
     }
 
@@ -24,8 +29,21 @@ enum GenerationBackend {
         throw BackendUnavailableError.hostedServicesRemoved
     }
 
+    @MainActor
     static func subscribe(jobId: String) -> AnyPublisher<BackendGenerationJob?, Never>? {
-        nil
+        guard let currentProvider = provider else { return nil }
+        let subject = CurrentValueSubject<BackendGenerationJob?, Never>(nil)
+        Task { @MainActor in
+            while !Task.isCancelled {
+                guard let job = try? await currentProvider.status(jobId: jobId) else { break }
+                subject.send(job)
+                if job.status == .succeeded || job.status == .failed {
+                    break
+                }
+                try? await Task.sleep(nanoseconds: 200_000_000)
+            }
+        }
+        return subject.eraseToAnyPublisher()
     }
 
     static func subscribeToProjectActivity(
@@ -38,6 +56,9 @@ enum GenerationBackend {
         fileURL: URL,
         contentType: String
     ) async throws -> String {
+        if let currentProvider = await MainActor.run(body: { provider }) {
+            return try await currentProvider.uploadReference(fileURL: fileURL, contentType: contentType)
+        }
         throw BackendUnavailableError.hostedServicesRemoved
     }
 }

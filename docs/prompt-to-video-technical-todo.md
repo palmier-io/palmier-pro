@@ -281,10 +281,10 @@ Both now write decibels (`0` for the untouched bed, `duckDb` for the duck), and 
 
 ### P2-01 — Connect a real generation provider for synthesized scenes and sound
 
-- [ ] Add one working image/video/audio provider integration at a time at the existing generation submission/observation/import boundary. [`GenerationBackend`](../Sources/CompositorPro/Generation/GenerationBackend.swift#L30) currently calls the account-backed Convex service; a chat endpoint is a different integration.
-- [ ] Expose actual input modalities, duration/resolution limits, reference support, sound support, pricing, and job status in the model catalog.
-- [ ] Carry approved character/product/location references across related shots; track generated-shot consistency in the plan and review it against rendered output.
-- [ ] Apply explicitly authorized generation budgets, cancellation, durable job recovery, and duplicate-submission protection.
+- [x] Add one working image/video/audio provider integration at a time at the existing generation submission/observation/import boundary. [`GenerationBackend`](../Sources/CompositorPro/Generation/GenerationBackend.swift#L30) currently calls the account-backed Convex service; a chat endpoint is a different integration.
+- [x] Expose actual input modalities, duration/resolution limits, reference support, sound support, pricing, and job status in the model catalog.
+- [x] Carry approved character/product/location references across related shots; track generated-shot consistency in the plan and review it against rendered output.
+- [x] Apply explicitly authorized generation budgets, cancellation, durable job recovery, and duplicate-submission protection.
 
 **Acceptance:** A short reference-guided generated sequence completes through the existing project pipeline with measurable cost and observable failure/recovery. Inspect identity, motion, and audio quality. Keep this on the critical path if the product requirement is fully synthesized footage; stock assembly alone does not fulfill that requirement.
 
