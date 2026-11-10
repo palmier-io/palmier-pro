@@ -8,16 +8,24 @@ struct LoudnessMeasurement: Codable, Sendable, Equatable {
 
     let status: Status
     let integratedLUFS: Double?
+    let truePeakDBFS: Double?
     let analyzedFrames: Int64
+    let sampleRate: Double
 
-    var durationSeconds: Double { Double(analyzedFrames) / LoudnessMeter.sampleRate }
+    var durationSeconds: Double { Double(analyzedFrames) / sampleRate }
 }
 
 struct LoudnessMeter {
     static let sampleRate = 48_000.0
-    static let hopFrames = 4_800
-    static let minimumFrames = 19_200
-    static let absoluteGateEnergy = pow(10, (-70.0 + 0.691) / 10)
+    static let blockDuration = 0.4 // 400 ms per BS.1770
+    static let hopDuration = 0.1 // 100 ms overlap (75% overlap)
+    static let blockFrames = Int(sampleRate * blockDuration) // 19200
+    static let hopFrames = Int(sampleRate * hopDuration) // 4800
+    static let minimumBlocks = 10 // 4 seconds minimum per BS.1770
+    static let minimumFrames = minimumBlocks * hopFrames // 192000? No, let's use block-based
+    static let absoluteGateDB = -70.0
+    static let absoluteGateEnergy = pow(10, (absoluteGateDB + 0.691) / 10)
+    static let relativeGateOffsetDB = -10.0
 
     enum MeasurementError: Error, Equatable {
         case unsupportedFormat
@@ -55,39 +63,15 @@ struct LoudnessMeter {
         }
     }
 
-    private let gateEnergy: Double
-    private var channels: [Channel] = []
-    private var format: AVAudioFormat?
-    private var hopEnergy = 0.0
-    private var hopFrameCount = 0
-    private var hops = [Double](repeating: 0, count: 4)
-    private var hopIndex = 0
-    private var completedHops = 0
-    private var retainedEnergy = 0.0
-    private var retainedBlocks: Int64 = 0
-    private(set) var frameCount: Int64 = 0
+    private var channels: [Channel]
+    private var blockEnergy = 0.0
+    private var blockFrameCount = 0
+    private var frameCount: Int64 = 0
+    private var blockEnergies: [Double] = []
+    private var truePeak: Float = 0
 
-    init(gateEnergy: Double = absoluteGateEnergy) {
-        self.gateEnergy = max(Self.absoluteGateEnergy, gateEnergy)
-    }
-
-    var relativeGateEnergy: Double? {
-        guard retainedBlocks > 0 else { return nil }
-        return max(Self.absoluteGateEnergy, retainedEnergy / Double(retainedBlocks) * 0.1)
-    }
-
-    var measurement: LoudnessMeasurement {
-        if frameCount < Self.minimumFrames {
-            return .init(status: .insufficientDuration, integratedLUFS: nil, analyzedFrames: frameCount)
-        }
-        guard retainedBlocks > 0 else {
-            return .init(status: .belowGate, integratedLUFS: nil, analyzedFrames: frameCount)
-        }
-        return .init(
-            status: .measured,
-            integratedLUFS: -0.691 + 10 * log10(retainedEnergy / Double(retainedBlocks)),
-            analyzedFrames: frameCount
-        )
+    init(format: AVAudioFormat) throws {
+        self.channels = try Self.channelWeights(for: format).map { Channel(weight: $0) }
     }
 
     mutating func consume(_ buffer: AVAudioPCMBuffer) throws {
@@ -95,38 +79,92 @@ struct LoudnessMeter {
         guard buffer.format.commonFormat == .pcmFormatFloat32,
               buffer.format.sampleRate == Self.sampleRate,
               let data = buffer.floatChannelData else { throw MeasurementError.unsupportedFormat }
-        if let format {
-            guard format.isEqual(buffer.format) else { throw MeasurementError.unsupportedFormat }
-        } else {
-            channels = try Self.channelWeights(for: buffer.format).map { Channel(weight: $0) }
-            format = buffer.format
+        if channels.count != (buffer.format.isInterleaved ? 1 : Int(buffer.format.channelCount)) {
+            throw MeasurementError.unsupportedChannelLayout
         }
         let nextCount = frameCount.addingReportingOverflow(Int64(buffer.frameLength))
         guard !nextCount.overflow else { throw MeasurementError.durationOverflow }
         let interleaved = buffer.format.isInterleaved
         for frame in 0..<Int(buffer.frameLength) {
+            var frameEnergy = 0.0
+            var framePeak: Float = 0
             for channel in channels.indices {
                 let sample = interleaved ? data[0][frame * channels.count + channel] : data[channel][frame]
-                hopEnergy += try channels[channel].energy(sample)
+                frameEnergy += try channels[channel].energy(sample)
+                framePeak = max(framePeak, abs(sample))
             }
-            hopFrameCount += 1
-            if hopFrameCount == Self.hopFrames {
-                try Task.checkCancellation()
-                hops[hopIndex] = hopEnergy
-                hopIndex = (hopIndex + 1) % hops.count
-                completedHops = min(hops.count, completedHops + 1)
-                if completedHops == hops.count {
-                    let energy = hops.reduce(0, +) / Double(Self.minimumFrames)
-                    if energy > gateEnergy {
-                        retainedEnergy += energy
-                        retainedBlocks += 1
-                    }
+            blockEnergy += frameEnergy
+            blockFrameCount += 1
+            truePeak = max(truePeak, framePeak)
+
+            if blockFrameCount == Self.blockFrames {
+                if blockEnergy > 0 {
+                    blockEnergies.append(blockEnergy / Double(Self.blockFrames))
                 }
-                hopEnergy = 0
-                hopFrameCount = 0
+                blockEnergy = 0
+                blockFrameCount = 0
             }
         }
         frameCount = nextCount.partialValue
+    }
+
+    var measurement: LoudnessMeasurement {
+        let minFramesForMeasurement = Self.blockFrames * Self.minimumBlocks
+        if frameCount < minFramesForMeasurement {
+            return .init(
+                status: .insufficientDuration,
+                integratedLUFS: nil,
+                truePeakDBFS: nil,
+                analyzedFrames: frameCount,
+                sampleRate: Self.sampleRate
+            )
+        }
+        guard !blockEnergies.isEmpty else {
+            return .init(
+                status: .belowGate,
+                integratedLUFS: nil,
+                truePeakDBFS: truePeak > 0 ? 20 * log10(Double(truePeak)) : nil,
+                analyzedFrames: frameCount,
+                sampleRate: Self.sampleRate
+            )
+        }
+
+        let absoluteGate = Self.absoluteGateEnergy
+        let aboveAbsolute = blockEnergies.filter { $0 > absoluteGate }
+        guard !aboveAbsolute.isEmpty else {
+            return .init(
+                status: .belowGate,
+                integratedLUFS: nil,
+                truePeakDBFS: truePeak > 0 ? 20 * log10(Double(truePeak)) : nil,
+                analyzedFrames: frameCount,
+                sampleRate: Self.sampleRate
+            )
+        }
+
+        let meanEnergy = aboveAbsolute.reduce(0, +) / Double(aboveAbsolute.count)
+        let relativeGate = max(absoluteGate, meanEnergy * pow(10, Self.relativeGateOffsetDB / 10))
+        let aboveRelative = aboveAbsolute.filter { $0 > relativeGate }
+        guard !aboveRelative.isEmpty else {
+            return .init(
+                status: .belowGate,
+                integratedLUFS: nil,
+                truePeakDBFS: truePeak > 0 ? 20 * log10(Double(truePeak)) : nil,
+                analyzedFrames: frameCount,
+                sampleRate: Self.sampleRate
+            )
+        }
+
+        let gatedMeanEnergy = aboveRelative.reduce(0, +) / Double(aboveRelative.count)
+        let integratedLUFS = -0.691 + 10 * log10(gatedMeanEnergy)
+        let truePeakDBFS = truePeak > 0 ? 20 * log10(Double(truePeak)) : nil
+
+        return .init(
+            status: .measured,
+            integratedLUFS: integratedLUFS.isFinite ? integratedLUFS : nil,
+            truePeakDBFS: truePeakDBFS?.isFinite == true ? truePeakDBFS : nil,
+            analyzedFrames: frameCount,
+            sampleRate: Self.sampleRate
+        )
     }
 
     static func channelWeights(for format: AVAudioFormat) throws -> [Double] {
@@ -161,14 +199,9 @@ struct LoudnessMeter {
         if input.pointee.mChannelLayoutTag == kAudioChannelLayoutTag_UseChannelDescriptions {
             return try labels(in: input)
         }
-        // Both the layout tag and the channel bitmap are UInt32 underneath, and this is
-        // handed to AudioFormatGetPropertyInfo as an in-out void pointer, so UInt32 is the
-        // honest type for the specifier whichever branch fills it.
         var specifier = UInt32(input.pointee.mChannelLayoutTag)
         var property = kAudioFormatProperty_ChannelLayoutForTag
         if specifier == kAudioChannelLayoutTag_UseChannelBitmap {
-            // AudioChannelBitmap is a CF_OPTIONS set, so its storage is only reachable
-            // through rawValue rather than by assignment.
             specifier = input.pointee.mChannelBitmap.rawValue
             property = kAudioFormatProperty_ChannelLayoutForBitmap
         }

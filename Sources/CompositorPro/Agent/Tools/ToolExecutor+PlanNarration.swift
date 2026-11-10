@@ -1,6 +1,23 @@
 import Foundation
 
 extension ToolExecutor {
+    func prepareApprovedPlanNarration(_ editor: EditorViewModel, planId: String) async throws -> ToolResult {
+        let result = try await editor.prepareApprovedNarration(planId: planId, render: narrationRender, transcribe: narrationTranscribe)
+        guard let plan = editor.editPlan(id: planId) else { throw ToolError("Unknown planId '\(planId)'.") }
+        var receipt = plan.receipt(includeDetails: true)
+        switch result {
+        case .noOp:
+            receipt["noOp"] = true
+        case .prepared:
+            receipt["prepared"] = true
+        case .unresolved(_, let reason):
+            receipt["prepared"] = true
+            receipt["unresolved"] = true
+            receipt["blocker"] = reason
+        }
+        return .ok(Self.jsonString(receipt) ?? "{}")
+    }
+
     func measurePlanNarration(_ editor: EditorViewModel, planId: String) async throws -> ToolResult {
         let session = try PlanNarrationSession(editor: editor, planId: planId)
         try await editor.verifyPlanNarrationAttachment(session: session)

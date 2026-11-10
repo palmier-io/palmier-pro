@@ -163,7 +163,7 @@ extension EditorViewModel {
         })
     }
 
-    private func commitProductionRun(_ run: ProductionRun, plan: EditPlan, actionName: String) throws {
+    func commitProductionRun(_ run: ProductionRun, plan: EditPlan, actionName: String) throws {
         var next = plan
         next.productionRun = run
         try changeEditPlans(updates: [next], actionName: actionName, updatingProductionRun: true)

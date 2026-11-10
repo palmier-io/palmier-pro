@@ -8,7 +8,7 @@ extension ToolExecutor {
         static let allowedKeys: Set<String> = ["clipIds", "strength", "enabled"]
     }
 
-    func debreatheAudio(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+    func debreatheAudio(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         let input: DebreatheAudioInput = try decodeToolArgs(args, path: "debreath_audio")
         guard !input.clipIds.isEmpty else { throw ToolError("clipIds is empty.") }
         if let s = input.strength, !(0...1).contains(s) {
@@ -32,9 +32,15 @@ extension ToolExecutor {
                 actionName: actionName
             )
         }
-        let notes = enabled
-            ? ["Breath detection runs in the background; the preview picks it up automatically when it finishes."]
-            : []
+        var notes: [String] = []
+        if enabled {
+            let warnings = try await editor.awaitEnhancementAnalysis(clipIds: Set(input.clipIds))
+            notes = warnings.isEmpty
+                ? ["Breath analysis complete."]
+                : warnings
+        } else {
+            notes = ["De-breath disabled."]
+        }
         return mutationResult(editor, since: snapshot, touched: input.clipIds, notes: notes)
     }
 

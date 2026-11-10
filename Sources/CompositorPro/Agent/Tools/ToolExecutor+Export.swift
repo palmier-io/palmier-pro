@@ -173,7 +173,7 @@ extension ToolExecutor {
                 throw ToolError("export_project: timeline is empty")
             }
             try await Self.requireProductionVisualUniqueness(editor: editor, timeline: timeline)
-            return try enqueueExport(
+            return try await enqueueExport(
                 editor, timeline: timeline, mode: mode, format: format,
                 resolution: resolution, target: .default, outputURL: outputURL,
                 deliveryNotes: deliveryNotes,
@@ -182,7 +182,7 @@ extension ToolExecutor {
                 )
             )
         case .xml:
-            return try enqueueExport(
+            return try await enqueueExport(
                 editor, timeline: timeline, mode: mode, format: .xml,
                 resolution: .matchTimeline, target: .default, outputURL: outputURL
             )
@@ -196,7 +196,7 @@ extension ToolExecutor {
             } else {
                 target = .default
             }
-            return try enqueueExport(
+            return try await enqueueExport(
                 editor, timeline: timeline, mode: mode, format: .fcpxml,
                 resolution: .matchTimeline, target: target, outputURL: outputURL
             )
@@ -215,10 +215,17 @@ extension ToolExecutor {
         outputURL: URL,
         deliveryNotes: [String] = [],
         deliveredSize: CGSize? = nil
-    ) throws -> ToolResult {
+    ) async throws -> ToolResult {
         let warnings = format == .xml || format == .fcpxml
             ? nestExportWarnings(editor, timeline: timeline)
             : []
+
+        // Wait for any pending enhancement jobs on clips in this timeline to complete
+        let allClipIds = timeline.tracks.flatMap { $0.clips.map(\.id) }
+        if !allClipIds.isEmpty {
+            try await editor.awaitEnhancementJobsForClips(Set(allClipIds))
+        }
+
         let submission = try exportQueue.enqueueVideo(
             timeline: timeline,
             resolver: editor.mediaResolver,

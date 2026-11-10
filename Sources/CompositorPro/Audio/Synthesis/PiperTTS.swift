@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 /// Neural speech synthesis through a locally installed Piper binary and voice models.
@@ -168,6 +169,79 @@ enum PiperTTS {
     static func model(named name: String) -> Model? {
         installedModels().first { $0.fileName.lowercased() == name.lowercased() }
             ?? installedModels().first { $0.fileName.lowercased().hasPrefix(name.lowercased()) }
+    }
+
+    struct RenderEvidence: Sendable, Equatable {
+        var url: URL
+        var writtenFrames: Int64
+    }
+
+    /// Renders one chunk to a WAV from explicit model/config file paths (private copies for
+    /// pinned synthesis). Blocking; callers must already be off the main actor.
+    static func renderEvidence(
+        text: String,
+        modelURL: URL,
+        configURL: URL,
+        lengthScale: Double,
+        isCancelled: () -> Bool
+    ) throws -> RenderEvidence {
+        guard let executable = executableURL() else { throw PiperError.notInstalled }
+        guard FileManager.default.fileExists(atPath: modelURL.path),
+              FileManager.default.fileExists(atPath: configURL.path) else {
+            throw PiperError.modelMissing(modelURL.deletingPathExtension().lastPathComponent)
+        }
+        let output = FileManager.default.temporaryDirectory
+            .appendingPathComponent("piper-\(UUID().uuidString).wav")
+        func cleanUpOnFailure() { try? FileManager.default.removeItem(at: output) }
+
+        let process = Process()
+        process.executableURL = executable
+        process.standardOutput = FileHandle.nullDevice
+        let errorPipe = Pipe()
+        process.standardError = errorPipe
+        var arguments = ["-m", modelURL.path, "-f", output.path]
+        if lengthScale > 0, abs(lengthScale - 1) > 0.001 {
+            arguments += ["--length-scale", String(format: "%.3f", lengthScale)]
+        }
+        process.arguments = arguments
+        let input = Pipe()
+        process.standardInput = input
+        do { try process.run() } catch {
+            cleanUpOnFailure()
+            throw PiperError.failed(status: -1, message: error.localizedDescription)
+        }
+        input.fileHandleForWriting.write(Data(text.utf8))
+        try? input.fileHandleForWriting.close()
+
+        let deadline = Date().addingTimeInterval(120)
+        while process.isRunning {
+            if isCancelled() {
+                process.terminate()
+                process.waitUntilExit()
+                cleanUpOnFailure()
+                throw PiperError.cancelled
+            }
+            if Date() > deadline {
+                process.terminate()
+                process.waitUntilExit()
+                cleanUpOnFailure()
+                throw PiperError.failed(status: -1, message: "timed out after 120s")
+            }
+            usleep(20_000)
+        }
+        process.waitUntilExit()
+        let status = process.terminationStatus
+        guard status == 0 else {
+            let message = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            cleanUpOnFailure()
+            throw PiperError.failed(status: status, message: String(message.prefix(400)))
+        }
+        guard !isCancelled() else { cleanUpOnFailure(); throw PiperError.cancelled }
+        let size = (try? FileManager.default.attributesOfItem(atPath: output.path)[.size] as? Int64) ?? 0
+        guard size > 44 else { cleanUpOnFailure(); throw PiperError.producedNoAudio }
+        let frames = (try? AVAudioFile(forReading: output).length) ?? 0
+        return RenderEvidence(url: output, writtenFrames: frames)
     }
 
     // MARK: - Rendering

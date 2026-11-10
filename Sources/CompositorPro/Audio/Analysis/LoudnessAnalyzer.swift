@@ -35,13 +35,13 @@ enum LoudnessAnalyzer {
     }
 
     private struct CacheKey: Encodable {
-        let version = 2
+        let version = 3
         let source: SourceVersion
         let mediaRef: String
         let range: String
     }
 
-    // Source-domain measurement excludes clip gain, fades, and playback-rate processing.
+    /// Source-domain measurement excludes clip gain, fades, and playback-rate processing.
     @concurrent
     static func integratedLoudness(
         for sourceURL: URL, mediaRef: String, range: CMTimeRange? = nil, cacheDirectory: URL? = nil
@@ -88,8 +88,8 @@ enum LoudnessAnalyzer {
     ) async throws -> LoudnessMeasurement {
         try Task.checkCancellation()
         let source = try SourceVersion(sourceURL)
-        let directory = cacheDirectory ?? DiskCache.rootDirectory.appendingPathComponent("AudioAnalysis/Loudness", isDirectory: true)
-        let rangeKey = range.map { "\($0.start.value)/\($0.start.timescale):\($0.duration.value)/\($0.duration.timescale)" } ?? "whole"
+        let directory = (cacheDirectory ?? DiskCache.rootDirectory.appendingPathComponent("AudioAnalysis/Loudness", isDirectory: true))
+        let rangeKey = range.map { "\($0.start.value)/$0.start.timescale):\($0.duration.value)/\($0.duration.timescale)" } ?? "whole"
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         let key = try encoder.encode(CacheKey(source: source, mediaRef: mediaRef, range: rangeKey))
@@ -101,16 +101,7 @@ enum LoudnessAnalyzer {
             return cached
         }
 
-        let first = try await readPass(sourceURL, range: range, gateEnergy: LoudnessMeter.absoluteGateEnergy)
-        let measurement: LoudnessMeasurement
-        // A second decode applies the exact relative gate without retaining a duration-sized energy history.
-        if let gateEnergy = first.relativeGateEnergy {
-            let second = try await readPass(sourceURL, range: range, gateEnergy: gateEnergy)
-            guard first.frameCount == second.frameCount else { throw AnalysisError.sourceChanged }
-            measurement = second.measurement
-        } else {
-            measurement = first.measurement
-        }
+        let measurement = try await readPass(sourceURL, range: range)
         try Task.checkCancellation()
         guard try SourceVersion(sourceURL) == source else { throw AnalysisError.sourceChanged }
         do {
@@ -123,8 +114,19 @@ enum LoudnessAnalyzer {
         return measurement
     }
 
-    private static func readPass(_ url: URL, range: CMTimeRange?, gateEnergy: Double) async throws -> LoudnessMeter {
-        var meter = LoudnessMeter(gateEnergy: gateEnergy)
+    private static func readPass(_ url: URL, range: CMTimeRange?) async throws -> LoudnessMeasurement {
+        let asset = AVURLAsset(url: url)
+        let tracks = try await asset.loadTracks(withMediaType: .audio)
+        guard let track = tracks.first else {
+            throw LoudnessMeter.MeasurementError.unsupportedFormat
+        }
+        let formatDesc = try await track.load(.formatDescriptions).first
+        guard let formatDesc else {
+            throw LoudnessMeter.MeasurementError.unsupportedFormat
+        }
+        let format = AVAudioFormat(cmAudioFormatDescription: formatDesc)
+        var meter = try LoudnessMeter(format: format)
+
         try await AudioTrackReader.read(from: url, outputSettings: [
             AVFormatIDKey: kAudioFormatLinearPCM,
             AVSampleRateKey: LoudnessMeter.sampleRate,
@@ -135,17 +137,20 @@ enum LoudnessAnalyzer {
         ], timeRange: range) { buffer in
             try meter.consume(buffer)
         }
-        return meter
+        return meter.measurement
     }
 
     private static func valid(_ measurement: LoudnessMeasurement) -> Bool {
         switch measurement.status {
         case .measured:
-            measurement.analyzedFrames >= LoudnessMeter.minimumFrames && measurement.integratedLUFS?.isFinite == true
+            measurement.analyzedFrames >= LoudnessMeter.blockFrames * LoudnessMeter.minimumBlocks
+                && measurement.integratedLUFS?.isFinite == true
         case .belowGate:
-            measurement.analyzedFrames >= LoudnessMeter.minimumFrames && measurement.integratedLUFS == nil
+            measurement.analyzedFrames >= LoudnessMeter.blockFrames * LoudnessMeter.minimumBlocks
+                && measurement.integratedLUFS == nil
         case .insufficientDuration:
-            measurement.analyzedFrames >= 0 && measurement.analyzedFrames < LoudnessMeter.minimumFrames
+            measurement.analyzedFrames >= 0
+                && measurement.analyzedFrames < LoudnessMeter.blockFrames * LoudnessMeter.minimumBlocks
                 && measurement.integratedLUFS == nil
         }
     }

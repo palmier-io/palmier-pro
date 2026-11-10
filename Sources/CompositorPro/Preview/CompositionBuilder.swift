@@ -919,26 +919,19 @@ enum CompositionBuilder {
         fadeSeconds: Double
     ) -> [AudioGainDip] {
         guard depthDB.isFinite, depthDB < 0, timescale > 0, fadeSeconds.isFinite, fadeSeconds >= 0,
-              let regions, !regions.isEmpty,
-              (try? LoudnessAnalyzer.sourceRange(for: clip, fps: Int(timescale))) != nil else { return [] }
-        let fps = Double(timescale)
+              let regions, !regions.isEmpty else { return [] }
+        let fps = Int(timescale)
         let dipGain = Float(VolumeScale.linearFromDb(depthDB))
-        let fadeFrames = max(1, Int(min(Double(clip.durationFrames), fadeSeconds * fps).rounded()))
+        let fadeFrames = max(1, Int(min(Double(clip.durationFrames), fadeSeconds * Double(fps)).rounded()))
 
         var dips: [AudioGainDip] = []
         for region in regions {
             guard region.start.isFinite, region.end.isFinite, region.start >= 0, region.end > region.start else { continue }
-            let s0 = max(region.start * fps, Double(clip.trimStartFrame))
-            let s1 = min(region.end * fps, Double(clip.trimStartFrame + clip.sourceFramesConsumed))
-            guard s1 > s0 else { continue }
-            let map = clip.timeMap
-            let startFrame = max(clip.startFrame, clip.startFrame
-                + map.timelineOffset(forSourceOffset: s0 - Double(clip.trimStartFrame)))
-            let endFrame = min(clip.endFrame, clip.startFrame
-                + map.timelineOffset(forSourceOffset: s1 - Double(clip.trimStartFrame)))
+            let startFrameOpt = clip.timelineFrame(sourceSeconds: region.start, fps: fps)
+            let endFrameOpt = clip.timelineFrame(sourceSeconds: region.end, fps: fps)
+            guard let startFrame = startFrameOpt, let endFrame = endFrameOpt, endFrame > startFrame else { continue }
             let t0 = startFrame
             let t1 = endFrame
-            guard t1 > t0 else { continue }
             let fade = min(fadeFrames, (t1 - t0) / 2)
             let fadeInEnd = t0 + fade
             let fadeOutStart = t1 - fade
@@ -998,8 +991,7 @@ enum CompositionBuilder {
             clip: clip, timescale: timescale, gain: gain, dips: dips,
             collect: { range, from, to in out.append(PlannedRamp(range: range, from: from, to: to)) }
         )
-        let headroom = audioHeadroom(for: out)
-        return out.map { PlannedRamp(range: $0.range, from: $0.from / headroom, to: $0.to / headroom) }
+        return out
     }
 
     private static func audioHeadroom(for ramps: [PlannedRamp]) -> Float {

@@ -253,7 +253,7 @@ actor AgentDelegation {
             return IndexedOutcome(index: index, value: .completed(result))
         } catch {
             try Task.checkCancellation()
-            if error is CancellationError || (error as? URLError)?.code == .cancelled {
+            if error is CancellationError || AgentHTTP.urlErrorCode(error) == .cancelled {
                 throw CancellationError()
             }
             return IndexedOutcome(index: index, value: .failure(classify(error)))
@@ -372,8 +372,8 @@ actor AgentDelegation {
 
     private static func classify(_ error: any Error) -> AgentDelegationError {
         if let failure = error as? AgentDelegationError { return failure }
-        if let error = error as? URLError {
-            return error.code == .timedOut ? .timeout : .transientFailure
+        if let code = AgentHTTP.urlErrorCode(error) {
+            return code == .timedOut ? .timeout : .transientFailure
         }
         if let error = error as? AgentClientTransportError {
             switch error {
@@ -394,8 +394,6 @@ actor AgentDelegation {
                 return status == 429 || status >= 500 ? .transientFailure : .persistentFailure
             case .streamError(_, let message):
                 return responseFailure(message) ?? .transientFailure
-            case .timeout:
-                return .timeout
             }
         }
         if let error = error as? AgentServiceError {

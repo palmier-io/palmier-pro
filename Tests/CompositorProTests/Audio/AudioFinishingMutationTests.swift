@@ -25,8 +25,13 @@ struct AudioFinishingMutationTests {
                 Self.verifyBackgroundExecution()
                 await entered.signal()
                 try await resume.wait()
-                return LoudnessMeasurement(status: interruption == .unmeasurable ? .belowGate : .measured,
-                                           integratedLUFS: interruption == .unmeasurable ? nil : -25, analyzedFrames: 96_000)
+                return LoudnessMeasurement(
+                    status: interruption == .unmeasurable ? .belowGate : .measured,
+                    integratedLUFS: interruption == .unmeasurable ? nil : -25,
+                    truePeakDBFS: nil,
+                    analyzedFrames: 96_000,
+                    sampleRate: 48_000
+                )
             }
         }
         try await entered.wait()

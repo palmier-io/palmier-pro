@@ -140,6 +140,7 @@ enum OpenAISSE {
             for event in try parser.consume(line: line) {
                 continuation.yield(event)
             }
+            if parser.didTerminate { break }
         }
         try parser.finish()
     }
@@ -149,7 +150,7 @@ struct OpenAIStreamParser {
     private(set) var didTerminate = false
 
     mutating func consume(line: String) throws -> [AgentStreamEvent] {
-        guard line.hasPrefix("data:") else { return [] }
+        guard !didTerminate, line.hasPrefix("data:") else { return [] }
         let payload = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces)
         guard payload != "[DONE]", let data = payload.data(using: .utf8) else { return [] }
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -159,7 +160,7 @@ struct OpenAIStreamParser {
     }
 
     mutating func consume(event: [String: Any]) throws -> [AgentStreamEvent] {
-        guard let type = event["type"] as? String else { return [] }
+        guard !didTerminate, let type = event["type"] as? String else { return [] }
 
         switch type {
         case "response.output_text.delta":

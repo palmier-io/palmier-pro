@@ -9,7 +9,7 @@ enum SearchIndexConfig {
         set { UserDefaults.standard.set(newValue, forKey: enabledDefaultsKey) }
     }
 
-    /// The hosted Palmier model repository was removed in the backend teardown (R1);
+    /// The hosted previous-vendor model repository was removed in the backend teardown (R1);
     /// the visual model now comes from the bundled `models/siglip2` resources.
     static var baseURL: URL {
         #if DEBUG

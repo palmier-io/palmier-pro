@@ -18,11 +18,16 @@ final class ToolExecutor {
     /// Correlates every tool call of one agent turn. Set by the chat loop; nil for MCP calls,
     /// which get their own session identity from the transport.
     private(set) var currentTurnID: String?
+    private var learningTurnID: String?
+    private var learningSequence = 0
+    private let userDefaults: UserDefaults
     private let analyticsSessionID = UUID().uuidString
     let exportQueue: ExportQueue
     let skillStore: SkillStore
     let visualSearchModel: any VisualSearchModelLoading
     let narrationTimingService: NarrationTimingService
+    var narrationRender: (@Sendable (LocalSpeechNarrator, String, String, @escaping @Sendable () -> Bool) async throws -> SpeechSynthesizer.PinnedRenderEvidence)?
+    var narrationTranscribe: (@Sendable (URL, String?) async throws -> TranscriptionResult?)?
     let capabilityInputLoader: @Sendable () async throws -> RuntimeCapabilities.LocalInputs
     let stockProviders: [any StockMediaProvider]
     let importDownloader: ImportMediaDownload
@@ -49,18 +54,24 @@ final class ToolExecutor {
         visualSearchModel: any VisualSearchModelLoading = VisualModelLoader.shared,
         capabilityInputLoader: @escaping @Sendable () async throws -> RuntimeCapabilities.LocalInputs = RuntimeCapabilities.LocalInputs.load,
         narrationTimingService: NarrationTimingService = .shared,
+        narrationRender: (@Sendable (LocalSpeechNarrator, String, String, @escaping @Sendable () -> Bool) async throws -> SpeechSynthesizer.PinnedRenderEvidence)? = nil,
+        narrationTranscribe: (@Sendable (URL, String?) async throws -> TranscriptionResult?)? = nil,
         stockProviders: [any StockMediaProvider] = StockMediaSearch.defaultProviders,
         projectRegistry: ProjectRegistry? = nil,
         projectAccessibilityCheck: (@Sendable ([ProjectAccessibility.Key]) async throws -> [ProjectAccessibility])? = nil,
+        userDefaults: UserDefaults = .standard,
         importDownloader: @escaping ImportMediaDownload = ToolExecutor.downloadImportedMedia
     ) {
         self.inAppEditor = editor
+        self.userDefaults = userDefaults
         self.frontmostProjectProvider = nil
         self.exportQueue = exportQueue
         self.skillStore = skillStore
         self.visualSearchModel = visualSearchModel
         self.capabilityInputLoader = capabilityInputLoader
         self.narrationTimingService = narrationTimingService
+        self.narrationRender = narrationRender
+        self.narrationTranscribe = narrationTranscribe
         self.stockProviders = stockProviders
         self.importDownloader = importDownloader
         self.projectRegistry = projectRegistry
@@ -73,12 +84,16 @@ final class ToolExecutor {
         visualSearchModel: any VisualSearchModelLoading = VisualModelLoader.shared,
         capabilityInputLoader: @escaping @Sendable () async throws -> RuntimeCapabilities.LocalInputs = RuntimeCapabilities.LocalInputs.load,
         narrationTimingService: NarrationTimingService = .shared,
+        narrationRender: (@Sendable (LocalSpeechNarrator, String, String, @escaping @Sendable () -> Bool) async throws -> SpeechSynthesizer.PinnedRenderEvidence)? = nil,
+        narrationTranscribe: (@Sendable (URL, String?) async throws -> TranscriptionResult?)? = nil,
         stockProviders: [any StockMediaProvider] = StockMediaSearch.defaultProviders,
         projectRegistry: ProjectRegistry? = nil,
         projectAccessibilityCheck: (@Sendable ([ProjectAccessibility.Key]) async throws -> [ProjectAccessibility])? = nil,
+        userDefaults: UserDefaults = .standard,
         importDownloader: @escaping ImportMediaDownload = ToolExecutor.downloadImportedMedia
     ) {
         let project = projectProvider()
+        self.userDefaults = userDefaults
         self.inAppEditor = nil
         self.frontmostProjectProvider = projectProvider
         self.boundProject = project
@@ -87,6 +102,8 @@ final class ToolExecutor {
         self.visualSearchModel = visualSearchModel
         self.capabilityInputLoader = capabilityInputLoader
         self.narrationTimingService = narrationTimingService
+        self.narrationRender = narrationRender
+        self.narrationTranscribe = narrationTranscribe
         self.stockProviders = stockProviders
         self.importDownloader = importDownloader
         self.projectRegistry = projectRegistry
@@ -295,8 +312,33 @@ final class ToolExecutor {
             started: started,
             timelineChanged: timelineChanged
         )
+        recordLearning(tool: tool, result: result, timelineChanged: timelineChanged, started: started)
         // Shorten on pre ∪ post ids: new ids and just-removed ids both stay short.
         return await shorteningIds(in: result, editor: editor, alsoKnown: idsBefore)
+    }
+
+    private func recordLearning(
+        tool: ToolName,
+        result: ToolResult,
+        timelineChanged: Bool,
+        started: ContinuousClock.Instant
+    ) {
+        let runId = currentTurnID ?? learningTurnID ?? "-"
+        if learningTurnID != runId { learningTurnID = runId; learningSequence = 0 }
+        let elapsed = started.duration(to: .now)
+        let observation = AgentLearningObservation(
+            runId: runId,
+            sequence: learningSequence,
+            tool: tool.rawValue,
+            outcome: AgentLearningOutcome.classify(result),
+            timelineChanged: timelineChanged,
+            durationMs: Int(Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15),
+            timestamp: Date().timeIntervalSince1970
+        )
+        learningSequence += 1
+        var ledger = AgentLearningLedger.load(from: userDefaults)
+        ledger.record(observation)
+        ledger.save(to: userDefaults)
     }
 
     private func activateMCPSessionIfNeeded(source: String, toolName: String) {
@@ -330,7 +372,7 @@ final class ToolExecutor {
         switch tool {
         case .getTimeline, .inspectTimeline, .reviewTimeline, .getMedia, .inspectMedia, .searchMedia,
              .getMulticam, .getTranscript, .detectBeats, .inspectColor, .listModels,
-             .listSpeechVoices, .sendFeedback:
+             .listSpeechVoices, .sendFeedback, .searchHyperframesCatalog:
             true
         default:
             false
@@ -407,10 +449,13 @@ final class ToolExecutor {
         case .searchMedia:   return try await searchMedia(editor, args)
         case .applyColor:    return try applyColor(editor, args)
         case .applyEffect:   return try applyEffect(editor, args)
-        case .denoiseAudio:  return try denoiseAudio(editor, args)
-        case .debreatheAudio: return try debreatheAudio(editor, args)
+        case .denoiseAudio:  return try await denoiseAudio(editor, args)
+        case .debreatheAudio: return try await debreatheAudio(editor, args)
         case .enhanceVoice: return try await enhanceVoice(editor, args)
         case .matchLoudness: return try await matchLoudness(editor, args)
+        case .getEnhancementJobStatus: return try getEnhancementJobStatus(editor, args)
+        case .cancelEnhancementJob: return try cancelEnhancementJob(editor, args)
+        case .listEnhancementJobs: return try listEnhancementJobs(editor, args)
         case .generateDrone: return try await generateDrone(editor, args)
         case .listSpeechVoices: return try listSpeechVoices(args)
         case .generateSpeech: return try await generateSpeech(editor, args)
@@ -481,6 +526,10 @@ final class ToolExecutor {
         case .manageMarkers:      return try manageMarkers(editor, args)
         case .readSkill:     return readSkill(args)
         case .manageSkills:  return try await manageSkills(args)
+        case .searchHyperframesCatalog:
+            return try await searchHyperframesCatalog(editor, args)
+        case .insertHyperframesBlock:
+            return try await insertHyperframesBlock(editor, args)
         case .manageProject:
             return await manageProject(args)
         }

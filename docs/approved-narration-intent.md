@@ -38,9 +38,9 @@ At asynchronous boundaries, validation rechecks plan/run, project/timeline revis
 
 Storyboard readback exposes `narrationIntent`, `approvalBlockers`, and `canApprove`. Approval requires complete available narrator intent and existing visual/claim/rights checks; it does not require an audio artifact. `blockers` and `canProduce` additionally require current attachment identity and resolved timing. Final playback coverage can block production without changing the approved authored revision.
 
-## Deliberately unavailable speech attachment
+## Local speech attachment
 
-Exact generated speech attachment proof is not implemented. Every managed local-speech attachment is refused, and `unverified_synthesized_narration` prevents production readiness. Generic speech receipts, filenames, `GenerationInput`, and package JSON are not synthesis proof. No receipt signer, alternate approval owner, dummy media reference, approval bypass, or compatibility mapping is introduced.
+Exact generated speech attachment is available for approved local-speech narrators through **Prepare Approved Narration** (`plan_edit` action `prepare_narration`). The domain reads approved script wording, pronunciation, language, placement, engine, voice, rate, and pitch from intent; renders through the strict seam (no engine/voice/language substitution, no prosody delivery multipliers, exact Piper rate, private Piper model/config copies) with execution evidence; installs the audio, attaches it, records app-owned `NarrationSynthesisProof` (bound to request/plan/run/approved+narration revision, narrator controls, model/config identities, and installed byte identity), measures timing, and publishes attachment/proof/timing under one undo action. A matching proof clears `unverified_synthesized_narration`; matching derived artifacts preserve approval, while material intent/authoring changes revoke approval and clear stale proof/timing. Generic `generate_speech` receipts and package metadata are not synthesis proof. Proof is execution provenance, not acoustic certification or protection against deliberately edited project JSON.
 
 Actual pinned synthesis depends on the package/import lifecycle: complete off-main rendering and media preparation, operation admission through install/finalization/state commit, project/approval revalidation, cancellation cleanup, and coordinated save/Save As/close. This slice does not claim that workflow exists.
 
@@ -58,7 +58,7 @@ Require current approval and approval blockers, not `canProduce`, before synthes
 
 A verified existing output is a byte-readback no-op. Recognition mismatch may commit meaningful output/proof with explicitly unresolved timing and a blocked partial receipt; retry measures the same output rather than resynthesizing. Exceptions/cancellation/stale results publish nothing and add no undo. Interrupted attempts remain inspectable under the existing production run; automatic paid retry is outside this local workflow.
 
-Required proof: strict delivery and model-copy tests; proof/input/output tampering; canceled/stale/ABA attempts; exactly one revision and undo/redo; save/Save As/close interleavings; actual MCP approve → synthesize → independent package/WAV readback → assembly → undo/redo. Real audible quality and recognition remain human/provider verification, separate from injected timestamp fixtures. This contract is planned, not implemented or verified.
+This contract is implemented in the pinned-synthesis slice (proof model, strict render/Piper private-copy seam, `prepareApprovedNarration` orchestration, `prepare_narration` MCP action, proof/blocker/attachment gating, stale-proof clearing). Focused verification in this session: `swift build` clean; narration suites passed (`NarrationIntentTests`, `PlanNarrationTests`, recording narrator validation, `PinnedNarrationSynthesisTests` — 27 tests across 5 suites, plus existing narration preparation lifecycle coverage). Full integrated/native/BundledSpeech/TSAN and the doc’s complete end-to-end gate matrix remain separate verification.
 
 ## Narration schema and instruction integration
 

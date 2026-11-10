@@ -174,6 +174,7 @@ enum OpenAIChatCompletionsSSE {
             for event in try parser.consume(line: line) {
                 continuation.yield(event)
             }
+            if parser.didTerminate { break }
         }
         try parser.finish()
     }
@@ -187,10 +188,10 @@ struct OpenAIChatCompletionsStreamParser {
     }
 
     private var pending: [Int: PendingToolCall] = [:]
-    private var didTerminate = false
+    private(set) var didTerminate = false
 
     mutating func consume(line: String) throws -> [AgentStreamEvent] {
-        guard line.hasPrefix("data:") else { return [] }
+        guard !didTerminate, line.hasPrefix("data:") else { return [] }
         let payload = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces)
         guard payload != "[DONE]" else {
             return finishEvents()
@@ -208,7 +209,8 @@ struct OpenAIChatCompletionsStreamParser {
     }
 
     mutating func consume(chunk: [String: Any]) throws -> [AgentStreamEvent] {
-        guard let choices = chunk["choices"] as? [[String: Any]],
+        guard !didTerminate,
+              let choices = chunk["choices"] as? [[String: Any]],
               let choice = choices.first
         else { return [] }
 

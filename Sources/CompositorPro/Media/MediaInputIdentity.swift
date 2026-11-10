@@ -50,11 +50,11 @@ actor MediaInputIdentityService {
     private var recency: [URL] = []
     private let capacity = 64
 
-    private struct Revision: Sendable, Equatable {
+    struct Revision: Sendable, Equatable {
         let size: Int64
         let modified: Date
-        let created: Date
-        let fileNumber: UInt64
+        let created: Date?
+        let fileNumber: UInt64?
     }
 
     private struct Measurement: Sendable {
@@ -103,11 +103,17 @@ actor MediaInputIdentityService {
 
     private static func revision(_ url: URL) throws -> Revision {
         let attributes = try FileManager.default.attributesOfItem(atPath: url.resolvingSymlinksInPath().path)
+        return try revision(attributes: attributes)
+    }
+
+    /// Some volumes (exFAT, network shares, synced folders) omit creation date or system
+    /// file number; identity must still work there, so those fields are optional.
+    static func revision(attributes: [FileAttributeKey: Any]) throws -> Revision {
         guard attributes[.type] as? FileAttributeType == .typeRegular,
               let size = attributes[.size] as? NSNumber, size.int64Value > 0,
-              let modified = attributes[.modificationDate] as? Date,
-              let created = attributes[.creationDate] as? Date,
-              let fileNumber = attributes[.systemFileNumber] as? NSNumber else { throw CocoaError(.fileReadCorruptFile) }
-        return Revision(size: size.int64Value, modified: modified, created: created, fileNumber: fileNumber.uint64Value)
+              let modified = attributes[.modificationDate] as? Date else { throw CocoaError(.fileReadCorruptFile) }
+        let created = attributes[.creationDate] as? Date
+        let fileNumber = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value
+        return Revision(size: size.int64Value, modified: modified, created: created, fileNumber: fileNumber)
     }
 }

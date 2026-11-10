@@ -759,9 +759,12 @@ extension EditorViewModel {
         } catch {
             guard isCurrent() else { return false }
             asset.generationStatus = .failed("Could not identify media file.")
+            unprocessableMediaRefs.insert(asset.id)
             recordManifestMetadata(for: asset, batching: batchManifestUpdate)
             onTerminalPublication?(asset.preparationContext)
             Log.project.warning("media identity failed asset=\(asset.id) error=\(error.localizedDescription)")
+            reportMediaImportFailure(error)
+            refreshMissingMediaCache()
             return false
         }
         guard isCurrent() else { return false }

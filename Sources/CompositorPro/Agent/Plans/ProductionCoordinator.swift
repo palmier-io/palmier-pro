@@ -5,19 +5,6 @@ final class ProductionCoordinator {
     typealias Phase = ProductionRun.Phase
     typealias VisualReview = ProductionRun.VisualReview
 
-    struct TerminalReceipt: Codable, Sendable, Equatable {
-        var runId: String
-        var phase: String
-        var approvedRevision: String?
-        var reviewedSceneIds: [String]
-        var comment: String
-        var deliveryVerified: Bool
-        var exportJobId: String?
-        var exportPath: String?
-        var errors: [String]
-        var completedAt: Date?
-    }
-
     protocol JobHandle: Sendable {
         var id: UUID { get }
         func cancel() async
@@ -47,7 +34,7 @@ final class ProductionCoordinator {
     var approvedRevision: String?
     var visualReviews: [VisualReview] = []
     var comment: String = ""
-    var terminalReceipt: TerminalReceipt?
+    var terminalReceipt: ProductionRun.TerminalReceipt?
 
     private(set) var jobHandles: [UUID: any JobHandle] = [:]
     private(set) var currentJobHandle: (any JobHandle)?
@@ -261,35 +248,150 @@ final class ProductionCoordinator {
 
     private func runExport() async throws {
         guard let editor else { throw ProductionError.editorNotAvailable }
+        // A persisted terminal receipt wins: the run already delivered and reopening
+        // must not resubmit an export or claim fresh delivery.
+        let run = editor.editPlan(id: planId)?.productionRun
+        if let receipt = run?.terminalReceipt {
+            phase = receipt.phase == "completed" ? .completed : .stale
+            terminalReceipt = receipt
+            return
+        }
         phase = .exporting
-        let filename = "production-\(runId.uuidString.prefix(8)).mov"
+        // Reattach to a job submitted by an interrupted attempt before any new
+        // submission, so retry after restart never queues the export twice.
+        if let jobID = run?.exportJobId {
+            try await attachToExport(editor, jobId: jobID)
+            return
+        }
+        try await submitAndAwaitExport(editor)
+    }
+
+    /// Waits for a previously submitted export and persists the terminal receipt.
+    private func attachToExport(_ editor: EditorViewModel, jobId: String) async throws {
+        let listed = try await toolExecutor.manageExports(editor, ["action": "list"])
+        let payload = try Self.jsonPayload(listed)
+        let rows = (payload["exports"] as? [[String: Any]]) ?? []
+        let row = rows.first { ($0["jobId"] as? String) == jobId }
+        guard let status = row?["status"] as? String else {
+            // Job gone from this project's queue (closed and reopened): resubmit.
+            try await submitAndAwaitExport(editor)
+            return
+        }
+        if status == "failed" || status == "canceled" {
+            try persistTerminal(editor, terminalStatus: status, jobId: jobId,
+                                error: (row?["error"] as? String).map { [$0] } ?? ["Export \(status)."])
+            return
+        }
+        try await awaitExport(editor, jobId: jobId)
+    }
+
+    private func submitAndAwaitExport(_ editor: EditorViewModel) async throws {
+        try Task.checkCancellation()
+        let filename = "production-\(runId.uuidString.prefix(8)).mp4"
         let outputURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(filename)
         let result = try await toolExecutor.exportProject(editor, [
             "mode": "video",
             "outputPath": outputURL.path,
-            "overwrite": true
+            "overwrite": true,
         ])
         if result.isError {
-            let errorMsg = result.content.compactMap {
-                if case .text(let t) = $0 { return t } else { return nil }
-            }.joined(separator: " ")
-            throw ProductionError.exportFailed(errorMsg.isEmpty ? "Export failed" : errorMsg)
+            let errorMessage = Self.errorText(of: result)
+            throw ProductionError.exportFailed(errorMessage.isEmpty ? "Export failed" : errorMessage)
         }
-        try validatePlanAccessible()
-        let run = editor.editPlan(id: planId)?.productionRun
-        terminalReceipt = TerminalReceipt(
+        let payload = try Self.jsonPayload(result)
+        guard let jobID = payload["jobId"] as? String else {
+            throw ProductionError.exportFailed("Export submission returned no jobId.")
+        }
+        // Persist the job id before waiting so an interruption, close, or crash
+        // resumes by attaching, not by queueing the export again.
+        try persistExportState(editor, jobId: jobID, path: outputURL.path)
+        do {
+            try await awaitExport(editor, jobId: jobID)
+        }
+    }
+
+    private func awaitExport(_ editor: EditorViewModel, jobId: String) async throws {
+        currentJobHandle = AnyJobHandle { try? await self.toolExecutor.manageExports(editor, ["action": "cancel", "jobId": jobId]) }
+        defer { currentJobHandle = nil }
+        let waited = try await toolExecutor.manageExports(editor, ["action": "wait", "jobId": jobId])
+        let payload = try Self.jsonPayload(waited)
+        let status = (payload["status"] as? String) ?? "failed"
+        switch status {
+        case "completed":
+            try persistTerminal(editor, terminalStatus: status, jobId: jobId)
+        case "canceled":
+            phase = .canceled
+            throw CancellationError()
+        default:
+            let error = (payload["error"] as? String).map { [$0] } ?? ["Export \(status)."]
+            try persistTerminal(editor, terminalStatus: status, jobId: jobId, error: error)
+        }
+    }
+
+    /// Persists the export job id on the plan's production run so resumption can
+    /// attach to the live job.
+    private func persistExportState(_ editor: EditorViewModel, jobId: String, path: String) throws {
+        guard var plan = editor.editPlan(id: planId), var run = plan.productionRun else { return }
+        guard let persistedID = UUID(uuidString: jobId) else {
+            throw ProductionError.exportFailed("Export receipt jobId is not a UUID: \(jobId)")
+        }
+        run.exportJobId = persistedID.uuidString
+        run.exportPath = path
+        try run.validate()
+        plan.productionRun = run
+        try editor.commitProductionRun(run, plan: plan, actionName: "Production Export Queued")
+    }
+
+    /// Persists the terminal receipt; awaited export state may have moved the plan.
+    private func persistTerminal(
+        _ editor: EditorViewModel,
+        terminalStatus: String,
+        jobId: String,
+        error: [String]? = nil
+    ) throws {
+        guard var plan = editor.editPlan(id: planId), var run = plan.productionRun else {
+            throw ProductionError.planNotFound
+        }
+        let delivered = terminalStatus == "completed"
+        let receipt = ProductionRun.TerminalReceipt(
             runId: runId.uuidString,
-            phase: "completed",
-            approvedRevision: run?.approvedRevision,
-            reviewedSceneIds: run?.visualReviews.map(\.sceneId) ?? visualReviews.map(\.sceneId),
-            comment: run?.comment ?? comment,
-            deliveryVerified: true,
-            exportJobId: UUID().uuidString,
-            exportPath: outputURL.path,
-            errors: [],
+            phase: terminalStatus,
+            approvedRevision: run.approvedRevision,
+            reviewedSceneIds: run.visualReviews.map(\.sceneId),
+            comment: run.comment,
+            deliveryVerified: delivered,
+            exportJobId: (UUID(uuidString: jobId)?.uuidString ?? jobId),
+            exportPath: run.exportPath,
+            errors: error ?? [],
             completedAt: Date()
         )
-        phase = .completed
+        run.terminalReceipt = receipt
+        // The run's phase keeps its approval invariant (past-approval phases
+        // carry approvedRevision; canceled/stale must not); the receipt's phase
+        // field records the terminal export outcome.
+        run.phase = delivered ? .completed : run.phase
+        try run.validate()
+        plan.productionRun = run
+        try editor.commitProductionRun(run, plan: plan, actionName: "Production Delivery Recorded")
+        phase = delivered ? .completed : .stale
+        terminalReceipt = receipt
+    }
+
+    private static func jsonPayload(_ result: ToolResult) throws -> [String: Any] {
+        let text = result.content.compactMap {
+            if case .text(let t) = $0 { return t } else { return nil }
+        }.joined(separator: " ")
+        guard let data = text.data(using: .utf8),
+              let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw ProductionError.toolError("Production step returned unreadable JSON.")
+        }
+        return payload
+    }
+
+    private static func errorText(of result: ToolResult) -> String {
+        result.content.compactMap {
+            if case .text(let t) = $0 { return t } else { return nil }
+        }.joined(separator: " ")
     }
 
     private func validatePlanAccessible() throws {
@@ -312,7 +414,7 @@ struct ProductionStatus: Sendable {
     let comment: String
     let currentJobId: String?
     let exportJobId: String?
-    let terminalReceipt: ProductionCoordinator.TerminalReceipt?
+    let terminalReceipt: ProductionRun.TerminalReceipt?
 }
 
 enum ProductionError: LocalizedError, Equatable {

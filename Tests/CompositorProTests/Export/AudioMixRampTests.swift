@@ -89,12 +89,14 @@ struct AudioMixRampTests {
         #expect(inside < outside)
     }
 
-    @Test func volumesStayWithinZeroAndOne() {
+    @Test func plannedVolumesReflectRequestedGain() {
         let timescale: CMTimeScale = 600
         var clip = clipWithBreathers(1)
         clip.volume = 1
         let ramps = CompositionBuilder.planVolumeRamps(clip: clip, timescale: timescale, gain: 1.9)
-        #expect(ramps.allSatisfy { $0.from >= 0 && $0.from <= 1 })
-        #expect(ramps.allSatisfy { $0.to >= 0 && $0.to <= 1 })
+        #expect(ramps.allSatisfy { $0.from >= 0 })
+        #expect(ramps.allSatisfy { $0.to >= 0 })
+        #expect(ramps.allSatisfy { $0.from <= 1.9 && $0.to <= 1.9 })
+        #expect(ramps.contains { $0.from > 1 || $0.to > 1 })
     }
 }

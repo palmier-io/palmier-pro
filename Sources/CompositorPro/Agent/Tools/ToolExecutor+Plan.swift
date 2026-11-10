@@ -29,6 +29,8 @@ extension ToolExecutor {
         let scriptBeats: [ScriptBeat]?
         let narrationIntent: NarrationIntentRequest?
         let narration: NarrationSource?
+        let brief: PlanBrief?
+        let soundCues: [PlanSoundCue]?
     }
 
     fileprivate struct EditPlanSectionDraft: Decodable {
@@ -55,6 +57,7 @@ extension ToolExecutor {
         let sourceStartSeconds: Double?
         let sourceEndSeconds: Double?
         let notes: String?
+        let requirement: ShotRequirement?
         let referenceUse: ReferenceRecipeUse?
         let claimIds: [String]?
         let narrationLink: SceneNarrationLink?
@@ -71,14 +74,16 @@ extension ToolExecutor {
         let scriptBeats: [ScriptBeat]?
         let narrationIntent: NarrationIntentRequest?
         let narration: NarrationSource?
+        let brief: PlanBrief?
+        let soundCues: [PlanSoundCue]?
     }
 
-    private static let planObjectKeys: Set<String> = ["planId", "name", "goal", "timelineId", "sections", "shots", "notes", "referenceRecipe", "sourceLedger", "scriptBeats", "narrationIntent", "narration"]
-    private static let planPatchKeys: Set<String> = ["name", "goal", "sections", "shots", "notes", "referenceRecipe", "sourceLedger", "scriptBeats", "narrationIntent", "narration"]
+    private static let planObjectKeys: Set<String> = ["planId", "name", "goal", "timelineId", "sections", "shots", "notes", "referenceRecipe", "sourceLedger", "scriptBeats", "narrationIntent", "narration", "brief", "soundCues"]
+    private static let planPatchKeys: Set<String> = ["name", "goal", "sections", "shots", "notes", "referenceRecipe", "sourceLedger", "scriptBeats", "narrationIntent", "narration", "brief", "soundCues"]
     private static let sectionObjectKeys: Set<String> = ["sectionId", "title", "summary", "startFrame", "endFrame", "referenceUse", "claimIds", "narrationLink"]
     private static let shotObjectKeys: Set<String> = [
         "shotId", "title", "startFrame", "endFrame", "trackId", "mediaRef",
-        "candidateURL", "license", "attribution", "sourceStartSeconds", "sourceEndSeconds", "notes", "referenceUse", "claimIds", "narrationLink",
+        "candidateURL", "license", "attribution", "sourceStartSeconds", "sourceEndSeconds", "notes", "requirement", "referenceUse", "claimIds", "narrationLink",
     ]
 
     func planEdit(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
@@ -115,8 +120,12 @@ extension ToolExecutor {
             try rejectPlanEditKeys(input, forbidden: ["plan", "patch", "status", "filterStatus", "limit"], path: "plan_edit action='measure_narration'")
             guard let planId = input.planId else { throw ToolError("measure_narration requires planId.") }
             return try await measurePlanNarration(editor, planId: planId)
+        case "prepare_narration":
+            try rejectPlanEditKeys(input, forbidden: ["plan", "patch", "status", "filterStatus", "limit", "claimIds"], path: "plan_edit action='prepare_narration'")
+            guard let planId = input.planId else { throw ToolError("prepare_narration requires planId.") }
+            return try await prepareApprovedPlanNarration(editor, planId: planId)
         default:
-            throw ToolError("action must be create, read, update, status, delete, review_claims, or measure_narration.")
+            throw ToolError("action must be create, read, update, status, delete, review_claims, measure_narration, or prepare_narration.")
         }
     }
 
@@ -149,6 +158,8 @@ extension ToolExecutor {
         }
         var blockers = readinessBlockers(plan: plan, editor: editor)
         let productionRevision = editor.visualReviewRevision
+        let timelineIdBefore = editor.activeTimelineId
+        let timelineRevisionBefore = editor.timelineRenderRevision
         if plan.productionRun != nil {
             let board = try await editor.verifiedStoryboardReport(planId: plan.id)
             blockers += board.blockers
@@ -160,8 +171,10 @@ extension ToolExecutor {
             catch { blockers.append((error as? ToolError)?.message ?? error.localizedDescription) }
         }
         let commit = input.commit ?? false
-        guard editor.editPlan(id: plan.id) == plan, editor.visualReviewRevision == productionRevision else {
-            throw ToolError("Plan, storyboard, or timeline changed during readiness checks; retry current state.")
+        guard editor.editPlan(id: plan.id) == plan, editor.visualReviewRevision == productionRevision,
+              editor.activeTimelineId == timelineIdBefore,
+              editor.timelineRenderRevision == timelineRevisionBefore else {
+            throw ToolError("Plan, storyboard, timeline, or its revision changed during readiness checks; retry with current state.")
         }
         if commit {
             guard blockers.isEmpty else {
@@ -185,9 +198,11 @@ extension ToolExecutor {
                     )
                 }
                 let applied = editor.editPlan(id: plan.id) ?? plan
-                let addedClipIDs = editor.timeline.tracks.flatMap(\.clips).map(\.id).filter { !clipIDsBefore.contains($0) }
+                let addedClipIDs = Set(editor.timeline.tracks.flatMap(\.clips).map(\.id)).subtracting(clipIDsBefore)
+                let shotClipIDs = Self.assemblyReceiptShots(plan: applied, editor: editor, addedClipIDs: addedClipIDs)
                 return .ok(Self.jsonString(applied.receipt(includeDetails: true).merging(
-                    ["applied": true, "ready": true, "noOp": false, "addedClipIds": addedClipIDs],
+                    ["applied": true, "ready": true, "noOp": false, "addedClipIds": Array(addedClipIDs).sorted(),
+                     "shotAssembly": shotClipIDs],
                     uniquingKeysWith: { _, new in new }
                 )) ?? "{}")
             } catch let error as EditPlanValidationError {
@@ -220,7 +235,9 @@ extension ToolExecutor {
                     sourceLedger: draft.sourceLedger,
                     scriptBeats: draft.scriptBeats,
                     narrationIntent: draft.narrationIntent.map { NarrationIntent(language: $0.language, startFrame: $0.startFrame) },
-                    narration: draft.narration
+                    narration: draft.narration,
+                    brief: draft.brief,
+                    soundCues: draft.soundCues
                 ),
                 timelineId: editor.activeTimelineId,
                 fps: editor.timeline.fps,
@@ -290,6 +307,8 @@ extension ToolExecutor {
         if let ledger = patch.sourceLedger { candidate.sourceLedger = ledger }
         if let beats = patch.scriptBeats { candidate.scriptBeats = beats }
         if let narration = patch.narration { candidate.narration = narration }
+        if let brief = patch.brief { candidate.brief = brief }
+        if let cues = patch.soundCues { candidate.soundCues = cues }
         if let sections = patch.sections {
             candidate.sections = try sections.enumerated().map { index, draft in
                 try Self.planSection(draft, path: "patch.sections[\(index)]")
@@ -316,7 +335,9 @@ extension ToolExecutor {
                 || candidate.sourceLedger != current.sourceLedger
                 || candidate.scriptBeats != current.scriptBeats
                 || candidate.narrationIntent != current.narrationIntent
-                || candidate.narration != current.narration else {
+                || candidate.narration != current.narration
+                || candidate.brief != current.brief
+                || candidate.soundCues != current.soundCues else {
             return .ok(Self.jsonString(current.receipt(includeDetails: true).merging(
                 ["noOp": true],
                 uniquingKeysWith: { _, new in new }
@@ -442,6 +463,7 @@ extension ToolExecutor {
             sourceStartSeconds: draft.sourceStartSeconds,
             sourceEndSeconds: draft.sourceEndSeconds,
             notes: draft.notes ?? "",
+            requirement: draft.requirement,
             referenceUse: draft.referenceUse,
             claimIds: draft.claimIds,
             narrationLink: draft.narrationLink
@@ -458,6 +480,8 @@ extension ToolExecutor {
             if let shots = plan["shots"] {
                 try validatePlanArray(shots, allowed: Self.shotObjectKeys, singular: "shot", path: "plan.shots")
             }
+            try validatePlanBrief(plan["brief"], path: "plan.brief")
+            try validatePlanSoundCues(plan["soundCues"], path: "plan.soundCues")
             try validateReferenceRecipe(plan["referenceRecipe"], path: "plan.referenceRecipe")
             try validateSourceLedger(plan["sourceLedger"], path: "plan.sourceLedger")
             try validateNarrationObjects(plan, path: "plan")
@@ -470,6 +494,8 @@ extension ToolExecutor {
             if let shots = patch["shots"] {
                 try validatePlanArray(shots, allowed: Self.shotObjectKeys, singular: "shot", path: "patch.shots")
             }
+            try validatePlanBrief(patch["brief"], path: "patch.brief")
+            try validatePlanSoundCues(patch["soundCues"], path: "patch.soundCues")
             try validateReferenceRecipe(patch["referenceRecipe"], path: "patch.referenceRecipe")
             try validateSourceLedger(patch["sourceLedger"], path: "patch.sourceLedger")
             try validateNarrationObjects(patch, path: "patch")
@@ -495,7 +521,21 @@ extension ToolExecutor {
             if let link = (item as? [String: Any])?["narrationLink"] {
                 try validatePlanValue(link, allowed: ["firstBeatId", "lastBeatId", "minimumHoldSeconds"], path: "\(path)[\(index)].narrationLink")
             }
+            if let requirement = (item as? [String: Any])?["requirement"],
+               singular == "shot" {
+                try validatePlanValue(requirement, allowed: ["narrativePurpose", "subject", "action", "location", "shotSize", "motion", "sourceTypes", "exclusions", "targetDurationSeconds", "handleSeconds"], path: "\(path)[\(index)].requirement")
+            }
         }
+    }
+
+    private func validatePlanBrief(_ value: Any?, path: String) throws {
+        guard let value else { return }
+        try validatePlanValue(value, allowed: ["audience", "durationSeconds", "aspectFormat", "tone", "language", "realism", "deliveryConstraints", "inferredChoices"], path: path)
+    }
+
+    private func validatePlanSoundCues(_ value: Any?, path: String) throws {
+        guard let value else { return }
+        try validatePlanArray(value, allowed: ["cueId", "role", "purpose", "anchorBeatId", "anchorFrame", "durationSeconds", "notes"], singular: "sound cue", path: path)
     }
 
     private func validateReferenceRecipe(_ value: Any?, path: String) throws {
@@ -537,6 +577,31 @@ extension ToolExecutor {
                 }
             }
         }
+    }
+
+    @MainActor private static func assemblyReceiptShots(
+        plan: EditPlan,
+        editor: EditorViewModel,
+        addedClipIDs: Set<String>
+    ) -> [[String: Any]] {
+        let clips = editor.timeline.tracks.flatMap(\.clips).filter { addedClipIDs.contains($0.id) }
+        var rows: [[String: Any]] = []
+        for shot in plan.resolvedShotsSafe() {
+            guard let mediaRef = shot.mediaRef else { continue }
+            let clipIDs = clips
+                .filter { $0.mediaRef == mediaRef && $0.startFrame == shot.startFrame }
+                .map(\.id)
+            rows.append(["shotId": shot.id, "clipIds": clipIDs])
+        }
+        if let narration = plan.narration, let intent = plan.narrationIntent {
+            let clipIDs = clips
+                .filter { $0.mediaRef == narration.mediaRef && $0.startFrame == intent.startFrame }
+                .map(\.id)
+            if !clipIDs.isEmpty {
+                rows.append(["scene": "narration", "clipIds": clipIDs])
+            }
+        }
+        return rows
     }
 
     private func assemblyEntries(plan: EditPlan, editor: EditorViewModel) throws -> [[String: Any]] {

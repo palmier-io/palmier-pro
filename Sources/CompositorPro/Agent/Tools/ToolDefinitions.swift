@@ -92,6 +92,9 @@ enum ToolName: String, CaseIterable, Sendable {
     case debreatheAudio = "debreath_audio"
     case enhanceVoice = "enhance_voice"
     case matchLoudness = "match_loudness"
+    case getEnhancementJobStatus = "get_enhancement_job_status"
+    case cancelEnhancementJob = "cancel_enhancement_job"
+    case listEnhancementJobs = "list_enhancement_jobs"
     case generateDrone = "generate_drone"
     case listSpeechVoices = "list_speech_voices"
     case generateSpeech = "generate_speech"
@@ -110,6 +113,10 @@ enum ToolName: String, CaseIterable, Sendable {
     case sendFeedback = "send_feedback"
     case readSkill = "read_skill"
     case manageSkills = "manage_skills"
+
+    // HyperFrames catalog
+    case searchHyperframesCatalog = "search_hyperframes_catalog"
+    case insertHyperframesBlock = "insert_hyperframes_block"
 }
 
 struct AgentTool: @unchecked Sendable {
@@ -207,10 +214,10 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .exportProject,
-            description: "Queues an export from the current project using the same modes as the Export dialog. mode defaults to video. video renders H.264, H.265, or ProRes; xml writes XMEML timeline XML; fcpxml writes FCPXML; compositor (or legacy palmier) writes a self-contained .compositorpro project package. For timeline interchange, pick the format by the target editor: Premiere Pro -> xml; DaVinci Resolve or Final Cut Pro -> fcpxml (fcpxml also carries text, transforms, crop, opacity, and keyframes that xml cannot). Video exports render edge softness and edge rounding, Compositor project exports preserve them, and xml/fcpxml interchange omits them. Omit outputPath to write a unique file to ~/Downloads. Existing direct outputPath files are overwritten by default to match the UI save flow; pass overwrite=false to refuse. Video delivery of a timeline carrying an approved managed storyboard re-audits the current output for repeated or identity-unresolved visuals and refuses before queueing; edit-exchange modes are unaffected. Every mode returns status=started or status=queued with a jobId and destination path. Use manage_exports to check progress, warnings/results, or cancel by jobId; agent exports post a system notification on completion or failure.",
+            description: "Queues an export from the current project using the same modes as the Export dialog. mode defaults to video. video renders H.264, H.265, or ProRes; xml writes XMEML timeline XML; fcpxml writes FCPXML; compositor writes a self-contained .compositorpro project package. For timeline interchange, pick the format by the target editor: Premiere Pro -> xml; DaVinci Resolve or Final Cut Pro -> fcpxml (fcpxml also carries text, transforms, crop, opacity, and keyframes that xml cannot). Video exports render edge softness and edge rounding, Compositor project exports preserve them, and xml/fcpxml interchange omits them. Omit outputPath to write a unique file to ~/Downloads. Existing direct outputPath files are overwritten by default to match the UI save flow; pass overwrite=false to refuse. Video delivery of a timeline carrying an approved managed storyboard re-audits the current output for repeated or identity-unresolved visuals and refuses before queueing; edit-exchange modes are unaffected. Every mode returns status=started or status=queued with a jobId and destination path. Use manage_exports to check progress, warnings/results, or cancel by jobId; agent exports post a system notification on completion or failure.",
             inputSchema: objectSchema(
                 properties: [
-                    "mode": ["type": "string", "enum": ["video", "xml", "fcpxml", "compositor", "palmier"], "description": "Optional. Default video. Use xml for Premiere Pro, fcpxml for DaVinci Resolve or Final Cut Pro, compositor (or legacy palmier) for a self-contained .compositorpro package."],
+                    "mode": ["type": "string", "enum": ["video", "xml", "fcpxml", "compositor"], "description": "Optional. Default video. Use xml for Premiere Pro, fcpxml for DaVinci Resolve or Final Cut Pro, compositor for a self-contained .compositorpro package."],
                     "codec": ["type": "string", "enum": ["H.264", "H.265", "ProRes"], "description": "Video mode only. Optional. Default H.264."],
                     "resolution": ["type": "string", "enum": ["720p", "1080p", "2K", "4K", "Match Timeline"], "description": "Video mode only. Optional. Default Match Timeline."],
                     "delivery": ["type": "string", "enum": ["generic", "youtube", "tiktokShorts", "instagramReels"], "description": "Video mode only. Names where the file is going, and picks the codec and size that destination expects — H.264 at 1080p for the three platforms, Match Timeline for generic. Use it instead of guessing a codec and resolution for a platform upload. An explicit codec or resolution always wins, and the receipt says which of the two applied. It cannot set a bitrate: this build hands the encode to AVFoundation and exposes no bitrate control, so do not tell the user a target bitrate was applied. If the canvas orientation does not suit the destination the receipt says so rather than silently letterboxing."],
@@ -234,11 +241,11 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .planEdit,
-            description: "Maintains one persistent edit plan with structure, source-linked script beats, shots, narration intent, timing, claims, and provenance. Supplied referenceRecipe cues adapt editorial principles; reference duration never sets output runtime. New plans start proposed on the active timeline. prepare_storyboard starts a managed production review with derived scene cards and one persistent approval owner; inspect actual selections and obtain explicit user approval of the exact revision. Managed approval requires complete available narrationIntent but not rendered audio; canApprove/approvalBlockers are separate from canProduce/production blockers. Matching recording attachment and measurement preserve approval; material intent changes revoke it. Managed local-speech attachment proof is unavailable: generic generate_speech output cannot satisfy it. Managed approval cannot be replaced by a plain status change or override visual/rights blockers. Generic plan status remains available for ordinary editing. Web candidates require HTTPS URLs, license, and attribution; managed imported selections also retain rights. No timeline edits; apply_plan(commit:true) assembles once.",
+            description: "Maintains one persistent edit plan with structure, source-linked script beats, shots, narration intent, timing, claims, and provenance. Supplied referenceRecipe cues adapt editorial principles; reference duration never sets output runtime. New plans start proposed on the active timeline. prepare_storyboard starts a managed production review with derived scene cards and one persistent approval owner; inspect actual selections and obtain explicit user approval of the exact revision. Managed approval requires complete available narrationIntent but not rendered audio; canApprove/approvalBlockers are separate from canProduce/production blockers. prepare_narration (approved local speech only) renders from script beats via the strict pinned seam and records app-owned synthesis proof, clearing unverified_synthesized_narration when proof and timing match. Matching recording attachment and measurement preserve approval; material intent changes revoke it. Generic generate_speech output cannot satisfy managed narration proof. Managed approval cannot be replaced by a plain status change or override visual/rights blockers. Generic plan status remains available for ordinary editing. Web candidates require HTTPS URLs, license, and attribution; managed imported selections also retain rights. No timeline edits; apply_plan(commit:true) assembles once.",
             inputSchema: objectSchema(
                 properties: [
-                    "action": ["type": "string", "enum": ["create", "read", "update", "status", "delete", "review_claims", "measure_narration", "prepare_storyboard", "read_storyboard", "review_storyboard_scene", "approve_storyboard", "cancel_production", "revise_storyboard_scene", "reorder_storyboard"], "description": "Plan operation. review_claims confirms selected facts against current ledgerRevision. measure_narration verifies attached recording bytes and never guesses missing words. prepare_storyboard/read_storyboard expose persistent revision-bound cards, narrator intent, approvalBlockers/canApprove, and production blockers/canProduce. review_storyboard_scene records actually performed full still or continuous selected-span inspection; never invent evidence. approve_storyboard requires explicit user approval of the exact revision and cannot override approval blockers; a complete available narrator can be approved before audio exists. revise_storyboard_scene updates source-linked narration and/or selected visual atomically; shared beats affect every dependent scene. reorder_storyboard moves a complete contiguous scene sequence and its narration blocks while preserving IDs; shared beats, gaps, overlaps, or split sections are refused. Material revisions revoke approval; matching recording attachment and measured timing do not. cancel_production revokes approval. No timeline edits."],
-                    "planId": ["type": "string", "description": "Exact plan id from a plan_edit receipt. Required for update, status, delete, review_claims, measure_narration, and single-plan reads."],
+                    "action": ["type": "string", "enum": ["create", "read", "update", "status", "delete", "review_claims", "measure_narration", "prepare_narration", "prepare_storyboard", "read_storyboard", "review_storyboard_scene", "approve_storyboard", "cancel_production", "revise_storyboard_scene", "reorder_storyboard"], "description": "Plan operation. review_claims confirms selected facts against current ledgerRevision. measure_narration verifies attached recording bytes and never guesses missing words. prepare_narration synthesizes the approved local narrator from script beats through the strict pinned seam, installs/attaches/measures, and records proof; MCP supplies planId only and the domain reads approved language/voice/script. prepare_storyboard/read_storyboard expose persistent revision-bound cards, narrator intent, approvalBlockers/canApprove, and production blockers/canProduce. review_storyboard_scene records actually performed full still or continuous selected-span inspection; never invent evidence. approve_storyboard requires explicit user approval of the exact revision and cannot override approval blockers; a complete available narrator can be approved before audio exists. revise_storyboard_scene updates source-linked narration and/or selected visual atomically; shared beats affect every dependent scene. reorder_storyboard moves a complete contiguous scene sequence and its narration blocks while preserving IDs; shared beats, gaps, overlaps, or split sections are refused. Material revisions revoke approval; matching recording attachment and measured timing do not. cancel_production revokes approval. No timeline edits."],
+                    "planId": ["type": "string", "description": "Exact plan id from a plan_edit receipt. Required for update, status, delete, review_claims, measure_narration, prepare_narration, and single-plan reads."],
                     "plan": [
                         "type": "object",
                         "description": "Create only. A plan draft.",
@@ -252,6 +259,8 @@ enum ToolDefinitions {
                             "scriptBeats": scriptBeatsSchema,
                             "narrationIntent": narrationIntentSchema,
                             "narration": narrationSourceSchema,
+                            "brief": planBriefSchema,
+                            "soundCues": soundCuesSchema,
                             "sections": [
                                 "type": "array",
                                 "description": "Optional structural sections.",
@@ -301,6 +310,20 @@ enum ToolDefinitions {
                             "scriptBeats": scriptBeatsSchema,
                             "narrationIntent": narrationIntentSchema,
                             "narration": narrationSourceSchema,
+                            "brief": ["type": "object", "description": "Replacement brief: audience, durationSeconds, aspectFormat, tone, language, realism (real_footage_only|real_or_generated|generated_allowed|illustrative), deliveryConstraints, inferredChoices."],
+                            "soundCues": [
+                                "type": "array",
+                                "description": "Replacement motivated sound cues with stable IDs, roles (voice|music|ambience|sfx), one timing anchor each.",
+                                "items": objectSchema(properties: [
+                                    "cueId": ["type": "string", "description": "Optional stable cue id. Omit for a generated id."],
+                                    "role": ["type": "string", "enum": ["voice", "music", "ambience", "sfx"]],
+                                    "purpose": ["type": "string", "description": "Audible purpose of the cue. Required."],
+                                    "anchorBeatId": ["type": "string", "description": "Narrative beat the cue anchors to. Mutually exclusive with anchorFrame."],
+                                    "anchorFrame": ["type": "integer", "description": "Timeline frame the cue anchors to. Mutually exclusive with anchorBeatId."],
+                                    "durationSeconds": ["type": "number"],
+                                    "notes": ["type": "string"],
+                                ]),
+                            ],
                             "sections": [
                                 "type": "array",
                                 "description": "Complete replacement sections. Preserve existing sectionIds to keep them; omitted ids become new sections.",
@@ -1719,6 +1742,35 @@ enum ToolDefinitions {
             )
         ),
         AgentTool(
+            name: .getEnhancementJobStatus,
+            description: "Check the status of an async enhancement job (denoise, de-breath, enhance, loudness) started by denoise_audio, debreath_audio, enhance_voice, or match_loudness. Returns stage (queued/analyzing/applying/completed/failed/cancelled), errors, warnings, changed clip IDs, and progress 0-1. Use after starting a job to wait for completion before reviewing the timeline.",
+            inputSchema: objectSchema(
+                properties: [
+                    "jobId": ["type": "string", "description": "Job ID returned by the enhancement tool."],
+                ],
+                required: ["jobId"]
+            )
+        ),
+        AgentTool(
+            name: .cancelEnhancementJob,
+            description: "Cancel a running or queued enhancement job. The job will stop at the next safe point and report cancelled status. Already-applied changes are undone if the job was in applying stage. Returns the final job state.",
+            inputSchema: objectSchema(
+                properties: [
+                    "jobId": ["type": "string", "description": "Job ID to cancel."],
+                ],
+                required: ["jobId"]
+            )
+        ),
+        AgentTool(
+            name: .listEnhancementJobs,
+            description: "List all enhancement jobs in this session with their status, type, and progress. Use to find jobs to check or cancel.",
+            inputSchema: objectSchema(
+                properties: [
+                    "status": ["type": "string", "enum": ["queued", "running", "completed", "failed", "cancelled"], "description": "Optional filter by status."],
+                ]
+            )
+        ),
+        AgentTool(
             name: .generateDrone,
             description: "Render a tanpura/shruti-style tonal drone locally on this Mac (Karplus-Strong plucked-string synthesis — no server, no sign-in, no credits) and place it on its own audio track. Use to lay a drone bed under a vocal: set tonic to the vocal's key, scale to the maqam flavor (rast/hijaz/bayati/major/minor/sustain), pattern to the playing style (tanpura = Pa-Sa-Sa-Sa cycle, shrut = slow Sa+Pa sustain, sustain = single long ring). Pass placeUnder with an audio clipId to span that clip's full length; otherwise the drone starts at the playhead. levelDB sets the clip volume (default -18 dB, roughly 18-24 dB under a typical vocal). Returns the new clip and track ids.",
             inputSchema: objectSchema(
@@ -1978,6 +2030,32 @@ enum ToolDefinitions {
         )
     )
 
+    /// In-app assistant only
+    static let searchHyperframesCatalog = AgentTool(
+        name: .searchHyperframesCatalog,
+        description: "Searches the local HyperFrames block catalog by query and optional category. Returns stable block ids plus name, category, tags, and preview info. Returns empty when no mirror is configured or no match is found. Read-only — never imports anything.",
+        inputSchema: objectSchema(
+            properties: [
+                "query": ["type": "string", "description": "Search text matched against name, description, tags, category, and id."],
+                "category": ["type": "string", "description": "Optional category filter (transitions, overlays, captions, charts, maps, kinetic, effects, animations)."],
+                "limit": ["type": "integer", "minimum": 1, "maximum": 50, "description": "Optional. Max results returned (default 10)."],
+            ],
+            required: []
+        )
+    )
+
+    /// In-app assistant only
+    static let insertHyperframesBlock = AgentTool(
+        name: .insertHyperframesBlock,
+        description: "Installs a HyperFrames block from the catalog into the project's media library as one undoable action. Pass a stable block id returned by search_hyperframes_catalog. Rejects unknown ids and missing/corrupt assets rather than silently inserting nothing.",
+        inputSchema: objectSchema(
+            properties: [
+                "blockId": ["type": "string", "description": "Stable block id from search_hyperframes_catalog."],
+            ],
+            required: ["blockId"]
+        )
+    )
+
     /// MCP server only
     static let manageProject = AgentTool(
         name: .manageProject,
@@ -2152,8 +2230,48 @@ enum ToolDefinitions {
          ], required: ["beatId", "text", "purpose"])]
     }
 
-    private static var narrationIntentSchema: [String: Any] {
-        var schema = objectSchema(properties: [
+    private static var planBriefSchema: [String: Any] {
+        objectSchema(properties: [
+            "audience": ["type": "string", "description": "Intended viewer of the film, plain text."],
+            "durationSeconds": ["type": "number", "minimum": 0.1, "maximum": 14400, "description": "Requested runtime in seconds. Receipts report planSeconds and deltaSeconds; never silently stretch shots to fit."],
+            "aspectFormat": ["type": "string", "description": "Output shape intent, e.g. 16:9, 9:16, 1:1. The timeline owns the real geometry."],
+            "tone": ["type": "string", "description": "Intended tone, e.g. calm, urgent, documentary."],
+            "language": ["type": "string", "description": "BCP-47 language tag for narration and captions."],
+            "realism": ["type": "string", "enum": ["real_footage_only", "real_or_generated", "generated_allowed", "illustrative"], "description": "Source-material requirement. real_footage_only blocks generated selections; receipt reports substitutions explicitly."],
+            "deliveryConstraints": ["type": "string", "description": "Free-form delivery constraints, e.g. loudness target, no burned-in captions."],
+            "inferredChoices": ["type": "object", "description": "Choices inferred from the user's prompt, recorded so they stay editable and visible."],
+        ])
+    }
+
+    private static var soundCuesSchema: [String: Any] {
+        ["type": "array", "maxItems": 128, "description": "Motivated sound cues with stable IDs, roles, and one timing anchor each (anchorBeatId or anchorFrame, not both).",
+         "items": objectSchema(properties: [
+            "cueId": ["type": "string", "description": "Stable cue ID, unique across plan elements."],
+            "role": ["type": "string", "enum": ["voice", "music", "ambience", "sfx"]],
+            "purpose": ["type": "string", "description": "Audible purpose, e.g. 'door close lands on the shot's action'."],
+            "anchorBeatId": ["type": "string", "description": "Script beat the cue anchors to."],
+            "anchorFrame": ["type": "integer", "minimum": 0, "maximum": maxFrameArg, "description": "Timeline frame the cue anchors to."],
+            "durationSeconds": ["type": "number", "minimum": 0.1, "maximum": 600, "description": "Intended cue length in seconds."],
+            "notes": ["type": "string", "description": "Optional editorial note."],
+         ], required: ["role", "purpose"])]
+    }
+
+    private static var shotRequirementSchema: [String: Any] {
+        objectSchema(properties: [
+            "narrativePurpose": ["type": "string", "description": "Why this shot exists in the film. Required when requirement is present."],
+            "subject": ["type": "string", "description": "Required on-screen subject."],
+            "action": ["type": "string", "description": "Required on-screen action."],
+            "location": ["type": "string", "description": "Required named location; verify provenance before claiming it."],
+            "shotSize": ["type": "string", "enum": ["extreme_wide", "wide", "medium", "medium_close", "close_up", "extreme_close_up", "insert"]],
+            "motion": ["type": "string", "enum": ["static_", "pan", "tilt", "push", "handheld", "aerial", "follow"], "description": "Required on-screen motion. static_ means a locked-off frame."],
+            "sourceTypes": ["type": "array", "items": ["type": "string", "enum": ["stock_video", "stock_image", "library", "generated", "screen_recording", "archival"]], "description": "Acceptable source kinds; missing coverage must be reported instead of silently substituting."],
+            "exclusions": ["type": "array", "items": ["type": "string"], "description": "Subject/action/look exclusions, e.g. 'no generated imagery', 'no watermark'."],
+            "targetDurationSeconds": ["type": "number", "minimum": 0.1, "maximum": 600],
+            "handleSeconds": ["type": "number", "minimum": 0, "maximum": 30, "description": "Source handles wanted either side of the selected span."],
+        ], required: ["narrativePurpose"])
+    }
+
+    private static var narrationIntentSchema: [String: Any] {        var schema = objectSchema(properties: [
             "language": ["type": "string", "description": "Authored narration language/locale tag. Required for managed approval; local speech must match the exact installed voice language."],
             "startFrame": ["type": "integer", "minimum": 0, "maximum": maxFrameArg, "description": "Authored narration placement in project frames. Whole attached source at normal speed; no trims or speed changes."],
             "narrator": ["description": "Exact narrator intent. Recording identity and Piper model/config identities are measured by the app and returned in readback; never supply asserted hashes. Omit only for a generic draft, not managed approval. Resolving intent does not generate, install, download, or spend credits.",

@@ -19,6 +19,7 @@ enum AnthropicSSE {
         continuation: AsyncThrowingStream<AgentStreamEvent, Error>.Continuation
     ) async throws {
         var pendingTools: [Int: (id: String, name: String, json: String)] = [:]
+        var stopReason: AgentStopReason?
         for try await line in bytes.lines {
             try Task.checkCancellation()
             guard line.hasPrefix("data:"),
@@ -77,18 +78,31 @@ enum AnthropicSSE {
             case "message_delta":
                 if let delta = event["delta"] as? [String: Any],
                    let raw = delta["stop_reason"] as? String {
-                    continuation.yield(.messageStop(stopReason: AgentStopReason(rawValue: raw) ?? .other))
+                    stopReason = AgentStopReason(rawValue: raw) ?? .other
                 }
 
-            case "error":
-                if let err = event["error"] as? [String: Any],
-                   let msg = err["message"] as? String {
-                    throw AgentClientTransportError.streamError(provider: .anthropic, message: msg)
+            case "message_stop":
+                guard let stopReason, pendingTools.isEmpty else {
+                    throw AgentClientTransportError.streamError(
+                        provider: .anthropic, message: "The response stopped before its content completed."
+                    )
                 }
+                continuation.yield(.messageStop(stopReason: stopReason))
+                return
+
+            case "error":
+                let error = event["error"] as? [String: Any]
+                throw AgentClientTransportError.streamError(
+                    provider: .anthropic, message: error?["message"] as? String ?? "Unknown stream error."
+                )
 
             default: break
             }
         }
+        try Task.checkCancellation()
+        throw AgentClientTransportError.streamError(
+            provider: .anthropic, message: "The stream ended before a terminal event."
+        )
     }
 }
 

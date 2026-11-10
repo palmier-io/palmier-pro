@@ -392,6 +392,124 @@ enum SpeechSynthesizer {
         return pieces
     }
 
+    /// Execution evidence for the strict pinned-seam render. The domain binds installed bytes;
+    /// this proves what the renderer actually applied.
+    struct PinnedRenderEvidence: Sendable, Equatable {
+        var url: URL
+        var engine: Engine
+        var voiceName: String
+        var writtenFrames: Int64
+        var insertedSilenceSeconds: Double
+    }
+
+    /// Renders the exact approved narrator controls with no substitution and no prosody
+    /// delivery multipliers. Piper renders from private model/config copies.
+    static func renderPinned(narrator: LocalSpeechNarrator, language: String, text: String,
+                             isCancelled: @escaping @Sendable () -> Bool) async throws -> PinnedRenderEvidence {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw SpeechError.emptyText }
+        guard trimmed.count <= maxCharacters else { throw SpeechError.textTooLong(maxCharacters) }
+        let gate = CancellationGate()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                renderQueue.async {
+                    do {
+                        continuation.resume(returning: try renderPinnedSync(
+                            narrator: narrator, language: language, text: trimmed,
+                            isCancelled: { gate.isCancelled }))
+                    } catch { continuation.resume(throwing: error) }
+                }
+            }
+        } onCancel: { gate.cancel() }
+    }
+
+    private static func renderPinnedSync(narrator: LocalSpeechNarrator, language: String, text: String,
+                                         isCancelled: @escaping @Sendable () -> Bool) throws -> PinnedRenderEvidence {
+        switch narrator.engine {
+        case .system:
+            return try renderPinnedSystem(narrator: narrator, language: language, text: text, isCancelled: isCancelled)
+        case .piper:
+            return try renderPinnedPiper(narrator: narrator, text: text, isCancelled: isCancelled)
+        }
+    }
+
+    private static func normalizedLocale(_ language: String) -> String {
+        language.replacingOccurrences(of: "_", with: "-").lowercased()
+    }
+
+    private static func renderPinnedSystem(narrator: LocalSpeechNarrator, language: String, text: String,
+                                           isCancelled: @escaping @Sendable () -> Bool) throws -> PinnedRenderEvidence {
+        guard let voice = AVSpeechSynthesisVoice(identifier: narrator.voiceIdentifier),
+              normalizedLocale(voice.language) == normalizedLocale(language) else {
+            throw EditPlanValidationError.invalidReference("Narration requires the exact installed system voice identifier and its matching language.")
+        }
+        let groups = segmentGroups(of: text)
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("speech-\(UUID().uuidString).wav")
+        do {
+            var written: AVAudioFramePosition = 0
+            var silence: Double = 0
+            try {
+                let file = try AVAudioFile(forWriting: url, settings: voice.audioFileSettings)
+                let synthesizer = AVSpeechSynthesizer()
+                let rate = narrator.rate.clamped(to: 0.5...2.0)
+                let pitch = narrator.pitch.clamped(to: 0.5...2.0)
+                for (groupIndex, group) in groups.enumerated() {
+                    if isCancelled() { throw CancellationError() }
+                    for segment in group {
+                        if isCancelled() { throw CancellationError() }
+                        let exact = ProsodySegment(text: segment.text, pauseAfter: segment.pauseAfter,
+                                                   rateMultiplier: 1, pitchMultiplier: 1)
+                        written += try renderSegment(exact, voice: voice, rate: rate, pitch: pitch,
+                                                     synthesizer: synthesizer, into: file)
+                    }
+                    let pause = group.last?.pauseAfter ?? 0
+                    if groupIndex < groups.count - 1, pause > 0 {
+                        written += try appendSilence(pause, into: file)
+                        silence += pause
+                    }
+                }
+            }()
+            guard written > 0 else { throw SpeechError.silentRender }
+            return PinnedRenderEvidence(url: url, engine: .system, voiceName: narrator.voiceIdentifier,
+                                        writtenFrames: Int64(written), insertedSilenceSeconds: silence)
+        } catch { try? FileManager.default.removeItem(at: url); throw error }
+    }
+
+    private static func renderPinnedPiper(narrator: LocalSpeechNarrator, text: String,
+                                          isCancelled: @escaping @Sendable () -> Bool) throws -> PinnedRenderEvidence {
+        guard narrator.pitch == 1 else {
+            throw EditPlanValidationError.invalidReference("Piper narration requires pitch 1.")
+        }
+        guard let sourceModel = PiperTTS.installedModels().first(where: { $0.fileName == narrator.voiceIdentifier }) else {
+            throw EditPlanValidationError.invalidReference("Narration requires the exact installed Piper model.")
+        }
+        let configSource = sourceModel.modelURL.appendingPathExtension("json")
+        let privateDir = FileManager.default.temporaryDirectory.appendingPathComponent("piper-proof-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: privateDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: privateDir) }
+        let modelCopy = privateDir.appendingPathComponent(sourceModel.modelURL.lastPathComponent)
+        let configCopy = privateDir.appendingPathComponent(configSource.lastPathComponent)
+        try FileManager.default.copyItem(at: sourceModel.modelURL, to: modelCopy)
+        try FileManager.default.copyItem(at: configSource, to: configCopy)
+        let groups = segmentGroups(of: text)
+        guard !groups.isEmpty else { throw SpeechError.emptyText }
+        let lengthScale = 1 / narrator.rate.clamped(to: 0.5...2.0)
+        var rendered: [URL] = []
+        var frames: Int64 = 0
+        for group in groups {
+            if isCancelled() { rendered.forEach { try? FileManager.default.removeItem(at: $0) }; throw CancellationError() }
+            let evidence = try PiperTTS.renderEvidence(text: group.map(\.text).joined(), modelURL: modelCopy,
+                                                       configURL: configCopy, lengthScale: lengthScale, isCancelled: isCancelled)
+            rendered.append(evidence.url)
+            frames += evidence.writtenFrames
+        }
+        let pauses = groups.map { $0.last?.pauseAfter ?? 0 }
+        let url = try concatenate(rendered, pauses: pauses)
+        let silence = pauses.dropLast().reduce(0, +)
+        return PinnedRenderEvidence(url: url, engine: .piper, voiceName: narrator.voiceIdentifier,
+                                    writtenFrames: frames, insertedSilenceSeconds: silence)
+    }
+
     // MARK: - Rendering
 
     /// Renders `spec` to a temporary WAV and returns its URL. The caller owns the file.

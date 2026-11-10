@@ -5,7 +5,7 @@ import Foundation
 /// quiet relative to the recording's typical level while the low band still carries
 /// energy. Pure DSP — no model, works without the BundledSpeech trait.
 enum BreathDetector {
-    static let cache = DiskCache(named: "AudioAnalysis")
+    static let cache = DiskCache(named: "AudioAnalysis/Breath")
 
     struct Region: Codable, Equatable, Sendable {
         let start: Double

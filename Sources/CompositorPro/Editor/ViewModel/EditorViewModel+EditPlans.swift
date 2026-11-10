@@ -19,10 +19,14 @@ extension EditorViewModel {
         actionName: String,
         reviewingClaimIds: Set<String> = [],
         updatingProductionRun: Bool = false,
-        narrationValidation: PlanNarrationChangeValidation? = nil
+        narrationValidation: PlanNarrationChangeValidation? = nil,
+        synthesizedNarrationPublication: Bool = false
     ) throws -> EditPlanChangeReceipt {
         if editPlansLoadFailed {
             throw EditPlanValidationError.unreadablePlans
+        }
+        guard !synthesizedNarrationPublication || (updates.count == 1 && creates.isEmpty && deleteIds.isEmpty) else {
+            throw EditPlanValidationError.invalidReference("Synthesized narration publication targets one existing plan.")
         }
         guard reviewingClaimIds.isEmpty || (updates.count == 1 && creates.isEmpty && deleteIds.isEmpty) else {
             throw EditPlanValidationError.invalidReference("Claim review must target one existing plan.")
@@ -67,10 +71,12 @@ extension EditorViewModel {
             let current = next[index]
             if plan.narrationIntent?.narrator != current.narrationIntent?.narrator
                 || (plan.productionRun != nil && plan.narration != current.narration) {
-                guard let narrationValidation else {
-                    throw EditPlanValidationError.invalidReference("Narrator and managed attachment changes require shared narration validation.")
+                if !synthesizedNarrationPublication {
+                    guard let narrationValidation else {
+                        throw EditPlanValidationError.invalidReference("Narrator and managed attachment changes require shared narration validation.")
+                    }
+                    try narrationValidation.validate(plan: plan, previous: current, in: self)
                 }
-                try narrationValidation.validate(plan: plan, previous: current, in: self)
             }
             guard updatingProductionRun || plan.productionRun == current.productionRun else {
                 throw EditPlanValidationError.invalidReference("Production review changes require a storyboard operation.")
@@ -81,7 +87,7 @@ extension EditorViewModel {
                   plan.height == current.height,
                    plan.createdAt == current.createdAt,
                    plan.sourceLedgerRevision == current.sourceLedgerRevision,
-                   plan.narrationRevision == current.narrationRevision,
+                   (synthesizedNarrationPublication || plan.narrationRevision == current.narrationRevision),
                   plan.status == current.status else {
                 throw EditPlanValidationError.invalidReference("Plan identity, timeline, geometry, and status are immutable in an update.")
             }
@@ -89,10 +95,16 @@ extension EditorViewModel {
             plan.scriptBeats = try plan.scriptBeats?.map { try $0.validated() }
             plan.narrationIntent = try plan.narrationIntent?.validated()
             plan.narration = try plan.narration?.validated()
-            if plan.scriptBeats != current.scriptBeats || plan.narrationIntent != current.narrationIntent
-                || plan.narration != current.narration {
-                plan.narrationRevision = plan.scriptBeats == nil ? nil : UUID().uuidString
-                plan.narrationTiming = nil
+            if !synthesizedNarrationPublication {
+                if plan.scriptBeats != current.scriptBeats || plan.narrationIntent != current.narrationIntent
+                    || plan.narration != current.narration {
+                    plan.narrationRevision = plan.scriptBeats == nil ? nil : UUID().uuidString
+                    plan.narrationTiming = nil
+                }
+                if plan.scriptBeats != current.scriptBeats || plan.narrationIntent != current.narrationIntent
+                    || plan.narration != current.narration {
+                    plan.narrationSynthesisProof = nil
+                }
             }
             plan.sourceLedger = try plan.sourceLedger?.validated(previous: current.sourceLedger, reviewingClaimIds: reviewingClaimIds)
             if let ledger = plan.sourceLedger, current.sourceLedger.map({ !ledger.hasSameEvidence(as: $0) }) ?? true {

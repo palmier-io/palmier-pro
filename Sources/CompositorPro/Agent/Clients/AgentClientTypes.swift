@@ -291,7 +291,6 @@ enum AgentClientTransportError: LocalizedError {
     case imageInputUnsupported(model: String)
     case httpError(provider: AgentProvider, status: Int, body: String)
     case streamError(provider: AgentProvider, message: String)
-    case timeout
 
     var errorDescription: String? {
         switch self {
@@ -303,8 +302,6 @@ enum AgentClientTransportError: LocalizedError {
             "\(provider.displayName) API error (\(status)): \(body.prefix(500))"
         case .streamError(let provider, let message):
             "\(provider.displayName) stream error: \(message)"
-        case .timeout:
-            "The agent stream timed out before the response completed."
         }
     }
 }
@@ -361,10 +358,17 @@ func makeAgentStream(
 enum AgentHTTP {
     static let streamIdleTimeout: TimeInterval = 600
 
+    static func urlErrorCode(_ error: any Error) -> URLError.Code? {
+        let error = error as NSError
+        guard error.domain == NSURLErrorDomain else { return nil }
+        return URLError.Code(rawValue: error.code)
+    }
+
     static func bytes(
         for request: URLRequest,
         makeError: (Int, String) -> any Error
     ) async throws -> URLSession.AsyncBytes {
+        try Task.checkCancellation()
         var request = request
         request.timeoutInterval = streamIdleTimeout
         let (bytes, response) = try await URLSession.shared.bytes(for: request)
@@ -426,13 +430,18 @@ extension AgentProvider {
         bytes: URLSession.AsyncBytes,
         continuation: AsyncThrowingStream<AgentStreamEvent, Error>.Continuation
     ) async throws {
-        switch self {
-        case .anthropic:
-            try await AnthropicSSE.parse(bytes: bytes, continuation: continuation)
-        case .openAI:
-            try await OpenAISSE.parse(bytes: bytes, continuation: continuation)
-        case .custom:
-            try await OpenAIChatCompletionsSSE.parse(bytes: bytes, continuation: continuation)
+        defer { bytes.task.cancel() }
+        try await withTaskCancellationHandler {
+            switch self {
+            case .anthropic:
+                try await AnthropicSSE.parse(bytes: bytes, continuation: continuation)
+            case .openAI:
+                try await OpenAISSE.parse(bytes: bytes, continuation: continuation)
+            case .custom:
+                try await OpenAIChatCompletionsSSE.parse(bytes: bytes, continuation: continuation)
+            }
+        } onCancel: {
+            bytes.task.cancel()
         }
     }
 }

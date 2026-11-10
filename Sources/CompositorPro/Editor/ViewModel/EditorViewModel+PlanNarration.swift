@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 @MainActor
@@ -232,6 +233,168 @@ extension EditorViewModel {
             throw EditPlanValidationError.invalidReference("Chosen recording bytes changed; choose and approve the current narrator.")
         }
         return observed
+    }
+
+    enum PlanNarrationPreparationResult: Sendable {
+        case noOp(EditPlanChangeReceipt)
+        case prepared(EditPlanChangeReceipt)
+        case unresolved(EditPlanChangeReceipt, reason: String)
+    }
+
+    func prepareApprovedNarration(planId: String,
+                                  render: (@Sendable (LocalSpeechNarrator, String, String, @escaping @Sendable () -> Bool) async throws -> SpeechSynthesizer.PinnedRenderEvidence)? = nil,
+                                  identify: @Sendable (URL) async throws -> MediaInputIdentity = { try await MediaInputIdentityService.shared.identify($0, force: true) },
+                                  transcribe: (@Sendable (URL, String?) async throws -> TranscriptionResult?)? = nil) async throws -> PlanNarrationPreparationResult {
+        let plan = try await currentApprovedNarrationPlan(planId: planId)
+        guard let intent = plan.narrationIntent, let language = intent.language,
+              case .localSpeech(let narrator) = intent.narrator, let beats = plan.scriptBeats else {
+            throw EditPlanValidationError.invalidReference("Prepare narration requires an approved plan with a complete local narrator and script beats.")
+        }
+        let spokenDigest = NarrationSpokenText.digest(beats: beats)
+        let revision = UUID().uuidString
+        let speech = beats.map(\.narrationText).joined(separator: "\n\n")
+        let evidence: SpeechSynthesizer.PinnedRenderEvidence
+        if let render {
+            evidence = try await render(narrator, language, speech, { @Sendable in Task.isCancelled })
+        } else {
+            evidence = try await SpeechSynthesizer.renderPinned(narrator: narrator, language: language, text: speech,
+                                                                isCancelled: { @Sendable in Task.isCancelled })
+        }
+        let staged = evidence.url
+        defer { try? FileManager.default.removeItem(at: staged) }
+        let stagedIdentity = try await identify(staged)
+        try Task.checkCancellation()
+        guard stagedIdentity.isValid else {
+            throw EditPlanValidationError.invalidReference("Rendered narration produced unreadable audio.")
+        }
+        let contextPlan = try await currentApprovedNarrationPlan(planId: planId)
+        if contextPlan.narrationSynthesisProof?.mediaRef == contextPlan.narration?.mediaRef,
+           let existing = contextPlan.narration, let existingAsset = mediaAssetsById[existing.mediaRef],
+           contextPlan.narrationSynthesisProof?.matches(narrator: narrator, language: language,
+                                                        spokenTextDigest: spokenDigest,
+                                                        narrationRevision: contextPlan.narrationRevision) == true,
+           contextPlan.narrationTiming?.sourceFingerprint == stagedIdentity.contentSHA256,
+           contextPlan.narrationTiming?.unresolvedBeatIds.isEmpty == true {
+            var existingIdentity = existingAsset.inputIdentity
+            if existingIdentity == nil { existingIdentity = try? await identify(existingAsset.url) }
+            if existingIdentity == stagedIdentity {
+                return .noOp(EditPlanChangeReceipt(created: [], updated: [contextPlan], deletedIds: []))
+            }
+        }
+
+        let source = try NarrationSource(mediaRef: UUID().uuidString).validated()
+        let transcript: TranscriptionResult?
+        if let transcribe { transcript = try await transcribe(staged, language) }
+        else { transcript = try await attemptNarrationTranscript(url: staged, language: language) }
+        let aligned: NarrationTiming?
+        var unresolvedReason: String?
+        if let transcript {
+            let duration = try await narrationDuration(staged)
+            aligned = try NarrationAlignment.align(beats: beats, transcript: transcript, duration: duration,
+                                                   revision: revision, fingerprint: stagedIdentity.contentSHA256)
+        } else {
+            aligned = nil
+            unresolvedReason = "narration_timing_unresolved"
+        }
+        let measured = (aligned?.unresolvedBeatIds.isEmpty == true) ? aligned : nil
+        if measured == nil { unresolvedReason = "narration_timing_unresolved" }
+
+        let planNow = try await currentApprovedNarrationPlan(planId: planId)
+        guard let intentNow = planNow.narrationIntent, let languageNow = intentNow.language,
+              case .localSpeech(let narratorNow) = intentNow.narrator,
+              narratorNow == narrator, languageNow == language,
+              NarrationSpokenText.digest(beats: planNow.scriptBeats ?? []) == spokenDigest else {
+            throw EditPlanValidationError.invalidReference("Approved narrator or script changed during synthesis; retry Prepare Narration.")
+        }
+
+        let request = NarrationSynthesisRequest(planId: planNow.id, timelineId: planNow.timelineId,
+                                                runId: planNow.productionRun?.id,
+                                                approvedRevision: planNow.productionRun?.approvedRevision ?? "",
+                                                narrationRevision: revision, engine: narrator.engine,
+                                                voiceIdentifier: narrator.voiceIdentifier, language: language,
+                                                rate: narrator.rate, pitch: narrator.pitch, spokenTextDigest: spokenDigest)
+        let proof = NarrationSynthesisProof(requestDigest: request.digest, planId: planNow.id, timelineId: planNow.timelineId,
+                                            runId: planNow.productionRun?.id,
+                                            approvedRevision: planNow.productionRun?.approvedRevision ?? "",
+                                            narrationRevision: revision, engine: narrator.engine,
+                                            voiceIdentifier: narrator.voiceIdentifier, language: language,
+                                            rate: narrator.rate, pitch: narrator.pitch, spokenTextDigest: spokenDigest,
+                                            modelIdentity: narrator.modelIdentity, configurationIdentity: narrator.configurationIdentity,
+                                            writtenFrames: evidence.writtenFrames, insertedSilenceSeconds: evidence.insertedSilenceSeconds,
+                                            mediaRef: source.mediaRef, installedIdentity: stagedIdentity)
+
+        let asset = MediaAsset(id: source.mediaRef, url: staged, type: .audio, name: "Narration")
+        let filename = "narration-\(source.mediaRef).wav"
+        _ = try await projectPackageCoordinator.withMutation { lease in
+            try await self.commitStagedProjectMedia(staged, filename: filename, lease: lease, validate: {
+                guard let p = self.editPlan(id: planId), p.productionRun?.phase == .approved else {
+                    throw EditPlanValidationError.invalidReference("Approved narration state changed before publication; retry.")
+                }
+            }) { destination in
+                asset.url = destination
+                self.importMediaAsset(asset)
+                var prospective = planNow
+                prospective.narration = source
+                prospective.narrationRevision = revision
+                prospective.narrationTiming = measured
+                prospective.narrationSynthesisProof = proof
+                let before = self.editPlans
+                let next = before.map { $0.id == prospective.id ? prospective : $0 }
+                let action = L10n.string("Prepare Narration")
+                self.undo.register(action, withTarget: self) { vm in
+                    vm.editPlans = before
+                    vm.onProjectCheckpointRequired?()
+                    vm.undo.register(action, withTarget: vm) { redo in
+                        redo.editPlans = next
+                        redo.onProjectCheckpointRequired?()
+                        redo.undo.register(action, withTarget: redo) { vm2 in
+                            vm2.editPlans = before
+                            vm2.onProjectCheckpointRequired?()
+                        }
+                    }
+                }
+                self.editPlans = next
+                self.onProjectCheckpointRequired?()
+            }
+        }
+        _ = await finalizeImportedAsset(asset)
+
+        let receipt = EditPlanChangeReceipt(created: [], updated: [editPlan(id: planId)].compactMap { $0 }, deletedIds: [])
+        if let reason = unresolvedReason, measured == nil {
+            return .unresolved(receipt, reason: reason)
+        }
+        return .prepared(receipt)
+    }
+
+    private func currentApprovedNarrationPlan(planId: String) async throws -> EditPlan {
+        try Task.checkCancellation()
+        guard let plan = editPlan(id: planId), plan.timelineId == activeTimelineId,
+              plan.fps == timeline.fps, plan.width == timeline.width, plan.height == timeline.height,
+              let run = plan.productionRun, run.phase == .approved, let approved = run.approvedRevision else {
+            throw EditPlanValidationError.invalidReference("Prepare narration requires the plan's matching active timeline and an approved storyboard.")
+        }
+        let report = try await storyboardReport(planId: planId)
+        try Task.checkCancellation()
+        guard report.revision == approved, report.approvalBlockers.isEmpty, editPlan(id: planId) == plan else {
+            throw EditPlanValidationError.invalidReference("Approved storyboard changed; approve the current revision before preparing narration.")
+        }
+        return plan
+    }
+
+    private func attemptNarrationTranscript(url: URL, language: String?) async throws -> TranscriptionResult? {
+        let locale = language.map(Locale.init(identifier:))
+        if let locale {
+            let supported = await Transcription.supportedLocales()
+            guard Transcription.matchLocale(candidates: [locale], supported: supported) != nil else { return nil }
+        }
+        do { return try await Transcription.transcribe(fileURL: url, preferredLocale: locale) }
+        catch is CancellationError { throw CancellationError() }
+        catch { return nil }
+    }
+
+    private func narrationDuration(_ url: URL) async throws -> NarrationTime {
+        let asset = AVURLAsset(url: url)
+        return try await NarrationTime(asset.load(.duration))
     }
 
     func commitPlanNarrationTiming(_ timing: NarrationTiming, session: PlanNarrationSession) throws -> EditPlanChangeReceipt {

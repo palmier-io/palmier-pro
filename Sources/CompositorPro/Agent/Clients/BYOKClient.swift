@@ -34,9 +34,10 @@ struct BYOKClient: AgentClient {
             }
         }
         if !RuntimeCapabilities.imageInput(supported: settings.supportsImages).canStart,
+           settings.supportsImages != nil,  // only block if explicitly false, not nil (undeclared)
            messages.contains(where: \.containsImages) {
-            throw AgentClientTransportError.imageInputUnsupported(model: settings.custom?.modelID ?? settings.model.rawValue)
-        }
+           throw AgentClientTransportError.imageInputUnsupported(model: settings.custom?.modelID ?? settings.model.rawValue)
+       }
 
         var request = URLRequest(url: try endpoint())
         request.httpMethod = "POST"

@@ -87,15 +87,15 @@ struct AgentMessageView: View {
             ForEach(renderedBlocks, id: \.key) { entry in
                 let block = entry.block
                 switch block {
-                case .thinking(let text, let signature):
+                case .thinking(let text, _):
                     if !text.isEmpty {
-                        ThinkingSummaryView(text: text, isComplete: !signature.isEmpty)
+                        ThinkingSummaryView(text: text)
                     }
                 case .redactedThinking:
                     EmptyView()
-                case .openAIReasoning(let summary, _, _, _, let isComplete):
+                case .openAIReasoning(let summary, _, _, _, _):
                     if !summary.isEmpty {
-                        ThinkingSummaryView(text: summary, isComplete: isComplete)
+                        ThinkingSummaryView(text: summary)
                     }
                 case .text(let text):
                     MarkdownText(text: text)
@@ -120,7 +120,6 @@ struct AgentMessageView: View {
 
 private struct ThinkingSummaryView: View {
     let text: String
-    let isComplete: Bool
     /// One preference for all reasoning rows: someone who opens reasoning wants it open everywhere,
     /// and a per-row choice was lost every time the panel was rebuilt.
     @AppStorage("agent.reasoningExpanded") private var isExpanded = false
@@ -129,7 +128,7 @@ private struct ThinkingSummaryView: View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
             header
 
-            if !isComplete || isExpanded {
+            if isExpanded {
                 summary
                     .transition(.opacity)
             }
@@ -297,9 +296,15 @@ private struct ToolRunRow: View {
     @ViewBuilder
     private func resultSection(_ r: ToolRunResult) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            Text(r.isError ? L10n.string("error") : L10n.string("result"))
-                .font(.system(size: AppTheme.FontSize.xxs))
-                .foregroundStyle(r.isError ? .red.opacity(AppTheme.Opacity.prominent) : AppTheme.Text.mutedColor)
+            HStack(spacing: AppTheme.Spacing.xs) {
+                Text(r.isError ? L10n.string("error") : L10n.string("result"))
+                    .font(.system(size: AppTheme.FontSize.xxs))
+                    .foregroundStyle(r.isError ? .red.opacity(AppTheme.Opacity.prominent) : AppTheme.Text.mutedColor)
+                if r.isError {
+                    CopyButton(value: errorText(from: r))
+                        .font(.system(size: AppTheme.FontSize.xxs))
+                }
+            }
             ForEach(Array(r.content.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .text(let s):
@@ -307,6 +312,43 @@ private struct ToolRunRow: View {
                 case .image(let base64, _):
                     ToolResultImageView(base64: base64)
                 }
+            }
+        }
+    }
+
+    private func errorText(from r: ToolRunResult) -> String {
+        r.content.compactMap { block -> String? in
+            if case .text(let s) = block { return s }
+            return nil
+        }.joined(separator: "\n")
+    }
+
+    // Local copy button since MCPInstructionsPane.CopyButton is private
+    private struct CopyButton: View {
+        private static let feedbackDuration: Duration = .seconds(1.4)
+        let value: String
+        @State private var copied = false
+
+        var body: some View {
+            Button(action: copy) {
+                Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
+                    .foregroundStyle(copied ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
+                    .frame(width: AppTheme.IconSize.lg, height: AppTheme.IconSize.lg)
+                    .hoverHighlight()
+            }
+            .buttonStyle(.plain)
+            .help(copied ? L10n.string("Copied") : L10n.string("Copy"))
+        }
+
+        private func copy() {
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(value, forType: .string)
+            copied = true
+            Task {
+                try? await Task.sleep(for: Self.feedbackDuration)
+                copied = false
             }
         }
     }

@@ -5,6 +5,7 @@ enum MediaPanelSection: String, CaseIterable {
     case index = "Index"
     case captions = "Captions"
     case audio = "Audio"
+    case catalog = "Catalog"
 
     var title: String {
         switch self {
@@ -12,6 +13,7 @@ enum MediaPanelSection: String, CaseIterable {
         case .index: L10n.key("Index")
         case .captions: L10n.key("Captions")
         case .audio: L10n.key("Audio")
+        case .catalog: L10n.key("Catalog")
         }
     }
 
@@ -21,6 +23,7 @@ enum MediaPanelSection: String, CaseIterable {
         case .index: "list.bullet.rectangle"
         case .captions: "captions.bubble"
         case .audio: "waveform"
+        case .catalog: "book"
         }
     }
 }
@@ -63,6 +66,7 @@ struct MediaPanelView: View {
                         selectSection(.index)
                     })
                 case .audio: AudioPanelTab()
+                case .catalog: CatalogTab()
                 }
             }
             .padding(

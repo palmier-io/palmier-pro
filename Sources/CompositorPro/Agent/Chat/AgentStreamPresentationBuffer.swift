@@ -16,8 +16,7 @@ private struct AgentStreamReducer: Sendable {
         self.model = model
     }
 
-    @discardableResult
-    mutating func apply(_ event: AgentStreamEvent) -> Bool {
+    mutating func apply(_ event: AgentStreamEvent) {
         switch event {
         case .thinkingDelta(let chunk):
             updateThinking(textDelta: chunk)
@@ -35,20 +34,30 @@ private struct AgentStreamReducer: Sendable {
                 isComplete: false
             ))
         case .reasoningComplete(let itemID, let summary, let encryptedContent):
-            let existing = takeStreamingReasoningSummary()
-            blocks.append(.openAIReasoning(
-                summary: summary.isEmpty ? existing : summary,
+            let index = blocks.lastIndex {
+                guard case .openAIReasoning(_, _, _, let existingModel, false) = $0 else { return false }
+                return existingModel == model
+            }
+            var completedSummary = summary
+            if summary.isEmpty, let index,
+               case .openAIReasoning(let existingSummary, _, _, _, _) = blocks[index] {
+                completedSummary = existingSummary
+            }
+            let completedBlock = AgentContentBlock.openAIReasoning(
+                summary: completedSummary,
                 encryptedContent: encryptedContent,
                 itemID: itemID,
                 model: model,
                 isComplete: true
-            ))
+            )
+            if let index {
+                blocks[index] = completedBlock
+            } else {
+                blocks.append(completedBlock)
+            }
         case .messageStop(let reason):
-            // Closes reasoning the provider never terminated itself, so a chat/completions
-            // turn is not discarded as still-streaming when the turn ends.
             closeStreamingReasoning()
             stopReason = reason
-            return false
         case .textDelta(let chunk):
             if case .text(let existing)? = blocks.last {
                 blocks[blocks.count - 1] = .text(existing + chunk)
@@ -58,17 +67,18 @@ private struct AgentStreamReducer: Sendable {
         case .toolUseComplete(let id, let name, let inputJSON):
             blocks.append(.toolUse(id: id, name: name, inputJSON: inputJSON))
         }
-        return true
     }
 
     private mutating func closeStreamingReasoning() {
-        guard case .openAIReasoning(let summary, _, _, let blockModel, false)? = blocks.last,
-              blockModel == model, !summary.isEmpty
-        else { return }
-        blocks[blocks.count - 1] = .openAIReasoning(
-            summary: summary, encryptedContent: "", itemID: nil,
-            model: model, isComplete: true
-        )
+        for index in blocks.indices {
+            guard case .openAIReasoning(let summary, let encryptedContent, let itemID, let blockModel, false) = blocks[index],
+                  blockModel == model, !summary.isEmpty || !encryptedContent.isEmpty
+            else { continue }
+            blocks[index] = .openAIReasoning(
+                summary: summary, encryptedContent: encryptedContent, itemID: itemID,
+                model: blockModel, isComplete: true
+            )
+        }
     }
 
     private mutating func updateThinking(
@@ -86,7 +96,7 @@ private struct AgentStreamReducer: Sendable {
     }
 
     private mutating func takeStreamingReasoningSummary() -> String {
-        guard case .openAIReasoning(let summary, _, _, let existingModel, _)? = blocks.last,
+        guard case .openAIReasoning(let summary, _, _, let existingModel, false)? = blocks.last,
               existingModel == model else { return "" }
         blocks.removeLast()
         return summary
@@ -94,9 +104,6 @@ private struct AgentStreamReducer: Sendable {
 }
 
 actor AgentStreamPresentationBuffer {
-    /// No stream event for this long means the provider stream stalled; fail instead of waiting forever.
-    private static let idleTimeout: TimeInterval = 60
-
     private var reducer: AgentStreamReducer
     private var revision: UInt64 = 0
     private var isDirty = false
@@ -104,7 +111,6 @@ actor AgentStreamPresentationBuffer {
     private var isComplete = false
     private var continuation: AsyncThrowingStream<AgentStreamSnapshot, Error>.Continuation?
     private var timerTask: Task<Void, Never>?
-    private var watchdogTask: Task<Void, Never>?
 
     init(model: AgentModel) {
         reducer = AgentStreamReducer(model: model)
@@ -124,14 +130,13 @@ actor AgentStreamPresentationBuffer {
 
     func receive(_ event: AgentStreamEvent) {
         guard !isComplete else { return }
-        guard reducer.apply(event) else { return }
+        reducer.apply(event)
         revision &+= 1
         isDirty = true
         if !hasPublished {
             publish()
         }
         scheduleIfNeeded()
-        scheduleIdleWatchdog()
     }
 
     @discardableResult
@@ -140,8 +145,6 @@ actor AgentStreamPresentationBuffer {
             isComplete = true
             timerTask?.cancel()
             timerTask = nil
-            watchdogTask?.cancel()
-            watchdogTask = nil
             publish()
             if let error {
                 continuation?.finish(throwing: error)
@@ -171,24 +174,6 @@ actor AgentStreamPresentationBuffer {
             guard !Task.isCancelled else { return }
             await self?.timerFired()
         }
-    }
-
-    private func scheduleIdleWatchdog() {
-        watchdogTask?.cancel()
-        watchdogTask = Task { [weak self] in
-            do {
-                try await Task.sleep(for: .seconds(Self.idleTimeout))
-            } catch {
-                return
-            }
-            await self?.handleIdleTimeout()
-        }
-    }
-
-    private func handleIdleTimeout() {
-        watchdogTask = nil
-        if isComplete { return }
-        complete(throwing: AgentClientTransportError.timeout)
     }
 
     private func timerFired() {

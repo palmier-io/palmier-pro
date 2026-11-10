@@ -44,6 +44,7 @@ struct EditPlanShot: Codable, Sendable, Equatable, Identifiable {
     var sourceStartSeconds: Double?
     var sourceEndSeconds: Double?
     var notes: String = ""
+    var requirement: ShotRequirement?
     var referenceUse: ReferenceRecipeUse?
     var claimIds: [String]?
     var narrationLink: SceneNarrationLink?
@@ -71,13 +72,16 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
     var narration: NarrationSource?
     var narrationRevision: String?
     var narrationTiming: NarrationTiming?
+    var narrationSynthesisProof: NarrationSynthesisProof?
     var productionRun: ProductionRun?
+    var brief: PlanBrief?
+    var soundCues: [PlanSoundCue]?
 
     private enum CodingKeys: String, CodingKey {
         case id, name, goal, timelineId, fps, width, height, status
         case sections, shots, notes, createdAt, updatedAt, referenceRecipe, sourceLedger, sourceLedgerRevision
-        case scriptBeats, narrationIntent, narration, narrationRevision, narrationTiming
-        case productionRun
+        case scriptBeats, narrationIntent, narration, narrationRevision, narrationTiming, narrationSynthesisProof
+        case productionRun, brief, soundCues
     }
 
     init(
@@ -98,7 +102,9 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
         sourceLedger: SourceClaimLedger? = nil,
         scriptBeats: [ScriptBeat]? = nil,
         narrationIntent: NarrationIntent? = nil,
-        narration: NarrationSource? = nil
+        narration: NarrationSource? = nil,
+        brief: PlanBrief? = nil,
+        soundCues: [PlanSoundCue]? = nil
     ) {
         self.id = id
         self.name = name
@@ -120,6 +126,8 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
         self.narrationIntent = narrationIntent
         self.narration = narration
         self.narrationRevision = scriptBeats == nil ? nil : UUID().uuidString
+        self.brief = brief
+        self.soundCues = soundCues
     }
 
     init(from decoder: Decoder) throws {
@@ -145,7 +153,10 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
         narration = try container.decodeIfPresent(NarrationSource.self, forKey: .narration)
         narrationRevision = try container.decodeIfPresent(String.self, forKey: .narrationRevision)
         narrationTiming = try container.decodeIfPresent(NarrationTiming.self, forKey: .narrationTiming)
+        narrationSynthesisProof = try container.decodeIfPresent(NarrationSynthesisProof.self, forKey: .narrationSynthesisProof)
         productionRun = try container.decodeIfPresent(ProductionRun.self, forKey: .productionRun)
+        brief = try container.decodeIfPresent(PlanBrief.self, forKey: .brief)
+        soundCues = try container.decodeIfPresent([PlanSoundCue].self, forKey: .soundCues)
     }
 }
 
@@ -290,6 +301,7 @@ extension EditPlan {
         default:
             throw EditPlanValidationError.invalidReference("A source span needs both sourceStartSeconds and sourceEndSeconds.")
         }
+        shot.requirement = try shot.requirement?.validated()
         return shot
     }
 
@@ -363,7 +375,8 @@ extension EditPlan {
 
     static func ensureUniqueIDs(_ plan: EditPlan) throws {
         var seen = Set<String>()
-        for id in [plan.id] + plan.sections.map(\.id) + plan.shots.map(\.id) + (plan.scriptBeats ?? []).map(\.beatId) {
+        for id in [plan.id] + plan.sections.map(\.id) + plan.shots.map(\.id) + (plan.scriptBeats ?? []).map(\.beatId)
+            + (plan.soundCues ?? []).map(\.cueId) {
             guard seen.insert(id).inserted else { throw EditPlanValidationError.duplicateId(id) }
         }
     }
@@ -383,6 +396,9 @@ extension EditPlan {
         ]
         if !goal.isEmpty { out["goal"] = goal }
         if let productionRun { out["productionRun"] = productionRun.receipt }
+        if let brief { out["brief"] = brief.receipt }
+        if let soundCues { out["soundCues"] = soundCues.map { $0.receipt } }
+        out["durationMatch"] = durationMatchReceipt
         if includeDetails {
             out["createdAt"] = EditPlanStore.iso8601String(createdAt)
             if let referenceRecipe { out["referenceRecipe"] = referenceRecipe.receipt() }
@@ -394,6 +410,7 @@ extension EditPlan {
                 out["narration"] = ["mediaRef": narration.mediaRef]
             }
             if let narrationRevision { out["narrationRevision"] = narrationRevision }
+            if let narrationSynthesisProof { out["narrationSynthesisProof"] = narrationSynthesisProof.receipt }
             if let narrationTiming {
                 out["narrationTiming"] = [
                     "revision": narrationTiming.revision, "sourceFingerprint": narrationTiming.sourceFingerprint,
@@ -434,6 +451,7 @@ extension EditPlan {
                 if let start = shot.sourceStartSeconds { row["sourceStartSeconds"] = start }
                 if let end = shot.sourceEndSeconds { row["sourceEndSeconds"] = end }
                 if !shot.notes.isEmpty { row["notes"] = shot.notes }
+                if let requirement = shot.requirement { row["requirement"] = requirement.receipt }
                 if let use = shot.referenceUse { row["referenceUse"] = use.receipt() }
                 if let claimIds = shot.claimIds { row["claimIds"] = claimIds }
                 addNarrationReceipt(shot.narrationLink, to: &row)
@@ -446,6 +464,24 @@ extension EditPlan {
 
     mutating func validateArtifacts() throws {
         try productionRun?.validate()
+        brief = try brief?.validated()
+        soundCues = try soundCues.map { cues in
+            var validated: [PlanSoundCue] = []
+            for cue in cues {
+                var cue = try cue.validated()
+                if let anchorBeatId = cue.anchorBeatId {
+                    guard (scriptBeats ?? []).contains(where: { $0.beatId == anchorBeatId }) else {
+                        throw EditPlanValidationError.invalidReference(
+                            "Sound cue '\(cue.cueId)' anchors to unknown beat '\(anchorBeatId)'.")
+                    }
+                }
+                if let anchorFrame = cue.anchorFrame {
+                    try EditPlan.validatedFrames(start: anchorFrame, end: anchorFrame + 1)
+                }
+                validated.append(cue)
+            }
+            return validated
+        }
         referenceRecipe = try referenceRecipe?.validated()
         sourceLedger = try sourceLedger?.validated()
         if let beats = scriptBeats {
@@ -462,13 +498,16 @@ extension EditPlan {
                   normalized.reduce(0, { $0 + $1.narrationText.count }) <= SpeechSynthesizer.maxCharacters else {
                 throw EditPlanValidationError.invalidReference("Script IDs must be unique and total narration must not exceed 20,000 characters.")
             }
-        } else if narrationIntent != nil || narration != nil || narrationTiming != nil || narrationRevision != nil {
+        } else if narrationIntent != nil || narration != nil || narrationTiming != nil || narrationRevision != nil || narrationSynthesisProof != nil {
             throw EditPlanValidationError.invalidReference("Narration requires scriptBeats.")
         }
         narrationIntent = try narrationIntent?.validated()
         narration = try narration?.validated()
         if narration != nil, narrationIntent == nil {
             throw EditPlanValidationError.invalidReference("Narration attachments require an authored narrationIntent with placement.")
+        }
+        if let narrationSynthesisProof {
+            try narrationSynthesisProof.validated(plan: self)
         }
         if let narrationTiming {
             guard narration != nil else { throw EditPlanValidationError.invalidReference("Timing requires a narration source.") }
@@ -503,6 +542,22 @@ extension EditPlan {
         let used = Set(sections.flatMap { $0.claimIds ?? [] } + shots.flatMap { $0.claimIds ?? [] }
                        + (scriptBeats ?? []).flatMap { $0.claimIds ?? [] })
         return (sourceLedger?.claims ?? []).filter { used.contains($0.claimId) && $0.status != .reviewed }.map(\.claimId)
+    }
+
+    /// Comparison of the plan's shot span against the brief's requested
+    /// duration. Reported as receipt data, never a hard blocker — the brief is
+    /// advisory editorial intent; the storyboard approval gate owns fit.
+    var durationMatchReceipt: [String: Any]? {
+        guard let brief, let durationSeconds = brief.durationSeconds, fps > 0 else { return nil }
+        guard let lastEnd = sections.map(\.endFrame).max(), lastEnd > 0 else { return nil }
+        let planSeconds = Double(lastEnd) / Double(fps)
+        let delta = abs(planSeconds - durationSeconds)
+        return [
+            "requestedSeconds": durationSeconds,
+            "planSeconds": planSeconds,
+            "deltaSeconds": delta,
+            "withinTolerance": delta <= max(1.0, durationSeconds * 0.1),
+        ]
     }
 
     func claimDependents(_ claimIds: Set<String>) -> [String: [String]] {

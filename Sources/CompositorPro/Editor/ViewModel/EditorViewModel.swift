@@ -105,6 +105,44 @@ final class EditorViewModel {
     var breathFailed: Set<String> = []
     var deessFailed: Set<String> = []
     var loudnessInFlight: Set<String> = []
+
+    // MARK: - Enhancement jobs (track async denoise/breath/deess/loudness work)
+
+    struct EnhancementJob: Sendable, Equatable {
+        let id: UUID
+        let clipIds: Set<String>
+        let mediaRefs: Set<String>
+        let type: JobType
+        let params: JobParams
+        let sourceVersions: [String: LoudnessAnalyzer.SourceVersion]
+        let startedAt: Date
+        var status: Status
+        var stage: Stage
+        var errors: [String]
+        var warnings: [String]
+        var changedClipIds: Set<String>
+
+        enum JobType: String, Sendable { case denoise, debreath, enhance, loudness }
+        enum Stage: String, Sendable { case queued, analyzing, applying, completed, failed, cancelled }
+        enum Status: String, Sendable { case queued, running, completed, failed, cancelled }
+
+        struct JobParams: Sendable, Equatable {
+            var amount: Double?
+            var deess: Double?
+            var targetLUFS: Double?
+            var enabled: Bool
+
+            static func denoise(amount: Double?) -> JobParams { .init(amount: amount, deess: nil, targetLUFS: nil, enabled: true) }
+            static func debreath(amount: Double?) -> JobParams { .init(amount: amount, deess: nil, targetLUFS: nil, enabled: true) }
+            static func enhance(amount: Double?, deess: Double?) -> JobParams { .init(amount: amount, deess: deess, targetLUFS: nil, enabled: true) }
+            static func loudness(targetLUFS: Double) -> JobParams { .init(amount: nil, deess: nil, targetLUFS: targetLUFS, enabled: true) }
+            static func disable() -> JobParams { .init(amount: nil, deess: nil, targetLUFS: nil, enabled: false) }
+        }
+    }
+
+    var enhancementJobs: [UUID: EnhancementJob] = [:]
+    @ObservationIgnored var enhancementJobFingerprints: [String: UUID] = [:]
+
     var speechAnalyzingCount: Int = 0
     var speakerRegistry: [SpeakerRegistryEntry] = []
     var multicamGroups: [MulticamSource] = [] {

@@ -199,6 +199,70 @@ struct CustomEndpointTransportTests {
         #expect(server.request?.replacingOccurrences(of: "\\/", with: "/").contains("data:image/png;base64,YQ==") == true)
     }
 
+    @Test(arguments: TerminalEvent.allCases)
+    func terminalProviderEventDoesNotWaitForConnectionEnd(_ terminal: TerminalEvent) async throws {
+        let server = try await LoopbackServer { _ in
+            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n"
+                + terminal.payload + "\n\n"
+                + #"data: {"type":"error","error":{"message":"Connection outlived the response."}}"# + "\n\n"
+        }
+        defer { server.cancel() }
+        let request = URLRequest(url: try #require(URL(string: server.baseURL)))
+        let operation = makeAgentStream { continuation in
+            let bytes = try await AgentHTTP.bytes(for: request) { status, body in
+                AgentClientTransportError.httpError(provider: terminal.provider, status: status, body: body)
+            }
+            try await terminal.provider.parseSSE(bytes: bytes, continuation: continuation)
+        }
+
+        let events = try await transportEvents(operation)
+
+        #expect(events == [
+            .toolUseComplete(id: "call_1", name: "get_timeline", inputJSON: "{}"),
+            .messageStop(stopReason: .toolUse),
+        ])
+    }
+
+    enum TerminalEvent: CaseIterable, Sendable {
+        case chatFinishReason, chatDone, openAICompleted, anthropicMessageStop
+
+        var provider: AgentProvider {
+            switch self {
+            case .chatFinishReason, .chatDone: .custom
+            case .openAICompleted: .openAI
+            case .anthropicMessageStop: .anthropic
+            }
+        }
+
+        var payload: String {
+            switch self {
+            case .chatFinishReason, .chatDone:
+                let call = #"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"get_timeline","arguments":"{}"}}]}}]}"#
+                let stop = self == .chatDone ? "data: [DONE]"
+                    : #"data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}"#
+                return call + "\n\n" + stop
+            case .openAICompleted:
+                return #"""
+                data: {"type":"response.output_item.done","item":{"type":"function_call","call_id":"call_1","name":"get_timeline","arguments":"{}"}}
+
+                data: {"type":"response.completed","response":{"status":"completed","output":[{"type":"function_call"}]}}
+                """#
+            case .anthropicMessageStop:
+                return #"""
+                data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"call_1","name":"get_timeline"}}
+
+                data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{}"}}
+
+                data: {"type":"content_block_stop","index":0}
+
+                data: {"type":"message_delta","delta":{"stop_reason":"tool_use"}}
+
+                data: {"type":"message_stop"}
+                """#
+            }
+        }
+    }
+
     // MARK: - Fixtures
 
     private static func client(modelID: String, endpoint: URL, apiKey: String, supportsImages: Bool? = nil) -> BYOKClient {

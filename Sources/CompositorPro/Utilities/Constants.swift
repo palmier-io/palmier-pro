@@ -106,7 +106,7 @@ enum Project {
     /// Pre-rename storage directory; migrated lazily at open, never deleted here.
     static var legacyStorageDirectory: URL {
         FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Documents/Palmier Pro", isDirectory: true)
+            .appendingPathComponent("Documents/Compositor Pro", isDirectory: true)
     }
 
     nonisolated static func ensureStorageDirectory() {

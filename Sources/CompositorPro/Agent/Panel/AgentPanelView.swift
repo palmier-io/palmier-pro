@@ -366,6 +366,9 @@ struct AgentPanelView: View {
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(.red)
                     .multilineTextAlignment(.leading)
+                    .textSelection(.enabled)
+                CopyButton(value: errorMessage(err))
+                    .font(.system(size: AppTheme.FontSize.xxs))
                 if let cta = errorCTA(for: err) {
                     Button(action: cta.action) {
                         Text(cta.title)
@@ -419,6 +422,36 @@ struct AgentPanelView: View {
             }
         case .refusal:
             L10n.string("The selected model refused this request. Revise the prompt and try again.")
+        }
+    }
+
+    // Local copy button (MCPInstructionsPane.CopyButton is private)
+    private struct CopyButton: View {
+        private static let feedbackDuration: Duration = .seconds(1.4)
+        let value: String
+        @State private var copied = false
+
+        var body: some View {
+            Button(action: copy) {
+                Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
+                    .foregroundStyle(copied ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
+                    .frame(width: AppTheme.IconSize.lg, height: AppTheme.IconSize.lg)
+                    .hoverHighlight()
+            }
+            .buttonStyle(.plain)
+            .help(copied ? L10n.string("Copied") : L10n.string("Copy"))
+        }
+
+        private func copy() {
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(value, forType: .string)
+            copied = true
+            Task {
+                try? await Task.sleep(for: Self.feedbackDuration)
+                copied = false
+            }
         }
     }
 

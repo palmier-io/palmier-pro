@@ -5,7 +5,7 @@ import Foundation
 /// dominates the spectrum. Pure DSP — no model, works without the BundledSpeech trait.
 /// Applied as gain dips, mirroring the de-breath pipeline.
 enum DeEsser {
-    static let cache = DiskCache(named: "AudioAnalysis")
+    static let cache = DiskCache(named: "AudioAnalysis/DeEsser")
 
     struct Region: Codable, Equatable, Sendable {
         let start: Double

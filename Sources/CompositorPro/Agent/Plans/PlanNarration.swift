@@ -1,4 +1,5 @@
 import CoreMedia
+import CryptoKit
 import Foundation
 
 struct ScriptBeat: Codable, Sendable, Equatable {
@@ -198,6 +199,126 @@ struct LocalSpeechNarrator: Codable, Sendable, Equatable {
     }
 }
 
+/// The exact speech the approved script asks a renderer to speak, in beat order.
+enum NarrationSpokenText {
+    static func digest(beats: [ScriptBeat]) -> String {
+        let spoken = beats.map(\.narrationText).joined(separator: " ")
+        return Self.digest(spoken)
+    }
+
+    static func digest(_ text: String) -> String {
+        SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+/// The request a pinned synthesis render is bound to. Digests cover plan, run, approved
+/// revision, final narration revision, and the exact approved speech controls, so a proof
+/// cannot survive a material authoring change.
+struct NarrationSynthesisRequest: Sendable, Equatable {
+    var planId: String
+    var timelineId: String
+    var runId: String?
+    var approvedRevision: String
+    var narrationRevision: String
+    var engine: LocalSpeechNarrator.Engine
+    var voiceIdentifier: String
+    var language: String
+    var rate: Double
+    var pitch: Double
+    var spokenTextDigest: String
+
+    var digest: String {
+        let parts = [planId, timelineId, runId ?? "", approvedRevision, narrationRevision,
+                     engine.rawValue, voiceIdentifier, language,
+                     String(rate), String(pitch), spokenTextDigest]
+        let json = try? JSONSerialization.data(withJSONObject: parts, options: [.sortedKeys])
+        return SHA256.hash(data: json ?? Data()).map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+/// App-owned provenance for narration the app synthesized from an approved script. The
+/// renderer supplies the execution evidence; the domain binds the installed bytes. This is
+/// execution provenance — it proves the installed audio came from the approved narrator
+/// controls — not acoustic certification and not protection against deliberately edited
+/// project JSON.
+struct NarrationSynthesisProof: Codable, Sendable, Equatable {
+    static let deliveryVersion = 1
+
+    var requestDigest: String
+    var planId: String
+    var timelineId: String
+    var runId: String?
+    var approvedRevision: String
+    var narrationRevision: String
+
+    var engine: LocalSpeechNarrator.Engine
+    var voiceIdentifier: String
+    var language: String
+    var rate: Double
+    var pitch: Double
+    var spokenTextDigest: String
+
+    var modelIdentity: MediaInputIdentity?
+    var configurationIdentity: MediaInputIdentity?
+
+    var writtenFrames: Int64
+    var insertedSilenceSeconds: Double
+
+    var mediaRef: String
+    var installedIdentity: MediaInputIdentity
+
+    var deliveryVersion: Int { Self.deliveryVersion }
+
+    /// Evidence the renderer must have applied the approved controls exactly.
+    func matches(narrator: LocalSpeechNarrator, language: String, spokenTextDigest: String,
+                 narrationRevision: String?) -> Bool {
+        engine == narrator.engine && voiceIdentifier == narrator.voiceIdentifier
+            && rate == narrator.rate && pitch == narrator.pitch
+            && modelIdentity == narrator.modelIdentity && configurationIdentity == narrator.configurationIdentity
+            && self.language == language && self.spokenTextDigest == spokenTextDigest
+            && self.narrationRevision == narrationRevision
+    }
+
+    func validated(plan: EditPlan) throws {
+        guard plan.id == planId, plan.timelineId == timelineId,
+              let beats = plan.scriptBeats, let intent = plan.narrationIntent,
+              let language = intent.language,
+              case .localSpeech(let narrator) = intent.narrator,
+              let narration = plan.narration else {
+            throw EditPlanValidationError.invalidReference("Synthesis proof does not match this plan's script, intent, or attachment.")
+        }
+        guard matches(narrator: narrator, language: language,
+                      spokenTextDigest: NarrationSpokenText.digest(beats: beats),
+                      narrationRevision: plan.narrationRevision) else {
+            throw EditPlanValidationError.invalidReference("Synthesis proof does not match the approved narrator and script revision.")
+        }
+        guard narration.mediaRef == mediaRef, installedIdentity.isValid,
+              requestDigest.count == 64 else {
+            throw EditPlanValidationError.invalidReference("Synthesis proof must name the attached media and carry a valid request digest.")
+        }
+        if let timing = plan.narrationTiming, timing.sourceFingerprint != installedIdentity.contentSHA256 {
+            throw EditPlanValidationError.invalidReference("Measured timing must match the synthesized audio bytes.")
+        }
+    }
+
+    var receipt: [String: Any] {
+        var row: [String: Any] = [
+            "kind": "synthesized", "deliveryVersion": deliveryVersion,
+            "engine": engine.rawValue, "voiceIdentifier": voiceIdentifier,
+            "language": language, "rate": rate, "pitch": pitch,
+            "spokenTextDigest": spokenTextDigest, "requestDigest": requestDigest,
+            "narrationRevision": narrationRevision,
+            "writtenFrames": writtenFrames, "insertedSilenceSeconds": insertedSilenceSeconds,
+            "mediaRef": mediaRef, "inputId": installedIdentity.inputId,
+        ]
+        if let runId { row["runId"] = runId }
+        if !approvedRevision.isEmpty { row["approvedRevision"] = approvedRevision }
+        if let modelIdentity { row["modelInputId"] = modelIdentity.inputId }
+        if let configurationIdentity { row["configurationInputId"] = configurationIdentity.inputId }
+        return row
+    }
+}
+
 struct NarrationIntentRequest: Decodable, Sendable {
     struct Narrator: Decodable, Sendable {
         var kind: String
@@ -245,15 +366,34 @@ extension EditPlan {
             guard identity.isValid, identity == recording.identity else {
                 throw EditPlanValidationError.invalidReference("Narration attachment does not match the chosen recording byte identity.")
             }
-        case .localSpeech:
-            throw EditPlanValidationError.invalidReference("Pinned local speech generation and attachment proof are not implemented; generic speech metadata cannot verify the approved narrator.")
+        case .localSpeech(let speech):
+            guard let proof = narrationSynthesisProof, identity.isValid, identity == proof.installedIdentity,
+                  proof.mediaRef == narration?.mediaRef,
+                  proof.matches(narrator: speech, language: narrationIntent?.language ?? "",
+                                spokenTextDigest: NarrationSpokenText.digest(beats: scriptBeats ?? []),
+                                narrationRevision: narrationRevision) else {
+                throw EditPlanValidationError.invalidReference("Synthesized narration must be produced by Prepare Approved Narration; generic speech output cannot verify the approved narrator.")
+            }
         }
     }
 
     func narrationProductionBlockers(entries: [String: MediaManifestEntry], unavailable: Set<String>) -> [String] {
         var blockers: [String] = []
-        if case .localSpeech = narrationIntent?.narrator { blockers.append("unverified_synthesized_narration") }
+        if case .localSpeech(let speech) = narrationIntent?.narrator {
+            let verified = narrationSynthesisProof?.matches(
+                narrator: speech, language: narrationIntent?.language ?? "",
+                spokenTextDigest: NarrationSpokenText.digest(beats: scriptBeats ?? []),
+                narrationRevision: narrationRevision) == true
+            if !verified { blockers.append("unverified_synthesized_narration") }
+        }
         guard let source = narration else { return blockers + ["missing_narration_attachment"] }
+        if let proof = narrationSynthesisProof {
+            if proof.mediaRef != source.mediaRef { blockers.append("narration_proof_media_mismatch") }
+            else if let identity = entries[proof.mediaRef]?.inputIdentity,
+                    identity.isValid, identity != proof.installedIdentity {
+                blockers.append("narration_proof_media_mismatch")
+            }
+        }
         guard let entry = entries[source.mediaRef], entry.type == .audio, entry.generationStatus == nil,
               entry.duration.isFinite, entry.duration > 0, !unavailable.contains(source.mediaRef) else {
             return blockers + ["narration_media_not_ready"]
@@ -453,6 +593,21 @@ extension EditPlan {
             var shot = original
             if let link = shot.narrationLink {
                 let range = try resolvedNarrationRange(link)
+                shot.startFrame = range.lowerBound
+                shot.endFrame = range.upperBound
+            }
+            return shot
+        }
+    }
+
+    /// Non-throwing variant for post-commit receipts: a shot whose narration
+    /// range cannot resolve is reported unresolved instead of failing the
+    /// already-committed assembly receipt.
+    func resolvedShotsSafe() -> [EditPlanShot] {
+        shots.map { original in
+            var shot = original
+            if let link = shot.narrationLink,
+               let range = try? resolvedNarrationRange(link) {
                 shot.startFrame = range.lowerBound
                 shot.endFrame = range.upperBound
             }

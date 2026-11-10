@@ -16,6 +16,7 @@ final class SpeechMaskStore {
     var onMaskReady: (() -> Void)?
 
     func generate(for asset: MediaAsset) {
+        guard RuntimeCapabilities.bundledSpeech else { return }
         let key = asset.id
         guard speechMasks[key] == nil, !inFlight.contains(key), !failed.contains(key) else { return }
         inFlight.insert(key)

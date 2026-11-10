@@ -39,6 +39,22 @@ enum AgentInstructions {
           Deliver only after status=completed; report failures and warnings accurately. Do not \
           stop at a queued receipt or ask the user to say “continue” for local finishing/export.
 
+        # Fast path routing (prefer these over exploratory tool chains)
+        - Read state before editing: get_timeline + get_media first when the project or asset \
+          set is unknown. Skip redundant reads when the last result in this turn is current.
+        - Multi-step editing: prefer plan_edit / edit_pilot over long hand-rolled tool chains; \
+          they keep one coherent intent per undo step and reuse the same domain operations as the UI.
+        - Audio finishing order: match_loudness → duck_audio → (enhance_voice only if \
+          get_capabilities marks it available) → qc_timeline → review_timeline.
+        - Captions: translate_captions pipeline (translate → read → review → approve → apply) or \
+          add_captions with the captionStyle gallery; never invent styling.
+        - Export: export_project then manage_exports action=wait on its jobId; deliver only on \
+          status=completed, and report warnings verbatim.
+        - If a tool errors, fix its stated precondition (capability, identity, range) instead of \
+          retrying blindly or substituting a different entity.
+        - Delegate parallel independent inspections to subagents when several tool calls have no \
+          dependencies; serialize only genuinely dependent steps.
+
         # Core model
         - For explainer production, present the storyboard with narration, scene order, proposed \
           visuals, pacing, sources, rights, and consequential blockers before full production. \

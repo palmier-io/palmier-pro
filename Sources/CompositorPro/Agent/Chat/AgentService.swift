@@ -362,12 +362,15 @@ final class AgentService {
     weak var editor: EditorViewModel? {
         didSet {
             cancel()
-            toolExecutor = editor.map { ToolExecutor(editor: $0) }
+            toolExecutor = editor.map {
+                ToolExecutor(editor: $0, skillStore: skillStore ?? .shared, userDefaults: userDefaults)
+            }
         }
     }
     private var toolExecutor: ToolExecutor?
     @ObservationIgnored private var runTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var currentRunID: UUID?
+    private static let streamTimeoutRetryLimit = 2
     private var drainsInProgress = 0
 
     private var currentTask: Task<Void, Never>? { currentRunID.flatMap { runTasks[$0] } }
@@ -599,6 +602,8 @@ final class AgentService {
             AgentToolSchema(name: $0.name.rawValue, description: $0.description, inputSchema: $0.inputSchema)
         }
         let delegation = AgentDelegation()
+        let learningSection = AgentLearningLedger.load(from: userDefaults).playbook().promptSection()
+        var streamTimeoutRetries = 0
 
         loop: while isCurrentRun(runID, conversationID: conversationID, editor: runEditor) {
             resolveOrphanToolUses()
@@ -619,7 +624,8 @@ final class AgentService {
                 let stream = client.stream(
                     system: AgentInstructions.serverInstructions + AgentInstructions.skillsSection(skillStore.skillIndex)
                         + (delegationEnabled ? AgentDelegationTool.instructions
-                            : permitsFallback ? AgentDelegationTool.fallbackInstructions : AgentDelegationTool.blockedInstructions),
+                            : permitsFallback ? AgentDelegationTool.fallbackInstructions : AgentDelegationTool.blockedInstructions)
+                        + (learningSection.isEmpty ? "" : "\n\n" + learningSection),
                     tools: tools,
                     messages: apiMsgs,
                     context: AgentRequestContext(
@@ -644,6 +650,7 @@ final class AgentService {
                     )
                 }
                 let stopReason = finalSnapshot.stopReason
+                streamTimeoutRetries = 0
 
                 dropEmptyAssistantTurn(id: assistantID, conversationID: conversationID)
                 guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor) else { break }
@@ -660,18 +667,22 @@ final class AgentService {
                 }
                 if Task.isCancelled { break loop }
                 break loop
-            } catch is CancellationError {
-                dropEmptyAssistantTurn(id: assistantID, conversationID: conversationID)
-                break loop
-            } catch let err as AgentServiceError {
-                dropEmptyAssistantTurn(id: assistantID, conversationID: conversationID)
-                if isCurrentRun(runID, conversationID: conversationID, editor: runEditor) { streamError = err }
-                break loop
             } catch {
-                dropEmptyAssistantTurn(id: assistantID, conversationID: conversationID)
-                if isCurrentRun(runID, conversationID: conversationID, editor: runEditor) {
-                    streamError = .upstream(error.localizedDescription)
+                let timedOut = Self.isStreamTimeout(error)
+                if timedOut {
+                    discardAssistantTurn(id: assistantID, conversationID: conversationID)
+                } else {
+                    dropEmptyAssistantTurn(id: assistantID, conversationID: conversationID)
                 }
+                guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor),
+                      !(error is CancellationError), AgentHTTP.urlErrorCode(error) != .cancelled
+                else { break loop }
+                if timedOut, streamTimeoutRetries < Self.streamTimeoutRetryLimit {
+                    streamTimeoutRetries += 1
+                    Log.agent.notice("chat stream retry id=\(turnID) reason=timeout retry=\(streamTimeoutRetries)/\(Self.streamTimeoutRetryLimit)")
+                    continue loop
+                }
+                streamError = (error as? AgentServiceError) ?? .upstream(error.localizedDescription)
                 break loop
             }
         }
@@ -679,6 +690,31 @@ final class AgentService {
 
     private func assistantMessageIndex(id: UUID) -> Int? {
         messages.firstIndex { $0.id == id && $0.role == .assistant }
+    }
+
+    private static func isStreamTimeout(_ error: any Error) -> Bool {
+        if AgentHTTP.urlErrorCode(error) == .timedOut { return true }
+        if let error = error as? AgentClientTransportError, case .httpError(_, let status, _) = error {
+            return status == 408 || status == 504
+        }
+        if let error = error as? AgentServiceError, case .httpError(let status, _, _) = error {
+            return status == 408 || status == 504
+        }
+        return false
+    }
+
+    private func discardAssistantTurn(id: UUID, conversationID: UUID) {
+        if currentSessionId == conversationID {
+            guard let index = assistantMessageIndex(id: id) else { return }
+            messages.remove(at: index)
+            return
+        }
+        guard let sessionIndex = sessions.firstIndex(where: { $0.id == conversationID }),
+              let messageIndex = sessions[sessionIndex].messages.firstIndex(where: {
+                  $0.id == id && $0.role == .assistant
+              }) else { return }
+        sessions[sessionIndex].messages.remove(at: messageIndex)
+        sessions[sessionIndex].updatedAt = Date()
     }
 
     func dropEmptyAssistantTurn(id: UUID) {

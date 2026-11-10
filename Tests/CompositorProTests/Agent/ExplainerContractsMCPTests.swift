@@ -98,6 +98,56 @@ struct ExplainerContractsMCPTests {
         }
     }
 
+    @Test func assemblyReceiptMapsShotsToPlacedClipsThroughMCP() async throws {
+        try await withClient { client, harness in
+            let first = harness.addAsset(id: "mapping-a", duration: 8)
+            let second = harness.addAsset(id: "mapping-b", duration: 8)
+            let created = try await client.callTool(name: "plan_edit", arguments: [
+                "action": .string("create"),
+                "plan": .object([
+                    "name": .string("Mapped"),
+                    "shots": .array([
+                        .object([
+                            "shotId": .string("shot-open"), "title": .string("Open"),
+                            "startFrame": .int(0), "endFrame": .int(60),
+                            "mediaRef": .string(first.id),
+                        ]),
+                        .object([
+                            "shotId": .string("shot-close"), "title": .string("Close"),
+                            "startFrame": .int(60), "endFrame": .int(120),
+                            "mediaRef": .string(second.id),
+                        ]),
+                    ]),
+                ]),
+            ])
+            #expect(created.isError != true)
+            let planId = try #require(json(created.content)["planId"] as? String)
+            _ = try await client.callTool(name: "plan_edit", arguments: [
+                "action": .string("status"), "planId": .string(planId), "status": .string("approved"),
+            ])
+            let applied = try await client.callTool(name: "apply_plan", arguments: [
+                "planId": .string(planId), "commit": .bool(true),
+            ])
+            #expect(applied.isError != true)
+            let receipt = try json(applied.content)
+            let receiptText = try text(applied.content)
+            #expect(receipt["applied"] as? Bool == true, "receipt=\(receiptText)")
+            let rows = try #require(receipt["shotAssembly"] as? [[String: Any]], "receipt=\(receiptText)")
+            let clips = harness.editor.timeline.tracks.flatMap(\.clips)
+            for shotId in ["shot-open", "shot-close"] {
+                let row = try #require(rows.first { ($0["shotId"] as? String) == shotId })
+                let clipIDs = try #require(row["clipIds"] as? [String])
+                let expectedStart = shotId == "shot-open" ? 0 : 60
+                #expect(!clipIDs.isEmpty, "row=\(row)")
+                // MCP receipts shorten clip ids to stable prefixes.
+                #expect(clipIDs.allSatisfy { id in clips.contains { $0.id.hasPrefix(id) } }, "row=\(row) actual=\(clips.map(\.id))")
+                let mapped = clips.filter { clip in clipIDs.contains { clip.id.hasPrefix($0) } }
+                #expect(!mapped.isEmpty)
+                #expect(mapped.allSatisfy { $0.startFrame == expectedStart }, "row=\(row)")
+            }
+        }
+    }
+
     private func withClient(_ operation: @MainActor (Client, ToolHarness) async throws -> Void) async throws {
         let harness = ToolHarness()
         let server = Server(name: "explainer-contracts", version: "1", capabilities: .init(tools: .init(listChanged: false)))

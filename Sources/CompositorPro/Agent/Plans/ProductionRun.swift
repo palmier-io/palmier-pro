@@ -35,6 +35,22 @@ struct ProductionRun: Codable, Sendable, Equatable {
     var approvedRevision: String?
     var visualReviews: [VisualReview] = []
     var comment: String = ""
+    var exportJobId: String?
+    var exportPath: String?
+    var terminalReceipt: TerminalReceipt?
+
+    struct TerminalReceipt: Codable, Sendable, Equatable {
+        var runId: String
+        var phase: String
+        var approvedRevision: String?
+        var reviewedSceneIds: [String]
+        var comment: String
+        var deliveryVerified: Bool
+        var exportJobId: String?
+        var exportPath: String?
+        var errors: [String]
+        var completedAt: Date?
+    }
 
     func validate() throws {
         let isPastApproval = phase != .awaitingStoryboardApproval && phase != .stale && phase != .canceled
@@ -47,6 +63,17 @@ struct ProductionRun: Codable, Sendable, Equatable {
             throw EditPlanValidationError.invalidReference("Invalid production review state.")
         }
         _ = try EditPlan.validatedText(comment, field: "storyboard comment")
+        if let exportPath {
+            _ = try EditPlan.validatedText(exportPath, field: "production export path")
+        }
+        if let receipt = terminalReceipt {
+            guard UUID(uuidString: receipt.runId) != nil,
+                  receipt.phase == "completed" || receipt.phase == "failed",
+                  !receipt.deliveryVerified || receipt.phase == "completed",
+                  receipt.deliveryVerified || !receipt.errors.isEmpty else {
+                throw EditPlanValidationError.invalidReference("Invalid production terminal receipt.")
+            }
+        }
         for review in visualReviews {
             _ = try EditPlan.validatedID(review.sceneId, field: "sceneId")
             guard Self.validRevision(review.selectionRevision),
@@ -65,8 +92,24 @@ struct ProductionRun: Codable, Sendable, Equatable {
         var out: [String: Any] = ["runId": id, "phase": phase.rawValue,
                                   "storyboardRevision": storyboardRevision,
                                   "reviewedSceneIds": visualReviews.map(\.sceneId),
-                                  "comment": comment, "deliveryVerified": false]
+                                  "comment": comment,
+                                  "deliveryVerified": terminalReceipt?.deliveryVerified ?? false]
         if let approvedRevision { out["approvedRevision"] = approvedRevision }
+        if let exportJobId { out["exportJobId"] = exportJobId }
+        if let exportPath { out["exportPath"] = exportPath }
+        if let terminalReceipt { out["terminalReceipt"] = Self.receipt(of: terminalReceipt) }
+        return out
+    }
+
+    static func receipt(of receipt: ProductionRun.TerminalReceipt) -> [String: Any] {
+        var out: [String: Any] = [
+            "runId": receipt.runId, "phase": receipt.phase,
+            "reviewedSceneIds": receipt.reviewedSceneIds,
+            "comment": receipt.comment, "deliveryVerified": receipt.deliveryVerified,
+        ]
+        if let exportJobId = receipt.exportJobId { out["exportJobId"] = exportJobId }
+        if let exportPath = receipt.exportPath { out["exportPath"] = exportPath }
+        if !receipt.errors.isEmpty { out["errors"] = receipt.errors }
         return out
     }
 }

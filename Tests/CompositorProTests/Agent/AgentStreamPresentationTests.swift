@@ -86,6 +86,88 @@ struct AgentStreamPresentationTests {
         #expect(await recorder.last.map { text(in: $0.blocks) } == "partial")
     }
 
+    @Test func stopCompletesReasoningBeforeAnswerAndToolBlocks() async throws {
+        let final = try await presentAgentStream(stream([
+            .reasoningSummaryDelta("First decision"),
+            .textDelta("Starting the edit"),
+            .reasoningSummaryDelta("Second decision"),
+            .toolUseComplete(id: "call_1", name: "get_timeline", inputJSON: "{}"),
+            .messageStop(stopReason: .toolUse),
+        ]), model: .custom) { _ in }
+
+        let reasoning = final.blocks.filter(\.isReasoning)
+        #expect(reasoning.count == 2)
+        #expect(reasoning.allSatisfy(AgentContentBlock.isReasoningComplete))
+        #expect(final.stopReason == .toolUse)
+    }
+
+    @Test func stopPublishesReasoningCompletionAfterLastContentSnapshot() async throws {
+        let receivedReasoning = AsyncSemaphore(value: 0)
+        let recorder = SnapshotRecorder()
+        let source = makeAgentStream { continuation in
+            continuation.yield(.reasoningSummaryDelta("Decision"))
+            try await receivedReasoning.wait()
+            continuation.yield(.messageStop(stopReason: .endTurn))
+        }
+
+        let final = try await presentAgentStream(source, model: .custom) { snapshot in
+            await recorder.append(snapshot)
+            if snapshot.blocks.contains(where: { !AgentContentBlock.isReasoningComplete($0) }) {
+                await receivedReasoning.signal()
+            }
+        }
+
+        #expect(final.blocks.allSatisfy(AgentContentBlock.isReasoningComplete))
+        #expect(await recorder.last?.blocks.allSatisfy(AgentContentBlock.isReasoningComplete) == true)
+        #expect(await recorder.count == 2)
+    }
+
+    @Test(arguments: ["Final decision", ""])
+    func delayedReasoningCompletionUpdatesItsOriginalBlock(_ completedSummary: String) async throws {
+        let final = try await presentAgentStream(stream([
+            .reasoningSummaryDelta("Decision"),
+            .textDelta("Answer"),
+            .toolUseComplete(id: "call_1", name: "get_timeline", inputJSON: "{}"),
+            .reasoningComplete(itemID: "rs_1", summary: completedSummary, encryptedContent: "encrypted"),
+            .messageStop(stopReason: .toolUse),
+        ]), model: .terra) { _ in }
+
+        #expect(final.blocks.count == 3)
+        guard case .openAIReasoning(let summary, let encrypted, let itemID, _, let isComplete)? = final.blocks.first else {
+            Issue.record("Expected reasoning before answer and tool blocks")
+            return
+        }
+        #expect(summary == (completedSummary.isEmpty ? "Decision" : completedSummary))
+        #expect(encrypted == "encrypted")
+        #expect(itemID == "rs_1")
+        #expect(isComplete)
+        #expect(text(in: final.blocks) == "Answer")
+    }
+
+    @Test func reasoningCompletionsPreserveSeparateItems() async throws {
+        let final = try await presentAgentStream(stream([
+            .reasoningSummaryDelta("First"),
+            .reasoningComplete(itemID: "rs_1", summary: "", encryptedContent: "first"),
+            .textDelta("Answer"),
+            .reasoningSummaryDelta("Second"),
+            .toolUseComplete(id: "call_1", name: "get_timeline", inputJSON: "{}"),
+            .reasoningComplete(itemID: "rs_2", summary: "", encryptedContent: "second"),
+            .messageStop(stopReason: .toolUse),
+        ]), model: .terra) { _ in }
+
+        let reasoning = final.blocks.filter(\.isReasoning)
+        try #require(reasoning.count == 2)
+        guard case .openAIReasoning(let first, let firstEncrypted, let firstID, _, true) = reasoning[0],
+              case .openAIReasoning(let second, let secondEncrypted, let secondID, _, true) = reasoning[1]
+        else {
+            Issue.record("Expected two completed reasoning items")
+            return
+        }
+        #expect(first == "First" && firstEncrypted == "first" && firstID == "rs_1")
+        #expect(second == "Second" && secondEncrypted == "second" && secondID == "rs_2")
+        #expect(final.blocks.count == 4)
+    }
+
     @Test func lateSnapshotUpdatesOriginatingSessionAfterSwitch() throws {
         let suiteName = "AgentStreamPresentationTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
