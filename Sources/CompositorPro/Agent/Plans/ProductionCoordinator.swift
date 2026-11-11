@@ -363,6 +363,8 @@ final class ProductionCoordinator {
         let digest = try await ProductionRevision.make(
             timeline: snapshot, timelines: editor.timelines, urls: editor.mediaResolver.expectedURLMap())
         let key = "export:" + digest
+        let exportedFrames = snapshot.totalFrames
+        let exportedFPS = max(1, snapshot.fps)
         let openErrors = run.reviewFindings.filter { $0.severity == .error }
         guard openErrors.isEmpty else {
             let reason = "Delivery refused by open review findings: "
@@ -388,16 +390,6 @@ final class ProductionCoordinator {
             run.blockedReason = nil
         }
         if let jobID = run.exportJobId, let uuid = UUID(uuidString: jobID) {
-            guard run.exportedTimelineRevision == digest else {
-                // The submitted export was rendered from a different revision.
-                let reason = "The submitted export was rendered from an earlier revision; export again to deliver the reviewed cut."
-                try updateRun(planId: planId) { run in
-                    run.phase = .blocked
-                    run.blockedReason = reason
-                    run.record(.init(kind: .export, state: .failed, key: key, inputDigest: digest, error: reason))
-                }
-                return
-            }
             guard let job = editor.exportQueue.jobs(for: editor.exportQueueProjectID)
                 .first(where: { $0.id == uuid }) else {
                 // The submitted job is gone. Resubmitting would risk a second
@@ -410,7 +402,18 @@ final class ProductionCoordinator {
                 }
                 return
             }
-            try await finalizeExport(planId: planId, job: job, digest: digest, key: key)
+            guard run.exportedTimelineRevision == nil || run.exportedTimelineRevision == digest else {
+                // The submitted export was rendered from a different revision.
+                let reason = "The submitted export was rendered from an earlier revision; export again to deliver the reviewed cut."
+                try updateRun(planId: planId) { run in
+                    run.phase = .blocked
+                    run.blockedReason = reason
+                    run.record(.init(kind: .export, state: .failed, key: key, inputDigest: digest, error: reason))
+                }
+                return
+            }
+            try await finalizeExport(planId: planId, job: job, digest: digest, key: key,
+                                     exportedFrames: exportedFrames, exportedFPS: exportedFPS)
             return
         }
         let outputURL = try Self.deliveryURL(runId: run.id)
@@ -424,21 +427,25 @@ final class ProductionCoordinator {
             run.exportJobId = submission.jobID.uuidString
             run.exportPath = outputURL.path
             run.exportedTimelineRevision = digest
+            run.exportedFrames = exportedFrames
             run.record(.init(kind: .export, state: .running, key: key, inputDigest: digest))
         }
         let job = try await editor.exportQueue.waitForCompletion(submission.jobID)
-        try await finalizeExport(planId: planId, job: job, digest: digest, key: key)
+        try await finalizeExport(planId: planId, job: job, digest: digest, key: key,
+                                 exportedFrames: exportedFrames, exportedFPS: exportedFPS)
     }
 
-    private func finalizeExport(planId: String, job: ExportJob, digest: String, key: String) async throws {
+    private func finalizeExport(
+        planId: String, job: ExportJob, digest: String, key: String, exportedFrames: Int, exportedFPS: Int
+    ) async throws {
         switch job.status {
         case .completed:
             let delivered = FileManager.default.fileExists(atPath: job.outputURL.path)
             // The certificate binds to the delivered bytes: the exported file must
             // exist and cover exactly the reviewed runtime.
-            let expectedSeconds = Double(editor.timeline.totalFrames) / Double(max(1, editor.timeline.fps))
+            let expectedSeconds = Double(exportedFrames) / Double(exportedFPS)
             let exportedSeconds = delivered ? await Self.exportedDuration(job.outputURL) : nil
-            let durationMatches = exportedSeconds.map { abs($0 - expectedSeconds) <= 1.0 / Double(max(1, editor.timeline.fps)) } ?? false
+            let durationMatches = exportedSeconds.map { abs($0 - expectedSeconds) <= 1.0 / Double(exportedFPS) } ?? false
             let certified = delivered && durationMatches
             var errors: [String] = []
             if !delivered { errors.append("The exported file is missing.") }
@@ -449,13 +456,14 @@ final class ProductionCoordinator {
                 runId: job.id.uuidString, phase: "completed", approvedRevision: nil, reviewedSceneIds: [],
                 comment: "", deliveryVerified: certified, exportJobId: job.id.uuidString,
                 exportPath: job.outputURL.path, errors: errors,
-                completedAt: Date(), verifiedTimelineRevision: digest, exportedTimelineRevision: digest)            try updateRun(planId: planId) { run in
+                completedAt: Date(), verifiedTimelineRevision: digest, exportedTimelineRevision: digest)
+            try updateRun(planId: planId) { run in
                 run.terminalReceipt = receipt
-                run.phase = delivered ? .completed : .stale
-                if !delivered { run.approvedRevision = nil }
-                run.record(.init(kind: .export, state: delivered ? .completed : .failed, key: key,
+                run.phase = certified ? .completed : .stale
+                if !certified { run.approvedRevision = nil }
+                run.record(.init(kind: .export, state: certified ? .completed : .failed, key: key,
                                  inputDigest: digest, outputDigest: digest,
-                                 error: delivered ? nil : "The exported file is missing.", completedAt: Date()))
+                                 error: certified ? nil : errors.joined(separator: " "), completedAt: Date()))
             }
         case .canceled:
             try updateRun(planId: planId) { run in
@@ -552,6 +560,13 @@ final class ProductionCoordinator {
         change(&run)
         try run.validate()
         try editor.commitProductionRunMetadata(run, plan: plan)
+    }
+
+    /// Duration of the delivered file, read off the encoded output.
+    @concurrent
+    private static func exportedDuration(_ url: URL) async -> Double? {
+        let asset = AVURLAsset(url: url)
+        return try? await asset.load(.duration).seconds
     }
 
     private static func deliveryURL(runId: String) throws -> URL {

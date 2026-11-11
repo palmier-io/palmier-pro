@@ -150,6 +150,9 @@ struct ProductionRun: Codable, Sendable, Equatable {
     var verifiedTimelineRevision: String?
     /// Digest of the timeline revision the delivered export was rendered from.
     var exportedTimelineRevision: String?
+    /// Frames the delivered export was rendered from. Delivery is certified
+    /// against these frames, not against whatever the timeline holds later.
+    var exportedFrames: Int?
     /// Dependency that stopped the run, if any. The run resumes from this point.
     var blockedReason: String?
     var steps: [Step] = []
@@ -227,6 +230,9 @@ struct ProductionRun: Codable, Sendable, Equatable {
         }
         if let exportedTimelineRevision, !ProductionRun.validRevision(exportedTimelineRevision) {
             throw EditPlanValidationError.invalidReference("exportedTimelineRevision must be a revision digest.")
+        }
+        if let exportedFrames, exportedFrames < 0 {
+            throw EditPlanValidationError.invalidReference("exportedFrames cannot be negative.")
         }
         guard verifiedTimelineRevision == nil || !reviewFindings.contains(where: { $0.severity == .error }) else {
             throw EditPlanValidationError.invalidReference("Unresolved error findings prevent verification.")

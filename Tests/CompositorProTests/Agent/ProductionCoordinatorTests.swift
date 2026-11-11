@@ -186,4 +186,23 @@ struct ProductionCoordinatorTests {
         #expect(run.blockedReason?.contains("no longer available") == true)
         #expect(run.terminalReceipt == nil)
     }
+
+    @Test func deliveryIsCertifiedAgainstTheExportedFile() async throws {
+        let plan = createPlan()
+        addTitleClip(text: "Certified delivery")
+        _ = seedRun(planId: plan.id)
+        try markAssembled(planId: plan.id)
+        try await coordinator.resume(planId: plan.id)
+        let run = try #require(harness.editor.editPlan(id: plan.id)?.productionRun)
+        let receipt = try #require(run.terminalReceipt)
+        #expect(receipt.deliveryVerified)
+        #expect(receipt.verifiedTimelineRevision == receipt.exportedTimelineRevision)
+        #expect(receipt.verifiedTimelineRevision == run.verifiedTimelineRevision)
+        let path = try #require(receipt.exportPath)
+        #expect(FileManager.default.fileExists(atPath: path))
+        #expect(run.phase == .completed)
+        // The delivered file is the reviewed revision, not a different cut.
+        #expect(run.exportedTimelineRevision == run.verifiedTimelineRevision)
+        for job in harness.exportQueue.jobs { await TimelineRenderer.removeTemporaryRender(job.outputURL) }
+    }
 }
