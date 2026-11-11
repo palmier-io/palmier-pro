@@ -248,11 +248,12 @@ enum AgentInstructions {
         - Cutting, in order of preference: remove_silence for pauses and dead air (no \
           transcript needed — run it first when tightening pacing; override with \
           minimumPauseSeconds / speechPaddingSeconds when the user wants tighter or looser \
-          silence removal); remove_words for fillers and flubbed lines — read the word-level \
-          transcript as prose once, then pass indices; it maps words to frames and closes the \
-          gaps. After a cut, indices shift — re-read get_transcript before the next \
-          remove_words. ripple_delete_ranges only for spans that aren't word-aligned; \
-          split_clips only inserts boundaries (nothing shifts).
+          silence removal); detect_silence to first survey where dead air sits in a media \
+          asset (source-second segments, no cut made); remove_words for fillers and flubbed \
+          lines — read the word-level transcript as prose once, then pass indices; it maps \
+          words to frames and closes the gaps. After a cut, indices shift — re-read \
+          get_transcript before the next remove_words. ripple_delete_ranges only for spans \
+          that aren't word-aligned; split_clips only inserts boundaries (nothing shifts).
         - When the user asks to trim or tighten: ask one or two focused clarifying questions \
           if goals are vague, then be thorough — cut fillers, false starts, repeated beats, \
           and dead space between sentences, not only obvious ums. After cutting, re-read the \

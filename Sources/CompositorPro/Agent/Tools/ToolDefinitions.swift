@@ -78,6 +78,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case getTranscript = "get_transcript"
     case removeWords = "remove_words"
     case removeSilence = "remove_silence"
+    case detectSilence = "detect_silence"
     case detectBeats = "detect_beats"
 
     // Text & captions
@@ -1500,6 +1501,37 @@ enum ToolDefinitions {
                     ],
                 ],
                 required: []
+            )
+        ),
+        AgentTool(
+            name: .detectSilence,
+            description: "Detect silent (speech-free, low-level) segments in a media asset's audio, on-device. Returns the silent segments in source-media seconds so an editor or agent can decide whether to cut them — no transcript needed. Results are cached per asset, so repeat calls with the same settings don't re-decode.\n\nUse to find dead air in an interview or voiceover before tightening pacing: detect_silence only reports where silence sits; remove_silence actually ripple-closes it on the timeline.\n\nPass mediaRef from get_media. Omit the optional thresholds to use defaults (-35 dBFS, 0.5 s minimum silence, 0.08 s edge padding).",
+            inputSchema: objectSchema(
+                properties: [
+                    "mediaRef": [
+                        "type": "string",
+                        "description": "Audio or video asset id from get_media. The asset must be on disk and have an audio track.",
+                    ],
+                    "silenceThresholdDb": [
+                        "type": "number",
+                        "minimum": SilenceDetectionSettings.thresholdDbRange.lowerBound,
+                        "maximum": SilenceDetectionSettings.thresholdDbRange.upperBound,
+                        "description": "Audio level below this (dBFS) counts as silence. Lower = more sensitive. Default -35.",
+                    ],
+                    "minSilenceDuration": [
+                        "type": "number",
+                        "minimum": SilenceDetectionSettings.minSilenceDurationRange.lowerBound,
+                        "maximum": SilenceDetectionSettings.minSilenceDurationRange.upperBound,
+                        "description": "Segments shorter than this (seconds) are discarded. Default 0.5.",
+                    ],
+                    "paddingSeconds": [
+                        "type": "number",
+                        "minimum": SilenceDetectionSettings.paddingSecondsRange.lowerBound,
+                        "maximum": SilenceDetectionSettings.paddingSecondsRange.upperBound,
+                        "description": "Silence kept on each side of a detected segment (seconds), clamped to the file start/end. Default 0.08.",
+                    ],
+                ],
+                required: ["mediaRef"]
             )
         ),
         AgentTool(
