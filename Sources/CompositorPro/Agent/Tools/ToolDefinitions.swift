@@ -117,9 +117,11 @@ enum ToolName: String, CaseIterable, Sendable {
     case readSkill = "read_skill"
     case manageSkills = "manage_skills"
 
-    // HyperFrames catalog
+    // HyperFrames catalog & design specs
     case searchHyperframesCatalog = "search_hyperframes_catalog"
     case insertHyperframesBlock = "insert_hyperframes_block"
+    case applyDesignSpec = "apply_design_spec"
+    case exportDesignSpec = "export_design_spec"
 }
 
 struct AgentTool: @unchecked Sendable {
@@ -2036,6 +2038,29 @@ enum ToolDefinitions {
                     "severity": ["type": "string", "enum": ["low", "medium", "high"], "description": "Optional. How much this blocked the user."],
                 ],
                 required: ["category", "summary"]
+            )
+        ),
+        AgentTool(
+            name: .applyDesignSpec,
+            description: "Parses and applies a video design specification (frame.md or design.md brand styling) to the current project. Extracts color palettes (background, surface, text, primary, accent, border), typography rules (display and body font families, font sizes), canvas aspect ratio/resolution (e.g. 16:9, 9:16, 1:1, or 1920x1080), pacing constraints, and color grading presets. Atomically updates timeline settings, restyles existing text and caption clips, applies color grade looks, and configures persistent filmmaking style preferences.",
+            inputSchema: objectSchema(
+                properties: [
+                    "specMarkdown": ["type": "string", "description": "Markdown or YAML frontmatter text conforming to frame.md or design.md."],
+                    "filePath": ["type": "string", "description": "Optional filesystem path to a frame.md or design.md file on disk. Read asynchronously."],
+                    "updateTimeline": ["type": "boolean", "description": "Optional. Default true. Updates timeline aspect ratio and dimensions to match the spec."],
+                    "restyleClips": ["type": "boolean", "description": "Optional. Default true. Restyles existing text and caption clips with brand fonts and colors."],
+                    "applyGrade": ["type": "boolean", "description": "Optional. Default true. Applies specified grade preset or color knobs to visual clips."],
+                    "savePreferences": ["type": "boolean", "description": "Optional. Default true. Persists pacing and caption templates into filmmaking style preferences."],
+                ]
+            )
+        ),
+        AgentTool(
+            name: .exportDesignSpec,
+            description: "Exports the active project's canvas geometry, typography, palette, and style preferences into a standard frame.md / design.md document.",
+            inputSchema: objectSchema(
+                properties: [
+                    "filePath": ["type": "string", "description": "Optional destination path to write frame.md on disk asynchronously."],
+                ]
             )
         ),
     ]

@@ -379,6 +379,34 @@ swift test
 
 UI/creative quality is accepted only after human verification.
 
+### Manual acceptance plan for the implemented P1 workflow
+
+These scenarios need a human; automated coverage cannot establish them.
+
+1. **Production continuation (one request, no "continue" prompt):**
+   - Setup: a temporary project with one narrated shot, one music bed, and one ambience
+     loop, plus a second shot whose footage is still importing.
+   - Steps: approve the storyboard revision in the Storyboard panel; press **Produce**
+     (or call `produce_plan`); let the import finish during the run.
+   - Expect: the run reports *Waiting for media* with the missing reference, continues
+     automatically when the media lands, mixes the declared roles, renders and inspects
+     the draft, and exports exactly the revision it reviewed. `production_status` shows
+     the phase, completed steps, and the exported path.
+2. **Delivery honesty:** after review, change one clip's timing, then resume.
+   - Expect: delivery is refused with *the timeline changed after review*, no second
+     export is queued, and the run names the cause.
+3. **Cancellation and close:** start a run, cancel it from the Storyboard panel, then
+   close and reopen the project.
+   - Expect: no further automatic edits, the persisted run shows *canceled*, and
+     reopening reports the run state instead of silently restarting it.
+4. **Audio acceptance (human ears):** audition the delivered mix on headphones and
+   speakers. Expect narration intelligible over the bed, music recovering between
+   phrases, continuous ambience with no seam, and natural breaths.
+   - The measured voice-to-bed margin in the receipt is a screen, not proof.
+5. **Mix review (human ears):** re-mix with `mix_audio` at a different target and
+   audition. Expect the loudness and true-peak readouts to match what is heard, and
+   the run to refuse a mix that misses the plan's delivery target.
+
 ## Investigation verification record
 
 - Read source paths for chat routing, provider payloads, tools/MCP, concurrent plans/retrieval, stock providers/import, audio analysis/processing, composition, generation recovery, undo, export, and persistence.

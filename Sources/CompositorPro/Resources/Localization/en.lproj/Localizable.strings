@@ -345,6 +345,7 @@
 "Delete skill?" = "Delete skill?";
 "Delete “%@”" = "Delete “%@”";
 "Delete “%@”?" = "Delete “%@”?";
+"Delivered: %@" = "Delivered: %@";
 "Delivering" = "Delivering";
 "Delivering for a platform" = "Delivering for a platform";
 "Denoise" = "Denoise";
@@ -904,8 +905,10 @@
 "Preview supports still images, opaque video, and measured narration. Render other visual types before previewing." = "Preview supports still images, opaque video, and measured narration. Render other visual types before previewing.";
 "Privacy & Diagnostics" = "Privacy & Diagnostics";
 "Pro plan" = "Pro plan";
+"Produce" = "Produce";
 "Product demos" = "Product demos";
 "Production Blockers (%lld)" = "Production Blockers (%lld)";
+"Production Run" = "Production Run";
 "Project" = "Project";
 "Project Activity" = "Project Activity";
 "Project Settings" = "Project Settings";

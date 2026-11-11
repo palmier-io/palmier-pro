@@ -9,7 +9,7 @@ Integrate HyperFrames' catalog, CLI, and agent skills into Compositor Pro to exp
   - Parse `STORYBOARD.md` (beats, timecodes, voiceover, visual concept, camera/motion, SFX) into native `EditPlan` with shots, script beats, scene narration links, and sound cues.
   - Export active `EditPlan` / storyboard into standard `STORYBOARD.md` Markdown.
   - Wire into `plan_edit` via `import_storyboard_markdown` and `export_storyboard_markdown`.
-- [ ] **HF-02**: `frame.md` / `design.md` Design Spec & Brand Styling Parser
+- [x] **HF-02**: `frame.md` / `design.md` Design Spec & Brand Styling Parser
   - Parse color palettes (hex values), typography rules, fonts, and aspect ratio into project styling presets.
   - Apply design specs to caption templates, text styles, and color grading.
 - [ ] **HF-03**: `/hyperframes` Motion Playbook & Agent Skill

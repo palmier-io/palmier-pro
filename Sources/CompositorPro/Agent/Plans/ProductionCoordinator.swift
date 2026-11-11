@@ -117,6 +117,11 @@ final class ProductionCoordinator {
         }
     }
 
+    /// Awaits the automatic resumes started by a media event.
+    func awaitPendingResumes() async {
+        for task in running.values { await task.value }
+    }
+
     // MARK: - Steps
 
     private func execute(planId: String) async throws {
