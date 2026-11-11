@@ -117,6 +117,9 @@ extension ToolExecutor {
         let preset = mode == .video
             ? platform.exportDelivery(canvas: CGSize(width: timeline.width, height: timeline.height))
             : nil
+        let profile = mode == .video
+            ? platform.exportProfile(for: CGSize(width: timeline.width, height: timeline.height))
+            : nil
         var deliveryNotes: [String] = []
         if let preset {
             if input.codec == nil, input.resolution == nil {
@@ -127,6 +130,23 @@ extension ToolExecutor {
             }
             if let warning = preset.orientationWarning {
                 deliveryNotes.append(warning)
+            }
+        }
+        if let profile {
+            deliveryNotes.append(
+                "encode profile \(profile.name): \(profile.audioCodec), CRF \(profile.crf), "
+                    + "\(profile.fps) fps, \(profile.pixelFormat), captions \(profile.captionFormat)."
+            )
+            if let maxDuration = profile.maxDurationSeconds {
+                deliveryNotes.append(
+                    "\(platform.rawValue) imposes a max duration of \(Int(maxDuration))s; "
+                    + "this timeline is \(Int(timeline.totalFrames / max(1, timeline.fps)))s."
+                )
+            }
+            if let maxFileSize = profile.maxFileSizeMB {
+                deliveryNotes.append(
+                    "\(platform.rawValue) imposes a max file size of \(Int(maxFileSize)) MB."
+                )
             }
         }
         let format = try mode == .video

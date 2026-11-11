@@ -181,4 +181,163 @@ extension DeliveryPlatform {
             orientationWarning: warning
         )
     }
+
+    /// The encode profile for this platform: the knobs AVFoundation's preset surface does not
+    /// control (CRF, audio codec, frame rate, pixel format), plus platform-imposed limits
+    /// (max file size, max duration) and the caption format.
+    ///
+    /// This is additive to `exportDelivery(canvas:)` — that method owns codec/resolution/orientation,
+    /// this owns everything else. Values follow the same platform conventions as OpenMontage's
+    /// `lib/media_profiles.py`, reimplemented here; no OpenMontage source is copied.
+    func exportProfile(for canvas: CGSize) -> ExportProfile {
+        DeliveryPlatform.allProfiles[rawValue] ?? .genericHD
+    }
+}
+
+/// Encode profile for a delivery platform: the knobs AVFoundation's preset surface does not
+/// control, plus platform-imposed limits and the caption format.
+///
+/// `crf` is the Constant Rate Factor (0–51, lower = higher quality). It is guidance surfaced
+/// in the export receipt, not a knob AVFoundation's SDR export session exposes directly.
+struct ExportProfile: Sendable, Equatable {
+    /// Human-readable name, mirroring OpenMontage's media profile names.
+    var name: String
+    /// Target frame rate in fps.
+    var fps: Int
+    /// Audio codec.
+    var audioCodec: String
+    /// Constant Rate Factor, 0–51 (lower = higher quality).
+    var crf: Int
+    /// Pixel format.
+    var pixelFormat: String
+    /// Maximum file size in MB, if the platform imposes one.
+    var maxFileSizeMB: Double?
+    /// Maximum duration in seconds, if the platform imposes one.
+    var maxDurationSeconds: Double?
+    /// Caption/subtitle format.
+    var captionFormat: String
+    /// One-line description of the profile's intent.
+    var notes: String
+}
+
+extension ExportProfile {
+    /// YouTube standard HD upload — long-form, no duration cap.
+    static let youtubeHD = ExportProfile(
+        name: "youtube_landscape",
+        fps: 30,
+        audioCodec: "aac",
+        crf: 18,
+        pixelFormat: "yuv420p",
+        captionFormat: "srt",
+        notes: "YouTube standard HD upload"
+    )
+
+    /// YouTube 4K upload.
+    static let youtube4K = ExportProfile(
+        name: "youtube_4k",
+        fps: 30,
+        audioCodec: "aac",
+        crf: 18,
+        pixelFormat: "yuv420p",
+        captionFormat: "srt",
+        notes: "YouTube 4K upload"
+    )
+
+    /// YouTube Shorts — vertical, max 60s.
+    static let youtubeShorts = ExportProfile(
+        name: "youtube_shorts",
+        fps: 30,
+        audioCodec: "aac",
+        crf: 20,
+        pixelFormat: "yuv420p",
+        maxDurationSeconds: 60,
+        captionFormat: "srt",
+        notes: "YouTube Shorts (max 60s, vertical)"
+    )
+
+    /// Instagram Reels — vertical, max 90s, max 250 MB.
+    static let instagramReels = ExportProfile(
+        name: "instagram_reels",
+        fps: 30,
+        audioCodec: "aac",
+        crf: 20,
+        pixelFormat: "yuv420p",
+        maxFileSizeMB: 250,
+        maxDurationSeconds: 90,
+        captionFormat: "srt",
+        notes: "Instagram Reels (max 90s, vertical)"
+    )
+
+    /// Instagram feed — square, max 60s, max 250 MB.
+    static let instagramFeed = ExportProfile(
+        name: "instagram_feed",
+        fps: 30,
+        audioCodec: "aac",
+        crf: 20,
+        pixelFormat: "yuv420p",
+        maxFileSizeMB: 250,
+        maxDurationSeconds: 60,
+        captionFormat: "srt",
+        notes: "Instagram feed video (square)"
+    )
+
+    /// TikTok — vertical, max 10 min, max 287 MB.
+    static let tiktok = ExportProfile(
+        name: "tiktok",
+        fps: 30,
+        audioCodec: "aac",
+        crf: 20,
+        pixelFormat: "yuv420p",
+        maxFileSizeMB: 287,
+        maxDurationSeconds: 600,
+        captionFormat: "srt",
+        notes: "TikTok (max 10min, vertical preferred)"
+    )
+
+    /// LinkedIn — landscape, max 10 min, max 5 GB.
+    static let linkedin = ExportProfile(
+        name: "linkedin",
+        fps: 30,
+        audioCodec: "aac",
+        crf: 20,
+        pixelFormat: "yuv420p",
+        maxFileSizeMB: 5120,
+        maxDurationSeconds: 600,
+        captionFormat: "srt",
+        notes: "LinkedIn video (landscape preferred, max 10min)"
+    )
+
+    /// Cinematic ultra-wide — 21:9, 24 fps, high quality.
+    static let cinematic = ExportProfile(
+        name: "cinematic",
+        fps: 24,
+        audioCodec: "aac",
+        crf: 16,
+        pixelFormat: "yuv420p",
+        captionFormat: "srt",
+        notes: "Cinematic ultra-wide format"
+    )
+
+    /// Generic HD output — no platform-specific constraints.
+    static let genericHD = ExportProfile(
+        name: "generic_hd",
+        fps: 30,
+        audioCodec: "aac",
+        crf: 23,
+        pixelFormat: "yuv420p",
+        captionFormat: "srt",
+        notes: "Generic HD output (no platform-specific constraints)"
+    )
+}
+
+extension DeliveryPlatform {
+    /// All encode profiles, keyed by platform raw value. CompositorPro's four platforms each map
+    /// to one profile; the remaining OpenMontage profiles (YouTube 4K, Instagram Feed, LinkedIn,
+    /// Cinematic) are available for future platform cases.
+    static let allProfiles: [String: ExportProfile] = [
+        DeliveryPlatform.generic.rawValue: .genericHD,
+        DeliveryPlatform.youtube.rawValue: .youtubeHD,
+        DeliveryPlatform.tiktokShorts.rawValue: .tiktok,
+        DeliveryPlatform.instagramReels.rawValue: .instagramReels,
+    ]
 }

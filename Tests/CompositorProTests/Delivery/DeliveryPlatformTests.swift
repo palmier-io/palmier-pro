@@ -115,4 +115,76 @@ struct DeliveryPlatformTests {
                 == CGFloat(DeliveryPlatform.generic.defaultCaptionPlacement().centerY)
         )
     }
+
+    // MARK: - Export profile
+
+    @Test("Every platform resolves to an encode profile")
+    func everyPlatformHasProfile() {
+        let canvas = CGSize(width: 1920, height: 1080)
+        for platform in DeliveryPlatform.allCases {
+            let profile = platform.exportProfile(for: canvas)
+            #expect(!profile.name.isEmpty)
+            #expect(profile.fps > 0)
+            #expect(!profile.audioCodec.isEmpty)
+            #expect((1...51).contains(profile.crf), "\(profile.name) CRF \(profile.crf) out of range")
+            #expect(!profile.pixelFormat.isEmpty)
+            #expect(!profile.captionFormat.isEmpty)
+            #expect(!profile.notes.isEmpty)
+        }
+    }
+
+    @Test("Generic uses the generic HD profile")
+    func genericProfile() {
+        let profile = DeliveryPlatform.generic.exportProfile(for: .zero)
+        #expect(profile == .genericHD)
+        #expect(profile.name == "generic_hd")
+        #expect(profile.crf == 23)
+        #expect(profile.fps == 30)
+        #expect(profile.audioCodec == "aac")
+        #expect(profile.pixelFormat == "yuv420p")
+        #expect(profile.captionFormat == "srt")
+        #expect(profile.maxDurationSeconds == nil)
+        #expect(profile.maxFileSizeMB == nil)
+    }
+
+    @Test("YouTube uses high quality, no duration cap")
+    func youtubeProfile() {
+        let profile = DeliveryPlatform.youtube.exportProfile(for: .zero)
+        #expect(profile.name == "youtube_landscape")
+        #expect(profile.crf == 18)
+        #expect(profile.maxDurationSeconds == nil)
+        #expect(profile.maxFileSizeMB == nil)
+    }
+
+    @Test("TikTok Shorts imposes duration and file-size caps")
+    func tiktokProfile() {
+        let profile = DeliveryPlatform.tiktokShorts.exportProfile(for: .zero)
+        #expect(profile.name == "tiktok")
+        #expect(profile.crf == 20)
+        #expect(profile.maxDurationSeconds == 600)
+        #expect(profile.maxFileSizeMB == 287)
+    }
+
+    @Test("Instagram Reels imposes duration and file-size caps")
+    func instagramReelsProfile() {
+        let profile = DeliveryPlatform.instagramReels.exportProfile(for: .zero)
+        #expect(profile.name == "instagram_reels")
+        #expect(profile.crf == 20)
+        #expect(profile.maxDurationSeconds == 90)
+        #expect(profile.maxFileSizeMB == 250)
+    }
+
+    @Test("Profile lookup is stable across canvases")
+    func profileIndependentOfCanvas() {
+        let landscape = DeliveryPlatform.youtube.exportProfile(for: CGSize(width: 1920, height: 1080))
+        let portrait = DeliveryPlatform.youtube.exportProfile(for: CGSize(width: 1080, height: 1920))
+        #expect(landscape == portrait)
+    }
+
+    @Test("Named profiles are distinct where expected")
+    func namedProfilesDistinct() {
+        #expect(ExportProfile.youtubeHD != ExportProfile.youtubeShorts)
+        #expect(ExportProfile.youtubeHD != ExportProfile.genericHD)
+        #expect(ExportProfile.tiktok != ExportProfile.instagramReels)
+    }
 }
