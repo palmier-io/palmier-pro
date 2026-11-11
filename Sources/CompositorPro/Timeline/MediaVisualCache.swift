@@ -25,6 +25,7 @@ final class MediaVisualCache {
     }
 
     let beats = BeatStore()
+    let silenceStore = SilenceStore()
 
     nonisolated func beatAnalysis(for mediaRef: String) -> BeatAnalysis? {
         beats.analysis(for: mediaRef)

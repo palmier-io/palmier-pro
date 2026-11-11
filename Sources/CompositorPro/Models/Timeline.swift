@@ -164,6 +164,17 @@ extension Track {
     }
 }
 
+/// How a clip composites in the overall edit. Mirrors OpenMontage's cut `layer`
+/// (primary / overlay / background). Primary clips form the main sequence; overlay
+/// clips sit above (picture-in-picture, logos, watermarks); background clips sit
+/// below (plates, backing fields). Render-time behavior is owned by the render
+/// path; this field is editorial metadata validated here.
+enum CompositeLayer: String, Codable, Sendable, CaseIterable {
+    case primary
+    case overlay
+    case background
+}
+
 struct Clip: Codable, Sendable, Equatable, Identifiable {
     var id: String = UUID().uuidString
     var mediaRef: String
@@ -185,6 +196,15 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var crop: Crop = Crop()
     var edgeRounding: Double = 0
     var edgeSoftness: Double = 0
+    /// How this clip composites over the edit: primary (main sequence), overlay
+    /// (picture-in-picture, logo, watermark), or background (plate, backing field).
+    var compositeLayer: CompositeLayer = .primary
+    /// Human-facing editorial reason for this cut (e.g. "hero moment", "cutaway").
+    /// Stored with the project so the reason survives reopen and export receipts.
+    var editorialReason: String?
+    /// Backing color used behind this clip by composition runtimes (e.g. a title
+    /// card or end tag on a solid field). Nil = transparent / source-over.
+    var backgroundColor: TextStyle.RGBA?
     var linkGroupId: String?
     var captionGroupId: String?
     var multicamGroupId: String?
@@ -220,6 +240,7 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         case trimStartFrame, trimEndFrame, speed, volume
         case fadeInFrames, fadeOutFrames, fadeInInterpolation, fadeOutInterpolation
         case opacity, transform, crop, edgeRounding, edgeSoftness
+        case compositeLayer, editorialReason, backgroundColor
         case linkGroupId, captionGroupId, multicamGroupId, textContent, textStyle, textAnimation, wordTimings
         case textFillMode
         case opacityTrack, positionTrack, scaleTrack, rotationTrack, cropTrack, volumeTrack
@@ -626,6 +647,9 @@ extension Clip {
             crop: (try? c.decode(Crop.self, forKey: .crop)) ?? Crop(),
             edgeRounding: normalizedValue(forKey: .edgeRounding),
             edgeSoftness: normalizedValue(forKey: .edgeSoftness),
+            compositeLayer: (try? c.decode(CompositeLayer.self, forKey: .compositeLayer)) ?? .primary,
+            editorialReason: try? c.decode(String.self, forKey: .editorialReason),
+            backgroundColor: try? c.decode(TextStyle.RGBA.self, forKey: .backgroundColor),
             linkGroupId: try? c.decode(String.self, forKey: .linkGroupId),
             captionGroupId: try? c.decode(String.self, forKey: .captionGroupId),
             multicamGroupId: try? c.decode(String.self, forKey: .multicamGroupId),

@@ -11,7 +11,10 @@ enum Fixtures {
         trimStart: Int = 0,
         trimEnd: Int = 0,
         speed: Double = 1.0,
-        volume: Double = 1.0
+        volume: Double = 1.0,
+        compositeLayer: CompositeLayer = .primary,
+        editorialReason: String? = nil,
+        backgroundColor: TextStyle.RGBA? = nil
     ) -> Clip {
         var c = Clip(mediaRef: mediaRef, startFrame: start, durationFrames: duration)
         c.id = id
@@ -21,6 +24,9 @@ enum Fixtures {
         c.trimEndFrame = trimEnd
         c.speed = speed
         c.volume = volume
+        c.compositeLayer = compositeLayer
+        c.editorialReason = editorialReason
+        c.backgroundColor = backgroundColor
         return c
     }
 
