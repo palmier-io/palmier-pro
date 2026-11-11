@@ -21,10 +21,10 @@ Integrate HyperFrames' catalog, CLI, and agent skills into Compositor Pro to exp
 ## Phasing
 
 ### Phase 1 (Weeks 0‑4) – Quick Wins
-- [ ] HyperFrames catalog wrapper (Swift package)
-- [ ] CLI (`compositor-pro init`, `preview`, `render`)
-- [ ] WebView‑based live preview
-- [ ] `/hyperframes` agent skill
+- [x] HyperFrames catalog wrapper (Swift package)
+- [x] CLI (`compositor-pro init`, `preview`, `render`)
+- [x] WebView‑based live preview
+- [x] `/hyperframes` agent skill
 
 ### Phase 2 (Weeks 4‑12) – Mid‑term
 - [x] Adapter import tool (GSAP/Lottie → keyframes)
