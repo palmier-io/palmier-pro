@@ -33,10 +33,10 @@ Integrate HyperFrames' catalog, CLI, and agent skills into Compositor Pro to exp
 - [x] `frame.md` design spec parser / wizard
 
 ### Phase 3 (Weeks 12‑24) – Advanced
-- [ ] Hybrid authoring (native + HTML composition)
-- [ ] Extended catalog & community contribution
-- [ ] Cross‑platform (Windows/Linux) support
-- [ ] Performance optimizations
+- [x] Hybrid authoring (native + HTML composition)
+- [x] Extended catalog & community contribution
+- [x] Cross‑platform (Windows/Linux) support
+- [x] Performance optimizations
 
 ## Key Tasks
 
