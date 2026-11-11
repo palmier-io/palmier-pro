@@ -30,7 +30,7 @@ extension ToolExecutor {
                               durationFrames: input.durationFrames, width: input.width, height: input.height),
                 defaultWidth: editor.timeline.width, defaultHeight: editor.timeline.height)
         } catch let error as MapSceneError {
-            throw ToolError("build_map_scene: \(error.localizedDescription ?? error.errorDescription ?? "invalid spec")")
+            throw ToolError("build_map_scene: \(error.localizedDescription)")
         }
 
         let addToTimeline = input.addToTimeline ?? false
