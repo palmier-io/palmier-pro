@@ -96,12 +96,11 @@ enum XMLExporter {
         guard fps > 0 else { return "00:00:00:00" }
         var f = frame
         if dropFrame {
-            let drop = Int((Double(fps) * 0.066666).rounded())
-            // Drop-frame ten-minute blocks contain nine shortened minutes.
-            let perMinute = fps * 60 - drop
-            let per10 = perMinute * 10 + drop
-            let d = f / per10, m = f % per10
-            f += drop * 9 * d + (m > drop ? drop * ((m - drop) / perMinute) : 0)
+            let drop = Int((Double(fps) * 0.066666).rounded())   // 2 @ 30, 4 @ 60
+            // Drop-frame partitions the real (post-drop) count: 17982 per 10 min, 1798 per min at 30.
+            let per10Min = fps * 600 - drop * 9, perMin = fps * 60 - drop
+            let d = f / per10Min, m = f % per10Min
+            f += drop * 9 * d + (m > drop ? drop * ((m - drop) / perMin) : 0)
         }
         let sep = dropFrame ? ";" : ":"
         let ff = f % fps, ss = (f / fps) % 60, mm = (f / (fps * 60)) % 60, hh = f / (fps * 3600)
