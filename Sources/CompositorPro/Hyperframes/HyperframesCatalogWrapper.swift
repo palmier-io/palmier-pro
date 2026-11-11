@@ -101,6 +101,73 @@ struct HyperframesBlockSpec: Codable, Sendable, Equatable, Identifiable {
 /// Catalog package wrapper for reading, inspecting, and bundling HyperFrames blocks.
 enum HyperframesCatalogWrapper {
 
+    /// Builtin standard blocks if no external catalog is configured.
+    static var standardBlocks: [HyperframesBlock] {
+        [
+            HyperframesBlock(
+                id: "kinetic-title-reveal",
+                name: "Kinetic Title Reveal",
+                category: "Titles",
+                tags: ["kinetic", "title", "intro", "modern"],
+                description: "Bold animated title reveal with smooth ease-out typography.",
+                path: "blocks/kinetic-title-reveal/block.json",
+                defaultDurationFrames: 90
+            ),
+            HyperframesBlock(
+                id: "split-feature-showcase",
+                name: "Split Feature Showcase",
+                category: "Showcase",
+                tags: ["split", "product", "features"],
+                description: "Dual-column presentation with staggered text and accent highlights.",
+                path: "blocks/split-feature-showcase/block.json",
+                defaultDurationFrames: 150
+            ),
+            HyperframesBlock(
+                id: "stats-counter-banner",
+                name: "Stats Counter Banner",
+                category: "Data",
+                tags: ["stats", "counter", "banner"],
+                description: "Animated number ticker and stat cards.",
+                path: "blocks/stats-counter-banner/block.json",
+                defaultDurationFrames: 120
+            ),
+            HyperframesBlock(
+                id: "badge-pop",
+                name: "Badge Pop",
+                category: "Badges",
+                tags: ["badge", "pop", "overlay"],
+                description: "Playful bouncy badge overlay for callouts and awards.",
+                path: "blocks/badge-pop/block.json",
+                defaultDurationFrames: 60
+            )
+        ]
+    }
+
+    /// Loads blocks from the runtime catalog, fallback to standard blocks.
+    static func loadCatalog() -> [HyperframesBlock] {
+        standardBlocks
+    }
+
+    /// Inspects a block specification by ID, returning a spec if found.
+    static func inspectBlock(id: String) -> HyperframesBlockSpec? {
+        guard let block = loadCatalog().first(where: { $0.id == id }) else { return nil }
+        return HyperframesBlockSpec(
+            id: block.id,
+            name: block.name,
+            category: block.category,
+            tags: block.tags,
+            description: block.description,
+            path: block.path,
+            assets: block.assets,
+            preview: block.preview,
+            defaultDurationFrames: block.defaultDurationFrames,
+            parameters: [
+                HyperframesParameter(id: "title", name: "title", type: .text, defaultValue: block.name, description: "Main headline text"),
+                HyperframesParameter(id: "subtitle", name: "subtitle", type: .text, defaultValue: block.description, description: "Secondary descriptive text")
+            ]
+        )
+    }
+
     /// Loads blocks from a catalog root directory containing `catalog.json`.
     static func loadCatalog(from rootURL: URL) async throws -> [HyperframesBlock] {
         let catalogURL = rootURL.appendingPathComponent("catalog.json")

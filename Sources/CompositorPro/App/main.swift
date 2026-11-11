@@ -1,6 +1,11 @@
 import AppKit
 
 Log.bootstrap()
+
+if CLIHandler.isCLIInvocation(CommandLine.arguments) {
+    let exitCode = await CLIHandler.run(CommandLine.arguments)
+    exit(Int32(exitCode))
+}
 Telemetry.start()
 Analytics.start()
 Analytics.capture(.appOpened)
