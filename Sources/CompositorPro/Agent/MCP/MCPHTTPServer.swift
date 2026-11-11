@@ -1,6 +1,7 @@
 import Foundation
 import MCP
 import Network
+import os
 
 struct MCPServerInstance: Sendable {
     let server: Server
@@ -34,7 +35,7 @@ actor MCPHTTPServer {
         self.makeServer = makeServer
     }
 
-    func start() throws {
+    func start() async throws {
         Log.mcp.info("listener start port=\(self.port)")
         guard let endpointPort = NWEndpoint.Port(rawValue: port) else {
             Log.mcp.fault("invalid port \(self.port)")
@@ -44,15 +45,46 @@ actor MCPHTTPServer {
         params.allowLocalEndpointReuse = true
         // Bind to IPv4 loopback only so the server is never reachable from the LAN.
         params.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: endpointPort)
-        listener = try NWListener(using: params)
+        let listener = try NWListener(using: params)
+        self.listener = listener
 
-        listener?.newConnectionHandler = { [weak self] connection in
+        listener.newConnectionHandler = { [weak self] connection in
             guard let self else { return }
             connection.start(queue: .global(qos: .userInitiated))
             Task { await self.receive(on: connection) }
         }
 
-        listener?.start(queue: .global(qos: .userInitiated))
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            let resumed = OSAllocatedUnfairLock(initialState: false)
+            listener.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    let shouldResume = resumed.withLock { isResumed -> Bool in
+                        if isResumed { return false }
+                        isResumed = true
+                        return true
+                    }
+                    if shouldResume { continuation.resume() }
+                case .failed(let error):
+                    let shouldResume = resumed.withLock { isResumed -> Bool in
+                        if isResumed { return false }
+                        isResumed = true
+                        return true
+                    }
+                    if shouldResume { continuation.resume(throwing: error) }
+                case .cancelled:
+                    let shouldResume = resumed.withLock { isResumed -> Bool in
+                        if isResumed { return false }
+                        isResumed = true
+                        return true
+                    }
+                    if shouldResume { continuation.resume(throwing: CancellationError()) }
+                default:
+                    break
+                }
+            }
+            listener.start(queue: .global(qos: .userInitiated))
+        }
     }
 
     func stop() {

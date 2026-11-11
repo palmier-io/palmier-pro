@@ -31,7 +31,16 @@ struct MCPToolListAnnouncementTests {
             #"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#
                 .utf8)
 
-        let (_, initResponse) = try await URLSession.shared.data(for: initialize)
+        var initResponse: URLResponse?
+        for _ in 0..<10 {
+            do {
+                let (_, response) = try await URLSession.shared.data(for: initialize)
+                initResponse = response
+                break
+            } catch {
+                try await Task.sleep(nanoseconds: 50_000_000)
+            }
+        }
         let sessionID = try #require(
             (initResponse as? HTTPURLResponse)?.value(forHTTPHeaderField: "Mcp-Session-Id"))
 
