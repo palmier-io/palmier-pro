@@ -1,11 +1,15 @@
 import UniformTypeIdentifiers
 import AppKit
 import Foundation
-@testable import CompositorPro
 
 #if canImport(SwiftUI)
 import SwiftUI
 #endif
+
+/// Interactive visual wizard for creating and editing frame.md / design.md brand specifications.
+/// Provides a SwiftUI/AppKit interface for color palettes, typography, canvas geometry, and pacing.
+@MainActor
+final class DesignSpecWizard: ObservableObject {
     @Published var spec: DesignSpec
     @Published var validationErrors: [String] = []
     @Published var isDirty = false
@@ -42,11 +46,9 @@ import SwiftUI
     }
 
     /// Applies the spec to the editor
-    @discardableResult
-    func apply() throws -> EditorViewModel.DesignSpecApplyReceipt {
-        let receipt = try editor.applyDesignSpec(spec)
+    func apply() throws {
+        let _ = try editor.applyDesignSpec(spec)
         isDirty = false
-        return receipt
     }
 
     /// Exports the spec as frame.md markdown
@@ -108,22 +110,22 @@ import SwiftUI
 
     // MARK: - Typography Helpers
 
-    var displayFontBinding: Binding<String> {
+    var displayFontBinding: Binding<String?> {
         Binding(
-            get: { self.spec.typography.displayFont ?? "" },
+            get: { self.spec.typography.displayFont },
             set: { newValue in
-                self.spec.typography.displayFont = newValue.isEmpty ? nil : newValue
+                self.spec.typography.displayFont = newValue
                 self.isDirty = true
                 self.validate()
             }
         )
     }
 
-    var bodyFontBinding: Binding<String> {
+    var bodyFontBinding: Binding<String?> {
         Binding(
-            get: { self.spec.typography.bodyFont ?? "" },
+            get: { self.spec.typography.bodyFont },
             set: { newValue in
-                self.spec.typography.bodyFont = newValue.isEmpty ? nil : newValue
+                self.spec.typography.bodyFont = newValue
                 self.isDirty = true
                 self.validate()
             }
@@ -279,6 +281,7 @@ import SwiftUI
     }
 }
 
+#if canImport(SwiftUI)
 /// SwiftUI view for the Design Spec Wizard
 struct DesignSpecWizardView: View {
     @StateObject var wizard: DesignSpecWizard
@@ -794,18 +797,21 @@ struct PaletteColorRow: View {
 /// Font picker row
 struct FontPickerRow: View {
     let label: String
-    @Binding var fontName: String
+    @Binding var fontName: String?
     let help: String
 
     var body: some View {
         HStack {
             Text(label)
                 .frame(width: 100, alignment: .leading)
-            Picker("", selection: $fontName) {
-                Text("System Default").tag("")
+            Picker("", selection: Binding(
+                get: { fontName ?? "" },
+                set: { fontName = $0.isEmpty ? nil : $0 }
+            )) {
+                Text("System Default").tag(nil as String?)
                 Divider()
                 ForEach(NSFontManager.shared.availableFontFamilies.sorted(), id: \.self) { family in
-                    Text(family).tag(family)
+                    Text(family).tag(family as String?)
                 }
             }
             .frame(maxWidth: 250)
@@ -835,3 +841,4 @@ struct FrameMDDocument: FileDocument {
         FileWrapper(regularFileWithContents: Data(content.utf8))
     }
 }
+#endif

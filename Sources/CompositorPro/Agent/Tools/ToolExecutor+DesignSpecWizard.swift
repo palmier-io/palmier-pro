@@ -1,6 +1,9 @@
 import AppKit
 import Foundation
+
+#if canImport(SwiftUI)
 import SwiftUI
+#endif
 
 extension ToolExecutor {
     private struct OpenDesignSpecWizardInput: DecodableToolArgs {
@@ -19,6 +22,7 @@ extension ToolExecutor {
 
         switch input.action.lowercased() {
         case "open":
+#if canImport(SwiftUI)
             let wizard = DesignSpecWizard(editor: editor)
             await MainActor.run {
                 let window = NSWindow(
@@ -33,6 +37,9 @@ extension ToolExecutor {
                 window.makeKeyAndOrderFront(nil)
             }
             return .ok(Self.jsonString(["status": "ok", "message": "Design Spec Wizard opened"]) ?? "{}")
+#else
+            return .error("Design Spec Wizard UI not available (SwiftUI not imported)")
+#endif
 
         case "apply":
             guard let markdown = input.specMarkdown else {
@@ -68,7 +75,7 @@ extension ToolExecutor {
             }
             let markdown = try String(contentsOf: URL(fileURLWithPath: path), encoding: .utf8)
             let spec = try DesignSpecParser.parse(markdown: markdown)
-            let receipt = try editor.applyDesignSpec(spec)
+            _ = try editor.applyDesignSpec(spec)
             return .ok(Self.jsonString([
                 "status": "ok",
                 "message": "Design spec imported and applied"

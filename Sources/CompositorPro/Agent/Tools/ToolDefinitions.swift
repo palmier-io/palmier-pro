@@ -126,6 +126,9 @@ enum ToolName: String, CaseIterable, Sendable {
 
     // Animation adapter
     case importAnimationAdapter = "import_animation_adapter"
+
+    // Design Spec Wizard
+    case openDesignSpecWizard = "open_design_spec_wizard"
 }
 
 struct AgentTool: @unchecked Sendable {
@@ -2140,6 +2143,18 @@ enum ToolDefinitions {
                 required: ["format", "source"]
             )
         ),
+        AgentTool(
+            name: .openDesignSpecWizard,
+            description: "Opens the frame.md / design.md visual wizard for brand styling, or applies/exports/imports design specs programmatically. The wizard provides interactive controls for color palettes, typography, canvas geometry, pacing, color grading, and caption templates.",
+            inputSchema: objectSchema(
+                properties: [
+                    "action": ["type": "string", "enum": ["open", "apply", "export", "import"], "description": "Action to perform: open (opens UI wizard), apply (applies markdown spec), export (exports current spec as markdown), import (loads and applies from file)."],
+                    "specMarkdown": ["type": "string", "description": "Markdown content for apply action."],
+                    "filePath": ["type": "string", "description": "File path for export/import actions."]
+                ],
+                required: ["action"]
+            )
+        ),
     ]
 
     /// One line per non-color effect for apply_effect's description, generated from the registry.
@@ -2207,6 +2222,7 @@ enum ToolDefinitions {
     static var insertHyperframesBlock: AgentTool { all.first { $0.name == .insertHyperframesBlock }! }
     static var insertAndPlaceHyperframesBlock: AgentTool { all.first { $0.name == .insertAndPlaceHyperframesBlock }! }
     static var importAnimationAdapter: AgentTool { all.first { $0.name == .importAnimationAdapter }! }
+    static var openDesignSpecWizard: AgentTool { all.first { $0.name == .openDesignSpecWizard }! }
 
     /// MCP server only
     static let manageProject = AgentTool(

@@ -73,6 +73,7 @@ let package = Package(
                 .copy("Resources/MCPB/compositor-pro.mcpb"),
                 .copy("Resources/Images"),
                 .copy("Resources/Changelog"),
+                .copy("Resources/Styles"),
                 .process("Resources/Localization"),
                 .copy("Resources/Models"),
             ],

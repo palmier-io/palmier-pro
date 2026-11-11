@@ -27,10 +27,10 @@ Integrate HyperFrames' catalog, CLI, and agent skills into Compositor Pro to exp
 - [ ] `/hyperframes` agent skill
 
 ### Phase 2 (Weeks 4‑12) – Mid‑term
-- [ ] Adapter import tool (GSAP/Lottie → keyframes)
-- [ ] Deterministic rendering test harness (Git LFS baselines)
-- [ ] Optional AWS Lambda remote rendering
-- [ ] `frame.md` design spec parser / wizard
+- [x] Adapter import tool (GSAP/Lottie → keyframes)
+- [x] Deterministic rendering test harness (Git LFS baselines)
+- [x] Optional AWS Lambda remote rendering
+- [x] `frame.md` design spec parser / wizard
 
 ### Phase 3 (Weeks 12‑24) – Advanced
 - [ ] Hybrid authoring (native + HTML composition)
