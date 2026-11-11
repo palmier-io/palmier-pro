@@ -120,6 +120,7 @@ enum ToolName: String, CaseIterable, Sendable {
     // HyperFrames catalog & design specs
     case searchHyperframesCatalog = "search_hyperframes_catalog"
     case insertHyperframesBlock = "insert_hyperframes_block"
+    case insertAndPlaceHyperframesBlock = "insert_and_place_hyperframes_block"
     case applyDesignSpec = "apply_design_spec"
     case exportDesignSpec = "export_design_spec"
 }
@@ -2063,6 +2064,55 @@ enum ToolDefinitions {
                 ]
             )
         ),
+        AgentTool(
+            name: .searchHyperframesCatalog,
+            description: "Searches the local HyperFrames block catalog by query and optional category. Returns stable block ids plus name, category, tags, and preview info. Returns empty when no mirror is configured or no match is found. Read-only — never imports anything.",
+            inputSchema: objectSchema(
+                properties: [
+                    "query": ["type": "string", "description": "Search text matched against name, description, tags, category, and id."],
+                    "category": ["type": "string", "description": "Optional category filter (transitions, overlays, captions, charts, maps, kinetic, effects, animations)."],
+                    "limit": ["type": "integer", "minimum": 1, "maximum": 50, "description": "Optional. Max results returned (default 10)."],
+                ],
+                required: []
+            )
+        ),
+        AgentTool(
+            name: .insertHyperframesBlock,
+            description: "Installs a HyperFrames motion block from the catalog into the project's media library, and optionally places it directly onto the timeline with motion presets, keyframing, and blend modes as one atomic undoable action. Rejects unknown ids or unresolvable assets.",
+            inputSchema: objectSchema(
+                properties: [
+                    "blockId": ["type": "string", "description": "Stable block id from search_hyperframes_catalog."],
+                    "placeOnTimeline": ["type": "boolean", "description": "Optional. Set to true to place directly onto the timeline, false for media library only. Defaults to true when placement arguments are provided."],
+                    "trackIndex": ["type": "integer", "description": "Optional visual track index to place the block on. Defaults to top/free video track."],
+                    "startFrame": ["type": "integer", "description": "Optional timeline start frame. Defaults to current playhead frame."],
+                    "durationFrames": ["type": "integer", "description": "Optional duration in frames. Defaults to block default or source asset duration."],
+                    "motionPreset": ["type": "string", "enum": MotionPreset.allCases.map(\.rawValue), "description": "Optional motion animation preset: punchIn, slideUp, fadeIn, gentlePush."],
+                    "blendMode": ["type": "string", "enum": BlendMode.allCases.map(\.rawValue), "description": "Optional compositing blend mode (e.g. screen, overlay, multiply)."],
+                    "opacity": ["type": "number", "description": "Optional overall opacity (0.0 to 1.0)."],
+                    "scale": ["type": "number", "description": "Optional scale multiplier (e.g. 0.8, 1.2)."],
+                    "folderId": ["type": "string", "description": "Optional target folder id in media library."]
+                ],
+                required: ["blockId"]
+            )
+        ),
+        AgentTool(
+            name: .insertAndPlaceHyperframesBlock,
+            description: "Installs a HyperFrames motion block and places it directly onto a visual track with motivated animation presets, compositing blend mode, and styling as one atomic action.",
+            inputSchema: objectSchema(
+                properties: [
+                    "blockId": ["type": "string", "description": "Stable block id from search_hyperframes_catalog."],
+                    "trackIndex": ["type": "integer", "description": "Optional visual track index to place the block on. Defaults to top/free video track."],
+                    "startFrame": ["type": "integer", "description": "Optional timeline start frame. Defaults to current playhead frame."],
+                    "durationFrames": ["type": "integer", "description": "Optional duration in frames. Defaults to block default or source asset duration."],
+                    "motionPreset": ["type": "string", "enum": MotionPreset.allCases.map(\.rawValue), "description": "Optional motion animation preset: punchIn, slideUp, fadeIn, gentlePush."],
+                    "blendMode": ["type": "string", "enum": BlendMode.allCases.map(\.rawValue), "description": "Optional compositing blend mode (e.g. screen, overlay, multiply)."],
+                    "opacity": ["type": "number", "description": "Optional overall opacity (0.0 to 1.0)."],
+                    "scale": ["type": "number", "description": "Optional scale multiplier (e.g. 0.8, 1.2)."],
+                    "folderId": ["type": "string", "description": "Optional target folder id in media library."]
+                ],
+                required: ["blockId"]
+            )
+        ),
     ]
 
     /// One line per non-color effect for apply_effect's description, generated from the registry.
@@ -2126,31 +2176,9 @@ enum ToolDefinitions {
         )
     )
 
-    /// In-app assistant only
-    static let searchHyperframesCatalog = AgentTool(
-        name: .searchHyperframesCatalog,
-        description: "Searches the local HyperFrames block catalog by query and optional category. Returns stable block ids plus name, category, tags, and preview info. Returns empty when no mirror is configured or no match is found. Read-only — never imports anything.",
-        inputSchema: objectSchema(
-            properties: [
-                "query": ["type": "string", "description": "Search text matched against name, description, tags, category, and id."],
-                "category": ["type": "string", "description": "Optional category filter (transitions, overlays, captions, charts, maps, kinetic, effects, animations)."],
-                "limit": ["type": "integer", "minimum": 1, "maximum": 50, "description": "Optional. Max results returned (default 10)."],
-            ],
-            required: []
-        )
-    )
-
-    /// In-app assistant only
-    static let insertHyperframesBlock = AgentTool(
-        name: .insertHyperframesBlock,
-        description: "Installs a HyperFrames block from the catalog into the project's media library as one undoable action. Pass a stable block id returned by search_hyperframes_catalog. Rejects unknown ids and missing/corrupt assets rather than silently inserting nothing.",
-        inputSchema: objectSchema(
-            properties: [
-                "blockId": ["type": "string", "description": "Stable block id from search_hyperframes_catalog."],
-            ],
-            required: ["blockId"]
-        )
-    )
+    static var searchHyperframesCatalog: AgentTool { all.first { $0.name == .searchHyperframesCatalog }! }
+    static var insertHyperframesBlock: AgentTool { all.first { $0.name == .insertHyperframesBlock }! }
+    static var insertAndPlaceHyperframesBlock: AgentTool { all.first { $0.name == .insertAndPlaceHyperframesBlock }! }
 
     /// MCP server only
     static let manageProject = AgentTool(

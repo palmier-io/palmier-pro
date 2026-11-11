@@ -9,13 +9,6 @@ extension ToolExecutor {
         static let allowedKeys: Set<String> = ["preset", "clipIds", "durationFrames", "overwrite"]
     }
 
-    private enum MotionPreset: String, CaseIterable {
-        case fadeIn
-        case slideUp
-        case punchIn
-        case gentlePush
-    }
-
     func applyMotionPreset(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         let input: ApplyMotionPresetInput = try decodeToolArgs(args, path: "apply_motion_preset")
         guard let rawPreset = input.preset, let preset = MotionPreset(rawValue: rawPreset) else {
@@ -37,7 +30,7 @@ extension ToolExecutor {
             if !overwrite, !occupied.isEmpty {
                 throw ToolError("Clip \(id) already has \(occupied.joined(separator: ", ")) keyframes. Pass overwrite=true to replace them.")
             }
-            apply(preset, to: &clip, requestedDuration: input.durationFrames)
+            clip.applyMotionPreset(preset, requestedDuration: input.durationFrames)
             replacements[id] = clip
         }
 
@@ -82,44 +75,6 @@ extension ToolExecutor {
              clip.scaleTrack?.isActive == true ? "scale" : nil].compactMap { $0 }
         case .gentlePush:
             clip.scaleTrack?.isActive == true ? ["scale"] : []
-        }
-    }
-
-    private func apply(_ preset: MotionPreset, to clip: inout Clip, requestedDuration: Int?) {
-        let lastFrame = max(1, clip.durationFrames - 1)
-        let entrance = min(lastFrame, requestedDuration ?? min(15, lastFrame))
-        let topLeft = clip.transform.topLeft
-        let basePosition = AnimPair(a: topLeft.x, b: topLeft.y)
-        let baseScale = AnimPair(a: clip.transform.width, b: clip.transform.height)
-        switch preset {
-        case .fadeIn:
-            clip.opacityTrack = KeyframeTrack(keyframes: [
-                Keyframe(frame: 0, value: 0, interpolationOut: .smooth),
-                Keyframe(frame: entrance, value: clip.opacity, interpolationOut: .smooth),
-            ])
-        case .slideUp:
-            clip.opacityTrack = KeyframeTrack(keyframes: [
-                Keyframe(frame: 0, value: 0, interpolationOut: .smooth),
-                Keyframe(frame: entrance, value: clip.opacity, interpolationOut: .smooth),
-            ])
-            clip.positionTrack = KeyframeTrack(keyframes: [
-                Keyframe(frame: 0, value: AnimPair(a: topLeft.x, b: topLeft.y + 0.05), interpolationOut: .smooth),
-                Keyframe(frame: entrance, value: basePosition, interpolationOut: .smooth),
-            ])
-        case .punchIn:
-            clip.opacityTrack = KeyframeTrack(keyframes: [
-                Keyframe(frame: 0, value: 0, interpolationOut: .smooth),
-                Keyframe(frame: entrance, value: clip.opacity, interpolationOut: .smooth),
-            ])
-            clip.scaleTrack = KeyframeTrack(keyframes: [
-                Keyframe(frame: 0, value: AnimPair(a: baseScale.a * 0.9, b: baseScale.b * 0.9), interpolationOut: .smooth),
-                Keyframe(frame: entrance, value: baseScale, interpolationOut: .smooth),
-            ])
-        case .gentlePush:
-            clip.scaleTrack = KeyframeTrack(keyframes: [
-                Keyframe(frame: 0, value: baseScale, interpolationOut: .linear),
-                Keyframe(frame: lastFrame, value: AnimPair(a: baseScale.a * 1.06, b: baseScale.b * 1.06), interpolationOut: .linear),
-            ])
         }
     }
 }

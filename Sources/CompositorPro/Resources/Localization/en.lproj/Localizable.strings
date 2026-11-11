@@ -541,6 +541,7 @@
 "Generation is unavailable while the project is closing." = "Generation is unavailable while the project is closing.";
 "Generation monitoring interrupted." = "Generation monitoring interrupted.";
 "Generation panel" = "Generation panel";
+"Gentle Push" = "Gentle Push";
 "Get Anthropic API key" = "Get Anthropic API key";
 "Get OpenAI API key" = "Get OpenAI API key";
 "Get a notification when a generation finishes." = "Get a notification when a generation finishes.";
@@ -917,6 +918,7 @@
 "Prompt" = "Prompt";
 "Pronunciation wording (optional)" = "Pronunciation wording (optional)";
 "Proxies" = "Proxies";
+"Punch In" = "Punch In";
 "Put a library asset on a track at a chosen frame, for a chosen length. Placement resolves what it must — a still needs a display length rather than a source range, and it trims or ripples what it displaces rather than overwriting it. This is the operation behind cut, paste and drag." = "Put a library asset on a track at a chosen frame, for a chosen length. Placement resolves what it must — a still needs a display length rather than a source range, and it trims or ripples what it displaces rather than overwriting it. This is the operation behind cut, paste and drag.";
 "Put a low drone under this gap." = "Put a low drone under this gap.";
 "Put all the raw files into a folder called Raw and delete the duplicates." = "Put all the raw files into a folder called Raw and delete the duplicates.";

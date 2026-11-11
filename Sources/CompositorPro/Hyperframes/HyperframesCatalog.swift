@@ -99,6 +99,15 @@ final class HyperframesCatalog {
 
     func block(id: String) -> HyperframesBlock? { blocks.first { $0.id == id } }
 
+    func registerBlock(_ block: HyperframesBlock) {
+        blocks.removeAll { $0.id == block.id }
+        blocks.append(block)
+    }
+
+    func unregisterBlock(id: String) {
+        blocks.removeAll { $0.id == id }
+    }
+
     /// Local, case-insensitive match over name/tags/description/category.
     func search(query: String, category: String? = nil) -> [HyperframesBlock] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()

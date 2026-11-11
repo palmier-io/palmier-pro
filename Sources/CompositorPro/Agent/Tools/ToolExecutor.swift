@@ -541,7 +541,7 @@ final class ToolExecutor {
         case .manageSkills:  return try await manageSkills(args)
         case .searchHyperframesCatalog:
             return try await searchHyperframesCatalog(editor, args)
-        case .insertHyperframesBlock:
+        case .insertHyperframesBlock, .insertAndPlaceHyperframesBlock:
             return try await insertHyperframesBlock(editor, args)
         case .applyDesignSpec:
             return try await applyDesignSpec(editor, args)

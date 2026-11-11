@@ -1,6 +1,25 @@
 import Foundation
 
 extension ToolExecutor {
+    private struct InsertHyperframesBlockInput: DecodableToolArgs {
+        let blockId: String
+        let placeOnTimeline: Bool?
+        let trackIndex: Int?
+        let startFrame: Int?
+        let durationFrames: Int?
+        let motionPreset: String?
+        let blendMode: String?
+        let opacity: Double?
+        let scale: Double?
+        let folderId: String?
+
+        static let allowedKeys: Set<String> = [
+            "blockId", "placeOnTimeline", "trackIndex", "startFrame",
+            "durationFrames", "motionPreset", "blendMode", "opacity",
+            "scale", "folderId"
+        ]
+    }
+
     /// Search HyperFrames catalog. Can run without an active project (read-only).
     func searchHyperframesCatalog(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try Task.checkCancellation()
@@ -30,9 +49,9 @@ extension ToolExecutor {
                 "description": block.description,
                 "path": block.path,
                 "assets": block.assets,
-                "preview": block.preview,
-                "minVersion": block.minVersion,
-                "defaultDurationFrames": block.defaultDurationFrames,
+                "preview": block.preview as Any,
+                "minVersion": block.minVersion as Any,
+                "defaultDurationFrames": block.defaultDurationFrames as Any,
                 "requiredAdapters": block.requiredAdapters,
             ]
             if !HyperframesCatalog.base.isEmpty,
@@ -45,45 +64,94 @@ extension ToolExecutor {
             }
             resultBlocks.append(blockInfo)
         }
-        return .ok(jsonString(["blocks": resultBlocks]) ?? "{}")
+        return .ok(Self.jsonString(["blocks": resultBlocks]) ?? "{}")
     }
 
-    /// Install a HyperFrames block into the project's media library.
+    /// Install a HyperFrames block into the project's media library and optionally place it onto the timeline.
     func insertHyperframesBlock(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try Task.checkCancellation()
-        try validateUnknownKeys(args, allowed: ["blockId"], path: "insert_hyperframes_block")
-        guard let blockId = args.string("blockId") else {
-            throw ToolError("Missing required field: blockId")
+        let input: InsertHyperframesBlockInput = try decodeToolArgs(args, path: "insert_hyperframes_block")
+
+        guard let block = HyperframesCatalog.shared.block(id: input.blockId) else {
+            return .error("Unknown HyperFrames block id: \(input.blockId)")
         }
-        guard let block = HyperframesCatalog.shared.block(id: blockId) else {
-            return .error("Unknown HyperFrames block id: \(blockId)")
+
+        let preset: MotionPreset?
+        if let raw = input.motionPreset {
+            guard let parsed = MotionPreset(rawValue: raw) else {
+                let options = MotionPreset.allCases.map(\.rawValue).joined(separator: ", ")
+                throw ToolError("motionPreset must be one of: \(options).")
+            }
+            preset = parsed
+        } else {
+            preset = nil
         }
-        guard !HyperframesCatalog.base.isEmpty,
-              let base = URL(string: HyperframesCatalog.base),
-              !block.assets.isEmpty else {
-            return .error("Hyperframes catalog mirror not configured or block has no assets")
+
+        let blendMode: BlendMode?
+        if let raw = input.blendMode {
+            guard let parsed = BlendMode(rawValue: raw) else {
+                let options = BlendMode.allCases.map(\.rawValue).joined(separator: ", ")
+                throw ToolError("blendMode must be one of: \(options).")
+            }
+            blendMode = parsed
+        } else {
+            blendMode = nil
         }
-        let resolvedAssets = block.assets.compactMap { HyperframesBlock.resolve($0, base: base) }
-        guard !resolvedAssets.isEmpty else {
-            return .error("No assets found for block \(blockId)")
+
+        if let duration = input.durationFrames, duration < 1 {
+            throw ToolError("durationFrames must be at least 1.")
         }
-        let folderId = args.string("folderId") ?? editor.mediaPanelCurrentFolderId
-        let result = try await editor.importFinderItems(resolvedAssets, into: folderId, finalize: true)
-        return .ok(jsonString([
-            "status": "ok",
-            "blockId": blockId,
-            "message": "Installed HyperFrames block \(block.name) as media assets."
-        ]) ?? "{}")
+        if let opacity = input.opacity, (opacity < 0.0 || opacity > 1.0) {
+            throw ToolError("opacity must be between 0.0 and 1.0.")
+        }
+        if let scale = input.scale, scale <= 0 {
+            throw ToolError("scale must be greater than 0.")
+        }
+
+        let shouldPlace = input.placeOnTimeline ?? (
+            input.trackIndex != nil || input.startFrame != nil || input.durationFrames != nil ||
+            input.motionPreset != nil || input.blendMode != nil || input.opacity != nil || input.scale != nil
+        )
+
+        if shouldPlace {
+            let receipt = try await editor.insertAndPlaceHyperframesBlock(
+                blockId: input.blockId,
+                folderId: input.folderId,
+                trackIndex: input.trackIndex,
+                startFrame: input.startFrame,
+                durationFrames: input.durationFrames,
+                motionPreset: preset,
+                blendMode: blendMode,
+                opacity: input.opacity,
+                scale: input.scale
+            )
+            return .ok(Self.jsonString([
+                "status": "ok",
+                "blockId": receipt.blockId,
+                "blockName": receipt.blockName,
+                "assetCount": receipt.assetCount,
+                "placedClipIds": receipt.placedClipIds,
+                "trackIndex": receipt.trackIndex,
+                "startFrame": receipt.startFrame,
+                "durationFrames": receipt.durationFrames,
+                "motionPreset": receipt.motionPreset as Any,
+                "message": "Installed and placed HyperFrames block '\(receipt.blockName)' on track \(receipt.trackIndex) at frame \(receipt.startFrame)."
+            ]) ?? "{}")
+        } else {
+            let summary = try await editor.installHyperframesBlock(block, into: input.folderId)
+            return .ok(Self.jsonString([
+                "status": "ok",
+                "blockId": input.blockId,
+                "blockName": block.name,
+                "assetCount": summary.assetCount,
+                "message": "Installed HyperFrames block '\(block.name)' into media library."
+            ]) ?? "{}")
+        }
     }
 
-    // MARK: - JSON helpers
+    // MARK: - Helpers
 
     private func base64String(from data: Data) -> String? {
         data.base64EncodedString()
-    }
-
-    private func jsonString(_ value: Any) -> String? {
-        guard let data = try? JSONSerialization.data(withJSONObject: value, options: []) else { return nil }
-        return String(data: data, encoding: .utf8)
     }
 }
