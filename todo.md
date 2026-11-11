@@ -12,7 +12,7 @@ Integrate HyperFrames' catalog, CLI, and agent skills into Compositor Pro to exp
 - [x] **HF-02**: `frame.md` / `design.md` Design Spec & Brand Styling Parser
   - Parse color palettes (hex values), typography rules, fonts, and aspect ratio into project styling presets.
   - Apply design specs to caption templates, text styles, and color grading.
-- [ ] **HF-03**: `/hyperframes` Motion Playbook & Agent Skill
+- [x] **HF-03**: `/hyperframes` Motion Playbook & Agent Skill
   - Add `hyperframes-motion-playbook` to `FilmmakingPlaybooks.all` for product launch videos, kinetic typography, and motion graphics.
   - Equip agent with search and placement workflows for catalog motion blocks.
 - [ ] **HF-04**: Automated Motion Graphics Track Placement (`insert_and_place_hyperframes_block`)

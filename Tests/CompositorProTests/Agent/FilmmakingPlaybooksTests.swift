@@ -14,11 +14,50 @@ struct FilmmakingPlaybooksTests {
         #expect(ids.contains("interview-playbook"))
         #expect(ids.contains("product-playbook"))
         #expect(ids.contains("montage-playbook"))
+        #expect(ids.contains("hyperframes-motion-playbook"))
 
         let brollBody = scan.bodies["narrated-broll-playbook"]
         #expect(brollBody?.contains("Narrated B-Roll Filmmaking Playbook") == true)
         #expect(brollBody?.contains("Dialogue-First Audio Mixing") == true)
         #expect(scan.shas["narrated-broll-playbook"] != nil)
+
+        let hfBody = scan.bodies["hyperframes-motion-playbook"]
+        #expect(hfBody?.contains("HyperFrames Motion & Kinetic Typography Playbook") == true)
+        #expect(hfBody?.contains("Brand System & Design Alignment") == true)
+        #expect(hfBody?.contains("Track Stacking Hierarchy") == true)
+        #expect(scan.shas["hyperframes-motion-playbook"] != nil)
+    }
+
+    @Test func hyperframesPlaybookCanBeResolvedByAlias() {
+        let direct = FilmmakingPlaybooks.playbook(for: "hyperframes-motion-playbook")
+        #expect(direct?.name == "HyperFrames Motion & Kinetic Typography Playbook")
+
+        let alias = FilmmakingPlaybooks.playbook(for: "hyperframes")
+        #expect(alias?.id == "hyperframes-motion-playbook")
+
+        let slashAlias = FilmmakingPlaybooks.playbook(for: "/hyperframes")
+        #expect(slashAlias?.id == "hyperframes-motion-playbook")
+    }
+
+    @Test func readSkillToolRetrievesHyperframesSkill() async throws {
+        let editor = EditorViewModel()
+        let executor = ToolExecutor(editor: editor)
+
+        let directResult = await executor.execute(
+            name: "read_skill",
+            args: ["id": "hyperframes-motion-playbook"],
+            source: "test"
+        )
+        #expect(!directResult.isError)
+        #expect(directResult.text.contains("HyperFrames Motion"))
+
+        let aliasResult = await executor.execute(
+            name: "read_skill",
+            args: ["id": "hyperframes"],
+            source: "test"
+        )
+        #expect(!aliasResult.isError)
+        #expect(aliasResult.text.contains("HyperFrames Motion"))
     }
 
     @Test func userPreferencesCanBePersistedAndReloaded() async throws {

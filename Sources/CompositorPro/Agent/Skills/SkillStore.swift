@@ -174,10 +174,19 @@ final class SkillStore {
 
     func localSha(_ skill: Skill) -> String? { shaCache[skill.id] }
 
-    func contentSHA(for id: String) -> String? { shaCache[id] }
+    func contentSHA(for id: String) -> String? {
+        if let sha = shaCache[id] { return sha }
+        if let playbook = FilmmakingPlaybooks.playbook(for: id) {
+            return Self.sha12(Data(playbook.content.utf8))
+        }
+        return nil
+    }
 
     func origin(for id: String) -> SkillOrigin {
-        Self.skillOrigin(installedSHA: ledger?.installed[id], localSHA: shaCache[id])
+        if FilmmakingPlaybooks.playbook(for: id) != nil {
+            return .local
+        }
+        return Self.skillOrigin(installedSHA: ledger?.installed[id], localSHA: shaCache[id])
     }
 
     nonisolated static func skillOrigin(installedSHA: String?, localSHA: String?) -> SkillOrigin {
@@ -388,7 +397,18 @@ final class SkillStore {
         try data.write(to: ledgerURL, options: .atomic)
     }
 
-    func body(for id: String) -> String? { bodyCache[id] }
+    func body(for id: String) -> String? {
+        if let exact = bodyCache[id] { return exact }
+        let normalized = id.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "/", with: "")
+        if let direct = bodyCache[normalized] { return direct }
+        if normalized == "hyperframes", let hf = bodyCache["hyperframes-motion-playbook"] {
+            return hf
+        }
+        if let playbook = FilmmakingPlaybooks.playbook(for: id) {
+            return playbook.content
+        }
+        return nil
+    }
 
     func rawContents(for skill: Skill) async -> String? {
         let path = skill.path

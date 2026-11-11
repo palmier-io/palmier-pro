@@ -14,6 +14,7 @@ enum FilmmakingPlaybooks {
         interviewStory,
         productShowcase,
         rhythmicMontage,
+        hyperframesMotion,
     ]
 
     static let narratedBRoll = PlaybookDefinition(
@@ -109,6 +110,61 @@ enum FilmmakingPlaybooks {
         - Build momentum: shorten shot durations progressively leading up to the musical climax.
         """
     )
+
+    static let hyperframesMotion = PlaybookDefinition(
+        id: "hyperframes-motion-playbook",
+        name: "HyperFrames Motion & Kinetic Typography Playbook",
+        description: "Dynamic motion design workflow combining catalog motion blocks, kinetic typography, brand styling (frame.md), and multi-track placement.",
+        content: """
+        # HyperFrames Motion & Kinetic Typography Playbook
+
+        ## 1. Brand System & Design Alignment
+        - Parse or declare the project visual design spec (frame.md / design.md) using apply_design_spec.
+        - Strict brand token enforcement: background, surface, text, primary, accent, and border colors.
+        - Establish canvas geometry (e.g. 16:9 for landscape showcases, 9:16 for vertical reels/shorts).
+        - Typography pairing: high-impact display font for title cards and hooks (e.g. Anton, Montserrat, Futura); legible sans-serif for body/captions (e.g. Inter, Helvetica).
+
+        ## 2. Catalog Motion Block Discovery & Ingestion
+        - Search catalog blocks using search_hyperframes_catalog by query or category:
+          - transitions: dynamic wipes, zooms, and glitch cuts between scenes.
+          - overlays: animated badges, stickers, and decorative motion vectors.
+          - captions: pre-styled kinetic typography and speech callouts.
+          - charts: animated bar, line, and KPI metric presentations.
+          - maps: geographical flyovers and route visualizers.
+          - kinetic: title entrances, word pop-ups, and hero reveal blocks.
+        - Verify block asset integrity and install into project media library with insert_hyperframes_block(blockId:).
+
+        ## 3. Kinetic Typography & Animated Captions
+        - Immediate hook: animated headline within the first 2 seconds to capture viewer retention.
+        - Fast-cadence reading: 1–3 words per caption cluster, timed tightly to speech syllables.
+        - Style with high-contrast outlines and brand accent highlights (e.g. template bold-pop or punchIn motion preset).
+        - Position within platform-safe margins: center-weighted or lower-third (y: 0.75–0.85).
+
+        ## 4. Track Stacking Hierarchy
+        - Track 1 (V1) — Background Plate: Live-action video or ambient visual loop, graded consistently to match brand tone.
+        - Track 2 (V2) — Motion Graphics & Vector Overlays: HyperFrames catalog blocks, Lottie animations, and graphic cards.
+        - Track 3 (V3) — Kinetic Typography & Brand Marks: Animated titles, callout badges, and captions.
+        - Add restrained motion treatments with apply_motion_preset:
+          - fadeIn: smooth alpha reveal without positional shift.
+          - slideUp: crisp upward entrance for cards and lower-thirds.
+          - punchIn: dynamic scale pop for punchlines and hero items.
+          - gentlePush: slow continuous 6% push across the entire shot.
+
+        ## 5. Audio & Impact Synchronization
+        - Motion hits must land on musical transients or dedicated sound effects.
+        - Add punctuation SFX (whoosh, pop, click, riser) at keyframe transitions.
+        - Voiceover clarity: duck background music bed by -12 dB to -16 dB beneath speech using duck_audio or mix_audio.
+        """
+    )
+
+    /// Resolves a playbook by canonical id or alias.
+    static func playbook(for id: String) -> PlaybookDefinition? {
+        let normalized = id.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "/", with: "")
+        if normalized == "hyperframes" || normalized == "hyperframes-motion-playbook" {
+            return hyperframesMotion
+        }
+        return all.first { $0.id == id || $0.id == normalized }
+    }
 
     /// Convert definitions to `Skill` models when scanning skills.
     static func skills(directory: URL) -> [Skill] {
