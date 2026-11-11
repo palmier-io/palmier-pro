@@ -218,6 +218,16 @@ struct ProductionRun: Codable, Sendable, Equatable {
                   receipt.deliveryVerified || !receipt.errors.isEmpty else {
                 throw EditPlanValidationError.invalidReference("Invalid production terminal receipt.")
             }
+            // A certificate names the revision it verified and the revision it
+            // delivered; a delivery that claims one revision but exported another
+            // is not a valid receipt.
+            if receipt.deliveryVerified {
+                guard let verified = receipt.verifiedTimelineRevision,
+                      let exported = receipt.exportedTimelineRevision, verified == exported else {
+                    throw EditPlanValidationError.invalidReference(
+                        "A verified delivery must name the same revision it reviewed and exported.")
+                }
+            }
         }
         guard reviewFindings.count <= 1_024, Set(reviewFindings.map(\.id)).count == reviewFindings.count else {
             throw EditPlanValidationError.invalidReference("Production review stores at most 1,024 uniquely identified findings.")
@@ -287,6 +297,7 @@ struct ProductionRun: Codable, Sendable, Equatable {
         if let exportPath { out["exportPath"] = exportPath }
         if let verifiedTimelineRevision { out["verifiedTimelineRevision"] = verifiedTimelineRevision }
         if let exportedTimelineRevision { out["exportedTimelineRevision"] = exportedTimelineRevision }
+        if let exportedFrames { out["exportedFrames"] = exportedFrames }
         if let blockedReason { out["blockedReason"] = blockedReason }
         if let terminalReceipt { out["terminalReceipt"] = Self.receipt(of: terminalReceipt) }
         return out

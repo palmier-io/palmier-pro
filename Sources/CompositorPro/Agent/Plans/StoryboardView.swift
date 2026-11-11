@@ -66,6 +66,7 @@ struct StoryboardView: View {
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }.frame(maxHeight: AppTheme.Storyboard.evidenceHeight)
                 }
+                productionState(report)
                 TextField(L10n.string("Grouped editorial comments"), text: $comment)
                 HStack {
                     Button(L10n.string("Move Scene Earlier")) { moveScene(report, offset: -1) }
@@ -73,6 +74,8 @@ struct StoryboardView: View {
                     Button(L10n.string("Move Scene Later")) { moveScene(report, offset: 1) }
                         .disabled(!canMoveScene(report, offset: 1))
                     Button(L10n.string("Prepare Storyboard")) { perform { try await editor.prepareStoryboard(planId: planId) } }
+                    Button(L10n.string("Produce")) { produce(report) }
+                        .disabled(report.phase != .approved && report.phase != .blocked)
                     Button(L10n.string("Cancel Production")) {
                         perform {
                             var result = try await editor.storyboardReport(planId: planId)
@@ -138,6 +141,58 @@ struct StoryboardView: View {
             }
         }
         .font(.system(size: AppTheme.FontSize.xs))
+    }
+
+    @ViewBuilder
+    private func productionState(_ report: StoryboardReport) -> some View {
+        let status = editor.productionStatus(planId: report.planId)
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
+            Text(L10n.string("Production Run"))
+                .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.semibold))
+            Text(verbatim: status.phase.rawValue)
+                .font(.system(size: AppTheme.FontSize.xs))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+            if let reason = status.blockedReason {
+                Text(verbatim: reason)
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Status.errorColor)
+                    .textSelection(.enabled)
+            }
+            ForEach(status.steps, id: \.key) { step in
+                Text(verbatim: "\(step.kind.rawValue): \(step.state.rawValue)")
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+            }
+            if let receipt = status.terminalReceipt {
+                Text(L10n.string("Delivered: \(receipt.deliveryVerified ? "yes" : "no")"))
+                    .font(.system(size: AppTheme.FontSize.xs))
+                if let path = receipt.exportPath {
+                    Text(verbatim: path).font(.system(size: AppTheme.FontSize.xs)).textSelection(.enabled)
+                }
+                ForEach(receipt.errors, id: \.self) { message in
+                    Text(verbatim: message)
+                        .font(.system(size: AppTheme.FontSize.xs))
+                        .foregroundStyle(AppTheme.Status.errorColor)
+                }
+            }
+        }
+        .font(.system(size: AppTheme.FontSize.xs))
+    }
+
+    private func produce(_ report: StoryboardReport) {
+        operation?.cancel()
+        let generation = UUID()
+        operationGeneration = generation
+        error = nil
+        operation = Task {
+            defer { if operationGeneration == generation { operation = nil } }
+            do {
+                _ = try await editor.productionCoordinator.produce(planId: report.planId)
+                if operationGeneration == generation { self.report = try await editor.storyboardReport(planId: report.planId) }
+            } catch is CancellationError {} catch {
+                if operationGeneration == generation { self.error = error.localizedDescription }
+            }
+        }
     }
 
     private func perform(_ action: @escaping @MainActor () async throws -> StoryboardReport) {
