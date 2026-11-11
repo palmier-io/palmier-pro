@@ -14,7 +14,10 @@ enum Fixtures {
         volume: Double = 1.0,
         compositeLayer: CompositeLayer = .primary,
         editorialReason: String? = nil,
-        backgroundColor: TextStyle.RGBA? = nil
+        backgroundColor: TextStyle.RGBA? = nil,
+        htmlContent: String? = nil,
+        hyperframesBlockId: String? = nil,
+        hyperframesParameters: [String: String]? = nil
     ) -> Clip {
         var c = Clip(mediaRef: mediaRef, startFrame: start, durationFrames: duration)
         c.id = id
@@ -27,6 +30,9 @@ enum Fixtures {
         c.compositeLayer = compositeLayer
         c.editorialReason = editorialReason
         c.backgroundColor = backgroundColor
+        c.htmlContent = htmlContent
+        c.hyperframesBlockId = hyperframesBlockId
+        c.hyperframesParameters = hyperframesParameters
         return c
     }
 

@@ -72,6 +72,8 @@ extension ToolExecutor {
             throw ToolError("Lottie animations aren't generated through this tool.")
         case .subtitle:
             throw ToolError("Subtitle files aren't generated. Import an SRT or WebVTT file with import_media.")
+        case .html:
+            throw ToolError("HTML composition blocks are added with add_hybrid_composition.")
         }
     }
 

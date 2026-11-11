@@ -143,13 +143,23 @@ enum HyperframesCatalogWrapper {
         ]
     }
 
-    /// Loads blocks from the runtime catalog, fallback to standard blocks.
-    static func loadCatalog() -> [HyperframesBlock] {
-        standardBlocks
+    /// Loads blocks from the runtime catalog and community repository.
+    static func loadCatalog(includeCommunity: Bool = true) -> [HyperframesBlock] {
+        var blocks = standardBlocks
+        if includeCommunity {
+            let community = HyperframesCommunityCatalog.shared.loadCommunityBlocks()
+            for cb in community where !blocks.contains(where: { $0.id == cb.id }) {
+                blocks.append(cb)
+            }
+        }
+        return blocks
     }
 
     /// Inspects a block specification by ID, returning a spec if found.
     static func inspectBlock(id: String) -> HyperframesBlockSpec? {
+        if let communitySpec = HyperframesCommunityCatalog.shared.loadCommunityBlockSpec(id: id) {
+            return communitySpec
+        }
         guard let block = loadCatalog().first(where: { $0.id == id }) else { return nil }
         return HyperframesBlockSpec(
             id: block.id,

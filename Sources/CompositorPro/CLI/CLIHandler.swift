@@ -8,7 +8,7 @@ final class CLIHandler: Sendable {
 
     /// Known CLI subcommands.
     static let subcommands: Set<String> = [
-        "init", "preview", "render", "hyperframes", "help", "--help", "-h", "version", "--version"
+        "init", "preview", "render", "hyperframes", "catalog", "export-job", "help", "--help", "-h", "version", "--version"
     ]
 
     /// Determines whether command line arguments represent a headless CLI run.
@@ -62,6 +62,16 @@ final class CLIHandler: Sendable {
 
             case "hyperframes":
                 let message = try await handleHyperframes(rest)
+                printOut(message)
+                return 0
+
+            case "catalog":
+                let message = try await handleCatalog(rest)
+                printOut(message)
+                return 0
+
+            case "export-job":
+                let message = try await handleExportJob(rest)
                 printOut(message)
                 return 0
 
@@ -368,6 +378,112 @@ final class CLIHandler: Sendable {
         }
     }
 
+    // MARK: - Community Catalog Command
+
+    static func handleCatalog(_ args: [String]) async throws -> String {
+        guard !args.isEmpty else {
+            return "Usage: compositor-pro catalog [list | add <path> | validate <path>]"
+        }
+
+        let action = args[0].lowercased()
+        switch action {
+        case "list":
+            let all = HyperframesCatalogWrapper.loadCatalog(includeCommunity: true)
+            var lines = ["Extended Catalog (\(all.count) total):"]
+            for b in all {
+                lines.append("  - [\(b.category)] \(b.id): \(b.name)")
+            }
+            return lines.joined(separator: "\n")
+
+        case "add":
+            guard args.count > 1 else { throw CLIError.missingArgument("Path required: compositor-pro catalog add <path>") }
+            let pathURL = URL(fileURLWithPath: args[1])
+            let issues = try await HyperframesCommunityCatalog.shared.validateTemplate(at: pathURL)
+            if issues.contains(where: { $0.severity == .error }) {
+                let errs = issues.filter { $0.severity == .error }.map { "\($0.field): \($0.message)" }
+                throw CLIError.invalidProject("Validation failed: \(errs.joined(separator: ", "))")
+            }
+            let isDir = (try? pathURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+            let specURL = isDir ? pathURL.appendingPathComponent("template.json") : pathURL
+            let data = try Data(contentsOf: specURL)
+            let spec = try JSONDecoder().decode(HyperframesBlockSpec.self, from: data)
+            let htmlURL = isDir ? pathURL.appendingPathComponent("index.html") : pathURL.deletingLastPathComponent().appendingPathComponent("index.html")
+            let html = (try? String(contentsOf: htmlURL, encoding: .utf8)) ?? spec.htmlTemplate ?? ""
+
+            let installed = try await HyperframesCommunityCatalog.shared.installTemplate(spec: spec, html: html)
+            return "Successfully installed template '\(installed.id)' (\(installed.name)) into community catalog."
+
+        case "validate":
+            guard args.count > 1 else { throw CLIError.missingArgument("Path required: compositor-pro catalog validate <path>") }
+            let pathURL = URL(fileURLWithPath: args[1])
+            let issues = try await HyperframesCommunityCatalog.shared.validateTemplate(at: pathURL)
+            if issues.isEmpty {
+                return "Template at \(pathURL.path) is valid (0 issues)."
+            }
+            var lines = ["Template validation reported \(issues.count) issue(s):"]
+            for issue in issues {
+                lines.append("  [\(issue.severity.rawValue.uppercased())] \(issue.field): \(issue.message)")
+            }
+            return lines.joined(separator: "\n")
+
+        default:
+            throw CLIError.unknownCommand("Unknown catalog action '\(action)'")
+        }
+    }
+
+    // MARK: - Headless Cross-Platform Render Job Export
+
+    static func handleExportJob(_ args: [String]) async throws -> String {
+        guard !args.isEmpty else {
+            return "Usage: compositor-pro export-job <project-path> [-o <job.json>]"
+        }
+        let projectURL = URL(fileURLWithPath: args[0])
+        var outputPath: String?
+        var i = 1
+        while i < args.count {
+            if (args[i] == "-o" || args[i] == "--output"), i + 1 < args.count {
+                outputPath = args[i + 1]
+                i += 1
+            }
+            i += 1
+        }
+
+        let (timeline, _) = try await loadProjectTimeline(from: projectURL)
+        let projectName = projectURL.deletingPathExtension().lastPathComponent
+        let destinationURL = outputPath.map { URL(fileURLWithPath: $0) }
+            ?? projectURL.deletingLastPathComponent().appendingPathComponent("\(projectName)-job.json")
+
+        let jobData: [String: Any] = [
+            "name": projectName,
+            "fps": timeline.fps,
+            "width": timeline.width,
+            "height": timeline.height,
+            "totalFrames": timeline.totalFrames,
+            "tracks": timeline.tracks.map { track in
+                [
+                    "id": track.id,
+                    "type": track.type.rawValue,
+                    "clips": track.clips.map { clip in
+                        var cDict: [String: Any] = [
+                            "id": clip.id,
+                            "mediaType": clip.mediaType.rawValue,
+                            "startFrame": clip.startFrame,
+                            "durationFrames": clip.durationFrames,
+                            "compositeLayer": clip.compositeLayer.rawValue
+                        ]
+                        if let html = clip.htmlContent { cDict["html"] = html }
+                        if let params = clip.hyperframesParameters { cDict["parameters"] = params }
+                        return cDict
+                    }
+                ]
+            }
+        ]
+
+        let serialized = try JSONSerialization.data(withJSONObject: jobData, options: [.prettyPrinted, .sortedKeys])
+        try serialized.write(to: destinationURL, options: .atomic)
+        return "Exported headless cross-platform render job -> \(destinationURL.path)"
+    }
+
     // MARK: - Helper Methods
 
     /// Loads the active timeline from a project directory or package.
@@ -429,6 +545,16 @@ final class CLIHandler: Sendable {
               catalog               List catalog blocks
               inspect <blockId>     Print block specification JSON
               html <blockId> [-o <out.html>] [--title <title>] Export self-contained HTML
+
+          catalog <action> [options]
+            Manage extended and community HyperFrames motion templates.
+            Actions:
+              list                  List all available built-in and community templates
+              add <path>            Validate and install a community template package
+              validate <path>       Check a template package for schema/structural issues
+
+          export-job <project-path> [-o <job.json>]
+            Export a headless cross-platform render job specification for CI/CD runners.
 
           help
             Show this help reference.

@@ -151,14 +151,14 @@ extension Clip {
             return mediaType.isVisual
         case .scale:
             switch mediaType {
-            case .video, .image, .lottie, .sequence, .text:
+            case .video, .image, .lottie, .sequence, .text, .html:
                 return true
             case .audio, .subtitle:
                 return false
             }
         case .crop:
             switch mediaType {
-            case .video, .image, .lottie, .sequence:
+            case .video, .image, .lottie, .sequence, .html:
                 return true
             case .audio, .text, .subtitle:
                 return false

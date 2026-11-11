@@ -6,6 +6,7 @@ enum ClipType: String, Codable, Sendable, CaseIterable {
     case lottie
     case sequence
     case subtitle
+    case html
 
     var sfSymbolName: String {
         switch self {
@@ -16,6 +17,7 @@ enum ClipType: String, Codable, Sendable, CaseIterable {
         case .lottie: "sparkles"
         case .sequence: "film.stack"
         case .subtitle: "captions.bubble"
+        case .html: "chevron.left.forwardslash.chevron.right"
         }
     }
 
@@ -28,6 +30,7 @@ enum ClipType: String, Codable, Sendable, CaseIterable {
         case .lottie: "Lottie"
         case .sequence: "Video"
         case .subtitle: "Subtitle"
+        case .html: "HTML"
         }
     }
 
@@ -48,6 +51,7 @@ enum ClipType: String, Codable, Sendable, CaseIterable {
         case "png", "jpg", "jpeg", "tiff", "heic", "webp": self = .image
         case "json", "lottie": self = .lottie
         case "srt", "vtt": self = .subtitle
+        case "html", "htm": self = .html
         default: return nil
         }
     }

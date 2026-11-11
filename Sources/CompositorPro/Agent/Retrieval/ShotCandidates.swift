@@ -577,7 +577,7 @@ enum ShotCandidateBuilder {
         case .video: .video
         case .image: .image
         case .audio: .audio
-        case .text, .lottie, .sequence, .subtitle: nil
+        case .text, .lottie, .sequence, .subtitle, .html: nil
         }
     }
 

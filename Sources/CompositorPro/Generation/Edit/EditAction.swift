@@ -42,7 +42,7 @@ enum EditAction {
                 .generateMusic, .generateSFX,
             ]
         case .audio, .text: candidates = [.upscale, .edit, .rerun]
-        case .lottie, .sequence, .subtitle: candidates = []
+        case .lottie, .sequence, .subtitle, .html: candidates = []
         }
         return candidates.filter {
             $0.availability(for: asset, effectiveDurationOverride: effectiveDurationOverride).isAvailable
@@ -126,6 +126,8 @@ enum EditAction {
                 return .disabled(reason: L10n.string("Edit doesn't support sequences"))
             case .subtitle:
                 return .disabled(reason: L10n.string("Edit doesn't support subtitles"))
+            case .html:
+                return .disabled(reason: L10n.string("Edit doesn't support HTML"))
             }
             if asset.isGenerating {
                 return .disabled(reason: L10n.string("Generation in progress"))

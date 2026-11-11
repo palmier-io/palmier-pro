@@ -8,7 +8,7 @@ extension GenerationInput {
         case .video:
             referenceVideoAssetIds = [asset.id]
             referenceAudioAssetIds = nil
-        case .image, .text, .lottie, .sequence, .subtitle:
+        case .image, .text, .lottie, .sequence, .subtitle, .html:
             return false
         }
         return true

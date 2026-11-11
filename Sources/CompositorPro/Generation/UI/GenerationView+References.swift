@@ -168,7 +168,7 @@ extension GenerationView {
             case .image: assets = refImages
             case .video: assets = refVideos
             case .audio: assets = refAudios
-            case .text, .lottie, .sequence, .subtitle: assets = []
+            case .text, .lottie, .sequence, .subtitle, .html: assets = []
             }
             let noun = tagNoun(for: type)
             return assets.enumerated().map {
@@ -184,14 +184,14 @@ extension GenerationView {
             switch type {
             case .image: return audioModel.maxReferenceImages
             case .audio: return audioModel.maxReferenceAudios
-            case .video, .text, .lottie, .sequence, .subtitle: return 0
+            case .video, .text, .lottie, .sequence, .subtitle, .html: return 0
             }
         }
         return switch type {
         case .image: videoModel.maxReferenceImages
         case .video: videoModel.maxReferenceVideos
         case .audio: videoModel.maxReferenceAudios
-        case .text, .lottie, .sequence, .subtitle: 0
+        case .text, .lottie, .sequence, .subtitle, .html: 0
         }
     }
 
@@ -200,7 +200,7 @@ extension GenerationView {
         case .image: refImages.count
         case .video: refVideos.count
         case .audio: refAudios.count
-        case .text, .lottie, .sequence, .subtitle: 0
+        case .text, .lottie, .sequence, .subtitle, .html: 0
         }
     }
 
@@ -214,6 +214,7 @@ extension GenerationView {
         case .lottie: "Lottie"
         case .sequence: "Sequence"
         case .subtitle: "Subtitle"
+        case .html: "HTML"
         }
     }
 
@@ -229,7 +230,7 @@ extension GenerationView {
             switch asset.type {
             case .image: selection.imageRefs.append(asset)
             case .audio: selection.audioRefs.append(asset)
-            case .video, .text, .lottie, .sequence, .subtitle:
+            case .video, .text, .lottie, .sequence, .subtitle, .html:
                 flashDropError("\(audioModel.displayName) only accepts image or audio references.")
                 return
             }
@@ -243,7 +244,7 @@ extension GenerationView {
             case .image: selection.imageRefs.append(asset)
             case .video: selection.videoRefs.append(asset)
             case .audio: selection.audioRefs.append(asset)
-            case .text, .lottie, .sequence, .subtitle:
+            case .text, .lottie, .sequence, .subtitle, .html:
                 let supported = activeReferenceTypes.map(\.rawValue).joined(separator: " and ")
                 flashDropError("\(videoModel.displayName) only accepts \(supported) references.")
                 return
@@ -258,7 +259,7 @@ extension GenerationView {
         case .image: refImages.append(asset)
         case .video: refVideos.append(asset)
         case .audio: refAudios.append(asset)
-        case .text, .lottie, .sequence, .subtitle: break
+        case .text, .lottie, .sequence, .subtitle, .html: break
         }
     }
 
@@ -276,7 +277,7 @@ extension GenerationView {
         case .image: refImages.removeAll { $0.id == id }
         case .video: refVideos.removeAll { $0.id == id }
         case .audio: refAudios.removeAll { $0.id == id }
-        case .text, .lottie, .sequence, .subtitle: break
+        case .text, .lottie, .sequence, .subtitle, .html: break
         }
     }
 
@@ -299,7 +300,7 @@ extension GenerationView {
     private var refCounterLabel: String {
         let total = totalRefCount
         if selectedType == .video, let cap = videoModel.maxTotalReferences {
-            let shortLabel: (ClipType) -> String = { switch $0 { case .image: "img"; case .video: "vid"; case .audio: "aud"; case .text: "txt"; case .lottie: "lot"; case .sequence: "seq"; case .subtitle: "sub" } }
+            let shortLabel: (ClipType) -> String = { switch $0 { case .image: "img"; case .video: "vid"; case .audio: "aud"; case .text: "txt"; case .lottie: "lot"; case .sequence: "seq"; case .subtitle: "sub"; case .html: "html" } }
             let parts = activeReferenceTypes
                 .map { "\(refCount(for: $0)) \(shortLabel($0))" }
             return "\(total)/\(cap) · \(parts.joined(separator: " · "))"

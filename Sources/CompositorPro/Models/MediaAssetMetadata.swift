@@ -54,7 +54,7 @@ struct MediaAssetMetadata: Sendable {
             return MediaAssetMetadata(isReadable: true, duration: cues.map(\.endSeconds).max() ?? 0)
         case .video, .audio:
             return try await loadAudiovisual(request)
-        case .text, .sequence:
+        case .text, .sequence, .html:
             return MediaAssetMetadata(isReadable: true)
         }
     }

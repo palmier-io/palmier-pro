@@ -166,6 +166,7 @@ enum AppNotifications {
             case .text: return L10n.string("\(count) text clips are ready in Compositor Pro.")
             case .lottie: return L10n.string("\(count) Lottie animations are ready in Compositor Pro.")
             case .subtitle: return L10n.string("\(count) subtitle files are ready in Compositor Pro.")
+            case .html: return L10n.string("\(count) HTML compositions are ready in Compositor Pro.")
             }
         }
         let name = assetName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -177,6 +178,7 @@ enum AppNotifications {
         case .text: return L10n.string("Your text clip is ready.")
         case .lottie: return L10n.string("Your Lottie animation is ready.")
         case .subtitle: return L10n.string("Your subtitle file is ready.")
+        case .html: return L10n.string("Your HTML composition is ready.")
         }
     }
 }

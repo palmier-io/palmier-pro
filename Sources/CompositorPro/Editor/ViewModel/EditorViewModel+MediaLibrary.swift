@@ -800,7 +800,7 @@ extension EditorViewModel {
             mediaVisualCache.generateWaveform(for: asset)
         case .image:
             mediaVisualCache.generateImageThumbnail(for: asset)
-        case .text, .lottie, .sequence, .subtitle:
+        case .text, .lottie, .sequence, .subtitle, .html:
             break
         }
     }

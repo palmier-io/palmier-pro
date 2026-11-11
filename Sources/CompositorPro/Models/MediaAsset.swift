@@ -253,7 +253,7 @@ final class MediaAsset: Identifiable {
             defer { releaseThumbnailPermit() }
             guard thumbnail == nil, !Task.isCancelled, preparationContext == context else { return }
             _ = await loadMetadata(load: load)
-        case .audio, .text, .sequence, .subtitle:
+        case .audio, .text, .sequence, .subtitle, .html:
             break
         }
     }

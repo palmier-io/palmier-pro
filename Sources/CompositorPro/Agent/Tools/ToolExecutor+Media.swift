@@ -152,6 +152,7 @@ extension ToolExecutor {
         case .subtitle: return try await readSubtitle(asset: asset)
         case .text: throw ToolError("Text clips are not stored as media assets.")
         case .sequence: throw ToolError("Sequences are timelines, not media assets. Use get_timeline.")
+        case .html: return .ok(#"{"type":"html","name":"\#(asset.name)"}"#)
         }
     }
 

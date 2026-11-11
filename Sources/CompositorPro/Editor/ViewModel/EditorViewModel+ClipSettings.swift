@@ -140,7 +140,7 @@ extension EditorViewModel {
             result.transform.rotation = source.transform.rotation
             result.transform.flipHorizontal = source.transform.flipHorizontal
             result.transform.flipVertical = source.transform.flipVertical
-        case .video, .image, .lottie, .sequence:
+        case .video, .image, .lottie, .sequence, .html:
             result.opacity = source.opacity
             result.transform = source.transform
             result.crop = source.crop

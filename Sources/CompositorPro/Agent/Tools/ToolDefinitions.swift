@@ -131,6 +131,13 @@ enum ToolName: String, CaseIterable, Sendable {
 
     // Design Spec Wizard
     case openDesignSpecWizard = "open_design_spec_wizard"
+
+    // Hybrid composition & community catalog
+    case addHybridComposition = "add_hybrid_composition"
+    case updateHybridComposition = "update_hybrid_composition"
+    case renderHybridFrame = "render_hybrid_frame"
+    case importCommunityHyperframesTemplate = "import_community_hyperframes_template"
+    case listCommunityHyperframesTemplates = "list_community_hyperframes_templates"
 }
 
 struct AgentTool: @unchecked Sendable {
@@ -2197,6 +2204,69 @@ enum ToolDefinitions {
                     "filePath": ["type": "string", "description": "File path for export/import actions."]
                 ],
                 required: ["action"]
+            )
+        ),
+        AgentTool(
+            name: .addHybridComposition,
+            description: "Adds an HTML or HyperFrames motion composition clip directly onto the timeline as a native visual/overlay track. The clip renders dynamic HTML/JS content synchronized with the playhead and export engine.",
+            inputSchema: objectSchema(
+                properties: [
+                    "html": ["type": "string", "description": "HTML/CSS/JS template content."],
+                    "blockId": ["type": "string", "description": "Optional HyperFrames catalog block identifier."],
+                    "parameters": ["type": "object", "description": "Optional dictionary of template parameter overrides."],
+                    "trackIndex": ["type": "integer", "description": "Optional target track index."],
+                    "startFrame": ["type": "integer", "description": "Timeline start frame (defaults to playhead)."],
+                    "durationFrames": ["type": "integer", "description": "Duration in frames (defaults to 90)."],
+                    "compositeLayer": ["type": "string", "enum": ["primary", "overlay", "background"], "description": "Composite layer: primary, overlay (default), or background."]
+                ],
+                required: ["html"]
+            )
+        ),
+        AgentTool(
+            name: .updateHybridComposition,
+            description: "Updates parameters or HTML content of an existing hybrid composition clip on the timeline.",
+            inputSchema: objectSchema(
+                properties: [
+                    "clipId": ["type": "string", "description": "Identifier of the clip to update."],
+                    "parameters": ["type": "object", "description": "Updated dictionary of template parameters."],
+                    "html": ["type": "string", "description": "Optional replacement HTML template content."]
+                ],
+                required: ["clipId"]
+            )
+        ),
+        AgentTool(
+            name: .renderHybridFrame,
+            description: "Renders an off-screen image snapshot of an HTML composition at a specific frame.",
+            inputSchema: objectSchema(
+                properties: [
+                    "clipId": ["type": "string", "description": "Optional clip id of a hybrid composition clip on the timeline."],
+                    "html": ["type": "string", "description": "HTML content to render if clipId is not provided."],
+                    "frame": ["type": "integer", "description": "Frame number to seek and render (default: 0)."],
+                    "width": ["type": "integer", "description": "Width in pixels (default: 1920)."],
+                    "height": ["type": "integer", "description": "Height in pixels (default: 1080)."]
+                ]
+            )
+        ),
+        AgentTool(
+            name: .importCommunityHyperframesTemplate,
+            description: "Imports, validates, and installs a community-contributed HyperFrames template package into the extended catalog.",
+            inputSchema: objectSchema(
+                properties: [
+                    "path": ["type": "string", "description": "File path to the template bundle (.json or folder)."],
+                    "id": ["type": "string", "description": "Optional identifier for the template."],
+                    "name": ["type": "string", "description": "Optional display name."],
+                    "category": ["type": "string", "description": "Optional category."],
+                    "htmlTemplate": ["type": "string", "description": "Inline HTML template if importing directly."]
+                ]
+            )
+        ),
+        AgentTool(
+            name: .listCommunityHyperframesTemplates,
+            description: "Lists all installed community-contributed HyperFrames motion templates.",
+            inputSchema: objectSchema(
+                properties: [
+                    "category": ["type": "string", "description": "Optional filter by category."]
+                ]
             )
         ),
     ]

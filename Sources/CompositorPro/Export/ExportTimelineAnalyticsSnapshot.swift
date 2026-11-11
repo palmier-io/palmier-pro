@@ -66,7 +66,7 @@ enum ExportTimelineAnalyticsSnapshot {
             let asset = nested || clip.mediaType == .text ? nil : asset(for: clip.mediaRef, fallbackType: clip.sourceClipType)
             if let asset {
                 switch clip.mediaType {
-                case .video, .image, .lottie: visual.record(asset.provenance, frames: clip.durationFrames, fps: fps)
+                case .video, .image, .lottie, .html: visual.record(asset.provenance, frames: clip.durationFrames, fps: fps)
                 case .audio: audio.record(asset.provenance, frames: clip.durationFrames, fps: fps)
                 case .text, .sequence, .subtitle: break
                 }

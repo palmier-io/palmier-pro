@@ -554,6 +554,16 @@ final class ToolExecutor {
             return try await importAnimationAdapter(editor, args)
         case .openDesignSpecWizard:
             return try await openDesignSpecWizard(editor, args)
+        case .addHybridComposition:
+            return try await addHybridComposition(editor, args)
+        case .updateHybridComposition:
+            return try await updateHybridComposition(editor, args)
+        case .renderHybridFrame:
+            return try await renderHybridFrame(editor, args)
+        case .importCommunityHyperframesTemplate:
+            return try await importCommunityHyperframesTemplate(editor, args)
+        case .listCommunityHyperframesTemplates:
+            return try await listCommunityHyperframesTemplates(editor, args)
         case .manageProject:
             return await manageProject(args)
         }

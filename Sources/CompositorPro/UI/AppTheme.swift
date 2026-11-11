@@ -303,6 +303,7 @@ enum AppTheme {
         static var text: NSColor { TimelineClipColorPalette.shared.color(for: .text) }
         static var lottie: NSColor { TimelineClipColorPalette.shared.color(for: .animation) }
         static var sequence: NSColor { TimelineClipColorPalette.shared.color(for: .sequence) }
+        static var html: NSColor { TimelineClipColorPalette.shared.color(for: .animation) }
         static let multicam = NSColor.systemRed
 
         static func readableForeground(on background: NSColor) -> NSColor {
@@ -637,6 +638,7 @@ extension ClipType {
         case .lottie: AppTheme.TrackColor.lottie
         case .sequence: AppTheme.TrackColor.sequence
         case .subtitle: AppTheme.TrackColor.text
+        case .html: AppTheme.TrackColor.html
         }
     }
 
