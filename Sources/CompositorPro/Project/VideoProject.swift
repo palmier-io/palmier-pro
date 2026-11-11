@@ -1010,6 +1010,7 @@ class VideoProject: NSDocument {
 
     func cancelDocumentBackgroundWork() {
         editorViewModel.cancelAudioMix()
+        editorViewModel.cancelProductionRuns()
         thumbnailTask?.cancel()
         thumbnailRetryTask?.cancel()
         mediaRestoreTask?.cancel()

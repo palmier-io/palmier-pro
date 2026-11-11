@@ -3,6 +3,21 @@
 ## Overview
 Integrate HyperFrames' catalog, CLI, and agent skills into Compositor Pro to expand video‑creation capabilities while preserving native editing power.
 
+## HyperFrames Video & Storyboard Capabilities Backlog
+
+- [x] **HF-01**: Bidirectional `STORYBOARD.md` Bridge (Markdown parser & exporter for `EditPlan` / `StoryboardReport`)
+  - Parse `STORYBOARD.md` (beats, timecodes, voiceover, visual concept, camera/motion, SFX) into native `EditPlan` with shots, script beats, scene narration links, and sound cues.
+  - Export active `EditPlan` / storyboard into standard `STORYBOARD.md` Markdown.
+  - Wire into `plan_edit` via `import_storyboard_markdown` and `export_storyboard_markdown`.
+- [ ] **HF-02**: `frame.md` / `design.md` Design Spec & Brand Styling Parser
+  - Parse color palettes (hex values), typography rules, fonts, and aspect ratio into project styling presets.
+  - Apply design specs to caption templates, text styles, and color grading.
+- [ ] **HF-03**: `/hyperframes` Motion Playbook & Agent Skill
+  - Add `hyperframes-motion-playbook` to `FilmmakingPlaybooks.all` for product launch videos, kinetic typography, and motion graphics.
+  - Equip agent with search and placement workflows for catalog motion blocks.
+- [ ] **HF-04**: Automated Motion Graphics Track Placement (`insert_and_place_hyperframes_block`)
+  - Direct placement and keyframing of kinetic overlays, Lottie vectors, and motion blocks onto timeline tracks.
+
 ## Phasing
 
 ### Phase 1 (Weeks 0‑4) – Quick Wins

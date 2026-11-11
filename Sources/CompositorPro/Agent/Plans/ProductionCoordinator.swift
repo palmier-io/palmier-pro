@@ -1,582 +1,616 @@
+import AVFoundation
 import Foundation
 
+/// Drives one persisted production run to a terminal result.
+///
+/// The run's state lives on the plan (`ProductionRun`), so this driver holds no
+/// duplicate state: it reads the persisted run, performs only the next eligible
+/// step, and commits that step's receipt. A reopened project resumes the same
+/// run instead of starting a new one, and a step whose key already carries a
+/// terminal receipt is never run twice.
 @MainActor
 final class ProductionCoordinator {
     typealias Phase = ProductionRun.Phase
-    typealias VisualReview = ProductionRun.VisualReview
-
-    protocol JobHandle: Sendable {
-        var id: UUID { get }
-        func cancel() async
-    }
-
-    struct AnyJobHandle: JobHandle {
-        let id: UUID
-        private let onCancel: @Sendable () async -> Void
-
-        init(id: UUID = UUID(), onCancel: @escaping @Sendable () async -> Void = {}) {
-            self.id = id
-            self.onCancel = onCancel
-        }
-
-        func cancel() async {
-            await onCancel()
-        }
-    }
-
-    let runId: UUID
-    let projectId: String
-    let timelineId: String
-    let planId: String
-
-    var phase: Phase = .awaitingStoryboardApproval
-    var storyboardRevision: String?
-    var approvedRevision: String?
-    var visualReviews: [VisualReview] = []
-    var comment: String = ""
-    var terminalReceipt: ProductionRun.TerminalReceipt?
-
-    private(set) var jobHandles: [UUID: any JobHandle] = [:]
-    private(set) var currentJobHandle: (any JobHandle)?
 
     private weak var editor: EditorViewModel?
-    private let packageCoordinator: ProjectPackageCoordinator
-    private let exportQueue: ExportQueue
-    private let toolExecutor: ToolExecutor
+    private var running: [String: Task<Void, Never>] = [:]
 
-    init(
-        runId: UUID = UUID(),
-        planId: String,
-        projectId: String,
-        timelineId: String,
-        editor: EditorViewModel,
-        packageCoordinator: ProjectPackageCoordinator,
-        exportQueue: ExportQueue,
-        toolExecutor: ToolExecutor
-    ) {
-        self.runId = runId
-        self.planId = planId
-        self.projectId = projectId
-        self.timelineId = timelineId
+    init() {}
+
+    func attach(to editor: EditorViewModel) {
         self.editor = editor
-        self.packageCoordinator = packageCoordinator
-        self.exportQueue = exportQueue
-        self.toolExecutor = toolExecutor
+        editor.onMediaReady = { [weak self] in self?.mediaBecameReady() }
     }
 
-    func startProduction() async throws {
-        try validatePlanAccessible()
-        guard let plan = editor?.editPlan(id: planId) else {
-            throw ProductionError.planNotFound
+    // MARK: - Inspection
+
+    func status(planId: String) -> ProductionStatus {
+        guard let editor, let plan = editor.editPlan(id: planId) else {
+            return ProductionStatus(planId: planId, phase: .canceled, runId: nil, storyboardRevision: nil,
+                                    approvedRevision: nil, reviewedSceneCount: 0, totalScenes: 0, comment: "",
+                                    steps: [], reviewFindings: [], verifiedTimelineRevision: nil,
+                                    exportedTimelineRevision: nil, exportJobId: nil, exportPath: nil,
+                                    terminalReceipt: nil, blockedReason: "Plan not found")
         }
+        let run = plan.productionRun
+        return ProductionStatus(
+            planId: planId,
+            phase: run?.phase ?? .awaitingStoryboardApproval,
+            runId: run?.id,
+            storyboardRevision: run?.storyboardRevision,
+            approvedRevision: run?.approvedRevision,
+            reviewedSceneCount: run?.visualReviews.count ?? 0,
+            totalScenes: plan.shots.count,
+            comment: run?.comment ?? "",
+            steps: run?.steps ?? [],
+            reviewFindings: run?.reviewFindings ?? [],
+            verifiedTimelineRevision: run?.verifiedTimelineRevision,
+            exportedTimelineRevision: run?.exportedTimelineRevision,
+            exportJobId: run?.exportJobId,
+            exportPath: run?.exportPath,
+            terminalReceipt: run?.terminalReceipt,
+            blockedReason: run?.blockedReason
+        )
+    }
+
+    // MARK: - Lifecycle
+
+    /// Continues an approved production run.
+    func produce(planId: String) async throws -> ProductionStatus {
+        guard let editor, let plan = editor.editPlan(id: planId) else { throw ProductionError.planNotFound }
         guard plan.status == .proposed || plan.status == .approved else {
             throw ProductionError.invalidPlanStatus("Plan must be proposed or approved to start production.")
         }
-        try await runPrepareStoryboard()
+        guard let run = plan.productionRun else {
+            throw ProductionError.approvalBlocked(
+                "Prepare and approve the storyboard before production: prepare_storyboard, review each scene, then approve_storyboard.")
+        }
+        guard run.approvedRevision != nil else {
+            throw ProductionError.approvalBlocked("The current storyboard is not approved.")
+        }
+        return try await resume(planId: planId)
     }
 
-    func resumeProduction() async throws {
-        try validatePlanAccessible()
-        guard let plan = editor?.editPlan(id: planId) else {
-            throw ProductionError.planNotFound
+    /// Continues the run from its persisted step ledger.
+    func resume(planId: String) async throws -> ProductionStatus {
+        guard let editor, let plan = editor.editPlan(id: planId) else { throw ProductionError.planNotFound }
+        guard let run = plan.productionRun else { throw ProductionError.missingProductionRun }
+        guard run.phase != .canceled else { throw ProductionError.productionCanceled }
+        guard run.approvedRevision != nil else {
+            throw ProductionError.approvalBlocked("The current storyboard is not approved.")
         }
-        guard let run = plan.productionRun else {
+        guard !editor.projectPackageCoordinator.isClosing else {
+            throw ProductionError.notReady("The project is closing.")
+        }
+        try await execute(planId: planId)
+        return status(planId: planId)
+    }
+
+    /// Stops the run. A canceled run never edits the timeline again.
+    func cancel(planId: String) throws {
+        running[planId]?.cancel()
+        running[planId] = nil
+        guard let editor else { throw ProductionError.editorNotAvailable }
+        try editor.cancelProductionReview(planId: planId)
+    }
+
+    /// Stops every in-flight run. Closing or replacing a project must not leave
+    /// background work editing its timeline.
+    func cancelAll() {
+        for task in running.values { task.cancel() }
+        running.removeAll()
+    }
+
+    /// Media the run needs became available; a run waiting on footage continues.
+    func mediaBecameReady() {
+        guard let editor else { return }
+        for plan in editor.editPlans {
+            guard let run = plan.productionRun, run.phase == .blocked,
+                  run.blockedReason?.hasPrefix("Waiting for media") == true else { continue }
+            let planId = plan.id
+            guard running[planId] == nil else { continue }
+            running[planId] = Task { @MainActor [weak self] in
+                guard let self else { return }
+                try? await self.resume(planId: planId)
+                self.running[planId] = nil
+            }
+        }
+    }
+
+    // MARK: - Steps
+
+    private func execute(planId: String) async throws {
+        // A blocked step stops the run: the next step waits for its dependency
+        // instead of running on incomplete work. A resumed run re-enters here,
+        // and each step's idempotency key skips the work it already finished.
+        guard try await runAssemblyStep(planId: planId) else { return }
+        guard try await runMixStep(planId: planId) else { return }
+        try await runReviewStep(planId: planId)
+        try await runExportStep(planId: planId)
+    }
+
+    private func runAssemblyStep(planId: String) async throws -> Bool {
+        guard let editor, let plan = editor.editPlan(id: planId), plan.productionRun != nil else {
             throw ProductionError.missingProductionRun
         }
-        guard run.phase != .canceled else {
-            throw ProductionError.productionCanceled
+        try Task.checkCancellation()
+        let key = "assemble:" + (try ProductionRevision.assemblyInputs(plan))
+        if let step = editor.editPlan(id: planId)?.productionRun?.step(for: .assemble),
+           step.state == .completed, step.key == key {
+            return true
         }
-
-        phase = run.phase
-        storyboardRevision = run.storyboardRevision
-        approvedRevision = run.approvedRevision
-        visualReviews = run.visualReviews
-        comment = run.comment
-        // The persisted receipt is the delivered truth: a reopened run must not claim
-        // a fresh delivery or resubmit an export.
-        terminalReceipt = run.terminalReceipt
-
-        try await executeNextPhase()
-    }
-
-    func cancelProduction() async throws {
-        try validatePlanAccessible()
-        guard let editor else { throw ProductionError.editorNotAvailable }
-
-        if let current = currentJobHandle {
-            await current.cancel()
-            jobHandles.removeValue(forKey: current.id)
-            currentJobHandle = nil
-        }
-
-        try editor.cancelProductionReview(planId: planId)
-        phase = .canceled
-    }
-
-    func status() -> ProductionStatus {
-        guard let plan = editor?.editPlan(id: planId) else {
-            return ProductionStatus(
-                runId: runId.uuidString,
-                projectId: projectId,
-                timelineId: timelineId,
-                planId: planId,
-                phase: .canceled,
-                storyboardRevision: nil,
-                approvedRevision: nil,
-                reviewedSceneCount: 0,
-                totalScenes: 0,
-                comment: "Plan not found",
-                currentJobId: nil,
-                exportJobId: nil,
-                terminalReceipt: nil,
-                reviewFindings: [],
-                verifiedTimelineRevision: nil
-            )
-        }
-
-        let run = plan.productionRun
-        return ProductionStatus(
-            runId: runId.uuidString,
-            projectId: projectId,
-            timelineId: timelineId,
-            planId: planId,
-            phase: run?.phase ?? phase,
-            storyboardRevision: run?.storyboardRevision ?? storyboardRevision,
-            approvedRevision: run?.approvedRevision ?? approvedRevision,
-            reviewedSceneCount: run?.visualReviews.count ?? visualReviews.count,
-            totalScenes: plan.shots.count,
-            comment: run?.comment ?? comment,
-            currentJobId: currentJobHandle?.id.uuidString,
-            exportJobId: run?.terminalReceipt?.exportJobId ?? run?.exportJobId ?? terminalReceipt?.exportJobId,
-            terminalReceipt: run?.terminalReceipt ?? terminalReceipt,
-            reviewFindings: run?.reviewFindings ?? [],
-            verifiedTimelineRevision: run?.verifiedTimelineRevision
-        )
-    }
-
-    func reviewScene(
-        sceneId: String,
-        selectionRevision: String,
-        coverage: VisualReview.Coverage,
-        reviewer: String,
-        evidence: String,
-        facesRevealed: Bool,
-        rightsConfirmed: Bool,
-        suspectedDuplicate: Bool
-    ) async throws -> StoryboardReport {
-        try validatePlanAccessible()
-        guard let editor else { throw ProductionError.editorNotAvailable }
-        guard let revision = storyboardRevision else {
-            throw ProductionError.invalidState("No storyboard revision available for review.")
-        }
-
-        let review = VisualReview(
-            sceneId: sceneId,
-            selectionRevision: selectionRevision,
-            coverage: coverage,
-            reviewer: reviewer,
-            evidence: evidence,
-            facesRevealed: facesRevealed,
-            rightsConfirmed: rightsConfirmed,
-            suspectedDuplicate: suspectedDuplicate
-        )
-        let report = try await editor.reviewStoryboardScene(
-            planId: planId,
-            revision: revision,
-            review: review
-        )
-        try validatePlanAccessible()
-        storyboardRevision = report.revision
-        phase = report.phase
-        approvedRevision = report.approvedRevision
-        visualReviews = editor.editPlan(id: planId)?.productionRun?.visualReviews ?? []
-        return report
-    }
-
-    func approveStoryboard(comment: String = "") async throws -> StoryboardReport {
-        try validatePlanAccessible()
-        guard let editor else { throw ProductionError.editorNotAvailable }
-        guard let revision = storyboardRevision else {
-            throw ProductionError.invalidState("No storyboard revision available for approval.")
-        }
-        let report = try await editor.approveStoryboard(
-            planId: planId,
-            revision: revision,
-            comment: comment
-        )
-        try validatePlanAccessible()
-        storyboardRevision = report.revision
-        approvedRevision = report.approvedRevision
-        self.comment = comment
-        phase = report.phase
-
-        try await executeNextPhase()
-        return report
-    }
-
-    private func executeNextPhase() async throws {
-        switch phase {
-        case .awaitingStoryboardApproval:
-            try await runPrepareStoryboard()
-        case .approved:
-            try await runApplyPlan()
-            try await runFinishAudio()
-            try await runExport()
-        case .assembling:
-            try await runFinishAudio()
-            try await runExport()
-        case .finishing:
-            try await runExport()
-        case .reviewing:
-            try await runExport()
-        case .stale:
-            try await runPrepareStoryboard()
-        default:
-            break
-        }
-    }
-
-    private func runFinishAudio() async throws {
-        guard let editor else { throw ProductionError.editorNotAvailable }
-        let audibleClips = editor.timeline.tracks.filter { $0.type == .audio && !$0.muted }.flatMap(\.clips)
-        guard !audibleClips.isEmpty else { return }
-        if editor.timeline.audioMix != nil { return }
-        phase = .finishing
-        var roles: [[String: Any]] = []
-        for clip in audibleClips {
-            let role: String
-            if clip.id.hasPrefix("narration") || clip.mediaRef.contains("voice") || clip.mediaRef.contains("narrat") {
-                role = "voice"
-            } else if clip.mediaRef.contains("music") || clip.mediaRef.contains("bed") {
-                role = "music"
-            } else if clip.mediaRef.contains("ambien") {
-                role = "ambience"
-            } else {
-                role = "effects"
+        let pending = Self.pendingMedia(editor: editor, plan: plan)
+        if !pending.isEmpty {
+            // Footage is still arriving. The run waits for the media event
+            // instead of failing, so one request can carry the film to delivery.
+            let reason = "Waiting for media: \(pending.joined(separator: ", "))."
+            try updateRun(planId: planId) { run in
+                run.phase = .blocked
+                run.blockedReason = reason
+                run.record(.init(kind: .assemble, state: .pending, key: key, error: reason))
             }
-            roles.append(["clipId": clip.id, "role": role])
+            return false
         }
-        _ = try? await toolExecutor.mixAudio(editor, [
-            "roles": roles,
-            "targetLUFS": -16.0,
-            "truePeakDBTP": -1.0,
-        ])
-    }
-
-    private func runPrepareStoryboard() async throws {
-        guard let editor else { throw ProductionError.editorNotAvailable }
-        let report = try await editor.prepareStoryboard(planId: planId)
-        try validatePlanAccessible()
-        storyboardRevision = report.revision
-        phase = report.phase
-        approvedRevision = report.approvedRevision
-        visualReviews = editor.editPlan(id: planId)?.productionRun?.visualReviews ?? []
-    }
-
-    private func runApplyPlan() async throws {
-        guard let editor else { throw ProductionError.editorNotAvailable }
-        phase = .assembling
-        let result = try await toolExecutor.applyPlan(editor, ["planId": planId, "commit": true])
-        if result.isError {
-            let errorMsg = result.content.compactMap {
-                if case .text(let t) = $0 { return t } else { return nil }
-            }.joined(separator: " ")
-            throw ProductionError.toolError(errorMsg.isEmpty ? "Assembly failed" : errorMsg)
+        try updateRun(planId: planId) { run in
+            run.phase = .assembling
+            run.blockedReason = nil
         }
-        try validatePlanAccessible()
+        let prepared: EditorViewModel.PreparedPlanAssembly
+        do {
+            prepared = try await editor.preparePlanAssembly(planId: planId)
+        } catch let error as EditPlanValidationError {
+            let reason = error.errorDescription ?? "The plan cannot be assembled."
+            try updateRun(planId: planId) { run in
+                run.phase = .blocked
+                run.blockedReason = reason
+                run.record(.init(kind: .assemble, state: .failed, key: key, error: reason))
+            }
+            return false
+        }
+        guard prepared.preparation.blockers.isEmpty else {
+            // The plan cannot be assembled yet. The blockers become the run's
+            // findings, so the user sees what to fix instead of a failure.
+            let reason = prepared.preparation.blockers.joined(separator: " ")
+            let findings = prepared.preparation.blockers.map {
+                ProductionRun.Finding(severity: .error, kind: "assemblyBlocked", message: $0,
+                                      fix: "apply_plan", source: .structural)
+            }
+            try persistFindings(planId: planId, findings: findings, source: .structural, digest: nil)
+            try updateRun(planId: planId) { run in
+                run.phase = .blocked
+                run.blockedReason = reason
+                run.record(.init(kind: .assemble, state: .failed, key: key, error: reason))
+            }
+            return false
+        }
+        let receipt = try await editor.commitPlanAssembly(prepared)
+        let digest = receipt.resolved.state.revision
+        try updateRun(planId: planId) { run in
+            run.record(.init(kind: .assemble, state: .completed, key: key, outputDigest: digest,
+                             completedAt: Date()))
+        }
+        return true
     }
 
-    private func runExport() async throws {
+    /// Sources the plan needs that are still being prepared.
+    private static func pendingMedia(editor: EditorViewModel, plan: EditPlan) -> [String] {
+        var refs: [String] = []
+        for ref in plan.shots.compactMap(\.mediaRef) + (plan.soundCues ?? []).compactMap(\.mediaRef) {
+            guard !refs.contains(ref) else { continue }
+            if let asset = editor.mediaAssetsById[ref], asset.generationStatus != .none {
+                refs.append(ref)
+            }
+        }
+        return refs
+    }
+
+    private func runMixStep(planId: String) async throws -> Bool {
+        guard let editor, let plan = editor.editPlan(id: planId) else { throw ProductionError.planNotFound }
+        let audible = editor.timeline.tracks.filter { $0.type == .audio && !$0.muted }.flatMap(\.clips)
+        guard !audible.isEmpty else {
+            try updateRun(planId: planId) { run in
+                run.record(.init(kind: .mix, state: .skipped, key: "mix:none",
+                                 error: "No audible clips to mix.", completedAt: Date()))
+            }
+            return true
+        }
+        if editor.timeline.audioMix != nil {
+            try updateRun(planId: planId) { run in
+                run.record(.init(kind: .mix, state: .skipped, key: "mix:existing",
+                                 outputDigest: editor.timeline.audioMix?.outputRevision, completedAt: Date()))
+            }
+            return true
+        }
+        let roles = Self.roles(for: audible, plan: plan)
+        guard roles.unmapped.isEmpty else {
+            let reason = "Audio clips \(roles.unmapped.joined(separator: ", ")) have no declared role."
+            try updateRun(planId: planId) { run in
+                run.phase = .blocked
+                run.blockedReason = reason
+                run.record(.init(kind: .mix, state: .failed, key: "mix:undeclaredRoles",
+                                 error: reason, completedAt: Date()))
+            }
+            return false
+        }
+        let target = plan.brief?.deliveryTarget ?? AudioDeliveryTarget(integratedLUFS: -16, truePeakDBTP: -1)
+        let key = "mix:" + (try ProductionRevision.digest(MixInputs(
+            roles: roles.assignments.map { "\($0.clipId):\($0.role.rawValue)" },
+            target: target.integratedLUFS, peak: target.truePeakDBTP, tolerance: target.toleranceLU)))
+        if let step = editor.editPlan(id: planId)?.productionRun?.step(for: .mix),
+           step.state == .completed, step.key == key {
+            return true
+        }
+        do {
+            let receipt = try await editor.mixAudio(request: .init(
+                roles: roles.assignments, target: target, ducking: .default,
+                bedFadeFrames: max(1, editor.timeline.fps / 2)))
+            try updateRun(planId: planId) { run in
+                run.record(.init(kind: .mix, state: receipt.changed ? .completed : .skipped,
+                                 key: key, outputDigest: receipt.state.outputRevision, completedAt: Date()))
+            }
+        } catch {
+            let message = (error as? AudioFinishingError)?.reason ?? error.localizedDescription
+            try updateRun(planId: planId) { run in
+                run.phase = .blocked
+                run.blockedReason = "Mixing failed: \(message)"
+                run.record(.init(kind: .mix, state: .failed, key: key, error: message, completedAt: Date()))
+            }
+            return false
+        }
+        return true
+    }
+
+    private struct MixInputs: Encodable {
+        let roles: [String]
+        let target: Double
+        let peak: Double
+        let tolerance: Double
+    }
+
+    /// Audio roles come from the plan's declared cues and narration, never from
+    /// clip names. A clip without a declared role is reported, never guessed.
+    private static func roles(for clips: [Clip], plan: EditPlan) -> (assignments: [AudioRoleAssignment], unmapped: [String]) {
+        var byRef: [String: AudioRole] = [:]
+        if let narration = plan.narration { byRef[narration.mediaRef] = .voice }
+        if case .recording(let recording) = plan.narrationIntent?.narrator { byRef[recording.mediaRef] = .voice }
+        for cue in plan.soundCues ?? [] {
+            guard let ref = cue.mediaRef else { continue }
+            switch cue.role {
+            case .voice: byRef[ref] = .voice
+            case .music: byRef[ref] = .music
+            case .ambience: byRef[ref] = .ambience
+            case .sfx: byRef[ref] = .effects
+            }
+        }
+        var assignments: [AudioRoleAssignment] = []
+        var unmapped: [String] = []
+        for clip in clips {
+            guard let role = byRef[clip.mediaRef] else {
+                unmapped.append(clip.id)
+                continue
+            }
+            assignments.append(.init(clipId: clip.id, role: role))
+        }
+        return (assignments, unmapped)
+    }
+
+    private func runReviewStep(planId: String) async throws {
         guard let editor else { throw ProductionError.editorNotAvailable }
-        // A persisted terminal receipt wins: the run already delivered and reopening
-        // must not resubmit an export or claim fresh delivery.
-        let run = editor.editPlan(id: planId)?.productionRun
-        if let receipt = run?.terminalReceipt {
-            phase = receipt.phase == "completed" ? .completed : .stale
-            terminalReceipt = receipt
+        let snapshot = editor.timeline
+        let digest = try await ProductionRevision.make(
+            timeline: snapshot, timelines: editor.timelines, urls: editor.mediaResolver.expectedURLMap())
+        try Task.checkCancellation()
+        if let step = editor.editPlan(id: planId)?.productionRun?.step(for: .review),
+           step.state == .completed, step.outputDigest == digest {
             return
         }
-        phase = .exporting
-        // Reattach to a job submitted by an interrupted attempt before any new
-        // submission, so retry after restart never queues the export twice.
-        if let jobID = run?.exportJobId {
-            try await attachToExport(editor, jobId: jobID)
-            return
+        let key = "review:" + digest
+        try updateRun(planId: planId) { run in
+            run.phase = .reviewing
+            run.blockedReason = nil
         }
-        let structuralFindings = try runDeterministicChecks(editor: editor)
-        try persistFindings(editor, findings: structuralFindings)
-        // Every open error finding blocks the export, including editorial ones recorded earlier.
-        let openErrors = (editor.editPlan(id: planId)?.productionRun?.reviewFindings ?? [])
-            .filter { $0.severity == .error }
-        if !openErrors.isEmpty {
-            throw ProductionError.exportBlocked(openErrors)
+        let structural = Self.structuralFindings(editor: editor, planId: planId, timelineRevision: digest)
+        let frameCount = min(snapshot.totalFrames, 60 * max(1, snapshot.fps))
+        var renderedFindings: [ProductionRun.Finding] = []
+        if frameCount > 0 {
+            do {
+                let rendered = try await TimelineRenderer.render(
+                    timeline: snapshot, resolver: editor.mediaResolver.snapshot(),
+                    resolveTimeline: editor.timelineResolver(), missingMediaRefs: editor.missingMediaRefs,
+                    startFrame: 0, frameCount: frameCount, shortSide: 720,
+                    preset: AVAssetExportPresetHighestQuality)
+                defer { Task { await TimelineRenderer.removeTemporaryRender(rendered) } }
+                do {
+                    let review = try await RenderedTimelineReview.inspect(
+                        url: rendered, frameCount: frameCount, fps: snapshot.fps)
+                    if review.clippedSamples > 0 {
+                        renderedFindings.append(.init(severity: .error, kind: "clippedAudio",
+                                                     message: "The rendered mix clipped \(review.clippedSamples) samples.",
+                                                     fix: "mix_audio", source: .rendered))
+                    }
+                    if snapshot.totalFrames > frameCount {
+                        renderedFindings.append(.init(severity: .warning, kind: "partialRenderReview",
+                                                     message: "The rendered review covered the first \(frameCount) of \(snapshot.totalFrames) frames.",
+                                                     fix: "review_timeline", source: .rendered))
+                    }
+                } catch {
+                    renderedFindings.append(.init(
+                        severity: .error, kind: "inspectionFailed",
+                        message: "Inspecting the rendered draft failed: \(error.localizedDescription)",
+                        fix: "review_timeline", source: .rendered))
+                }
+            } catch {
+                renderedFindings.append(.init(
+                    severity: .error, kind: "renderFailed",
+                    message: "Rendering the draft failed: \(error.localizedDescription)",
+                    fix: "get_timeline", source: .rendered))
+            }
         }
-        try await submitAndAwaitExport(editor)
+        try persistFindings(planId: planId, findings: structural, source: .structural, digest: digest)
+        try persistFindings(planId: planId, findings: renderedFindings, source: .rendered, digest: digest)
+        try updateRun(planId: planId) { run in
+            run.record(.init(kind: .review, state: .completed, key: key, outputDigest: digest,
+                             completedAt: Date()))
+        }
     }
 
-    /// Deterministic delivery checks over the current project: an empty output
-    /// timeline and unavailable shot media must surface as error findings before
-    /// any export is submitted.
-    private func runDeterministicChecks(editor: EditorViewModel) throws -> [ProductionRun.Finding] {
+    private func runExportStep(planId: String) async throws {
+        guard let editor, let plan = editor.editPlan(id: planId), let run = plan.productionRun else {
+            throw ProductionError.planNotFound
+        }
+        if run.terminalReceipt != nil { return }
+        let snapshot = editor.timeline
+        let digest = try await ProductionRevision.make(
+            timeline: snapshot, timelines: editor.timelines, urls: editor.mediaResolver.expectedURLMap())
+        let key = "export:" + digest
+        let openErrors = run.reviewFindings.filter { $0.severity == .error }
+        guard openErrors.isEmpty else {
+            let reason = "Delivery refused by open review findings: "
+                + openErrors.map { "\($0.kind): \($0.message)" }.joined(separator: "; ")
+            try updateRun(planId: planId) { run in
+                run.phase = .blocked
+                run.blockedReason = reason
+                run.record(.init(kind: .export, state: .failed, key: key, inputDigest: digest, error: reason))
+            }
+            return
+        }
+        guard run.verifiedTimelineRevision == digest else {
+            let reason = "The timeline changed after review; review the current cut before delivery."
+            try updateRun(planId: planId) { run in
+                run.phase = .blocked
+                run.blockedReason = reason
+                run.record(.init(kind: .export, state: .failed, key: key, inputDigest: digest, error: reason))
+            }
+            return
+        }
+        try updateRun(planId: planId) { run in
+            run.phase = .exporting
+            run.blockedReason = nil
+        }
+        if let jobID = run.exportJobId, let uuid = UUID(uuidString: jobID) {
+            guard run.exportedTimelineRevision == digest else {
+                // The submitted export was rendered from a different revision.
+                let reason = "The submitted export was rendered from an earlier revision; export again to deliver the reviewed cut."
+                try updateRun(planId: planId) { run in
+                    run.phase = .blocked
+                    run.blockedReason = reason
+                    run.record(.init(kind: .export, state: .failed, key: key, inputDigest: digest, error: reason))
+                }
+                return
+            }
+            guard let job = editor.exportQueue.jobs(for: editor.exportQueueProjectID)
+                .first(where: { $0.id == uuid }) else {
+                // The submitted job is gone. Resubmitting would risk a second
+                // delivery, so the run blocks until a person asks for a new export.
+                let reason = "The submitted export job is no longer available; export again explicitly to deliver."
+                try updateRun(planId: planId) { run in
+                    run.phase = .blocked
+                    run.blockedReason = reason
+                    run.record(.init(kind: .export, state: .failed, key: key, inputDigest: digest, error: reason))
+                }
+                return
+            }
+            try await finalizeExport(planId: planId, job: job, digest: digest, key: key)
+            return
+        }
+        let outputURL = try Self.deliveryURL(runId: run.id)
+        let submission = try await VideoExportJob.submit(
+            editor: editor, queue: editor.exportQueue,
+            request: .init(timeline: snapshot, format: .h264, resolution: .matchTimeline,
+                            fcpxmlTarget: .default, outputURL: outputURL, source: .agent))
+        // Persist the job id before waiting so an interruption, close, or crash
+        // resumes by attaching, never by queueing a second export.
+        try updateRun(planId: planId) { run in
+            run.exportJobId = submission.jobID.uuidString
+            run.exportPath = outputURL.path
+            run.exportedTimelineRevision = digest
+            run.record(.init(kind: .export, state: .running, key: key, inputDigest: digest))
+        }
+        let job = try await editor.exportQueue.waitForCompletion(submission.jobID)
+        try await finalizeExport(planId: planId, job: job, digest: digest, key: key)
+    }
+
+    private func finalizeExport(planId: String, job: ExportJob, digest: String, key: String) async throws {
+        switch job.status {
+        case .completed:
+            let delivered = FileManager.default.fileExists(atPath: job.outputURL.path)
+            // The certificate binds to the delivered bytes: the exported file must
+            // exist and cover exactly the reviewed runtime.
+            let expectedSeconds = Double(editor.timeline.totalFrames) / Double(max(1, editor.timeline.fps))
+            let exportedSeconds = delivered ? await Self.exportedDuration(job.outputURL) : nil
+            let durationMatches = exportedSeconds.map { abs($0 - expectedSeconds) <= 1.0 / Double(max(1, editor.timeline.fps)) } ?? false
+            let certified = delivered && durationMatches
+            var errors: [String] = []
+            if !delivered { errors.append("The exported file is missing.") }
+            if delivered, !durationMatches {
+                errors.append("The exported file does not cover the reviewed runtime.")
+            }
+            let receipt = ProductionRun.TerminalReceipt(
+                runId: job.id.uuidString, phase: "completed", approvedRevision: nil, reviewedSceneIds: [],
+                comment: "", deliveryVerified: certified, exportJobId: job.id.uuidString,
+                exportPath: job.outputURL.path, errors: errors,
+                completedAt: Date(), verifiedTimelineRevision: digest, exportedTimelineRevision: digest)            try updateRun(planId: planId) { run in
+                run.terminalReceipt = receipt
+                run.phase = delivered ? .completed : .stale
+                if !delivered { run.approvedRevision = nil }
+                run.record(.init(kind: .export, state: delivered ? .completed : .failed, key: key,
+                                 inputDigest: digest, outputDigest: digest,
+                                 error: delivered ? nil : "The exported file is missing.", completedAt: Date()))
+            }
+        case .canceled:
+            try updateRun(planId: planId) { run in
+                run.phase = .canceled
+                run.approvedRevision = nil
+                run.record(.init(kind: .export, state: .failed, key: key, inputDigest: digest,
+                                 error: "Export canceled.", completedAt: Date()))
+            }
+        default:
+            let message = job.error ?? "Export \(job.status.rawValue)."
+            try updateRun(planId: planId) { run in
+                // A failed delivery needs approval again before it is retried.
+                run.phase = .stale
+                run.approvedRevision = nil
+                run.record(.init(kind: .export, state: .failed, key: key, inputDigest: digest,
+                                 error: message, completedAt: Date()))
+            }
+        }
+    }
+
+    // MARK: - Findings and state
+
+    private static func structuralFindings(
+        editor: EditorViewModel, planId: String, timelineRevision: String
+    ) -> [ProductionRun.Finding] {
         guard let plan = editor.editPlan(id: planId) else { return [] }
         var findings: [ProductionRun.Finding] = []
         let timeline = editor.timeline
-
         if timeline.tracks.allSatisfy({ $0.clips.isEmpty }) {
-            findings.append(ProductionRun.Finding(
-                severity: .error,
-                kind: "emptyTimeline",
-                message: "The production timeline has no shots to assemble, inspect, or deliver.",
-                fix: "create_timeline",
-                source: .structural))
+            findings.append(.init(severity: .error, kind: "emptyTimeline",
+                                  message: "The production timeline has no shots to assemble, inspect, or deliver.",
+                                  fix: "create_timeline", source: .structural))
         }
-
         for shot in plan.shots {
-            if let mediaRef = shot.mediaRef, editor.mediaAssetsById[mediaRef] == nil || editor.missingMediaRefs.contains(mediaRef) {
-                findings.append(ProductionRun.Finding(
-                    shotId: shot.id,
-                    timelineRevision: storyboardRevision,
-                    severity: .error,
-                    kind: "missingMedia",
-                    message: "Shot '\(shot.id)' ('\(shot.title)') references media '\(mediaRef)' that is not available.",
-                    fix: "import_media",
-                    source: .structural))
+            if let ref = shot.mediaRef, editor.mediaAssetsById[ref] == nil || editor.missingMediaRefs.contains(ref) {
+                findings.append(.init(shotId: shot.id, timelineRevision: timelineRevision, severity: .error,
+                                      kind: "missingMedia",
+                                      message: "Shot '\(shot.id)' ('\(shot.title)') references media '\(ref)' that is not available.",
+                                      fix: "import_media", source: .structural))
             }
         }
-
         for cue in plan.soundCues ?? [] {
-            if let mediaRef = cue.mediaRef, editor.mediaAssetsById[mediaRef] == nil || editor.missingMediaRefs.contains(mediaRef) {
-                findings.append(ProductionRun.Finding(
-                    timelineRevision: storyboardRevision,
-                    severity: .error,
-                    kind: "missingMedia",
-                    message: "Sound cue '\(cue.cueId)' ('\(cue.purpose)') references media '\(mediaRef)' that is not available.",
-                    fix: "import_media",
-                    source: .structural))
+            if let ref = cue.mediaRef, editor.mediaAssetsById[ref] == nil || editor.missingMediaRefs.contains(ref) {
+                findings.append(.init(timelineRevision: timelineRevision, severity: .error, kind: "missingMedia",
+                                      message: "Sound cue '\(cue.cueId)' ('\(cue.purpose)') references media '\(ref)' that is not available.",
+                                      fix: "import_media", source: .structural))
             }
         }
-
-        for (trackIdx, track) in timeline.tracks.enumerated() where track.type == .video && !track.hidden {
+        for (index, track) in timeline.tracks.enumerated() where track.type == .video && !track.hidden {
             let sorted = track.clips.sorted { $0.startFrame < $1.startFrame }
             if let first = sorted.first, first.startFrame > 0 {
-                findings.append(ProductionRun.Finding(
-                    severity: .error,
-                    kind: "blackGap",
-                    message: "Black gap of \(first.startFrame) frames at head of video track \(trackIdx).",
-                    fix: "get_timeline",
-                    source: .structural))
+                findings.append(.init(timelineRevision: timelineRevision, severity: .error, kind: "blackGap",
+                                      message: "Black gap of \(first.startFrame) frames at the head of video track \(index).",
+                                      fix: "get_timeline", source: .structural))
             }
             for (a, b) in zip(sorted, sorted.dropFirst()) where b.startFrame > a.endFrame {
-                findings.append(ProductionRun.Finding(
-                    severity: .error,
-                    kind: "blackGap",
-                    message: "Black gap of \(b.startFrame - a.endFrame) frames between clips on video track \(trackIdx).",
-                    fix: "get_timeline",
-                    source: .structural))
+                findings.append(.init(timelineRevision: timelineRevision, severity: .error, kind: "blackGap",
+                                      message: "Black gap of \(b.startFrame - a.endFrame) frames on video track \(index).",
+                                      fix: "get_timeline", source: .structural))
             }
         }
-
-        for (trackIdx, track) in timeline.tracks.enumerated() where track.hidden && !track.clips.isEmpty {
-            findings.append(ProductionRun.Finding(
-                severity: .error,
-                kind: "hiddenTrack",
-                message: "Track \(trackIdx) with \(track.clips.count) clip(s) is hidden.",
-                fix: "manage_tracks",
-                source: .structural))
+        for (index, track) in timeline.tracks.enumerated() where track.hidden && !track.clips.isEmpty {
+            findings.append(.init(timelineRevision: timelineRevision, severity: .error, kind: "hiddenTrack",
+                                  message: "Track \(index) with \(track.clips.count) clip(s) is hidden.",
+                                  fix: "manage_tracks", source: .structural))
         }
-
         if editor.enhancementJobs.values.contains(where: { $0.status == .running || $0.status == .queued }) {
-            findings.append(ProductionRun.Finding(
-                severity: .error,
-                kind: "unfinishedEnhancement",
-                message: "Clips on the timeline have unfinished AI enhancement jobs.",
-                fix: "get_enhancement_job_status",
-                source: .structural))
+            findings.append(.init(timelineRevision: timelineRevision, severity: .error, kind: "unfinishedEnhancement",
+                                  message: "Clips on the timeline have unfinished AI enhancement jobs.",
+                                  fix: "get_enhancement_job_status", source: .structural))
         }
-
-        let audibleClips = timeline.tracks.filter { $0.type == .audio && !$0.muted }.flatMap(\.clips)
-        if audibleClips.contains(where: { $0.volume > 2.0 }) {
-            findings.append(ProductionRun.Finding(
-                severity: .error,
-                kind: "clippedNarration",
-                message: "Audio track volume exceeds safe ceiling and risks digital clipping.",
-                fix: "mix_audio",
-                source: .rendered))
-        }
-
         return findings
     }
 
-    /// Records the structural findings on the run. Editorial findings recorded earlier
-    /// are kept: a structural pass replaces only its own findings.
-    private func persistFindings(_ editor: EditorViewModel, findings: [ProductionRun.Finding]) throws {
-        guard var plan = editor.editPlan(id: planId), var run = plan.productionRun else { return }
-        try run.replaceFindings(findings, source: .structural)
-        // The timeline is only verified while no error finding is open.
-        let hasOpenError = run.reviewFindings.contains { $0.severity == .error }
-        run.verifiedTimelineRevision = hasOpenError ? nil : storyboardRevision
-        try run.validate()
-        plan.productionRun = run
-        try editor.commitProductionRun(run, plan: plan, actionName: "Production Quality Check")
-    }
-
-    /// Waits for a previously submitted export and persists the terminal receipt.
-    private func attachToExport(_ editor: EditorViewModel, jobId: String) async throws {
-        let listed = try await toolExecutor.manageExports(editor, ["action": "list"])
-        let payload = try Self.jsonPayload(listed)
-        let rows = (payload["exports"] as? [[String: Any]]) ?? []
-        let row = rows.first { ($0["jobId"] as? String) == jobId }
-        guard let status = row?["status"] as? String else {
-            // Job gone from this project's queue (closed and reopened): resubmit.
-            try await submitAndAwaitExport(editor)
-            return
-        }
-        if status == "failed" || status == "canceled" {
-            try persistTerminal(editor, terminalStatus: status, jobId: jobId,
-                                error: (row?["error"] as? String).map { [$0] } ?? ["Export \(status)."])
-            return
-        }
-        try await awaitExport(editor, jobId: jobId)
-    }
-
-    private func submitAndAwaitExport(_ editor: EditorViewModel) async throws {
-        try Task.checkCancellation()
-        let filename = "production-\(runId.uuidString.prefix(8)).mp4"
-        let outputURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(filename)
-        let result = try await toolExecutor.exportProject(editor, [
-            "mode": "video",
-            "outputPath": outputURL.path,
-            "overwrite": true,
-        ])
-        if result.isError {
-            let errorMessage = Self.errorText(of: result)
-            throw ProductionError.exportFailed(errorMessage.isEmpty ? "Export failed" : errorMessage)
-        }
-        let payload = try Self.jsonPayload(result)
-        guard let jobID = payload["jobId"] as? String else {
-            throw ProductionError.exportFailed("Export submission returned no jobId.")
-        }
-        // Persist the job id before waiting so an interruption, close, or crash
-        // resumes by attaching, not by queueing the export again.
-        try persistExportState(editor, jobId: jobID, path: outputURL.path)
-        do {
-            try await awaitExport(editor, jobId: jobID)
-        }
-    }
-
-    private func awaitExport(_ editor: EditorViewModel, jobId: String) async throws {
-        currentJobHandle = AnyJobHandle { _ = try? await self.toolExecutor.manageExports(editor, ["action": "cancel", "jobId": jobId]) }
-        defer { currentJobHandle = nil }
-        let waited = try await toolExecutor.manageExports(editor, ["action": "wait", "jobId": jobId])
-        let payload = try Self.jsonPayload(waited)
-        let status = (payload["status"] as? String) ?? "failed"
-        switch status {
-        case "completed":
-            try persistTerminal(editor, terminalStatus: status, jobId: jobId)
-        case "canceled":
-            phase = .canceled
-            throw CancellationError()
-        default:
-            let error = (payload["error"] as? String).map { [$0] } ?? ["Export \(status)."]
-            try persistTerminal(editor, terminalStatus: status, jobId: jobId, error: error)
-        }
-    }
-
-    /// Persists the export job id on the plan's production run so resumption can
-    /// attach to the live job.
-    private func persistExportState(_ editor: EditorViewModel, jobId: String, path: String) throws {
-        guard var plan = editor.editPlan(id: planId), var run = plan.productionRun else { return }
-        guard let persistedID = UUID(uuidString: jobId) else {
-            throw ProductionError.exportFailed("Export receipt jobId is not a UUID: \(jobId)")
-        }
-        run.exportJobId = persistedID.uuidString
-        run.exportPath = path
-        try run.validate()
-        plan.productionRun = run
-        try editor.commitProductionRun(run, plan: plan, actionName: "Production Export Queued")
-    }
-
-    /// Persists the terminal receipt; awaited export state may have moved the plan.
-    private func persistTerminal(
-        _ editor: EditorViewModel,
-        terminalStatus: String,
-        jobId: String,
-        error: [String]? = nil
+    private func persistFindings(
+        planId: String, findings: [ProductionRun.Finding],
+        source: ProductionRun.Finding.Source, digest: String?
     ) throws {
-        guard var plan = editor.editPlan(id: planId), var run = plan.productionRun else {
+        guard let editor, let plan = editor.editPlan(id: planId), var run = plan.productionRun else {
             throw ProductionError.planNotFound
         }
-        let delivered = terminalStatus == "completed"
-        let receipt = ProductionRun.TerminalReceipt(
-            runId: runId.uuidString,
-            phase: terminalStatus,
-            approvedRevision: run.approvedRevision,
-            reviewedSceneIds: run.visualReviews.map(\.sceneId),
-            comment: run.comment,
-            deliveryVerified: delivered,
-            exportJobId: (UUID(uuidString: jobId)?.uuidString ?? jobId),
-            exportPath: run.exportPath,
-            errors: error ?? [],
-            completedAt: Date()
-        )
-        run.terminalReceipt = receipt
-        // The run's phase keeps its approval invariant (past-approval phases
-        // carry approvedRevision; canceled/stale must not); the receipt's phase
-        // field records the terminal export outcome.
-        run.phase = delivered ? .completed : run.phase
+        try run.replaceFindings(findings, source: source)
+        if let digest {
+            run.verifiedTimelineRevision = run.reviewFindings.contains(where: { $0.severity == .error }) ? nil : digest
+        }
         try run.validate()
-        plan.productionRun = run
-        try editor.commitProductionRun(run, plan: plan, actionName: "Production Delivery Recorded")
-        phase = delivered ? .completed : .stale
-        terminalReceipt = receipt
+        try editor.commitProductionRunMetadata(run, plan: plan)
     }
 
-    private static func jsonPayload(_ result: ToolResult) throws -> [String: Any] {
-        let text = result.content.compactMap {
-            if case .text(let t) = $0 { return t } else { return nil }
-        }.joined(separator: " ")
-        guard let data = text.data(using: .utf8),
-              let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw ProductionError.toolError("Production step returned unreadable JSON.")
-        }
-        return payload
-    }
-
-    private static func errorText(of result: ToolResult) -> String {
-        result.content.compactMap {
-            if case .text(let t) = $0 { return t } else { return nil }
-        }.joined(separator: " ")
-    }
-
-    private func validatePlanAccessible() throws {
-        guard editor?.editPlan(id: planId) != nil else {
+    private func updateRun(planId: String, _ change: (inout ProductionRun) -> Void) throws {
+        guard let editor, let plan = editor.editPlan(id: planId), var run = plan.productionRun else {
             throw ProductionError.planNotFound
         }
+        change(&run)
+        try run.validate()
+        try editor.commitProductionRunMetadata(run, plan: plan)
+    }
+
+    private static func deliveryURL(runId: String) throws -> URL {
+        guard let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else {
+            throw ProductionError.exportFailed("Downloads folder not found.")
+        }
+        try FileManager.default.createDirectory(at: downloads, withIntermediateDirectories: true)
+        let base = "production-\(runId.prefix(8))"
+        var candidate = downloads.appendingPathComponent("\(base).mp4")
+        var index = 2
+        while FileManager.default.fileExists(atPath: candidate.path) {
+            candidate = downloads.appendingPathComponent("\(base) \(index).mp4")
+            index += 1
+        }
+        return candidate
     }
 }
 
 struct ProductionStatus: Sendable {
-    let runId: String
-    let projectId: String
-    let timelineId: String
     let planId: String
     let phase: ProductionRun.Phase
+    let runId: String?
     let storyboardRevision: String?
     let approvedRevision: String?
     let reviewedSceneCount: Int
     let totalScenes: Int
     let comment: String
-    let currentJobId: String?
-    let exportJobId: String?
-    let terminalReceipt: ProductionRun.TerminalReceipt?
+    let steps: [ProductionRun.Step]
     let reviewFindings: [ProductionRun.Finding]
     let verifiedTimelineRevision: String?
+    let exportedTimelineRevision: String?
+    let exportJobId: String?
+    let exportPath: String?
+    let terminalReceipt: ProductionRun.TerminalReceipt?
+    let blockedReason: String?
+
+    var receipt: [String: Any] {
+        var row: [String: Any] = [
+            "planId": planId, "phase": phase.rawValue, "reviewedSceneCount": reviewedSceneCount,
+            "totalScenes": totalScenes, "comment": comment,
+            "steps": steps.map(\.receipt),
+            "reviewFindings": reviewFindings.map(\.receipt),
+            "deliveryVerified": terminalReceipt?.deliveryVerified ?? false,
+        ]
+        if let runId { row["runId"] = runId }
+        if let storyboardRevision { row["storyboardRevision"] = storyboardRevision }
+        if let approvedRevision { row["approvedRevision"] = approvedRevision }
+        if let verifiedTimelineRevision { row["verifiedTimelineRevision"] = verifiedTimelineRevision }
+        if let exportedTimelineRevision { row["exportedTimelineRevision"] = exportedTimelineRevision }
+        if let exportJobId { row["exportJobId"] = exportJobId }
+        if let exportPath { row["exportPath"] = exportPath }
+        if let blockedReason { row["blockedReason"] = blockedReason }
+        if let terminalReceipt { row["terminalReceipt"] = ProductionRun.receipt(of: terminalReceipt) }
+        return row
+    }
 }
 
-enum ProductionError: LocalizedError, Equatable {
+enum ProductionError: LocalizedError, Equatable, Sendable {
     case planNotFound
-    case timelineMismatch
-    case jobNotFound
     case missingProductionRun
     case productionCanceled
     case notReady(String)
@@ -585,15 +619,11 @@ enum ProductionError: LocalizedError, Equatable {
     case approvalBlocked(String)
     case exportFailed(String)
     case exportBlocked([ProductionRun.Finding])
-    case toolError(String)
     case editorNotAvailable
-    case revisionMismatch(String)
 
     var errorDescription: String? {
         switch self {
         case .planNotFound: return "Plan not found"
-        case .timelineMismatch: return "Timeline mismatch"
-        case .jobNotFound: return "Job not found"
         case .missingProductionRun: return "No production run exists for this plan"
         case .productionCanceled: return "Production run was canceled"
         case .notReady(let reason): return "Production not ready: \(reason)"
@@ -603,10 +633,7 @@ enum ProductionError: LocalizedError, Equatable {
         case .exportFailed(let reason): return "Export failed: \(reason)"
         case .exportBlocked(let findings):
             return "Export blocked by quality findings: \(findings.map { "\($0.severity.rawValue)/\($0.kind): \($0.message)" }.joined(separator: "; "))"
-        case .toolError(let reason): return "Tool error: \(reason)"
         case .editorNotAvailable: return "Editor not available"
-        case .revisionMismatch(let reason): return "Revision mismatch: \(reason)"
         }
     }
 }
-

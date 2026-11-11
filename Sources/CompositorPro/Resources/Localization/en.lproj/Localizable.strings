@@ -116,6 +116,7 @@
 "App version %@ and macOS %@ are included." = "App version %@ and macOS %@ are included.";
 "Appearance" = "Appearance";
 "Apply" = "Apply";
+"Apply Plan" = "Apply Plan";
 "Apply to All Captions" = "Apply to All Captions";
 "Approve Storyboard" = "Approve Storyboard";
 "Ask anything, or start with:" = "Ask anything, or start with:";
@@ -190,6 +191,7 @@
 "Capture Frame to Media" = "Capture Frame to Media";
 "Captured %@." = "Captured %@.";
 "Captured %@. The destination folder was removed, so the frame was saved at the top level of Media." = "Captured %@. The destination folder was removed, so the frame was saved at the top level of Media.";
+"Catalog" = "Catalog";
 "Censor profanity" = "Censor profanity";
 "Center" = "Center";
 "Change Narration Intent" = "Change Narration Intent";
@@ -393,6 +395,7 @@
 "Dubbing requires audio or video" = "Dubbing requires audio or video";
 "Dub…" = "Dub…";
 "Duck the music under the speech in this scene." = "Duck the music under the speech in this scene.";
+"Ducking" = "Ducking";
 "Ducking music under speech" = "Ducking music under speech";
 "Duplicate" = "Duplicate";
 "Duplicate Clip" = "Duplicate Clip";
@@ -674,6 +677,7 @@
 "Lip Sync only works on video" = "Lip Sync only works on video";
 "Lip Sync…" = "Lip Sync…";
 "Lip Sync… (Paid)" = "Lip Sync… (Paid)";
+"Loading catalog…" = "Loading catalog…";
 "Loading community skills" = "Loading community skills";
 "Loading community skills…" = "Loading community skills…";
 "Loading media metadata…" = "Loading media metadata…";
@@ -699,6 +703,7 @@
 "MCP Setup" = "MCP Setup";
 "Main + Sidebar" = "Main + Sidebar";
 "Make a vertical poster frame for this video, with \"Summer\" as the headline." = "Make a vertical poster frame for this video, with \"Summer\" as the headline.";
+"Make sure the catalog mirror contains block files." = "Make sure the catalog mirror contains block files.";
 "Make vertical shorts" = "Make vertical shorts";
 "Manual setup" = "Manual setup";
 "Mark Beats" = "Mark Beats";
@@ -739,6 +744,7 @@
 "Midpoint" = "Midpoint";
 "Minimal" = "Minimal";
 "Minimum Pause" = "Minimum Pause";
+"Mix Audio" = "Mix Audio";
 "Mixed" = "Mixed";
 "Mode" = "Mode";
 "Model" = "Model";
@@ -789,6 +795,7 @@
 "No audio clips to caption." = "No audio clips to caption.";
 "No audio selected." = "No audio selected.";
 "No beats detected." = "No beats detected.";
+"No blocks in catalog." = "No blocks in catalog.";
 "No conversations yet" = "No conversations yet";
 "No exports yet" = "No exports yet";
 "No generations yet" = "No generations yet";
@@ -852,9 +859,6 @@
 "Overlay" = "Overlay";
 "Overline" = "Overline";
 "Padding" = "Padding";
-"Palmier couldn't load this clip's source file. It may be missing, on an ejected drive, or unreadable." = "Palmier couldn't load this clip's source file. It may be missing, on an ejected drive, or unreadable.";
-"Palmier couldn't load this source file. It may be missing, on an ejected drive, or unreadable." = "Palmier couldn't load this source file. It may be missing, on an ejected drive, or unreadable.";
-"Palmier loaded this clip's source file but couldn't prepare it for playback. The file may be corrupt or in an unsupported format." = "Palmier loaded this clip's source file but couldn't prepare it for playback. The file may be corrupt or in an unsupported format.";
 "Paste" = "Paste";
 "Paste Clip Settings" = "Paste Clip Settings";
 "Paste Settings" = "Paste Settings";
@@ -885,6 +889,7 @@
 "Portrait (9:16)" = "Portrait (9:16)";
 "Position" = "Position";
 "Poster images" = "Poster images";
+"Prepare Narration" = "Prepare Narration";
 "Prepare Storyboard" = "Prepare Storyboard";
 "Preparing" = "Preparing";
 "Preparing…" = "Preparing…";
@@ -927,6 +932,7 @@
 "Reasoning" = "Reasoning";
 "Reasoning effort" = "Reasoning effort";
 "Record Inspection" = "Record Inspection";
+"Record Production Review" = "Record Production Review";
 "Record Visual Inspection" = "Record Visual Inspection";
 "Recording: %@" = "Recording: %@";
 "Redetect Beats" = "Redetect Beats";
@@ -1039,6 +1045,7 @@
 "Scroll to latest" = "Scroll to latest";
 "Search" = "Search";
 "Search (⌘K)" = "Search (⌘K)";
+"Search blocks..." = "Search blocks...";
 "Search free stock providers and pull results into the library with their licensing terms attached. Needs a Pexels, Pixabay or Openverse key in Settings." = "Search free stock providers and pull results into the library with their licensing terms attached. Needs a Pexels, Pixabay or Openverse key in Settings.";
 "Search models" = "Search models";
 "Search projects" = "Search projects";
@@ -1097,7 +1104,6 @@
 "Side by Side" = "Side by Side";
 "Sign In" = "Sign In";
 "Sign in" = "Sign in";
-"Sign in to receive 250 free credits for AI chat and generation." = "Sign in to receive 250 free credits for AI chat and generation.";
 "Sign in to use AI" = "Sign in to use AI";
 "Sign in to use AI chat." = "Sign in to use AI chat.";
 "Sign in to use Cloud transcription." = "Sign in to use Cloud transcription.";
@@ -1105,8 +1111,6 @@
 "Sign in to use hosted generation." = "Sign in to use hosted generation.";
 "Sign in with Google" = "Sign in with Google";
 "Sign-in couldn’t be completed. Try again." = "Sign-in couldn’t be completed. Try again.";
-"Signed in" = "Signed in";
-"Signed out" = "Signed out";
 "Silence Detection" = "Silence Detection";
 "Size" = "Size";
 "Skill actions" = "Skill actions";
@@ -1214,6 +1218,7 @@
 "The marker comment changed while you were editing. Review it and try again." = "The marker comment changed while you were editing. Review it and try again.";
 "The model catalog is not ready. Wait for it to load before generating." = "The model catalog is not ready. Wait for it to load before generating.";
 "The project will be moved to the Trash." = "The project will be moved to the Trash.";
+"The remote provider reported a temporary failure. Try again in a moment." = "The remote provider reported a temporary failure. Try again in a moment.";
 "The selected chat model is configured without image input." = "The selected chat model is configured without image input.";
 "The selected model refused this request. Revise the prompt and try again." = "The selected model refused this request. Revise the prompt and try again.";
 "The selected projects will be moved to the Trash." = "The selected projects will be moved to the Trash.";
@@ -1227,7 +1232,6 @@
 "This is where all your footage and assets live." = "This is where all your footage and assets live.";
 "This is your preview panel to play a selected media or the whole timeline." = "This is your preview panel to play a selected media or the whole timeline.";
 "This model cannot cap the output at 60 FPS." = "This model cannot cap the output at 60 FPS.";
-"This model needs a hosted Palmier account, which this build does not use. Add your own API key in Settings, or pick a custom endpoint." = "This model needs a hosted Palmier account, which this build does not use. Add your own API key in Settings, or pick a custom endpoint.";
 "This model needs a hosted account, which this build does not use. Add your own API key in Settings, or pick a custom endpoint." = "This model needs a hosted account, which this build does not use. Add your own API key in Settings, or pick a custom endpoint.";
 "This permanently removes %@." = "This permanently removes %@.";
 "This source can’t replace the clip." = "This source can’t replace the clip.";
@@ -1329,7 +1333,6 @@
 "Video to Music" = "Video to Music";
 "View" = "View";
 "View Skills" = "View Skills";
-"View plans" = "View plans";
 "Vignette" = "Vignette";
 "Visual" = "Visual";
 "Visual search is disabled in Settings." = "Visual search is disabled in Settings.";

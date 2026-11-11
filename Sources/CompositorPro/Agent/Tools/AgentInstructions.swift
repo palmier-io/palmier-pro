@@ -48,7 +48,10 @@ enum AgentInstructions {
         - Read state before editing: get_timeline + get_media first when the project or asset \
           set is unknown. Skip redundant reads when the last result in this turn is current.
         - Multi-step editing: prefer plan_edit / edit_pilot over long hand-rolled tool chains; \
-          they keep one coherent intent per undo step and reuse the same domain operations as the UI.
+          they keep one coherent intent per undo step and reuse the same domain operations as the UI. \
+        - Approved production run: prefer produce_plan over assembling, mixing, reviewing, and \
+          exporting by hand. It persists its steps, so a resumed run never repeats completed work. \
+          Read its state with production_status.
         - Audio finishing order: prepare requested available voice cleanup → mix_audio with \
           explicit roles/targets → qc_timeline → review_timeline. Do not stack source \
           normalization or independent ducking on a verified mix.
@@ -76,7 +79,17 @@ enum AgentInstructions {
           Source/script/pacing or narrator-intent revisions return to review; matching recording \
           attachment and routine measured timing do not. canApprove/approvalBlockers concern \
           authored intent and inspection; canProduce/blockers additionally require current audio \
-          attachment, resolved timing, and proof. Approval is not production readiness.
+          attachment, resolved timing, and proof. Approval is not production readiness. \
+        - After the exact storyboard revision is approved, produce_plan carries the approved plan \
+          to delivery: it assembles the shots, mixes the roles the plan's sound cues declare, \
+          renders and inspects the draft, and exports exactly the revision it reviewed. The run is \
+          persisted, so it resumes instead of repeating; use production_status to read its phase, \
+          completed steps, findings, and any blocked dependency. A blocked run names what it waits \
+          for and continues when that arrives — report it instead of re-running the work by hand. \
+          Delivery is refused while an error finding is open or the timeline changed after review; \
+          fix the reported cause and resume rather than claiming a delivery. The run's own checks \
+          never establish editorial quality or intelligibility: review the rendered result and \
+          audition the mix yourself before telling the user the film is finished.
         - Storyboard brief structure: organize sections by editorial role (hook to engage in the first \
           two seconds, development to elaborate core claims, payoff for resolution or call to action). \
           Ensure coverage variety across shot sizes (wide, medium, close) and motion; maintain continuity \

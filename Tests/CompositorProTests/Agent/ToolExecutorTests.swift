@@ -20,6 +20,7 @@ final class ToolHarness {
     ) {
         let editor = EditorViewModel()
         editor.timeline = timeline
+        editor.exportQueue = exportQueue
         self.editor = editor
         self.exportQueue = exportQueue
         self.executor = ToolExecutor(

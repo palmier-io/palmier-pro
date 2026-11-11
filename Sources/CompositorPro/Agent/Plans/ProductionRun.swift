@@ -9,6 +9,7 @@ struct ProductionRun: Codable, Sendable, Equatable {
         case reviewing
         case exporting
         case completed
+        case blocked
         case stale
         case canceled
     }
@@ -104,6 +105,37 @@ struct ProductionRun: Codable, Sendable, Equatable {
         }
     }
 
+    /// One production step with its persisted outcome. The key is the idempotency
+    /// key: a step whose key already carries a terminal receipt is never run again.
+    struct Step: Codable, Sendable, Equatable {
+        enum Kind: String, Codable, Sendable, CaseIterable {
+            case assemble, mix, review, export
+        }
+
+        enum State: String, Codable, Sendable {
+            case pending, running, completed, failed, skipped
+        }
+
+        var kind: Kind
+        var state: State
+        var key: String
+        var inputDigest: String?
+        var outputDigest: String?
+        var error: String?
+        var completedAt: Date?
+
+        var isTerminal: Bool { state == .completed || state == .failed || state == .skipped }
+
+        var receipt: [String: Any] {
+            var row: [String: Any] = ["kind": kind.rawValue, "state": state.rawValue, "key": key]
+            if let inputDigest { row["inputDigest"] = inputDigest }
+            if let outputDigest { row["outputDigest"] = outputDigest }
+            if let error { row["error"] = error }
+            if let completedAt { row["completedAt"] = completedAt.timeIntervalSince1970 }
+            return row
+        }
+    }
+
     var id: String = UUID().uuidString
     var phase: Phase = .awaitingStoryboardApproval
     var storyboardRevision: String
@@ -114,7 +146,23 @@ struct ProductionRun: Codable, Sendable, Equatable {
     var exportPath: String?
     var terminalReceipt: TerminalReceipt?
     var reviewFindings: [Finding] = []
+    /// Digest of the timeline revision that was rendered and reviewed.
     var verifiedTimelineRevision: String?
+    /// Digest of the timeline revision the delivered export was rendered from.
+    var exportedTimelineRevision: String?
+    /// Dependency that stopped the run, if any. The run resumes from this point.
+    var blockedReason: String?
+    var steps: [Step] = []
+
+    func step(for kind: Step.Kind) -> Step? {
+        steps.first { $0.kind == kind }
+    }
+
+    mutating func record(_ step: Step) {
+        steps.removeAll { $0.kind == step.kind }
+        steps.append(step)
+        steps.sort { $0.kind.rawValue < $1.kind.rawValue }
+    }
 
     mutating func replaceFindings(_ findings: [Finding], source: Finding.Source) throws {
         let normalized = try findings.map { try $0.validated() }
@@ -140,6 +188,10 @@ struct ProductionRun: Codable, Sendable, Equatable {
         var exportPath: String?
         var errors: [String]
         var completedAt: Date?
+        /// Timeline revision that was rendered and reviewed before delivery.
+        var verifiedTimelineRevision: String?
+        /// Timeline revision the delivered export was rendered from.
+        var exportedTimelineRevision: String?
     }
 
     func validate() throws {
@@ -173,8 +225,34 @@ struct ProductionRun: Codable, Sendable, Equatable {
         if let verifiedTimelineRevision, !ProductionRun.validRevision(verifiedTimelineRevision) {
             throw EditPlanValidationError.invalidReference("verifiedTimelineRevision must be a revision digest.")
         }
+        if let exportedTimelineRevision, !ProductionRun.validRevision(exportedTimelineRevision) {
+            throw EditPlanValidationError.invalidReference("exportedTimelineRevision must be a revision digest.")
+        }
         guard verifiedTimelineRevision == nil || !reviewFindings.contains(where: { $0.severity == .error }) else {
             throw EditPlanValidationError.invalidReference("Unresolved error findings prevent verification.")
+        }
+        guard steps.count <= ProductionRun.Step.Kind.allCases.count,
+              Set(steps.map(\.kind)).count == steps.count else {
+            throw EditPlanValidationError.invalidReference("Production stores one outcome per step.")
+        }
+        for step in steps {
+            _ = try EditPlan.validatedID(step.key, field: "production step key")
+            if let inputDigest = step.inputDigest {
+                guard ProductionRun.validRevision(inputDigest) else {
+                    throw EditPlanValidationError.invalidReference("Production step input digest must be a revision digest.")
+                }
+            }
+            if let outputDigest = step.outputDigest {
+                guard ProductionRun.validRevision(outputDigest) else {
+                    throw EditPlanValidationError.invalidReference("Production step output digest must be a revision digest.")
+                }
+            }
+            if let error = step.error {
+                _ = try EditPlan.validatedText(error, field: "production step error")
+            }
+        }
+        if let blockedReason {
+            _ = try EditPlan.validatedText(blockedReason, field: "production blocked reason")
         }
         for review in visualReviews {
             _ = try EditPlan.validatedID(review.sceneId, field: "sceneId")
@@ -196,11 +274,14 @@ struct ProductionRun: Codable, Sendable, Equatable {
                                   "reviewedSceneIds": visualReviews.map(\.sceneId),
                                   "comment": comment,
                                   "reviewFindings": reviewFindings.map(\.receipt),
+                                  "steps": steps.map(\.receipt),
                                   "deliveryVerified": terminalReceipt?.deliveryVerified ?? false]
         if let approvedRevision { out["approvedRevision"] = approvedRevision }
         if let exportJobId { out["exportJobId"] = exportJobId }
         if let exportPath { out["exportPath"] = exportPath }
         if let verifiedTimelineRevision { out["verifiedTimelineRevision"] = verifiedTimelineRevision }
+        if let exportedTimelineRevision { out["exportedTimelineRevision"] = exportedTimelineRevision }
+        if let blockedReason { out["blockedReason"] = blockedReason }
         if let terminalReceipt { out["terminalReceipt"] = Self.receipt(of: terminalReceipt) }
         return out
     }
@@ -213,6 +294,8 @@ struct ProductionRun: Codable, Sendable, Equatable {
         ]
         if let exportJobId = receipt.exportJobId { out["exportJobId"] = exportJobId }
         if let exportPath = receipt.exportPath { out["exportPath"] = exportPath }
+        if let verified = receipt.verifiedTimelineRevision { out["verifiedTimelineRevision"] = verified }
+        if let exported = receipt.exportedTimelineRevision { out["exportedTimelineRevision"] = exported }
         if !receipt.errors.isEmpty { out["errors"] = receipt.errors }
         return out
     }

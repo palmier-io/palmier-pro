@@ -22,6 +22,13 @@ struct ToolResult: Sendable {
     static func error(_ message: String) -> ToolResult {
         ToolResult(content: [.text(message)], isError: true)
     }
+
+    var text: String {
+        content.compactMap {
+            if case .text(let t) = $0 { return t }
+            return nil
+        }.joined(separator: "\n")
+    }
 }
 
 extension ToolResult {

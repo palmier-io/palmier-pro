@@ -29,6 +29,9 @@ struct PlanBrief: Codable, Sendable, Equatable {
     var realism: Realism?
     var deliveryConstraints: String?
     var inferredChoices: [String: String]?
+    /// Measured delivery target for the finished film. Production mixes to this
+    /// target; without it the run reports the default it used.
+    var deliveryTarget: AudioDeliveryTarget?
 
     static let maxComboboxLength = 200
 
@@ -44,6 +47,14 @@ struct PlanBrief: Codable, Sendable, Equatable {
         if let durationSeconds {
             guard durationSeconds.isFinite, durationSeconds > 0, durationSeconds <= 14_400 else {
                 throw EditPlanValidationError.invalidReference("brief.durationSeconds must be 0–4 hours.")
+            }
+        }
+        if let deliveryTarget {
+            guard deliveryTarget.integratedLUFS.isFinite, (-60 ... -5).contains(deliveryTarget.integratedLUFS),
+                  deliveryTarget.truePeakDBTP.isFinite, (-20 ... 0).contains(deliveryTarget.truePeakDBTP),
+                  deliveryTarget.toleranceLU.isFinite, (0.1 ... 2).contains(deliveryTarget.toleranceLU) else {
+                throw EditPlanValidationError.invalidReference(
+                    "brief.deliveryTarget requires -60…-5 LUFS, -20…0 dBTP, and 0.1…2 LU tolerance.")
             }
         }
         if let inferredChoices {
@@ -70,6 +81,7 @@ struct PlanBrief: Codable, Sendable, Equatable {
         if let realism { row["realism"] = realism.rawValue }
         if let deliveryConstraints { row["deliveryConstraints"] = deliveryConstraints }
         if let inferredChoices { row["inferredChoices"] = inferredChoices }
+        if let deliveryTarget { row["deliveryTarget"] = deliveryTarget.receipt }
         return row
     }
 

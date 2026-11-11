@@ -96,6 +96,12 @@ final class EditorViewModel {
     }
     @ObservationIgnored private(set) var editPlansRevision: UInt64 = 0
     @ObservationIgnored var preparedPlanAssembly: PreparedPlanAssembly?
+    /// The project's export queue. Production delivery submits through it.
+    @ObservationIgnored var exportQueue: ExportQueue = .shared
+    /// Drives the persisted production run for this project.
+    @ObservationIgnored let productionCoordinator = ProductionCoordinator()
+    /// Called after a media asset becomes usable on disk.
+    @ObservationIgnored var onMediaReady: (() -> Void)?
     var editPlansLoadFailed = false
     var editPilotArrangements: [String: EditPilotArrangement] = [:]
     var captionTranslationJobs: [String: CaptionTranslationJob] = [:]
@@ -419,6 +425,7 @@ final class EditorViewModel {
         undo.onActionCommitted = { [weak self] in
             self?.captureCommittedEdit()
         }
+        productionCoordinator.attach(to: self)
 
         // Re-check media presence when the app regains focus: a user may have
         // deleted/moved backing files in Finder (or ejected a volume) while we

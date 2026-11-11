@@ -778,6 +778,7 @@ extension EditorViewModel {
         missingMediaRefs.remove(asset.id)
         offlineMediaRefs.remove(asset.id)
         unprocessableMediaRefs.remove(asset.id)
+        onMediaReady?()
         refreshMissingMediaCache()
         searchIndex.schedule(asset)
         if !batchManifestUpdate {

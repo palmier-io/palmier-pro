@@ -498,7 +498,10 @@ extension ToolExecutor {
 
     private func validatePlanBrief(_ value: Any?, path: String) throws {
         guard let value else { return }
-        try validatePlanValue(value, allowed: ["audience", "durationSeconds", "aspectFormat", "tone", "language", "realism", "deliveryConstraints", "inferredChoices"], path: path)
+        try validatePlanValue(value, allowed: ["audience", "durationSeconds", "aspectFormat", "tone", "language", "realism", "deliveryConstraints", "deliveryTarget", "inferredChoices"], path: path)
+        if let target = (value as? [String: Any])?["deliveryTarget"] {
+            try validatePlanValue(target, allowed: ["integratedLUFS", "truePeakDBTP", "toleranceLU"], path: "\(path).deliveryTarget")
+        }
     }
 
     private func validatePlanSoundCues(_ value: Any?, path: String) throws {

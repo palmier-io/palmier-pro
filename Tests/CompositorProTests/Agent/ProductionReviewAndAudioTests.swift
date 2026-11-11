@@ -115,15 +115,7 @@ struct ProductionReviewAndAudioTests {
         )
         try harness.editor.changeEditPlans(creates: [plan], actionName: "Create Plan")
 
-        let coordinator = ProductionCoordinator(
-            planId: plan.id,
-            projectId: harness.editor.projectId ?? "test-project",
-            timelineId: harness.editor.activeTimelineId,
-            editor: harness.editor,
-            packageCoordinator: ProjectPackageCoordinator(),
-            exportQueue: harness.exportQueue,
-            toolExecutor: harness.executor
-        )
+        let coordinator = harness.editor.productionCoordinator
 
         // 1. Black gap at head of video track
         var clip = Fixtures.clip(mediaRef: "", mediaType: .text, start: 30, duration: 60)
@@ -133,13 +125,16 @@ struct ProductionReviewAndAudioTests {
         harness.editor.timeline = timeline
 
         var run = ProductionRun(storyboardRevision: String(repeating: "c", count: 64))
-        run.phase = .assembling
+        run.phase = .approved
         run.approvedRevision = run.storyboardRevision
         try harness.editor.commitProductionRun(run, plan: harness.editor.editPlan(id: plan.id)!, actionName: "Seed run")
+        // The cut is already assembled; the run continues at review and delivery.
+        let assemblyKey = "assemble:" + (try ProductionRevision.assemblyInputs(plan))
+        var assembled = try #require(harness.editor.editPlan(id: plan.id)?.productionRun)
+        assembled.record(.init(kind: .assemble, state: .completed, key: assemblyKey))
+        try harness.editor.commitProductionRunMetadata(assembled, plan: harness.editor.editPlan(id: plan.id)!)
 
-        await #expect(throws: ProductionError.self) {
-            try await coordinator.resumeProduction()
-        }
+        try await coordinator.resume(planId: plan.id)
         let afterGap = try #require(harness.editor.editPlan(id: plan.id)?.productionRun)
         #expect(afterGap.reviewFindings.contains { $0.kind == "blackGap" })
 
@@ -150,9 +145,7 @@ struct ProductionReviewAndAudioTests {
         timeline.tracks = [hiddenTrack]
         harness.editor.timeline = timeline
 
-        await #expect(throws: ProductionError.self) {
-            try await coordinator.resumeProduction()
-        }
+        try await coordinator.resume(planId: plan.id)
         let afterHidden = try #require(harness.editor.editPlan(id: plan.id)?.productionRun)
         #expect(afterHidden.reviewFindings.contains { $0.kind == "hiddenTrack" })
     }

@@ -1,26 +1,6 @@
 import Foundation
 
 extension ToolExecutor {
-    // A timeline carrying an approved managed production re-audits its current
-    // output occurrences before video delivery, so manual edits or later imports
-    // after approval cannot evade the no-repeat rule. Other modes carry the edit
-    // itself, and untracked timelines keep the general-editing contract.
-    private static func requireProductionVisualUniqueness(editor: EditorViewModel, timeline: Timeline) async throws {
-        guard editor.editPlans.contains(where: { $0.timelineId == timeline.id && $0.productionRun != nil && $0.productionRun?.phase != .canceled }) else { return }
-        let manifest = editor.mediaManifest
-        let snapshot = timeline
-        let report: VisualUniquenessReport
-        do {
-            report = try await VisualUniqueness.audit(timeline: snapshot, timelines: editor.timelines, manifest: manifest)
-        } catch is CancellationError { throw CancellationError() }
-        try Task.checkCancellation()
-        guard editor.timeline(for: timeline.id) == snapshot, editor.mediaManifest == manifest else {
-            throw ToolError("export_project: timeline or media changed during visual identity review; retry against current state.")
-        }
-        guard report.conflicts.isEmpty, report.unresolved.isEmpty else {
-            throw ToolError("export_project: delivery refused — the production output repeats a visual source or has unresolved source identity (\(report.conflicts.count) conflict(s), \(report.unresolved.count) unresolved). Replace duplicates, then retry.")
-        }
-    }
 
     func manageExports(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         let input: ManageExportsArgs = try decodeToolArgs(args, path: "manage_exports")
@@ -172,7 +152,7 @@ extension ToolExecutor {
             guard timeline.totalFrames > 0 else {
                 throw ToolError("export_project: timeline is empty")
             }
-            try await Self.requireProductionVisualUniqueness(editor: editor, timeline: timeline)
+            try await ProductionDelivery.requireVisualUniqueness(editor: editor, timeline: timeline)
             return try await enqueueExport(
                 editor, timeline: timeline, mode: mode, format: format,
                 resolution: resolution, target: .default, outputURL: outputURL,
@@ -220,28 +200,11 @@ extension ToolExecutor {
             ? nestExportWarnings(editor, timeline: timeline)
             : []
 
-        let resolveTimeline = editor.timelineResolver()
-        let audibleClips = PreparedAudio.audibleClips(timeline: timeline, resolveTimeline: resolveTimeline)
-        if !audibleClips.isEmpty {
-            try await editor.awaitEnhancementJobsForClips(Set(audibleClips.map(\.id)))
-        }
-
-        let submission = try exportQueue.enqueueVideo(
-            timeline: timeline,
-            resolver: editor.mediaResolver,
-            resolveTimeline: resolveTimeline,
-            format: format,
-            resolution: resolution,
-            fcpxmlTarget: target,
-            missingMediaRefs: editor.missingMediaRefs,
-            outputURL: outputURL,
-            source: .agent,
-            projectID: editor.exportQueueProjectID,
-            analyticsProjectID: editor.projectId,
-            warnings: warnings,
-            prepareProcessing: { [weak editor] in
-                try await editor?.awaitEnhancementJobsForTimeline(timeline)
-            }
+        let submission = try await VideoExportJob.submit(
+            editor: editor,
+            queue: exportQueue,
+            request: .init(timeline: timeline, format: format, resolution: resolution, fcpxmlTarget: target,
+                            outputURL: outputURL, source: .agent, warnings: warnings)
         )
 
         var payload: [String: Any] = [

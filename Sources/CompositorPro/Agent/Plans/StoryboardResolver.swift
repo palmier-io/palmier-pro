@@ -81,7 +81,7 @@ struct StoryboardReport: Sendable {
 
     var canApprove: Bool { approvalBlockers.isEmpty }
     var canProduce: Bool {
-        phase != .awaitingStoryboardApproval && phase != .stale && phase != .canceled
+        phase != .awaitingStoryboardApproval && phase != .stale && phase != .canceled && phase != .blocked
             && approvedRevision == revision && blockers.isEmpty
     }
 

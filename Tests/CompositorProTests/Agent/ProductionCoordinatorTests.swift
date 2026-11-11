@@ -7,6 +7,8 @@ import Testing
 struct ProductionCoordinatorTests {
     private let harness = ToolHarness()
 
+    private var coordinator: ProductionCoordinator { harness.editor.productionCoordinator }
+
     private func createPlan(withStoryboard: Bool = false) -> EditPlan {
         var plan = EditPlan(
             name: "Test Production",
@@ -34,104 +36,6 @@ struct ProductionCoordinatorTests {
         return harness.editor.editPlan(id: plan.id)!
     }
 
-    @Test("Start production creates production run")
-    func startProductionCreatesRun() async throws {
-        let plan = createPlan(withStoryboard: true)
-        let coordinator = ProductionCoordinator(
-            planId: plan.id,
-            projectId: harness.editor.projectId ?? "test-project",
-            timelineId: harness.editor.activeTimelineId,
-            editor: harness.editor,
-            packageCoordinator: ProjectPackageCoordinator(),
-            exportQueue: harness.exportQueue,
-            toolExecutor: harness.executor
-        )
-
-        try await coordinator.startProduction()
-
-        let status = coordinator.status()
-        #expect(status.runId == coordinator.runId.uuidString)
-        #expect(status.projectId == (harness.editor.projectId ?? "test-project"))
-        #expect(status.timelineId == harness.editor.activeTimelineId)
-        #expect(status.totalScenes == 1)
-    }
-
-    @Test("Cancel production stops and clears state")
-    func cancelProductionStopsAndClears() async throws {
-        let plan = createPlan(withStoryboard: true)
-        let coordinator = ProductionCoordinator(
-            planId: plan.id,
-            projectId: harness.editor.projectId ?? "test-project",
-            timelineId: harness.editor.activeTimelineId,
-            editor: harness.editor,
-            packageCoordinator: ProjectPackageCoordinator(),
-            exportQueue: harness.exportQueue,
-            toolExecutor: harness.executor
-        )
-
-        try await coordinator.startProduction()
-        try await coordinator.cancelProduction()
-
-        let status = coordinator.status()
-        #expect(status.phase == ProductionRun.Phase.canceled)
-    }
-
-    @Test("Production status is inspectable")
-    func statusIsInspectable() async throws {
-        let plan = createPlan(withStoryboard: true)
-        let coordinator = ProductionCoordinator(
-            planId: plan.id,
-            projectId: harness.editor.projectId ?? "test-project",
-            timelineId: harness.editor.activeTimelineId,
-            editor: harness.editor,
-            packageCoordinator: ProjectPackageCoordinator(),
-            exportQueue: harness.exportQueue,
-            toolExecutor: harness.executor
-        )
-
-        try await coordinator.startProduction()
-
-        let status = coordinator.status()
-        #expect(status.runId == coordinator.runId.uuidString)
-        #expect(status.totalScenes == 1)
-    }
-
-    @Test("Resume from canceled state remains canceled")
-    func resumeFromCanceledRemainsCanceled() async throws {
-        let plan = createPlan(withStoryboard: true)
-        let coordinator = ProductionCoordinator(
-            planId: plan.id,
-            projectId: harness.editor.projectId ?? "test-project",
-            timelineId: harness.editor.activeTimelineId,
-            editor: harness.editor,
-            packageCoordinator: ProjectPackageCoordinator(),
-            exportQueue: harness.exportQueue,
-            toolExecutor: harness.executor
-        )
-
-        try await coordinator.startProduction()
-        try await coordinator.cancelProduction()
-
-        // Resume should throw because phase is canceled
-        await #expect(throws: ProductionError.productionCanceled) {
-            try await coordinator.resumeProduction()
-        }
-    }
-
-    // MARK: Export delivery
-
-    private func coordinator(for plan: EditPlan) -> ProductionCoordinator {
-        ProductionCoordinator(
-            planId: plan.id,
-            projectId: harness.editor.projectId ?? "test-project",
-            timelineId: harness.editor.activeTimelineId,
-            editor: harness.editor,
-            packageCoordinator: ProjectPackageCoordinator(),
-            exportQueue: harness.exportQueue,
-            toolExecutor: harness.executor
-        )
-    }
-
     /// Text-only track added to the existing timeline: no visual mediaRef, so
     /// the uniqueness audit passes and rendering succeeds (black canvas with
     /// the title). Mutates in place so the plan's timeline identity survives.
@@ -145,7 +49,7 @@ struct ProductionCoordinatorTests {
 
     private func seedRun(
         planId: String,
-        phase: ProductionRun.Phase = .assembling,
+        phase: ProductionRun.Phase = .approved,
         exportJobId: String? = nil
     ) -> ProductionRun {
         var run = ProductionRun(storyboardRevision: String(repeating: "a", count: 64))
@@ -159,190 +63,127 @@ struct ProductionCoordinatorTests {
         do {
             try harness.editor.commitProductionRun(
                 run, plan: harness.editor.editPlan(id: planId)!, actionName: "Seed run")
+            // An approved run implies an approved plan.
+            _ = try harness.editor.changeEditPlanStatus(id: planId, to: .approved, actionName: "Approve plan")
         } catch {
             Issue.record("seedRun failed: \(error)")
         }
         return run
     }
 
-    private func jobID(from result: ToolResult) throws -> String {
-        let text = ToolHarness.textOf(result)
-        let payload = try #require(try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
-        return try #require(payload["jobId"] as? String)
+    /// Marks the cut as already assembled so the run continues at review and delivery.
+    private func markAssembled(planId: String) throws {
+        let plan = try #require(harness.editor.editPlan(id: planId))
+        var run = try #require(plan.productionRun)
+        run.record(.init(kind: .assemble, state: .completed,
+                         key: "assemble:" + (try ProductionRevision.assemblyInputs(plan))))
+        try harness.editor.commitProductionRunMetadata(run, plan: plan)
     }
 
-    /// A directory the export writer cannot open, so the job fails after
-    /// submission with a deterministic write failure.
-    nonisolated private static func makeUnwritableDirectory() async throws -> URL {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("prod-unwritable-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: directory.path)
-        return directory
+    @Test("Status reads the persisted run without touching the project")
+    func statusReadsPersistedRun() async throws {
+        let plan = createPlan(withStoryboard: true)
+        let status = coordinator.status(planId: plan.id)
+        #expect(status.phase == .awaitingStoryboardApproval)
+        #expect(status.totalScenes == 1)
+        #expect(status.runId == nil)
+        #expect(status.terminalReceipt == nil)
     }
 
-    nonisolated private static func removeDirectory(_ directory: URL) async throws {
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory.path)
-        try FileManager.default.removeItem(at: directory)
-    }
-
-    @Test("Completed export persists a real verified terminal receipt")
-    func completedExportPersistsVerifiedTerminalReceipt() async throws {
-        let plan = createPlan()
-        addTitleClip(text: "Verified delivery")
-        let run = seedRun(planId: plan.id)
-        let jobsBefore = harness.exportQueue.jobs.count
-        let coordinator = coordinator(for: plan)
-        try await coordinator.resumeProduction()
-
-        let jobs = harness.exportQueue.jobs
-        #expect(jobs.count == jobsBefore + 1, "resume submitted exactly one export job")
-        guard let job = jobs.first else {
-            Issue.record("no export job was created")
-            return
+    @Test("Production requires an approved storyboard")
+    func productionRequiresApproval() async throws {
+        let plan = createPlan(withStoryboard: true)
+        await #expect(throws: ProductionError.self) {
+            try await coordinator.produce(planId: plan.id)
         }
-        let persistedRun = try #require(harness.editor.editPlan(id: plan.id)?.productionRun)
-        guard let receipt = persistedRun.terminalReceipt else {
-            Issue.record("terminal receipt was not persisted on the plan")
-            return
-        }
-        #expect(receipt.deliveryVerified)
-        #expect(receipt.phase == "completed")
-        #expect(receipt.exportJobId == job.id.uuidString, "receipt must carry the real job id")
-        #expect(receipt.exportPath == job.outputURL.path)
-        #expect(receipt.approvedRevision == run.approvedRevision)
-        #expect(receipt.completedAt != nil)
-        #expect(persistedRun.phase == .completed)
-        #expect(persistedRun.exportJobId == job.id.uuidString)
-        let status = coordinator.status()
-        #expect(status.phase == .completed)
-        #expect(status.terminalReceipt?.deliveryVerified == true)
-        #expect(status.exportJobId == job.id.uuidString)
+        #expect(coordinator.status(planId: plan.id).phase == .awaitingStoryboardApproval)
     }
 
-    @Test("Resume with a failed persisted export job records the receipt without resubmitting")
-    func resumeWithFailedPersistedJobRecordsReceiptWithoutResubmitting() async throws {
-        let plan = createPlan()
-        addTitleClip(text: "Failed delivery")
-        let destination = try await Self.makeUnwritableDirectory()
-        defer { Task.detached { try? await Self.removeDirectory(destination) } }
-        let queued = try await harness.executor.exportProject(
-            harness.editor, ["mode": "video", "outputPath": destination.appendingPathComponent("failed.mp4").path, "overwrite": true])
-        #expect(queued.isError != true)
-        let failedJobID = try jobID(from: queued)
-        let waited = try await harness.executor.manageExports(
-            harness.editor, ["action": "wait", "jobId": failedJobID])
-        let payload = try #require(
-            try JSONSerialization.jsonObject(with: Data(ToolHarness.textOf(waited).utf8)) as? [String: Any])
-        #expect(payload["status"] as? String == "failed", "\(ToolHarness.textOf(waited))")
-
-        let jobsBefore = harness.exportQueue.jobs.count
-        _ = seedRun(planId: plan.id, exportJobId: failedJobID)
-
-        try await coordinator(for: plan).resumeProduction()
-
-        #expect(harness.exportQueue.jobs.count == jobsBefore, "resume must not queue a second export")
-        let persistedRun = try #require(harness.editor.editPlan(id: plan.id)?.productionRun)
-        guard let receipt = persistedRun.terminalReceipt else {
-            Issue.record("terminal receipt was not persisted on the plan")
-            return
+    @Test("Cancel production stops the run and prevents further edits")
+    func cancelProductionStopsTheRun() async throws {
+        let plan = createPlan(withStoryboard: true)
+        _ = seedRun(planId: plan.id)
+        try coordinator.cancel(planId: plan.id)
+        #expect(coordinator.status(planId: plan.id).phase == .canceled)
+        await #expect(throws: ProductionError.productionCanceled) {
+            try await coordinator.resume(planId: plan.id)
         }
-        #expect(receipt.deliveryVerified == false)
-        #expect(receipt.phase == "failed")
-        #expect(receipt.exportJobId == failedJobID)
-        #expect(receipt.errors.isEmpty == false)
-        #expect(persistedRun.exportJobId == failedJobID)
     }
 
-    @Test("Failed submission leaves the run unexported and without a receipt")
-    func failedSubmissionPersistenceStaysClean() async throws {
-        let plan = createPlan()
-        let target = try #require(harness.editor.editPlan(id: plan.id))
-        try harness.editor.commitProductionRun(ProductionRun(storyboardRevision: String(repeating: "b", count: 64)), plan: target, actionName: "Seed run")
-        harness.editor.timeline = Fixtures.timeline()
-
-        let submitted = try #require(harness.editor.editPlan(id: plan.id)?.productionRun)
-        let coordinator = coordinator(for: plan)
-
-        await #expect(throws: (any Error).self) {
-            try await coordinator.resumeProduction()
-        }
-        let persisted = try #require(harness.editor.editPlan(id: plan.id)?.productionRun)
-        #expect(persisted.exportJobId == nil)
-        #expect(persisted.terminalReceipt == nil)
-        #expect(persisted.exportPath == nil)
-        #expect(persisted.storyboardRevision == submitted.storyboardRevision)
+    @Test("A run waiting for footage reports the dependency instead of editing")
+    func blockedRunReportsItsDependency() async throws {
+        var plan = createPlan()
+        plan.shots[0].mediaRef = "not-yet-imported"
+        try harness.editor.changeEditPlans(updates: [plan], actionName: "Add missing media ref")
+        _ = seedRun(planId: plan.id)
+        let before = harness.editor.timeline
+        try await coordinator.resume(planId: plan.id)
+        let status = coordinator.status(planId: plan.id)
+        #expect(status.phase == .blocked)
+        #expect(status.blockedReason?.contains("not-yet-imported") == true)
+        #expect(harness.editor.timeline == before)
         #expect(harness.exportQueue.jobs.isEmpty)
     }
 
-    @Test("Export is refused while error findings are open")
-    func exportRefusedWhileErrorFindingsOpen() async throws {
+    @Test("Delivery is refused while error findings are open")
+    func deliveryRefusedWhileErrorFindingsOpen() async throws {
         var plan = createPlan()
         plan.shots[0].mediaRef = "missing-media"
         try harness.editor.changeEditPlans(updates: [plan], actionName: "Add missing media ref")
         addTitleClip(text: "Missing source")
-        _ = seedRun(planId: plan.id, phase: .assembling)
+        _ = seedRun(planId: plan.id)
+        try markAssembled(planId: plan.id)
         let jobsBefore = harness.exportQueue.jobs.count
-        let coordinator = coordinator(for: plan)
-
-        await #expect(throws: (any Error).self) {
-            try await coordinator.resumeProduction()
-        }
-        #expect(harness.exportQueue.jobs.count == jobsBefore, "refused export must not queue a job")
+        try await coordinator.resume(planId: plan.id)
+        #expect(harness.exportQueue.jobs.count == jobsBefore, "refused delivery must not queue a job")
         let persistedRun = try #require(harness.editor.editPlan(id: plan.id)?.productionRun)
-        #expect(persistedRun.reviewFindings.count == 1)
-        #expect(persistedRun.reviewFindings.first?.kind == "missingMedia")
-        #expect(persistedRun.reviewFindings.first?.severity == .error)
+        #expect(persistedRun.reviewFindings.contains { $0.kind == "missingMedia" && $0.severity == .error })
         #expect(persistedRun.verifiedTimelineRevision == nil)
-        let status = coordinator.status()
-        #expect(status.reviewFindings.count == 1)
+        let status = coordinator.status(planId: plan.id)
+        #expect(status.reviewFindings.count == persistedRun.reviewFindings.count)
         #expect(status.verifiedTimelineRevision == nil)
+        #expect(status.phase == .blocked)
+        #expect(status.blockedReason?.contains("Delivery refused") == true)
     }
 
-    @Test func recordedReviewErrorsSurviveStructuralChecksAndBlockExport() async throws {
+    @Test func recordedReviewErrorsSurviveStructuralChecksAndBlockDelivery() async throws {
         let plan = createPlan()
         addTitleClip(text: "Needs review")
         let run = seedRun(planId: plan.id)
+        try markAssembled(planId: plan.id)
         let finding = ProductionRun.Finding(
             shotId: "scene1", timelineRevision: run.storyboardRevision, severity: .error,
             kind: "wrongSubject", message: "Selected footage does not show the requested subject.")
         try harness.editor.recordProductionReview(planId: plan.id, findings: [finding])
-        let coordinator = coordinator(for: plan)
-        await #expect(throws: ProductionError.self) {
-            try await coordinator.resumeProduction()
-        }
+        try await coordinator.resume(planId: plan.id)
         let persisted = try #require(harness.editor.editPlan(id: plan.id)?.productionRun)
         #expect(persisted.reviewFindings.contains(finding))
         #expect(persisted.terminalReceipt == nil)
         #expect(harness.exportQueue.jobs.isEmpty)
-        for job in harness.exportQueue.jobs { await TimelineRenderer.removeTemporaryRender(job.outputURL) }
-    }
-
-    @Test func resumedStatusReadsThePersistedTerminalReceipt() async throws {
-        let plan = createPlan()
-        var run = seedRun(planId: plan.id, phase: .completed)
-        let receipt = ProductionRun.TerminalReceipt(
-            runId: run.id, phase: "completed", approvedRevision: run.approvedRevision,
-            reviewedSceneIds: [], comment: "Delivered", deliveryVerified: true,
-            exportJobId: UUID().uuidString, exportPath: nil, errors: [], completedAt: Date())
-        run.terminalReceipt = receipt
-        try harness.editor.commitProductionRun(run, plan: harness.editor.editPlan(id: plan.id)!, actionName: "Seed delivery")
-        let coordinator = coordinator(for: plan)
-        try await coordinator.resumeProduction()
-        #expect(coordinator.status().terminalReceipt == receipt)
-        #expect(coordinator.status().exportJobId == receipt.exportJobId)
-        #expect(harness.exportQueue.jobs.isEmpty)
+        #expect(persisted.blockedReason?.contains("wrongSubject") == true)
     }
 
     @Test func emptyOutputTimelineCannotPassStructuralReview() async throws {
         let plan = createPlan()
         _ = seedRun(planId: plan.id)
-        await #expect(throws: ProductionError.self) {
-            try await coordinator(for: plan).resumeProduction()
-        }
+        try markAssembled(planId: plan.id)
+        try await coordinator.resume(planId: plan.id)
         let run = try #require(harness.editor.editPlan(id: plan.id)?.productionRun)
         #expect(run.reviewFindings.contains { $0.kind == "emptyTimeline" && $0.severity == .error })
         #expect(run.verifiedTimelineRevision == nil)
         #expect(harness.exportQueue.jobs.isEmpty)
+    }
+
+    @Test func aMissingExportJobBlocksInsteadOfDeliveringTwice() async throws {
+        let plan = createPlan()
+        addTitleClip(text: "Missing job")
+        _ = seedRun(planId: plan.id, exportJobId: UUID().uuidString)
+        try markAssembled(planId: plan.id)
+        let jobsBefore = harness.exportQueue.jobs.count
+        try await coordinator.resume(planId: plan.id)
+        #expect(harness.exportQueue.jobs.count == jobsBefore)
+        let run = try #require(harness.editor.editPlan(id: plan.id)?.productionRun)
+        #expect(run.blockedReason?.contains("no longer available") == true)
+        #expect(run.terminalReceipt == nil)
     }
 }

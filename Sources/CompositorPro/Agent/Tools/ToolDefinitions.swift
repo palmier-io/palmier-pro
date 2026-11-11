@@ -20,6 +20,8 @@ enum ToolName: String, CaseIterable, Sendable {
     // Planning
     case planEdit = "plan_edit"
     case applyPlan = "apply_plan"
+    case producePlan = "produce_plan"
+    case productionStatus = "production_status"
     case editPilot = "edit_pilot"
 
     // Media library
@@ -245,7 +247,7 @@ enum ToolDefinitions {
             description: "Maintains one persistent edit plan with structure, source-linked script beats, shots, narration intent, timing, claims, and provenance. Supplied referenceRecipe cues adapt editorial principles; reference duration never sets output runtime. New plans start proposed on the active timeline. prepare_storyboard starts a managed production review with derived scene cards and one persistent approval owner; inspect actual selections and obtain explicit user approval of the exact revision. Managed approval requires complete available narrationIntent but not rendered audio; canApprove/approvalBlockers are separate from canProduce/production blockers. prepare_narration (approved local speech only) renders from script beats via the strict pinned seam and records app-owned synthesis proof, clearing unverified_synthesized_narration when proof and timing match. Matching recording attachment and measurement preserve approval; material intent changes revoke it. Generic generate_speech output cannot satisfy managed narration proof. Managed approval cannot be replaced by a plain status change or override visual/rights blockers. Generic plan status remains available for ordinary editing. Web candidates require HTTPS URLs, license, and attribution; managed imported selections also retain rights. No timeline edits; apply_plan(commit:true) assembles once.",
             inputSchema: objectSchema(
                 properties: [
-                    "action": ["type": "string", "enum": ["create", "read", "update", "status", "delete", "review_claims", "measure_narration", "prepare_narration", "prepare_storyboard", "read_storyboard", "review_storyboard_scene", "approve_storyboard", "cancel_production", "revise_storyboard_scene", "reorder_storyboard"], "description": "Plan operation. review_claims confirms selected facts against current ledgerRevision. measure_narration verifies attached recording bytes and never guesses missing words. prepare_narration synthesizes the approved local narrator from script beats through the strict pinned seam, installs/attaches/measures, and records proof; MCP supplies planId only and the domain reads approved language/voice/script. prepare_storyboard/read_storyboard expose persistent revision-bound cards, narrator intent, approvalBlockers/canApprove, and production blockers/canProduce. review_storyboard_scene records actually performed full still or continuous selected-span inspection; never invent evidence. approve_storyboard requires explicit user approval of the exact revision and cannot override approval blockers; a complete available narrator can be approved before audio exists. revise_storyboard_scene updates source-linked narration and/or selected visual atomically; shared beats affect every dependent scene. reorder_storyboard moves a complete contiguous scene sequence and its narration blocks while preserving IDs; shared beats, gaps, overlaps, or split sections are refused. Material revisions revoke approval; matching recording attachment and measured timing do not. cancel_production revokes approval. No timeline edits."],
+                    "action": ["type": "string", "enum": ["create", "read", "update", "status", "delete", "review_claims", "measure_narration", "prepare_narration", "prepare_storyboard", "read_storyboard", "review_storyboard_scene", "approve_storyboard", "cancel_production", "revise_storyboard_scene", "reorder_storyboard", "import_storyboard_markdown", "export_storyboard_markdown"], "description": "Plan operation. review_claims confirms selected facts against current ledgerRevision. measure_narration verifies attached recording bytes and never guesses missing words. prepare_narration synthesizes the approved local narrator from script beats through the strict pinned seam, installs/attaches/measures, and records proof; MCP supplies planId only and the domain reads approved language/voice/script. prepare_storyboard/read_storyboard expose persistent revision-bound cards, narrator intent, approvalBlockers/canApprove, and production blockers/canProduce. review_storyboard_scene records actually performed full still or continuous selected-span inspection; never invent evidence. approve_storyboard requires explicit user approval of the exact revision and cannot override approval blockers; a complete available narrator can be approved before audio exists. revise_storyboard_scene updates source-linked narration and/or selected visual atomically; shared beats affect every dependent scene. reorder_storyboard moves a complete contiguous scene sequence and its narration blocks while preserving IDs; shared beats, gaps, overlaps, or split sections are refused. import_storyboard_markdown parses a STORYBOARD.md document into a native plan. export_storyboard_markdown formats the active plan as STORYBOARD.md. Material revisions revoke approval; matching recording attachment and measured timing do not. cancel_production revokes approval. No timeline edits."],
                     "planId": ["type": "string", "description": "Exact plan id from a plan_edit receipt. Required for update, status, delete, review_claims, measure_narration, prepare_narration, and single-plan reads."],
                     "plan": [
                         "type": "object",
@@ -400,6 +402,8 @@ enum ToolDefinitions {
                         "sourceStartSeconds": ["type": "number", "minimum": 0],
                         "sourceEndSeconds": ["type": "number", "minimum": 0],
                     ], required: ["mediaRef", "license", "attribution"]),
+                    "markdown": ["type": "string", "description": "import_storyboard_markdown only. Full text of a STORYBOARD.md markdown document."],
+                    "name": ["type": "string", "description": "import_storyboard_markdown only. Optional plan name override."],
                 ],
                 required: ["action"]
             )
@@ -414,6 +418,26 @@ enum ToolDefinitions {
                     "preparationId": ["type": "string", "description": "commit:true only. Exact ready preparation from this editor session and the same shotIds/replacement request. Any intervening source, plan, project, timeline, or settings change is refused."],
                     "shotIds": ["type": "array", "minItems": 1, "maxItems": EditPlanLimits.maximumShots, "uniqueItems": true, "items": ["type": "string"], "description": "Optional unique subset of existing shot IDs to revise after a full assembly. Other shots and unrelated edits remain untouched."],
                     "replaceManualEdits": ["type": "boolean", "description": "Explicitly authorize replacement of manually changed or removed owned shots in this request. Defaults to false. Does not authorize overwriting unrelated clips, links, or transitions."],
+                ],
+                required: ["planId"]
+            )
+        ),
+        AgentTool(
+            name: .producePlan,
+            description: "Runs a managed production plan end to end: assemble the approved shots, mix the declared audio roles to the plan's delivery target, render and inspect the draft, then deliver an export of exactly the reviewed revision. The run is persisted with the plan, so it resumes where it stopped: a retry never re-assembles, re-mixes, or submits a second export. Waits for footage that is still importing or generating instead of failing, and continues automatically when the media arrives. Delivery is refused while an error finding is open, when the timeline changed after review, or when the reviewed revision no longer matches the exported one; those cases report the blockers instead of claiming a delivery. Audio roles come from the plan's declared sound cues and narration — clips without a declared role are reported, never guessed. Cancellation stops further automatic edits. Human audition and editorial review of the rendered result remain yours; the run's own checks do not establish creative quality.",
+            inputSchema: objectSchema(
+                properties: [
+                    "planId": ["type": "string", "description": "Exact plan id from a plan_edit receipt. The plan must be proposed or approved."],
+                ],
+                required: ["planId"]
+            )
+        ),
+        AgentTool(
+            name: .productionStatus,
+            description: "Reads the persisted production run for a plan without changing anything: phase, completed steps and their idempotency keys, review findings, the verified (reviewed) timeline revision, the exported revision, export job and path, terminal receipt, and any blocked dependency. Use after produce_plan to see what a run did, what it is waiting for, or why delivery was refused.",
+            inputSchema: objectSchema(
+                properties: [
+                    "planId": ["type": "string", "description": "Exact plan id from a plan_edit receipt."],
                 ],
                 required: ["planId"]
             )
@@ -2286,6 +2310,11 @@ enum ToolDefinitions {
             "language": ["type": "string", "description": "BCP-47 language tag for narration and captions."],
             "realism": ["type": "string", "enum": PlanBrief.Realism.allCases.map(\.rawValue), "description": "Source-material requirement. realFootageOnly excludes generated selections; report material substitutions explicitly."],
             "deliveryConstraints": ["type": "string", "description": "Free-form delivery constraints, e.g. loudness target, no burned-in captions."],
+            "deliveryTarget": ["type": "object", "description": "Delivery loudness target. Production mixes to this and refuses a mix that misses it.", "properties": [
+                "integratedLUFS": ["type": "number", "minimum": -60, "maximum": -5, "description": "Measured programme loudness the finished film must meet."],
+                "truePeakDBTP": ["type": "number", "minimum": -20, "maximum": 0, "description": "Maximum true peak of the finished film, in dBTP."],
+                "toleranceLU": ["type": "number", "minimum": 0.1, "maximum": 2, "description": "Allowed loudness deviation (default 1 LU)."],
+            ]],
             "inferredChoices": ["type": "object", "maxProperties": 32, "additionalProperties": ["type": "string", "minLength": 1, "maxLength": PlanBrief.maxComboboxLength], "description": "Choices inferred from the user's prompt, recorded so they stay editable and visible."],
         ])
         schema["additionalProperties"] = false

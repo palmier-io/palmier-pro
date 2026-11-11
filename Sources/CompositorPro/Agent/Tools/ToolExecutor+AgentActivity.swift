@@ -17,6 +17,7 @@ extension ToolName {
         .applyColor, .applyEffect, .denoiseAudio,
         .generateAudio,
         .mixAudio,
+        .producePlan,
     ]
 
     var publishesTimelineChanges: Bool {
