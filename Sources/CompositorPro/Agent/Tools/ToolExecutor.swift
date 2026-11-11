@@ -547,6 +547,8 @@ final class ToolExecutor {
             return try await applyDesignSpec(editor, args)
         case .exportDesignSpec:
             return try await exportDesignSpec(editor, args)
+        case .importAnimationAdapter:
+            return try await importAnimationAdapter(editor, args)
         case .manageProject:
             return await manageProject(args)
         }

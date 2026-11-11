@@ -724,6 +724,19 @@ final class EditorViewModel {
         return timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
     }
 
+    /// Replaces a clip in the timeline with an updated version. Used by tools that mutate clip properties.
+    func replaceClip(_ clip: Clip, trackIndex: Int? = nil) {
+        let targetTrack = trackIndex ?? {
+            guard let loc = findClip(id: clip.id) else { return 0 }
+            return loc.trackIndex
+        }()
+        guard timeline.tracks.indices.contains(targetTrack) else { return }
+        if let idx = timeline.tracks[targetTrack].clips.firstIndex(where: { $0.id == clip.id }) {
+            timeline.tracks[targetTrack].clips[idx] = clip
+            notifyTimelineChanged()
+        }
+    }
+
     func sortClips(trackIndex: Int) {
         timeline.tracks[trackIndex].clips.sort { $0.startFrame < $1.startFrame }
     }

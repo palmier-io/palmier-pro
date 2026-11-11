@@ -123,6 +123,9 @@ enum ToolName: String, CaseIterable, Sendable {
     case insertAndPlaceHyperframesBlock = "insert_and_place_hyperframes_block"
     case applyDesignSpec = "apply_design_spec"
     case exportDesignSpec = "export_design_spec"
+
+    // Animation adapter
+    case importAnimationAdapter = "import_animation_adapter"
 }
 
 struct AgentTool: @unchecked Sendable {
@@ -2113,6 +2116,30 @@ enum ToolDefinitions {
                 required: ["blockId"]
             )
         ),
+        AgentTool(
+            name: .importAnimationAdapter,
+            description: "Imports a web animation definition (GSAP, Lottie, CSS) and converts it to native timeline keyframe tracks (positionTrack, scaleTrack, opacityTrack, rotationTrack). Can optionally apply the result directly to an existing clip. Returns the adapted keyframes for inspection or application.",
+            inputSchema: objectSchema(
+                properties: [
+                    "format": ["type": "string", "enum": AnimationFormat.allCases.map(\.rawValue), "description": "Source animation format: gsap, lottie, css, hyperframes."],
+                    "source": ["type": "object", "description": "Animation source. Provide either jsonString or filePath.",
+                        "properties": [
+                            "type": ["type": "string", "enum": ["jsonString", "fileURL"], "description": "Source type."],
+                            "jsonString": ["type": "string", "description": "Raw JSON for Lottie/GSAP/CSS."],
+                            "filePath": ["type": "string", "description": "Path to .json file on disk."]
+                        ],
+                        "required": ["type"]
+                    ],
+                    "targetFPS": ["type": "integer", "description": "Target timeline FPS (default: current timeline FPS)."],
+                    "targetDurationFrames": ["type": "integer", "description": "Optional target duration in frames. If omitted, uses source duration scaled to target FPS."],
+                    "targetProperties": ["type": "array", "items": ["type": "string", "enum": NativeKeyframeProperty.allCases.map(\.rawValue)], "description": "Optional subset of properties to extract: position, scale, opacity, rotation."],
+                    "applyToClipId": ["type": "string", "description": "Optional clip id to apply the adapted keyframes to directly."],
+                    "clipId": ["type": "string", "description": "Alias for applyToClipId."],
+                    "trackIndex": ["type": "integer", "description": "Optional track index if applying to a clip (for validation)."]
+                ],
+                required: ["format", "source"]
+            )
+        ),
     ]
 
     /// One line per non-color effect for apply_effect's description, generated from the registry.
@@ -2179,6 +2206,7 @@ enum ToolDefinitions {
     static var searchHyperframesCatalog: AgentTool { all.first { $0.name == .searchHyperframesCatalog }! }
     static var insertHyperframesBlock: AgentTool { all.first { $0.name == .insertHyperframesBlock }! }
     static var insertAndPlaceHyperframesBlock: AgentTool { all.first { $0.name == .insertAndPlaceHyperframesBlock }! }
+    static var importAnimationAdapter: AgentTool { all.first { $0.name == .importAnimationAdapter }! }
 
     /// MCP server only
     static let manageProject = AgentTool(

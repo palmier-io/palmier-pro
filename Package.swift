@@ -11,6 +11,7 @@ let package = Package(
     ],
     traits: [
         .trait(name: "BundledSpeech", description: "Include on-device speech models and MLX."),
+        .trait(name: "AWSSupport", description: "Enable AWS Lambda remote rendering and S3 integration."),
     ],
     dependencies: [
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.11.0"),
@@ -19,6 +20,7 @@ let package = Package(
         .package(url: "https://github.com/ml-explore/mlx-swift", exact: "0.31.5"),
         .package(url: "https://github.com/airbnb/lottie-ios", from: "4.6.1"),
         .package(url: "https://github.com/soniqo/speech-swift", exact: "0.0.21"),
+        .package(url: "https://github.com/awslabs/aws-sdk-swift.git", from: "1.0.0"),
     ],
     targets: [
         .executableTarget(
@@ -42,6 +44,21 @@ let package = Package(
                     name: "SpeechVAD",
                     package: "speech-swift",
                     condition: .when(traits: ["BundledSpeech"])
+                ),
+                .product(
+                    name: "AWSS3",
+                    package: "aws-sdk-swift",
+                    condition: .when(traits: ["AWSSupport"])
+                ),
+                .product(
+                    name: "AWSLambda",
+                    package: "aws-sdk-swift",
+                    condition: .when(traits: ["AWSSupport"])
+                ),
+                .product(
+                    name: "AWSSDKIdentity",
+                    package: "aws-sdk-swift",
+                    condition: .when(traits: ["AWSSupport"])
                 ),
             ],
             path: "Sources/CompositorPro",
