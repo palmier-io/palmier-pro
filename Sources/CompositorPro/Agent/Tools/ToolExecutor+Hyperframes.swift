@@ -149,6 +149,42 @@ extension ToolExecutor {
         }
     }
 
+    /// Opens a live WebView preview tab for a HyperFrames block with project styling.
+    func previewHyperframesBlock(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
+        try Task.checkCancellation()
+        try validateUnknownKeys(args, allowed: ["blockId", "parameters"], path: "preview_hyperframes_block")
+
+        guard let blockId = args.string("blockId"), !blockId.isEmpty else {
+            throw ToolError("blockId is required.")
+        }
+
+        guard let spec = HyperframesCatalogWrapper.inspectBlock(id: blockId) else {
+            throw ToolError("Unknown HyperFrames block id: \(blockId)")
+        }
+
+        let params = args["parameters"] as? [String: String] ?? [:]
+        let designSpec = await MainActor.run { editor.exportCurrentDesignSpec() }
+        let html = HyperframesCatalogWrapper.generateTemplateHTML(for: spec, parameters: params, designSpec: designSpec)
+
+        let duration = spec.defaultDurationFrames ?? 150
+        await MainActor.run {
+            editor.openHyperframesPreviewTab(
+                id: spec.id,
+                name: spec.name,
+                html: html,
+                durationFrames: duration
+            )
+        }
+
+        return .ok(Self.jsonString([
+            "status": "ok",
+            "blockId": spec.id,
+            "blockName": spec.name,
+            "durationFrames": duration,
+            "message": "Opened live preview for HyperFrames block '\(spec.name)'."
+        ]) ?? "{}")
+    }
+
     // MARK: - Helpers
 
     private func base64String(from data: Data) -> String? {

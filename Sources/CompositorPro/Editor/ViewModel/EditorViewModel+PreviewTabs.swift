@@ -23,6 +23,8 @@ extension EditorViewModel {
         case .mediaAsset(let id, _, _):
             guard let asset = mediaAssets.first(where: { $0.id == id }) else { return 0 }
             return secondsToFrame(seconds: asset.duration, fps: timeline.fps)
+        case .hyperframesBlock(_, _, _, let durationFrames):
+            return durationFrames
         }
     }
 
@@ -40,6 +42,19 @@ extension EditorViewModel {
         }
         activePreviewTabId = tab.id
         sourcePlayheadFrame = frame
+        videoEngine?.activateTab(tab)
+        pushPreviewHistory(tab.id)
+    }
+
+    func openHyperframesPreviewTab(id: String, name: String, html: String, durationFrames: Int = 150) {
+        let tab = PreviewTab.hyperframesBlock(id: id, name: name, html: html, durationFrames: durationFrames)
+        if let existingIndex = previewTabs.firstIndex(where: { $0.id == tab.id }) {
+            previewTabs[existingIndex] = tab
+        } else {
+            previewTabs.append(tab)
+        }
+        activePreviewTabId = tab.id
+        sourcePlayheadFrame = 0
         videoEngine?.activateTab(tab)
         pushPreviewHistory(tab.id)
     }
@@ -115,6 +130,12 @@ extension EditorViewModel {
             selectedFolderIds.removeAll()
             selectedMediaAssetIds = [id]
             mediaPanelSelectionAnchor = id
+        case .hyperframesBlock:
+            selectedClipIds.removeAll()
+            selectedTimelineMarkerIds = []
+            selectedFolderIds.removeAll()
+            selectedMediaAssetIds.removeAll()
+            mediaPanelSelectionAnchor = nil
         }
     }
 

@@ -543,6 +543,8 @@ final class ToolExecutor {
             return try await searchHyperframesCatalog(editor, args)
         case .insertHyperframesBlock, .insertAndPlaceHyperframesBlock:
             return try await insertHyperframesBlock(editor, args)
+        case .previewHyperframesBlock:
+            return try await previewHyperframesBlock(editor, args)
         case .applyDesignSpec:
             return try await applyDesignSpec(editor, args)
         case .exportDesignSpec:

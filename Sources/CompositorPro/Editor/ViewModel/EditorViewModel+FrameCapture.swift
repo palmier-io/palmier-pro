@@ -170,6 +170,8 @@ extension EditorViewModel {
                     fps: timeline.fps
                 )
             )
+        case .hyperframesBlock:
+            return
         }
         let folderId = mediaPanelCurrentFolderId
 

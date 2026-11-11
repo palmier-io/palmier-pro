@@ -241,6 +241,8 @@ final class VideoEngine {
                 previewAsset(asset)
                 seek(to: editor.sourcePlayheadFrame, mode: .exact)
             }
+        case .hyperframesBlock:
+            replacePlayerItem(nil, reason: "hyperframesWebViewPreview")
         }
     }
 

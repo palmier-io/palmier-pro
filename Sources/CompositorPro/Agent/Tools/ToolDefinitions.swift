@@ -121,6 +121,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case searchHyperframesCatalog = "search_hyperframes_catalog"
     case insertHyperframesBlock = "insert_hyperframes_block"
     case insertAndPlaceHyperframesBlock = "insert_and_place_hyperframes_block"
+    case previewHyperframesBlock = "preview_hyperframes_block"
     case applyDesignSpec = "apply_design_spec"
     case exportDesignSpec = "export_design_spec"
 
@@ -2115,6 +2116,17 @@ enum ToolDefinitions {
                     "opacity": ["type": "number", "description": "Optional overall opacity (0.0 to 1.0)."],
                     "scale": ["type": "number", "description": "Optional scale multiplier (e.g. 0.8, 1.2)."],
                     "folderId": ["type": "string", "description": "Optional target folder id in media library."]
+                ],
+                required: ["blockId"]
+            )
+        ),
+        AgentTool(
+            name: .previewHyperframesBlock,
+            description: "Opens a live WebView-based preview tab for a HyperFrames motion block with interactive HTML rendering, parameter bindings, and timeline frame scrubbing.",
+            inputSchema: objectSchema(
+                properties: [
+                    "blockId": ["type": "string", "description": "Block identifier from the HyperFrames catalog."],
+                    "parameters": ["type": "object", "description": "Optional custom parameter overrides for title, subtitle, color, etc."]
                 ],
                 required: ["blockId"]
             )

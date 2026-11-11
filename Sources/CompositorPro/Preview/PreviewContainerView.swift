@@ -7,6 +7,7 @@ struct PreviewContainerView: View {
     private var isTimeline: Bool { editor.activePreviewTab == .timeline }
     private var isImage: Bool { editor.activePreviewTab.clipType == .image }
     private var isSubtitle: Bool { editor.activePreviewTab.clipType == .subtitle }
+    private var isHyperframes: Bool { editor.activePreviewTab.isHyperframes }
 
     @State private var failedImagePreviewKey: String?
     @State private var canvasOverlays = CanvasOverlaySelection()
@@ -46,41 +47,49 @@ struct PreviewContainerView: View {
                 ? editor.captionPreviewConfiguration
                 : nil
             ZStack {
-                PreviewView()
-                if isImage {
-                    imagePreview
-                }
-                if let error = activeFailedError {
-                    failedPreview(error: error)
-                }
-                if let asset = activeMediaAsset, asset.isGenerating {
-                    generatingPreview(label: asset.generatingLabel)
-                } else if case .generating(let label) = timelineState {
-                    generatingPreview(label: label)
-                }
-                if let overlay = offlineOverlay(timelineState: timelineState) {
-                    offlinePreview(assetId: overlay.assetId, path: overlay.path, isUnprocessable: overlay.isUnprocessable)
-                }
-                CanvasViewingOverlay(selection: canvasOverlays)
-                if editor.chromaKeySamplingClipId != nil {
-                    ChromaKeySamplerOverlayView()
-                } else if editor.cropEditingActive {
-                    CropOverlayView()
-                } else if let configuration = captionPreview {
-                    CaptionPreviewOverlay(
-                        configuration: configuration,
-                        canvas: CGSize(
-                            width: max(1, editor.timeline.width),
-                            height: max(1, editor.timeline.height)
-                        ),
-                        size: CGSize(width: scaledWidth, height: scaledHeight),
-                        onCenterChange: { editor.captionPreviewCenterChange?($0) }
+                if isHyperframes, let html = editor.activePreviewTab.hyperframesHTML {
+                    HyperframesLivePreviewView(
+                        html: html,
+                        currentFrame: playheadFrame,
+                        fps: editor.timeline.fps
                     )
                 } else {
-                    TransformOverlayView()
-                }
-                if let slip = editor.slipPreview, isTimeline {
-                    SlipTwoUpView(state: slip)
+                    PreviewView()
+                    if isImage {
+                        imagePreview
+                    }
+                    if let error = activeFailedError {
+                        failedPreview(error: error)
+                    }
+                    if let asset = activeMediaAsset, asset.isGenerating {
+                        generatingPreview(label: asset.generatingLabel)
+                    } else if case .generating(let label) = timelineState {
+                        generatingPreview(label: label)
+                    }
+                    if let overlay = offlineOverlay(timelineState: timelineState) {
+                        offlinePreview(assetId: overlay.assetId, path: overlay.path, isUnprocessable: overlay.isUnprocessable)
+                    }
+                    CanvasViewingOverlay(selection: canvasOverlays)
+                    if editor.chromaKeySamplingClipId != nil {
+                        ChromaKeySamplerOverlayView()
+                    } else if editor.cropEditingActive {
+                        CropOverlayView()
+                    } else if let configuration = captionPreview {
+                        CaptionPreviewOverlay(
+                            configuration: configuration,
+                            canvas: CGSize(
+                                width: max(1, editor.timeline.width),
+                                height: max(1, editor.timeline.height)
+                            ),
+                            size: CGSize(width: scaledWidth, height: scaledHeight),
+                            onCenterChange: { editor.captionPreviewCenterChange?($0) }
+                        )
+                    } else {
+                        TransformOverlayView()
+                    }
+                    if let slip = editor.slipPreview, isTimeline {
+                        SlipTwoUpView(state: slip)
+                    }
                 }
             }
             .frame(width: scaledWidth, height: scaledHeight)
