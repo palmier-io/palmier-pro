@@ -5,8 +5,8 @@ set -euo pipefail
 #   scripts/bundle.sh [release|debug]           # ad-hoc signed dev build
 #   scripts/bundle.sh debug --fast              # fastest: skip dSYM + deep sign, just env+build
 #   scripts/bundle.sh debug --speech             # include bundled speech and MLX
-#   scripts/bundle.sh debug --telemetry          # include production telemetry
 #   scripts/bundle.sh debug --all                # include all optional traits
+#   scripts/bundle.sh release --no-traits        # release build without the optional traits
 #   scripts/bundle.sh release --sign            # build + Developer ID codesign
 #   scripts/bundle.sh release --dist            # build + sign + notarize + staple + DMG
 
@@ -14,28 +14,27 @@ CONFIG="release"
 MODE="dev"
 ENABLE_ALL_TRAITS=false
 INCLUDE_BUNDLED_SPEECH=false
-INCLUDE_PRODUCTION_TELEMETRY=false
+EXPLICIT_TRAITS=false
 for arg in "$@"; do
   case "$arg" in
     release|debug) CONFIG="$arg" ;;
     --fast)        MODE="fast" ;;
     --sign)        MODE="sign" ;;
     --dist)        MODE="dist" ;;
-    --speech)      INCLUDE_BUNDLED_SPEECH=true ;;
-    --telemetry)   INCLUDE_PRODUCTION_TELEMETRY=true ;;
+    --speech)      INCLUDE_BUNDLED_SPEECH=true; EXPLICIT_TRAITS=true ;;
+    --no-traits)   EXPLICIT_TRAITS=true ;;
     --all)
       ENABLE_ALL_TRAITS=true
       INCLUDE_BUNDLED_SPEECH=true
-      INCLUDE_PRODUCTION_TELEMETRY=true
+      EXPLICIT_TRAITS=true
       ;;
     *) echo "unknown arg: $arg" >&2; exit 1 ;;
   esac
 done
 
-if [ "$CONFIG" = "release" ]; then
+if [ "$CONFIG" = "release" ] && ! $EXPLICIT_TRAITS; then
   ENABLE_ALL_TRAITS=true
   INCLUDE_BUNDLED_SPEECH=true
-  INCLUDE_PRODUCTION_TELEMETRY=true
 fi
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -52,18 +51,37 @@ if [ -f "$ROOT/$ENV_FILE" ]; then
   set +a
 fi
 
-SIGNING_IDENTITY="${SIGNING_IDENTITY:-Developer ID Application: Palmier, Inc. (MMFLRC7562)}"
-NOTARY_PROFILE="${NOTARY_PROFILE:-palmier-notary}"
-SENTRY_DSN="${SENTRY_DSN:-}"
-POSTHOG_PROJECT_TOKEN="${POSTHOG_PROJECT_TOKEN:-}"
-POSTHOG_HOST="${POSTHOG_HOST:-https://us.i.posthog.com}"
-PROVISION_PROFILE="${PROVISION_PROFILE:-$ROOT/scripts/Palmier_Pro_Developer_ID.provisionprofile}"
-ENTITLEMENTS="$ROOT/scripts/PalmierPro.entitlements"
-KEYCHAIN_ACCESS_GROUP="${KEYCHAIN_ACCESS_GROUP:-MMFLRC7562.io.palmier.pro}"
-RESOURCES="$ROOT/Sources/PalmierPro/Resources"
-APP="$ROOT/.build/PalmierPro.app"
-ZIP="$ROOT/.build/PalmierPro.zip"
-DMG="$ROOT/.build/PalmierPro.dmg"
+if [ -z "${SIGNING_IDENTITY:-}" ]; then
+    # Default: the Compositor Pro release identity from your keychain, or ad-hoc below.
+  SIGNING_IDENTITY="Developer ID Application: Compositor Pro (MMFLRC7562)"
+fi
+
+# A machine without the release identity in its keychain cannot sign with it, and
+# install_name_tool has already invalidated whatever signature the build produced. Leaving the
+# bundle in that state makes dyld kill it on launch (SIGKILL / Code Signature Invalid), which
+# looks exactly like an instant crash. Fall back to an ad-hoc signature, which is enough to run
+# locally; only release builds actually need Developer ID.
+if ! security find-identity -v -p codesigning 2>/dev/null | grep -qF "$SIGNING_IDENTITY"; then
+  if [ "$CONFIG" = "release" ]; then
+    echo "!! $SIGNING_IDENTITY not found in the keychain." >&2
+    echo "!! Pass SIGNING_IDENTITY=<identity>, or put the certificate in the keychain." >&2
+    exit 1
+  fi
+  echo "==> $SIGNING_IDENTITY not in the keychain — signing ad-hoc so the app can still launch" >&2
+  SIGNING_IDENTITY="-"
+fi
+NOTARY_PROFILE="${NOTARY_PROFILE:-compositor-notary}"
+PROVISION_PROFILE="${PROVISION_PROFILE:-$ROOT/scripts/Compositor_Pro_Developer_ID.provisionprofile}"
+# Fallback to legacy filename if present
+if [ ! -f "$PROVISION_PROFILE" ] && [ -f "$ROOT/scripts/Palmier_Pro_Developer_ID.provisionprofile" ]; then
+  PROVISION_PROFILE="$ROOT/scripts/Palmier_Pro_Developer_ID.provisionprofile"
+fi
+ENTITLEMENTS="$ROOT/scripts/CompositorPro.entitlements"
+KEYCHAIN_ACCESS_GROUP="${KEYCHAIN_ACCESS_GROUP:-MMFLRC7562.io.compositor.pro}"
+RESOURCES="$ROOT/Sources/CompositorPro/Resources"
+APP="$ROOT/.build/CompositorPro.app"
+ZIP="$ROOT/.build/CompositorPro.zip"
+DMG="$ROOT/.build/CompositorPro.dmg"
 
 BUILD_ARGS=(-c "$CONFIG")
 if $ENABLE_ALL_TRAITS; then
@@ -74,13 +92,6 @@ else
   if $INCLUDE_BUNDLED_SPEECH; then
     TRAITS="BundledSpeech"
   fi
-  if $INCLUDE_PRODUCTION_TELEMETRY; then
-    if [ -n "$TRAITS" ]; then
-      TRAITS="$TRAITS,ProductionTelemetry"
-    else
-      TRAITS="ProductionTelemetry"
-    fi
-  fi
   if [ -n "$TRAITS" ]; then
     BUILD_ARGS+=(--traits "$TRAITS")
   fi
@@ -88,52 +99,29 @@ fi
 
 echo "==> Building ($CONFIG, traits: ${TRAITS:-none})"
 swift build "${BUILD_ARGS[@]}"
-BIN="$(swift build "${BUILD_ARGS[@]}" --show-bin-path)/PalmierPro"
+BIN="$(swift build "${BUILD_ARGS[@]}" --show-bin-path)/CompositorPro"
 SPARKLE_FW="$ROOT/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
 
 echo "==> Assembling $APP"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
-cp "$BIN" "$APP/Contents/MacOS/PalmierPro"
+cp "$BIN" "$APP/Contents/MacOS/CompositorPro"
 cp "$RESOURCES/Info.plist" "$APP/Contents/Info.plist"
 
-if [ -n "$SENTRY_DSN" ]; then
-  echo "==> Injecting SentryDSN into Info.plist"
-  /usr/libexec/PlistBuddy -c "Delete :SentryDSN" "$APP/Contents/Info.plist" 2>/dev/null || true
-  /usr/libexec/PlistBuddy -c "Add :SentryDSN string $SENTRY_DSN" "$APP/Contents/Info.plist"
-else
-  echo "==> SENTRY_DSN not set — telemetry will be a no-op in this build"
-fi
-
-if [ -n "$POSTHOG_PROJECT_TOKEN" ]; then
-  echo "==> Injecting PostHog analytics config into Info.plist"
-  /usr/libexec/PlistBuddy -c "Delete :PostHogProjectToken" "$APP/Contents/Info.plist" 2>/dev/null || true
-  /usr/libexec/PlistBuddy -c "Add :PostHogProjectToken string $POSTHOG_PROJECT_TOKEN" "$APP/Contents/Info.plist"
-  /usr/libexec/PlistBuddy -c "Delete :PostHogHost" "$APP/Contents/Info.plist" 2>/dev/null || true
-  /usr/libexec/PlistBuddy -c "Add :PostHogHost string $POSTHOG_HOST" "$APP/Contents/Info.plist"
-else
-  echo "==> POSTHOG_PROJECT_TOKEN not set — product analytics will be a no-op in this build"
-fi
-
-inject_plist() {
-  local key="$1" value="$2"
-  if [ -z "$value" ]; then
-    echo "!! $key not set in $ENV_FILE — app will fatalError on launch" >&2
-    return
-  fi
-  /usr/libexec/PlistBuddy -c "Delete :$key" "$APP/Contents/Info.plist" 2>/dev/null || true
-  /usr/libexec/PlistBuddy -c "Add :$key string $value" "$APP/Contents/Info.plist"
-}
-
-echo "==> Injecting backend config into Info.plist"
-inject_plist PalmierClerkPublishableKey "${CLERK_PUBLISHABLE_KEY:-}"
-inject_plist PalmierConvexDeploymentURL "${CONVEX_DEPLOYMENT_URL:-}"
-inject_plist PalmierConvexHttpURL "${CONVEX_HTTP_URL:-}"
+# Local-only build: no Sentry/PostHog config and no backend keys are injected.
+# Stale keys from older builds are stripped so nothing can leak into the bundle.
+for _stale_key in SentryDSN PostHogProjectToken PostHogHost CompositorClerkPublishableKey CompositorConvexDeploymentURL CompositorConvexHttpURL; do
+  /usr/libexec/PlistBuddy -c "Delete :$_stale_key" "$APP/Contents/Info.plist" 2>/dev/null || true
+done
 cp "$RESOURCES/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 cp -R "$SPARKLE_FW" "$APP/Contents/Frameworks/Sparkle.framework"
 
 # Flatten SwiftPM's resource bundle into the app's Resources tree.
-RES_BUNDLE="$(dirname "$BIN")/PalmierPro_PalmierPro.bundle"
+RES_BUNDLE="$(dirname "$BIN")/CompositorPro_CompositorPro.bundle"
+# Newer SwiftPM emits macOS-style bundles that nest payloads under Contents/Resources.
+if [ -d "$RES_BUNDLE/Contents/Resources" ]; then
+  RES_BUNDLE="$RES_BUNDLE/Contents/Resources"
+fi
 if [ -d "$RES_BUNDLE/Fonts" ]; then
   cp -R "$RES_BUNDLE/Fonts" "$APP/Contents/Resources/"
 else
@@ -143,15 +131,15 @@ fi
 
 # Ensure the shipped Claude Desktop connector is always up to date with mcpb/ sources.
 MCPB_SRC="$ROOT/mcpb"
-MCPB_CHECKED_IN="$ROOT/Sources/PalmierPro/Resources/MCPB/palmier-pro.mcpb"
-MCPB_FRESH="$(mktemp -d)/palmier-pro.mcpb"
+MCPB_CHECKED_IN="$ROOT/Sources/CompositorPro/Resources/MCPB/compositor-pro.mcpb"
+MCPB_FRESH="$(mktemp -d)/compositor-pro.mcpb"
 (cd "$MCPB_SRC" && zip -q -X -r "$MCPB_FRESH" manifest.json icon.png server/index.js server/package.json)
 if ! unzip -p "$MCPB_CHECKED_IN" server/index.js 2>/dev/null | diff -q - <(unzip -p "$MCPB_FRESH" server/index.js) >/dev/null 2>&1 \
   || ! unzip -p "$MCPB_CHECKED_IN" manifest.json 2>/dev/null | diff -q - <(unzip -p "$MCPB_FRESH" manifest.json) >/dev/null 2>&1; then
-  echo "==> refreshing checked-in palmier-pro.mcpb from mcpb/ sources"
+  echo "==> refreshing checked-in compositor-pro.mcpb from mcpb/ sources"
   cp "$MCPB_FRESH" "$MCPB_CHECKED_IN"
 fi
-cp "$MCPB_FRESH" "$APP/Contents/Resources/palmier-pro.mcpb"
+cp "$MCPB_FRESH" "$APP/Contents/Resources/compositor-pro.mcpb"
 rm -rf "$(dirname "$MCPB_FRESH")"
 if [ -d "$RES_BUNDLE/Images" ]; then
   cp -R "$RES_BUNDLE/Images" "$APP/Contents/Resources/"
@@ -185,6 +173,12 @@ else
   echo "!! missing Models/ in SwiftPM resource bundle at $RES_BUNDLE" >&2
   exit 1
 fi
+if [ -d "$RES_BUNDLE/Styles" ]; then
+  cp -R "$RES_BUNDLE/Styles" "$APP/Contents/Resources/"
+else
+  echo "!! missing Styles/ in SwiftPM resource bundle at $RES_BUNDLE" >&2
+  exit 1
+fi
 
 if ! ls "$RES_BUNDLE"/*.metallib >/dev/null 2>&1; then
   echo "!! no .metallib in SwiftPM resource bundle at $RES_BUNDLE — Metal effects would be missing" >&2
@@ -206,7 +200,7 @@ if $INCLUDE_BUNDLED_SPEECH; then
   cp "$MLX_METALLIB" "$APP/Contents/Resources/mlx-swift_Cmlx.bundle/default.metallib"
 fi
 
-install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/PalmierPro"
+install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/CompositorPro"
 touch "$APP"
 
 if [ "$MODE" = "fast" ]; then
@@ -217,10 +211,10 @@ if [ "$MODE" = "fast" ]; then
   exit 0
 fi
 
-DSYM="$ROOT/.build/PalmierPro.dSYM"
+DSYM="$ROOT/.build/CompositorPro.dSYM"
 echo "==> Generating dSYM"
 rm -rf "$DSYM"
-dsymutil "$APP/Contents/MacOS/PalmierPro" -o "$DSYM"
+dsymutil "$APP/Contents/MacOS/CompositorPro" -o "$DSYM"
 
 upload_dsyms() {
   if [ -z "${SENTRY_AUTH_TOKEN:-}" ] || [ -z "${SENTRY_ORG:-}" ] || [ -z "${SENTRY_PROJECT:-}" ]; then
@@ -237,7 +231,16 @@ upload_dsyms() {
 
 if [ "$MODE" = "dev" ]; then
   echo "==> Ad-hoc signing dev app"
-  codesign --force --deep --sign - "$APP"
+  # Sign nested code first, then the bundle. `--deep` alone is unreliable for a large
+  # binary: it left the app half-signed and dyld killed it with "Code Signature Invalid".
+  if [ -d "$APP/Contents/Frameworks" ]; then
+    find "$APP/Contents/Frameworks" -maxdepth 2 -name "*.dylib" -print0 2>/dev/null \
+      | xargs -0 -r codesign --force --sign -
+    find "$APP/Contents/Frameworks" -maxdepth 1 -name "*.framework" -print0 2>/dev/null \
+      | xargs -0 -r codesign --force --sign -
+  fi
+  codesign --force --sign - "$APP/Contents/MacOS/CompositorPro"
+  codesign --force --sign - "$APP"
   codesign --verify --strict --verbose=2 "$APP"
   upload_dsyms
   echo "==> Done: $APP (ad-hoc signed)"
@@ -268,7 +271,7 @@ if [ ! -f "$PROVISION_PROFILE" ]; then
   exit 1
 fi
 cp "$PROVISION_PROFILE" "$APP/Contents/embedded.provisionprofile"
-inject_plist PalmierClerkKeychainAccessGroup "$KEYCHAIN_ACCESS_GROUP"
+inject_plist CompositorClerkKeychainAccessGroup "$KEYCHAIN_ACCESS_GROUP"
 
 echo "==> Codesigning main app"
 codesign --force --options runtime --timestamp \
@@ -298,11 +301,11 @@ rm -f "$ZIP"
 echo "==> Building DMG"
 rm -f "$DMG"
 STAGING="$(mktemp -d)"
-cp -R "$APP" "$STAGING/PalmierPro.app"
+cp -R "$APP" "$STAGING/CompositorPro.app"
 ln -s /Applications "$STAGING/Applications"
 cp "$RESOURCES/AppIcon.icns" "$STAGING/.VolumeIcon.icns"
 hdiutil create \
-  -volname "PalmierPro" \
+  -volname "CompositorPro" \
   -srcfolder "$STAGING" \
   -ov -format UDZO \
   "$DMG"

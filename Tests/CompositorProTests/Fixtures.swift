@@ -1,0 +1,57 @@
+import Foundation
+@testable import CompositorPro
+
+enum Fixtures {
+    static func clip(
+        id: String = UUID().uuidString,
+        mediaRef: String = "media-1",
+        mediaType: ClipType = .video,
+        start: Int,
+        duration: Int,
+        trimStart: Int = 0,
+        trimEnd: Int = 0,
+        speed: Double = 1.0,
+        volume: Double = 1.0,
+        compositeLayer: CompositeLayer = .primary,
+        editorialReason: String? = nil,
+        backgroundColor: TextStyle.RGBA? = nil,
+        htmlContent: String? = nil,
+        hyperframesBlockId: String? = nil,
+        hyperframesParameters: [String: String]? = nil
+    ) -> Clip {
+        var c = Clip(mediaRef: mediaRef, startFrame: start, durationFrames: duration)
+        c.id = id
+        c.mediaType = mediaType
+        c.sourceClipType = mediaType
+        c.trimStartFrame = trimStart
+        c.trimEndFrame = trimEnd
+        c.speed = speed
+        c.volume = volume
+        c.compositeLayer = compositeLayer
+        c.editorialReason = editorialReason
+        c.backgroundColor = backgroundColor
+        c.htmlContent = htmlContent
+        c.hyperframesBlockId = hyperframesBlockId
+        c.hyperframesParameters = hyperframesParameters
+        return c
+    }
+
+    static func videoTrack(id: String = UUID().uuidString, clips: [Clip] = []) -> Track {
+        var t = Track(type: .video, clips: clips)
+        t.id = id
+        return t
+    }
+
+    static func audioTrack(id: String = UUID().uuidString, clips: [Clip] = []) -> Track {
+        var t = Track(type: .audio, clips: clips)
+        t.id = id
+        return t
+    }
+
+    static func timeline(fps: Int = 30, tracks: [Track] = []) -> Timeline {
+        var t = Timeline()
+        t.fps = fps
+        t.tracks = tracks
+        return t
+    }
+}

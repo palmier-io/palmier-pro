@@ -1,0 +1,304 @@
+import Foundation
+
+// Coalesces token deltas off-main so streamed chat cannot saturate SwiftUI layout.
+struct AgentStreamSnapshot: Sendable {
+    let blocks: [AgentContentBlock]
+    let stopReason: AgentStopReason
+    let revision: UInt64
+    var activity: AgentStreamActivity? = nil
+    var receivedAt: ContinuousClock.Instant? = nil
+}
+
+private struct AgentStreamReducer: Sendable {
+    private(set) var blocks: [AgentContentBlock] = []
+    private(set) var stopReason: AgentStopReason = .endTurn
+    private(set) var activity: AgentStreamActivity?
+    private let model: AgentModel
+
+    init(model: AgentModel) {
+        self.model = model
+    }
+
+    mutating func apply(_ event: AgentStreamEvent) {
+        switch event {
+        case .activity(let activity):
+            self.activity = activity
+        case .thinkingDelta(let chunk):
+            activity = .reasoning
+            updateThinking(textDelta: chunk)
+        case .thinkingSignature(let signature):
+            updateThinking(signatureDelta: signature)
+        case .redactedThinking(let data):
+            activity = .reasoning
+            blocks.append(.redactedThinking(data: data))
+        case .reasoningSummaryDelta(let chunk):
+            activity = .reasoning
+            let existing = takeStreamingReasoningSummary()
+            blocks.append(.openAIReasoning(
+                summary: existing + chunk,
+                encryptedContent: "",
+                itemID: nil,
+                model: model,
+                isComplete: false
+            ))
+        case .reasoningComplete(let itemID, let summary, let encryptedContent):
+            let index = blocks.lastIndex {
+                guard case .openAIReasoning(_, _, _, let existingModel, false) = $0 else { return false }
+                return existingModel == model
+            }
+            var completedSummary = summary
+            if summary.isEmpty, let index,
+               case .openAIReasoning(let existingSummary, _, _, _, _) = blocks[index] {
+                completedSummary = existingSummary
+            }
+            let completedBlock = AgentContentBlock.openAIReasoning(
+                summary: completedSummary,
+                encryptedContent: encryptedContent,
+                itemID: itemID,
+                model: model,
+                isComplete: true
+            )
+            if let index {
+                blocks[index] = completedBlock
+            } else {
+                blocks.append(completedBlock)
+            }
+        case .messageStop(let reason):
+            closeStreamingReasoning()
+            stopReason = reason
+        case .textDelta(let chunk):
+            activity = .generating
+            if case .text(let existing)? = blocks.last {
+                blocks[blocks.count - 1] = .text(existing + chunk)
+            } else {
+                blocks.append(.text(chunk))
+            }
+        case .toolUseComplete(let id, let name, let inputJSON):
+            activity = .preparingTool(name)
+            blocks.append(.toolUse(id: id, name: name, inputJSON: inputJSON))
+        }
+    }
+
+    private mutating func closeStreamingReasoning() {
+        for index in blocks.indices {
+            guard case .openAIReasoning(let summary, let encryptedContent, let itemID, let blockModel, false) = blocks[index],
+                  blockModel == model, !summary.isEmpty || !encryptedContent.isEmpty
+            else { continue }
+            blocks[index] = .openAIReasoning(
+                summary: summary, encryptedContent: encryptedContent, itemID: itemID,
+                model: blockModel, isComplete: true
+            )
+        }
+    }
+
+    private mutating func updateThinking(
+        textDelta: String = "",
+        signatureDelta: String = ""
+    ) {
+        if case .thinking(let text, let signature)? = blocks.last {
+            blocks[blocks.count - 1] = .thinking(
+                text: text + textDelta,
+                signature: signature + signatureDelta
+            )
+        } else {
+            blocks.append(.thinking(text: textDelta, signature: signatureDelta))
+        }
+    }
+
+    private mutating func takeStreamingReasoningSummary() -> String {
+        guard case .openAIReasoning(let summary, _, _, let existingModel, false)? = blocks.last,
+              existingModel == model else { return "" }
+        blocks.removeLast()
+        return summary
+    }
+}
+
+actor AgentStreamPresentationBuffer {
+    private var reducer: AgentStreamReducer
+    private var revision: UInt64 = 0
+    private var receivedAt: ContinuousClock.Instant?
+    private var isDirty = false
+    private var hasPublished = false
+    private var isComplete = false
+    private var continuation: AsyncThrowingStream<AgentStreamSnapshot, Error>.Continuation?
+    private var timerTask: Task<Void, Never>?
+
+    init(model: AgentModel) {
+        reducer = AgentStreamReducer(model: model)
+    }
+
+    func snapshots() -> AsyncThrowingStream<AgentStreamSnapshot, Error> {
+        precondition(continuation == nil)
+        var captured: AsyncThrowingStream<AgentStreamSnapshot, Error>.Continuation?
+        let stream = AsyncThrowingStream(
+            bufferingPolicy: .bufferingNewest(1)
+        ) { continuation in
+            captured = continuation
+        }
+        continuation = captured
+        return stream
+    }
+
+    func receive(_ event: AgentStreamEvent) {
+        guard !isComplete else { return }
+        reducer.apply(event)
+        receivedAt = .now
+        revision &+= 1
+        isDirty = true
+        if !hasPublished {
+            publish()
+        }
+        scheduleIfNeeded()
+    }
+
+    @discardableResult
+    func complete(throwing error: (any Error)? = nil) -> AgentStreamSnapshot {
+        if !isComplete {
+            isComplete = true
+            timerTask?.cancel()
+            timerTask = nil
+            publish()
+            if let error {
+                continuation?.finish(throwing: error)
+            } else {
+                continuation?.finish()
+            }
+        }
+        return snapshot
+    }
+
+    var snapshot: AgentStreamSnapshot {
+        AgentStreamSnapshot(
+            blocks: reducer.blocks,
+            stopReason: reducer.stopReason,
+            revision: revision,
+            activity: reducer.activity,
+            receivedAt: receivedAt
+        )
+    }
+
+    private func scheduleIfNeeded() {
+        guard timerTask == nil, !isComplete else { return }
+        timerTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(50))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            await self?.timerFired()
+        }
+    }
+
+    private func timerFired() {
+        timerTask = nil
+        publish()
+    }
+
+    private func publish() {
+        guard isDirty else { return }
+        isDirty = false
+        hasPublished = true
+        continuation?.yield(snapshot)
+    }
+}
+
+/// Milliseconds since `start`, for the turn-level latency log. Deliberately coarse: the
+/// point is "did the user wait on the network, or on us", not microsecond accounting.
+private func milliseconds(since start: ContinuousClock.Instant) -> Int {
+    let parts = (ContinuousClock.now - start).components
+    return Int(parts.seconds * 1000 + parts.attoseconds / 1_000_000_000_000_000)
+}
+
+func presentAgentStream(
+    _ source: AgentStreamOperation,
+    model: AgentModel,
+    turnID: String = "-",
+    onSnapshot: @escaping @Sendable (AgentStreamSnapshot) async -> Void
+) async throws -> AgentStreamSnapshot {
+    let buffer = AgentStreamPresentationBuffer(model: model)
+    let snapshots = await buffer.snapshots()
+    let started = ContinuousClock.now
+    let consumer = Task.detached { () -> (any Error)? in
+        var failure: (any Error)?
+        do {
+            for try await event in source.events {
+                try Task.checkCancellation()
+                await buffer.receive(event)
+            }
+            try Task.checkCancellation()
+            failure = nil
+        } catch {
+            source.cancel()
+            failure = error
+        }
+        if case .failure(let error) = await source.join(), failure == nil {
+            failure = error
+        }
+        let terminalError = failure ?? (Task.isCancelled ? CancellationError() : nil)
+        await buffer.complete(throwing: terminalError)
+        return terminalError
+    }
+    return try await withTaskCancellationHandler {
+        var lastRevision: UInt64 = 0
+        var firstOutputMs: Int?
+
+        do {
+            for try await snapshot in snapshots {
+                guard snapshot.revision != lastRevision else { continue }
+                if firstOutputMs == nil, !snapshot.blocks.isEmpty {
+                    firstOutputMs = milliseconds(since: started)
+                }
+                await onSnapshot(snapshot)
+                lastRevision = snapshot.revision
+            }
+            if let error = await consumer.value { throw error }
+            try Task.checkCancellation()
+        } catch {
+            source.cancel()
+            consumer.cancel()
+            _ = await consumer.value
+            let final = await buffer.complete()
+            if final.revision != lastRevision {
+                await onSnapshot(final)
+            }
+            AgentDiagnostics.turnFailed(
+                id: turnID, stage: "stream", error: error,
+                elapsed: Double(milliseconds(since: started)) / 1000
+            )
+            Log.agent.error(
+                "chat stream failed model=\(model.rawValue) provider=\(model.provider.rawValue) "
+                    + "after=\(milliseconds(since: started))ms firstOutput=\(firstOutputMs.map { "\($0)ms" } ?? "none") "
+                    + "error=\(error.localizedDescription)",
+                telemetry: "Agent chat stream failed",
+                data: ["model": model.rawValue, "provider": model.provider.rawValue]
+            )
+            throw error
+        }
+
+        let final = await buffer.complete()
+        if final.revision != lastRevision {
+            await onSnapshot(final)
+        }
+        AgentDiagnostics.turnCompleted(
+            id: turnID, turns: 1,
+            elapsed: Double(milliseconds(since: started)) / 1000,
+            stopReason: final.stopReason
+        )
+        Log.agent.notice(
+            "chat stream done model=\(model.rawValue) provider=\(model.provider.rawValue) "
+                + "firstOutput=\(firstOutputMs.map { "\($0)ms" } ?? "none") "
+                + "total=\(milliseconds(since: started))ms stop=\(final.stopReason.rawValue)",
+            telemetry: "Agent chat stream completed",
+            data: [
+                "model": model.rawValue,
+                "provider": model.provider.rawValue,
+                "stopReason": final.stopReason.rawValue,
+            ]
+        )
+        return final
+    } onCancel: {
+        source.cancel()
+        consumer.cancel()
+    }
+}

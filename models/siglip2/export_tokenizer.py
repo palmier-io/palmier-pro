@@ -50,7 +50,7 @@ def main():
         + "\n".join(cases)
         + "\n    ]\n}\n"
     )
-    out = root / "Tests/PalmierProTests/Search/TextTokenizerGoldens.swift"
+    out = root / "Tests/CompositorProTests/Search/TextTokenizerGoldens.swift"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(goldens)
     print(f"wrote {len(GOLDEN_TEXTS)} goldens -> {out}")

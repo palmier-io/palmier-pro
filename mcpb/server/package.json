@@ -1,7 +1,7 @@
 {
-  "name": "palmier-pro-mcpb-shim",
+  "name": "compositor-pro-mcpb-shim",
   "version": "0.2.0",
   "private": true,
-  "description": "Stdio→HTTP shim packaged inside palmier-pro.mcpb for Claude Desktop. Reconnects indefinitely across Palmier Pro restarts.",
+  "description": "Stdio→HTTP shim packaged inside compositor-pro.mcpb for Claude Desktop. Reconnects indefinitely across Compositor Pro restarts.",
   "main": "index.js"
 }

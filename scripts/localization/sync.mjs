@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const scriptPath = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(scriptPath), "../..");
-const sourceRoot = path.join(root, "Sources", "PalmierPro");
+const sourceRoot = path.join(root, "Sources", "CompositorPro");
 
 function filesUnder(directory, suffix) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -24,13 +24,38 @@ function decodeSwiftLiteral(value) {
     .replaceAll("\\\\", "\\");
 }
 
+/// Swift trims the indentation common to every line of a multi-line literal, and drops the
+/// newline after the opening delimiter and before the closing one. The catalog copy is written
+/// across several lines for readability, so registration has to undo that or the key recorded
+/// would not match what the app looks up.
+function normaliseMultiLine(content) {
+  const lines = content.split("\n");
+  while (lines.length > 0 && lines[0].trim() === "") lines.shift();
+  while (lines.length > 0 && lines[lines.length - 1].trim() === "") lines.pop();
+  if (lines.length === 0) return "";
+  const indents = lines
+    .filter((line) => line.trim() !== "")
+    .map((line) => line.length - line.trimStart().length);
+  const common = indents.length > 0 ? Math.min(...indents) : 0;
+  return lines
+    .map((line) => line.slice(Math.min(common, line.length - line.trimStart().length)))
+    // A trailing backslash is Swift line continuation: the line joins the next with no break.
+    .join("\n")
+    .replaceAll(/\\\n/g, "")
+    .replaceAll("\\\n", "\n");
+}
+
 export function sourceKeys() {
   const keys = new Set();
-  const pattern = /L10n\.key\("((?:\\.|[^"\\])*)"\)/g;
+  const singleLine = /L10n\.key\("((?:\\.|[^"\\])*)"\)/g;
+  const multiLine = /L10n\.key\("""([\s\S]*?)"""\)/g;
 
   for (const file of filesUnder(sourceRoot, ".swift")) {
     const source = fs.readFileSync(file, "utf8");
-    for (const match of source.matchAll(pattern)) keys.add(decodeSwiftLiteral(match[1]));
+    for (const match of source.matchAll(singleLine)) keys.add(decodeSwiftLiteral(match[1]));
+    for (const match of source.matchAll(multiLine)) {
+      keys.add(decodeSwiftLiteral(normaliseMultiLine(match[1])));
+    }
   }
 
   return [...keys].sort();
@@ -48,9 +73,9 @@ function appStringsDataPaths(directory) {
   const expectedSources = new Set(sourceFiles);
   const foundSources = new Set();
   const dataPaths = [];
-  for (const entry of fs.readdirSync(directory)) {
-    if (!entry.endsWith(".stringsdata")) continue;
-    const dataPath = path.join(directory, entry);
+  // The build writes stringsdata into its own derived-sources tree rather than wherever the
+  // caller asked, so search recursively instead of trusting the directory's top level.
+  for (const dataPath of filesUnder(directory, ".stringsdata")) {
     const data = JSON.parse(fs.readFileSync(dataPath, "utf8"));
     const source = path.resolve(data.source);
     if (!expectedSources.has(source)) continue;

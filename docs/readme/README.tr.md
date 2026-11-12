@@ -2,19 +2,18 @@
 
 <div align="center">
 
-# Palmier Pro
+# Compositor Pro
 
 **Yapay zeka için tasarlanmış video editörü.**
 
-<a href="https://github.com/palmier-io/palmier-pro/releases/latest/download/PalmierPro.dmg">
-  <img src="../../assets/macos-badge.png" alt="Palmier Pro'yu macOS için indir" width="180" />
+<a href="https://github.com/compositor-pro/compositor-pro/releases/latest/download/CompositorPro.dmg">
+  <img src="../../assets/macos-badge.png" alt="Compositor Pro'yu macOS için indir" width="180" />
 </a>
 
 <sub><i>Apple Silicon işlemcili cihazlarda macOS 26 (Tahoe) sürümü gerektirir</i></sub>
 
-<a href="https://x.com/Palmier_io"><img src="https://img.shields.io/badge/Takip Et-%40Palmier__io-000000?style=flat&logo=x&logoColor=white" alt="X'te takip et" /></a>
+<a href="https://x.com/CompositorPro"><img src="https://img.shields.io/badge/Takip Et-%40CompositorPro-000000?style=flat&logo=x&logoColor=white" alt="X'te takip et" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Katıl -Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Discord'a katıl" /></a>
-<a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 <br />
 
 <p>
@@ -37,18 +36,18 @@
 
 </div>
 
-<img src="../../assets/palmier-ui.png" alt="Palmier Pro arayüzü" width="900" />
+<img src="../../assets/compositor-ui.png" alt="Compositor Pro arayüzü" width="900" />
 
 ---
 
 > [!IMPORTANT]
-> Palmier Pro'nun v0.7.6 ve önceki sürümleri GPLv3 kapsamında yayımlandı. Herkese açık son kaynak kodu anlık görüntüsü [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) dalıdır. v0.7.6'dan sonraki sürümler tescilli yazılımdır ve kaynak kodları burada yayımlanmaz.
+> Compositor Pro'nun v0.7.6 ve önceki sürümleri GPLv3 kapsamında yayımlandı. Herkese açık son kaynak kodu anlık görüntüsü [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source) dalıdır. v0.7.6'dan sonraki sürümler tescilli yazılımdır ve kaynak kodları burada yayımlanmaz.
 
-Palmier Pro, Mac için bir video editörüdür. Siz ve yapay zeka ajanınız, zaman çizelgesi (timeline) üzerinde videoları birlikte üretebilir ve düzenleyebilirsiniz.
+Compositor Pro, Mac için bir video editörüdür. Siz ve yapay zeka ajanınız, zaman çizelgesi (timeline) üzerinde videoları birlikte üretebilir ve düzenleyebilirsiniz.
 
 ### Swift ile yerel (native) geliştirilmiş video editörü
 
-Palmier Pro'yu sıfırdan Swift ile geliştirdik. Kutup yıldızımız (temel hedefimiz) Premiere Pro olsa da, yapay zekayı iş akışına entegre etme konusunda kendimize özgü bir yaklaşım benimsiyoruz.
+Compositor Pro'yu sıfırdan Swift ile geliştirdik. Kutup yıldızımız (temel hedefimiz) Premiere Pro olsa da, yapay zekayı iş akışına entegre etme konusunda kendimize özgü bir yaklaşım benimsiyoruz.
 
 ### Yerleşik Üretken Yapay Zeka
 
@@ -65,13 +64,13 @@ Uygulama açık olduğunda, HTTP protokolü üzerinden `http://127.0.0.1:19789/m
 **Claude Code**
 
 ```bash
-claude mcp add --transport http palmier-pro http://127.0.0.1:19789/mcp
+claude mcp add --transport http compositor-pro http://127.0.0.1:19789/mcp
 ```
 
 **Codex**
 
 ```bash
-codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
+codex mcp add compositor-pro --url http://127.0.0.1:19789/mcp
 ```
 
 **Cursor**
@@ -81,7 +80,7 @@ En kolay yol, uygulama içinden `Help` -> `MCP Instructions` -> `Install in Curs
 ```
 {
   "mcpServers": {
-    "palmier-pro": {
+    "compositor-pro": {
       "type": "http",
       "url": "http://127.0.0.1:19789/mcp"
     }
@@ -95,9 +94,9 @@ Claude Desktop üzerinde tek tıkla Masaüstü Eklentisi (Desktop Extension) kur
 
 ## Sıkça Sorulan Sorular (SSS)
 
-**Palmier Pro'nun hangi sürümleri açık kaynaklıdır?**
+**Compositor Pro'nun hangi sürümleri açık kaynaklıdır?**
 
-v0.7.6'ya kadar olan sürümler ve [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) dalına kadar olan kaynak kodu GPLv3 kapsamında kalır; sonraki sürümler tescillidir.
+v0.7.6'ya kadar olan sürümler ve [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source) dalına kadar olan kaynak kodu GPLv3 kapsamında kalır; sonraki sürümler tescillidir.
 
 **Ücretsiz mi?**
 
@@ -116,12 +115,12 @@ Bu depo artık kod katkılarını kabul etmemektedir. Yayımlanan kaynak kodu GP
 ## Topluluk & Destek
 
 - **Discord:** Topluluğa **[Discord](https://discord.com/invite/SMVW6pKYmg)** üzerinden katılın.
-- **Twitter / X:** Güncellemeler ve duyurular için **[@Palmier_io](https://x.com/Palmier_io)** hesabını takip edin.
-- **Instagram:** [@palmier.io](https://www.instagram.com/palmier.io) adresinden takip edin.
-- **Geri Bildirim & Destek:** founders@palmier.io adresine e-posta gönderin.
+- **Twitter / X:** Güncellemeler ve duyurular için **[@CompositorPro](https://x.com/CompositorPro)** hesabını takip edin.
+- **Instagram:** [@compositorpro](https://www.instagram.com/compositorpro) adresinden takip edin.
+- **Geri Bildirim & Destek:** support@compositor.pro adresine e-posta gönderin.
 
 ## Lisans
 
-Copyright (C) 2026 Palmier, Inc.
+Copyright (C) 2026 Compositor Pro
 
 Bu depoda yayımlanan kaynak kodu [GPLv3](../../LICENSE) kapsamında kalır. v0.7.6'dan sonraki ikili sürümler [BINARY_LICENSE.md](../../BINARY_LICENSE.md) kapsamında tescilli yazılımdır.

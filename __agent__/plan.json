@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "items": [
+    {
+      "title": "Audit current Phase 0 work and define the first safe slice",
+      "status": "done"
+    },
+    {
+      "title": "Implement and verify Phase 0 capability/evidence improvements",
+      "status": "done"
+    },
+    {
+      "title": "Implement and verify Phase 1 stock/B-roll production workflow",
+      "status": "done"
+    },
+    {
+      "title": "Implement and verify Phase 2 motion graphics and style system",
+      "status": "done"
+    },
+    {
+      "title": "Summarize completed work and remaining gaps",
+      "status": "done"
+    }
+  ],
+  "updated_at": "2026-10-03T05:15:53.360Z",
+  "session_id": "01a0f4eb-5dc1-7270-9f11-19e402c7465e"
+}

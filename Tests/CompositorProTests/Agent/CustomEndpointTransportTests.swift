@@ -1,0 +1,548 @@
+import CoreGraphics
+import Foundation
+import Network
+import Testing
+@testable import CompositorPro
+
+/// Drives `BYOKClient` against a loopback server so the whole custom path — URL, headers,
+/// request body, and SSE decoding — is proven without the settings UI.
+@Suite("Custom endpoint transport")
+struct CustomEndpointTransportTests {
+
+    @Test func keylessLoopbackEndpointStreamsFromChatCompletions() async throws {
+        let server = try await LoopbackServer { _ in Self.sseResponse }
+        defer { server.cancel() }
+        let endpoint = try #require(CustomModelStore.normalizedBaseURL(server.baseURL))
+        let client = Self.client(modelID: "qwen3-coder:30b", endpoint: endpoint, apiKey: "")
+
+        let events = try await transportEvents(client.stream(
+            system: "Instructions",
+            tools: [AgentToolSchema(name: "get_timeline", description: "Read", inputSchema: ["type": "object"])],
+            messages: [AgentRequestMessage(role: .user, content: [.content(.text("Cut the intro"))])],
+            context: Self.context
+        ))
+
+        let request = try #require(server.request)
+        #expect(request.hasPrefix("POST /v1/chat/completions "))
+        // No key means no Authorization header — that is the point of loopback support.
+        #expect(!request.lowercased().contains("authorization:"))
+        #expect(request.contains("\"model\":\"qwen3-coder:30b\""))
+        #expect(request.contains("\"stream\":true"))
+        #expect(request.contains("get_timeline"))
+
+        #expect(events.contains(.textDelta("Hello")))
+        #expect(events.contains(.toolUseComplete(
+            id: "call_1", name: "get_timeline", inputJSON: "{\"limit\":5}")))
+        #expect(events.contains(.messageStop(stopReason: .toolUse)))
+    }
+
+    @Test func keyedLoopbackEndpointSendsBearerToken() async throws {
+        let server = try await LoopbackServer { _ in
+            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\ndata: [DONE]\n\n"
+        }
+        defer { server.cancel() }
+        let endpoint = try #require(CustomModelStore.normalizedBaseURL(server.baseURL))
+        let client = Self.client(modelID: "m", endpoint: endpoint, apiKey: "sk-local")
+
+        _ = try await transportEvents(client.stream(system: "", tools: [], messages: [], context: Self.context))
+
+        #expect(try #require(server.request).lowercased().contains("authorization: bearer sk-local"))
+    }
+
+    @Test func remoteEndpointRefusesToStreamWithoutAKey() async {
+        let client = Self.client(
+            modelID: "m",
+            endpoint: URL(string: "https://api.example.com/v1")!,
+            apiKey: ""
+        )
+        do {
+            _ = try await transportEvents(client.stream(system: "", tools: [], messages: [], context: Self.context))
+            Issue.record("Expected a missing-credential failure")
+        } catch let error as AgentClientTransportError {
+            guard case .missingAPIKey(.custom) = error else {
+                Issue.record("Expected missingAPIKey, got \(error)")
+                return
+            }
+        } catch {
+            Issue.record("Expected a transport error, got \(error)")
+        }
+    }
+
+    @Test func serverErrorsSurfaceStatusAndBody() async throws {
+        let server = try await LoopbackServer { _ in
+            "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\n\r\n{\"error\":\"no such model\"}"
+        }
+        defer { server.cancel() }
+        let endpoint = try #require(CustomModelStore.normalizedBaseURL(server.baseURL))
+        let client = Self.client(modelID: "missing", endpoint: endpoint, apiKey: "")
+
+        do {
+            _ = try await transportEvents(client.stream(system: "", tools: [], messages: [], context: Self.context))
+            Issue.record("Expected an HTTP failure")
+        } catch let error as AgentClientTransportError {
+            guard case .httpError(let provider, let status, let body) = error else {
+                Issue.record("Expected httpError, got \(error)")
+                return
+            }
+            #expect(provider == .custom)
+            #expect(status == 404)
+            #expect(body.contains("no such model"))
+        } catch {
+            Issue.record("Expected an httpError, got \(error)")
+        }
+    }
+
+    @Test(arguments: [nil, true] as [Bool?])
+    func inspectionImageReachesTheCustomEndpoint(supportsImages: Bool?) async throws {
+        let context = try #require(CGContext(
+            data: nil, width: 8, height: 8, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+        ))
+        context.setFillColor(CGColor(srgbRed: 1, green: 0, blue: 0, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        let image = try #require(context.makeImage())
+        let jpeg = try #require(ImageEncoder.encodeJPEG(image, quality: 1))
+        let metadata = #"{"mediaRef":"asset-1","name":"blue-frame.jpg","frameTimestamps":[1.25]}"#
+        let output = ToolResult(content: [
+            .image(base64: jpeg.base64EncodedString(), mediaType: "image/jpeg"), .text(metadata),
+        ], isError: false)
+        let server = try await LoopbackServer { _ in Self.sseResponse }
+        defer { server.cancel() }
+        let endpoint = try #require(CustomModelStore.normalizedBaseURL(server.baseURL))
+        let client = Self.client(modelID: "vision-model", endpoint: endpoint, apiKey: "", supportsImages: supportsImages)
+        let messages = [
+            AgentRequestMessage(role: .assistant, content: [
+                .content(.toolUse(id: "inspect-1", name: "inspect_media", inputJSON: #"{"mediaRef":"asset-1"}"#)),
+            ]),
+            AgentRequestMessage(role: .user, content: [
+                .content(.toolResult(toolUseId: "inspect-1", content: output.content, isError: output.isError)),
+            ]),
+        ]
+
+        _ = try await transportEvents(client.stream(system: "", tools: [], messages: messages, context: Self.context))
+
+        let request = try #require(server.request)
+        let separator = try #require(request.range(of: "\r\n\r\n"))
+        let body = try #require(JSONSerialization.jsonObject(with: Data(request[separator.upperBound...].utf8)) as? [String: Any])
+        let wire = try #require(body["messages"] as? [[String: Any]])
+        #expect(wire.compactMap { $0["role"] as? String } == ["assistant", "tool", "user"])
+        let attachment = try #require(wire.last?["content"] as? [[String: Any]])
+        let texts = attachment.compactMap { $0["text"] as? String }
+        #expect(texts.first?.contains("inspect-1") == true)
+        #expect(texts.last == metadata)
+        let imageURL = try #require(attachment.compactMap { $0["image_url"] as? [String: String] }.first?["url"])
+        #expect(imageURL == "data:image/jpeg;base64,\(jpeg.base64EncodedString())")
+    }
+
+    @Test func controlledImageRecognitionScenarioWithMisleadingFilename() async throws {
+        let context = try #require(CGContext(
+            data: nil, width: 8, height: 8, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+        ))
+        context.setFillColor(CGColor(srgbRed: 0, green: 1, blue: 0, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        let image = try #require(context.makeImage())
+        let jpeg = try #require(ImageEncoder.encodeJPEG(image, quality: 1))
+        let base64 = jpeg.base64EncodedString()
+        let misleadingName = "ocean_sunset.mov"
+        let metadata = #"{"mediaRef":"asset-sunset","name":"\#(misleadingName)","duration":5.0,"frameTimestamps":[0.0]}"#
+
+        let server = try await LoopbackServer { request in
+            let normalized = request.replacingOccurrences(of: "\\/", with: "/")
+            let hasImageData = normalized.contains("data:image/jpeg;base64,\(base64)")
+            let text = hasImageData
+                ? "Visual inspection confirmed green frame rather than misleading ocean sunset."
+                : "No image payload received; defaulted to filename ocean_sunset.mov."
+            return "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n"
+                + #"data: {"choices":[{"delta":{"content":"\#(text)"}}]}"#
+                + "\n\ndata: [DONE]\n\n"
+        }
+        defer { server.cancel() }
+        let endpoint = try #require(CustomModelStore.normalizedBaseURL(server.baseURL))
+        let client = Self.client(modelID: "vision-model", endpoint: endpoint, apiKey: "", supportsImages: true)
+        let messages = [
+            AgentRequestMessage(role: .assistant, content: [
+                .content(.toolUse(id: "inspect-misleading", name: "inspect_media", inputJSON: #"{"mediaRef":"asset-sunset"}"#)),
+            ]),
+            AgentRequestMessage(role: .user, content: [
+                .content(.toolResult(
+                    toolUseId: "inspect-misleading",
+                    content: [.image(base64: base64, mediaType: "image/jpeg"), .text(metadata)],
+                    isError: false
+                )),
+            ]),
+        ]
+
+        var responseText = ""
+        for event in try await transportEvents(client.stream(system: "", tools: [], messages: messages, context: Self.context)) {
+            if case .textDelta(let delta) = event {
+                responseText += delta
+            }
+        }
+
+        #expect(responseText.contains("Visual inspection confirmed green frame rather than misleading ocean sunset."))
+
+        let request = try #require(server.request)
+        let separator = try #require(request.range(of: "\r\n\r\n"))
+        let body = try #require(JSONSerialization.jsonObject(with: Data(request[separator.upperBound...].utf8)) as? [String: Any])
+        let wire = try #require(body["messages"] as? [[String: Any]])
+        let attachment = try #require(wire.last?["content"] as? [[String: Any]])
+        let urls = attachment.compactMap { ($0["image_url"] as? [String: String])?["url"] }
+        #expect(urls.contains("data:image/jpeg;base64,\(base64)"))
+    }
+
+    @Test(arguments: [false, true])
+    func textOnlyModelRefusesImagesBeforeSendingRequest(inToolResult: Bool) async throws {
+        let server = try await LoopbackServer { _ in Self.sseResponse }
+        defer { server.cancel() }
+        let endpoint = try #require(CustomModelStore.normalizedBaseURL(server.baseURL))
+        let client = Self.client(modelID: "text-model", endpoint: endpoint, apiKey: "", supportsImages: false)
+        let block: AgentRequestBlock = inToolResult
+            ? .content(.toolResult(toolUseId: "inspect", content: [.image(base64: "YQ==", mediaType: "image/png")], isError: false))
+            : .image(base64: "YQ==", mediaType: "image/png")
+        do {
+            _ = try await transportEvents(client.stream(
+                system: "", tools: [], messages: [AgentRequestMessage(role: .user, content: [block])], context: Self.context
+            ))
+            Issue.record("Expected image input to be refused")
+        } catch let error as AgentClientTransportError {
+            guard case .imageInputUnsupported(let model) = error else {
+                Issue.record("Expected imageInputUnsupported, got \(error)")
+                return
+            }
+            #expect(model == "text-model")
+        }
+        #expect(server.request == nil)
+    }
+
+    @Test func textOnlyModelStillAcceptsTextRequests() async throws {
+        let server = try await LoopbackServer { _ in Self.sseResponse }
+        defer { server.cancel() }
+        let endpoint = try #require(CustomModelStore.normalizedBaseURL(server.baseURL))
+        let client = Self.client(modelID: "text-model", endpoint: endpoint, apiKey: "", supportsImages: false)
+        var text = ""
+        for event in try await transportEvents(client.stream(
+            system: "", tools: [], messages: [AgentRequestMessage(role: .user, content: [.content(.text("Read the timeline"))])],
+            context: Self.context
+        )) {
+            if case .textDelta(let value) = event { text += value }
+        }
+        #expect(text == "Hello")
+        #expect(server.request != nil)
+    }
+
+    @Test func undeclaredImageSupportSurfacesProviderRejection() async throws {
+        let server = try await LoopbackServer { _ in
+            "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"error\":\"This model does not support image input\"}"
+        }
+        defer { server.cancel() }
+        let endpoint = try #require(CustomModelStore.normalizedBaseURL(server.baseURL))
+        let client = Self.client(modelID: "unknown-model", endpoint: endpoint, apiKey: "")
+        do {
+            _ = try await transportEvents(client.stream(
+                system: "", tools: [],
+                messages: [AgentRequestMessage(role: .user, content: [.image(base64: "YQ==", mediaType: "image/png")])],
+                context: Self.context
+            ))
+            Issue.record("Expected the provider's image rejection")
+        } catch let error as AgentClientTransportError {
+            guard case .httpError(.custom, let status, let body) = error else {
+                Issue.record("Expected custom HTTP error, got \(error)")
+                return
+            }
+            #expect(status == 400)
+            #expect(body.contains("does not support image input"))
+        }
+        #expect(server.request?.replacingOccurrences(of: "\\/", with: "/").contains("data:image/png;base64,YQ==") == true)
+    }
+
+    @Test(arguments: TerminalEvent.allCases)
+    func terminalProviderEventDoesNotWaitForConnectionEnd(_ terminal: TerminalEvent) async throws {
+        let server = try await LoopbackServer { _ in
+            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n"
+                + terminal.payload + "\n\n"
+                + #"data: {"type":"error","error":{"message":"Connection outlived the response."}}"# + "\n\n"
+        }
+        defer { server.cancel() }
+        let request = URLRequest(url: try #require(URL(string: server.baseURL)))
+        let operation = makeAgentStream { continuation in
+            let bytes = try await AgentHTTP.bytes(for: request) { status, body in
+                AgentClientTransportError.httpError(provider: terminal.provider, status: status, body: body)
+            }
+            try await terminal.provider.parseSSE(bytes: bytes, continuation: continuation)
+        }
+
+        let events = try await transportEvents(operation)
+
+        let contentEvents = events.filter { if case .activity = $0 { return false }; return true }
+        #expect(contentEvents == [
+            .toolUseComplete(id: "call_1", name: "get_timeline", inputJSON: "{}"),
+            .messageStop(stopReason: .toolUse),
+        ])
+    }
+
+    enum TerminalEvent: CaseIterable, Sendable {
+        case chatFinishReason, chatDone, openAICompleted, anthropicMessageStop
+
+        var provider: AgentProvider {
+            switch self {
+            case .chatFinishReason, .chatDone: .custom
+            case .openAICompleted: .openAI
+            case .anthropicMessageStop: .anthropic
+            }
+        }
+
+        var payload: String {
+            switch self {
+            case .chatFinishReason, .chatDone:
+                let call = #"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"get_timeline","arguments":"{}"}}]}}]}"#
+                let stop = self == .chatDone ? "data: [DONE]"
+                    : #"data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}"#
+                return call + "\n\n" + stop
+            case .openAICompleted:
+                return #"""
+                data: {"type":"response.output_item.done","item":{"type":"function_call","call_id":"call_1","name":"get_timeline","arguments":"{}"}}
+
+                data: {"type":"response.completed","response":{"status":"completed","output":[{"type":"function_call"}]}}
+                """#
+            case .anthropicMessageStop:
+                return #"""
+                data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"call_1","name":"get_timeline"}}
+
+                data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{}"}}
+
+                data: {"type":"content_block_stop","index":0}
+
+                data: {"type":"message_delta","delta":{"stop_reason":"tool_use"}}
+
+                data: {"type":"message_stop"}
+                """#
+            }
+        }
+    }
+
+    // MARK: - Fixtures
+
+    private static func client(modelID: String, endpoint: URL, apiKey: String, supportsImages: Bool? = nil) -> BYOKClient {
+        BYOKClient(
+            apiKey: apiKey,
+            settings: AgentRunSettings(
+                model: .custom,
+                reasoningEffort: .none,
+                custom: CustomAgentModel(baseURL: endpoint, modelID: modelID, supportsImages: supportsImages)
+            )
+        )
+    }
+
+    private static let context = AgentRequestContext(
+        conversationID: UUID(), traceID: UUID(), spanID: UUID(),
+        inputMessageID: UUID(), outputMessageID: UUID(), projectID: nil
+    )
+
+    private static let sseResponse = """
+    HTTP/1.1 200 OK\r
+    Content-Type: text/event-stream\r
+    \r
+    data: {"choices":[{"delta":{"content":"Hello"}}]}\n
+    data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"get_timeline","arguments":"{\\"limit\\":5}"}}]}}]}\n
+    data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n
+    data: [DONE]\n
+    """
+}
+
+private func transportEvents(_ operation: AgentStreamOperation) async throws -> [AgentStreamEvent] {
+    try await withTaskCancellationHandler {
+        do {
+            var events: [AgentStreamEvent] = []
+            for try await event in operation.events { events.append(event) }
+            try await operation.join().get()
+            try Task.checkCancellation()
+            return events
+        } catch {
+            operation.cancel()
+            _ = await operation.join()
+            throw error
+        }
+    } onCancel: {
+        operation.cancel()
+    }
+}
+
+/// Replays a capture of the provider's real SSE through the actual client, so a framing or
+/// line-splitting fault between socket and parser fails here instead of being inferred from
+/// a log line. Shape copied from a live OpenRouter stream for this model.
+@Suite("Custom endpoint provider stream replay")
+struct CustomEndpointStreamReplayTests {
+
+    @Test func capturedProviderStreamYieldsToolCallsAndToolUseStop() async throws {
+        let server = try await LoopbackServer { _ in Self.providerStream }
+        defer { server.cancel() }
+        let endpoint = try #require(CustomModelStore.normalizedBaseURL(server.baseURL))
+        let client = BYOKClient(
+            apiKey: "",
+            settings: AgentRunSettings(
+                model: .custom,
+                reasoningEffort: .none,
+                custom: CustomAgentModel(baseURL: endpoint, modelID: "stealth/space-bunny-alpha")
+            )
+        )
+
+        let prompt = AgentRequestMessage(role: .user, content: [.content(.text("Add captions"))])
+        let events = try await transportEvents(client.stream(
+            system: "s", tools: [], messages: [prompt], context: .replay
+        ))
+
+        #expect(events.contains(.textDelta("I'll start by reviewing")))
+        let names = events.compactMap { event -> String? in
+            guard case .toolUseComplete(_, let name, _) = event else { return nil }
+            return name
+        }
+        #expect(names.contains("get_timeline"))
+        #expect(names.contains("get_transcript"))
+        #expect(events.contains(.messageStop(stopReason: .toolUse)))
+    }
+
+    private static let providerStream = """
+    HTTP/1.1 200 OK\r
+    Content-Type: text/event-stream\r
+    \r
+    data: {"id":"gen-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"I'll start by reviewing"},"finish_reason":null}]}\n
+    data: {"id":"gen-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":" the timeline and transcript."},"finish_reason":null}]}\n
+    data: {"id":"gen-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_a","type":"function","function":{"name":"get_timeline","arguments":""}}]},"finish_reason":null}]}\n
+    data: {"id":"gen-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{}"}}]},"finish_reason":null}]}\n
+    data: {"id":"gen-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"call_b","type":"function","function":{"name":"get_transcript","arguments":""}}]},"finish_reason":null}]}\n
+    data: {"id":"gen-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"function":{"arguments":"{}"}}]},"finish_reason":"tool_calls"}]}\n
+    data: [DONE]\n
+    """
+}
+
+extension AgentRequestContext {
+    static var replay: AgentRequestContext {
+        AgentRequestContext(
+            conversationID: UUID(), traceID: UUID(), spanID: UUID(),
+            inputMessageID: UUID(), outputMessageID: UUID(), projectID: nil
+        )
+    }
+}
+
+/// One-shot HTTP/1.1 loopback server. `BYOKClient` sends `Content-Length` framing, so reading
+/// the head plus that many body bytes is the whole request; the handler sees it raw.
+private final class LoopbackServer: @unchecked Sendable {
+    private let listener: NWListener
+    private let received: Locked<String?>
+    private let port: UInt16
+    private static let separator = Data("\r\n\r\n".utf8)
+
+    var baseURL: String { "http://127.0.0.1:\(port)/v1" }
+    var request: String? { received.value }
+
+    init(
+        response: @escaping @Sendable (String) -> String,
+        receivedRequest: (@Sendable (String) -> Void)? = nil
+    ) async throws {
+        let listener = try NWListener(using: .tcp, on: .any)
+        self.listener = listener
+        let received = Locked<String?>(nil)
+        self.received = received
+        let ready = ReadinessGate()
+        listener.stateUpdateHandler = { state in
+            switch state {
+            case .ready: ready.open(listener.port?.rawValue ?? 0)
+            case .failed: ready.open(0)
+            default: break
+            }
+        }
+        listener.newConnectionHandler = { connection in
+            connection.start(queue: .global())
+            Self.readRequest(on: connection) { raw in
+                received.value = raw
+                receivedRequest?(raw)
+                connection.send(
+                    content: Data(response(raw).utf8),
+                    completion: .contentProcessed { _ in connection.cancel() }
+                )
+            }
+        }
+        listener.start(queue: .global())
+        let bound = await ready.wait()
+        guard bound != 0 else { throw LoopbackServerError.failedToBind }
+        self.port = bound
+    }
+
+    func cancel() { listener.cancel() }
+
+    private static func readRequest(
+        on connection: NWConnection,
+        onComplete: @escaping @Sendable (String) -> Void
+    ) {
+        let buffer = Locked(Data())
+        @Sendable func step() {
+            connection.receive(minimumIncompleteLength: 1, maximumLength: 1 << 16) { data, _, ended, error in
+                if let data { buffer.value.append(data) }
+                if requestIsComplete(buffer.value, ended: ended, error: error) {
+                    return onComplete(String(decoding: buffer.value, as: UTF8.self))
+                }
+                step()
+            }
+        }
+        step()
+    }
+
+    private static func requestIsComplete(_ buffer: Data, ended: Bool, error: NWError?) -> Bool {
+        if error != nil || ended { return true }
+        guard let headEnd = buffer.range(of: separator) else { return false }
+        let head = String(decoding: buffer[..<headEnd.lowerBound], as: UTF8.self)
+        let expected = head
+            .split(separator: "\r\n")
+            .first { $0.lowercased().hasPrefix("content-length:") }
+            .flatMap { Int($0.split(separator: ":", maxSplits: 1).last.map {
+                $0.trimmingCharacters(in: .whitespaces)
+            } ?? "") }
+        return buffer.count - headEnd.upperBound >= (expected ?? 0)
+    }
+
+    enum LoopbackServerError: Error { case failedToBind }
+}
+
+private final class ReadinessGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<UInt16, Never>?
+    private var opened = false
+
+    func open(_ port: UInt16) {
+        lock.lock()
+        guard !opened else {
+            lock.unlock()
+            return
+        }
+        opened = true
+        let waiting = continuation
+        continuation = nil
+        lock.unlock()
+        waiting?.resume(returning: port)
+    }
+
+    func wait() async -> UInt16 {
+        await withCheckedContinuation { continuation in
+            lock.lock()
+            if opened {
+                lock.unlock()
+                return continuation.resume(returning: 0)
+            }
+            self.continuation = continuation
+            lock.unlock()
+        }
+    }
+}
+
+private final class Locked<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: Value
+
+    init(_ value: Value) { stored = value }
+
+    var value: Value {
+        get { lock.lock(); defer { lock.unlock() }; return stored }
+        set { lock.lock(); defer { lock.unlock() }; stored = newValue }
+    }
+}

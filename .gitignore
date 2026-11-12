@@ -37,3 +37,8 @@ models/*/checkpoint*
 models/*/convert*.log
 
 AUDIO_SUITE_*
+# SwiftPM scratch verification snapshots
+.build-check/
+
+# Local MCP tool config
+.mobilebuildmcp/

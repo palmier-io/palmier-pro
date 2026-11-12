@@ -1,16 +1,16 @@
 {
   "manifest_version": "0.4",
-  "name": "palmier-pro",
-  "display_name": "Palmier Pro",
+  "name": "compositor-pro",
+  "display_name": "Compositor Pro",
   "version": "0.2.0",
-  "description": "Edit your videos with Palmier Pro from Claude Desktop.",
-  "long_description": "Connects Claude Desktop to the local MCP server inside Palmier Pro — an AI-native Mac video editor. Once installed, Claude can read your timeline, edit clips, generate media, and manage tracks.",
+  "description": "Edit your videos with Compositor Pro from Claude Desktop.",
+  "long_description": "Connects Claude Desktop to the local MCP server inside Compositor Pro — an AI-native Mac video editor. Once installed, Claude can read your timeline, edit clips, generate media, and manage tracks.",
   "icon": "icon.png",
   "author": {
-    "name": "Palmier",
-    "url": "https://palmier.io"
+    "name": "Compositor Pro",
+    "url": "https://compositor.pro"
   },
-  "homepage": "https://palmier.io",
+  "homepage": "https://compositor.pro",
   "keywords": ["video", "editor", "timeline", "creative", "media"],
   "compatibility": {
     "platforms": ["darwin"],
