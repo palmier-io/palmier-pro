@@ -11,8 +11,15 @@ extension ToolExecutor {
         let limit: Int?
         let claimIds: [String]?
         let ledgerRevision: String?
+        let sectionId: String?
+        let title: String?
+        let summary: String?
+        let beatText: [String: String]?
+        let startFrame: Int?
+        let endFrame: Int?
         static let allowedKeys: Set<String> = [
             "action", "planId", "plan", "patch", "status", "filterStatus", "limit", "claimIds", "ledgerRevision",
+            "sectionId", "title", "summary", "beatText", "startFrame", "endFrame",
         ]
     }
 
@@ -123,12 +130,18 @@ extension ToolExecutor {
             try rejectPlanEditKeys(input, forbidden: ["plan", "patch", "status", "filterStatus", "limit"], path: "plan_edit action='measure_narration'")
             guard let planId = input.planId else { throw ToolError("measure_narration requires planId.") }
             return try await measurePlanNarration(editor, planId: planId)
+        case "revise_section":
+            try rejectPlanEditKeys(input, forbidden: ["plan", "patch", "status", "filterStatus", "limit", "claimIds"], path: "plan_edit action='revise_section'")
+            guard let planId = input.planId, let sectionId = input.sectionId else {
+                throw ToolError("revise_section requires planId and sectionId.")
+            }
+            return try await revisePlanSection(editor, input: input, planId: planId, sectionId: sectionId)
         case "prepare_narration":
             try rejectPlanEditKeys(input, forbidden: ["plan", "patch", "status", "filterStatus", "limit", "claimIds"], path: "plan_edit action='prepare_narration'")
             guard let planId = input.planId else { throw ToolError("prepare_narration requires planId.") }
             return try await prepareApprovedPlanNarration(editor, planId: planId)
         default:
-            throw ToolError("action must be create, read, update, status, delete, review_claims, measure_narration, or prepare_narration.")
+            throw ToolError("action must be create, read, update, status, delete, review_claims, revise_section, measure_narration, or prepare_narration.")
         }
     }
 
@@ -313,6 +326,44 @@ extension ToolExecutor {
         } catch let error as EditPlanValidationError {
             throw ToolError(error.errorDescription ?? "Invalid plan update.")
         }
+    }
+
+    /// Revises one section and every output that depends on it: the section, its linked script
+    /// beats, derived narration timing/proof (invalidated, not guessed), and dependent claims.
+    private func revisePlanSection(_ editor: EditorViewModel, input: PlanEditInput, planId: String, sectionId: String) async throws -> ToolResult {
+        guard var plan = editor.editPlan(id: planId) else { throw ToolError("Unknown planId '\(planId)'.") }
+        guard plan.status == .proposed || plan.status == .approved else {
+            throw ToolError("Only proposed or approved plans can be revised. Create a new plan instead.")
+        }
+        let result: [String: Any]
+        do {
+            result = try plan.reviseSection(
+                sectionId: sectionId,
+                title: input.title,
+                summary: input.summary,
+                beatText: input.beatText,
+                startFrame: input.startFrame,
+                endFrame: input.endFrame
+            )
+        } catch let error as EditPlanValidationError {
+            throw ToolError(error.errorDescription ?? "Invalid section revision.")
+        }
+        guard result["changed"] as? Bool == true else {
+            var receipt = plan.receipt(includeDetails: true)
+            receipt["noOp"] = true
+            receipt["reviseSection"] = result
+            return .ok(Self.jsonString(receipt) ?? "{}")
+        }
+        try plan.validateArtifacts()
+        let receipt = try editor.changeEditPlans(updates: [plan], actionName: "Revise Section (Agent)")
+        guard let updated = receipt.updated.first else {
+            var noOp = plan.receipt(includeDetails: true)
+            noOp["noOp"] = true
+            return .ok(Self.jsonString(noOp) ?? "{}")
+        }
+        var out = updated.receipt(includeDetails: true)
+        out["reviseSection"] = result
+        return .ok(Self.jsonString(out) ?? "{}")
     }
 
     private func changePlanStatus(_ editor: EditorViewModel, input: PlanEditInput) throws -> ToolResult {

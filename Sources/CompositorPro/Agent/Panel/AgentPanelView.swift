@@ -63,24 +63,27 @@ struct AgentPanelView: View {
         !service.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    @State private var isScrolledFromBottom = false
+
     var body: some View {
         VStack(spacing: 0) {
-            floatingTabBar
+            tabBar
             messageList
             footer
         }
+        .background(ChatBackground())
         .onChange(of: service.isStreaming) { _, streaming in
             guard !streaming else { return }
             AppNotifications.agentComplete()
         }
     }
 
-    private var floatingTabBar: some View {
-        GlassEffectContainer {
-            HStack(spacing: AppTheme.Spacing.xs) {
+    private var tabBar: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: AppTheme.Spacing.xs) {
+                        HStack(spacing: 0) {
                             ForEach(service.openSessions) { session in
                                 ChatTabView(
                                     session: session,
@@ -91,30 +94,43 @@ struct AgentPanelView: View {
                                 .id(session.id)
                             }
                         }
+                        .padding(.horizontal, 8)
                     }
                     .onChange(of: service.currentSessionId) { _, new in
                         guard let new else { return }
                         withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(new, anchor: .center) }
                     }
                 }
-                newTabButton
-                historyButton
-                ViewSkillsButton()
+
+                Spacer(minLength: 8)
+
+                HStack(spacing: 8) {
+                    newTabButton
+                    historyButton
+                    ViewSkillsButton()
+                    modelPicker
+                    reasoningEffortPicker
+                }
             }
-            .padding(.horizontal, AppTheme.Spacing.sm)
-            .frame(maxWidth: .infinity)
-            .frame(height: Layout.panelHeaderHeight)
-            .glassEffect(.regular, in: .rect(cornerRadius: AppTheme.Radius.lg))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(height: 44)
+            .background(
+                Rectangle()
+                    .fill(AppTheme.Background.surfaceColor)
+                    .overlay(alignment: .bottom) {
+                        Divider().foregroundStyle(AppTheme.Border.subtleColor)
+                    }
+            )
         }
-        .padding(.horizontal, AppTheme.Spacing.mdLg)
     }
 
     private var newTabButton: some View {
         Button { service.newChat() } label: {
             Image(systemName: "plus")
-                .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .frame(width: AppTheme.IconSize.smMd, height: AppTheme.IconSize.smMd)
+                .frame(width: 28, height: 28)
         }
         .buttonStyle(.plain)
         .focusable(false)
@@ -122,14 +138,13 @@ struct AgentPanelView: View {
     }
 
     @State private var showHistory = false
-    @State private var isScrolledFromBottom = false
 
     private var historyButton: some View {
         Button { showHistory.toggle() } label: {
             Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .frame(width: AppTheme.IconSize.smMd, height: AppTheme.IconSize.smMd)
+                .frame(width: 28, height: 28)
         }
         .buttonStyle(.plain)
         .focusable(false)
@@ -144,6 +159,7 @@ struct AgentPanelView: View {
                 },
                 onDelete: { service.deleteSession($0) }
             )
+            .frame(minWidth: 280, minHeight: 300)
         }
     }
 
@@ -164,13 +180,11 @@ struct AgentPanelView: View {
                         service.selectCustomModel(model.id)
                         service.model = .custom
                     } label: {
-                        // Model id first: two models on one gateway are otherwise
-                        // indistinguishable, since the nickname is usually the provider.
-                        VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
+                        VStack(alignment: .leading, spacing: 2) {
                             Text(verbatim: model.displayTitle)
                             if let subtitle = model.displaySubtitle {
                                 Text(verbatim: subtitle)
-                                    .font(.system(size: AppTheme.FontSize.xs))
+                                    .font(.system(size: 10))
                                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                             }
                         }
@@ -182,12 +196,12 @@ struct AgentPanelView: View {
             footerPickerLabel(service.modelTitle(service.model)) {
                 switch service.model.provider {
                 case .anthropic:
-                    ExternalAgentLogo(agent: .claude, size: AppTheme.IconSize.xs)
+                    ExternalAgentLogo(agent: .claude, size: 12)
                 case .openAI:
-                    ProviderLogo(iconKey: "openai", size: AppTheme.IconSize.xs)
+                    ProviderLogo(iconKey: "openai", size: 12)
                 case .custom:
                     Image(systemName: "server.rack")
-                        .font(.system(size: AppTheme.FontSize.xs))
+                        .font(.system(size: 10))
                         .foregroundStyle(AppTheme.Text.secondaryColor)
                 }
             }
@@ -215,9 +229,9 @@ struct AgentPanelView: View {
         } label: {
             footerPickerLabel(L10n.string(key: service.reasoningEffort.labelKey)) {
                 Image(systemName: "brain.head.profile")
-                    .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.medium))
+                    .font(.system(size: 9, weight: .medium))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    .frame(width: AppTheme.IconSize.xxs, height: AppTheme.IconSize.xxs)
+                    .frame(width: 12, height: 12)
                     .accessibilityHidden(true)
             }
         }
@@ -232,16 +246,22 @@ struct AgentPanelView: View {
         _ title: String,
         @ViewBuilder artwork: () -> Artwork
     ) -> some View {
-        HStack(spacing: AppTheme.Spacing.xs) {
+        HStack(spacing: 6) {
             Text(verbatim: title)
-                .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .lineLimit(1)
                 .truncationMode(.tail)
             artwork()
-                .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
+                .frame(width: 12, height: 12)
                 .clipped()
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            Capsule()
+                .fill(AppTheme.Interaction.fill(AppTheme.Opacity.subtle))
+        )
     }
 
     @ViewBuilder
@@ -260,10 +280,10 @@ struct AgentPanelView: View {
     @ViewBuilder
     private var byokIndicator: some View {
         if let provider = service.activeBYOKProvider {
-            Image(systemName: "key")
-                .font(.system(size: AppTheme.FontSize.xs))
+            Image(systemName: "key.fill")
+                .font(.system(size: 10))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
+                .frame(width: 20, height: 20)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Text(verbatim: provider.chatPresentation.byokLabel))
                 .help(provider.chatPresentation.byokHelp)
@@ -282,39 +302,34 @@ struct AgentPanelView: View {
         return out
     }
 
+    private var reasoningStreaming: Bool { service.messages.last?.hasIncompleteReasoning == true }
+
     private var messageList: some View {
         Group {
             if service.messages.isEmpty && !service.isStreaming {
-                VStack(spacing: AppTheme.Spacing.smMd) {
-                    emptyState
-                    errorBanner
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                .padding(.horizontal, AppTheme.Spacing.lgXl)
+                emptyState
             } else {
                 scrollingMessages
             }
         }
     }
 
-    private var reasoningStreaming: Bool { service.messages.last?.hasIncompleteReasoning == true }
-
     private var scrollingMessages: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
+                LazyVStack(alignment: .leading, spacing: 0) {
                     let results = toolResults
                     ForEach(service.messages) { msg in
                         AgentMessageView(message: msg, toolResults: results)
                             .id(msg.id)
                     }
                     errorBanner
-                        .padding(.top, AppTheme.Spacing.sm)
+                        .padding(.vertical, 8)
                 }
-                .padding(.horizontal, AppTheme.Spacing.lgXl)
-                .padding(.top, AppTheme.Spacing.mdLg)
-                .padding(.bottom, AppTheme.Spacing.smMd)
-                .frame(maxWidth: Layout.chatColumnMax)
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+                .frame(maxWidth: 900)
                 .frame(maxWidth: .infinity)
                 .background(AgentOverlayScrollerStyle())
             }
@@ -332,8 +347,8 @@ struct AgentPanelView: View {
             .overlay(alignment: .bottomTrailing) {
                 if isScrolledFromBottom {
                     scrollToBottomButton(proxy: proxy)
-                        .padding(.trailing, AppTheme.Spacing.mdLg)
-                        .padding(.bottom, AppTheme.Spacing.mdLg)
+                        .padding(.trailing, 16)
+                        .padding(.bottom, 16)
                         .transition(.opacity.combined(with: .scale(scale: 0.85)))
                 }
             }
@@ -345,10 +360,18 @@ struct AgentPanelView: View {
             scrollToBottom(proxy)
         } label: {
             Image(systemName: "arrow.down")
-                .font(.system(size: AppTheme.FontSize.smMd, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
-                .frame(width: AppTheme.IconSize.lgXl, height: AppTheme.IconSize.lgXl)
-                .glassEffect(.regular, in: .circle)
+                .frame(width: 36, height: 36)
+                .background(
+                    Circle()
+                        .fill(AppTheme.Background.raisedColor)
+                        .overlay(
+                            Circle()
+                                .stroke(AppTheme.Border.subtleColor, lineWidth: 0.5)
+                        )
+                )
+                .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
         }
         .buttonStyle(.plain)
         .focusable(false)
@@ -358,23 +381,36 @@ struct AgentPanelView: View {
     @ViewBuilder
     private var errorBanner: some View {
         if let err = service.streamError {
-            HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
-                Text(verbatim: errorMessage(err))
-                    .font(.system(size: AppTheme.FontSize.xs))
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 13))
                     .foregroundStyle(.red)
+                Text(verbatim: errorMessage(err))
+                    .font(.system(size: 12))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
                     .multilineTextAlignment(.leading)
                     .textSelection(.enabled)
                 CopyButton(value: errorMessage(err))
-                    .font(.system(size: AppTheme.FontSize.xxs))
+                    .font(.system(size: 10))
                 if let cta = errorCTA(for: err) {
                     Button(action: cta.action) {
                         Text(cta.title)
-                            .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                            .font(.system(size: 11, weight: .medium))
                     }
                     .buttonStyle(.capsule(.secondary))
                     .controlSize(.small)
                 }
             }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(.red.opacity(0.08))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(.red.opacity(0.2), lineWidth: 0.5)
+                    )
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -422,7 +458,6 @@ struct AgentPanelView: View {
         }
     }
 
-    // Local copy button (MCPInstructionsPane.CopyButton is private)
     private struct CopyButton: View {
         private static let feedbackDuration: Duration = .seconds(1.4)
         let value: String
@@ -431,9 +466,9 @@ struct AgentPanelView: View {
         var body: some View {
             Button(action: copy) {
                 Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
+                    .font(.system(size: 12, weight: .regular))
                     .foregroundStyle(copied ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
-                    .frame(width: AppTheme.IconSize.lg, height: AppTheme.IconSize.lg)
+                    .frame(width: 24, height: 24)
                     .hoverHighlight()
             }
             .buttonStyle(.plain)
@@ -455,12 +490,19 @@ struct AgentPanelView: View {
     @ViewBuilder
     private var emptyState: some View {
         if service.canStream {
-            VStack(spacing: AppTheme.Spacing.smMd) {
-                Text(L10n.string("Ask anything, or start with:"))
-                    .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium))
-                    .foregroundStyle(AppTheme.Text.secondaryColor)
-                    .multilineTextAlignment(.center)
-                VStack(spacing: AppTheme.Spacing.xs) {
+            VStack(spacing: 20) {
+                VStack(spacing: 8) {
+                    Image(systemName: "message.fill")
+                        .font(.system(size: 48))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor.opacity(0.5))
+                    Text(L10n.string("Start a conversation"))
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                    Text(L10n.string("Ask anything, or start with:"))
+                        .font(.system(size: 13))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                }
+                VStack(spacing: 8) {
                     ForEach(Self.starterPrompts) { starterPrompt in
                         AgentStarterPromptButton(starterPrompt: starterPrompt) {
                             Analytics.capture(.agentStarterPromptClicked, properties: [
@@ -471,6 +513,8 @@ struct AgentPanelView: View {
                     }
                 }
             }
+            .padding(.horizontal, 32)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         } else {
             missingKeyState
         }
@@ -479,23 +523,36 @@ struct AgentPanelView: View {
     @ViewBuilder
     private var missingKeyState: some View {
         let account = AccountService.shared
-        VStack(spacing: AppTheme.Spacing.mdLg) {
-            Button {
-                missingKeyPrimaryAction(account: account)
-            } label: {
-                HStack(spacing: AppTheme.Spacing.sm) {
+        VStack(spacing: 20) {
+            VStack(spacing: 8) {
+                Image(systemName: "key.slash.fill")
+                    .font(.system(size: 48))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor.opacity(0.5))
+                Text(missingKeyTitle(account: account))
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                Text(missingKeySubtitle(account: account))
+                    .font(.system(size: 13))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .multilineTextAlignment(.center)
+            }
+
+            Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
+                HStack(spacing: 8) {
                     if let icon = missingKeyPrimaryIcon(account: account) {
                         Image(systemName: icon)
                     }
                     Text(missingKeyPrimaryLabel(account: account))
                 }
-                    .font(.system(size: AppTheme.FontSize.mdLg, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
             }
             .buttonStyle(.capsule(.prominent, size: .regular))
 
             if !account.isSignedIn {
                 Text(L10n.string("First-time sign-ups only"))
-                    .font(.system(size: AppTheme.FontSize.sm))
+                    .font(.system(size: 12))
                     .foregroundStyle(AppTheme.Text.mutedColor)
             }
 
@@ -503,17 +560,35 @@ struct AgentPanelView: View {
                 Text(missingKeyLinkLabel)
                     .underline()
                     .foregroundStyle(AppTheme.Text.secondaryColor)
-                    .padding(.horizontal, AppTheme.Spacing.sm)
-                    .padding(.vertical, AppTheme.Spacing.xxs)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
             }
             .buttonStyle(.plain)
-            .font(.system(size: AppTheme.FontSize.smMd, weight: .medium))
-            .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
+            .font(.system(size: 13, weight: .medium))
+            .hoverHighlight(cornerRadius: 6)
         }
+        .padding(.horizontal, 32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 
     private var missingKeyLinkLabel: String {
         service.model.provider.chatPresentation.missingKeyLinkTitle
+    }
+
+    private func missingKeyTitle(account: AccountService) -> String {
+        if !account.isSignedIn { return L10n.string("Sign in to use AI chat") }
+        if !account.isPaid { return L10n.string("Subscription required") }
+        return L10n.string("Configure AI settings")
+    }
+
+    private func missingKeySubtitle(account: AccountService) -> String {
+        if !account.isSignedIn {
+            return L10n.string("Log in with your Vercel account to get 250 free credits per month.")
+        }
+        if !account.isPaid {
+            return L10n.string("Upgrade to a paid plan to unlock AI chat and hosted models.")
+        }
+        return L10n.string("Open Settings to add API keys or configure custom endpoints.")
     }
 
     private func missingKeyPrimaryLabel(account: AccountService) -> String {
@@ -528,10 +603,6 @@ struct AgentPanelView: View {
         return "gearshape"
     }
 
-    private func missingKeyPrimaryAction(account _: AccountService) {
-        SettingsWindowController.shared.show(tab: .agent)
-    }
-
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
         guard let last = service.messages.last else { return }
         withAnimation(.easeOut(duration: 0.15)) {
@@ -541,28 +612,57 @@ struct AgentPanelView: View {
 
     private var footer: some View {
         @Bindable var service = editor.agentService
-        return VStack(spacing: AppTheme.Spacing.sm) {
-            if !service.canStream && !service.messages.isEmpty {
-                missingKeyState
+        return VStack(spacing: 0) {
+            Divider()
+                .foregroundStyle(AppTheme.Border.subtleColor)
+            if service.queuedMessageCount > 0 {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.up.message.fill")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(AppTheme.Accent.primary)
+                    Text("\(service.queuedMessageCount) queued")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(AppTheme.Accent.primary.opacity(0.08))
+                )
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
-            AgentInputBox(
-                draft: $service.draft,
-                mentions: $service.mentions,
-                isSending: service.isStreaming,
-                canSend: canSend,
-                onSend: submit,
-                onCancel: { service.cancel() }
-            ) {
-                modelPicker
-                reasoningEffortPicker
-                byokIndicator
+            if let progress = service.requestProgress {
+                AgentRequestProgressView(progress: progress)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
+            HStack(spacing: 0) {
+                AgentInputBox(
+                    draft: $service.draft,
+                    mentions: $service.mentions,
+                    isSending: service.isStreaming,
+                    canSend: canSend,
+                    onSend: submit,
+                    onCancel: { service.cancel() }
+                ) {
+                    HStack(spacing: 8) {
+                        modelPicker
+                        reasoningEffortPicker
+                        byokIndicator
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(AppTheme.Background.baseColor)
         }
-        .padding(.horizontal, AppTheme.Spacing.mdLg)
-        .padding(.bottom, AppTheme.Spacing.mdLg)
-        .padding(.top, AppTheme.Spacing.xs)
-        .frame(maxWidth: Layout.chatColumnMax)
+        .frame(maxWidth: 900)
         .frame(maxWidth: .infinity)
+        .animation(.easeOut(duration: 0.15), value: service.queuedMessageCount)
+        .animation(.easeOut(duration: 0.15), value: service.chatStatus)
     }
 
     private func submit() {
@@ -575,6 +675,89 @@ struct AgentPanelView: View {
     private func populatePrompt(_ prompt: String) {
         service.draft = prompt
         service.mentions.removeAll()
+    }
+}
+
+private struct ChatBackground: View {
+    var body: some View {
+        AppTheme.Background.baseColor
+    }
+}
+
+private struct ChatTabView: View {
+    let session: ChatSession
+    let isActive: Bool
+    let onSelect: () -> Void
+    let onClose: () -> Void
+
+    var body: some View {
+        Button(action: onSelect) {
+            Text(verbatim: displayTitle)
+                .font(.system(size: 11, weight: isActive ? .semibold : .medium))
+                .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
+                .lineLimit(1)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+        }
+        .buttonStyle(.plain)
+        .background(
+            Capsule()
+                .fill(isActive ? AppTheme.Accent.primary.opacity(0.12) : Color.clear)
+                .overlay(
+                    Capsule()
+                        .stroke(isActive ? AppTheme.Accent.primary.opacity(0.3) : Color.clear, lineWidth: 1)
+                )
+        )
+        .overlay(alignment: .trailing) {
+            if isActive {
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        .frame(width: 18, height: 18)
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 4)
+            }
+        }
+        .accessibilityAddTraits(isActive ? .isSelected : [])
+    }
+
+    private var displayTitle: String {
+        let t = session.title
+        return t.count > 24 ? String(t.prefix(24)) + "…" : t
+    }
+}
+
+@MainActor
+private extension AgentProvider {
+    var chatPresentation: (
+        byokLabel: String, byokHelp: String,
+        unavailableMessage: String, missingKeyLinkTitle: String
+    ) {
+        switch self {
+        case .anthropic:
+            (
+                L10n.string("using Anthropic API key"),
+                L10n.string("Streaming through your Anthropic API key (BYOK)"),
+                L10n.string("Add an Anthropic API key or credits to use this model."),
+                L10n.string("or add your own Anthropic key")
+            )
+        case .openAI:
+            (
+                L10n.string("using OpenAI API key"),
+                L10n.string("Streaming through your OpenAI API key (BYOK)"),
+                L10n.string("Add an OpenAI API key or credits to use this model."),
+                L10n.string("or add your own OpenAI key")
+            )
+        case .custom:
+            (
+                L10n.string("using your custom endpoint"),
+                L10n.string("Streaming through your own OpenAI-compatible endpoint"),
+                L10n.string("Set up your custom endpoint in Settings. Localhost needs no key; other servers do."),
+                L10n.string("or set up your custom endpoint")
+            )
+        }
     }
 }
 
@@ -620,84 +803,31 @@ private struct AgentStarterPromptButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: AppTheme.Spacing.sm) {
+            HStack(spacing: 12) {
                 Image(systemName: starterPrompt.systemImage)
-                    .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium))
+                    .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    .frame(width: AppTheme.IconSize.smMd, height: AppTheme.IconSize.smMd)
+                    .frame(width: 24, height: 24)
                 Text(starterPrompt.title)
-                    .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium))
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, AppTheme.Spacing.md)
-            .padding(.vertical, AppTheme.Spacing.xs)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .hoverHighlight(cornerRadius: AppTheme.Radius.lg)
-            .glassEffect(.regular, in: .rect(cornerRadius: AppTheme.Radius.lg))
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(AppTheme.Interaction.fill(AppTheme.Opacity.subtle))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(AppTheme.Border.subtleColor, lineWidth: 0.5)
+            )
         }
         .buttonStyle(.plain)
         .focusable(false)
         .help(L10n.string("Fill prompt"))
-    }
-}
-
-private struct ChatTabView: View {
-    let session: ChatSession
-    let isActive: Bool
-    let onSelect: () -> Void
-    let onClose: () -> Void
-
-    var body: some View {
-        Button(action: onSelect) {
-            Text(verbatim: displayTitle)
-                .font(.system(
-                    size: AppTheme.FontSize.xs,
-                    weight: isActive ? AppTheme.FontWeight.semibold : AppTheme.FontWeight.medium
-                ))
-                .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
-                .lineLimit(1)
-        }
-        .buttonStyle(.plain)
-        .documentTabChrome(isActive: isActive, isCloseable: true, onClose: onClose)
-        .accessibilityAddTraits(isActive ? .isSelected : [])
-    }
-
-    private var displayTitle: String {
-        let t = session.title
-        return t.count > 20 ? String(t.prefix(20)) + "…" : t
-    }
-}
-
-@MainActor
-private extension AgentProvider {
-    var chatPresentation: (
-        byokLabel: String, byokHelp: String,
-        unavailableMessage: String, missingKeyLinkTitle: String
-    ) {
-        switch self {
-        case .anthropic:
-            (
-                L10n.string("using Anthropic API key"),
-                L10n.string("Streaming through your Anthropic API key (BYOK)"),
-                L10n.string("Add an Anthropic API key or credits to use this model."),
-                L10n.string("or add your own Anthropic key")
-            )
-        case .openAI:
-            (
-                L10n.string("using OpenAI API key"),
-                L10n.string("Streaming through your OpenAI API key (BYOK)"),
-                L10n.string("Add an OpenAI API key or credits to use this model."),
-                L10n.string("or add your own OpenAI key")
-            )
-        case .custom:
-            (
-                L10n.string("using your custom endpoint"),
-                L10n.string("Streaming through your own OpenAI-compatible endpoint"),
-                L10n.string("Set up your custom endpoint in Settings. Localhost needs no key; other servers do."),
-                L10n.string("or set up your custom endpoint")
-            )
-        }
     }
 }

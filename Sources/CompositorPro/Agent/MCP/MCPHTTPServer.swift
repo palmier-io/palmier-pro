@@ -87,17 +87,15 @@ actor MCPHTTPServer {
         }
     }
 
-    func stop() {
+    func stop() async {
         listener?.cancel()
         listener = nil
         let closing = sessions.values.map(\.transport)
         sessions.removeAll()
         let fallbackTransport = fallback?.transport
         fallback = nil
-        Task {
-            for transport in closing { await transport.disconnect() }
-            await fallbackTransport?.disconnect()
-        }
+        for transport in closing { await transport.disconnect() }
+        await fallbackTransport?.disconnect()
     }
 
     // MARK: - Connection

@@ -236,6 +236,10 @@ struct OpenAIChatCompletionsStreamParser {
             }
             for call in delta["tool_calls"] as? [[String: Any]] ?? [] {
                 accumulate(call)
+                if let function = call["function"] as? [String: Any],
+                   let name = function["name"] as? String, !name.isEmpty {
+                    events.append(.activity(.preparingTool(name)))
+                }
             }
         }
         if let reason = choice["finish_reason"] as? String {

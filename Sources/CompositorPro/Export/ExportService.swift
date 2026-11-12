@@ -236,11 +236,14 @@ final class ExportService {
 
         do {
             try checkCancellation()
+            ExportSignposts.begin(.prepare)
+            let prepareStarted = ContinuousClock.now
             let prepared = try await makeExportSession(
                 timeline: timeline, resolver: resolver, resolveTimeline: resolveTimeline,
                 format: format, resolution: resolution,
                 missingMediaRefs: missingMediaRefs
             )
+            ExportSignposts.end(.prepare, since: prepareStarted)
             let session = prepared.session
             guard let fileType = format.utType else { throw ExportError.invalidFormat }
             nonisolated(unsafe) let unsafeSession = session
@@ -266,7 +269,10 @@ final class ExportService {
                 defer { stateTask.cancel() }
 
                 let exportTask = Task { @MainActor in
+                    ExportSignposts.begin(.export)
+                    let exportStarted = ContinuousClock.now
                     try await session.export(to: stagingURL, as: fileType)
+                    ExportSignposts.end(.export, since: exportStarted)
                 }
                 try await withTaskCancellationHandler {
                     while observationPhase == .pending {

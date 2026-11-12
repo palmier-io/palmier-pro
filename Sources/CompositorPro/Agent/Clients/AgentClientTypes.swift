@@ -276,6 +276,7 @@ struct AgentRequestContext: Equatable, Sendable {
 }
 
 enum AgentStreamEvent: Equatable, Sendable {
+    case activity(AgentStreamActivity)
     case thinkingDelta(String)
     case thinkingSignature(String)
     case redactedThinking(String)

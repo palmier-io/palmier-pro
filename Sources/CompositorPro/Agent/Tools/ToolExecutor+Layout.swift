@@ -98,6 +98,7 @@ extension ToolExecutor {
         let startFrame = input.startFrame ?? 0
         let duration = input.endFrame.map { $0 - (input.startFrame ?? 0) } ?? 0
         var assetBySlot: [String: MediaAsset] = [:]
+        var capturedClips: [String: (clip: Clip, loc: ClipLocation)] = [:]
         var settingsNote: String?
         if usesMedia {
             guard startFrame >= 0 else { throw ToolError("startFrame must be >= 0 (got \(startFrame))") }
@@ -120,6 +121,7 @@ extension ToolExecutor {
                 for cid in e.entry.clipIds! {
                     guard let loc = editor.findClip(id: cid) else { throw ToolError("slot '\(e.slot.id)': clip not found: \(cid)") }
                     let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+                    capturedClips[cid] = (clip, loc)
                     guard clip.mediaType == .video || clip.mediaType == .image || clip.mediaType == .sequence else {
                         throw ToolError("slot '\(e.slot.id)': clip \(cid) is \(clip.mediaType.rawValue); layout applies to video, image, and nested timeline clips.")
                     }
@@ -148,35 +150,47 @@ extension ToolExecutor {
 
         editor.withTimelineSwap(actionName: "Apply Layout (Agent)") {
             var clipsBySlot: [String: [String]] = [:]
+            var targets: [(slot: LayoutSlot, anchor: (x: Double, y: Double), clip: Clip, loc: ClipLocation)] = []
             if usesMedia {
                 var trackBySlot: [String: String] = [:]
                 for slot in layout.slots.sorted(by: { $0.z < $1.z }) {
                     let idx = editor.insertTrack(at: 0, type: .video)
                     trackBySlot[slot.id] = editor.timeline.tracks[idx].id
                 }
+                var placedBySlot: [String: String] = [:]
                 for e in entries {
                     guard let tid = trackBySlot[e.slot.id], let asset = assetBySlot[e.slot.id],
                           let tIdx = editor.timeline.tracks.firstIndex(where: { $0.id == tid }) else { continue }
                     let ids = editor.placeClip(asset: asset, trackIndex: tIdx, startFrame: startFrame, durationFrames: duration)
-                    if let primary = ids.first { clipsBySlot[e.slot.id] = [primary] }
+                    if let primary = ids.first { placedBySlot[e.slot.id] = primary }
+                }
+                // Resolve placements once, after every insert, so the clip index rebuilds a single time.
+                for e in entries {
+                    guard let primary = placedBySlot[e.slot.id], let loc = editor.findClip(id: primary) else { continue }
+                    clipsBySlot[e.slot.id] = [primary]
+                    targets.append((e.slot, e.anchor, editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex], loc))
                 }
             } else {
                 for e in entries {
                     clipsBySlot[e.slot.id] = e.entry.clipIds!
+                    for cid in e.entry.clipIds! {
+                        if let captured = capturedClips[cid] {
+                            targets.append((e.slot, e.anchor, captured.clip, captured.loc))
+                        }
+                    }
                 }
             }
 
-            for e in entries {
-                for cid in clipsBySlot[e.slot.id] ?? [] {
-                    guard let clip = editor.clipFor(id: cid), let loc = editor.findClip(id: cid) else { continue }
-                    let p = editor.layoutPlacement(for: clip, in: e.slot.rect, fit: fit, anchorX: e.anchor.x, anchorY: e.anchor.y)
-                    editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].transform = p.transform
-                    editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].crop = p.crop
-                    editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].positionTrack = nil
-                    editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].scaleTrack = nil
-                    editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].rotationTrack = nil
-                    editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].cropTrack = nil
-                }
+            for target in targets {
+                let p = editor.layoutPlacement(for: target.clip, in: target.slot.rect, fit: fit, anchorX: target.anchor.x, anchorY: target.anchor.y)
+                var clip = target.clip
+                clip.transform = p.transform
+                clip.crop = p.crop
+                clip.positionTrack = nil
+                clip.scaleTrack = nil
+                clip.rotationTrack = nil
+                clip.cropTrack = nil
+                editor.timeline.tracks[target.loc.trackIndex].clips[target.loc.clipIndex] = clip
             }
             slots = clipsBySlot
         }

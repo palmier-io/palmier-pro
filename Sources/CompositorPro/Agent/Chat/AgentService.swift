@@ -28,10 +28,6 @@ final class AgentService {
     /// headroom). A 256k model reserves ~32k for output, leaving ~224k for input.
     private let maxInputTokens: Int = 224_000
 
-    /// Rolling summary of conversation turns older than the sliding window. Injected
-    /// into the system prompt so old context stays relevant without replaying every turn.
-    private var rollingSummary: String = ""
-
     init(userDefaults: UserDefaults = .standard, skillStore: SkillStore? = nil, projectURL: URL? = nil) {
         self.projectURL = projectURL
         self.userDefaults = userDefaults
@@ -68,6 +64,8 @@ final class AgentService {
                 self?.reloadCustomModels()
             }
         }
+        // Create a default chat session so draft/mentions work without loadSessions().
+        newChat()
     }
 
     private func reloadCustomModels() {
@@ -240,14 +238,111 @@ final class AgentService {
 
     var sessions: [ChatSession] = []
     var currentSessionId: UUID?
-    var messages: [AgentMessage] = []
-    var isStreaming: Bool = false
-    var streamError: AgentServiceError?
-    var onSessionsChanged: (@MainActor () -> Void)?
-
-    var draft: String = ""
+    /// The visible message buffer is a projection of the currently viewed session; runs
+    /// mutate their own session's store so background streams never touch this buffer.
+    var messages: [AgentMessage] {
+        get { sessionMessages(currentSessionId) }
+        set {
+            if currentSessionId == nil {
+                // Backward compat: create a default session if none exists (e.g., in tests)
+                let session = ChatSession()
+                sessions.insert(session, at: 0)
+                currentSessionId = session.id
+            }
+            guard let id = currentSessionId else { return }
+            mutateSessionMessages(id) { $0 = newValue }
+        }
+    }
+    /// True while the currently viewed session has a running stream.
+    var isStreaming: Bool {
+        currentSessionId.map { sessionRunIDs[$0] != nil } ?? false
+    }
+    var streamError: AgentServiceError? {
+        get { currentSessionId.flatMap { sessionErrors[$0] } }
+        set {
+            guard let id = currentSessionId else { return }
+            sessionErrors[id] = newValue
+        }
+    }
+    /// Number of queued messages waiting for the current session.
+    var queuedMessageCount: Int {
+        currentSessionId.flatMap { sessionQueues[$0]?.count } ?? 0
+    }
+    /// Current chat status for UI feedback.
+    var chatStatus: ChatStatus {
+        requestProgress?.phase ?? .idle
+    }
+    var requestProgress: AgentRequestProgress? {
+        currentSessionId.flatMap { sessionProgress[$0] }
+    }
+    /// The visible draft is a projection of the currently viewed session; each session keeps its own draft.
+    var draft: String {
+        get { currentSessionId.flatMap { sessionDrafts[$0] } ?? "" }
+        set {
+            guard let id = currentSessionId else { return }
+            sessionDrafts[id] = newValue
+        }
+    }
     var mentions: [AgentMention] = []
+    var onSessionsChanged: (@MainActor () -> Void)?
+    private var sessionDrafts: [UUID: String] = [:]
+    /// Per-session chat status.
+    private var sessionProgress: [UUID: AgentRequestProgress] = [:]
     private static let clipMentionLabelMaxLength = 24
+
+    /// High-level chat status for UI.
+    enum ChatStatus: Equatable, Sendable {
+        case idle
+        case waitingForPreviousRun
+        case connecting
+        case loadingSkills
+        case preparingContext
+        case waitingForResponse
+        case reasoning
+        case preparingTool(String)
+        case streaming
+        case toolRunning(String)  // tool name
+        case toolCompleted(String)
+        case error(String)
+
+        @MainActor var displayText: String {
+            switch self {
+            case .idle: return ""
+            case .waitingForPreviousRun: return L10n.string("Finishing previous request…")
+            case .connecting: return L10n.string("Connecting…")
+            case .loadingSkills: return L10n.string("Loading skills…")
+            case .preparingContext: return L10n.string("Preparing request…")
+            case .waitingForResponse: return L10n.string("Waiting for response…")
+            case .reasoning: return L10n.string("Reasoning…")
+            case .preparingTool(let name): return L10n.string("Preparing \(name)…")
+            case .streaming: return L10n.string("Generating…")
+            case .toolRunning(let name): return L10n.string("Running \(name)…")
+            case .toolCompleted(let name): return L10n.string("Completed \(name)")
+            case .error(let msg): return L10n.string("Error: \(msg)")
+            }
+        }
+
+    }
+
+    private func setRequestPhase(_ phase: ChatStatus, conversationID: UUID) {
+        sessionProgress[conversationID]?.update(phase)
+    }
+
+    private func applyRequestSnapshot(_ snapshot: AgentStreamSnapshot, assistantID: UUID,
+                                      conversationID: UUID, runID: UUID, runEditor: EditorViewModel?) {
+        guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor) else { return }
+        applyStreamSnapshot(snapshot, assistantID: assistantID, conversationID: conversationID)
+        guard let activity = snapshot.activity else { return }
+        let phase: ChatStatus
+        switch activity {
+        case .connected: phase = .waitingForResponse
+        case .reasoning: phase = .reasoning
+        case .generating: phase = .streaming
+        case .preparingTool(let name): phase = .preparingTool(name)
+        }
+        sessionProgress[conversationID]?.update(phase, now: snapshot.receivedAt ?? .now)
+        if activity != .connected { sessionProgress[conversationID]?.retry = nil }
+    }
 
     func attachMention(for asset: MediaAsset) {
         editor?.agentPanelVisible = true
@@ -296,12 +391,16 @@ final class AgentService {
     }
 
     private func pruneDetachedMentions() {
-        mentions.removeAll { !draft.contains("@\($0.displayName)") }
+        guard let id = currentSessionId else { return }
+        let currentDraft = sessionDrafts[id] ?? ""
+        mentions.removeAll { !currentDraft.contains("@\($0.displayName)") }
     }
 
     private func appendMentionToken(_ displayName: String) {
-        let needsSpace = !draft.isEmpty && !draft.hasSuffix(" ") && !draft.hasSuffix("\n")
-        draft += (needsSpace ? " " : "") + "@\(displayName) "
+        guard let id = currentSessionId else { return }
+        let currentDraft = sessionDrafts[id] ?? ""
+        let needsSpace = !currentDraft.isEmpty && !currentDraft.hasSuffix(" ") && !currentDraft.hasSuffix("\n")
+        sessionDrafts[id] = currentDraft + (needsSpace ? " " : "") + "@\(displayName) "
     }
 
     static func disambiguatedMentionName(for asset: MediaAsset, existing: [AgentMention]) -> String {
@@ -377,7 +476,10 @@ final class AgentService {
 
     weak var editor: EditorViewModel? {
         didSet {
-            cancel()
+            // A new editor means a new project context; every running stream is stale.
+            cancelAllRuns()
+            sessionRunIDs.removeAll()
+            sessionErrors.removeAll()
             toolExecutor = editor.map {
                 ToolExecutor(editor: $0, skillStore: skillStore ?? .shared, userDefaults: userDefaults)
             }
@@ -385,14 +487,40 @@ final class AgentService {
     }
     private var toolExecutor: ToolExecutor?
     @ObservationIgnored private var runTasks: [UUID: Task<Void, Never>] = [:]
-    @ObservationIgnored private var currentRunID: UUID?
+    /// Active run per chat session, so multiple sessions can stream in parallel and a
+    /// run stays alive while the user views another tab.
+    @ObservationIgnored private var sessionRunIDs: [UUID: UUID] = [:]
+    @ObservationIgnored private var sessionErrors: [UUID: AgentServiceError] = [:]
+    @ObservationIgnored private var sessionSummaries: [UUID: String] = [:]
+    /// Queued user messages per session (text, mentions). When the agent is busy,
+    /// new messages are appended here and processed sequentially after each turn.
+    @ObservationIgnored private var sessionQueues: [UUID: [(text: String, mentions: [AgentMention])]] = [:]
     private static let streamTimeoutRetryLimit = 2
     private var drainsInProgress = 0
 
-    private var currentTask: Task<Void, Never>? { currentRunID.flatMap { runTasks[$0] } }
+    private func sessionMessages(_ id: UUID?) -> [AgentMessage] {
+        id.flatMap { sessionID in sessions.first { $0.id == sessionID }?.messages } ?? []
+    }
+
+    private func mutateSessionMessages(_ id: UUID, _ change: (inout [AgentMessage]) -> Void) {
+        guard let idx = sessions.firstIndex(where: { $0.id == id }) else { return }
+        change(&sessions[idx].messages)
+        sessions[idx].updatedAt = Date()
+        if sessions[idx].title == "New chat",
+           let first = sessions[idx].messages.first(where: { $0.role == .user }) {
+            sessions[idx].title = Self.title(from: first)
+        }
+    }
+
+    func cancelAllRuns() {
+        for task in runTasks.values { task.cancel() }
+        sessionRunIDs.removeAll()
+        sessionErrors.removeAll()
+        sessionProgress.removeAll()
+    }
 
     func loadSessions(from projectURL: URL?) async {
-        cancel()
+        cancelAllRuns()
         sessions = ChatSessionStore.load(from: projectURL)
             .filter { !$0.messages.isEmpty }
             .map {
@@ -401,6 +529,11 @@ final class AgentService {
                 return session
             }
             .sorted { $0.updatedAt > $1.updatedAt }
+        sessionRunIDs.removeAll()
+        sessionErrors.removeAll()
+        sessionSummaries.removeAll()
+        sessionQueues.removeAll()
+        sessionProgress.removeAll()
 
         editingProgress = await EditingProgressStore.load(from: projectURL)
 
@@ -415,17 +548,18 @@ final class AgentService {
     }
 
     func newChat() {
-        cancel()
-        syncMessagesIntoCurrentSession()
-        if let id = currentSessionId,
-           let idx = sessions.firstIndex(where: { $0.id == id }),
-           sessions[idx].messages.isEmpty {
-            sessions.remove(at: idx)
+        if let id = currentSessionId {
+            if let runID = sessionRunIDs[id] { runTasks[runID]?.cancel() }
+            sessionQueues[id] = nil
+            if let idx = sessions.firstIndex(where: { $0.id == id }),
+               sessions[idx].messages.isEmpty {
+                sessions.remove(at: idx)
+            }
         }
         let session = ChatSession()
         sessions.insert(session, at: 0)
         currentSessionId = session.id
-        messages = []
+        sessionDrafts[session.id] = ""
         streamError = nil
         toolExecutor?.resetFeedbackState()
         onSessionsChanged?()
@@ -504,14 +638,13 @@ final class AgentService {
 
     func selectSession(_ id: UUID) {
         guard let idx = sessions.firstIndex(where: { $0.id == id }) else { return }
-        cancel()
-        syncMessagesIntoCurrentSession()
+        // Switching tabs never interrupts a stream: the run keeps writing to its own
+        // session and stays visible when the user returns.
         if !sessions[idx].isOpen {
             sessions[idx].isOpen = true
             onSessionsChanged?()
         }
         currentSessionId = id
-        messages = sessions[idx].messages
         streamError = nil
     }
 
@@ -519,11 +652,8 @@ final class AgentService {
         guard let idx = sessions.firstIndex(where: { $0.id == id }) else { return }
         sessions[idx].isOpen = false
         if currentSessionId == id {
-            cancel()
-            syncMessagesIntoCurrentSession()
             if let next = sessions.first(where: { $0.isOpen }) {
                 currentSessionId = next.id
-                messages = next.messages
             } else {
                 newChat()
                 return
@@ -533,20 +663,17 @@ final class AgentService {
     }
 
     func deleteSession(_ id: UUID) {
-        if currentSessionId == id { cancel() }
+        if let runID = sessionRunIDs[id] { runTasks[runID]?.cancel() }
+        sessionQueues[id] = nil
         sessions.removeAll { $0.id == id }
         if currentSessionId == id {
             currentSessionId = sessions.first(where: { $0.isOpen })?.id
-            messages = currentSessionId
-                .flatMap { id in sessions.first { $0.id == id }?.messages }
-                ?? []
         }
         if openSessions.isEmpty { newChat(); return }
         onSessionsChanged?()
     }
 
     func send(text: String, mentions: [AgentMention]) {
-        guard drainsInProgress == 0 else { return }
         guard canStream else {
             streamError = .unavailable(model)
             return
@@ -561,9 +688,16 @@ final class AgentService {
         let contextHint = referencedMentions.isEmpty
             ? nil
             : AgentMentionContext.hint(referencedMentions, editor: editor)
+
+        // If agent is busy, queue the message for after the current turn completes.
+        if drainsInProgress > 0 {
+            sessionQueues[conversationID, default: []].append((trimmed, referencedMentions))
+            return
+        }
+
         let runSettings = snapshotRunSettings()
         var sessionActivation = Analytics.SessionActivation(
-            isActivated: messages.contains { $0.role == .user }
+            isActivated: sessionMessages(conversationID).contains { $0.role == .user }
         )
         let analyticsPayload: [String: Any] = [
             "project_id": editor?.projectId ?? "unknown",
@@ -573,11 +707,11 @@ final class AgentService {
             Analytics.capture(.agentSessionStarted, properties: analyticsPayload)
         }
 
-        resolveOrphanToolUses()
-        messages.append(AgentMessage(
+        resolveOrphanToolUses(conversationID: conversationID)
+        mutateSessionMessages(conversationID) { $0.append(AgentMessage(
             role: .user, blocks: [.text(trimmed)],
             mentions: referencedMentions, contextHint: contextHint
-        ))
+        )) }
         streamError = nil
         kickOffStream(
             conversationID: conversationID,
@@ -587,16 +721,16 @@ final class AgentService {
     }
 
     func postSystemNotice(_ text: String) {
-        messages.append(AgentMessage(role: .system, blocks: [.text(text)]))
-        syncMessagesIntoCurrentSession()
+        guard let conversationID = currentSessionId else { return }
+        mutateSessionMessages(conversationID) { $0.append(AgentMessage(role: .system, blocks: [.text(text)])) }
         onSessionsChanged?()
     }
 
     func cancel() {
-        currentTask?.cancel()
-        currentRunID = nil
-        isStreaming = false
-        syncMessagesIntoCurrentSession()
+        guard let id = currentSessionId, let runID = sessionRunIDs[id] else { return }
+        runTasks[runID]?.cancel()
+        sessionRunIDs[id] = nil
+        sessionProgress[id] = nil
         onSessionsChanged?()
     }
 
@@ -604,14 +738,10 @@ final class AgentService {
         drainsInProgress += 1
         defer { drainsInProgress -= 1 }
         let tasks = Array(runTasks.values)
-        let conversationID = currentSessionId
         for task in tasks { task.cancel() }
-        cancel()
         for task in tasks { await task.value }
-        if currentRunID == nil, currentSessionId == conversationID {
-            syncMessagesIntoCurrentSession()
-            onSessionsChanged?()
-        }
+        sessionProgress.removeAll()
+        onSessionsChanged?()
     }
 
     @discardableResult
@@ -622,25 +752,26 @@ final class AgentService {
         client: (any AgentClient)? = nil
     ) -> Task<Void, Never> {
         guard drainsInProgress == 0 else { return Task {} }
-        let previousTasks = Array(runTasks.values)
-        for task in previousTasks { task.cancel() }
-        cancel()
+        // Replace only this session's own run; other sessions keep streaming in parallel.
+        let previousTask = sessionRunIDs[conversationID].flatMap { runTasks[$0] }
+        previousTask?.cancel()
+        sessionErrors[conversationID] = nil
         let runID = UUID()
-        currentRunID = runID
-        isStreaming = true
-        let task = Task { [weak self] in
+        sessionRunIDs[conversationID] = runID
+        sessionProgress[conversationID] = AgentRequestProgress(
+            phase: previousTask == nil ? .connecting : .waitingForPreviousRun,
+            providerName: settings.custom?.displayTitle ?? settings.model.provider.displayName
+        )
+        let task = Task { [weak self, previousTask] in
             defer {
                 self?.runTasks.removeValue(forKey: runID)
-                if let self {
-                    if self.currentSessionId == conversationID { self.syncMessagesIntoCurrentSession() }
+                if let self, self.sessionRunIDs[conversationID] == runID {
+                    self.sessionRunIDs[conversationID] = nil
+                    self.sessionProgress[conversationID] = nil
                     self.onSessionsChanged?()
                 }
-                if let self, self.currentRunID == runID {
-                    self.isStreaming = false
-                    self.currentRunID = nil
-                }
             }
-            for previous in previousTasks { await previous.value }
+            if let previousTask { await previousTask.value }
             guard !Task.isCancelled else { return }
             await self?.runLoop(
                 conversationID: conversationID,
@@ -668,23 +799,27 @@ final class AgentService {
         AgentDiagnostics.beginTurn(
             id: turnID,
             settings: settings,
-            messageCount: messages.count,
+            messageCount: sessionMessages(conversationID).count,
             toolCount: ToolDefinitions.all.count
         )
+        setRequestPhase(.connecting, conversationID: conversationID)
         let selectedClient: (any AgentClient)?
         if let suppliedClient { selectedClient = suppliedClient }
         else { selectedClient = await selectClient(for: settings) }
         guard let client = selectedClient else {
             if isCurrentRun(runID, conversationID: conversationID, editor: runEditor) {
-                streamError = .unavailable(chosenModel)
+                sessionErrors[conversationID] = .unavailable(chosenModel)
+                setRequestPhase(.error(L10n.string("Model unavailable")), conversationID: conversationID)
             }
             return
         }
         guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor) else { return }
         let skillStore = skillStore ?? SkillStore.shared
+        setRequestPhase(.loadingSkills, conversationID: conversationID)
         await skillStore.waitForSkillSync()
-        if Task.isCancelled { return }
+        guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor) else { return }
         await skillStore.reloadSkills()
+        guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor) else { return }
         let baseTools = ToolDefinitions.inAppAgent.map {
             AgentToolSchema(name: $0.name.rawValue, description: $0.description, inputSchema: $0.inputSchema)
         }
@@ -706,11 +841,13 @@ final class AgentService {
             .getCapabilities
         ]
         let editingToolSet = Set(editingTools.map { $0.rawValue })
-        let contextIsTight = rollingSummary.utf16.count > 2_000 || messages.count > 40
+        let sessionMsgs = sessionMessages(conversationID)
+        let sessionSummary = sessionSummaries[conversationID] ?? ""
+        let contextIsTight = sessionSummary.utf16.count > 2_000 || sessionMsgs.count > 40
         // A targeted edit (one clip, one property) pays only for editing schemas; production runs keep all.
         // A short follow-up ("yes, do it") continues the request it answers, so the whole
         // conversation decides: any earlier generative or production request keeps the full tool set.
-        let userRequests = messages.compactMap { msg -> String? in
+        let userRequests = sessionMsgs.compactMap { msg -> String? in
             guard msg.role == .user else { return nil }
             return msg.blocks.compactMap { if case .text(let s) = $0 { return s } else { return nil } }.first
         }
@@ -724,10 +861,12 @@ final class AgentService {
 
         var streamTimeoutRetries = 0
         var contextCompressionRetries = 0
+        var outputContinuationRetries = 0
 
         loop: while isCurrentRun(runID, conversationID: conversationID, editor: runEditor) {
-            resolveOrphanToolUses()
-            let apiMsgs = await apiMessages()
+            setRequestPhase(.preparingContext, conversationID: conversationID)
+            resolveOrphanToolUses(conversationID: conversationID)
+            let apiMsgs = await apiMessages(conversationID: conversationID)
             let delegationEnabled = await delegation.isEnabled
             let permitsFallback = await delegation.permitsFallback
             guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor) else { break }
@@ -750,8 +889,8 @@ final class AgentService {
                 ? AgentInstructions.targetedEditInstructions
                 : AgentInstructions.serverInstructions)
 
-            if !rollingSummary.isEmpty {
-                systemParts.append("\n\n# Rolling summary of earlier turns\n\(rollingSummary)")
+            if !sessionSummary.isEmpty {
+                systemParts.append("\n\n# Rolling summary of earlier turns\n\(sessionSummary)")
             }
             if !editingProgress.handoffNote.isEmpty || !editingProgress.completed.isEmpty
                 || !editingProgress.inProgress.isEmpty || !editingProgress.next.isEmpty {
@@ -788,14 +927,16 @@ final class AgentService {
             }
             let system = systemParts.joined()
 
-            guard let inputMessageID = messages.last(where: { $0.role == .user })?.id else {
-                streamError = .upstream("The agent request has no user message.")
+            guard let inputMessageID = sessionMessages(conversationID).last(where: { $0.role == .user })?.id else {
+                sessionErrors[conversationID] = .upstream("The agent request has no user message.")
+                setRequestPhase(.error(L10n.string("No user message")), conversationID: conversationID)
                 break loop
             }
             let assistant = AgentMessage(role: .assistant, blocks: [])
-            messages.append(assistant)
+            mutateSessionMessages(conversationID) { $0.append(assistant) }
             let assistantID = assistant.id
 
+            setRequestPhase(.waitingForResponse, conversationID: conversationID)
             do {
                 let stream = client.stream(
                     system: system,
@@ -816,28 +957,49 @@ final class AgentService {
                     model: chosenModel,
                     turnID: String(traceID.uuidString.prefix(8))
                 ) { [weak self] snapshot in
-                    await self?.applyStreamSnapshot(
+                    await self?.applyRequestSnapshot(
                         snapshot,
                         assistantID: assistantID,
-                        conversationID: conversationID
+                        conversationID: conversationID,
+                        runID: runID,
+                        runEditor: runEditor
                     )
                 }
                 let stopReason = finalSnapshot.stopReason
                 streamTimeoutRetries = 0
+                guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor) else { break }
+                if stopReason != .refusal, stopReason != .maxTokens,
+                   !finalSnapshot.blocks.contains(where: {
+                       switch $0 {
+                       case .text(let text): return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                       case .toolUse: return true
+                       default: return false
+                       }
+                   }) {
+                    throw AgentClientTransportError.streamError(
+                        provider: chosenModel.provider,
+                        message: "The provider completed the request without an answer or tool call. Try again or use another model."
+                    )
+                }
 
                 dropEmptyAssistantTurn(id: assistantID, conversationID: conversationID)
                 // Common progress file is the single source of truth a new chat loads to resume.
                 refreshEditingProgress()
                 guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor) else { break }
                 if stopReason == .refusal {
-                    streamError = .refusal(chosenModel)
+                    sessionErrors[conversationID] = .refusal(chosenModel)
                     break loop
                 }
-                if stopReason == .maxTokens && streamTimeoutRetries < 2 {
-                    streamTimeoutRetries += 1
-                    Log.agent.notice("chat stream turn=\(turnID) continued after output truncation retry=\(streamTimeoutRetries)")
-                    messages.append(AgentMessage(role: .user, blocks: [.text("Continue previous response.")]))
+                if stopReason == .maxTokens && outputContinuationRetries < 2 {
+                    outputContinuationRetries += 1
+                    sessionProgress[conversationID]?.retry = .outputLimit
+                    Log.agent.notice("chat stream turn=\(turnID) continued after output truncation retry=\(outputContinuationRetries)")
+                    mutateSessionMessages(conversationID) { $0.append(AgentMessage(role: .user, blocks: [.text("Continue previous response.")])) }
                     continue loop
+                }
+                if stopReason == .maxTokens {
+                    sessionErrors[conversationID] = .upstream("The response repeatedly reached the model’s output limit. Ask for a smaller task or use another model.")
+                    break loop
                 }
                 if stopReason == .toolUse {
                     await runPendingToolUses(assistantID: assistantID, conversationID: conversationID,
@@ -850,6 +1012,14 @@ final class AgentService {
                 break loop
             } catch {
                 let timedOut = Self.isStreamTimeout(error)
+                if timedOut {
+                    discardAssistantTurn(id: assistantID, conversationID: conversationID)
+                } else {
+                    dropEmptyAssistantTurn(id: assistantID, conversationID: conversationID)
+                }
+                guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor),
+                      !(error is CancellationError), AgentHTTP.urlErrorCode(error) != .cancelled
+                else { break loop }
 
                 // Detect context-length exceeded (400) from custom/gateway endpoints:
                 // compress context aggressively and retry once.
@@ -870,38 +1040,60 @@ final class AgentService {
 
                 if contextExceeded, contextCompressionRetries == 0 {
                     contextCompressionRetries += 1
+                    discardAssistantTurn(id: assistantID, conversationID: conversationID)
+                    sessionProgress[conversationID]?.retry = .contextLimit
                     Log.agent.notice("chat turn=\(turnID) context-length exceeded; compressing and retrying")
-                    messages = Self.compressMessagesForContext(messages, keepLastTurns: 2)
-                    rollingSummary = ""
+                    mutateSessionMessages(conversationID) { $0 = Self.compressMessagesForContext($0, keepLastTurns: 2) }
+                    sessionSummaries[conversationID] = ""
                     continue loop
                 }
 
                 if contextExceeded {
-                    streamError = .upstream("Context length exceeded: the conversation is too long for this model. Start a new chat to continue editing from the saved progress file.")
+                    sessionErrors[conversationID] = .upstream("Context length exceeded: the conversation is too long for this model. Start a new chat to continue editing from the saved progress file.")
                     break loop
                 }
 
-                if timedOut {
-                    discardAssistantTurn(id: assistantID, conversationID: conversationID)
-                } else {
-                    dropEmptyAssistantTurn(id: assistantID, conversationID: conversationID)
-                }
-                guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor),
-                      !(error is CancellationError), AgentHTTP.urlErrorCode(error) != .cancelled
-                else { break loop }
                 if timedOut, streamTimeoutRetries < Self.streamTimeoutRetryLimit {
                     streamTimeoutRetries += 1
+                    sessionProgress[conversationID]?.retry = .timeout(attempt: streamTimeoutRetries, limit: Self.streamTimeoutRetryLimit)
                     Log.agent.notice("chat stream retry id=\(turnID) reason=timeout retry=\(streamTimeoutRetries)/\(Self.streamTimeoutRetryLimit)")
                     continue loop
                 }
-                streamError = (error as? AgentServiceError) ?? .upstream(error.localizedDescription)
+                sessionErrors[conversationID] = (error as? AgentServiceError) ?? .upstream(error.localizedDescription)
+                setRequestPhase(.error(error.localizedDescription), conversationID: conversationID)
                 break loop
             }
         }
+        // Process queued messages for this session after the turn completes.
+        await processQueueIfNeeded(conversationID: conversationID, runID: runID, runEditor: runEditor, settings: settings, client: client)
     }
 
-    private func assistantMessageIndex(id: UUID) -> Int? {
-        messages.firstIndex { $0.id == id && $0.role == .assistant }
+    private func processQueueIfNeeded(
+        conversationID: UUID,
+        runID: UUID,
+        runEditor: EditorViewModel?,
+        settings: AgentRunSettings,
+        client: (any AgentClient)?
+    ) async {
+        guard var queue = sessionQueues[conversationID], !queue.isEmpty else { return }
+        let next = queue.removeFirst()
+        sessionQueues[conversationID] = queue
+        // Reuse the same run settings but with the queued message as the new input.
+        let queuedRunSettings = settings
+        mutateSessionMessages(conversationID) { $0.append(AgentMessage(
+            role: .user, blocks: [.text(next.text)],
+            mentions: next.mentions, contextHint: nil
+        )) }
+        _ = kickOffStream(
+            conversationID: conversationID,
+            traceID: UUID(),
+            settings: queuedRunSettings,
+            client: client
+        )
+    }
+
+    private func assistantMessageIndex(id: UUID, conversationID: UUID) -> Int? {
+        sessionMessages(conversationID).firstIndex { $0.id == id && $0.role == .assistant }
     }
 
     private static func isStreamTimeout(_ error: any Error) -> Bool {
@@ -916,24 +1108,10 @@ final class AgentService {
     }
 
     private func discardAssistantTurn(id: UUID, conversationID: UUID) {
-        if currentSessionId == conversationID {
-            guard let index = assistantMessageIndex(id: id) else { return }
-            messages.remove(at: index)
-            return
+        mutateSessionMessages(conversationID) {
+            guard let index = $0.firstIndex(where: { $0.id == id && $0.role == .assistant }) else { return }
+            $0.remove(at: index)
         }
-        guard let sessionIndex = sessions.firstIndex(where: { $0.id == conversationID }),
-              let messageIndex = sessions[sessionIndex].messages.firstIndex(where: {
-                  $0.id == id && $0.role == .assistant
-              }) else { return }
-        sessions[sessionIndex].messages.remove(at: messageIndex)
-        sessions[sessionIndex].updatedAt = Date()
-    }
-
-    func dropEmptyAssistantTurn(id: UUID) {
-        guard let index = assistantMessageIndex(id: id) else { return }
-        messages[index].blocks.removeAll { !Self.isComplete($0) }
-        guard messages[index].blocks.isEmpty else { return }
-        messages.remove(at: index)
     }
 
     func applyStreamSnapshot(
@@ -942,8 +1120,8 @@ final class AgentService {
         conversationID: UUID
     ) {
         if currentSessionId == conversationID {
-            guard let index = assistantMessageIndex(id: assistantID) else { return }
-            messages[index].blocks = snapshot.blocks
+            guard let index = assistantMessageIndex(id: assistantID, conversationID: conversationID) else { return }
+            mutateSessionMessages(conversationID) { $0[index].blocks = snapshot.blocks }
             return
         }
 
@@ -955,20 +1133,19 @@ final class AgentService {
         sessions[sessionIndex].updatedAt = Date()
     }
 
-    private func dropEmptyAssistantTurn(id: UUID, conversationID: UUID) {
-        guard currentSessionId != conversationID else {
-            dropEmptyAssistantTurn(id: id)
-            return
+    func dropEmptyAssistantTurn(id messageID: UUID) {
+        guard let conversationID = currentSessionId else { return }
+        dropEmptyAssistantTurn(id: messageID, conversationID: conversationID)
+    }
+
+    func dropEmptyAssistantTurn(id: UUID, conversationID: UUID) {
+        mutateSessionMessages(conversationID) {
+            guard let index = $0.firstIndex(where: { $0.id == id && $0.role == .assistant }) else { return }
+            $0[index].blocks.removeAll { !Self.isComplete($0) }
+            if $0[index].blocks.isEmpty {
+                $0.remove(at: index)
+            }
         }
-        guard let sessionIndex = sessions.firstIndex(where: { $0.id == conversationID }),
-              let messageIndex = sessions[sessionIndex].messages.firstIndex(where: {
-                  $0.id == id && $0.role == .assistant
-              }) else { return }
-        sessions[sessionIndex].messages[messageIndex].blocks.removeAll { !Self.isComplete($0) }
-        if sessions[sessionIndex].messages[messageIndex].blocks.isEmpty {
-            sessions[sessionIndex].messages.remove(at: messageIndex)
-        }
-        sessions[sessionIndex].updatedAt = Date()
     }
 
     private static func isComplete(_ block: AgentContentBlock) -> Bool {
@@ -983,23 +1160,24 @@ final class AgentService {
     }
 
     private func isCurrentRun(_ runID: UUID, conversationID: UUID, editor runEditor: EditorViewModel?) -> Bool {
-        !Task.isCancelled && currentRunID == runID && currentSessionId == conversationID && editor === runEditor
+        !Task.isCancelled && sessionRunIDs[conversationID] == runID && currentSessionId == conversationID && editor === runEditor
     }
 
     private func runPendingToolUses(assistantID: UUID, conversationID: UUID, runID: UUID,
                                    runEditor: EditorViewModel?, settings: AgentRunSettings,
                                    client: any AgentClient, traceID: UUID, delegation: AgentDelegation) async {
-        guard let assistantIndex = assistantMessageIndex(id: assistantID) else { return }
+        let sessionMsgs = sessionMessages(conversationID)
+        guard let assistantIndex = assistantMessageIndex(id: assistantID, conversationID: conversationID) else { return }
         guard let executor = toolExecutor else {
-            messages.append(AgentMessage(role: .user, blocks: [.text("Tool executor unavailable.")]))
+            mutateSessionMessages(conversationID) { $0.append(AgentMessage(role: .user, blocks: [.text("Tool executor unavailable.")])) }
             return
         }
 
-        let toolUses: [(id: String, name: String, input: String)] = messages[assistantIndex].blocks.compactMap {
+        let toolUses: [(id: String, name: String, input: String)] = sessionMsgs[assistantIndex].blocks.compactMap {
             if case let .toolUse(id, name, input) = $0 { return (id, name, input) }
             return nil
         }
-        let alreadyResolved = resolvedToolUseIds(afterAssistantAt: assistantIndex)
+        let alreadyResolved = resolvedToolUseIds(afterAssistantAt: assistantIndex, conversationID: conversationID)
 
         var resultBlocks: [AgentContentBlock] = []
         for use in toolUses where !alreadyResolved.contains(use.id) {
@@ -1008,6 +1186,7 @@ final class AgentService {
                 continue
             }
             let result: ToolResult
+            setRequestPhase(.toolRunning(use.name), conversationID: conversationID)
             if use.name == AgentDelegationTool.name {
                 result = await executeDelegation(input: use.input, client: client, delegation: delegation,
                     context: AgentRequestContext(conversationID: conversationID, traceID: traceID, spanID: UUID(),
@@ -1021,6 +1200,9 @@ final class AgentService {
                 )
             }
             resultBlocks.append(.toolResult(toolUseId: use.id, content: result.content, isError: result.isError))
+            if isCurrentRun(runID, conversationID: conversationID, editor: runEditor) {
+                setRequestPhase(.toolCompleted(use.name), conversationID: conversationID)
+            }
         }
         appendToolResults(resultBlocks, conversationID: conversationID)
         // Persist editing progress after each batch of tool results so a new chat can
@@ -1031,50 +1213,48 @@ final class AgentService {
     func appendToolResults(_ blocks: [AgentContentBlock], conversationID: UUID) {
         guard !blocks.isEmpty else { return }
         let message = AgentMessage(role: .user, blocks: blocks)
-        if currentSessionId == conversationID {
-            messages.append(message)
-        } else if let index = sessions.firstIndex(where: { $0.id == conversationID }) {
-            sessions[index].messages.append(message)
-            sessions[index].updatedAt = Date()
-            onSessionsChanged?()
-        }
+        mutateSessionMessages(conversationID) { $0.append(message) }
+        onSessionsChanged?()
     }
 
-    private func nextNonSystemIndex(after index: Int) -> Int {
+    private func nextNonSystemIndex(after index: Int, in msgs: [AgentMessage]? = nil) -> Int {
+        let messages = msgs ?? sessionMessages(currentSessionId)
         var next = index + 1
         while next < messages.count, messages[next].role == .system { next += 1 }
         return next
     }
 
-    private func resolvedToolUseIds(afterAssistantAt index: Int) -> Set<String> {
-        let next = nextNonSystemIndex(after: index)
-        guard next < messages.count, messages[next].role == .user else { return [] }
-        return Set(messages[next].blocks.compactMap {
+    private func resolvedToolUseIds(afterAssistantAt index: Int, conversationID: UUID) -> Set<String> {
+        let sessionMsgs = sessionMessages(conversationID)
+        let next = nextNonSystemIndex(after: index, in: sessionMsgs)
+        guard next < sessionMsgs.count, sessionMsgs[next].role == .user else { return [] }
+        return Set(sessionMsgs[next].blocks.compactMap {
             if case let .toolResult(id, _, _) = $0 { return id }
             return nil
         })
     }
 
-    private func resolveOrphanToolUses(reason: String = "Cancelled") {
+    private func resolveOrphanToolUses(conversationID: UUID, reason: String = "Cancelled") {
+        var sessionMsgs = sessionMessages(conversationID)
         var i = 0
-        while i < messages.count {
+        while i < sessionMsgs.count {
             defer { i += 1 }
-            guard messages[i].role == .assistant else { continue }
-            let toolUseIds: [String] = messages[i].blocks.compactMap {
+            guard sessionMsgs[i].role == .assistant else { continue }
+            let toolUseIds: [String] = sessionMsgs[i].blocks.compactMap {
                 if case let .toolUse(id, _, _) = $0 { return id }
                 return nil
             }
             guard !toolUseIds.isEmpty else { continue }
 
-            let next = nextNonSystemIndex(after: i)
-            let nextIsToolResult = next < messages.count
-                && messages[next].role == .user
-                && messages[next].blocks.contains(where: {
+            let next = nextNonSystemIndex(after: i, in: sessionMsgs)
+            let nextIsToolResult = next < sessionMsgs.count
+                && sessionMsgs[next].role == .user
+                && sessionMsgs[next].blocks.contains(where: {
                     if case .toolResult = $0 { return true }
                     return false
                 })
             let resolved: Set<String> = nextIsToolResult
-                ? Set(messages[next].blocks.compactMap {
+                ? Set(sessionMsgs[next].blocks.compactMap {
                     if case let .toolResult(id, _, _) = $0 { return id }
                     return nil
                 })
@@ -1087,28 +1267,18 @@ final class AgentService {
                 .toolResult(toolUseId: $0, content: [.text(reason)], isError: true)
             }
             if nextIsToolResult {
-                messages[next].blocks.insert(contentsOf: synthetic, at: 0)
+                sessionMsgs[next].blocks.insert(contentsOf: synthetic, at: 0)
             } else {
-                messages.insert(AgentMessage(role: .user, blocks: synthetic), at: next)
+                sessionMsgs.insert(AgentMessage(role: .user, blocks: synthetic), at: next)
             }
         }
+        mutateSessionMessages(conversationID) { $0 = sessionMsgs }
     }
 
     private static func parseJSONObject(_ json: String) -> [String: Any] {
         guard let data = json.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
         return obj
-    }
-
-    private func syncMessagesIntoCurrentSession() {
-        guard let id = currentSessionId,
-              let idx = sessions.firstIndex(where: { $0.id == id }) else { return }
-        sessions[idx].messages = messages
-        sessions[idx].updatedAt = Date()
-        if sessions[idx].title == "New chat",
-           let first = messages.first(where: { $0.role == .user }) {
-            sessions[idx].title = Self.title(from: first)
-        }
     }
 
     /// Estimate input tokens using a 4-char-per-token approximation. Not exact, but
@@ -1123,15 +1293,16 @@ final class AgentService {
     /// - Token budget: prunes oldest content first when over budget
     /// - Tool pruning: when context is tight, tool schemas stay out of the message body
     ///   (they are already handled separately by the caller).
-    private func apiMessages() async -> [AgentRequestMessage] {
+    private func apiMessages(conversationID: UUID) async -> [AgentRequestMessage] {
+        let sessionMsgs = sessionMessages(conversationID)
         var result: [AgentRequestMessage] = []
-        let lastUserIndex = messages.lastIndex(where: { $0.role == .user })
+        let lastUserIndex = sessionMsgs.lastIndex(where: { $0.role == .user })
 
         // Build the rolling summary from turns outside the sliding window.
         let windowStart = lastUserIndex.map { max(0, $0 - 6) } ?? 0
         var summaryParts: [String] = []
 
-        for (index, msg) in messages.enumerated() {
+        for (index, msg) in sessionMsgs.enumerated() {
             if msg.role == .system { continue }
 
             // Older-than-window turns: extract key facts, drop verbatim content.
@@ -1176,9 +1347,9 @@ final class AgentService {
 
         // Inject rolling summary as a leading system message when there is anything to say.
         if !summaryParts.isEmpty {
-            rollingSummary = summaryParts.joined(separator: " ")
+            sessionSummaries[conversationID] = summaryParts.joined(separator: " ")
         } else {
-            rollingSummary = ""
+            sessionSummaries[conversationID] = ""
         }
 
         // Enforce token budget: estimate total input, prune oldest assistant turns first.
@@ -1187,7 +1358,7 @@ final class AgentService {
         for msg in result {
             messageTokens += msg.content.reduce(0) { $0 + Self.estimateTokens(blockText($1)) }
         }
-        let totalTokens = systemTokens + messageTokens + Self.estimateTokens(rollingSummary)
+        let totalTokens = systemTokens + messageTokens + Self.estimateTokens(sessionSummaries[conversationID] ?? "")
 
         if totalTokens > maxInputTokens {
             // Drop oldest assistant turns until under budget, preserving user turns.

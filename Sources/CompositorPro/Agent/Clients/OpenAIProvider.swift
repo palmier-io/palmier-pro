@@ -167,6 +167,16 @@ struct OpenAIStreamParser {
         guard !didTerminate, let type = event["type"] as? String else { return [] }
 
         switch type {
+        case "response.output_item.added":
+            guard let item = event["item"] as? [String: Any] else { return [] }
+            switch item["type"] as? String {
+            case "reasoning": return [.activity(.reasoning)]
+            case "function_call":
+                guard let name = item["name"] as? String, !name.isEmpty else { return [] }
+                return [.activity(.preparingTool(name))]
+            default: return []
+            }
+
         case "response.output_text.delta":
             guard let delta = event["delta"] as? String, !delta.isEmpty else { return [] }
             return [.textDelta(delta)]

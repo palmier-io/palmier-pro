@@ -81,8 +81,12 @@ private enum SplitAutosave {
 
 final class EditorSplitViewController: PaddedDividerSplitViewController {
     let editor: EditorViewModel
-    private var currentPreset: LayoutPreset?
+    var currentPreset: LayoutPreset?
     private var currentMaximized: EditorViewModel.FocusedPanel?
+    /// Queued layout intent: the latest preset request wins once the run loop turns.
+    var scheduledPreset: LayoutPreset?
+    /// Queued collapse intent per split item, so mid-animation state never gates a request.
+    var pendingCollapse: [ObjectIdentifier: Bool] = [:]
     private var pendingPositioning: (() -> Void)?
     private weak var agentSplitItem: NSSplitViewItem?
     private weak var mediaSplitItem: NSSplitViewItem?
@@ -116,15 +120,20 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
     // MARK: - Layout switching
 
     func applyLayoutIfNeeded(_ preset: LayoutPreset) {
-        guard preset != currentPreset else { return }
-        DispatchQueue.main.async { [weak self] in
-            guard let self, preset != self.currentPreset else { return }
-            if self.currentMaximized != nil {
-                self.currentMaximized = nil
-                self.editor.maximizedPanel = nil
-            }
-            self.buildLayout(preset)
+        guard preset != (scheduledPreset ?? currentPreset) else { return }
+        scheduledPreset = preset
+        DispatchQueue.main.async { [weak self] in self?.flushScheduledLayout() }
+    }
+
+    /// Applies the newest queued preset; intermediate requests coalesce away.
+    func flushScheduledLayout() {
+        guard let preset = scheduledPreset else { return }
+        scheduledPreset = nil
+        if currentMaximized != nil {
+            currentMaximized = nil
+            editor.maximizedPanel = nil
         }
+        buildLayout(preset)
     }
 
     func applyMaximize(_ panel: EditorViewModel.FocusedPanel?) {
@@ -199,15 +208,35 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
         applyCollapsed(item: inspectorSplitItem, collapsed: !visible)
     }
 
-    private func applyCollapsed(item: NSSplitViewItem?, collapsed: Bool) {
-        guard let item, item.isCollapsed != collapsed else { return }
-        DispatchQueue.main.async {
+    func applyCollapsed(item: NSSplitViewItem?, collapsed: Bool) {
+        guard let item else { return }
+        let id = ObjectIdentifier(item)
+        guard (pendingCollapse[id] ?? item.isCollapsed) != collapsed else { return }
+        pendingCollapse[id] = collapsed
+        DispatchQueue.main.async { [weak self] in self?.flushPendingCollapses() }
+    }
+
+    /// Applies the newest queued collapse per item; mid-animation `isCollapsed` never gates.
+    func flushPendingCollapses() {
+        let queued = pendingCollapse
+        pendingCollapse.removeAll()
+        for (id, collapsed) in queued {
+            guard let item = splitItem(matching: id) else { continue }
             item.animator().isCollapsed = collapsed
         }
     }
 
+    private func splitItem(matching id: ObjectIdentifier) -> NSSplitViewItem? {
+        var found: NSSplitViewItem?
+        walkSplitItems(self) { item in
+            if found == nil, ObjectIdentifier(item) == id { found = item }
+        }
+        return found
+    }
+
     private func buildLayout(_ preset: LayoutPreset) {
         pendingPositioning = nil
+        pendingCollapse.removeAll()
 
         while !splitViewItems.isEmpty {
             removeSplitViewItem(splitViewItems.last!)

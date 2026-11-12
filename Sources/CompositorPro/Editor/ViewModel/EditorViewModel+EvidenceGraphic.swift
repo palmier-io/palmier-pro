@@ -127,7 +127,8 @@ extension EditorViewModel {
                 }
             }
 
-            // If an active EditPlan was specified, check if any shot links this graphic's claim
+            // If an active EditPlan was specified, retain the authored spec and attach it to any
+            // shot that cites its claims. The spec lets a corrected value regenerate this derivative.
             if let planId, var plan = self.editPlan(id: planId) {
                 var modified = false
                 for i in 0..<plan.shots.count {
@@ -139,6 +140,17 @@ extension EditorViewModel {
                         modified = true
                     }
                 }
+                let record = PlanGraphicScene(
+                    kind: spec.kind.rawValue, title: spec.title, digest: spec.digest,
+                    rendererVersion: EvidenceGraphicLottie.rendererVersion,
+                    mediaRef: asset.id, clipId: placedClipId, spec: spec.receipt
+                )
+                if let index = plan.graphicScenes.firstIndex(where: { $0.digest == record.digest }) {
+                    plan.graphicScenes[index] = record
+                } else {
+                    plan.graphicScenes.append(record)
+                }
+                modified = true
                 if modified {
                     _ = try? self.changeEditPlans(updates: [plan], actionName: "Attach Graphic (Agent)")
                 }

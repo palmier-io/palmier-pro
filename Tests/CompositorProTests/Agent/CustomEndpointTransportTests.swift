@@ -274,7 +274,8 @@ struct CustomEndpointTransportTests {
 
         let events = try await transportEvents(operation)
 
-        #expect(events == [
+        let contentEvents = events.filter { if case .activity = $0 { return false }; return true }
+        #expect(contentEvents == [
             .toolUseComplete(id: "call_1", name: "get_timeline", inputJSON: "{}"),
             .messageStop(stopReason: .toolUse),
         ])

@@ -81,10 +81,13 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
     var brief: PlanBrief?
     var soundCues: [PlanSoundCue]?
     var assembly: PlanAssemblyState?
+    /// Graphic scenes whose specification is retained for later regeneration.
+    var graphicScenes: [PlanGraphicScene] = []
 
     private enum CodingKeys: String, CodingKey {
         case id, name, goal, timelineId, fps, width, height, status
         case sections, shots, notes, createdAt, updatedAt, referenceRecipe, sourceLedger, sourceLedgerRevision
+        case graphicScenes
         case scriptBeats, narrationIntent, narration, narrationRevision, narrationTiming, narrationSynthesisProof
         case productionRun, brief, soundCues, assembly
     }
@@ -163,6 +166,7 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
         brief = try container.decodeIfPresent(PlanBrief.self, forKey: .brief)
         soundCues = try container.decodeIfPresent([PlanSoundCue].self, forKey: .soundCues)
         assembly = try container.decodeIfPresent(PlanAssemblyState.self, forKey: .assembly)
+        graphicScenes = try container.decodeIfPresent([PlanGraphicScene].self, forKey: .graphicScenes) ?? []
     }
 }
 
@@ -586,6 +590,63 @@ extension EditPlan {
             "sectionIds": sections.filter { !claimIds.isDisjoint(with: $0.claimIds ?? []) || linksDependentBeat($0.narrationLink) }.map(\.id),
             "shotIds": shots.filter { !claimIds.isDisjoint(with: $0.claimIds ?? []) || linksDependentBeat($0.narrationLink) }.map(\.id),
             "beatIds": dependentBeats,
+        ]
+    }
+
+    /// Resolves one editorial change across every dependent output. A section revision updates
+    /// the section and its linked script beats, invalidates derived timing/narration proof, moves
+    /// dependent sound cues, and returns the exact affected set so callers can re-prepare and re-review.
+    mutating func reviseSection(
+        sectionId: String,
+        title: String?,
+        summary: String?,
+        beatText: [String: String]?,
+        startFrame: Int?,
+        endFrame: Int?
+    ) throws -> [String: Any] {
+        guard let index = sections.firstIndex(where: { $0.id == sectionId }) else {
+            throw EditPlanValidationError.invalidReference("Unknown sectionId '\(sectionId)'.")
+        }
+        let old = sections[index]
+        var new = old
+        if let title { new.title = try EditPlan.validatedName(title) }
+        if let summary { new.summary = try EditPlan.validatedText(summary, field: "section summary") }
+        if let startFrame { new.startFrame = startFrame }
+        if let endFrame { new.endFrame = endFrame }
+        try EditPlan.validatedFrames(start: new.startFrame, end: new.endFrame)
+        new = try EditPlan.validatedSection(new)
+
+        var updatedBeats: [String] = []
+        if let beatText, var beats = scriptBeats, let link = old.narrationLink,
+           let first = beats.firstIndex(where: { $0.beatId == link.firstBeatId }),
+           let last = beats.firstIndex(where: { $0.beatId == link.lastBeatId }), first <= last {
+            let linkedIds = Set(beats[first...last].map(\.beatId))
+            for (beatId, text) in beatText where linkedIds.contains(beatId) {
+                if let b = beats.firstIndex(where: { $0.beatId == beatId }) {
+                    beats[b].text = try EditPlan.validatedText(text, field: "script text")
+                    beats[b] = try beats[b].validated()
+                    updatedBeats.append(beatId)
+                }
+            }
+            if !updatedBeats.isEmpty {
+                scriptBeats = beats
+                // Derived state is cleared here; changeEditPlans owns the narration revision bump
+                // and proof invalidation for script changes.
+                narrationTiming = nil
+                narrationSynthesisProof = nil
+            }
+        }
+
+        let unchanged = new == old && updatedBeats.isEmpty
+        if !unchanged { sections[index] = new }
+
+        let dependents = claimDependents(Set(old.claimIds ?? []))
+        return [
+            "sectionId": sectionId,
+            "changed": !unchanged,
+            "updatedBeatIds": updatedBeats,
+            "invalidatedTiming": updatedBeats.isEmpty ? false : true,
+            "dependents": dependents,
         ]
     }
 

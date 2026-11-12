@@ -15,10 +15,33 @@ extension EditorViewModel {
             .sorted { ($0.startFrame, $0.id) < ($1.startFrame, $1.id) }
     }
     func timelineMarkerSnapFrames(excludingMarkerIds: Set<String> = []) -> [Int] {
-        let frames = displayedTimelineMarkers()
-            .filter { !excludingMarkerIds.contains($0.id) }
-            .flatMap { $0.isRange ? [$0.startFrame, $0.endFrame] : [$0.startFrame] }
-        return Set(frames).sorted()
+        let cache = markerSnapFramesCache()
+        guard !excludingMarkerIds.isEmpty else { return cache.frames }
+        let excluded = excludingMarkerIds
+        var dropped: Set<Int> = []
+        for marker in cache.markers where excluded.contains(marker.id) {
+            dropped.formUnion(marker.isRange ? [marker.startFrame, marker.endFrame] : [marker.startFrame])
+        }
+        guard !dropped.isEmpty else { return cache.frames }
+        for marker in cache.markers where !excluded.contains(marker.id) {
+            if dropped.isEmpty { break }
+            dropped.subtract(marker.isRange ? [marker.startFrame, marker.endFrame] : [marker.startFrame])
+        }
+        return dropped.isEmpty ? cache.frames : cache.frames.filter { !dropped.contains($0) }
+    }
+
+    /// Sorted unique snap frames, cached per timeline revision; exclusions filter at call time.
+    private func markerSnapFramesCache() -> (revision: Int, timelineId: String, markers: [TimelineMarker], frames: [Int]) {
+        let current = timeline
+        if let cache = markerSnapFrameCache,
+           cache.revision == timelineRenderRevision, cache.timelineId == current.id {
+            return cache
+        }
+        let markers = current.markers.sorted { ($0.startFrame, $0.id) < ($1.startFrame, $1.id) }
+        let frames = Set(markers.flatMap { $0.isRange ? [$0.startFrame, $0.endFrame] : [$0.startFrame] }).sorted()
+        let cache = (revision: timelineRenderRevision, timelineId: current.id, markers: markers, frames: frames)
+        markerSnapFrameCache = cache
+        return cache
     }
 
     @discardableResult

@@ -424,4 +424,34 @@ struct EvidenceGraphicMCPTests {
         #expect(dependents["shotIds"] == ["shot-1"])
         #expect(dependents["beatIds"] == ["beat-1"])
     }
+
+    @Test func graphicScenePersistsSpecAndRendererVersion() throws {
+        let spec = try EvidenceGraphicSpec.validated(
+            kind: .numericComparison,
+            title: "Announced vs realized",
+            numericData: NumericComparisonData(items: [
+                .init(label: "Announced", value: 25, unit: "USD Billion"),
+                .init(label: "Realized", value: 18.5, unit: "USD Billion"),
+            ])
+        )
+        let scene = PlanGraphicScene(
+            kind: spec.kind.rawValue, title: spec.title, digest: spec.digest,
+            rendererVersion: EvidenceGraphicLottie.rendererVersion,
+            mediaRef: "asset-1", clipId: "clip-1", spec: spec.receipt
+        )
+        let encoded = try JSONEncoder().encode(scene)
+        let decoded = try JSONDecoder().decode(PlanGraphicScene.self, from: encoded)
+        #expect(decoded == scene)
+        #expect(decoded.mediaRef == "asset-1")
+        #expect(decoded.specObject["title"] as? String == "Announced vs realized")
+        #expect(decoded.isCurrent(digest: spec.digest, rendererVersion: EvidenceGraphicLottie.rendererVersion))
+        #expect(!decoded.isCurrent(digest: "other", rendererVersion: EvidenceGraphicLottie.rendererVersion))
+
+        // A plan round-trips its graphic scenes.
+        var plan = EditPlan(name: "Plan", timelineId: "tl", fps: 30, width: 1920, height: 1080)
+        plan.graphicScenes = [scene]
+        let planData = try JSONEncoder().encode(plan)
+        let decodedPlan = try JSONDecoder().decode(EditPlan.self, from: planData)
+        #expect(decodedPlan.graphicScenes == [scene])
+    }
 }

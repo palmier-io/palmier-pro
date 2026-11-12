@@ -5,11 +5,14 @@ struct AgentStreamSnapshot: Sendable {
     let blocks: [AgentContentBlock]
     let stopReason: AgentStopReason
     let revision: UInt64
+    var activity: AgentStreamActivity? = nil
+    var receivedAt: ContinuousClock.Instant? = nil
 }
 
 private struct AgentStreamReducer: Sendable {
     private(set) var blocks: [AgentContentBlock] = []
     private(set) var stopReason: AgentStopReason = .endTurn
+    private(set) var activity: AgentStreamActivity?
     private let model: AgentModel
 
     init(model: AgentModel) {
@@ -18,13 +21,18 @@ private struct AgentStreamReducer: Sendable {
 
     mutating func apply(_ event: AgentStreamEvent) {
         switch event {
+        case .activity(let activity):
+            self.activity = activity
         case .thinkingDelta(let chunk):
+            activity = .reasoning
             updateThinking(textDelta: chunk)
         case .thinkingSignature(let signature):
             updateThinking(signatureDelta: signature)
         case .redactedThinking(let data):
+            activity = .reasoning
             blocks.append(.redactedThinking(data: data))
         case .reasoningSummaryDelta(let chunk):
+            activity = .reasoning
             let existing = takeStreamingReasoningSummary()
             blocks.append(.openAIReasoning(
                 summary: existing + chunk,
@@ -59,12 +67,14 @@ private struct AgentStreamReducer: Sendable {
             closeStreamingReasoning()
             stopReason = reason
         case .textDelta(let chunk):
+            activity = .generating
             if case .text(let existing)? = blocks.last {
                 blocks[blocks.count - 1] = .text(existing + chunk)
             } else {
                 blocks.append(.text(chunk))
             }
         case .toolUseComplete(let id, let name, let inputJSON):
+            activity = .preparingTool(name)
             blocks.append(.toolUse(id: id, name: name, inputJSON: inputJSON))
         }
     }
@@ -106,6 +116,7 @@ private struct AgentStreamReducer: Sendable {
 actor AgentStreamPresentationBuffer {
     private var reducer: AgentStreamReducer
     private var revision: UInt64 = 0
+    private var receivedAt: ContinuousClock.Instant?
     private var isDirty = false
     private var hasPublished = false
     private var isComplete = false
@@ -131,6 +142,7 @@ actor AgentStreamPresentationBuffer {
     func receive(_ event: AgentStreamEvent) {
         guard !isComplete else { return }
         reducer.apply(event)
+        receivedAt = .now
         revision &+= 1
         isDirty = true
         if !hasPublished {
@@ -159,7 +171,9 @@ actor AgentStreamPresentationBuffer {
         AgentStreamSnapshot(
             blocks: reducer.blocks,
             stopReason: reducer.stopReason,
-            revision: revision
+            revision: revision,
+            activity: reducer.activity,
+            receivedAt: receivedAt
         )
     }
 
@@ -232,7 +246,9 @@ func presentAgentStream(
         do {
             for try await snapshot in snapshots {
                 guard snapshot.revision != lastRevision else { continue }
-                if firstOutputMs == nil { firstOutputMs = milliseconds(since: started) }
+                if firstOutputMs == nil, !snapshot.blocks.isEmpty {
+                    firstOutputMs = milliseconds(since: started)
+                }
                 await onSnapshot(snapshot)
                 lastRevision = snapshot.revision
             }

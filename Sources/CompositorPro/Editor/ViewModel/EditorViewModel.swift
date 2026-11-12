@@ -219,7 +219,9 @@ final class EditorViewModel {
     var timelineVisibleWidth: Double = 0
     var timelineRenderRevision: Int = 0
     var timelineCompositionGeneration: Int = 0
+    @ObservationIgnored private(set) var clipLocationIndexRebuildCount = 0
     @ObservationIgnored private var clipLocationIndexCache: (revision: Int, timelineId: String, index: [String: ClipLocation])?
+    @ObservationIgnored var markerSnapFrameCache: (revision: Int, timelineId: String, markers: [TimelineMarker], frames: [Int])?
     @ObservationIgnored var keyframeNavigationCache: [
         KeyframeNavigationCacheKey: [KeyframeLaneNavigationTarget]
     ] = [:]
@@ -554,6 +556,7 @@ final class EditorViewModel {
         videoEngine?.teardown()
         videoEngine = nil
         mediaVisualCache.resetSessionState()
+        agentService.cancelAllRuns()
     }
 
     func resumePlayback() {
@@ -714,6 +717,7 @@ final class EditorViewModel {
            cache.revision == timelineRenderRevision, cache.timelineId == current.id {
             return cache.index
         }
+        clipLocationIndexRebuildCount += 1
         var index: [String: ClipLocation] = [:]
         for ti in current.tracks.indices {
             for ci in current.tracks[ti].clips.indices {

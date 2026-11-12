@@ -56,17 +56,17 @@ final class AppState {
         mcpService = service
     }
 
-    func stopMCPService() {
-        mcpService?.stop()
+    func stopMCPService() async {
+        await mcpService?.stop()
         mcpService = nil
     }
 
-    func setMCPEnabled(_ enabled: Bool) {
+    func setMCPEnabled(_ enabled: Bool) async {
         MCPService.isEnabledPreference = enabled
         if enabled {
             startMCPService()
         } else {
-            stopMCPService()
+            await stopMCPService()
         }
     }
 

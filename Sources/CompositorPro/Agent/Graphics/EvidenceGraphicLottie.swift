@@ -2,6 +2,8 @@ import Foundation
 
 enum EvidenceGraphicLottie {
     static let fps = 30
+    /// Bumped when the baked output changes; keys the persisted derivative.
+    static let rendererVersion = "1"
 
     static func json(for spec: EvidenceGraphicSpec) -> [String: Any] {
         let duration = spec.durationFrames

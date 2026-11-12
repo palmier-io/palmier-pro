@@ -43,7 +43,7 @@ struct CaptionTab: View {
     @State private var estimatedCloudCost: Int?
     @State private var sourceExpanded = true
     @State private var settingsExpanded = true
-    @State private var styleExpanded = false
+    @State private var styleExpanded = true
     @State private var animationExpanded = false
 
     private static let previewText = L10n.key("Captions will look like this")

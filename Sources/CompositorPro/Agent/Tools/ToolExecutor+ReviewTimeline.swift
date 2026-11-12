@@ -67,7 +67,7 @@ extension ToolExecutor {
                 "sampledFrames": review.frames.map { start + $0 },
                 "clippedSamples": review.clippedSamples,
                 "qualityWarnings": warnings,
-                "reviewScope": "encoded_stills_and_audio_metrics",
+                "reviewScope": "encoded_stills_motion_and_audio_metrics",
             ]
             if let loudness = review.loudness {
                 metadata["loudnessStatus"] = loudness.status.rawValue
@@ -75,6 +75,13 @@ extension ToolExecutor {
                 metadata["truePeakDBTP"] = loudness.truePeakDBFS as Any? ?? NSNull()
             }
             metadata["samplePeakDBFS"] = review.peakDBFS as Any? ?? NSNull()
+            metadata["motion"] = [
+                "sampledFrames": review.motion.sampledFrames,
+                "meanDelta": review.motion.meanDelta,
+                "minDelta": review.motion.minDelta,
+                "maxDelta": review.motion.maxDelta,
+                "frozenSpans": review.motion.frozenSpans,
+            ] as [String: Any]
             guard let receipt = Self.jsonString(metadata) else { throw ToolError("review_timeline: metadata encoding failed") }
             return ToolResult(content: review.images.map { .image(base64: $0.base64EncodedString(), mediaType: "image/jpeg") }
                               + [.text(receipt)], isError: false)

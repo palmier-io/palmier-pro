@@ -6,6 +6,53 @@ import Testing
 @Suite("Agent stream recovery")
 @MainActor
 struct AgentStreamRecoveryTests {
+    @Test func emptyCompletedResponseSurfacesFailure() async throws {
+        try await withRuntime { service, editor, _, undo in
+            let client = RecoveryClient([.init(events: [.messageStop(stopReason: .endTurn)])])
+            await start(service, client: client).value
+
+            #expect(service.streamError != nil)
+            #expect(!service.isStreaming)
+            #expect(service.messages.count == 1)
+            #expect(editor.timeline.tracks.flatMap(\.clips).isEmpty)
+            #expect(!undo.canUndo)
+        }
+    }
+
+    @Test func timeoutRetryRemainsVisibleWhileAwaitingTheNextResponse() async throws {
+        try await withRuntime { service, _, _, _ in
+            let recorder = RequestProgressRecorder()
+            let client = RecoveryClient([.init(failure: URLError(.timedOut)), .finished], onRequest: {
+                recorder.progress.append(service.requestProgress)
+            })
+            let run = start(service, client: client)
+            #expect(service.requestProgress != nil)
+            await run.value
+
+            try #require(recorder.progress.count == 2)
+            #expect(recorder.progress[0]?.phase == .waitingForResponse)
+            #expect(recorder.progress[0]?.retry == nil)
+            #expect(recorder.progress[1]?.phase == .waitingForResponse)
+            #expect(recorder.progress[1]?.retry == .timeout(attempt: 1, limit: 2))
+            #expect(service.requestProgress == nil)
+        }
+    }
+
+    @Test func repeatedOutputTruncationStopsWithAReason() async throws {
+        try await withRuntime { service, editor, _, undo in
+            let response = RecoveryClient.Response(events: [.textDelta("Partial"), .messageStop(stopReason: .maxTokens)])
+            let client = RecoveryClient(Array(repeating: response, count: 3))
+            await start(service, client: client).value
+
+            #expect(await client.requests.count == 3)
+            #expect(service.streamError != nil)
+            #expect(!service.isStreaming)
+            #expect(service.requestProgress == nil)
+            #expect(editor.timeline.tracks.flatMap(\.clips).isEmpty)
+            #expect(!undo.canUndo)
+        }
+    }
+
     @Test(arguments: TimeoutFailure.allCases)
     func timeoutRetriesTheSameInputWithANewResponse(_ failure: TimeoutFailure) async throws {
         try await withRuntime { service, _, _, _ in
@@ -130,6 +177,7 @@ struct AgentStreamRecoveryTests {
             }
             let selected = service.currentSessionId
             #expect(!service.isStreaming)
+            #expect(service.requestProgress == nil)
             #expect(await client.requests.count == 1)
             await client.cleanupRelease.open()
             await run.value
@@ -261,11 +309,14 @@ private actor RecoveryClient: AgentClient {
     let cleanupRelease = RecoveryGate()
     private let responses: [Response]
     private let heldCleanupIndex: Int?
+    private let onRequest: (@MainActor @Sendable () -> Void)?
     private(set) var requests: [Request] = []
 
-    init(_ responses: [Response], heldCleanupIndex: Int? = nil) {
+    init(_ responses: [Response], heldCleanupIndex: Int? = nil,
+         onRequest: (@MainActor @Sendable () -> Void)? = nil) {
         self.responses = responses
         self.heldCleanupIndex = heldCleanupIndex
+        self.onRequest = onRequest
     }
 
     nonisolated func stream(system: String, tools: [AgentToolSchema], messages: [AgentRequestMessage],
@@ -280,6 +331,7 @@ private actor RecoveryClient: AgentClient {
         try Task.checkCancellation()
         let index = requests.count
         requests.append(Request(messages: messages, context: context))
+        await onRequest?()
         guard responses.indices.contains(index) else { throw CocoaError(.coderReadCorrupt) }
         let response = responses[index]
         for event in response.events { continuation.yield(event) }
@@ -296,6 +348,10 @@ private actor RecoveryClient: AgentClient {
         if let failure = response.failure { throw failure }
         try Task.checkCancellation()
     }
+}
+
+@MainActor private final class RequestProgressRecorder {
+    var progress: [AgentRequestProgress?] = []
 }
 
 private actor RecoveryGate {

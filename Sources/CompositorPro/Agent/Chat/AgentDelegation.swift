@@ -298,7 +298,7 @@ actor AgentDelegation {
                         }
                         textBytes += count
                         text += delta
-                    case .thinkingDelta, .thinkingSignature, .redactedThinking,
+                    case .activity, .thinkingDelta, .thinkingSignature, .redactedThinking,
                          .reasoningSummaryDelta, .reasoningComplete:
                         break
                     }

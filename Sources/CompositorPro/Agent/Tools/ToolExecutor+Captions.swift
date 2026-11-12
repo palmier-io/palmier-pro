@@ -48,7 +48,10 @@ extension ToolExecutor {
         }
 
         let stylePatch = try parseTextStylePatch(args, path: "add_captions")
-        var style = presetStyle?.style ?? TextStyle.caption
+        // Without a named style or an explicit style patch, fall back to the curated default
+        // (subtitle) rather than the bare TextStyle.caption, so generated captions match the gallery.
+        let resolvedDefault = CaptionStyles.defaultStyle.resolved(canvasHeight: editor.timeline.height)
+        var style = presetStyle?.style ?? resolvedDefault.style
         if let stylePatch { Self.applyTextStylePatch(stylePatch, to: &style) }
 
         let platform = try deliveryPlatform(args.string("platform"), path: "add_captions.platform")
@@ -56,7 +59,7 @@ extension ToolExecutor {
         // A caller-supplied position is honoured, but never left underneath the platform's
         // own interface.
         let placement = platform.defaultCaptionPlacement().clamped(into: platform.coveredArea)
-        var center = presetStyle.map { CGPoint(x: CGFloat($0.center.x), y: CGFloat($0.center.y)) }
+        var center = (presetStyle ?? resolvedDefault).map { CGPoint(x: CGFloat($0.center.x), y: CGFloat($0.center.y)) }
             ?? CGPoint(x: CGFloat(placement.centerX), y: CGFloat(placement.centerY))
         if let x = transform?.x { center.x = CGFloat(x) }
         if let y = transform?.y { center.y = CGFloat(y) }
@@ -68,6 +71,8 @@ extension ToolExecutor {
         let animation: TextAnimation
         if let presetStyle {
             animation = presetStyle.animation
+        } else if stylePatch == nil {
+            animation = resolvedDefault.animation
         } else {
             animation = try parseTextAnimation(preset: args.string("animation"), highlightColor: args.string("highlightColor"), path: "add_captions") ?? TextAnimation()
         }

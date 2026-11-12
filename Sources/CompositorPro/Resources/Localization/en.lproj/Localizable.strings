@@ -261,6 +261,7 @@
 "Community Skills Unavailable" = "Community Skills Unavailable";
 "Compatibility: %@" = "Compatibility: %@";
 "Completed" = "Completed";
+"Completed %@" = "Completed %@";
 "Composed images" = "Composed images";
 "Compositor Pro couldn't load this clip's source file. It may be missing, on an ejected drive, or unreadable." = "Compositor Pro couldn't load this clip's source file. It may be missing, on an ejected drive, or unreadable.";
 "Compositor Pro couldn't load this source file. It may be missing, on an ejected drive, or unreadable." = "Compositor Pro couldn't load this source file. It may be missing, on an ejected drive, or unreadable.";
@@ -268,6 +269,7 @@
 "Compositor Project" = "Compositor Project";
 "Connect an agent" = "Connect an agent";
 "Connect an external agent to inspect and edit the open Compositor Pro project." = "Connect an external agent to inspect and edit the open Compositor Pro project.";
+"Connecting…" = "Connecting…";
 "Content" = "Content";
 "Content creator" = "Content creator";
 "Continue" = "Continue";
@@ -422,6 +424,7 @@
 "Edit… (Paid)" = "Edit… (Paid)";
 "Education and tutorials" = "Education and tutorials";
 "Effects" = "Effects";
+"Elapsed: %llds" = "Elapsed: %llds";
 "Email (optional)" = "Email (optional)";
 "Empty" = "Empty";
 "Enable: %@" = "Enable: %@";
@@ -437,6 +440,7 @@
 "Enter a model identifier." = "Enter a model identifier.";
 "Enter a valid http:// or https:// base URL." = "Enter a valid http:// or https:// base URL.";
 "Enter finite source times with the end after the start." = "Enter finite source times with the end after the start.";
+"Error: %@" = "Error: %@";
 "Estimated cost. Actual billing may differ slightly." = "Estimated cost. Actual billing may differ slightly.";
 "Estimated timing · silent preview" = "Estimated timing · silent preview";
 "Estimated: %lld frames" = "Estimated: %lld frames";
@@ -483,6 +487,7 @@
 "Find some stock footage of a lighthouse on a stormy coast." = "Find some stock footage of a lighthouse on a stormy coast.";
 "Find the pauses and dead air and close them, then set how tight you want the result. Runs on the audio, so it needs no transcript." = "Find the pauses and dead air and close them, then set how tight you want the result. Runs on the audio, so it needs no transcript.";
 "Find the shots of the sea at sunset and make me a mood board from them." = "Find the shots of the sea at sunset and make me a mood board from them.";
+"Finishing previous request…" = "Finishing previous request…";
 "First Frame" = "First Frame";
 "First-time sign-ups only" = "First-time sign-ups only";
 "First/Last" = "First/Last";
@@ -682,8 +687,10 @@
 "Loading catalog…" = "Loading catalog…";
 "Loading community skills" = "Loading community skills";
 "Loading community skills…" = "Loading community skills…";
+"Loading local agent skills." = "Loading local agent skills.";
 "Loading media metadata…" = "Loading media metadata…";
 "Loading models…" = "Loading models…";
+"Loading skills…" = "Loading skills…";
 "Loading source dimensions…" = "Loading source dimensions…";
 "Loading source frame rate…" = "Loading source frame rate…";
 "Loading video metadata…" = "Loading video metadata…";
@@ -751,6 +758,7 @@
 "Mode" = "Mode";
 "Model" = "Model";
 "Model no longer available" = "Model no longer available";
+"Model unavailable" = "Model unavailable";
 "Models" = "Models";
 "Modified" = "Modified";
 "Moments" = "Moments";
@@ -812,13 +820,16 @@
 "No media yet" = "No media yet";
 "No models match \"%@\"." = "No models match \"%@\".";
 "No music models available." = "No music models available.";
+"No new response content for %llds. Waiting for %@." = "No new response content for %llds. Waiting for %@.";
 "No person's face is revealed." = "No person's face is revealed.";
 "No projects found" = "No projects found";
 "No prompt needed" = "No prompt needed";
+"No response received from %@ yet. You can stop this request." = "No response received from %@ yet. You can stop this request.";
 "No speech detected." = "No speech detected.";
 "No track" = "No track";
 "No unresolved suspected duplicate remains." = "No unresolved suspected duplicate remains.";
 "No usable local speech engine and voice were found. Install a voice before generating speech." = "No usable local speech engine and voice were found. Install a voice before generating speech.";
+"No user message" = "No user message";
 "No video" = "No video";
 "No video clips" = "No video clips";
 "Noise Reduction" = "Noise Reduction";
@@ -894,6 +905,9 @@
 "Prepare Narration" = "Prepare Narration";
 "Prepare Storyboard" = "Prepare Storyboard";
 "Preparing" = "Preparing";
+"Preparing %@…" = "Preparing %@…";
+"Preparing conversation and media context." = "Preparing conversation and media context.";
+"Preparing request…" = "Preparing request…";
 "Preparing…" = "Preparing…";
 "Presence" = "Presence";
 "Press M in the timeline to add a marker." = "Press M in the timeline to add a marker.";
@@ -937,6 +951,7 @@
 "Re-render the same motion at full quality in 1080p" = "Re-render the same motion at full quality in 1080p";
 "Reasoning" = "Reasoning";
 "Reasoning effort" = "Reasoning effort";
+"Reasoning…" = "Reasoning…";
 "Record Inspection" = "Record Inspection";
 "Record Production Review" = "Record Production Review";
 "Record Visual Inspection" = "Record Visual Inspection";
@@ -1022,6 +1037,7 @@
 "Rotation" = "Rotation";
 "Roundness" = "Roundness";
 "Run this command once in Terminal." = "Run this command once in Terminal.";
+"Running %@…" = "Running %@…";
 "Running on" = "Running on";
 "Safe Zones" = "Safe Zones";
 "Sample Key Color" = "Sample Key Color";
@@ -1218,13 +1234,19 @@
 "Thanks for the feedback." = "Thanks for the feedback.";
 "The agent" = "The agent";
 "The clip you're adding has different settings than the current project." = "The clip you're adding has different settings than the current project.";
+"The conversation exceeded the model’s limit. Reducing context and retrying…" = "The conversation exceeded the model’s limit. Reducing context and retrying…";
 "The denoising model is prepared on demand and may require a download. Model readiness is checked during execution." = "The denoising model is prepared on demand and may require a download. Model readiness is checked during execution.";
 "The export" = "The export";
 "The hosted service is not configured." = "The hosted service is not configured.";
 "The marker comment changed while you were editing. Review it and try again." = "The marker comment changed while you were editing. Review it and try again.";
 "The model catalog is not ready. Wait for it to load before generating." = "The model catalog is not ready. Wait for it to load before generating.";
 "The project will be moved to the Trash." = "The project will be moved to the Trash.";
+"The provider is preparing tool arguments." = "The provider is preparing tool arguments.";
+"The provider is reasoning." = "The provider is reasoning.";
+"The provider reported reasoning. Waiting for its next update." = "The provider reported reasoning. Waiting for its next update.";
+"The provider timed out. Retrying %lld of %lld…" = "The provider timed out. Retrying %lld of %lld…";
 "The remote provider reported a temporary failure. Try again in a moment." = "The remote provider reported a temporary failure. Try again in a moment.";
+"The response reached the output limit. Requesting the rest…" = "The response reached the output limit. Requesting the rest…";
 "The selected chat model is configured without image input." = "The selected chat model is configured without image input.";
 "The selected model refused this request. Revise the prompt and try again." = "The selected model refused this request. Revise the prompt and try again.";
 "The selected projects will be moved to the Trash." = "The selected projects will be moved to the Trash.";
@@ -1235,13 +1257,14 @@
 "The visual search model is downloading or preparing. Results are not complete yet." = "The visual search model is downloading or preparing. Results are not complete yet.";
 "The visual search model must be downloaded before results are complete." = "The visual search model must be downloaded before results are complete.";
 "Theme" = "Theme";
+"Thinking…" = "Thinking…";
 "This is where all your footage and assets live." = "This is where all your footage and assets live.";
 "This is your preview panel to play a selected media or the whole timeline." = "This is your preview panel to play a selected media or the whole timeline.";
 "This model cannot cap the output at 60 FPS." = "This model cannot cap the output at 60 FPS.";
 "This model needs a hosted account, which this build does not use. Add your own API key in Settings, or pick a custom endpoint." = "This model needs a hosted account, which this build does not use. Add your own API key in Settings, or pick a custom endpoint.";
 "This permanently removes %@." = "This permanently removes %@.";
 "This source can’t replace the clip." = "This source can’t replace the clip.";
-"Thinking…" = "Thinking…";
+"This tool is still running. You can stop this request." = "This tool is still running. You can stop this request.";
 "Thought" = "Thought";
 "Three-Stack" = "Three-Stack";
 "Three-Up" = "Three-Up";
@@ -1352,6 +1375,9 @@
 "Voice denoising requires a build with BundledSpeech enabled." = "Voice denoising requires a build with BundledSpeech enabled.";
 "Voice denoising requires the bundled MLX runtime. Open the packaged app to use it." = "Voice denoising requires the bundled MLX runtime. Open the packaged app to use it.";
 "Volume" = "Volume";
+"Waiting for %@." = "Waiting for %@.";
+"Waiting for response…" = "Waiting for response…";
+"Waiting for the previous request to finish stopping." = "Waiting for the previous request to finish stopping.";
 "Warm this up and lift the shadows." = "Warm this up and lift the shadows.";
 "Warmth" = "Warmth";
 "Watch the tutorial or start creating." = "Watch the tutorial or start creating.";
@@ -1389,6 +1415,7 @@
 "Your audio clip is ready." = "Your audio clip is ready.";
 "Your image is ready." = "Your image is ready.";
 "Your inspector for the selected clip — transform, adjust, audio, and more." = "Your inspector for the selected clip — transform, adjust, audio, and more.";
+"Your projects will be saved before the app closes." = "Your projects will be saved before the app closes.";
 "Your subtitle file is ready." = "Your subtitle file is ready.";
 "Your text clip is ready." = "Your text clip is ready.";
 "Your timeline: the top half is video, the bottom half is audio. Click a clip to inspect it — we've selected one for you." = "Your timeline: the top half is video, the bottom half is audio. Click a clip to inspect it — we've selected one for you.";
@@ -1415,4 +1442,3 @@
 "using OpenAI API key" = "using OpenAI API key";
 "using your custom endpoint" = "using your custom endpoint";
 "you@example.com — so we can reply" = "you@example.com — so we can reply";
-"Your projects will be saved before the app closes." = "Your projects will be saved before the app closes.";

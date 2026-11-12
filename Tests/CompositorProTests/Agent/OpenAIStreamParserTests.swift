@@ -7,6 +7,17 @@ import Testing
 /// has nothing to do with how a model is configured.
 @Suite("OpenAI-compatible stream parser")
 struct OpenAIStreamParserTests {
+    @Test func responsesParserSurfacesReasoningAndToolPreparationBeforeContent() throws {
+        var parser = OpenAIStreamParser()
+        #expect(try parser.consume(event: ["type": "response.output_item.added", "item": ["type": "reasoning"]]) ==
+                [.activity(.reasoning)])
+        #expect(try parser.consume(event: ["type": "response.output_item.added", "item": ["type": "function_call", "name": "get_timeline"]]) ==
+                [.activity(.preparingTool("get_timeline"))])
+        #expect(try parser.consume(event: ["type": "response.output_item.done", "item": [
+            "type": "function_call", "call_id": "call_1", "name": "get_timeline", "arguments": "{}",
+        ]]) == [.toolUseComplete(id: "call_1", name: "get_timeline", inputJSON: "{}")])
+    }
+
     /// Regression: only `reasoning_content` was read, so an OpenRouter reasoning model produced
     /// no visible output at all and the panel showed activity dots for the whole think.
     @Test func parserSurfacesReasoningUnderEveryGatewaySpelling() throws {

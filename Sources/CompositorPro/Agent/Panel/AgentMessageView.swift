@@ -24,9 +24,10 @@ struct AgentMessageView: View {
             HStack {
                 Spacer(minLength: 0)
                 Text(verbatim: texts.joined(separator: "\n"))
-                    .font(.system(size: AppTheme.FontSize.xs))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .foregroundStyle(AppTheme.Text.mutedColor)
                     .multilineTextAlignment(.center)
+                    .padding(.vertical, 4)
                 Spacer(minLength: 0)
             }
         }
@@ -45,20 +46,34 @@ struct AgentMessageView: View {
             return nil
         }
         if !texts.isEmpty {
-            HStack {
-                Spacer(minLength: 48)
-                Text(verbatim: texts.joined(separator: "\n"))
-                    .font(.body)
-                    .foregroundStyle(AppTheme.Text.primaryColor)
-                    .lineSpacing(3)
-                    .padding(.horizontal, AppTheme.Spacing.lg)
-                    .padding(.vertical, AppTheme.Spacing.smMd)
-                    .background(
-                        RoundedRectangle(cornerRadius: AppTheme.Radius.lg, style: .continuous)
-                            .fill(AppTheme.Interaction.fill(AppTheme.Opacity.faint))
+            HStack(alignment: .top, spacing: 12) {
+                // User avatar indicator
+                Circle()
+                    .fill(AppTheme.Accent.primary.opacity(0.15))
+                    .frame(width: 28, height: 28)
+                    .overlay(
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(AppTheme.Accent.primary)
                     )
-                    .textSelection(.enabled)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(verbatim: texts.joined(separator: "\n"))
+                        .font(.system(size: 13, weight: .regular, design: .default))
+                        .foregroundStyle(AppTheme.Text.primaryColor)
+                        .lineSpacing(2)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(AppTheme.Interaction.fill(AppTheme.Opacity.faint))
+            )
         }
         // Tool-result user messages render merged into the preceding assistant row.
     }
@@ -83,21 +98,25 @@ struct AgentMessageView: View {
 
     @ViewBuilder
     private var assistantBody: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+        VStack(alignment: .leading, spacing: 10) {
             ForEach(renderedBlocks, id: \.key) { entry in
                 let block = entry.block
                 switch block {
                 case .thinking(let text, let signature):
-                    ReasoningStepRow(text: text, isComplete: !signature.isEmpty)
-                case .redactedThinking:
-                    EmptyView()
+                    ReasoningBlock(text: text, isComplete: !signature.isEmpty)
+                case .redactedThinking(let data):
+                    RedactedReasoningBlock(data: data)
                 case .openAIReasoning(let summary, _, _, _, let isComplete):
-                    ReasoningStepRow(text: summary, isComplete: isComplete)
+                    ReasoningBlock(text: summary, isComplete: isComplete)
                 case .text(let text):
-                    MarkdownText(text: text)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    AssistantTextBlock(text: text)
                 case .toolUse(let id, let name, let inputJSON):
-                    ToolRunRow(name: name, inputJSON: inputJSON, result: toolResults[id])
+                    ToolCallRow(
+                        id: id,
+                        name: name,
+                        inputJSON: inputJSON,
+                        result: toolResults[id]
+                    )
                 case .toolResult:
                     EmptyView()
                 }
@@ -105,47 +124,150 @@ struct AgentMessageView: View {
             if !copyableText.isEmpty {
                 CopyMessageButton(text: copyableText)
                     .opacity(isHovering ? 1 : 0)
+                    .padding(.top, 4)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
-        .animation(.easeOut(duration: AppTheme.Anim.hover), value: isHovering)
+        .animation(.easeOut(duration: 0.15), value: isHovering)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 }
 
-private struct CopyMessageButton: View {
+private struct AssistantTextBlock: View {
     let text: String
-    @State private var copied = false
 
     var body: some View {
-        Button {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(text, forType: .string)
-            copied = true
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(1.5))
-                copied = false
-            }
-        } label: {
-            HStack(spacing: AppTheme.Spacing.xs) {
-                Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                Text(copied ? L10n.string("Copied") : L10n.string("Copy"))
-            }
-            .font(.system(size: AppTheme.FontSize.xs))
-            .foregroundStyle(AppTheme.Text.tertiaryColor)
-        }
-        .buttonStyle(.plain)
-        .help(L10n.string("Copy message"))
+        MarkdownText(text: text)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .textSelection(.enabled)
     }
 }
 
-struct ToolRunResult {
-    let content: [ToolResult.Block]
-    let isError: Bool
+private struct ReasoningBlock: View {
+    let text: String
+    let isComplete: Bool
+    @State private var expanded = false
+
+    private var firstLine: String {
+        for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { return trimmed }
+        }
+        return ""
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(.easeOut(duration: 0.15)) { expanded.toggle() }
+            } label: {
+                HStack(spacing: 8) {
+                    if isComplete {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    } else {
+                        ThinkingDots()
+                    }
+                    Text(firstLine.isEmpty ? (isComplete ? L10n.string("Thought") : L10n.string("Thinking…")) : firstLine)
+                        .font(.system(size: 12, weight: .regular, design: .monospaced))
+                        .foregroundStyle(isComplete ? AppTheme.Text.tertiaryColor : AppTheme.Text.secondaryColor)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
+                        .foregroundStyle(AppTheme.Text.mutedColor)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if expanded {
+                ScrollView {
+                    Text(verbatim: text)
+                        .font(.system(size: 11, weight: .regular, design: .monospaced))
+                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                        .padding(12)
+                }
+                .frame(maxHeight: 300)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(AppTheme.Background.raisedColor)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(AppTheme.Border.subtleColor, lineWidth: 0.5)
+                        )
+                )
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .animation(.easeOut(duration: 0.15), value: isComplete)
+    }
 }
 
-private struct ToolRunRow: View {
+private struct RedactedReasoningBlock: View {
+    let data: String
+    @State private var expanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(.easeOut(duration: 0.15)) { expanded.toggle() }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "lock.circle.fill")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    Text(L10n.string("Reasoning (redacted)"))
+                        .font(.system(size: 12, weight: .regular, design: .monospaced))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
+                        .foregroundStyle(AppTheme.Text.mutedColor)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if expanded {
+                ScrollView {
+                    Text(verbatim: data)
+                        .font(.system(size: 11, weight: .regular, design: .monospaced))
+                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                        .padding(12)
+                }
+                .frame(maxHeight: 300)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(AppTheme.Background.raisedColor)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(AppTheme.Border.subtleColor, lineWidth: 0.5)
+                        )
+                )
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+}
+
+private struct ToolCallRow: View {
+    let id: String
     let name: String
     let inputJSON: String
     let result: ToolRunResult?
@@ -158,49 +280,55 @@ private struct ToolRunRow: View {
     }
     private var statusTint: Color {
         guard let result else { return AppTheme.Text.mutedColor }
-        return result.isError ? .red.opacity(AppTheme.Opacity.prominent) : AppTheme.Text.tertiaryColor
+        return result.isError ? .red.opacity(0.8) : AppTheme.Text.tertiaryColor
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+        VStack(alignment: .leading, spacing: 0) {
             Button {
-                withAnimation(.easeOut(duration: AppTheme.Anim.hover)) { expanded.toggle() }
+                withAnimation(.easeOut(duration: 0.15)) { expanded.toggle() }
             } label: {
-                HStack(spacing: AppTheme.Spacing.sm) {
+                HStack(spacing: 10) {
                     if isRunning {
                         ProgressView()
-                            .controlSize(.mini)
-                            .frame(width: AppTheme.Spacing.md, height: AppTheme.Spacing.md)
+                            .controlSize(.small)
+                            .frame(width: 16, height: 16)
                     } else {
                         Image(systemName: statusIcon)
-                            .font(.system(size: AppTheme.FontSize.xs))
+                            .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(statusTint)
                     }
                     Text(name)
-                        .font(.system(size: AppTheme.FontSize.sm, weight: .medium, design: .monospaced))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
-                        .opacity(isRunning ? 0.7 : 1.0)
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundStyle(isRunning ? AppTheme.Text.tertiaryColor.opacity(0.7) : AppTheme.Text.secondaryColor)
+                    Spacer(minLength: 0)
                     Image(systemName: "chevron.right")
-                        .font(.system(size: AppTheme.FontSize.micro, weight: .semibold))
+                        .font(.system(size: 10, weight: .semibold))
                         .rotationEffect(.degrees(expanded ? 90 : 0))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        .foregroundStyle(AppTheme.Text.mutedColor)
                 }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
             if expanded {
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+                VStack(alignment: .leading, spacing: 10) {
                     argsSection
                     if let result { resultSection(result) }
                 }
-                .font(.system(size: AppTheme.FontSize.xs, design: .monospaced))
+                .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(AppTheme.Spacing.md)
+                .padding(12)
                 .background(
-                    RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
-                        .fill(AppTheme.Interaction.fill(AppTheme.Opacity.subtle))
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(AppTheme.Background.raisedColor)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(AppTheme.Border.subtleColor, lineWidth: 0.5)
+                        )
                 )
                 .textSelection(.enabled)
                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -210,8 +338,10 @@ private struct ToolRunRow: View {
 
     @ViewBuilder
     private var argsSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            Text(L10n.string("args")).font(.system(size: AppTheme.FontSize.xxs)).foregroundStyle(AppTheme.Text.mutedColor)
+        VStack(alignment: .leading, spacing: 6) {
+            Text("args")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(AppTheme.Text.mutedColor)
             Text(prettyPrinted(inputJSON))
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -219,20 +349,21 @@ private struct ToolRunRow: View {
 
     @ViewBuilder
     private func resultSection(_ r: ToolRunResult) -> some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            HStack(spacing: AppTheme.Spacing.xs) {
-                Text(r.isError ? L10n.string("error") : L10n.string("result"))
-                    .font(.system(size: AppTheme.FontSize.xxs))
-                    .foregroundStyle(r.isError ? .red.opacity(AppTheme.Opacity.prominent) : AppTheme.Text.mutedColor)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(r.isError ? "error" : "result")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(r.isError ? .red.opacity(0.8) : AppTheme.Text.mutedColor)
                 if r.isError {
                     CopyButton(value: errorText(from: r))
-                        .font(.system(size: AppTheme.FontSize.xxs))
+                        .font(.system(size: 10))
                 }
             }
             ForEach(Array(r.content.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .text(let s):
-                    Text(s).frame(maxWidth: .infinity, alignment: .leading)
+                    Text(s)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 case .image(let base64, _):
                     ToolResultImageView(base64: base64)
                 }
@@ -247,7 +378,6 @@ private struct ToolRunRow: View {
         }.joined(separator: "\n")
     }
 
-    // Local copy button since MCPInstructionsPane.CopyButton is private
     private struct CopyButton: View {
         private static let feedbackDuration: Duration = .seconds(1.4)
         let value: String
@@ -256,9 +386,9 @@ private struct ToolRunRow: View {
         var body: some View {
             Button(action: copy) {
                 Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
+                    .font(.system(size: 12, weight: .regular))
                     .foregroundStyle(copied ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
-                    .frame(width: AppTheme.IconSize.lg, height: AppTheme.IconSize.lg)
+                    .frame(width: 24, height: 24)
                     .hoverHighlight()
             }
             .buttonStyle(.plain)
@@ -281,7 +411,7 @@ private struct ToolRunRow: View {
         guard let data = json.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data),
               let pretty = try? JSONSerialization.data(
-                  withJSONObject: roundJSONFloatingPointNumbers(obj, toPlaces: 3),
+                  withJSONObject: roundJSONForPrettyPrint(obj, toPlaces: 3),
                   options: [.prettyPrinted]
               ),
               let s = String(data: pretty, encoding: .utf8),
@@ -302,11 +432,13 @@ private struct ToolResultImageView: View {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxHeight: AppTheme.ComponentSize.toolImagePreviewMaxHeight)
+                    .frame(maxHeight: 200)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             } else {
-                Text(L10n.string("(image payload)")).foregroundStyle(AppTheme.Text.mutedColor)
+                Text(L10n.string("(image payload)"))
+                    .foregroundStyle(AppTheme.Text.mutedColor)
+                    .font(.system(size: 11, design: .monospaced))
             }
         }
         .task(id: base64) {
@@ -315,4 +447,66 @@ private struct ToolResultImageView: View {
             if let data { image = NSImage(data: data) }
         }
     }
+}
+
+private func roundJSONForPrettyPrint(_ value: Any, toPlaces places: Int) -> Any {
+    let multiplier = pow(10.0, Double(places))
+    if let dict = value as? [String: Any] {
+        var result: [String: Any] = [:]
+        for (key, val) in dict {
+            result[key] = roundJSONForPrettyPrint(val, toPlaces: places)
+        }
+        return result
+    } else if let array = value as? [Any] {
+        return array.map { roundJSONForPrettyPrint($0, toPlaces: places) }
+    } else if let num = value as? Double {
+        return (num * multiplier).rounded() / multiplier
+    } else if let num = value as? NSNumber, num.doubleValue != 0 || num.isEqual(to: 0) {
+        let doubleValue = num.doubleValue
+        if floor(doubleValue) == doubleValue {
+            return num
+        }
+        return (doubleValue * multiplier).rounded() / multiplier
+    }
+    return value
+}
+
+private struct CopyMessageButton: View {
+    let text: String
+    @State private var copied = false
+
+    var body: some View {
+        HStack {
+            Spacer(minLength: 0)
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+                copied = true
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(1.5))
+                    copied = false
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                    Text(copied ? L10n.string("Copied") : L10n.string("Copy"))
+                }
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(AppTheme.Interaction.fill(AppTheme.Opacity.subtle))
+                )
+            }
+            .buttonStyle(.plain)
+            .help(L10n.string("Copy message"))
+        }
+    }
+}
+
+struct ToolRunResult {
+    let content: [ToolResult.Block]
+    let isError: Bool
 }

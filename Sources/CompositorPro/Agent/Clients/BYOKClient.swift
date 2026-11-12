@@ -60,6 +60,7 @@ struct BYOKClient: AgentClient {
         let bytes = try await AgentHTTP.bytes(for: request) { status, body in
             AgentClientTransportError.httpError(provider: provider, status: status, body: body)
         }
+        continuation.yield(.activity(.connected))
         try await provider.parseSSE(bytes: bytes, continuation: continuation)
     }
 

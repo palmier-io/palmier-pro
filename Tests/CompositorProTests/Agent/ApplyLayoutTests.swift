@@ -485,4 +485,24 @@ struct ApplyLayoutTests {
             #expect(r.isError, "expected error for: \(label)")
         }
     }
+
+    @Test func batchRelayoutResolvesClipIndexOnce() async throws {
+        let count = 512
+        let clips = (0..<(count - 1)).map { Fixtures.clip(id: "clip-\($0)", mediaRef: "left", start: $0 * 30, duration: 30) }
+        let carrier = Fixtures.clip(id: "right", mediaRef: "right", start: 0, duration: (count - 1) * 30)
+        var timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: clips), Fixtures.videoTrack(clips: [carrier])])
+        timeline.width = 1920
+        timeline.height = 1080
+        timeline.settingsConfigured = true
+        let h = ToolHarness(timeline: timeline)
+        videoAsset(h, id: "left")
+        videoAsset(h, id: "right")
+        let r = await h.runRaw("apply_layout", args: [
+            "layout": "side_by_side",
+            "slots": [["slot": "left", "clipIds": Array(clips.prefix(128).map(\.id))], ["slot": "right", "clipIds": ["right"]]],
+        ])
+        #expect(r.isError == false, "\(ToolHarness.textOf(r))")
+        #expect(h.editor.timeline.tracks[0].clips[127].transform.centerX == 0.25)
+        #expect(h.editor.clipLocationIndexRebuildCount == 1)
+    }
 }

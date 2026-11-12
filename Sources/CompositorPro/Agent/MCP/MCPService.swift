@@ -67,9 +67,9 @@ final class MCPService {
         ToolExecutor(projectProvider: projectProvider)
     }
 
-    func stop() {
+    func stop() async {
         if let server = httpServer {
-            Task { await server.stop() }
+            await server.stop()
         }
         httpServer = nil
         isRunning = false

@@ -180,7 +180,7 @@ struct CustomAgentModelTests {
     /// carries no delta. It must not re-terminate the turn or drop the pending calls.
     @Test func parserHandlesUsageOnlyTrailingChunkWithRepeatedFinishReason() throws {
         var parser = OpenAIChatCompletionsStreamParser()
-        #expect(try parser.consume(line: #"data: {"id":"g1","choices":[{"index":0,"delta":{"content":null,"role":"assistant","tool_calls":[{"index":0,"id":"698ce22d","type":"function","function":{"name":"get_timeline","arguments":""}}]},"finish_reason":null}]}"#) == [])
+        #expect(try parser.consume(line: #"data: {"id":"g1","choices":[{"index":0,"delta":{"content":null,"role":"assistant","tool_calls":[{"index":0,"id":"698ce22d","type":"function","function":{"name":"get_timeline","arguments":""}}]},"finish_reason":null}]}"#) == [.activity(.preparingTool("get_timeline"))])
         #expect(try parser.consume(line: #"data: {"id":"g1","choices":[{"index":0,"delta":{"content":null,"tool_calls":[{"index":0,"function":{"arguments":"{}"}}]},"finish_reason":null}]}"#) == [])
         // Provider sometimes sends finish_reason twice: once with the delta, once with usage.
         #expect(try parser.consume(line: #"data: {"id":"g1","choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls"}]}"#)
@@ -197,7 +197,7 @@ struct CustomAgentModelTests {
             == [.textDelta("Hi")])
         #expect(try parser.consume(line: #"data: {"choices":[{"delta":{"reasoning_content":"think"}}]}"#)
             == [.reasoningSummaryDelta("think")])
-        #expect(try parser.consume(line: #"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"inspect_timeline","arguments":"{\"a\":"}}]}}]}"#) == [])
+        #expect(try parser.consume(line: #"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"inspect_timeline","arguments":"{\"a\":"}}]}}]}"#) == [.activity(.preparingTool("inspect_timeline"))])
         #expect(try parser.consume(line: #"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"1}"}}]},"finish_reason":"tool_calls"}]}"#)
             == [.toolUseComplete(id: "call_1", name: "inspect_timeline", inputJSON: "{\"a\":1}"),
                 .messageStop(stopReason: .toolUse)])

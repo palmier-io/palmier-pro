@@ -42,6 +42,9 @@ enum AnthropicSSE {
                        let id = block["id"] as? String,
                        let name = block["name"] as? String {
                         pendingTools[index] = (id, name, "")
+                        continuation.yield(.activity(.preparingTool(name)))
+                    } else if blockType == "thinking" {
+                        continuation.yield(.activity(.reasoning))
                     } else if blockType == "redacted_thinking",
                               let data = block["data"] as? String {
                         continuation.yield(.redactedThinking(data))

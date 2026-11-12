@@ -5,6 +5,20 @@ import Testing
 @Suite("Agent stream presentation")
 @MainActor
 struct AgentStreamPresentationTests {
+    @Test func providerReasoningIsVisibleBeforeAnyTextArrives() async throws {
+        let buffer = AgentStreamPresentationBuffer(model: .terra)
+        _ = await buffer.snapshots()
+        await buffer.receive(.activity(.reasoning))
+        let reasoning = await buffer.snapshot
+        #expect(reasoning.activity == .reasoning)
+        #expect(reasoning.blocks.isEmpty)
+        #expect(reasoning.receivedAt != nil)
+        await buffer.receive(.textDelta("Answer"))
+        let final = await buffer.complete()
+        #expect(final.activity == .generating)
+        #expect(text(in: final.blocks) == "Answer")
+    }
+
     @Test func burstPreservesEveryTextDelta() async throws {
         let chunks = Array(repeating: AgentStreamEvent.textDelta("x"), count: 1_951)
         let final = try await presentAgentStream(stream(chunks), model: .sonnet5) { _ in }
