@@ -48,8 +48,20 @@ extension EditorViewModel {
         }
         let refs = try await PlanAssembly.requiredMediaRefs(plan: plan, timelines: timelines)
         try validatePlanAssemblySnapshot(plan: plan, revision: revision)
+        // When assembling a subset of shots (incremental production), only source the media
+        // those shots reference so pending footage elsewhere doesn't block this assembly.
+        let subsetRefs: Set<String>?
+        if let shotIds = request.shotIds, !shotIds.isEmpty {
+            var refsForShots = Set(plan.shots.filter { shotIds.contains($0.id) }.compactMap(\.mediaRef))
+            if let narration = plan.narration { refsForShots.insert(narration.mediaRef) }
+            for cue in plan.soundCues ?? [] { if let ref = cue.mediaRef { refsForShots.insert(ref) } }
+            subsetRefs = refsForShots
+        } else {
+            subsetRefs = nil
+        }
         var sources: [String: PlanAssembly.Source] = [:]
         for ref in refs {
+            if let subsetRefs, !subsetRefs.contains(ref) { continue }
             guard let asset = mediaAssetsById[ref] else { continue }
             sources[ref] = planAssemblySource(asset)
         }

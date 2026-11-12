@@ -142,12 +142,21 @@ final class ProductionCoordinator {
         let key = "assemble:" + (try ProductionRevision.assemblyInputs(plan))
         if let step = editor.editPlan(id: planId)?.productionRun?.step(for: .assemble),
            step.state == .completed, step.key == key {
-            return true
+            // A completed assembly still resumes when newly-ready media arrives:
+            // assemble any shots whose footage just became available.
+            let pending = Self.pendingMedia(editor: editor, plan: plan)
+            if pending.isEmpty { return true }
         }
         let pending = Self.pendingMedia(editor: editor, plan: plan)
+        let readyShotIds = plan.shots.compactMap { shot -> String? in
+            guard let ref = shot.mediaRef,
+                  let asset = editor.mediaAssetsById[ref],
+                  asset.generationStatus == .none else { return nil }
+            return shot.id
+        }
+        // Media that is actively being imported/generated: wait for its terminal result
+        // instead of assembling incomplete bytes.
         if !pending.isEmpty {
-            // Footage is still arriving. The run waits for the media event
-            // instead of failing, so one request can carry the film to delivery.
             let reason = "Waiting for media: \(pending.joined(separator: ", "))."
             try updateRun(planId: planId) { run in
                 run.phase = .blocked
@@ -156,13 +165,26 @@ final class ProductionCoordinator {
             }
             return false
         }
+        // No ready shots and nothing arriving: let preparation report the missing/unknown
+        // media as a validation blocker rather than a generic wait.
+        if readyShotIds.isEmpty {
+            try updateRun(planId: planId) { run in
+                run.phase = .assembling
+                run.blockedReason = nil
+            }
+        }
         try updateRun(planId: planId) { run in
             run.phase = .assembling
             run.blockedReason = nil
         }
+        // Assemble only the shots whose media is ready, so each video/image lands on
+        // the timeline as soon as it is retrieved instead of waiting for every item.
         let prepared: EditorViewModel.PreparedPlanAssembly
         do {
-            prepared = try await editor.preparePlanAssembly(planId: planId)
+            prepared = try await editor.preparePlanAssembly(
+                planId: planId,
+                request: .init(shotIds: readyShotIds)
+            )
         } catch let error as EditPlanValidationError {
             let reason = error.errorDescription ?? "The plan cannot be assembled."
             try updateRun(planId: planId) { run in
@@ -173,8 +195,6 @@ final class ProductionCoordinator {
             return false
         }
         guard prepared.preparation.blockers.isEmpty else {
-            // The plan cannot be assembled yet. The blockers become the run's
-            // findings, so the user sees what to fix instead of a failure.
             let reason = prepared.preparation.blockers.joined(separator: " ")
             let findings = prepared.preparation.blockers.map {
                 ProductionRun.Finding(severity: .error, kind: "assemblyBlocked", message: $0,
@@ -190,11 +210,20 @@ final class ProductionCoordinator {
         }
         let receipt = try await editor.commitPlanAssembly(prepared)
         let digest = receipt.resolved.state.revision
+        let stillPending = Self.pendingMedia(editor: editor, plan: plan)
         try updateRun(planId: planId) { run in
-            run.record(.init(kind: .assemble, state: .completed, key: key, outputDigest: digest,
-                             completedAt: Date()))
+            run.record(.init(kind: .assemble, state: stillPending.isEmpty ? .completed : .pending, key: key,
+                             outputDigest: digest,
+                             completedAt: stillPending.isEmpty ? Date() : nil))
+            if stillPending.isEmpty {
+                run.phase = .assembling
+                run.blockedReason = nil
+            } else {
+                run.phase = .blocked
+                run.blockedReason = "Waiting for media: \(stillPending.joined(separator: ", "))."
+            }
         }
-        return true
+        return stillPending.isEmpty
     }
 
     /// Sources the plan needs that are still being prepared.

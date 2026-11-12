@@ -166,9 +166,6 @@ enum PlanAssembly {
             guard !ids.isEmpty, Set(ids).count == ids.count, Set(ids).isSubset(of: Set(plan.shots.map(\.id))) else {
                 throw EditPlanValidationError.invalidReference("shotIds must name a nonempty, unique subset of this plan's shots.")
             }
-            guard plan.assembly != nil else {
-                throw EditPlanValidationError.invalidReference("Assemble the complete plan before revising a subset of shots.")
-            }
         }
         var blockers = input.approvalBlockers
             + plan.unresolvedClaimIDs.map { "Claim '\($0)' is unresolved; review its evidence before assembly." }
@@ -182,8 +179,12 @@ enum PlanAssembly {
             if let link = section.narrationLink, plan.narrationTiming != nil { _ = try plan.resolvedNarrationRange(link) }
         }
         let children = Dictionary(input.timelines.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        // Incremental production assembles one shot at a time as its media becomes ready:
+        // only validate the shots in this assembly subset.
+        let shotSubset = input.request.shotIds.map { Set($0) }
         for shot in plan.shots {
             try Task.checkCancellation()
+            if let shotSubset, !shotSubset.contains(shot.id) { continue }
             if let id = shot.trackId, !input.timeline.tracks.contains(where: { $0.id == id }) {
                 blockers.append("Shot '\(shot.id)' names unknown trackId '\(id)'.")
             }

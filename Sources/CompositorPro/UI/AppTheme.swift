@@ -469,11 +469,11 @@ enum AppTheme {
     }
 
     enum Storyboard {
-        static let width: CGFloat = 900
-        static let height: CGFloat = 680
-        static let sidebarWidth: CGFloat = 220
-        static let previewHeight: CGFloat = 200
-        static let evidenceHeight: CGFloat = 80
+        static let width: CGFloat = 980
+        static let height: CGFloat = 720
+        static let sidebarWidth: CGFloat = 260
+        static let previewHeight: CGFloat = 220
+        static let evidenceHeight: CGFloat = 88
     }
 
     enum EditorPanel {
