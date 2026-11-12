@@ -73,7 +73,7 @@ Final integrated frozen source passed:
 - `swift test`: 2,353 tests in 347 suites.
 - `swift test --sanitize thread --filter 'StockMedia|StockProviderPagination|VisualSourceAliases|ShotCandidate|VisualUniqueness|AgentActivityHighlight|UndoTool|StoryboardMCP'`: 145 tests in 13 suites, no reported races.
 
-This snapshot contains the committed save/preview/delegation foundations and deterministic activity-expiry slice, but excludes unrelated finishing, credential, package-lifecycle, and subsequent narration work. Earlier full-suite routing/activity failures remain recorded in `todo.md`; a passing run does not prove unrelated routing tests can never recur.
+This snapshot contains the committed save/preview/delegation foundations and deterministic activity-expiry slice, but excludes unrelated finishing, credential, package-lifecycle, and subsequent narration work. Earlier full-suite routing/activity failures remain recorded in `done.md` (formerly `todo.md`); a passing run does not prove unrelated routing tests can never recur.
 
 Actual in-memory MCP transport exercises normal tool discovery and dispatch, invalid explicit inputs, manifest bridges, bounded remote pagination, continuation receipts, repeated requests, and independent plan/inventory/timeline readback plus empty undo. Deterministic provider gates prove client cancellation reaches the provider and stale project, plan, identity, URL, or executor-binding completion is rejected. Rebinding uses `bindProject(second)` during retrieval, not `manage_project open/create`. A 257-stock-alias MCP regression fails when the original internal 256-ID cap is restored and passes with complete derived exclusions. No live provider/account or native UI checks were performed.
 

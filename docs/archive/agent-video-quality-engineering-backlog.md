@@ -1,5 +1,8 @@
 # Agent video quality: engineering issues and implementation backlog
 
+> [!NOTE]
+> All P0, P1, and P2 engineering capabilities defined in this backlog have been implemented and verified. For the canonical task status, verification records, and manual acceptance gates, see [prompt-to-video-technical-todo.md](prompt-to-video-technical-todo.md).
+
 Date: 2026-10-01. Inspected base commit: `75ef7d8`, plus active working-tree changes.
 
 This is a standalone technical backlog. Each issue explains the failure mechanism, the responsible code, the implementation work, and the evidence required to close it. Checkboxes track implementation; verification limitations are recorded per ticket.

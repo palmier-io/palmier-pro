@@ -377,7 +377,7 @@ Once this path is reliable, additional effects and generation providers become m
 - `Sources/CompositorPro/Compositing/EffectRegistry.swift`
 - `Sources/CompositorPro/Compositing/TextAnimator.swift`
 - `Sources/CompositorPro/Generation/GenerationService.swift`
-- existing `docs/prompt-to-video-technical-todo.md`
-- existing `docs/agent-video-quality-engineering-backlog.md`
+- existing `docs/archive/prompt-to-video-technical-todo.md`
+- existing `docs/archive/agent-video-quality-engineering-backlog.md`
 
 No source implementation, build, test run, app launch, live provider call, or MCP end-to-end run was performed for this documentation task.

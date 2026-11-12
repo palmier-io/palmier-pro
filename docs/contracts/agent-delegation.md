@@ -69,7 +69,7 @@ Existing MCP tools remain the state-readback and shared-undo boundary.
 Each completed delegation call logs `delegation prepared <n>/<n> tasks in
 <ms>ms` with counts and wall time; acceptance of experimental speedup requires
 medians from repeated real-provider runs per
-[delegation verification](delegation-verification.md).
+[delegation verification](../delegation-verification.md).
 
 ## Manual verification — pending
 

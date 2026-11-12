@@ -20,7 +20,7 @@ Manifest persistence retains content identity and import provenance. Download st
 
 ## Not yet enforced
 
-These identities let the Agent recognize reuse; they do not yet implement the mandatory whole-output uniqueness gate in `todo.md` task 5b. Different encodings/crops can have different hashes; provider origin is not universal cross-provider identity. Perceptual matching, frozen derivative lineage, nested-output occurrence calculation, storyboard approval, and final delivery gates remain unfinished. Face avoidance is Agent guidance, not automatic detection. Do not describe these foundations as a certified unique or faceless export.
+These identities let the Agent recognize reuse; they do not yet implement the mandatory whole-output uniqueness gate in `done.md` task 5b (formerly `todo.md`). Different encodings/crops can have different hashes; provider origin is not universal cross-provider identity. Perceptual matching, frozen derivative lineage, nested-output occurrence calculation, storyboard approval, and final delivery gates remain unfinished. Face avoidance is Agent guidance, not automatic detection. Do not describe these foundations as a certified unique or faceless export.
 
 ## Manual verification
 
