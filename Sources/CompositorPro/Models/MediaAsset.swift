@@ -20,6 +20,10 @@ final class MediaAsset: Identifiable {
     let type: ClipType
     var name: String
     var duration: Double
+
+    /// Changes whenever the asset is repointed, so caches keyed on source identity cannot serve
+    /// results decoded from the previous file.
+    var sourceIdentity: String { "\(url.standardizedFileURL.path)|\(inputIdentityRevision.uuidString)" }
     var thumbnail: NSImage?
     var sourceWidth: Int?
     var sourceHeight: Int?

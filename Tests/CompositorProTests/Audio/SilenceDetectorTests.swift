@@ -43,23 +43,40 @@ struct SilenceDetectorTests {
         }
     }
 
-    @Test @MainActor func silenceStoreCachesAndInvalidates() {
+    @Test @MainActor func silenceStoreKeysOnSourceAndInvalidatesByAsset() {
         let store = SilenceStore()
-        let key = silenceCacheKey(mediaRef: "asset1", thresholdDb: -35.0, minSilenceDuration: 0.5, paddingSeconds: 0.1)
-        #expect(key == "asset1|-35.0|0.5|0.1")
-
-        #expect(store.segments(for: key) == nil)
+        let settings = SilenceDetectionSettings(thresholdDb: -35.0, minSilenceDuration: 0.5, paddingSeconds: 0.1)!
+        let key = silenceCacheKey(sourceIdentity: "file-a|rev-1", settings: settings)
+        #expect(key == "file-a|rev-1|-35.0|0.5|0.1")
 
         let expected = [SilenceDetector.Segment(startSeconds: 1.0, endSeconds: 3.0)]
-        store.install(expected, for: key)
-        #expect(store.segments(for: key) == expected)
+        #expect(store.segments(mediaRef: "asset1", sourceIdentity: "file-a|rev-1", settings: settings) == nil)
 
-        store.invalidate(key)
-        #expect(store.segments(for: key) == nil)
+        store.install(expected, mediaRef: "asset1", sourceIdentity: "file-a|rev-1", settings: settings)
+        #expect(store.segments(mediaRef: "asset1", sourceIdentity: "file-a|rev-1", settings: settings) == expected)
+        // A relink changes the source identity, so the previous decode is not served.
+        #expect(store.segments(mediaRef: "asset1", sourceIdentity: "file-a|rev-2", settings: settings) == nil)
 
-        store.install(expected, for: key)
+        // Invalidating an asset drops every settings variant, not just one.
+        let other = SilenceDetectionSettings(thresholdDb: -25.0, minSilenceDuration: 1.0, paddingSeconds: 0.2)!
+        store.install(expected, mediaRef: "asset1", sourceIdentity: "file-a|rev-1", settings: other)
+        store.invalidate(mediaRef: "asset1")
+        #expect(store.segments(mediaRef: "asset1", sourceIdentity: "file-a|rev-1", settings: settings) == nil)
+        #expect(store.segments(mediaRef: "asset1", sourceIdentity: "file-a|rev-1", settings: other) == nil)
+
+        store.install(expected, mediaRef: "asset1", sourceIdentity: "file-a|rev-1", settings: settings)
         store.reset()
-        #expect(store.segments(for: key) == nil)
+        #expect(store.segments(mediaRef: "asset1", sourceIdentity: "file-a|rev-1", settings: settings) == nil)
+    }
+
+    @Test @MainActor func sourceIdentityChangesWhenAssetIsRepointed() {
+        let asset = MediaAsset(
+            id: "asset1", url: URL(fileURLWithPath: "/tmp/first.wav"), type: .audio, name: "One", duration: 1
+        )
+        let first = asset.sourceIdentity
+        asset.url = URL(fileURLWithPath: "/tmp/second.wav")
+        #expect(asset.sourceIdentity != first)
+        #expect(asset.sourceIdentity.contains("second.wav"))
     }
 
     @Test func silenceDetectionSettingsValidation() {

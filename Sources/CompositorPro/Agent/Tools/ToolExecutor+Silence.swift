@@ -15,13 +15,13 @@ extension ToolExecutor {
     func detectSilence(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.detectSilenceAllowedKeys, path: "detect_silence")
         let mediaRef = try args.requireString("mediaRef")
-        let asset = try asset(mediaRef, editor: editor)
-        guard asset.type == .audio || (asset.type == .video && asset.hasAudio) else {
-            throw ToolError("detect_silence needs audio: \(mediaRef) is \(asset.type.rawValue)"
-                + (asset.type == .video ? " with no audio track" : "") + ".")
+        let mediaAsset = try asset(mediaRef, editor: editor)
+        guard mediaAsset.type == .audio || (mediaAsset.type == .video && mediaAsset.hasAudio) else {
+            throw ToolError("detect_silence needs audio: \(mediaRef) is \(mediaAsset.type.rawValue)"
+                + (mediaAsset.type == .video ? " with no audio track" : "") + ".")
         }
-        guard FileManager.default.fileExists(atPath: asset.url.path) else {
-            throw ToolError("Media file not on disk: \(asset.url.lastPathComponent)")
+        guard FileManager.default.fileExists(atPath: mediaAsset.url.path) else {
+            throw ToolError("Media file not on disk: \(mediaAsset.url.lastPathComponent)")
         }
 
         let thresholdDb = try Self.doubleArg(args, key: "silenceThresholdDb", defaultValue: -35.0)
@@ -36,31 +36,38 @@ extension ToolExecutor {
         }
 
         let silenceStore = editor.mediaVisualCache.silenceStore
-        let cacheKey = silenceCacheKey(
-            mediaRef: mediaRef, thresholdDb: settings.thresholdDb,
-            minSilenceDuration: settings.minSilenceDuration,
-            paddingSeconds: settings.paddingSeconds
-        )
+        let sourceIdentity = mediaAsset.sourceIdentity
+        let sourceURL = mediaAsset.url
 
-        // Return cached segments for identical settings without re-decoding.
-        if let cached = silenceStore.segments(for: cacheKey) {
+        // Return cached segments for the same source revision and settings without re-decoding.
+        if let cached = silenceStore.segments(
+            mediaRef: mediaRef, sourceIdentity: sourceIdentity, settings: settings
+        ) {
             return try Self.detectSilenceResult(
                 mediaRef: mediaRef, segments: cached, settings: settings
             )
         }
 
         // Decode and analyze off the main actor; file I/O must not run here.
-        let url = asset.url
         let segments = try await Task.detached(priority: .utility) {
             try await SilenceDetector.detectSilentSegments(
-                in: url,
+                in: sourceURL,
                 thresholdDb: settings.thresholdDb,
                 minSilenceDuration: settings.minSilenceDuration,
                 paddingSeconds: settings.paddingSeconds
             )
         }.value
 
-        silenceStore.install(segments, for: cacheKey)
+        // The asset may have been relinked, reset, or removed while decoding ran.
+        try Task.checkCancellation()
+        let current = try asset(mediaRef, editor: editor)
+        guard current.sourceIdentity == sourceIdentity, current.url == sourceURL else {
+            throw ToolError("Media changed during silence detection. Run detect_silence again.")
+        }
+
+        silenceStore.install(
+            segments, mediaRef: mediaRef, sourceIdentity: sourceIdentity, settings: settings
+        )
         return try Self.detectSilenceResult(
             mediaRef: mediaRef, segments: segments, settings: settings
         )

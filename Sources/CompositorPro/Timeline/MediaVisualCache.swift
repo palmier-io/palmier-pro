@@ -264,6 +264,7 @@ final class MediaVisualCache {
         imageThumbnailKeys.removeAll()
         imageThumbnailInFlight.removeAll()
         knownAssetURLs.removeAll()
+        silenceStore.reset()
         onDeadAirCacheInvalidated?()
         timelineView?.needsDisplay = true
     }
@@ -277,6 +278,7 @@ final class MediaVisualCache {
         speakerMasks.removeValue(forKey: mediaRef)
         speech.invalidate(mediaRef)
         beats.invalidate(mediaRef)
+        silenceStore.invalidate(mediaRef: mediaRef)
         videoThumbnails.removeValue(forKey: mediaRef)
         videoThumbnailKeys.removeAll { $0 == mediaRef }
         videoThumbnailInFlight.remove(mediaRef)
