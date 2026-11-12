@@ -11,6 +11,8 @@ final class MediaVisualCache {
 
     private var waveformSamples: [String: [Float]] = [:]
     private var waveformInFlight: Set<String> = []
+    private var waveformKeys: [String] = []
+    private let maxWaveformAssets = 32
     /// Cap concurrent waveform extractions to avoid starving playback.
     private static let waveformGate = AsyncSemaphore(value: 2)
 
@@ -40,13 +42,19 @@ final class MediaVisualCache {
 
     private var videoThumbnails: [String: [(time: Double, image: CGImage)]] = [:]
     private var videoThumbnailInFlight: Set<String> = []
+    private var videoThumbnailKeys: [String] = []
+    private let maxVideoThumbnailAssets = 24
     private static let videoThumbnailGate = AsyncSemaphore(value: 2)
 
     // MARK: - Image thumbnails (single still per asset)
 
     private var imageThumbnails: [String: CGImage] = [:]
     private var imageThumbnailInFlight: Set<String> = []
+    private var imageThumbnailKeys: [String] = []
+    private let maxImageThumbnailAssets = 64
     private static let imageThumbnailGate = AsyncSemaphore(value: 4)
+
+    private var knownAssetURLs: [String: URL] = [:]
 
     // MARK: - Redraw trigger
 
@@ -56,7 +64,18 @@ final class MediaVisualCache {
     // MARK: - Sync lookups (safe for draw calls)
 
     nonisolated func samples(for mediaRef: String) -> [Float]? {
-        MainActor.assumeIsolated { waveformSamples[mediaRef] }
+        MainActor.assumeIsolated {
+            if let samples = waveformSamples[mediaRef] {
+                touchLRU(&waveformKeys, key: mediaRef, limit: maxWaveformAssets) { evicted in
+                    waveformSamples.removeValue(forKey: evicted)
+                }
+                return samples
+            }
+            if let url = knownAssetURLs[mediaRef], !waveformInFlight.contains(mediaRef) {
+                reloadWaveform(key: mediaRef, url: url)
+            }
+            return nil
+        }
     }
 
     nonisolated func deadAirMask(
@@ -71,11 +90,65 @@ final class MediaVisualCache {
     }
 
     nonisolated func thumbnails(for mediaRef: String) -> [(time: Double, image: CGImage)]? {
-        MainActor.assumeIsolated { videoThumbnails[mediaRef] }
+        MainActor.assumeIsolated {
+            if let thumbs = videoThumbnails[mediaRef] {
+                touchLRU(&videoThumbnailKeys, key: mediaRef, limit: maxVideoThumbnailAssets) { evicted in
+                    videoThumbnails.removeValue(forKey: evicted)
+                }
+                return thumbs
+            }
+            if let url = knownAssetURLs[mediaRef], !videoThumbnailInFlight.contains(mediaRef) {
+                reloadVideoThumbnails(key: mediaRef, url: url)
+            }
+            return nil
+        }
     }
 
     nonisolated func imageThumbnail(for mediaRef: String) -> CGImage? {
-        MainActor.assumeIsolated { imageThumbnails[mediaRef] }
+        MainActor.assumeIsolated {
+            if let thumb = imageThumbnails[mediaRef] {
+                touchLRU(&imageThumbnailKeys, key: mediaRef, limit: maxImageThumbnailAssets) { evicted in
+                    imageThumbnails.removeValue(forKey: evicted)
+                }
+                return thumb
+            }
+            if let url = knownAssetURLs[mediaRef], !imageThumbnailInFlight.contains(mediaRef) {
+                reloadImageThumbnail(key: mediaRef, url: url)
+            }
+            return nil
+        }
+    }
+
+    private func touchLRU(_ keys: inout [String], key: String, limit: Int, onEvict: (String) -> Void) {
+        if let idx = keys.firstIndex(of: key) {
+            keys.remove(at: idx)
+        }
+        keys.append(key)
+        while keys.count > limit {
+            let evicted = keys.removeFirst()
+            onEvict(evicted)
+        }
+    }
+
+    private func storeWaveform(_ samples: [Float], for key: String) {
+        waveformSamples[key] = samples
+        touchLRU(&waveformKeys, key: key, limit: maxWaveformAssets) { [weak self] evicted in
+            self?.waveformSamples.removeValue(forKey: evicted)
+        }
+    }
+
+    private func storeVideoThumbnails(_ thumbs: [(time: Double, image: CGImage)], for key: String) {
+        videoThumbnails[key] = thumbs
+        touchLRU(&videoThumbnailKeys, key: key, limit: maxVideoThumbnailAssets) { [weak self] evicted in
+            self?.videoThumbnails.removeValue(forKey: evicted)
+        }
+    }
+
+    private func storeImageThumbnail(_ image: CGImage, for key: String) {
+        imageThumbnails[key] = image
+        touchLRU(&imageThumbnailKeys, key: key, limit: maxImageThumbnailAssets) { [weak self] evicted in
+            self?.imageThumbnails.removeValue(forKey: evicted)
+        }
     }
 
     // MARK: - Async generation
@@ -84,18 +157,21 @@ final class MediaVisualCache {
         guard asset.type == .audio || (asset.type == .video && asset.hasAudio) else { return }
         speech.generate(for: asset)
         beats.hydrate(for: asset)
-        let key = asset.id
+        knownAssetURLs[asset.id] = asset.url
+        reloadWaveform(key: asset.id, url: asset.url)
+    }
+
+    private func reloadWaveform(key: String, url: URL) {
         guard waveformSamples[key] == nil, !waveformInFlight.contains(key) else { return }
         waveformInFlight.insert(key)
 
-        let url = asset.url
         Task.detached(priority: .utility) { [weak self] in
             let result = await Self.loadOrGenerateWaveform(url: url)
             guard let self else { return }
             await MainActor.run { [self] in
                 self.waveformInFlight.remove(key)
                 if let result {
-                    self.waveformSamples[key] = result
+                    self.storeWaveform(result, for: key)
                     self.timelineView?.needsDisplay = true
                 }
             }
@@ -105,11 +181,15 @@ final class MediaVisualCache {
     /// Drops all in-memory state after a disk-cache clear so everything regenerates.
     func resetSessionState() {
         waveformSamples.removeAll()
+        waveformKeys.removeAll()
         speakerMasks.removeAll()
         speech.reset()
         beats.reset()
         videoThumbnails.removeAll()
+        videoThumbnailKeys.removeAll()
         imageThumbnails.removeAll()
+        imageThumbnailKeys.removeAll()
+        knownAssetURLs.removeAll()
         onDeadAirCacheInvalidated?()
         timelineView?.needsDisplay = true
     }
@@ -117,20 +197,27 @@ final class MediaVisualCache {
     /// Clears every cached visual for `mediaRef` so relinked media regenerates.
     func invalidate(_ mediaRef: String) {
         waveformSamples.removeValue(forKey: mediaRef)
+        waveformKeys.removeAll { $0 == mediaRef }
         speakerMasks.removeValue(forKey: mediaRef)
         speech.invalidate(mediaRef)
         beats.invalidate(mediaRef)
         videoThumbnails.removeValue(forKey: mediaRef)
+        videoThumbnailKeys.removeAll { $0 == mediaRef }
         imageThumbnails.removeValue(forKey: mediaRef)
+        imageThumbnailKeys.removeAll { $0 == mediaRef }
+        knownAssetURLs.removeValue(forKey: mediaRef)
         onDeadAirCacheInvalidated?()
     }
 
     func generateImageThumbnail(for asset: MediaAsset) {
-        let key = asset.id
+        knownAssetURLs[asset.id] = asset.url
+        reloadImageThumbnail(key: asset.id, url: asset.url)
+    }
+
+    private func reloadImageThumbnail(key: String, url: URL) {
         guard imageThumbnails[key] == nil, !imageThumbnailInFlight.contains(key) else { return }
         imageThumbnailInFlight.insert(key)
 
-        let url = asset.url
         Task.detached(priority: .utility) { [weak self] in
             do {
                 try await Self.imageThumbnailGate.wait()
@@ -145,7 +232,7 @@ final class MediaVisualCache {
             await MainActor.run { [self] in
                 self.imageThumbnailInFlight.remove(key)
                 if let thumbnail {
-                    self.imageThumbnails[key] = thumbnail
+                    self.storeImageThumbnail(thumbnail, for: key)
                     self.timelineView?.needsDisplay = true
                 }
             }
@@ -153,11 +240,14 @@ final class MediaVisualCache {
     }
 
     func generateVideoThumbnails(for asset: MediaAsset) {
-        let key = asset.id
+        knownAssetURLs[asset.id] = asset.url
+        reloadVideoThumbnails(key: asset.id, url: asset.url)
+    }
+
+    private func reloadVideoThumbnails(key: String, url: URL) {
         guard videoThumbnails[key] == nil, !videoThumbnailInFlight.contains(key) else { return }
         videoThumbnailInFlight.insert(key)
 
-        let url = asset.url
         Task.detached(priority: .userInitiated) { [weak self] in
             do {
                 try await Self.videoThumbnailGate.wait()
@@ -190,7 +280,7 @@ final class MediaVisualCache {
                                 if results.count % 50 == 0, let self {
                                     let partial = results
                                     await MainActor.run { [self] in
-                                        self.videoThumbnails[key] = partial
+                                        self.storeVideoThumbnails(partial, for: key)
                                         self.timelineView?.needsDisplay = true
                                     }
                                 }
@@ -209,7 +299,7 @@ final class MediaVisualCache {
             await MainActor.run { [self] in
                 self.videoThumbnailInFlight.remove(key)
                 if !results.isEmpty {
-                    self.videoThumbnails[key] = results
+                    self.storeVideoThumbnails(results, for: key)
                     self.timelineView?.needsDisplay = true
                 }
             }
@@ -309,12 +399,24 @@ final class MediaVisualCache {
               sprite.height >= meta.tileHeight * rows else { return nil }
         var out: [(time: Double, image: CGImage)] = []
         out.reserveCapacity(meta.times.count)
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
         for (i, t) in meta.times.enumerated() {
             let col = i % meta.columns
             let row = i / meta.columns
             let rect = CGRect(x: col * meta.tileWidth, y: row * meta.tileHeight,
                               width: meta.tileWidth, height: meta.tileHeight)
-            guard let tile = sprite.cropping(to: rect) else { return nil }
+            guard let cropped = sprite.cropping(to: rect) else { return nil }
+            guard let tileCtx = CGContext(
+                data: nil,
+                width: meta.tileWidth,
+                height: meta.tileHeight,
+                bitsPerComponent: 8,
+                bytesPerRow: 0,
+                space: colorSpace,
+                bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue
+            ) else { return nil }
+            tileCtx.draw(cropped, in: CGRect(x: 0, y: 0, width: meta.tileWidth, height: meta.tileHeight))
+            guard let tile = tileCtx.makeImage() else { return nil }
             out.append((time: t, image: tile))
         }
         return out
