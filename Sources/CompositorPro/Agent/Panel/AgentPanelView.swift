@@ -308,9 +308,6 @@ struct AgentPanelView: View {
                         AgentMessageView(message: msg, toolResults: results)
                             .id(msg.id)
                     }
-                    if service.isStreaming && service.messages.last?.hasIncompleteReasoning == true {
-                        ThinkingDots().id("streaming-indicator")
-                    }
                     errorBanner
                         .padding(.top, AppTheme.Spacing.sm)
                 }
@@ -536,14 +533,9 @@ struct AgentPanelView: View {
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
-        if service.isStreaming {
-            withAnimation(.easeOut(duration: 0.15)) {
-                proxy.scrollTo("streaming-indicator", anchor: .bottom)
-            }
-        } else if let last = service.messages.last {
-            withAnimation(.easeOut(duration: 0.15)) {
-                proxy.scrollTo(last.id, anchor: .bottom)
-            }
+        guard let last = service.messages.last else { return }
+        withAnimation(.easeOut(duration: 0.15)) {
+            proxy.scrollTo(last.id, anchor: .bottom)
         }
     }
 

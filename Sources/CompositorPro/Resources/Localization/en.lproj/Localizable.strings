@@ -1240,6 +1240,8 @@
 "This model needs a hosted account, which this build does not use. Add your own API key in Settings, or pick a custom endpoint." = "This model needs a hosted account, which this build does not use. Add your own API key in Settings, or pick a custom endpoint.";
 "This permanently removes %@." = "This permanently removes %@.";
 "This source can’t replace the clip." = "This source can’t replace the clip.";
+"Thinking…" = "Thinking…";
+"Thought" = "Thought";
 "Three-Stack" = "Three-Stack";
 "Three-Up" = "Three-Up";
 "Threshold" = "Threshold";

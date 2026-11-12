@@ -17,7 +17,23 @@ final class AgentService {
     /// Which of `customModels` the `.custom` model entry resolves to.
     private(set) var selectedCustomModelID: UUID?
 
-    init(userDefaults: UserDefaults = .standard, skillStore: SkillStore? = nil) {
+    /// Project package URL, used to persist/load the editing progress summary.
+    private let projectURL: URL?
+
+    /// Persisted editing progress, loaded once per project and updated after each
+    /// coherent editing action. A new chat loads this instead of full history.
+    var editingProgress: EditingProgressSummary = .init()
+
+    /// Maximum input tokens reserved for the chat request (model context minus output
+    /// headroom). A 256k model reserves ~32k for output, leaving ~224k for input.
+    private let maxInputTokens: Int = 224_000
+
+    /// Rolling summary of conversation turns older than the sliding window. Injected
+    /// into the system prompt so old context stays relevant without replaying every turn.
+    private var rollingSummary: String = ""
+
+    init(userDefaults: UserDefaults = .standard, skillStore: SkillStore? = nil, projectURL: URL? = nil) {
+        self.projectURL = projectURL
         self.userDefaults = userDefaults
         self.skillStore = skillStore
         let models = CustomModelStore.load(defaults: userDefaults)
@@ -375,7 +391,7 @@ final class AgentService {
 
     private var currentTask: Task<Void, Never>? { currentRunID.flatMap { runTasks[$0] } }
 
-    func loadSessions(from projectURL: URL?) {
+    func loadSessions(from projectURL: URL?) async {
         cancel()
         sessions = ChatSessionStore.load(from: projectURL)
             .filter { !$0.messages.isEmpty }
@@ -385,6 +401,8 @@ final class AgentService {
                 return session
             }
             .sorted { $0.updatedAt > $1.updatedAt }
+
+        editingProgress = await EditingProgressStore.load(from: projectURL)
 
         let session = ChatSession()
         sessions.insert(session, at: 0)
@@ -411,6 +429,75 @@ final class AgentService {
         streamError = nil
         toolExecutor?.resetFeedbackState()
         onSessionsChanged?()
+    }
+
+    /// Refresh the persisted editing progress from the current editor state. Called after
+    /// each coherent editing action so a new chat can resume without full history.
+    func refreshEditingProgress() {
+        guard let editor else { return }
+        let timeline = editor.timeline
+        let clips = timeline.tracks.reduce(0) { $0 + $1.clips.count }
+        let durationSeconds = timeline.fps > 0 ? Double(timeline.totalFrames) / Double(timeline.fps) : 0
+        let playheadSeconds = timeline.fps > 0 ? Double(editor.activeFrame) / Double(timeline.fps) : 0
+        editingProgress = EditingProgressSummary(
+            selection: Array(editor.selectedClipIds),
+            timeline: EditingProgressSummary.Timeline(
+                durationSeconds: durationSeconds,
+                trackCount: timeline.tracks.count,
+                clipCount: clips,
+                fps: timeline.fps,
+                resolution: "\(timeline.width)x\(timeline.height)"
+            ),
+            playheadSeconds: playheadSeconds,
+            phase: editingProgress.phase,
+            completed: editingProgress.completed,
+            inProgress: editingProgress.inProgress,
+            blocked: editingProgress.blocked,
+            next: editingProgress.next,
+            recentEdits: editingProgress.recentEdits,
+            handoffNote: editingProgress.handoffNote,
+            updatedAt: Date()
+        )
+        Task.detached(priority: .utility) {
+            await EditingProgressStore.save(self.editingProgress, to: self.projectURL)
+        }
+    }
+
+    /// Record a completed editing step and persist progress.
+    func recordProgressStep(_ step: String, phase: String? = nil) {
+        var completed = editingProgress.completed
+        if !completed.contains(step) { completed.append(step) }
+        editingProgress.completed = completed
+        if let phase { editingProgress.phase = phase }
+        Task.detached(priority: .utility) {
+            await EditingProgressStore.save(self.editingProgress, to: self.projectURL)
+        }
+    }
+
+    /// Set the current editorial phase (e.g. "rough-cut", "color-grade", "export"). Persisted
+    /// to the common progress file so any new chat can resume from it.
+    func setEditingPhase(_ phase: String) {
+        editingProgress.phase = phase
+        Task.detached(priority: .utility) {
+            await EditingProgressStore.save(self.editingProgress, to: self.projectURL)
+        }
+    }
+
+    /// Set a handoff note describing what the next agent should do. Persisted to the common
+    /// progress file.
+    func setHandoffNote(_ note: String) {
+        editingProgress.handoffNote = note
+        Task.detached(priority: .utility) {
+            await EditingProgressStore.save(self.editingProgress, to: self.projectURL)
+        }
+    }
+
+    /// Mark the next planned steps. Persisted to the common progress file.
+    func setNextSteps(_ steps: [String]) {
+        editingProgress.next = steps
+        Task.detached(priority: .utility) {
+            await EditingProgressStore.save(self.editingProgress, to: self.projectURL)
+        }
     }
 
     var openSessions: [ChatSession] { sessions.filter { $0.isOpen } }
@@ -601,9 +688,31 @@ final class AgentService {
         let baseTools = ToolDefinitions.inAppAgent.map {
             AgentToolSchema(name: $0.name.rawValue, description: $0.description, inputSchema: $0.inputSchema)
         }
+
+        // --- Context-window management ---
+        // Prune tools to editing-relevant subset when context is tight. Generation/stock/
+        // planning tools carry large schemas that inflate every request.
+        let editingTools: [ToolName] = [
+            .getTimeline, .inspectTimeline, .reviewTimeline, .qcTimeline,
+            .manageTracks, .addClips, .insertClips, .moveClips, .removeClips,
+            .splitClips, .rippleDeleteRanges, .setClipProperties, .setKeyframes,
+            .applyLayout, .setClipSpeedRamp, .applyColor, .applyEffect,
+            .applyTextStyle, .addTexts, .updateText, .addCaptions, .translateCaptions,
+            .mixAudio, .duckAudio, .crossfadeAudio, .offsetAudio,
+            .applyStylePreset, .applyMotionPreset, .manageMarkers,
+            .setProjectSettings, .exportProject, .manageExports, .undo,
+            .getMedia, .inspectMedia, .searchMedia, .importMedia,
+            .getTranscript, .removeWords, .removeSilence,
+            .getCapabilities
+        ]
+        let editingToolSet = Set(editingTools.map { $0.rawValue })
+        let contextIsTight = rollingSummary.utf16.count > 2_000 || messages.count > 40
+
         let delegation = AgentDelegation()
         let learningSection = AgentLearningLedger.load(from: userDefaults).playbook().promptSection()
+
         var streamTimeoutRetries = 0
+        var contextCompressionRetries = 0
 
         loop: while isCurrentRun(runID, conversationID: conversationID, editor: runEditor) {
             resolveOrphanToolUses()
@@ -611,7 +720,57 @@ final class AgentService {
             let delegationEnabled = await delegation.isEnabled
             let permitsFallback = await delegation.permitsFallback
             guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor) else { break }
-            let tools = baseTools + (delegationEnabled ? [AgentDelegationTool.schema] : [])
+
+            // Tool pruning for tight context: only editing-relevant schemas.
+            let tools: [AgentToolSchema]
+            if contextIsTight {
+                tools = baseTools.filter { editingToolSet.contains($0.name) }
+            } else {
+                tools = baseTools
+            }
+
+            // Build system instructions: core + rolling summary + editing progress + delegation + skills.
+            var systemParts: [String] = []
+            systemParts.append(AgentInstructions.serverInstructions)
+
+            if !rollingSummary.isEmpty {
+                systemParts.append("\n\n# Rolling summary of earlier turns\n\(rollingSummary)")
+            }
+            if !editingProgress.handoffNote.isEmpty || !editingProgress.completed.isEmpty
+                || !editingProgress.inProgress.isEmpty || !editingProgress.next.isEmpty {
+                var progress = "\n# Editing progress (resumable state)\n"
+                if !editingProgress.handoffNote.isEmpty {
+                    progress += "- Handoff: \(editingProgress.handoffNote)\n"
+                }
+                if !editingProgress.inProgress.isEmpty {
+                    progress += "- In progress: \(editingProgress.inProgress)\n"
+                }
+                if !editingProgress.completed.isEmpty {
+                    progress += "- Completed: \(editingProgress.completed.joined(separator: ", "))\n"
+                }
+                if !editingProgress.next.isEmpty {
+                    progress += "- Next: \(editingProgress.next.joined(separator: ", "))\n"
+                }
+                progress += "- Timeline: \(editingProgress.timeline.clipCount) clips, \(editingProgress.timeline.trackCount) tracks, \(editingProgress.timeline.durationSeconds)s\n"
+                systemParts.append(progress)
+            }
+
+            if delegationEnabled {
+                systemParts.append(AgentDelegationTool.instructions)
+            } else if permitsFallback {
+                systemParts.append(AgentDelegationTool.fallbackInstructions)
+            } else {
+                systemParts.append(AgentDelegationTool.blockedInstructions)
+            }
+            if !learningSection.isEmpty {
+                systemParts.append("\n\n" + learningSection)
+            }
+            let skillsSection = AgentInstructions.skillsSection(skillStore.skillIndex)
+            if !skillsSection.isEmpty {
+                systemParts.append(skillsSection)
+            }
+            let system = systemParts.joined()
+
             guard let inputMessageID = messages.last(where: { $0.role == .user })?.id else {
                 streamError = .upstream("The agent request has no user message.")
                 break loop
@@ -622,10 +781,7 @@ final class AgentService {
 
             do {
                 let stream = client.stream(
-                    system: AgentInstructions.serverInstructions + AgentInstructions.skillsSection(skillStore.skillIndex)
-                        + (delegationEnabled ? AgentDelegationTool.instructions
-                            : permitsFallback ? AgentDelegationTool.fallbackInstructions : AgentDelegationTool.blockedInstructions)
-                        + (learningSection.isEmpty ? "" : "\n\n" + learningSection),
+                    system: system,
                     tools: tools,
                     messages: apiMsgs,
                     context: AgentRequestContext(
@@ -653,6 +809,8 @@ final class AgentService {
                 streamTimeoutRetries = 0
 
                 dropEmptyAssistantTurn(id: assistantID, conversationID: conversationID)
+                // Common progress file is the single source of truth a new chat loads to resume.
+                refreshEditingProgress()
                 guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor) else { break }
                 if stopReason == .refusal {
                     streamError = .refusal(chosenModel)
@@ -675,6 +833,37 @@ final class AgentService {
                 break loop
             } catch {
                 let timedOut = Self.isStreamTimeout(error)
+
+                // Detect context-length exceeded (400) from custom/gateway endpoints:
+                // compress context aggressively and retry once.
+                let contextExceeded: Bool
+                if let httpError = error as? AgentServiceError,
+                   case .httpError(let status, _, let message) = httpError {
+                    contextExceeded = status == 400
+                        && (message.localizedCaseInsensitiveContains("context length")
+                            || message.localizedCaseInsensitiveContains("maximum context"))
+                } else if let transportError = error as? AgentClientTransportError,
+                          case .httpError(_, let status, let body) = transportError {
+                    contextExceeded = status == 400
+                        && (body.localizedCaseInsensitiveContains("context length")
+                            || body.localizedCaseInsensitiveContains("maximum context"))
+                } else {
+                    contextExceeded = false
+                }
+
+                if contextExceeded, contextCompressionRetries == 0 {
+                    contextCompressionRetries += 1
+                    Log.agent.notice("chat turn=\(turnID) context-length exceeded; compressing and retrying")
+                    messages = Self.compressMessagesForContext(messages, keepLastTurns: 2)
+                    rollingSummary = ""
+                    continue loop
+                }
+
+                if contextExceeded {
+                    streamError = .upstream("Context length exceeded: the conversation is too long for this model. Start a new chat to continue editing from the saved progress file.")
+                    break loop
+                }
+
                 if timedOut {
                     discardAssistantTurn(id: assistantID, conversationID: conversationID)
                 } else {
@@ -817,6 +1006,9 @@ final class AgentService {
             resultBlocks.append(.toolResult(toolUseId: use.id, content: result.content, isError: result.isError))
         }
         appendToolResults(resultBlocks, conversationID: conversationID)
+        // Persist editing progress after each batch of tool results so a new chat can
+        // resume without replaying full history.
+        refreshEditingProgress()
     }
 
     func appendToolResults(_ blocks: [AgentContentBlock], conversationID: UUID) {
@@ -902,11 +1094,36 @@ final class AgentService {
         }
     }
 
+    /// Estimate input tokens using a 4-char-per-token approximation. Not exact, but
+    /// sufficient for budgeting and pruning decisions before the request is sent.
+    private static func estimateTokens(_ text: String) -> Int {
+        (text.utf16.count + 3) / 4
+    }
+
+    /// Prepare messages for the API with context-window management:
+    /// - Sliding window: last 6 turns verbatim, older turns collapsed into a rolling summary
+    /// - Rolling summary: compresses old conversation into one compact system message
+    /// - Token budget: prunes oldest content first when over budget
+    /// - Tool pruning: when context is tight, tool schemas stay out of the message body
+    ///   (they are already handled separately by the caller).
     private func apiMessages() async -> [AgentRequestMessage] {
         var result: [AgentRequestMessage] = []
         let lastUserIndex = messages.lastIndex(where: { $0.role == .user })
+
+        // Build the rolling summary from turns outside the sliding window.
+        let windowStart = lastUserIndex.map { max(0, $0 - 6) } ?? 0
+        var summaryParts: [String] = []
+
         for (index, msg) in messages.enumerated() {
             if msg.role == .system { continue }
+
+            // Older-than-window turns: extract key facts, drop verbatim content.
+            if index < windowStart {
+                let summary = summarizeMessage(msg)
+                if !summary.isEmpty { summaryParts.append(summary) }
+                continue
+            }
+
             var content = msg.blocks.map(AgentRequestBlock.content)
             if msg.role == .user, !msg.mentions.isEmpty {
                 let isRecent = lastUserIndex == nil || index >= (lastUserIndex! - 2)
@@ -939,7 +1156,100 @@ final class AgentService {
             guard !content.isEmpty else { continue }
             result.append(AgentRequestMessage(role: msg.role == .user ? .user : .assistant, content: content))
         }
+
+        // Inject rolling summary as a leading system message when there is anything to say.
+        if !summaryParts.isEmpty {
+            rollingSummary = summaryParts.joined(separator: " ")
+        } else {
+            rollingSummary = ""
+        }
+
+        // Enforce token budget: estimate total input, prune oldest assistant turns first.
+        let systemTokens = 0
+        var messageTokens = 0
+        for msg in result {
+            messageTokens += msg.content.reduce(0) { $0 + Self.estimateTokens(blockText($1)) }
+        }
+        let totalTokens = systemTokens + messageTokens + Self.estimateTokens(rollingSummary)
+
+        if totalTokens > maxInputTokens {
+            // Drop oldest assistant turns until under budget, preserving user turns.
+            var pruned = result
+            while messageTokens > maxInputTokens * 3 / 4, pruned.count > 2 {
+                // Remove the oldest non-user turn (assistant/tool).
+                if let oldestIdx = pruned.firstIndex(where: { $0.role != .user }) {
+                    let removed = pruned.remove(at: oldestIdx)
+                    messageTokens -= removed.content.reduce(0) { $0 + Self.estimateTokens(blockText($1)) }
+                } else {
+                    break
+                }
+            }
+            result = pruned
+        }
+
         return result
+    }
+
+    private func blockText(_ block: AgentRequestBlock) -> String {
+        switch block {
+        case .content(let inner):
+            switch inner {
+            case .text(let s): return s
+            case .toolUse(let id, let name, let input): return "\(id) \(name) \(input)"
+            case .toolResult(let id, let blocks, _):
+                let parts = blocks.map { b -> String in
+                    switch b {
+                    case .text(let s): return s
+                    case .image(let base64, _): return "[image]"
+                    }
+                }
+                return "\(id) \(parts.joined(separator: " "))"
+            case .thinking, .redactedThinking, .openAIReasoning:
+                return "[reasoning]"
+            }
+        case .image(let base64, _): return base64
+        }
+    }
+
+    /// Compress messages for a context-length retry: keep only the last N turns verbatim,
+    /// drop older assistant turns, collapse old user turns into one-line summaries.
+    private static func compressMessagesForContext(_ messages: [AgentMessage], keepLastTurns: Int) -> [AgentMessage] {
+        guard messages.count > keepLastTurns else { return messages }
+        let cutoff = messages.count - keepLastTurns
+        var compressed: [AgentMessage] = []
+        for (index, msg) in messages.enumerated() {
+            if index < cutoff {
+                // Collapse old turns to one line.
+                switch msg.role {
+                case .user:
+                    let text = msg.blocks.compactMap { if case .text(let s) = $0 { return s }; return nil }.joined()
+                    compressed.append(AgentMessage(role: .user, blocks: [.text("Earlier: \(String(text.prefix(80))).")]))
+                case .assistant:
+                    let text = msg.blocks.compactMap { if case .text(let s) = $0 { return s }; return nil }.joined()
+                    compressed.append(AgentMessage(role: .assistant, blocks: [.text("Earlier assistant: \(String(text.prefix(80))).")]))
+                case .system:
+                    break
+                }
+            } else {
+                compressed.append(msg)
+            }
+        }
+        return compressed
+    }
+
+    /// Compress a single message into a one-line fact for the rolling summary.
+    private func summarizeMessage(_ msg: AgentMessage) -> String {
+        switch msg.role {
+        case .user:
+            let text = msg.blocks.compactMap { if case .text(let s) = $0 { return s }; return nil }.joined()
+            return "User: \(String(text.prefix(120)))."
+        case .assistant:
+            let text = msg.blocks.compactMap { if case .text(let s) = $0 { return s }; return nil }.joined()
+            let tools = msg.blocks.compactMap { if case .toolUse(_, let name, _) = $0 { return name }; return nil }.joined(separator: ",")
+            return "Assistant: \(tools.isEmpty ? String(text.prefix(120)) : "tools: \(tools)")."
+        case .system:
+            return ""
+        }
     }
 
     private func inlineImageBlocks(for mentions: [AgentMention]) async -> AgentMentionContext.InlinedMentions {

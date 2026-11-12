@@ -87,16 +87,12 @@ struct AgentMessageView: View {
             ForEach(renderedBlocks, id: \.key) { entry in
                 let block = entry.block
                 switch block {
-                case .thinking(let text, _):
-                    if !text.isEmpty {
-                        ThinkingSummaryView(text: text)
-                    }
+                case .thinking(let text, let signature):
+                    ReasoningStepRow(text: text, isComplete: !signature.isEmpty)
                 case .redactedThinking:
                     EmptyView()
-                case .openAIReasoning(let summary, _, _, _, _):
-                    if !summary.isEmpty {
-                        ThinkingSummaryView(text: summary)
-                    }
+                case .openAIReasoning(let summary, _, _, _, let isComplete):
+                    ReasoningStepRow(text: summary, isComplete: isComplete)
                 case .text(let text):
                     MarkdownText(text: text)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -115,78 +111,6 @@ struct AgentMessageView: View {
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .animation(.easeOut(duration: AppTheme.Anim.hover), value: isHovering)
-    }
-}
-
-private struct ThinkingSummaryView: View {
-    let text: String
-    /// One preference for all reasoning rows: someone who opens reasoning wants it open everywhere,
-    /// and a per-row choice was lost every time the panel was rebuilt.
-    @AppStorage("agent.reasoningExpanded") private var isExpanded = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            header
-
-            if isExpanded {
-                summary
-                    .transition(.opacity)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// Same disclosure as `EditorPanelGroup`: a full-bleed hit target behind a chevron and a
-    /// label, so it reads as expandable rather than as an icon that might do something.
-    private var header: some View {
-        ZStack {
-            Button(action: toggleExpansion) {
-                Color.clear
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .focusable(false)
-            .help(isExpanded ? L10n.string("Hide reasoning") : L10n.string("Show reasoning"))
-            .accessibilityLabel(
-                Text(verbatim: "\(isExpanded ? L10n.string("Collapse") : L10n.string("Expand")) \(L10n.string("Reasoning"))")
-            )
-
-            HStack(spacing: AppTheme.Spacing.sm) {
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
-                Text(L10n.string("Reasoning"))
-                    .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium))
-                    .foregroundStyle(AppTheme.Text.primaryColor)
-                    .lineLimit(1)
-                Spacer(minLength: AppTheme.Spacing.sm)
-            }
-            .allowsHitTesting(false)
-        }
-        .frame(maxWidth: .infinity)
-        .contentShape(Rectangle())
-    }
-
-    private func toggleExpansion() {
-        withAnimation(.easeInOut(duration: AppTheme.Anim.transition)) {
-            isExpanded.toggle()
-        }
-    }
-
-    private var summary: some View {
-        Text(verbatim: text)
-            .font(.system(size: AppTheme.FontSize.xs))
-            .foregroundStyle(AppTheme.Text.tertiaryColor)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.leading, AppTheme.Spacing.md)
-            .overlay(alignment: .leading) {
-                Rectangle()
-                    .fill(AppTheme.Border.subtleColor)
-                    .frame(width: AppTheme.BorderWidth.medium)
-            }
-            .textSelection(.enabled)
     }
 }
 
