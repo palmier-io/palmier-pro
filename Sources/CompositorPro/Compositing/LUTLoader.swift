@@ -1,10 +1,10 @@
+import CryptoKit
 import Foundation
 
 enum LUTStoreError: LocalizedError {
-    case noFile(String), invalid(String)
+    case invalid(String)
     var errorDescription: String? {
         switch self {
-        case .noFile(let path): "No file at path: \(path)"
         case .invalid(let name): "Not a valid .cube 3D LUT: \(name)"
         }
     }
@@ -18,23 +18,46 @@ enum LUTLoader {
         let data: Data
     }
 
-    /// Validates a .cube file and copies it into the project's LUT storage so it survives
-    /// saves and moves (project packages drop unknown files). Returns the stored path.
-    /// Shared by the agent (apply_color) and the inspector's LUT picker.
-    static func store(path: String, projectId: String?) throws -> String {
-        let sourceURL = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
-        guard FileManager.default.fileExists(atPath: sourceURL.path) else { throw LUTStoreError.noFile(sourceURL.path) }
-        guard let lut = loadFromDisk(path: sourceURL.path) else { throw LUTStoreError.invalid(sourceURL.lastPathComponent) }
-        let lutDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("CompositorPro/luts/\(projectId ?? "default")", isDirectory: true)
-        try FileManager.default.createDirectory(at: lutDir, withIntermediateDirectories: true)
-        let dest = lutDir.appendingPathComponent(sourceURL.lastPathComponent)
-        if sourceURL.standardizedFileURL != dest.standardizedFileURL {
-            if FileManager.default.fileExists(atPath: dest.path) { try FileManager.default.removeItem(at: dest) }
-            try FileManager.default.copyItem(at: sourceURL, to: dest)
+    private static let storageIO = ProjectPackageIO()
+
+    static func store(path: String, projectId: String?, storageDirectory: URL? = nil) async throws -> String {
+        try Task.checkCancellation()
+        return try await storageIO.perform {
+            let fm = FileManager.default
+            let source = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+            let bytes = try Data(contentsOf: source)
+            guard let text = String(data: bytes, encoding: .utf8), let lut = parse(text) else {
+                throw LUTStoreError.invalid(source.lastPathComponent)
+            }
+            let directory = storageDirectory ?? fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("CompositorPro/luts/\(projectId ?? "default")", isDirectory: true)
+            try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+            let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+            let contentDirectory = directory.appendingPathComponent(digest, isDirectory: true)
+            try fm.createDirectory(at: contentDirectory, withIntermediateDirectories: true)
+            let destination = contentDirectory.appendingPathComponent(source.lastPathComponent)
+            if fm.fileExists(atPath: destination.path) {
+                guard try Data(contentsOf: destination) == bytes else { throw CocoaError(.fileReadCorruptFile) }
+            } else {
+                let stage = directory.appendingPathComponent(".lut-\(UUID().uuidString)")
+                do {
+                    try bytes.write(to: stage)
+                    // A hard link publishes complete bytes without replacing an existing grade.
+                    try fm.linkItem(at: stage, to: destination)
+                    try fm.removeItem(at: stage)
+                } catch {
+                    let original = error
+                    do {
+                        if fm.fileExists(atPath: stage.path) { try fm.removeItem(at: stage) }
+                    } catch {
+                        throw ProjectPackageCleanupError(operationError: original, cleanupError: error)
+                    }
+                    throw original
+                }
+            }
+            cache(lut, path: destination.path)
+            return destination.path
         }
-        cache(lut, path: dest.path)
-        return dest.path
     }
 
     private static let lock = NSLock()

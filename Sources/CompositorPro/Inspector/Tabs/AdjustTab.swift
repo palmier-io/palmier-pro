@@ -554,17 +554,7 @@ extension InspectorView {
     }
 
     private func setLUTPath(_ path: String, clips: [Clip]) {
-        // Copy into project storage so the LUT survives saves/moves (project packages drop unknown files).
-        guard let stored = try? LUTLoader.store(path: path, projectId: editor.projectId) else { return }
-        commitEffects(clips, actionName: "Apply LUT") { effects in
-            if let i = effects.firstIndex(where: { $0.type == "color.lut" }) {
-                effects[i].params["path"] = EffectParam(string: stored)
-            } else {
-                var effect = Effect(type: "color.lut")
-                effect.params["path"] = EffectParam(string: stored)
-                effects.insert(effect, at: alwaysOnInsertIndex(effects, for: "color.lut"))
-            }
-        }
+        editor.startApplyingLUT(path: path, clips: clips)
     }
 
     private func setLUTIntensity(_ value: Double, clips: [Clip], commit: Bool) {

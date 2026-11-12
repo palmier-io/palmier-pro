@@ -8,9 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var restartRequested = false
     private var terminationTask: Task<Void, Never>?
     private var terminationReplySent = false
-    private static let terminationTimeout: Duration = .seconds(15)
 
-    private override init() {
+    override init() {
         super.init()
     }
 
@@ -57,33 +56,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         if isTerminating { return .terminateLater }
         if !restartRequested, !Self.confirmQuit() { return .terminateCancel }
-        isTerminating = true
-        terminationReplySent = false
         let projects = AppState.shared.openProjects
         let shouldRestart = restartRequested
+        startTermination(projects: projects, prepareServices: { validate in
+            try await ProjectRegistry.shared.flush()
+            try validate()
+            if shouldRestart {
+                try await Self.scheduleRelaunch(
+                    applicationURL: Bundle.main.bundleURL,
+                    processID: ProcessInfo.processInfo.processIdentifier
+                )
+                try validate()
+            }
+            await SkillStore.shared.prepareForTermination()
+            try validate()
+            await AppState.shared.stopMCPService()
+            try validate()
+            if !MLXRuntime.beginTermination() {
+                await MLXRuntime.waitUntilIdle()
+                try validate()
+            }
+        }, didClose: { [weak self] in self?.releaseMemory(projects: projects) },
+           onError: { sender.presentError($0) },
+           sendReply: { sender.reply(toApplicationShouldTerminate: $0) })
+        return .terminateLater
+    }
+
+    func startTermination(
+        projects: [VideoProject],
+        prepareServices: @escaping @MainActor (@escaping @MainActor () throws -> Void) async throws -> Void,
+        didClose: @escaping @MainActor () -> Void,
+        onError: @escaping @MainActor (Error) -> Void,
+        sendReply: @escaping @MainActor (Bool) -> Void
+    ) {
+        guard !isTerminating else { return }
+        isTerminating = true
+        terminationReplySent = false
         let closeOwners = projects.compactMap { project in
             project.beginClosing().map { (project: project, lease: $0) }
         }
-        let validateOwners = {
+        let validateOwners: @MainActor () throws -> Void = {
             try Task.checkCancellation()
             for owner in closeOwners { try owner.project.validateCloseOwner(owner.lease) }
         }
 
-        // A quit must never hang. If graceful teardown does not finish in time, terminate anyway.
-        let watchdog = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: Self.terminationTimeout)
-            guard !Task.isCancelled, let self, !self.terminationReplySent else { return }
-            Log.app.notice("quit: graceful teardown timed out; terminating")
-            for owner in closeOwners {
-                owner.project.editorViewModel.projectPackageCoordinator.cancelClosing(owner.lease)
-            }
-            self.releaseMemory(projects: closeOwners.map(\.project))
-            self.reply(to: sender, allow: true)
-        }
-
         terminationTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { watchdog.cancel() }
             do {
                 for owner in closeOwners {
                     if !owner.project.editorViewModel.projectPackageCoordinator.isClosed {
@@ -95,22 +113,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                     try validateOwners()
                 }
-                try await ProjectRegistry.shared.flush()
+                try await prepareServices(validateOwners)
                 try validateOwners()
-                if shouldRestart {
-                    try await Self.scheduleRelaunch(
-                        applicationURL: Bundle.main.bundleURL,
-                        processID: ProcessInfo.processInfo.processIdentifier
-                    )
-                    try validateOwners()
-                }
-                await SkillStore.shared.prepareForTermination()
-                AppState.shared.stopMCPService()
-                try validateOwners()
-                if !MLXRuntime.beginTermination() {
-                    await MLXRuntime.waitUntilIdle()
-                    try validateOwners()
-                }
                 repeat {
                     for owner in closeOwners where !owner.project.editorViewModel.projectPackageCoordinator.isClosed {
                         do { try await owner.project.editorViewModel.projectPackageCoordinator.waitUntilIdle(for: owner.lease) }
@@ -129,20 +133,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     try owner.project.closeImmediately(using: owner.lease)
                 }
                 terminationTask = nil
-                self.releaseMemory(projects: closeOwners.map(\.project))
-                self.reply(to: sender, allow: true)
+                didClose()
+                self.reply(allow: true, sendReply: sendReply)
             } catch {
                 for owner in closeOwners {
                     owner.project.editorViewModel.projectPackageCoordinator.cancelClosing(owner.lease)
                 }
                 self.restartRequested = false
                 self.isTerminating = false
-                // The watchdog may already have terminated; don't surface an error during teardown.
-                if !self.terminationReplySent { sender.presentError(error) }
-                self.reply(to: sender, allow: false)
+                onError(error)
+                self.reply(allow: false, sendReply: sendReply)
             }
         }
-        return .terminateLater
     }
 
     /// Drops playback, decoders, and rendered-frame caches before the process exits.
@@ -157,11 +159,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Replies to a pending termination request exactly once.
-    private func reply(to sender: NSApplication, allow: Bool) {
+    private func reply(allow: Bool, sendReply: (Bool) -> Void) {
         guard !terminationReplySent else { return }
         terminationReplySent = true
         terminationTask = nil
-        sender.reply(toApplicationShouldTerminate: allow)
+        sendReply(allow)
     }
 
     private static func confirmQuit() -> Bool {

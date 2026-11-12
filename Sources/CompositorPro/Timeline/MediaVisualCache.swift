@@ -54,7 +54,74 @@ final class MediaVisualCache {
     private let maxImageThumbnailAssets = 64
     private static let imageThumbnailGate = AsyncSemaphore(value: 4)
 
-    private var knownAssetURLs: [String: URL] = [:]
+    var knownAssetURLs: [String: URL] = [:]
+
+    // MARK: - Stale-result protection
+
+    /// Monotonic per-asset generation; bumped by invalidate/resetSessionState, never cleared.
+    @ObservationIgnored private var visualGenerations: [String: Int] = [:]
+    @ObservationIgnored private var waveformTasks: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var videoThumbnailTasks: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var imageThumbnailTasks: [String: Task<Void, Never>] = [:]
+
+    func startVisualGeneration(key: String) -> Int {
+        visualGenerations[key, default: 0] += 1
+        return visualGenerations[key]!
+    }
+
+    private func canCommitVisual(key: String, url: URL, generation: Int) -> Bool {
+        visualGenerations[key] == generation && knownAssetURLs[key] == url
+    }
+
+    func commitWaveform(_ samples: [Float]?, key: String, url: URL, generation: Int) -> Bool {
+        if visualGenerations[key] == generation {
+            waveformTasks[key] = nil
+            waveformInFlight.remove(key)
+        }
+        guard canCommitVisual(key: key, url: url, generation: generation), let samples, !samples.isEmpty else { return false }
+        storeWaveform(samples, for: key)
+        timelineView?.needsDisplay = true
+        return true
+    }
+
+    func commitVideoThumbnails(_ thumbs: [(time: Double, image: CGImage)]?, key: String, url: URL, generation: Int) -> Bool {
+        if visualGenerations[key] == generation {
+            videoThumbnailTasks[key] = nil
+            videoThumbnailInFlight.remove(key)
+        }
+        guard canCommitVisual(key: key, url: url, generation: generation), let thumbs, !thumbs.isEmpty else { return false }
+        storeVideoThumbnails(thumbs, for: key)
+        timelineView?.needsDisplay = true
+        return true
+    }
+
+    /// Progressive video results keep the entry in flight; only staleness is checked.
+    private func commitPartialVideoThumbnails(_ thumbs: [(time: Double, image: CGImage)], key: String, url: URL, generation: Int) {
+        guard canCommitVisual(key: key, url: url, generation: generation) else { return }
+        storeVideoThumbnails(thumbs, for: key)
+        timelineView?.needsDisplay = true
+    }
+
+    func commitImageThumbnail(_ image: CGImage?, key: String, url: URL, generation: Int) -> Bool {
+        if visualGenerations[key] == generation {
+            imageThumbnailTasks[key] = nil
+            imageThumbnailInFlight.remove(key)
+        }
+        guard canCommitVisual(key: key, url: url, generation: generation), let image else { return false }
+        storeImageThumbnail(image, for: key)
+        timelineView?.needsDisplay = true
+        return true
+    }
+
+    private func cancelVisualTasks(for key: String) {
+        visualGenerations[key, default: 0] += 1
+        waveformTasks[key]?.cancel()
+        waveformTasks.removeValue(forKey: key)
+        videoThumbnailTasks[key]?.cancel()
+        videoThumbnailTasks.removeValue(forKey: key)
+        imageThumbnailTasks[key]?.cancel()
+        imageThumbnailTasks.removeValue(forKey: key)
+    }
 
     // MARK: - Redraw trigger
 
@@ -164,31 +231,38 @@ final class MediaVisualCache {
     private func reloadWaveform(key: String, url: URL) {
         guard waveformSamples[key] == nil, !waveformInFlight.contains(key) else { return }
         waveformInFlight.insert(key)
-
-        Task.detached(priority: .utility) { [weak self] in
+        let generation = startVisualGeneration(key: key)
+        let task = Task.detached(priority: .utility) { [weak self] in
             let result = await Self.loadOrGenerateWaveform(url: url)
             guard let self else { return }
             await MainActor.run { [self] in
-                self.waveformInFlight.remove(key)
-                if let result {
-                    self.storeWaveform(result, for: key)
-                    self.timelineView?.needsDisplay = true
-                }
+                _ = self.commitWaveform(result, key: key, url: url, generation: generation)
             }
         }
+        waveformTasks[key] = task
     }
 
     /// Drops all in-memory state after a disk-cache clear so everything regenerates.
     func resetSessionState() {
+        for task in waveformTasks.values { task.cancel() }
+        waveformTasks.removeAll()
+        for task in videoThumbnailTasks.values { task.cancel() }
+        videoThumbnailTasks.removeAll()
+        for task in imageThumbnailTasks.values { task.cancel() }
+        imageThumbnailTasks.removeAll()
+        for key in Array(visualGenerations.keys) { visualGenerations[key, default: 0] += 1 }
         waveformSamples.removeAll()
         waveformKeys.removeAll()
+        waveformInFlight.removeAll()
         speakerMasks.removeAll()
         speech.reset()
         beats.reset()
         videoThumbnails.removeAll()
         videoThumbnailKeys.removeAll()
+        videoThumbnailInFlight.removeAll()
         imageThumbnails.removeAll()
         imageThumbnailKeys.removeAll()
+        imageThumbnailInFlight.removeAll()
         knownAssetURLs.removeAll()
         onDeadAirCacheInvalidated?()
         timelineView?.needsDisplay = true
@@ -196,15 +270,19 @@ final class MediaVisualCache {
 
     /// Clears every cached visual for `mediaRef` so relinked media regenerates.
     func invalidate(_ mediaRef: String) {
+        cancelVisualTasks(for: mediaRef)
         waveformSamples.removeValue(forKey: mediaRef)
         waveformKeys.removeAll { $0 == mediaRef }
+        waveformInFlight.remove(mediaRef)
         speakerMasks.removeValue(forKey: mediaRef)
         speech.invalidate(mediaRef)
         beats.invalidate(mediaRef)
         videoThumbnails.removeValue(forKey: mediaRef)
         videoThumbnailKeys.removeAll { $0 == mediaRef }
+        videoThumbnailInFlight.remove(mediaRef)
         imageThumbnails.removeValue(forKey: mediaRef)
         imageThumbnailKeys.removeAll { $0 == mediaRef }
+        imageThumbnailInFlight.remove(mediaRef)
         knownAssetURLs.removeValue(forKey: mediaRef)
         onDeadAirCacheInvalidated?()
     }
@@ -217,12 +295,13 @@ final class MediaVisualCache {
     private func reloadImageThumbnail(key: String, url: URL) {
         guard imageThumbnails[key] == nil, !imageThumbnailInFlight.contains(key) else { return }
         imageThumbnailInFlight.insert(key)
+        let generation = startVisualGeneration(key: key)
 
-        Task.detached(priority: .utility) { [weak self] in
+        let task = Task.detached(priority: .utility) { [weak self] in
             do {
                 try await Self.imageThumbnailGate.wait()
             } catch {
-                await MainActor.run { [weak self] in _ = self?.imageThumbnailInFlight.remove(key) }
+                await MainActor.run { [weak self] in _ = self?.commitImageThumbnail(nil, key: key, url: url, generation: generation) }
                 return
             }
             defer { Task { await Self.imageThumbnailGate.signal() } }
@@ -230,13 +309,10 @@ final class MediaVisualCache {
             let thumbnail = Self.makeImageThumbnail(url: url)
             guard let self else { return }
             await MainActor.run { [self] in
-                self.imageThumbnailInFlight.remove(key)
-                if let thumbnail {
-                    self.storeImageThumbnail(thumbnail, for: key)
-                    self.timelineView?.needsDisplay = true
-                }
+                _ = self.commitImageThumbnail(thumbnail, key: key, url: url, generation: generation)
             }
         }
+        imageThumbnailTasks[key] = task
     }
 
     func generateVideoThumbnails(for asset: MediaAsset) {
@@ -247,47 +323,50 @@ final class MediaVisualCache {
     private func reloadVideoThumbnails(key: String, url: URL) {
         guard videoThumbnails[key] == nil, !videoThumbnailInFlight.contains(key) else { return }
         videoThumbnailInFlight.insert(key)
+        let generation = startVisualGeneration(key: key)
 
-        Task.detached(priority: .userInitiated) { [weak self] in
+        let task = Task.detached(priority: .userInitiated) { [weak self] in
             do {
                 try await Self.videoThumbnailGate.wait()
             } catch {
-                await MainActor.run { [weak self] in _ = self?.videoThumbnailInFlight.remove(key) }
+                await MainActor.run { [weak self] in _ = self?.commitVideoThumbnails(nil, key: key, url: url, generation: generation) }
                 return
             }
             defer { Task { await Self.videoThumbnailGate.signal() } }
 
-            let cacheKey = Self.diskCacheKey(for: url)
-            var results = cacheKey.flatMap(Self.loadThumbnails(key:)) ?? []
+            var results: [(time: Double, image: CGImage)] = []
+            var cacheKey: String?
+            let avAsset = AVURLAsset(url: url)
+            if (try? await avAsset.loadTracks(withMediaType: .video).first) != nil {
+                let duration = (try? await avAsset.load(.duration).seconds) ?? 0
+                let times = Self.videoThumbnailTimes(duration: duration)
+                // Density is part of the key so an older full-density sprite is never reused.
+                cacheKey = times.isEmpty ? nil : Self.diskCacheKey(for: url, thumbnailCount: times.count)
+                if let cacheKey {
+                    results = Self.loadThumbnails(key: cacheKey) ?? []
+                }
 
-            if results.isEmpty {
-                let avAsset = AVURLAsset(url: url)
-                if (try? await avAsset.loadTracks(withMediaType: .video).first) != nil {
-                    let duration = (try? await avAsset.load(.duration).seconds) ?? 0
-                    let times = Self.videoThumbnailTimes(duration: duration)
+                if results.isEmpty, !times.isEmpty {
+                    let generator = AVAssetImageGenerator(asset: avAsset)
+                    generator.maximumSize = CGSize(width: 120, height: 68)
+                    generator.appliesPreferredTrackTransform = true
+                    generator.requestedTimeToleranceBefore = CMTime(seconds: 1.0, preferredTimescale: 600)
+                    generator.requestedTimeToleranceAfter = CMTime(seconds: 1.0, preferredTimescale: 600)
 
-                    if !times.isEmpty {
-                        let generator = AVAssetImageGenerator(asset: avAsset)
-                        generator.maximumSize = CGSize(width: 120, height: 68)
-                        generator.appliesPreferredTrackTransform = true
-                        generator.requestedTimeToleranceBefore = CMTime(seconds: 1.0, preferredTimescale: 600)
-                        generator.requestedTimeToleranceAfter = CMTime(seconds: 1.0, preferredTimescale: 600)
-
-                        for await result in generator.images(for: times) {
-                            if case .success(requestedTime: let requestedTime, image: let image, actualTime: _) = result {
-                                results.append((time: requestedTime.seconds, image: image))
-                                // Publish progressively so long videos fill in instead of appearing at the end.
-                                if results.count % 50 == 0, let self {
-                                    let partial = results
-                                    await MainActor.run { [self] in
-                                        self.storeVideoThumbnails(partial, for: key)
-                                        self.timelineView?.needsDisplay = true
-                                    }
+                    for await result in generator.images(for: times) {
+                        if Task.isCancelled { break }
+                        if case .success(requestedTime: let requestedTime, image: let image, actualTime: _) = result {
+                            results.append((time: requestedTime.seconds, image: image))
+                            // Publish progressively so long videos fill in instead of appearing at the end.
+                            if results.count % 50 == 0, let self {
+                                let partial = results
+                                await MainActor.run { [self] in
+                                    self.commitPartialVideoThumbnails(partial, key: key, url: url, generation: generation)
                                 }
                             }
                         }
-                        results.sort { $0.time < $1.time }
                     }
+                    results.sort { $0.time < $1.time }
                 }
 
                 if !results.isEmpty, let cacheKey {
@@ -297,13 +376,10 @@ final class MediaVisualCache {
 
             guard let self else { return }
             await MainActor.run { [self] in
-                self.videoThumbnailInFlight.remove(key)
-                if !results.isEmpty {
-                    self.storeVideoThumbnails(results, for: key)
-                    self.timelineView?.needsDisplay = true
-                }
+                _ = self.commitVideoThumbnails(results.isEmpty ? nil : results, key: key, url: url, generation: generation)
             }
         }
+        videoThumbnailTasks[key] = task
     }
 
     private nonisolated static func makeImageThumbnail(url: URL) -> CGImage? {
@@ -338,9 +414,13 @@ final class MediaVisualCache {
         return samples
     }
 
-    private nonisolated static func videoThumbnailTimes(duration: Double) -> [CMTime] {
+    /// Cap thumbnails per video so a 2-hour asset can't accumulate thousands of tiles.
+    nonisolated static let maxVideoThumbnailsPerAsset = 300
+
+    nonisolated static func videoThumbnailTimes(duration: Double) -> [CMTime] {
         guard duration.isFinite, duration > 0 else { return [] }
-        let interval = duration < 10 ? 1.0 : 2.0
+        let baseInterval = duration < 10 ? 1.0 : 2.0
+        let interval = max(baseInterval, duration / Double(maxVideoThumbnailsPerAsset))
         var times: [CMTime] = []
         var time = 0.0
         while time < duration {
@@ -354,12 +434,14 @@ final class MediaVisualCache {
 
     nonisolated static let diskCache = DiskCache(named: "MediaVisualCache")
 
-    /// Keyed on path + size + mtime so source edits invalidate the entry.
-    private nonisolated static func diskCacheKey(for url: URL) -> String? {
+    /// Keyed on path + size + mtime so source edits invalidate the entry; thumbnail
+    /// density is appended when present so cached sprites of other densities don't reuse.
+    nonisolated static func diskCacheKey(for url: URL, thumbnailCount: Int? = nil) -> String? {
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
               let size = attrs[.size] as? Int64,
               let mtime = attrs[.modificationDate] as? Date else { return nil }
-        let seed = "\(url.path)|\(size)|\(mtime.timeIntervalSince1970)"
+        var seed = "\(url.path)|\(size)|\(mtime.timeIntervalSince1970)"
+        if let thumbnailCount { seed += "|\(thumbnailCount)" }
         let digest = SHA256.hash(data: Data(seed.utf8))
         return digest.prefix(16).map { String(format: "%02x", $0) }.joined()
     }

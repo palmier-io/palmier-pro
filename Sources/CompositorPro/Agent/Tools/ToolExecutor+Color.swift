@@ -100,7 +100,7 @@ extension ToolExecutor {
         return out.isEmpty ? nil : out
     }
 
-    func applyColor(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+    func applyColor(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         let colorDict = args["color"] as? [String: Any]
         var knobArgs = args
         knobArgs.removeValue(forKey: "color")
@@ -120,30 +120,33 @@ extension ToolExecutor {
                 throw ToolError("Clip \(id) is a \(clip.mediaType.rawValue) clip; apply_color needs a video or image clip.")
             }
         }
-        // LUT file I/O up front so it can throw before mutating.
-        func storeLUT(_ path: String) throws -> String {
-            do { return try LUTLoader.store(path: path, projectId: editor.projectId) }
+        let context = try EditorViewModel.LUTEditContext(editor: editor, clipIds: input.clipIds)
+        func storeLUT(_ path: String) async throws -> String {
+            do { return try await editor.prepareLUT(path: path, context: context, store: lutStoring) }
             catch let e as LUTStoreError { throw ToolError(e.errorDescription ?? "Invalid LUT.") }
         }
         var lutDestPath: String?
         if let path = input.lut?.path, !path.isEmpty {
-            lutDestPath = try storeLUT(path)
+            lutDestPath = try await storeLUT(path)
         }
         var pastedStack: [Effect]?
         if let colorDict {
             var pasted = GradeState(colorDict: colorDict)
-            if let path = pasted.lutPath, !path.isEmpty { pasted.lutPath = try storeLUT(path) }
+            if let path = pasted.lutPath, !path.isEmpty { pasted.lutPath = try await storeLUT(path) }
             pasted.lutIntensity = pasted.lutIntensity.map { min(1, max(0, $0)) }
             pastedStack = pasted.buildStack()
         }
+        try context.validate(in: editor)
+        guard self.editor === editor else { throw ToolError("Project changed during LUT preparation.") }
+        if let error = projectFocusError() { throw ToolError(error) }
         let reset = input.reset ?? false
         let snapshot = timelineSnapshot(editor)
         let actionName = input.clipIds.count == 1 ? "Color Grade (Agent)" : "Color Grade ×\(input.clipIds.count) (Agent)"
         editor.undo.perform(actionName) {
-            editor.mutateClips(ids: Set(input.clipIds), actionName: actionName) { clip in
+            editor.commitClipProperties(clipIds: context.clips.map(\.id), actionName: actionName) { clip in
                 let nonColor = (clip.effects ?? []).filter { !$0.type.hasPrefix("color.") }
                 if let pastedStack {
-                    writeCompleteGrade(&clip, stack: pastedStack)
+                    writeCompleteGrade(&clip, stack: Self.gradeKeepingEffectIDs(pastedStack, from: clip))
                     return
                 }
                 let disabledColor = reset ? []
@@ -152,7 +155,7 @@ extension ToolExecutor {
                 state.apply(input, lutDestPath: lutDestPath)
                 var color = state.buildStack()
                 for i in color.indices where disabledColor.contains(color[i].type) { color[i].enabled = false }
-                clip.effects = nonColor + color
+                clip.effects = nonColor + Self.gradeKeepingEffectIDs(color, from: clip)
             }
         }
         return mutationResult(editor, since: snapshot, touched: input.clipIds)
@@ -164,6 +167,14 @@ extension ToolExecutor {
         let atFrame: Int?
         let reference: String?
         static let allowedKeys: Set<String> = ["clipId", "mediaRef", "atFrame", "reference"]
+    }
+
+    private static func gradeKeepingEffectIDs(_ stack: [Effect], from clip: Clip) -> [Effect] {
+        stack.map { effect in
+            var effect = effect
+            if let previous = clip.effects?.first(where: { $0.type == effect.type }) { effect.id = previous.id }
+            return effect
+        }
     }
 
     /// Measures color scopes of a clip's current graded look (clipId) or a raw media asset

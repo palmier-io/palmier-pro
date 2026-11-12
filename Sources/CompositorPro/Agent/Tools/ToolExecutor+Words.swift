@@ -31,17 +31,22 @@ extension ToolExecutor {
             if rawWords != nil, !remembered.hasSameWordMapping(in: editor) {
                 throw ToolError("The timeline sources from the previous get_transcript have changed. Call get_transcript again before remove_words.")
             }
-            session = remembered
+            session = rawWords != nil ? remembered : TranscriptSession(context: remembered.context, scope: remembered.scope, editor: editor)
         } else {
             if rawWords != nil, lastTranscriptSession != nil {
                 throw ToolError("The previous get_transcript belongs to a different timeline. Call get_transcript again before remove_words.")
             }
             let scope = TranscriptionScope.automatic
             let cloudRequest = scope.captionRequest(in: editor, provider: .cloud)
+            var pending = TranscriptSession(
+                context: TranscriptionToolContext(provider: .local, preferredLocale: nil), scope: scope, editor: editor
+            )
             let context = try await transcriptionContext(args, path: "remove_words") {
                 await editor.captionCloudCreditCost(for: cloudRequest)
             }
-            session = TranscriptSession(context: context, scope: scope, editor: editor)
+            try validateTranscriptSession(pending, in: editor)
+            pending.context = context
+            session = pending
         }
         let transcript = try await timelineTranscript(editor, session: session)
         let allWords = transcript.words
@@ -116,6 +121,8 @@ extension ToolExecutor {
         // partners, so flattening foreign-track frames here would over-cut the primary track.
         let primaryRanges = rangesByTrack[primaryTrack]!
 
+        try validateTranscriptSession(session, in: editor)
+        if let error = projectFocusError() { throw ToolError(error) }
         let snapshot = timelineSnapshot(editor)
         let outcome = editor.undo.perform("Remove Words (Agent)") {
             editor.rippleDeleteRangesOnTrack(trackIndex: primaryTrack, ranges: primaryRanges)

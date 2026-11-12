@@ -132,6 +132,8 @@ final class ToolExecutor {
 
     var feedbackState = FeedbackState()
     var lastTranscriptSession: TranscriptSession?
+    var lutStoring: EditorViewModel.LUTStoring = { try await LUTLoader.store(path: $0, projectId: $1) }
+    var transcriptLoading: (@Sendable (URL, Bool, Locale?) async throws -> TranscriptionResult)?
 
     func execute(
         name: String,
@@ -368,7 +370,7 @@ final class ToolExecutor {
         return properties
     }
 
-    private func projectFocusError() -> String? {
+    func projectFocusError() -> String? {
         guard frontmostProjectProvider != nil else { return nil }
         let session = sessionProject
         let frontmost = frontmostProject
@@ -457,7 +459,7 @@ final class ToolExecutor {
         case .inspectTimeline: return try await inspectTimeline(editor, args)
         case .reviewTimeline: return try await reviewTimeline(editor, args)
         case .searchMedia:   return try await searchMedia(editor, args)
-        case .applyColor:    return try applyColor(editor, args)
+        case .applyColor:    return try await applyColor(editor, args)
         case .applyEffect:   return try applyEffect(editor, args)
         case .denoiseAudio:  return try await denoiseAudio(editor, args)
         case .debreatheAudio: return try await debreatheAudio(editor, args)

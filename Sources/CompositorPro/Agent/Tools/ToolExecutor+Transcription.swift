@@ -46,19 +46,37 @@ struct TranscriptTargetSnapshot: Equatable {
     let durationFrames: Int
     let trimStartFrame: Int
     let speed: Double
+    let speedTrack: KeyframeTrack<Double>?
+    let freezeFrames: Int
+    let linkGroupId: String?
+    let trackId: String?
+    let trackIndex: Int?
+    let assetIdentity: ObjectIdentifier?
+    let source: MediaAsset.PreparationContext?
 
-    init(_ clip: Clip) {
+    @MainActor
+    init(_ clip: Clip, editor: EditorViewModel) {
         clipId = clip.id
         mediaRef = clip.mediaRef
         startFrame = clip.startFrame
         durationFrames = clip.durationFrames
         trimStartFrame = clip.trimStartFrame
         speed = clip.speed
+        speedTrack = clip.speedTrack
+        freezeFrames = clip.freezeFrames
+        linkGroupId = clip.linkGroupId
+        let location = editor.findClip(id: clip.id)
+        trackIndex = location?.trackIndex
+        trackId = location.map { editor.timeline.tracks[$0.trackIndex].id }
+        let asset = editor.mediaAssets.first { $0.id == clip.mediaRef }
+        assetIdentity = asset.map(ObjectIdentifier.init)
+        source = asset?.preparationContext
     }
 }
 
 struct TranscriptSession {
-    let context: TranscriptionToolContext
+    var context: TranscriptionToolContext
+    let projectId: String?
     let scope: TranscriptionScope
     let timelineId: String
     let timelineFPS: Int
@@ -68,16 +86,18 @@ struct TranscriptSession {
     init(context: TranscriptionToolContext, scope: TranscriptionScope, editor: EditorViewModel) {
         self.context = context
         self.scope = scope
+        projectId = editor.projectId
         timelineId = editor.activeTimelineId
         timelineFPS = editor.timeline.fps
-        targetSnapshot = scope.targets(in: editor).map(TranscriptTargetSnapshot.init)
+        targetSnapshot = scope.targets(in: editor).map { TranscriptTargetSnapshot($0, editor: editor) }
     }
 
     @MainActor
     func hasSameWordMapping(in editor: EditorViewModel) -> Bool {
-        timelineId == editor.activeTimelineId
+        projectId == editor.projectId
+            && timelineId == editor.activeTimelineId
             && timelineFPS == editor.timeline.fps
-            && targetSnapshot == scope.targets(in: editor).map(TranscriptTargetSnapshot.init)
+            && targetSnapshot == scope.targets(in: editor).map({ TranscriptTargetSnapshot($0, editor: editor) })
     }
 }
 
@@ -346,10 +366,14 @@ extension ToolExecutor {
 
         let scope = try resolveTranscriptionScope(editor, args, path: "get_transcript")
         let cloudRequest = scope.captionRequest(in: editor, provider: .cloud)
+        var session = TranscriptSession(
+            context: TranscriptionToolContext(provider: .local, preferredLocale: nil), scope: scope, editor: editor
+        )
         let context = try await transcriptionContext(args, path: "get_transcript") {
             await editor.captionCloudCreditCost(for: cloudRequest)
         }
-        let session = TranscriptSession(context: context, scope: scope, editor: editor)
+        try validateTranscriptSession(session, in: editor)
+        session.context = context
         let transcript = try await timelineTranscript(editor, session: session)
         lastTranscriptSession = session
 
@@ -369,12 +393,23 @@ extension ToolExecutor {
         _ editor: EditorViewModel,
         session: TranscriptSession
     ) async throws -> TimelineTranscript {
+        try validateTranscriptSession(session, in: editor)
         if session.context.provider == .cloud {
             let request = session.scope.captionRequest(in: editor, provider: .cloud)
             try await Self.validateCloudTranscriptionAccess(for: request, in: editor)
+            try validateTranscriptSession(session, in: editor)
         }
         let (words, skipped) = try await timelineWords(editor, session: session)
+        try validateTranscriptSession(session, in: editor)
         return TimelineTranscript(context: session.context, words: words, skipped: skipped)
+    }
+
+    func validateTranscriptSession(_ session: TranscriptSession, in editor: EditorViewModel) throws {
+        try Task.checkCancellation()
+        guard self.editor === editor, !editor.projectPackageCoordinator.isClosed,
+              session.hasSameWordMapping(in: editor) else {
+            throw ToolError("Timeline or sources changed during transcription. Call get_transcript again before editing words.")
+        }
     }
 
     private func timelineWords(
@@ -400,6 +435,7 @@ extension ToolExecutor {
             isVideoByURL: isVideoByURL
         )
 
+        try validateTranscriptSession(session, in: editor)
         let registry = editor.speakerRegistry
         let assignments = editor.speakerAssignments
         let speakerMap = await Self.alignedSpeakerLabels(
@@ -407,6 +443,7 @@ extension ToolExecutor {
             registry: registry, assignments: assignments
         )
 
+        try validateTranscriptSession(session, in: editor)
         var words: [TimelineWord] = []
         for frag in fragments.sorted(by: { $0.clip.startFrame < $1.clip.startFrame }) {
             guard let transcript = transcripts.results[frag.url] else { continue }
@@ -482,6 +519,7 @@ extension ToolExecutor {
         context: TranscriptionToolContext,
         isVideoByURL: [URL: Bool]
     ) async throws -> (results: [URL: TranscriptionResult], skipped: [[String: Any]]) {
+        let load = transcriptLoading
         let rangesByURL = sourceRangesByURL(fragments, fps: fps)
         let outcomes = await withTaskGroup(of: (URL, Result<TranscriptionResult, Error>).self) { group in
             for url in Set(fragments.map(\.url)) {
@@ -489,6 +527,9 @@ extension ToolExecutor {
                     do {
                         switch context.provider {
                         case .local:
+                            if let load {
+                                return (url, .success(try await load(url, isVideoByURL[url] ?? true, context.preferredLocale)))
+                            }
                             return (url, .success(try await TranscriptCache.shared.transcript(
                                 for: url,
                                 isVideo: isVideoByURL[url] ?? true,
