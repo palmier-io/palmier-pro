@@ -18,6 +18,10 @@ enum OpenAIRequestBody {
             "instructions": system,
             "input": inputItems(messages: messages, model: model),
             "reasoning": ["summary": "auto", "effort": reasoningEffort.rawValue],
+            // Responses caches the instructions+tools prefix automatically; a stable key keeps the
+            // agent loop's turns on the same cache route, and a 12h TTL avoids re-writing it.
+            "prompt_cache_key": "compositor-agent",
+            "prompt_cache_options": ["ttl": "12h"],
         ]
         if !tools.isEmpty {
             body["tools"] = tools.map {

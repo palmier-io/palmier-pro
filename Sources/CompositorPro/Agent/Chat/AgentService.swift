@@ -708,9 +708,9 @@ final class AgentService {
         let editingToolSet = Set(editingTools.map { $0.rawValue })
         let contextIsTight = rollingSummary.utf16.count > 2_000 || messages.count > 40
         // A targeted edit (one clip, one property) pays only for editing schemas; production runs keep all.
-        let latestRequest = messages.last(where: { $0.role == .user })
-            .flatMap { msg in msg.blocks.compactMap { if case .text(let s) = $0 { return s } else { return nil } }.first }
-            ?? ""
+        let latestRequest = messages.last { msg in
+            msg.role == .user && msg.blocks.contains { if case .text = $0 { return true } else { return false } }
+        }?.blocks.compactMap { if case .text(let s) = $0 { return s } else { return nil } }.first ?? ""
         let targetedEdit = ToolDefinitions.isTargetedEdit(latestRequest)
         let editingSubset = Set(ToolDefinitions.editingToolNames.map { $0.rawValue })
 

@@ -481,8 +481,12 @@ enum AgentInstructions {
         Make the requested edit with the fewest tool calls.
 
         # Rules
-        - Read state only when you need it: get_timeline to find clip/track ids, get_media to \
-          find an asset. Skip reads when the request already names the target.
+        - Prefer the direct tool. When the request names the clip ("the clip on track 2", "the \
+          first clip") and the replacement asset, call swap_clip_media directly without a \
+          get_timeline or get_media round-trip. Read state only when an id or the target is \
+          genuinely unknown, or when a prior result is missing.
+        - If you must read, use get_timeline for clip/track ids and get_media for assets, then \
+          make the edit in the same turn.
         - Use swap_clip_media to replace a clip's source, set_clip_properties to change timing or \
           framing, set_keyframes for animation, apply_color / apply_effect for looks, and the \
           text/caption/audio tools for their own jobs.

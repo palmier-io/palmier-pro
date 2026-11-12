@@ -138,6 +138,13 @@ struct AgentProviderTests {
         #expect(reasoning["effort"] as? String == "max")
     }
 
+    @Test func openAIRequestsReusePromptCacheAcrossTurns() throws {
+        let body = openAIBody(.terra)
+        #expect(body["prompt_cache_key"] as? String == "compositor-agent")
+        let cache = try #require(body["prompt_cache_options"] as? [String: Any])
+        #expect(cache["ttl"] as? String == "12h")
+    }
+
     @Test func openAIReasoningReplayIncludesRequiredEmptySummary() throws {
         let assistant = AgentRequestMessage(
             role: .assistant,

@@ -2391,14 +2391,16 @@ enum ToolDefinitions {
     ]
 
     /// True when the request is a targeted edit rather than a full production or planning run.
+    /// A small, fast tool set keeps ordinary edits from paying for the production schemas.
     static func isTargetedEdit(_ request: String) -> Bool {
         let text = request.lowercased()
         let productionSignals = [
-            "produce", "storyboard", "plan a video", "plan the video", "make a video",
-            "make me a video", "create a video", "generate a video", "generate video",
-            "generate b-roll", "generate broll", "full production", "assemble the film",
-            "assemble a film", "documentary", "explainer", "export the film", "deliver the film",
-            "ai video", "text to video", "image to video", "hyperframe", "design spec",
+            "generate ", "produce", "storyboard", "plan a video", "plan the video",
+            "make a video", "make me a video", "create a video", "full production",
+            "assemble", "documentary", "explainer", "hyperframe", "design spec",
+            "deliver the film", "export the film", "ai video", "text to video",
+            "image to video", "b-roll", "broll", "drone", "narration",
+            "background music", "score the", "add music",
         ]
         return !productionSignals.contains { text.contains($0) }
     }

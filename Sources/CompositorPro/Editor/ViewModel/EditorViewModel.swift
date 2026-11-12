@@ -781,7 +781,7 @@ final class EditorViewModel {
 
     /// Source pixel dimensions for a clip: asset dims, or the child timeline's for nest carriers.
     func sourceDimensions(for clip: Clip) -> (width: Int, height: Int)? {
-        if let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }),
+        if let asset = mediaAssetsById[clip.mediaRef],
            let sw = asset.sourceWidth, let sh = asset.sourceHeight, sw > 0, sh > 0 {
             return (sw, sh)
         }
