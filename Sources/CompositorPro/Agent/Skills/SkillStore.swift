@@ -81,6 +81,7 @@ final class SkillStore {
     }
 
     private var reloadGeneration = 0
+    private var lastSignature: String?
     private var syncTask: Task<Void, Never>?
     private var mutationTask: Task<Void, Never>?
 
@@ -97,10 +98,16 @@ final class SkillStore {
         let generation = reloadGeneration
         let directory = storageDirectory
         let includeBuiltins = self.includeBuiltins
+        // The agent loop reloads before every turn. Skip the disk scan when nothing changed.
+        let signature = await Task.detached(priority: .utility) {
+            Self.directorySignature(directory)
+        }.value
+        if signature == lastSignature, !skills.isEmpty { return }
         let result = await Task.detached(priority: .utility) {
             (Self.scan(directory: directory, includeBuiltins: includeBuiltins), Self.loadLedger(directory: directory))
         }.value
         guard generation == reloadGeneration else { return }
+        lastSignature = signature
         apply(result.0)
         if let loadedLedger = result.1 {
             ledger = loadedLedger
@@ -168,6 +175,23 @@ final class SkillStore {
             }
         }
         return SkillScan(skills: found.sorted { $0.id < $1.id }, bodies: bodies, shas: shas)
+    }
+
+    /// A cheap fingerprint of the skill tree: SKILL.md path, size, and mtime for each entry.
+    private nonisolated static func directorySignature(_ directory: URL) -> String {
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
+            return ""
+        }
+        var parts: [String] = []
+        for dir in entries {
+            let md = dir.appendingPathComponent("SKILL.md")
+            guard let vals = try? md.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]) else { continue }
+            let size = vals.fileSize ?? 0
+            let mtime = vals.contentModificationDate?.timeIntervalSince1970 ?? 0
+            parts.append("\(dir.lastPathComponent):\(size):\(Int(mtime * 1000))")
+        }
+        return parts.sorted().joined(separator: "|")
     }
 
     // MARK: Catalog install / ledger
