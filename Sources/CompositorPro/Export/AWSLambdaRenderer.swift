@@ -1,10 +1,9 @@
-#if canImport(AWSS3) && canImport(AWSLambda)
+#if AWS_SUPPORT
 import Foundation
-import AWSSDKCore
 import AWSS3
-import AWSS3Types
 import AWSSDKIdentity
 import AWSLambda
+import Smithy
 
 /// Optional AWS Lambda remote rendering backend for offloading heavy export batches.
 /// Requires AWS credentials and a deployed Lambda function for rendering.
@@ -14,7 +13,7 @@ final class AWSLambdaRenderer {
 
     private var lambdaClient: LambdaClient?
     private var s3Client: S3Client?
-    private var configuration: LambdaRendererConfiguration?
+    private(set) var configuration: LambdaRendererConfiguration?
 
     private init() {}
 
@@ -22,17 +21,10 @@ final class AWSLambdaRenderer {
     func configure(_ config: LambdaRendererConfiguration) async {
         self.configuration = config
 
-        let credentialsProvider = try? await DefaultCredentialProvider()
         let region = config.region
 
-        self.lambdaClient = try? LambdaClient(
-            region: region,
-            credentialsProvider: credentialsProvider
-        )
-        self.s3Client = try? S3Client(
-            region: region,
-            credentialsProvider: credentialsProvider
-        )
+        self.lambdaClient = try? LambdaClient(region: region)
+        self.s3Client = try? S3Client(region: region)
     }
 
     /// Exports a timeline using AWS Lambda.
@@ -73,19 +65,19 @@ final class AWSLambdaRenderer {
 
         // Stage 2: Invoke Lambda function
         progressHandler?(0.5)
-        let invokeRequest = LambdaInvokeRequest(
+        let invokeRequest = InvokeInput(
             functionName: config.functionName,
+            invocationType: .requestresponse,
             payload: try JSONEncoder().encode(LambdaRenderPayload(
                 projectKey: projectKey,
                 mediaKeys: mediaUploadResult,
                 outputKey: "renders/\(UUID().uuidString).\(format.fileExtension)",
-                format: format.rawValue,
+                format: format.lambdaIdentifier,
                 resolution: resolution.rawValue,
                 fps: timeline.fps,
                 width: timeline.width,
                 height: timeline.height
-            )),
-            invocationType: .requestResponse
+            ))
         )
 
         let invokeResponse = try await lambdaClient.invoke(input: invokeRequest)
@@ -137,7 +129,7 @@ final class AWSLambdaRenderer {
         return try JSONEncoder().encode(LambdaProject(
             timeline: timeline,
             manifest: manifest,
-            format: format.rawValue,
+            format: format.lambdaIdentifier,
             resolution: resolution.rawValue
         ))
     }
@@ -165,9 +157,9 @@ final class AWSLambdaRenderer {
 
     private func uploadToS3(client: S3Client, bucket: String, key: String, data: Data) async throws {
         let putInput = PutObjectInput(
+            body: .data(data),
             bucket: bucket,
-            key: key,
-            body: .data(data)
+            key: key
         )
         _ = try await client.putObject(input: putInput)
     }
@@ -178,7 +170,10 @@ final class AWSLambdaRenderer {
         guard let body = output.body else {
             throw LambdaRendererError.s3DownloadFailed
         }
-        return try await Data(collecting: body, upTo: 1024 * 1024 * 1024) // 1GB max
+        guard let data = try await body.readData() else {
+            throw LambdaRendererError.s3DownloadFailed
+        }
+        return data
     }
 }
 
@@ -259,9 +254,7 @@ extension ExportService {
                     outputURL: outputURL,
                     progressHandler: onProgress
                 )
-                lastReport = report
-                didCommitOutput = true
-                setProgress(1)
+                commitExternalExport(report: report)
                 return
             } catch {
                 Log.export.warning("Lambda export failed, falling back to local: \(error.localizedDescription)")

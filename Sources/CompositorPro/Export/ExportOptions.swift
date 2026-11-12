@@ -23,6 +23,18 @@ enum ExportFormat {
     }
 
     var isHDR: Bool { self == .hevcHDR }
+
+    /// Stable identifier sent to remote renderers (AWS Lambda) so the worker can pick a codec.
+    var lambdaIdentifier: String {
+        switch self {
+        case .h264: "h264"
+        case .h265: "h265"
+        case .prores: "prores"
+        case .hevcHDR: "hevcHDR"
+        case .xml: "xml"
+        case .fcpxml: "fcpxml"
+        }
+    }
 }
 
 enum ExportResolution: String, CaseIterable, Identifiable {

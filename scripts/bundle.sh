@@ -6,6 +6,7 @@ set -euo pipefail
 #   scripts/bundle.sh debug --fast              # fastest: skip dSYM + deep sign, just env+build
 #   scripts/bundle.sh debug --speech             # include bundled speech and MLX
 #   scripts/bundle.sh debug --all                # include all optional traits
+#   scripts/bundle.sh release --no-traits        # release build without the optional traits
 #   scripts/bundle.sh release --sign            # build + Developer ID codesign
 #   scripts/bundle.sh release --dist            # build + sign + notarize + staple + DMG
 
@@ -13,22 +14,25 @@ CONFIG="release"
 MODE="dev"
 ENABLE_ALL_TRAITS=false
 INCLUDE_BUNDLED_SPEECH=false
+EXPLICIT_TRAITS=false
 for arg in "$@"; do
   case "$arg" in
     release|debug) CONFIG="$arg" ;;
     --fast)        MODE="fast" ;;
     --sign)        MODE="sign" ;;
     --dist)        MODE="dist" ;;
-    --speech)      INCLUDE_BUNDLED_SPEECH=true ;;
+    --speech)      INCLUDE_BUNDLED_SPEECH=true; EXPLICIT_TRAITS=true ;;
+    --no-traits)   EXPLICIT_TRAITS=true ;;
     --all)
       ENABLE_ALL_TRAITS=true
       INCLUDE_BUNDLED_SPEECH=true
+      EXPLICIT_TRAITS=true
       ;;
     *) echo "unknown arg: $arg" >&2; exit 1 ;;
   esac
 done
 
-if [ "$CONFIG" = "release" ]; then
+if [ "$CONFIG" = "release" ] && ! $EXPLICIT_TRAITS; then
   ENABLE_ALL_TRAITS=true
   INCLUDE_BUNDLED_SPEECH=true
 fi
@@ -167,6 +171,12 @@ if [ -d "$RES_BUNDLE/Models" ]; then
   cp -R "$RES_BUNDLE/Models" "$APP/Contents/Resources/"
 else
   echo "!! missing Models/ in SwiftPM resource bundle at $RES_BUNDLE" >&2
+  exit 1
+fi
+if [ -d "$RES_BUNDLE/Styles" ]; then
+  cp -R "$RES_BUNDLE/Styles" "$APP/Contents/Resources/"
+else
+  echo "!! missing Styles/ in SwiftPM resource bundle at $RES_BUNDLE" >&2
   exit 1
 fi
 

@@ -502,6 +502,13 @@ final class ExportService {
         onPhaseChange?(phase)
     }
 
+    /// Commits an export produced outside this service (e.g. a remote renderer).
+    func commitExternalExport(report: ExportRunReport) {
+        lastReport = report
+        didCommitOutput = true
+        setProgress(1)
+    }
+
     private func reset() {
         error = nil
         lastReport = nil

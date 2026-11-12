@@ -21,6 +21,7 @@ let package = Package(
         .package(url: "https://github.com/airbnb/lottie-ios", from: "4.6.1"),
         .package(url: "https://github.com/soniqo/speech-swift", exact: "0.0.21"),
         .package(url: "https://github.com/awslabs/aws-sdk-swift.git", from: "1.0.0"),
+        .package(url: "https://github.com/smithy-lang/smithy-swift.git", exact: "0.264.0"),
     ],
     targets: [
         .executableTarget(
@@ -60,6 +61,11 @@ let package = Package(
                     package: "aws-sdk-swift",
                     condition: .when(traits: ["AWSSupport"])
                 ),
+                .product(
+                    name: "Smithy",
+                    package: "smithy-swift",
+                    condition: .when(traits: ["AWSSupport"])
+                ),
             ],
             path: "Sources/CompositorPro",
             exclude: [
@@ -79,6 +85,7 @@ let package = Package(
             ],
             swiftSettings: [
                 .define("BUNDLED_SPEECH", .when(traits: ["BundledSpeech"])),
+                .define("AWS_SUPPORT", .when(traits: ["AWSSupport"])),
             ],
             plugins: ["MetalCIKernelPlugin"]
         ),
