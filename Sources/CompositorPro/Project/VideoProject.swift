@@ -50,6 +50,8 @@ private final class SaveReady: Sendable {
     func signal() { semaphore.signal() }
 
     func wait() { semaphore.wait() }
+
+    func wait(timeout: DispatchTime) -> DispatchTimeoutResult { semaphore.wait(timeout: timeout) }
 }
 
 class VideoProject: NSDocument {
@@ -393,7 +395,13 @@ class VideoProject: NSDocument {
     ) throws {
         // NSDocument otherwise blocks the main thread while super prepares a safe-save directory.
         unblockUserInteraction()
-        activeSaveRequest?.ready.wait()
+        if let ready = activeSaveRequest?.ready {
+            let result = ready.wait(timeout: .now() + .seconds(30))
+            if result == .timedOut {
+                Log.project.error("save: timed out waiting for package coordinator admission")
+                throw CocoaError(.fileWriteUnknown)
+            }
+        }
         try super.writeSafely(to: url, ofType: typeName, for: saveOperation)
     }
 
@@ -722,7 +730,9 @@ class VideoProject: NSDocument {
         editorViewModel.editPlans = loadedPlans ?? []
         editorViewModel.editPlansLoadFailed = loadedPlansUnreadable
         loadedPlans = nil
-        editorViewModel.agentService.loadSessions(from: fileURL)
+        Task { [weak editorViewModel] in
+            await editorViewModel?.agentService.loadSessions(from: fileURL)
+        }
         editorViewModel.agentService.onSessionsChanged = { [weak self] in
             self?.updateChangeCount(.changeDone)
         }

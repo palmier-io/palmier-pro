@@ -29,6 +29,14 @@ struct EditorUndoTests {
         return (undo, manager, counter)
     }
 
+    @Test func attachSetsLevelsOfUndoToBoundHistory() {
+        let undo = EditorUndo()
+        let manager = UndoManager()
+        #expect(manager.levelsOfUndo == 0)
+        undo.attach(manager)
+        #expect(manager.levelsOfUndo == 100)
+    }
+
     @Test func directRegistrationsAreSeparateBalancedGroups() {
         let (undo, manager, counter) = harness()
 

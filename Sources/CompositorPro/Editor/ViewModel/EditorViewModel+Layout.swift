@@ -9,6 +9,8 @@ extension EditorViewModel {
         anchorX: Double = 0.5,
         anchorY: Double = 0.5
     ) -> (transform: Transform, crop: Crop) {
+        // Derived per call: the canvas aspect follows the timeline (a project can be
+        // reframed at any time) and the slot aspect follows this rect.
         let canvasAspect = Double(timeline.width) / Double(max(1, timeline.height))
         let slotPixelAspect = rect.h > 0 ? (rect.w / rect.h) * canvasAspect : canvasAspect
 

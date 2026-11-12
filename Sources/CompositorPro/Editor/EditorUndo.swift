@@ -9,6 +9,9 @@ final class EditorUndo {
 
     func attach(_ manager: UndoManager?) {
         self.manager = manager
+        if let manager, manager.levelsOfUndo == 0 {
+            manager.levelsOfUndo = 100
+        }
     }
 
     func perform<T>(_ actionName: String, _ work: () throws -> T) rethrows -> T {
