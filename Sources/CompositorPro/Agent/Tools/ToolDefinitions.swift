@@ -2401,7 +2401,8 @@ enum ToolDefinitions {
             "deliver the film", "export the film", "ai video", "text to video",
             "image to video", "b-roll", "broll", "drone", "narration", "voiceover",
             "voice over", "soundtrack", "background music", "score the", "add music",
-            "create an image", "create a picture", "draw ", "paint ",
+            "create an image", "create a picture", "make an image", "make a picture",
+            "make me an image", "draw ", "paint ", "image of", "picture of",
         ]
         return !productionSignals.contains { text.contains($0) }
     }

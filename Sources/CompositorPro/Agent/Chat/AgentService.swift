@@ -732,11 +732,13 @@ final class AgentService {
             let permitsFallback = await delegation.permitsFallback
             guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor) else { break }
 
-            // Tool pruning: targeted edits send only editing schemas; tight context also drops production tools.
+            // Tool pruning: a targeted edit sends only editing schemas. Otherwise keep the full
+            // set, since any production/generative turn may need generation, planning, or catalog
+            // tools; tight context trims only when the request is purely an edit.
             let tools: [AgentToolSchema]
             if targetedEdit {
                 tools = baseTools.filter { editingSubset.contains($0.name) }
-            } else if contextIsTight {
+            } else if contextIsTight, !userRequests.contains(where: { !ToolDefinitions.isTargetedEdit($0) }) {
                 tools = baseTools.filter { editingToolSet.contains($0.name) }
             } else {
                 tools = baseTools
