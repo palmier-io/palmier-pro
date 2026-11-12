@@ -33,7 +33,9 @@ enum GenerationBackend {
     static func subscribe(jobId: String) -> AnyPublisher<BackendGenerationJob?, Never>? {
         guard let currentProvider = provider else { return nil }
         let subject = CurrentValueSubject<BackendGenerationJob?, Never>(nil)
-        Task { @MainActor in
+        // The polling task must stop when the subscription does, or a cancelled
+        // subscriber keeps polling the provider for the rest of the session.
+        let task = Task { @MainActor in
             while !Task.isCancelled {
                 guard let job = try? await currentProvider.status(jobId: jobId) else { break }
                 subject.send(job)
@@ -43,7 +45,9 @@ enum GenerationBackend {
                 try? await Task.sleep(nanoseconds: 200_000_000)
             }
         }
-        return subject.eraseToAnyPublisher()
+        return subject
+            .handleEvents(receiveCancel: { task.cancel() })
+            .eraseToAnyPublisher()
     }
 
     static func subscribeToProjectActivity(

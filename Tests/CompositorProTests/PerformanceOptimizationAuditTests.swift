@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import Testing
 @testable import CompositorPro
@@ -167,10 +168,55 @@ struct PerformanceOptimizationAuditTests {
         }
     }
 
+    @Test func markerSnapFramesAreOrderedUniqueAndExcludeRanges() {
+        let editor = EditorViewModel()
+        let point = TimelineMarker(id: "point", name: "Point", startFrame: 40)
+        let range = TimelineMarker(id: "range", name: "Range", startFrame: 10, durationFrames: 30)
+        editor.timeline.markers = [point, range]
+        #expect(editor.timelineMarkerSnapFrames() == [10, 40])
+        #expect(editor.timelineMarkerSnapFrames(excludingMarkerIds: ["range"]) == [40])
+        editor.timeline.markers[0].startFrame = 80
+        #expect(editor.timelineMarkerSnapFrames() == [10, 40, 80])
+    }
+
+    @Test func benchmarkRepeatedMarkerSnapFrameConstruction() {
+        let editor = EditorViewModel()
+        for count in [100, 1_000, 10_000] {
+            editor.timeline.markers = (0..<count).map {
+                TimelineMarker(id: "marker-\($0)", name: "Marker", startFrame: (($0 * 37) % count) * 30,
+                               durationFrames: $0.isMultiple(of: 2) ? 15 : 0)
+            }
+            var checksum = 0
+            let elapsed = medianMilliseconds {
+                checksum = 0
+                for _ in 0..<120 { checksum += editor.timelineMarkerSnapFrames().count }
+            }
+            #expect(checksum == (count + count / 2) * 120)
+            print("AUDIT_MARKERS markers=\(count) snap_rebuilds=120 samples=5 median_ms=\(elapsed) per_rebuild_ms=\(elapsed / 120)")
+        }
+    }
+
+    @Test func cancelingGenerationSubscriptionCancelsInFlightPollingTask() async throws {
+        let previousProvider = GenerationBackend.provider
+        let provider = AuditPollingProvider()
+        GenerationBackend.provider = provider
+        defer { GenerationBackend.provider = previousProvider }
+        let publisher = try #require(GenerationBackend.subscribe(jobId: UUID().uuidString))
+        let subscription = publisher.sink { _ in }
+        await provider.waitUntilStarted()
+        subscription.cancel()
+        let canceled = await provider.releaseAndObserveCancellation()
+        #expect(canceled, "Publisher cancellation leaves the generation polling task uncanceled")
+        print("AUDIT_POLL publisher_canceled=true polling_task_canceled=\(canceled)")
+    }
+
     @Test(arguments: [
         ("Generate an image of a harbor", "generate_image"),
         ("Create background music for this scene", "generate_audio"),
         ("Generate narration for the intro", "generate_speech"),
+        ("Create an image of a harbor", "generate_image"),
+        ("Create a soundtrack for this scene", "generate_audio"),
+        ("Add a voiceover to the intro", "generate_speech"),
     ])
     func generativeRequestsKeepRequiredTools(request: String, requiredTool: String) async throws {
         let record = try await advertisedTools([AgentMessage(role: .user, blocks: [.text(request)])])
@@ -184,6 +230,16 @@ struct PerformanceOptimizationAuditTests {
             AgentMessage(role: .user, blocks: [.toolResult(toolUseId: "read", content: [.text("{}")], isError: false)]),
         ])
         #expect(record.names.contains("generate_video"))
+    }
+
+    @Test func productionFollowUpKeepsRequiredTools() async throws {
+        let record = try await advertisedTools([
+            AgentMessage(role: .user, blocks: [.text("Make a video about sailing")]),
+            AgentMessage(role: .assistant, blocks: [.text("I can create the shots and soundtrack. Proceed?")]),
+            AgentMessage(role: .user, blocks: [.text("Yes, do it")]),
+        ])
+        #expect(record.names.contains("generate_video"))
+        #expect(record.names.contains("generate_audio"))
     }
 
     @Test func productionAndEditingSchemaPayloadMeasurements() async throws {
@@ -242,5 +298,50 @@ private actor AuditToolClient: AgentClient {
         let schemas = tools.map { ["name": $0.name, "description": $0.description, "input_schema": $0.inputSchema] as [String: Any] }
         record = AuditToolRecord(names: tools.map(\.name), bytes: try JSONSerialization.data(withJSONObject: schemas, options: [.sortedKeys]).count,
                                  systemBytes: system.utf8.count)
+    }
+}
+
+private actor AuditPollingProvider: GenerationProvider {
+    let id = "audit-polling"
+    let displayName = "Audit polling"
+    let supportedModalities: Set<String> = ["video"]
+    private var startedWaiter: CheckedContinuation<Void, Never>?
+    private var statusGate: CheckedContinuation<Void, Never>?
+    private var canceledWaiter: CheckedContinuation<Bool, Never>?
+    private var canceled: Bool?
+
+    func waitUntilStarted() async {
+        guard statusGate == nil else { return }
+        await withCheckedContinuation { startedWaiter = $0 }
+    }
+
+    func releaseAndObserveCancellation() async -> Bool {
+        statusGate?.resume()
+        statusGate = nil
+        if let canceled { return canceled }
+        return await withCheckedContinuation { canceledWaiter = $0 }
+    }
+
+    func status(jobId: String) async throws -> BackendGenerationJob? {
+        await withCheckedContinuation {
+            statusGate = $0
+            startedWaiter?.resume()
+            startedWaiter = nil
+        }
+        let observedCancellation = Task.isCancelled
+        canceled = observedCancellation
+        canceledWaiter?.resume(returning: observedCancellation)
+        canceledWaiter = nil
+        return nil
+    }
+
+    func submit(model: String, params: BackendGenerationParams, projectId: String?) async throws -> String {
+        throw BackendUnavailableError.hostedServicesRemoved
+    }
+
+    func cancel(jobId: String) async throws {}
+
+    func uploadReference(fileURL: URL, contentType: String) async throws -> String {
+        throw BackendUnavailableError.hostedServicesRemoved
     }
 }

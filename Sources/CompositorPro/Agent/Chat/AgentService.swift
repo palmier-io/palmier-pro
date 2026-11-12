@@ -708,10 +708,15 @@ final class AgentService {
         let editingToolSet = Set(editingTools.map { $0.rawValue })
         let contextIsTight = rollingSummary.utf16.count > 2_000 || messages.count > 40
         // A targeted edit (one clip, one property) pays only for editing schemas; production runs keep all.
-        let latestRequest = messages.last { msg in
-            msg.role == .user && msg.blocks.contains { if case .text = $0 { return true } else { return false } }
-        }?.blocks.compactMap { if case .text(let s) = $0 { return s } else { return nil } }.first ?? ""
-        let targetedEdit = ToolDefinitions.isTargetedEdit(latestRequest)
+        // A short follow-up ("yes, do it") continues the request it answers, so the whole
+        // conversation decides: any earlier generative or production request keeps the full tool set.
+        let userRequests = messages.compactMap { msg -> String? in
+            guard msg.role == .user else { return nil }
+            return msg.blocks.compactMap { if case .text(let s) = $0 { return s } else { return nil } }.first
+        }
+        let latestRequest = userRequests.last ?? ""
+        let targetedEdit = userRequests.allSatisfy { ToolDefinitions.isTargetedEdit($0) }
+            && !latestRequest.isEmpty
         let editingSubset = Set(ToolDefinitions.editingToolNames.map { $0.rawValue })
 
         let delegation = AgentDelegation()

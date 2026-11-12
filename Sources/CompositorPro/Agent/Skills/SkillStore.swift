@@ -177,19 +177,22 @@ final class SkillStore {
         return SkillScan(skills: found.sorted { $0.id < $1.id }, bodies: bodies, shas: shas)
     }
 
-    /// A cheap fingerprint of the skill tree: SKILL.md path, size, and mtime for each entry.
+    /// A fingerprint of the skill tree: the content hash of every SKILL.md and of the
+    /// installed ledger. Content is hashed rather than dated because a skill can be rewritten
+    /// with the same size and modification time, and the ledger lives outside the skill folders.
     private nonisolated static func directorySignature(_ directory: URL) -> String {
         let fm = FileManager.default
-        guard let entries = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
-            return ""
-        }
         var parts: [String] = []
-        for dir in entries {
-            let md = dir.appendingPathComponent("SKILL.md")
-            guard let vals = try? md.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]) else { continue }
-            let size = vals.fileSize ?? 0
-            let mtime = vals.contentModificationDate?.timeIntervalSince1970 ?? 0
-            parts.append("\(dir.lastPathComponent):\(size):\(Int(mtime * 1000))")
+        if let entries = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) {
+            for dir in entries {
+                let md = dir.appendingPathComponent("SKILL.md")
+                guard let data = try? Data(contentsOf: md) else { continue }
+                parts.append("\(dir.lastPathComponent):\(sha12(data))")
+            }
+        }
+        let ledgerURL = directory.appendingPathComponent(".installed.json")
+        if let data = try? Data(contentsOf: ledgerURL) {
+            parts.append("ledger:\(sha12(data))")
         }
         return parts.sorted().joined(separator: "|")
     }

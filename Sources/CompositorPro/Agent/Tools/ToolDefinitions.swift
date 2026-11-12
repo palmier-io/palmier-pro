@@ -2395,14 +2395,28 @@ enum ToolDefinitions {
     static func isTargetedEdit(_ request: String) -> Bool {
         let text = request.lowercased()
         let productionSignals = [
-            "generate ", "produce", "storyboard", "plan a video", "plan the video",
+            "generate", "produce", "storyboard", "plan a video", "plan the video",
             "make a video", "make me a video", "create a video", "full production",
             "assemble", "documentary", "explainer", "hyperframe", "design spec",
             "deliver the film", "export the film", "ai video", "text to video",
-            "image to video", "b-roll", "broll", "drone", "narration",
-            "background music", "score the", "add music",
+            "image to video", "b-roll", "broll", "drone", "narration", "voiceover",
+            "voice over", "soundtrack", "background music", "score the", "add music",
+            "create an image", "create a picture", "draw ", "paint ",
         ]
         return !productionSignals.contains { text.contains($0) }
+    }
+
+    /// True when the latest user turn is a short go-ahead that only makes sense as a follow-up
+    /// to the preceding production request.
+    static func isProductionContinuation(_ request: String, previousUserRequest: String) -> Bool {
+        let text = request.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let acknowledgements: Set<String> = [
+            "yes", "yeah", "yep", "ok", "okay", "sure", "go", "go ahead", "do it",
+            "proceed", "continue", "please do", "sounds good", "let's do it", "lets do it",
+            "make it", "start", "please", "yes please", "do that", "go on",
+        ]
+        guard acknowledgements.contains(text) else { return false }
+        return !isTargetedEdit(previousUserRequest)
     }
 
     private static func textTransformProperties() -> [String: [String: Any]] {
