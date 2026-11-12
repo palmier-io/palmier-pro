@@ -13,6 +13,11 @@ enum TextFrameRenderer {
         return cache
     }()
 
+    static func clearCaches() {
+        cache.removeAllObjects()
+        layoutCache.removeAllObjects()
+    }
+
     /// Test seam: called with the clip content each time a raster is actually drawn (cache miss).
     static let onRasterize = OSAllocatedUnfairLock<(@Sendable (String) -> Void)?>(initialState: nil)
 

@@ -548,6 +548,14 @@ final class EditorViewModel {
         }
     }
 
+    /// Releases playback and preview caches before the app terminates.
+    func releaseMemoryForTermination() {
+        isPlaying = false
+        videoEngine?.teardown()
+        videoEngine = nil
+        mediaVisualCache.resetSessionState()
+    }
+
     func resumePlayback() {
         if let videoEngine {
             videoEngine.resumePlayback()

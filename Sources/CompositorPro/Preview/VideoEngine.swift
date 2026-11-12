@@ -75,6 +75,7 @@ final class VideoEngine {
         invalidateRebuild()
         cancelSourcePreviewLoad()
         compositionCache.removeAll()
+        CustomVideoCompositor.clearCaches()
         timelinePreviewTimelineId = nil
         invalidateSeekState()
         scrubAudioEngine.teardown()
@@ -111,6 +112,7 @@ final class VideoEngine {
         scrubAudioEngine.stopScrubbing()
         editor?.isPlaying = false
         player.pause()
+        CustomVideoCompositor.clearCaches()
     }
 
     func resumePlayback() {

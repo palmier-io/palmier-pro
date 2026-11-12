@@ -7,6 +7,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var isTerminating = false
     private var restartRequested = false
     private var terminationTask: Task<Void, Never>?
+    private var terminationReplySent = false
+    private static let terminationTimeout: Duration = .seconds(15)
 
     private override init() {
         super.init()
@@ -43,7 +45,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag {
+        if flag {
+            // The app is already visible; just bring it forward (dock click while another app is frontmost).
+            NSApp.activate(ignoringOtherApps: true)
+        } else {
             AppState.shared.showHome()
         }
         return true
@@ -51,7 +56,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         if isTerminating { return .terminateLater }
+        if !restartRequested, !Self.confirmQuit() { return .terminateCancel }
         isTerminating = true
+        terminationReplySent = false
         let projects = AppState.shared.openProjects
         let shouldRestart = restartRequested
         let closeOwners = projects.compactMap { project in
@@ -62,7 +69,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             for owner in closeOwners { try owner.project.validateCloseOwner(owner.lease) }
         }
 
-        terminationTask = Task { @MainActor in
+        // A quit must never hang. If graceful teardown does not finish in time, terminate anyway.
+        let watchdog = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.terminationTimeout)
+            guard !Task.isCancelled, let self, !self.terminationReplySent else { return }
+            Log.app.notice("quit: graceful teardown timed out; terminating")
+            for owner in closeOwners {
+                owner.project.editorViewModel.projectPackageCoordinator.cancelClosing(owner.lease)
+            }
+            self.releaseMemory(projects: closeOwners.map(\.project))
+            self.reply(to: sender, allow: true)
+        }
+
+        terminationTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { watchdog.cancel() }
             do {
                 for owner in closeOwners {
                     if !owner.project.editorViewModel.projectPackageCoordinator.isClosed {
@@ -108,19 +129,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     try owner.project.closeImmediately(using: owner.lease)
                 }
                 terminationTask = nil
-                sender.reply(toApplicationShouldTerminate: true)
+                self.releaseMemory(projects: closeOwners.map(\.project))
+                self.reply(to: sender, allow: true)
             } catch {
                 for owner in closeOwners {
                     owner.project.editorViewModel.projectPackageCoordinator.cancelClosing(owner.lease)
                 }
-                terminationTask = nil
-                restartRequested = false
-                isTerminating = false
-                sender.presentError(error)
-                sender.reply(toApplicationShouldTerminate: false)
+                self.restartRequested = false
+                self.isTerminating = false
+                // The watchdog may already have terminated; don't surface an error during teardown.
+                if !self.terminationReplySent { sender.presentError(error) }
+                self.reply(to: sender, allow: false)
             }
         }
         return .terminateLater
+    }
+
+    /// Drops playback, decoders, and rendered-frame caches before the process exits.
+    @MainActor
+    private func releaseMemory(projects: [VideoProject]) {
+        for project in projects {
+            project.editorViewModel.releaseMemoryForTermination()
+        }
+        CustomVideoCompositor.clearCaches()
+        TextFrameRenderer.clearCaches()
+        Task { await HybridFrameCache.shared.reset() }
+    }
+
+    /// Replies to a pending termination request exactly once.
+    private func reply(to sender: NSApplication, allow: Bool) {
+        guard !terminationReplySent else { return }
+        terminationReplySent = true
+        terminationTask = nil
+        sender.reply(toApplicationShouldTerminate: allow)
+    }
+
+    private static func confirmQuit() -> Bool {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = L10n.string("Quit Compositor Pro?")
+        alert.informativeText = L10n.string("Your projects will be saved before the app closes.")
+        alert.addButton(withTitle: L10n.string("Quit"))
+        alert.addButton(withTitle: L10n.string("Cancel"))
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     func restart() {

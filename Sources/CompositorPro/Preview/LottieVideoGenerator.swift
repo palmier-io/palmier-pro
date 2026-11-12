@@ -220,15 +220,22 @@ enum LottieVideoGenerator {
         schedule.append((frame: meta.frameCount - 1, seconds: max(holdTailSeconds, meta.duration + 1)))
 
         for (frame, seconds) in schedule {
+            try Task.checkCancellation()
             var bufferOut: CVPixelBuffer?
             guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &bufferOut) == kCVReturnSuccess,
                   let buffer = bufferOut else { throw LottieVideoError.pixelBufferCreationFailed }
-            try renderIntoBuffer(view: view, frame: animation.startFrame + AnimationFrameTime(frame), buffer: buffer, target: target)
+            try autoreleasepool {
+                try renderIntoBuffer(view: view, frame: animation.startFrame + AnimationFrameTime(frame), buffer: buffer, target: target)
+            }
 
-            while !input.isReadyForMoreMediaData { try await Task.sleep(for: .milliseconds(5)) }
+            while !input.isReadyForMoreMediaData {
+                try Task.checkCancellation()
+                try await Task.sleep(for: .milliseconds(5))
+            }
             guard adaptor.append(buffer, withPresentationTime: CMTimeMakeWithSeconds(seconds, preferredTimescale: 600)) else {
                 throw writer.error ?? LottieVideoError.appendFailed(frame: frame)
             }
+            await Task.yield()
         }
 
         input.markAsFinished()

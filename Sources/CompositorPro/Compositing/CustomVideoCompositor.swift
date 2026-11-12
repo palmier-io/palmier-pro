@@ -12,13 +12,17 @@ final class CustomVideoCompositor: NSObject, AVVideoCompositing, @unchecked Send
         let options: [CIContextOption: Any] = [
             .workingColorSpace: NSNull(),
             .outputColorSpace: NSNull(),
-            .cacheIntermediates: true,
+            .cacheIntermediates: false,
         ]
         if let device = MTLCreateSystemDefaultDevice() {
             return CIContext(mtlDevice: device, options: options)
         }
         return CIContext(options: options)
     }()
+
+    static func clearCaches() {
+        ciContext.clearCaches()
+    }
 
     private let queue = DispatchQueue(label: "io.compositor.render", qos: .userInteractive)
     private let lock = NSLock()

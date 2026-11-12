@@ -50,4 +50,40 @@ struct DiskCache: Sendable {
             try? fm.removeItem(at: entry)
         }
     }
+
+    /// Prunes entries older than `maxAgeDays` or if total size exceeds `maxBytes` (evicting oldest first).
+    func prune(maxBytes: Int64 = 2_000_000_000, maxAgeDays: Int = 14) {
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        let cutoffDate = Date().addingTimeInterval(-Double(maxAgeDays * 86400))
+        var fileMeta: [(url: URL, date: Date, size: Int64)] = []
+        var totalSize: Int64 = 0
+
+        for url in entries {
+            guard let vals = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey]),
+                  let date = vals.contentModificationDate,
+                  let size = vals.fileSize else { continue }
+            let size64 = Int64(size)
+            if date < cutoffDate {
+                try? fm.removeItem(at: url)
+            } else {
+                fileMeta.append((url: url, date: date, size: size64))
+                totalSize += size64
+            }
+        }
+
+        if totalSize > maxBytes {
+            fileMeta.sort { $0.date < $1.date }
+            for item in fileMeta {
+                try? fm.removeItem(at: item.url)
+                totalSize -= item.size
+                if totalSize <= maxBytes { break }
+            }
+        }
+    }
 }

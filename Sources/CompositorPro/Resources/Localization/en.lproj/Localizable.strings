@@ -928,6 +928,7 @@
 "Queued" = "Queued";
 "Quick questions" = "Quick questions";
 "Quit Compositor Pro" = "Quit Compositor Pro";
+"Quit Compositor Pro?" = "Quit Compositor Pro?";
 "Radius" = "Radius";
 "Ramp this clip from normal speed down to a quarter speed over the last second." = "Ramp this clip from normal speed down to a quarter speed over the last second.";
 "Range" = "Range";
@@ -1414,3 +1415,4 @@
 "using OpenAI API key" = "using OpenAI API key";
 "using your custom endpoint" = "using your custom endpoint";
 "you@example.com — so we can reply" = "you@example.com — so we can reply";
+"Your projects will be saved before the app closes." = "Your projects will be saved before the app closes.";

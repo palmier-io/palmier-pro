@@ -31,6 +31,12 @@ enum LocalVideoUpscaler {
     }
 
     private static let cache = DiskCache(named: "VisualEnhancement")
+    private static let ciContext = CIContext(options: [
+        .useSoftwareRenderer: false,
+        .workingColorSpace: NSNull(),
+        .outputColorSpace: NSNull(),
+        .cacheIntermediates: false,
+    ])
 
     /// Upscale a source media asset at the given scale.
     /// - Parameter cancelCheck: Called before each inference step; if it throws, work stops.
@@ -158,7 +164,7 @@ enum LocalVideoUpscaler {
             throw Error(message: "Invalid video duration in \(sourceURL.lastPathComponent).")
         }
 
-        let naturalSize = try await videoTrack.load(.naturalSize)
+        let _ = try await videoTrack.load(.naturalSize)
         let transform = try await videoTrack.load(.preferredTransform)
 
         let reader = try AVAssetReader(asset: asset)
@@ -191,10 +197,7 @@ enum LocalVideoUpscaler {
         writer.startWriting()
         writer.startSession(atSourceTime: .zero)
 
-        let writeQueue = DispatchQueue(label: "LocalVideoUpscaler.writer", qos: .userInitiated)
         var frameCount = 0
-        var time = CMTime.zero
-        let sampleDuration = CMTime(value: 1, timescale: CMTimeScale(600))
 
         while writerInput.isReadyForMoreMediaData {
             try Task.checkCancellation()
@@ -208,7 +211,6 @@ enum LocalVideoUpscaler {
             }
             adaptor.append(upscaled, withPresentationTime: presentationTime)
             frameCount += 1
-            time = presentationTime
         }
 
         writerInput.markAsFinished()
@@ -235,7 +237,7 @@ enum LocalVideoUpscaler {
         guard let outBuffer else {
             throw Error(message: "Could not create output pixel buffer.")
         }
-        CIContext().render(CIImage(cgImage: upscaled), to: outBuffer)
+        ciContext.render(CIImage(cgImage: upscaled), to: outBuffer)
         return outBuffer
     }
 
@@ -265,11 +267,10 @@ enum LocalVideoUpscaler {
     }
 
     static func upscaleCGImage(_ image: CIImage, to size: CGSize) throws -> CGImage {
-        let context = CIContext(options: [.useSoftwareRenderer: false])
         let scaleX = size.width / image.extent.width
         let scaleY = size.height / image.extent.height
         let transformed = image.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
-        guard let cgImage = context.createCGImage(transformed, from: transformed.extent) else {
+        guard let cgImage = ciContext.createCGImage(transformed, from: transformed.extent) else {
             throw Error(message: "Core Image upscale failed to produce output image.")
         }
         return cgImage
@@ -286,10 +287,9 @@ enum LocalVideoUpscaler {
     /// Returns the cached output URL if an enhancement already exists, else nil.
     static func cachedOutputURL(for mediaRef: String, scale: Scale, sourceURL: URL) -> URL? {
         let cacheTag = DiskCache.sizeMtimeTag(for: sourceURL)
-        let outputURL = cache.directory.appendingPathComponent(
-            "\(mediaRef)_\(cacheTag)_upscale_\(scale.rawValue)_*.mp4"
-        )
-        return nil
+        let pattern = "\(mediaRef)_\(cacheTag)_upscale_\(scale.rawValue)_"
+        guard let entries = try? FileManager.default.contentsOfDirectory(at: cache.directory, includingPropertiesForKeys: nil) else { return nil }
+        return entries.first { $0.lastPathComponent.hasPrefix(pattern) && $0.pathExtension == "mp4" }
     }
 
     static func cancel() {
