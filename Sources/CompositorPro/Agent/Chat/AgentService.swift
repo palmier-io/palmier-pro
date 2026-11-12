@@ -707,6 +707,12 @@ final class AgentService {
         ]
         let editingToolSet = Set(editingTools.map { $0.rawValue })
         let contextIsTight = rollingSummary.utf16.count > 2_000 || messages.count > 40
+        // A targeted edit (one clip, one property) pays only for editing schemas; production runs keep all.
+        let latestRequest = messages.last(where: { $0.role == .user })
+            .flatMap { msg in msg.blocks.compactMap { if case .text(let s) = $0 { return s } else { return nil } }.first }
+            ?? ""
+        let targetedEdit = ToolDefinitions.isTargetedEdit(latestRequest)
+        let editingSubset = Set(ToolDefinitions.editingToolNames.map { $0.rawValue })
 
         let delegation = AgentDelegation()
         let learningSection = AgentLearningLedger.load(from: userDefaults).playbook().promptSection()
@@ -721,9 +727,11 @@ final class AgentService {
             let permitsFallback = await delegation.permitsFallback
             guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor) else { break }
 
-            // Tool pruning for tight context: only editing-relevant schemas.
+            // Tool pruning: targeted edits send only editing schemas; tight context also drops production tools.
             let tools: [AgentToolSchema]
-            if contextIsTight {
+            if targetedEdit {
+                tools = baseTools.filter { editingSubset.contains($0.name) }
+            } else if contextIsTight {
                 tools = baseTools.filter { editingToolSet.contains($0.name) }
             } else {
                 tools = baseTools
@@ -731,7 +739,9 @@ final class AgentService {
 
             // Build system instructions: core + rolling summary + editing progress + delegation + skills.
             var systemParts: [String] = []
-            systemParts.append(AgentInstructions.serverInstructions)
+            systemParts.append(targetedEdit
+                ? AgentInstructions.targetedEditInstructions
+                : AgentInstructions.serverInstructions)
 
             if !rollingSummary.isEmpty {
                 systemParts.append("\n\n# Rolling summary of earlier turns\n\(rollingSummary)")

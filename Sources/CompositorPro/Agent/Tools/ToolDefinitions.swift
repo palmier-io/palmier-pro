@@ -2365,6 +2365,43 @@ enum ToolDefinitions {
 
     static var mcpServer: [AgentTool] { all + [manageProject] }
     static var inAppAgent: [AgentTool] { all + [readSkill, manageSkills] }
+    // MARK: - tool subsets
+
+    /// Tools for ordinary timeline editing, excluding generation/planning/storyboard catalogs.
+    static let editingToolNames: [ToolName] = [
+        .getCapabilities,
+        .getTimeline, .inspectTimeline, .reviewTimeline, .qcTimeline,
+        .createTimeline, .setActiveTimeline,
+        .manageTracks, .manageClipLinks, .addClips, .insertClips, .moveClips, .removeClips,
+        .splitClips, .rippleDeleteRanges, .swapClipMedia, .setClipProperties,
+        .copyClipSettings, .setKeyframes, .applyLayout, .applyMotionPreset,
+        .crossfadeAudio, .setClipSpeedRamp, .applyStylePreset, .offsetAudio,
+        .freezeClip, .syncClips, .syncToBeats, .generateThumbnail,
+        .addTexts, .updateText, .addCaptions, .translateCaptions, .captionTemplates,
+        .applyTextStyle, .applyTransition, .removeTransition,
+        .applyColor, .applyEffect, .inspectColor,
+        .manageMarkers, .manageMulticam, .changeCam, .getMulticam,
+        .mixAudio, .duckAudio, .matchLoudness,
+        .getMedia, .inspectMedia, .searchMedia, .importMedia, .organizeMedia, .captureFrame,
+        .getTranscript, .removeWords, .removeSilence, .detectSilence, .detectBeats,
+        .setProjectSettings, .exportProject, .manageExports, .undo,
+        .composeImage, .buildMapScene, .buildGraphicScene, .removeImageBackground,
+        .denoiseAudio, .debreatheAudio, .enhanceVoice,
+        .readSkill,
+    ]
+
+    /// True when the request is a targeted edit rather than a full production or planning run.
+    static func isTargetedEdit(_ request: String) -> Bool {
+        let text = request.lowercased()
+        let productionSignals = [
+            "produce", "storyboard", "plan a video", "plan the video", "make a video",
+            "make me a video", "create a video", "generate a video", "generate video",
+            "generate b-roll", "generate broll", "full production", "assemble the film",
+            "assemble a film", "documentary", "explainer", "export the film", "deliver the film",
+            "ai video", "text to video", "image to video", "hyperframe", "design spec",
+        ]
+        return !productionSignals.contains { text.contains($0) }
+    }
 
     private static func textTransformProperties() -> [String: [String: Any]] {
         [
