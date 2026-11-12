@@ -6,6 +6,7 @@ This directory contains architectural guides, operational references, subsystem 
 
 ## Core Guides & References
 
+- [agents/README.md](agents/README.md) — Coding-agent feature navigation, scoped engineering rules, reusable workflows, and guidance validation.
 - [adoption.md](adoption.md) — Architectural integration notes and migration guide for HyperFrames catalog, CLI, and templating into Compositor Pro.
 - [HeadlessRendering.md](HeadlessRendering.md) — CLI commands, Docker execution, and headless CI export jobs.
 - [external-agent-integration.md](external-agent-integration.md) — MCP Server integration over HTTP for external agents (Claude Code, Codex, OpenCode).

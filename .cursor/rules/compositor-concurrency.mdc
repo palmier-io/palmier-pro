@@ -1,0 +1,7 @@
+---
+description: Executor, cancellation, and lifecycle safety for Swift tasks, callbacks, gates, and file I/O.
+globs: Sources/CompositorPro/**/*.swift, Tests/CompositorProTests/**/*.swift
+alwaysApply: false
+---
+
+For asynchronous state, callbacks, gates, or filesystem work, read `docs/agents/rules/concurrency.md` before editing. Follow behavioral routing in `AGENTS.md`, including affected callers outside these globs. Do not duplicate this policy here.
