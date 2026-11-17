@@ -402,6 +402,8 @@ actor AgentDelegation {
             case .insufficientCredits: return .insufficientCredits
             case .unavailable: return .unsupportedModel
             case .refusal: return .modelRefusal
+            case .stopping: return .persistentFailure
+            case .localAgent: return .persistentFailure
             case .upstream(let message): return responseFailure(message) ?? .persistentFailure
             case .httpError(let status, let code, let message):
                 return classify(AgentClientTransportError.httpError(provider: .custom, status: status,

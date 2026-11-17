@@ -30,23 +30,12 @@ struct ChatSession: Codable, Identifiable {
 enum ChatSessionStore {
     static let dirName = "chat"
 
-    private static let encoder: JSONEncoder = {
-        let e = JSONEncoder()
-        e.outputFormatting = [.prettyPrinted, .sortedKeys]
-        e.dateEncodingStrategy = .iso8601
-        return e
-    }()
-
-    private static let decoder: JSONDecoder = {
-        let d = JSONDecoder()
-        d.dateDecodingStrategy = .iso8601
-        return d
-    }()
-
-    static func load(from projectURL: URL?) -> [ChatSession] {
+    @concurrent static func load(from projectURL: URL?) async -> [ChatSession] {
         guard let dir = projectURL?.appendingPathComponent(dirName, isDirectory: true),
               let urls = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
         else { return [] }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
         return urls.compactMap { url in
             guard url.pathExtension == "json",
                   let data = try? Data(contentsOf: url)
@@ -56,6 +45,9 @@ enum ChatSessionStore {
     }
 
     static func encodeSession(_ session: ChatSession) -> Data? {
-        try? encoder.encode(session)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return try? encoder.encode(session)
     }
 }

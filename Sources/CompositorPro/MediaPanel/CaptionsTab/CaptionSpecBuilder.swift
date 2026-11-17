@@ -54,7 +54,7 @@ enum CaptionSpecBuilder {
 
             let cased = phrases.map {
                 CaptionBuilder.Phrase(
-                    text: input.textCase.apply($0.text),
+                    text: CaptionPunctuation.normalized(input.textCase.apply($0.text)),
                     start: $0.start,
                     end: $0.end,
                     words: $0.words
@@ -79,7 +79,11 @@ enum CaptionSpecBuilder {
                         maxWidthRatio: input.maxWidthRatio
                     )
                 }
-            ))
+            ).map { spec in
+                var result = spec
+                result.words = CaptionPunctuation.normalized(spec.words)
+                return result
+            })
             try Task.checkCancellation()
         }
         return adjustedCaptionTiming(
@@ -100,16 +104,17 @@ enum CaptionSpecBuilder {
         var specs: [EditorViewModel.TextClipSpec] = []
         for cue in cues {
             try Task.checkCancellation()
+            let content = CaptionPunctuation.normalized(cue.text)
             let startFrame = Int((cue.startSeconds * Double(fps)).rounded())
             let endFrame = Int((cue.endSeconds * Double(fps)).rounded())
             specs.append(EditorViewModel.TextClipSpec(
                 trackIndex: 0,
                 startFrame: startFrame,
                 durationFrames: max(1, endFrame - startFrame),
-                content: cue.text,
+                content: content,
                 style: style,
                 transform: transform(
-                    for: cue.text, style: style, center: center,
+                    for: content, style: style, center: center,
                     canvasWidth: canvasWidth, canvasHeight: canvasHeight,
                     maxWidthRatio: maxWidthRatio
                 ),

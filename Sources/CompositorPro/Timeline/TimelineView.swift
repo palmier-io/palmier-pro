@@ -303,6 +303,8 @@ final class TimelineView: NSView, NSPopoverDelegate {
     /// Draws in document coordinates; the canvas translates its context before calling.
     fileprivate func drawContent(in dirtyRect: NSRect, context ctx: CGContext) {
         let geo = geometry
+        editor.mediaVisualCache.beginDisplayPass()
+        defer { editor.mediaVisualCache.endDisplayPass() }
         let scrollOffset = enclosingScrollView?.contentView.bounds.origin ?? .zero
         let visibleWidth = enclosingScrollView?.contentView.bounds.width ?? bounds.width
         let rippleInsertPreview = currentRippleInsertPreview()

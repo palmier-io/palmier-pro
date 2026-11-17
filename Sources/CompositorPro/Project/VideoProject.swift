@@ -17,6 +17,8 @@ struct ProjectPackageSnapshot: Sendable {
     var plans: Data?
     var thumbnail: Data?
     var chatSessionFiles: [(name: String, data: Data)]
+    /// Agent editing-progress snapshot saved beside the chat sessions.
+    var editingProgress: EditingProgressSummary? = nil
 }
 
 private struct RestoredMediaCandidate: Sendable {
@@ -44,25 +46,13 @@ private final class ProjectCloseDecision: NSObject {
     }
 }
 
-private final class SaveReady: Sendable {
-    private let semaphore = DispatchSemaphore(value: 0)
-
-    func signal() { semaphore.signal() }
-
-    func wait() { semaphore.wait() }
-
-    func wait(timeout: DispatchTime) -> DispatchTimeoutResult { semaphore.wait(timeout: timeout) }
-}
-
 class VideoProject: NSDocument {
 
     private struct SaveRequest {
-        let id = UUID()
         let url: URL
         let typeName: String
         let operation: NSDocument.SaveOperationType
         let completion: (Error?) -> Void
-        let ready = SaveReady()
     }
 
     private struct SaveContext: Sendable {
@@ -71,6 +61,7 @@ class VideoProject: NSDocument {
         let plans: [EditPlan]?
         let thumbnail: Data?
         let chatSessions: [ChatSession]
+        let editingProgress: EditingProgressSummary
         let sourceURL: URL?
     }
 
@@ -112,11 +103,6 @@ class VideoProject: NSDocument {
 
     // Published before super.save, read-only until its completion, then cleared on main.
     private nonisolated(unsafe) var saveContext: SaveContext?
-    private nonisolated(unsafe) var activeSaveRequest: SaveRequest?
-    private nonisolated(unsafe) var activeSaveLease: ProjectPackageCoordinator.SaveLease?
-    private var saveQueue: [SaveRequest] = []
-    private var directSaveInProgress = false
-    private var saveTask: Task<Void, Never>?
     private var closeTask: Task<Void, Never>?
     private var nativeCloseTask: Task<Void, Never>?
     private var nativeCloseLease: ProjectPackageCoordinator.CloseLease?
@@ -220,23 +206,18 @@ class VideoProject: NSDocument {
             operation: saveOperation,
             completion: completionHandler
         )
-        saveQueue.append(request)
         editorViewModel.projectPackageCoordinator.enqueueSave { lease in
             self.performSave(request, lease: lease)
         }
-        launchNextSaveIfNeeded()
     }
 
     private func performSave(_ request: SaveRequest, lease: ProjectPackageCoordinator.SaveLease) {
-        activeSaveLease = lease
+        let coordinator = editorViewModel.projectPackageCoordinator
+        guard !coordinator.isClosed else {
+            coordinator.finishSave(lease) { request.completion(CocoaError(.userCancelled)) }
+            return
+        }
         saveContext = captureSaveSnapshot()
-        request.ready.signal()
-    }
-
-    private func launchNextSaveIfNeeded() {
-        guard !directSaveInProgress, let request = saveQueue.first else { return }
-        directSaveInProgress = true
-        activeSaveRequest = request
         super.save(to: request.url, ofType: request.typeName, for: request.operation) { error in
             Task { @MainActor in
                 var completionError = error
@@ -249,23 +230,9 @@ class VideoProject: NSDocument {
                     completionError = failure
                 }
                 self.saveContext = nil
-                self.saveTask = nil
-                self.directSaveInProgress = false
-                if let index = self.saveQueue.firstIndex(where: { $0.id == request.id }) {
-                    self.saveQueue.remove(at: index)
+                coordinator.finishSave(lease) {
+                    request.completion(completionError)
                 }
-                if let lease = self.activeSaveLease {
-                    self.activeSaveLease = nil
-                    self.activeSaveRequest = nil
-                    let coordinator = self.editorViewModel.projectPackageCoordinator
-                    coordinator.finishSave(lease) {
-                        DispatchQueue.main.async { request.completion(completionError) }
-                    }
-                } else {
-                    self.activeSaveRequest = nil
-                    DispatchQueue.main.async { request.completion(completionError) }
-                }
-                self.launchNextSaveIfNeeded()
             }
         }
     }
@@ -365,6 +332,7 @@ class VideoProject: NSDocument {
         try coordinator.validate(lease)
         closeSaveCount += 1
         defer { closeSaveCount -= 1 }
+        editorViewModel.cancelRelinkScan()
         await editorViewModel.agentService.cancelAndWait()
         try Task.checkCancellation()
         try coordinator.validate(lease)
@@ -372,7 +340,9 @@ class VideoProject: NSDocument {
         try Task.checkCancellation()
         try coordinator.validate(lease)
         try await coordinator.waitUntilIdle(for: lease)
+        var saveAttempts = 0
         repeat {
+            saveAttempts += 1
             try Task.checkCancellation()
             try coordinator.validate(lease)
             guard let url = fileURL else { throw CocoaError(.fileNoSuchFile) }
@@ -384,7 +354,7 @@ class VideoProject: NSDocument {
             }
             try Task.checkCancellation()
             try coordinator.validate(lease)
-        } while hasUnautosavedChanges
+        } while hasUnautosavedChanges && saveAttempts < 3
         try await coordinator.waitUntilIdle(for: lease)
     }
 
@@ -395,13 +365,6 @@ class VideoProject: NSDocument {
     ) throws {
         // NSDocument otherwise blocks the main thread while super prepares a safe-save directory.
         unblockUserInteraction()
-        if let ready = activeSaveRequest?.ready {
-            let result = ready.wait(timeout: .now() + .seconds(30))
-            if result == .timedOut {
-                Log.project.error("save: timed out waiting for package coordinator admission")
-                throw CocoaError(.fileWriteUnknown)
-            }
-        }
         try super.writeSafely(to: url, ofType: typeName, for: saveOperation)
     }
 
@@ -418,7 +381,8 @@ class VideoProject: NSDocument {
                     manifest: try context.manifest.map { try JSONEncoder().encode($0) },
                     plans: try context.plans.map { try EditPlanStore.encode($0) },
                     thumbnail: context.thumbnail,
-                    chatSessionFiles: try Self.encodeChatSessions(context.chatSessions)
+                    chatSessionFiles: try Self.encodeChatSessions(context.chatSessions),
+                    editingProgress: context.editingProgress
                 ),
                 to: url,
                 sourceURL: context.sourceURL
@@ -434,6 +398,7 @@ class VideoProject: NSDocument {
             plans: EditPlanStore.snapshot(plans: editorViewModel.editPlans, loadFailed: plansLoadFailed),
             thumbnail: captureThumbnail(),
             chatSessions: editorViewModel.agentService.sessions,
+            editingProgress: editorViewModel.agentService.editingProgress,
             sourceURL: fileURL
         )
     }
@@ -488,6 +453,12 @@ class VideoProject: NSDocument {
             try copyPreservedFile(Project.thumbnailFilename, from: sourceURL, to: packageURL, fm: fm)
         }
         try writeChatDirectory(snapshot.chatSessionFiles, to: packageURL, fm: fm)
+        if let progress = snapshot.editingProgress {
+            try EditingProgressStore.write(
+                progress,
+                toChatDirectory: packageURL.appendingPathComponent(ChatSessionStore.dirName, isDirectory: true)
+            )
+        }
         try copyMediaDirectoryIfNeeded(from: sourceURL, to: packageURL, fm: fm)
         try fm.createDirectory(
             at: packageURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true),
@@ -618,12 +589,14 @@ class VideoProject: NSDocument {
         let coordinator = editorViewModel.projectPackageCoordinator
         try coordinator.validate(lease)
         if let url = fileURL { (registry ?? editorViewModel.projectRegistry)?.register(url) }
+        var saveAttempts = 0
         repeat {
+            saveAttempts += 1
             try await saveBeforeClosing(using: lease)
             try Task.checkCancellation()
             try coordinator.validate(lease)
             try await coordinator.waitUntilIdle(for: lease)
-        } while hasUnautosavedChanges
+        } while hasUnautosavedChanges && saveAttempts < 3
         try Task.checkCancellation()
         try coordinator.validate(lease)
         try closeImmediately(using: lease)
@@ -730,10 +703,11 @@ class VideoProject: NSDocument {
         editorViewModel.editPlans = loadedPlans ?? []
         editorViewModel.editPlansLoadFailed = loadedPlansUnreadable
         loadedPlans = nil
-        Task { [weak editorViewModel] in
-            await editorViewModel?.agentService.loadSessions(from: fileURL)
-        }
+        editorViewModel.agentService.loadSessions(from: fileURL)
         editorViewModel.agentService.onSessionsChanged = { [weak self] in
+            self?.updateChangeCount(.changeDone)
+        }
+        editorViewModel.agentService.onEditingProgressChanged = { [weak self] in
             self?.updateChangeCount(.changeDone)
         }
         editorViewModel.onProjectCheckpointRequired = { [weak self] in
@@ -878,7 +852,7 @@ class VideoProject: NSDocument {
         guard !request.candidates.isEmpty else { return nil }
         thumbnailRequestInFlight = request
         let renderer = thumbnailRenderer
-        thumbnailTask = coordinator.startMutation { [weak self] lease in
+        thumbnailTask = coordinator.startIntent { [weak self] lease in
             guard let self else { return }
             let result = try await Self.refreshThumbnail(request, cached: cached, render: renderer)
             try Task.checkCancellation()
@@ -1021,6 +995,7 @@ class VideoProject: NSDocument {
     func cancelDocumentBackgroundWork() {
         editorViewModel.cancelAudioMix()
         editorViewModel.cancelProductionRuns()
+        editorViewModel.agentService.cancelAllRuns()
         thumbnailTask?.cancel()
         thumbnailRetryTask?.cancel()
         mediaRestoreTask?.cancel()
@@ -1065,7 +1040,7 @@ class VideoProject: NSDocument {
         let loader = restoredMetadataLoader
         let urls = targets.compactMap { $0.candidate?.url }
         let timelines = editorViewModel.timelines
-        mediaRestoreTask = coordinator.startMutation { [weak self] lease in
+        mediaRestoreTask = coordinator.startIntent { [weak self] lease in
             guard let self else { return }
             defer { if mediaRestoreRevision == revision { mediaRestoreTask = nil } }
             if let previousTask {

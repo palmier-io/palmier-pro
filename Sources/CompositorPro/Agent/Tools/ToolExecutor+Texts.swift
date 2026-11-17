@@ -120,9 +120,11 @@ extension ToolExecutor {
     ])
 
     private static let updateTextAllowedKeys: Set<String> = Set([
-        "clipIds", "captionGroupId", "content",
+        "clipIds", "captionGroupId", "content", "entries", "normalizeCaptionPunctuation",
         "style", "transform", "animation", "highlightColor", "fillMode",
     ])
+
+    nonisolated static let textReplacementBatchLimit = 200
 
     func parseTextStylePatch(_ args: [String: Any], path: String) throws -> ParsedTextStylePatch? {
         guard args.keys.contains("style") else { return nil }
@@ -559,9 +561,33 @@ extension ToolExecutor {
     func updateText(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.updateTextAllowedKeys, path: "update_text")
 
-        let hasContent = args.keys.contains("content")
+        let normalizeCaptionPunctuation: Bool
+        if let raw = args["normalizeCaptionPunctuation"] {
+            guard isJSONBoolean(raw), let value = raw as? Bool else {
+                throw ToolError("update_text.normalizeCaptionPunctuation: expected Boolean")
+            }
+            normalizeCaptionPunctuation = value
+        } else {
+            normalizeCaptionPunctuation = false
+        }
+        if normalizeCaptionPunctuation {
+            try validateUnknownKeys(args, allowed: ["clipIds", "captionGroupId", "normalizeCaptionPunctuation"], path: "update_text caption punctuation cleanup")
+            if let raw = args["clipIds"] {
+                guard let ids = raw as? [Any], ids.allSatisfy({ ($0 as? String)?.isEmpty == false }) else {
+                    throw ToolError("update_text.clipIds: expected an array of non-empty Strings")
+                }
+            }
+            if let raw = args["captionGroupId"] {
+                guard let groupId = raw as? String, !groupId.isEmpty else {
+                    throw ToolError("update_text.captionGroupId: expected a non-empty String")
+                }
+            }
+        }
+
+        let hasEntries = args.keys.contains("entries")
+        let hasContent = args.keys.contains("content") || hasEntries
         let content: String?
-        if hasContent {
+        if args.keys.contains("content") {
             guard let raw = args["content"] as? String else {
                 throw ToolError("update_text.content: expected String")
             }
@@ -570,14 +596,63 @@ extension ToolExecutor {
             content = nil
         }
 
-        var clipIds = args.stringArray("clipIds")
-        if let gid = args.string("captionGroupId") {
-            let groupIds = editor.captionGroupTextClipIds(groupId: gid)
-            guard !groupIds.isEmpty else { throw ToolError("No caption clips found for captionGroupId: \(gid)") }
-            var seen = Set(clipIds)
-            for id in groupIds where seen.insert(id).inserted { clipIds.append(id) }
+        var contentByClipId: [String: String] = [:]
+        var clipIds: [String] = []
+        if hasEntries {
+            guard !args.keys.contains("content"), !args.keys.contains("clipIds"), !args.keys.contains("captionGroupId") else {
+                throw ToolError("update_text.entries cannot be combined with content, clipIds, or captionGroupId")
+            }
+            guard let entries = args["entries"] as? [Any], !entries.isEmpty,
+                  entries.count <= Self.textReplacementBatchLimit else {
+                throw ToolError("update_text.entries: expected 1...\(Self.textReplacementBatchLimit) replacement objects")
+            }
+            for (index, raw) in entries.enumerated() {
+                let path = "update_text.entries[\(index)]"
+                guard let entry = raw as? [String: Any] else { throw ToolError("\(path): expected object") }
+                try validateUnknownKeys(entry, allowed: ["clipId", "content"], path: path)
+                guard let ref = entry["clipId"] as? String, !ref.isEmpty else {
+                    throw ToolError("\(path).clipId: expected non-empty String")
+                }
+                guard let replacement = entry["content"] as? String else {
+                    throw ToolError("\(path).content: expected String")
+                }
+                guard let clip = editor.clipFor(id: ref) else { throw ToolError("Clip not found: \(ref)") }
+                guard contentByClipId[clip.id] == nil else { throw ToolError("\(path): duplicate clipId \(clip.id)") }
+                contentByClipId[clip.id] = replacement
+                clipIds.append(clip.id)
+            }
+        } else {
+            clipIds = args.stringArray("clipIds")
+            if let gid = args.string("captionGroupId") {
+                let groupIds = editor.captionGroupTextClipIds(groupId: gid)
+                guard !groupIds.isEmpty else { throw ToolError("No caption clips found for captionGroupId: \(gid)") }
+                var seen = Set(clipIds)
+                for id in groupIds where seen.insert(id).inserted { clipIds.append(id) }
+            }
         }
-        guard !clipIds.isEmpty else { throw ToolError("Provide a non-empty 'clipIds' array or a 'captionGroupId'") }
+        guard !clipIds.isEmpty else { throw ToolError("Provide entries, a non-empty clipIds array, or a captionGroupId") }
+
+        if normalizeCaptionPunctuation {
+            let snapshot = timelineSnapshot(editor)
+            let changedIds: [String]
+            do {
+                changedIds = try editor.cleanCaptionPunctuation(clipIds: clipIds)
+            } catch {
+                switch error {
+                case .missingClip(let id): throw ToolError("Caption clip not found: \(id)")
+                case .captionRequired(let id): throw ToolError("Caption punctuation cleanup requires caption text clips: \(id)")
+                }
+            }
+            let textChanges = changedIds.compactMap { id -> [String: Any]? in
+                guard let content = editor.clipFor(id: id)?.textContent else { return nil }
+                return ["clipId": id, "content": content]
+            }
+            return mutationResult(editor, since: snapshot, touched: changedIds, extra: [
+                "changed": !changedIds.isEmpty,
+                "normalizedCaptionCount": changedIds.count,
+                "textChanges": textChanges,
+            ])
+        }
 
         let textStylePatch = try parseTextStylePatch(args, path: "update_text")
         let transform = try parseTextTransform(args["transform"], path: "update_text.transform")
@@ -596,6 +671,17 @@ extension ToolExecutor {
             guard clip.mediaType == .text else {
                 throw ToolError("update_text only applies to text clips: \(id) is \(clip.mediaType.rawValue)")
             }
+            if clip.captionGroupId != nil, let replacement = contentByClipId[clip.id] ?? content {
+                contentByClipId[clip.id] = CaptionPunctuation.normalized(replacement)
+            }
+        }
+
+        if let content, clipIds.count > 1,
+           clipIds.allSatisfy({ editor.clipFor(id: $0)?.captionGroupId != nil }),
+           content.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("["),
+           let data = content.data(using: .utf8),
+           let sentences = (try? JSONSerialization.jsonObject(with: data)) as? [String], sentences.count > 1 {
+            throw ToolError("update_text.content is one shared text, not a list of replacements. Use entries: [{clipId, content}] for different caption sentences; no captions changed.")
         }
 
         var notes: [String] = []
@@ -603,7 +689,7 @@ extension ToolExecutor {
             let timingCleared = clipIds.filter { id in
                 guard let loc = editor.findClip(id: id) else { return false }
                 let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-                return clip.wordTimings != nil && clip.textContent != content
+                return clip.wordTimings != nil && clip.textContent != (contentByClipId[clip.id] ?? content)
             }
             if !timingCleared.isEmpty {
                 notes.append("Content change cleared word timings on \(timingCleared.count) clip\(timingCleared.count == 1 ? "" : "s") — karaoke highlighting falls back to plain text there.")
@@ -639,11 +725,11 @@ extension ToolExecutor {
                     width: clip.transform.width,
                     alignment: originalStyle.alignment
                 )
-                if let content {
-                    if clip.textContent != content {
+                if let replacement = contentByClipId[clip.id] ?? content {
+                    if clip.textContent != replacement {
                         clip.wordTimings = nil
                     }
-                    clip.textContent = content
+                    clip.textContent = replacement
                 }
                 if let textStylePatch, textStylePatch.hasAnyField {
                     var style = clip.textStyle ?? TextStyle()
@@ -701,11 +787,18 @@ extension ToolExecutor {
         }
 
         let changed = beforeClips.contains { id, clip in editor.clipFor(id: id) != clip }
+        var extra: [String: Any] = ["changed": changed]
+        if hasEntries {
+            extra["textChanges"] = clipIds.compactMap { id -> [String: Any]? in
+                guard let replacement = contentByClipId[id], beforeClips[id]?.textContent != replacement else { return nil }
+                return ["clipId": id, "content": replacement]
+            }
+        }
         return mutationResult(
             editor,
             since: snapshot,
             touched: clipIds,
-            extra: ["changed": changed],
+            extra: extra,
             notes: notes
         )
     }

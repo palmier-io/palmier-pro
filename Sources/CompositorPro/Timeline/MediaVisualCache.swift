@@ -13,6 +13,7 @@ final class MediaVisualCache {
     private var waveformInFlight: Set<String> = []
     private var waveformKeys: [String] = []
     private let maxWaveformAssets = 32
+    private static let maxWaveformBytes = 32 << 20
     /// Cap concurrent waveform extractions to avoid starving playback.
     private static let waveformGate = AsyncSemaphore(value: 2)
 
@@ -44,6 +45,7 @@ final class MediaVisualCache {
     private var videoThumbnailInFlight: Set<String> = []
     private var videoThumbnailKeys: [String] = []
     private let maxVideoThumbnailAssets = 24
+    private static let maxVideoThumbnailBytes = 160 << 20
     private static let videoThumbnailGate = AsyncSemaphore(value: 2)
 
     // MARK: - Image thumbnails (single still per asset)
@@ -52,44 +54,95 @@ final class MediaVisualCache {
     private var imageThumbnailInFlight: Set<String> = []
     private var imageThumbnailKeys: [String] = []
     private let maxImageThumbnailAssets = 64
+    private static let maxImageThumbnailBytes = 16 << 20
     private static let imageThumbnailGate = AsyncSemaphore(value: 4)
 
     var knownAssetURLs: [String: URL] = [:]
 
+    // MARK: - Display pass admission
+
+    /// Identifies the timeline draw pass so entries drawn this pass are never evicted mid-pass.
+    @ObservationIgnored private var displayEpoch = 0
+    @ObservationIgnored private var waveformEpochs: [String: Int] = [:]
+    @ObservationIgnored private var videoThumbnailEpochs: [String: Int] = [:]
+    @ObservationIgnored private var imageThumbnailEpochs: [String: Int] = [:]
+    @ObservationIgnored private var waveformBytes: [String: Int] = [:]
+    @ObservationIgnored private var videoThumbnailBytes: [String: Int] = [:]
+    @ObservationIgnored private var imageThumbnailBytes: [String: Int] = [:]
+
+    /// Called at the top of a timeline draw pass.
+    func beginDisplayPass() {
+        displayEpoch += 1
+    }
+
+    /// Called when the draw pass ends. Only entries the pass did not draw may be evicted, so
+    /// viewport demand is never trimmed and the next redraw cannot restart a reload cycle.
+    func endDisplayPass() {
+        evictColdEntries(
+            keys: &waveformKeys, epochs: &waveformEpochs, bytes: &waveformBytes,
+            countLimit: maxWaveformAssets, byteLimit: Self.maxWaveformBytes
+        ) { [self] key in waveformSamples.removeValue(forKey: key) }
+        evictColdEntries(
+            keys: &videoThumbnailKeys, epochs: &videoThumbnailEpochs, bytes: &videoThumbnailBytes,
+            countLimit: maxVideoThumbnailAssets, byteLimit: Self.maxVideoThumbnailBytes
+        ) { [self] key in videoThumbnails.removeValue(forKey: key) }
+        evictColdEntries(
+            keys: &imageThumbnailKeys, epochs: &imageThumbnailEpochs, bytes: &imageThumbnailBytes,
+            countLimit: maxImageThumbnailAssets, byteLimit: Self.maxImageThumbnailBytes
+        ) { [self] key in imageThumbnails.removeValue(forKey: key) }
+    }
+
     // MARK: - Stale-result protection
 
-    /// Monotonic per-asset generation; bumped by invalidate/resetSessionState, never cleared.
-    @ObservationIgnored private var visualGenerations: [String: Int] = [:]
+    /// Independent per-kind job identities so one visual kind never invalidates another.
+    enum VisualKind: CaseIterable {
+        case waveform
+        case videoThumbnails
+        case imageThumbnail
+    }
+
+    /// Monotonic per-asset, per-kind generation; bumped by invalidate/resetSessionState, never cleared.
+    @ObservationIgnored private var visualGenerations: [VisualKind: [String: Int]] = [:]
     @ObservationIgnored private var waveformTasks: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var videoThumbnailTasks: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var imageThumbnailTasks: [String: Task<Void, Never>] = [:]
 
-    func startVisualGeneration(key: String) -> Int {
-        visualGenerations[key, default: 0] += 1
-        return visualGenerations[key]!
+    func startVisualGeneration(key: String, kind: VisualKind) -> Int {
+        visualGenerations[kind, default: [:]][key, default: 0] += 1
+        return visualGenerations[kind]![key]!
     }
 
-    private func canCommitVisual(key: String, url: URL, generation: Int) -> Bool {
-        visualGenerations[key] == generation && knownAssetURLs[key] == url
+    private func currentVisualGeneration(key: String, kind: VisualKind) -> Int? {
+        visualGenerations[kind]?[key]
+    }
+
+    private func bumpVisualGenerations(for key: String) {
+        for kind in VisualKind.allCases {
+            visualGenerations[kind, default: [:]][key, default: 0] += 1
+        }
+    }
+
+    private func canCommitVisual(key: String, kind: VisualKind, url: URL, generation: Int) -> Bool {
+        currentVisualGeneration(key: key, kind: kind) == generation && knownAssetURLs[key] == url
     }
 
     func commitWaveform(_ samples: [Float]?, key: String, url: URL, generation: Int) -> Bool {
-        if visualGenerations[key] == generation {
+        if currentVisualGeneration(key: key, kind: .waveform) == generation {
             waveformTasks[key] = nil
             waveformInFlight.remove(key)
         }
-        guard canCommitVisual(key: key, url: url, generation: generation), let samples, !samples.isEmpty else { return false }
+        guard canCommitVisual(key: key, kind: .waveform, url: url, generation: generation), let samples, !samples.isEmpty else { return false }
         storeWaveform(samples, for: key)
         timelineView?.needsDisplay = true
         return true
     }
 
     func commitVideoThumbnails(_ thumbs: [(time: Double, image: CGImage)]?, key: String, url: URL, generation: Int) -> Bool {
-        if visualGenerations[key] == generation {
+        if currentVisualGeneration(key: key, kind: .videoThumbnails) == generation {
             videoThumbnailTasks[key] = nil
             videoThumbnailInFlight.remove(key)
         }
-        guard canCommitVisual(key: key, url: url, generation: generation), let thumbs, !thumbs.isEmpty else { return false }
+        guard canCommitVisual(key: key, kind: .videoThumbnails, url: url, generation: generation), let thumbs, !thumbs.isEmpty else { return false }
         storeVideoThumbnails(thumbs, for: key)
         timelineView?.needsDisplay = true
         return true
@@ -97,24 +150,24 @@ final class MediaVisualCache {
 
     /// Progressive video results keep the entry in flight; only staleness is checked.
     private func commitPartialVideoThumbnails(_ thumbs: [(time: Double, image: CGImage)], key: String, url: URL, generation: Int) {
-        guard canCommitVisual(key: key, url: url, generation: generation) else { return }
+        guard canCommitVisual(key: key, kind: .videoThumbnails, url: url, generation: generation) else { return }
         storeVideoThumbnails(thumbs, for: key)
         timelineView?.needsDisplay = true
     }
 
     func commitImageThumbnail(_ image: CGImage?, key: String, url: URL, generation: Int) -> Bool {
-        if visualGenerations[key] == generation {
+        if currentVisualGeneration(key: key, kind: .imageThumbnail) == generation {
             imageThumbnailTasks[key] = nil
             imageThumbnailInFlight.remove(key)
         }
-        guard canCommitVisual(key: key, url: url, generation: generation), let image else { return false }
+        guard canCommitVisual(key: key, kind: .imageThumbnail, url: url, generation: generation), let image else { return false }
         storeImageThumbnail(image, for: key)
         timelineView?.needsDisplay = true
         return true
     }
 
     private func cancelVisualTasks(for key: String) {
-        visualGenerations[key, default: 0] += 1
+        bumpVisualGenerations(for: key)
         waveformTasks[key]?.cancel()
         waveformTasks.removeValue(forKey: key)
         videoThumbnailTasks[key]?.cancel()
@@ -133,9 +186,7 @@ final class MediaVisualCache {
     nonisolated func samples(for mediaRef: String) -> [Float]? {
         MainActor.assumeIsolated {
             if let samples = waveformSamples[mediaRef] {
-                touchLRU(&waveformKeys, key: mediaRef, limit: maxWaveformAssets) { evicted in
-                    waveformSamples.removeValue(forKey: evicted)
-                }
+                touchEntry(key: mediaRef, keys: &waveformKeys, epochs: &waveformEpochs)
                 return samples
             }
             if let url = knownAssetURLs[mediaRef], !waveformInFlight.contains(mediaRef) {
@@ -159,9 +210,7 @@ final class MediaVisualCache {
     nonisolated func thumbnails(for mediaRef: String) -> [(time: Double, image: CGImage)]? {
         MainActor.assumeIsolated {
             if let thumbs = videoThumbnails[mediaRef] {
-                touchLRU(&videoThumbnailKeys, key: mediaRef, limit: maxVideoThumbnailAssets) { evicted in
-                    videoThumbnails.removeValue(forKey: evicted)
-                }
+                touchEntry(key: mediaRef, keys: &videoThumbnailKeys, epochs: &videoThumbnailEpochs)
                 return thumbs
             }
             if let url = knownAssetURLs[mediaRef], !videoThumbnailInFlight.contains(mediaRef) {
@@ -174,9 +223,7 @@ final class MediaVisualCache {
     nonisolated func imageThumbnail(for mediaRef: String) -> CGImage? {
         MainActor.assumeIsolated {
             if let thumb = imageThumbnails[mediaRef] {
-                touchLRU(&imageThumbnailKeys, key: mediaRef, limit: maxImageThumbnailAssets) { evicted in
-                    imageThumbnails.removeValue(forKey: evicted)
-                }
+                touchEntry(key: mediaRef, keys: &imageThumbnailKeys, epochs: &imageThumbnailEpochs)
                 return thumb
             }
             if let url = knownAssetURLs[mediaRef], !imageThumbnailInFlight.contains(mediaRef) {
@@ -186,36 +233,57 @@ final class MediaVisualCache {
         }
     }
 
-    private func touchLRU(_ keys: inout [String], key: String, limit: Int, onEvict: (String) -> Void) {
+    /// Records recency and the display pass that used the entry. Never evicts mid-pass.
+    private func touchEntry(key: String, keys: inout [String], epochs: inout [String: Int]) {
+        epochs[key] = displayEpoch
         if let idx = keys.firstIndex(of: key) {
             keys.remove(at: idx)
         }
         keys.append(key)
-        while keys.count > limit {
-            let evicted = keys.removeFirst()
-            onEvict(evicted)
+    }
+
+    /// Evicts least-recently used entries that the current display pass did not draw, until the
+    /// count and byte limits hold. Entries drawn this pass are the viewport's live demand.
+    private func evictColdEntries(
+        keys: inout [String],
+        epochs: inout [String: Int],
+        bytes: inout [String: Int],
+        countLimit: Int,
+        byteLimit: Int,
+        remove: (String) -> Void
+    ) {
+        var totalBytes = bytes.values.reduce(0, +)
+        guard keys.count > countLimit || totalBytes > byteLimit else { return }
+        var index = 0
+        while (keys.count > countLimit || totalBytes > byteLimit), index < keys.count {
+            let key = keys[index]
+            guard epochs[key, default: 0] < displayEpoch else {
+                index += 1
+                continue
+            }
+            keys.remove(at: index)
+            epochs.removeValue(forKey: key)
+            totalBytes -= bytes.removeValue(forKey: key) ?? 0
+            remove(key)
         }
     }
 
     private func storeWaveform(_ samples: [Float], for key: String) {
         waveformSamples[key] = samples
-        touchLRU(&waveformKeys, key: key, limit: maxWaveformAssets) { [weak self] evicted in
-            self?.waveformSamples.removeValue(forKey: evicted)
-        }
+        waveformBytes[key] = samples.count * MemoryLayout<Float>.size
+        touchEntry(key: key, keys: &waveformKeys, epochs: &waveformEpochs)
     }
 
     private func storeVideoThumbnails(_ thumbs: [(time: Double, image: CGImage)], for key: String) {
         videoThumbnails[key] = thumbs
-        touchLRU(&videoThumbnailKeys, key: key, limit: maxVideoThumbnailAssets) { [weak self] evicted in
-            self?.videoThumbnails.removeValue(forKey: evicted)
-        }
+        videoThumbnailBytes[key] = thumbs.reduce(0) { $0 + $1.image.height * $1.image.bytesPerRow }
+        touchEntry(key: key, keys: &videoThumbnailKeys, epochs: &videoThumbnailEpochs)
     }
 
     private func storeImageThumbnail(_ image: CGImage, for key: String) {
         imageThumbnails[key] = image
-        touchLRU(&imageThumbnailKeys, key: key, limit: maxImageThumbnailAssets) { [weak self] evicted in
-            self?.imageThumbnails.removeValue(forKey: evicted)
-        }
+        imageThumbnailBytes[key] = image.height * image.bytesPerRow
+        touchEntry(key: key, keys: &imageThumbnailKeys, epochs: &imageThumbnailEpochs)
     }
 
     // MARK: - Async generation
@@ -231,7 +299,7 @@ final class MediaVisualCache {
     private func reloadWaveform(key: String, url: URL) {
         guard waveformSamples[key] == nil, !waveformInFlight.contains(key) else { return }
         waveformInFlight.insert(key)
-        let generation = startVisualGeneration(key: key)
+        let generation = startVisualGeneration(key: key, kind: .waveform)
         let task = Task.detached(priority: .utility) { [weak self] in
             let result = await Self.loadOrGenerateWaveform(url: url)
             guard let self else { return }
@@ -250,19 +318,25 @@ final class MediaVisualCache {
         videoThumbnailTasks.removeAll()
         for task in imageThumbnailTasks.values { task.cancel() }
         imageThumbnailTasks.removeAll()
-        for key in Array(visualGenerations.keys) { visualGenerations[key, default: 0] += 1 }
+        for key in visualGenerations.values.flatMap(\.keys) { bumpVisualGenerations(for: key) }
         waveformSamples.removeAll()
         waveformKeys.removeAll()
         waveformInFlight.removeAll()
+        waveformEpochs.removeAll()
+        waveformBytes.removeAll()
         speakerMasks.removeAll()
         speech.reset()
         beats.reset()
         videoThumbnails.removeAll()
         videoThumbnailKeys.removeAll()
         videoThumbnailInFlight.removeAll()
+        videoThumbnailEpochs.removeAll()
+        videoThumbnailBytes.removeAll()
         imageThumbnails.removeAll()
         imageThumbnailKeys.removeAll()
         imageThumbnailInFlight.removeAll()
+        imageThumbnailEpochs.removeAll()
+        imageThumbnailBytes.removeAll()
         knownAssetURLs.removeAll()
         silenceStore.reset()
         onDeadAirCacheInvalidated?()
@@ -274,6 +348,8 @@ final class MediaVisualCache {
         cancelVisualTasks(for: mediaRef)
         waveformSamples.removeValue(forKey: mediaRef)
         waveformKeys.removeAll { $0 == mediaRef }
+        waveformEpochs.removeValue(forKey: mediaRef)
+        waveformBytes.removeValue(forKey: mediaRef)
         waveformInFlight.remove(mediaRef)
         speakerMasks.removeValue(forKey: mediaRef)
         speech.invalidate(mediaRef)
@@ -281,9 +357,13 @@ final class MediaVisualCache {
         silenceStore.invalidate(mediaRef: mediaRef)
         videoThumbnails.removeValue(forKey: mediaRef)
         videoThumbnailKeys.removeAll { $0 == mediaRef }
+        videoThumbnailEpochs.removeValue(forKey: mediaRef)
+        videoThumbnailBytes.removeValue(forKey: mediaRef)
         videoThumbnailInFlight.remove(mediaRef)
         imageThumbnails.removeValue(forKey: mediaRef)
         imageThumbnailKeys.removeAll { $0 == mediaRef }
+        imageThumbnailEpochs.removeValue(forKey: mediaRef)
+        imageThumbnailBytes.removeValue(forKey: mediaRef)
         imageThumbnailInFlight.remove(mediaRef)
         knownAssetURLs.removeValue(forKey: mediaRef)
         onDeadAirCacheInvalidated?()
@@ -297,7 +377,7 @@ final class MediaVisualCache {
     private func reloadImageThumbnail(key: String, url: URL) {
         guard imageThumbnails[key] == nil, !imageThumbnailInFlight.contains(key) else { return }
         imageThumbnailInFlight.insert(key)
-        let generation = startVisualGeneration(key: key)
+        let generation = startVisualGeneration(key: key, kind: .imageThumbnail)
 
         let task = Task.detached(priority: .utility) { [weak self] in
             do {
@@ -325,7 +405,7 @@ final class MediaVisualCache {
     private func reloadVideoThumbnails(key: String, url: URL) {
         guard videoThumbnails[key] == nil, !videoThumbnailInFlight.contains(key) else { return }
         videoThumbnailInFlight.insert(key)
-        let generation = startVisualGeneration(key: key)
+        let generation = startVisualGeneration(key: key, kind: .videoThumbnails)
 
         let task = Task.detached(priority: .userInitiated) { [weak self] in
             do {

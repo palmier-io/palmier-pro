@@ -60,6 +60,7 @@ struct AppearancePane: View {
         case .default: L10n.string("Default workspace layout")
         case .media: L10n.string("Media workspace layout")
         case .vertical: L10n.string("Vertical workspace layout")
+        case .studio: L10n.string("Studio workspace layout")
         }
     }
 }
@@ -125,6 +126,19 @@ private struct WorkspaceLayoutPreview: View {
 
                 Group {
                     switch preset {
+                    case .studio:
+                        HStack(spacing: gap) {
+                            VStack(spacing: gap) {
+                                LayoutPanelPreview(kind: .preview)
+                                LayoutPanelPreview(kind: .timeline)
+                                    .frame(height: geometry.size.height * 0.29)
+                            }
+                            VStack(spacing: gap) {
+                                LayoutPanelPreview(kind: .media)
+                                LayoutPanelPreview(kind: .inspector)
+                            }
+                            .frame(width: geometry.size.width * 0.28)
+                        }
                     case .default:
                         VStack(spacing: gap) {
                             HStack(spacing: gap) {

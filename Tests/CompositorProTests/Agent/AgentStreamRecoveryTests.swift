@@ -169,7 +169,6 @@ struct AgentStreamRecoveryTests {
             var drain: Task<Void, Never>?
             switch change {
             case .cancel: service.cancel()
-            case .sessionSwitch: service.newChat()
             case .editorChange: service.editor = nil
             case .close:
                 service.cancel()
@@ -187,9 +186,41 @@ struct AgentStreamRecoveryTests {
             #expect(service.currentSessionId == selected)
             #expect(service.streamError == nil)
             #expect(service.sessions.first { $0.id == original }?.messages.count == 1)
-            if change == .sessionSwitch { #expect(service.messages.isEmpty) }
             #expect(editor.timeline.tracks.flatMap(\.clips).isEmpty)
             #expect(!undo.canUndo)
+        }
+    }
+
+    @Test func selectingAnotherSessionDoesNotStopBackgroundRunOrToolBatch() async throws {
+        try await withRuntime { service, editor, _, _ in
+            let original = try #require(service.currentSessionId)
+            let other = ChatSession()
+            service.sessions.append(other)
+
+            let client = RecoveryClient([.addClip, .finished], heldResponseIndex: 0)
+            let run = service.kickOffStream(
+                conversationID: original, traceID: UUID(),
+                settings: service.snapshotRunSettings(), client: client
+            )
+            await client.responseEntered.wait()
+
+            service.selectSession(other.id)
+            #expect(service.currentSessionId == other.id)
+            #expect(!service.isStreaming)
+
+            await client.responseRelease.open()
+            await run.value
+
+            #expect(editor.timeline.tracks.flatMap(\.clips).count == 1)
+            let stored = try #require(service.sessions.first { $0.id == original })
+            let cancelled = stored.messages.flatMap(\.blocks).contains(where: { block in
+                guard case .toolResult(_, content: let content, _) = block else { return false }
+                return content.contains(where: { contentBlock in
+                    guard case .text(let text) = contentBlock else { return false }
+                    return text == "Cancelled"
+                })
+            })
+            #expect(!cancelled)
         }
     }
 
@@ -227,7 +258,7 @@ struct AgentStreamRecoveryTests {
         }
     }
 
-    enum LifecycleChange: CaseIterable { case cancel, sessionSwitch, editorChange, close }
+    enum LifecycleChange: CaseIterable { case cancel, editorChange, close }
 
     private func start(_ service: AgentService, client: RecoveryClient) -> Task<Void, Never> {
         service.kickOffStream(conversationID: service.currentSessionId!, traceID: UUID(),
@@ -307,15 +338,20 @@ private actor RecoveryClient: AgentClient {
     let cleanupEntered = RecoveryGate()
     let cleanupCancelled = RecoveryGate()
     let cleanupRelease = RecoveryGate()
+    let responseEntered = RecoveryGate()
+    let responseRelease = RecoveryGate()
     private let responses: [Response]
     private let heldCleanupIndex: Int?
+    private let heldResponseIndex: Int?
     private let onRequest: (@MainActor @Sendable () -> Void)?
     private(set) var requests: [Request] = []
 
     init(_ responses: [Response], heldCleanupIndex: Int? = nil,
+         heldResponseIndex: Int? = nil,
          onRequest: (@MainActor @Sendable () -> Void)? = nil) {
         self.responses = responses
         self.heldCleanupIndex = heldCleanupIndex
+        self.heldResponseIndex = heldResponseIndex
         self.onRequest = onRequest
     }
 
@@ -333,6 +369,16 @@ private actor RecoveryClient: AgentClient {
         requests.append(Request(messages: messages, context: context))
         await onRequest?()
         guard responses.indices.contains(index) else { throw CocoaError(.coderReadCorrupt) }
+        if heldResponseIndex == index {
+            let responseEntered = responseEntered
+            let responseRelease = responseRelease
+            await withTaskCancellationHandler {
+                await responseEntered.open()
+                await responseRelease.wait()
+            } onCancel: {
+                Task { await responseRelease.open() }
+            }
+        }
         let response = responses[index]
         for event in response.events { continuation.yield(event) }
         if let failure = response.failure { continuation.finish(throwing: failure) }

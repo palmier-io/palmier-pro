@@ -79,10 +79,11 @@ enum TimelineQCAudit {
         for (index, track) in timeline.tracks.enumerated() {
             let sorted = track.clips.sorted { $0.startFrame < $1.startFrame }
             for clip in sorted {
-                issues.append(contentsOf: clipIssues(clip, trackIndex: index, editor: editor))
+                issues.append(contentsOf: clipIssues(clip, trackIndex: index, muted: track.muted, editor: editor))
             }
             issues.append(contentsOf: overlapIssues(sorted, trackIndex: index))
-            if track.type == .video || track.type == .audio {
+            let captionTrack = !sorted.isEmpty && sorted.allSatisfy { $0.mediaType == .text && $0.captionGroupId != nil }
+            if (track.type == .video && !captionTrack) || (track.type == .audio && !track.muted) {
                 issues.append(contentsOf: gapIssues(sorted, trackIndex: index, durationFrames: timeline.totalFrames))
             }
             if track.hidden {
@@ -106,7 +107,7 @@ enum TimelineQCAudit {
     // MARK: - Per clip
 
     private static func clipIssues(
-        _ clip: Clip, trackIndex: Int, editor: EditorViewModel
+        _ clip: Clip, trackIndex: Int, muted: Bool, editor: EditorViewModel
     ) -> [TimelineIssue] {
         var issues: [TimelineIssue] = []
         let range = (clip.startFrame, clip.endFrame)
@@ -150,7 +151,7 @@ enum TimelineQCAudit {
             }
         }
         // An audio clip that starts and ends at full level clicks against its neighbours.
-        if clip.mediaType == .audio, clip.fadeInFrames == 0, clip.fadeOutFrames == 0,
+        if clip.mediaType == .audio, !muted, clip.fadeInFrames == 0, clip.fadeOutFrames == 0,
            clip.volumeTrack?.isActive != true {
             issues.append(TimelineIssue(
                 kind: .clipFadesHard, severity: .warning, startFrame: range.0, endFrame: range.1,
@@ -190,7 +191,9 @@ enum TimelineQCAudit {
                     kind: .trackGap, severity: .warning,
                     startFrame: cursor, endFrame: clip.startFrame,
                     trackIndex: trackIndex, clipId: nil, mediaRef: nil,
-                    detail: "\(clip.startFrame - cursor) empty frames at the head of this track.",
+                    detail: cursor == 0
+                        ? "\(clip.startFrame) empty frames at the head of this track."
+                        : "\(clip.startFrame - cursor) empty frames between clips on this track.",
                     fix: "get_timeline"
                 ))
             }

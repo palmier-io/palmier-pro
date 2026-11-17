@@ -57,6 +57,23 @@ struct OpenAIStreamParserTests {
         #expect(try parser.consume(line: #"data: {"choices":[{"delta":{"content":""},"finish_reason":"stop"}],"usage":{"total_tokens":9}}"#) == [])
         #expect(try parser.consume(line: "data: [DONE]") == [])
     }
+
+    @Test func parserExtractsInlineInvokeXMLWhenToolsNotEmittedViaDelta() throws {
+        var parser = OpenAIChatCompletionsStreamParser()
+        let text = "<ernie:tool_call>\n<invoke name=\"add_captions\">\n{\"captions\":[]}\n</invoke>\n</ernie:tool_call>"
+        let payload = try JSONSerialization.data(withJSONObject: ["choices": [["delta": ["content": text]]]])
+        let line = "data: " + String(data: payload, encoding: .utf8)!
+        _ = try parser.consume(line: line)
+        let finish = try parser.consume(line: "data: {\"choices\":[{\"delta\":{\"content\":\"\"},\"finish_reason\":\"stop\"}]}")
+        #expect(finish.contains(where: {
+            if case .toolUseComplete(_, let name, _) = $0 { return name == "add_captions" }
+            return false
+        }))
+        #expect(finish.contains(where: {
+            if case .messageStop(let reason) = $0 { return reason == .toolUse }
+            return false
+        }))
+    }
 }
 
 /// Reasoning effort reaches an OpenAI-compatible gateway. `.custom` used to offer only
@@ -91,5 +108,26 @@ struct OpenAIChatCompletionsBodyTests {
         #expect(AgentModel.custom.supportedReasoningEfforts == [.low, .medium, .high])
         // The picker must never offer an effort the run settings will reject.
         #expect(AgentModel.custom.supportedReasoningEfforts.contains(AgentReasoningEffort.xHigh) == false)
+    }
+
+    @Test func orphanToolResultDoesNotEmitOrphanToolRoleMessage() {
+        let orphanMessage = AgentRequestMessage(
+            role: .user,
+            content: [.content(.toolResult(toolUseId: "orphan_call_1", content: [.text("result data")], isError: false))]
+        )
+        let body = OpenAIChatCompletionsRequestBody.build(
+            modelID: "some/model",
+            system: "",
+            tools: [],
+            messages: [orphanMessage]
+        )
+        guard let msgs = body["messages"] as? [[String: Any]] else {
+            Issue.record("Expected messages array in body")
+            return
+        }
+        // Must NOT emit role: "tool" without preceding assistant tool_calls
+        #expect(msgs.contains(where: { ($0["role"] as? String) == "tool" }) == false)
+        // Must convert to user role so gateway does not reject with HTTP 400
+        #expect(msgs.contains(where: { ($0["role"] as? String) == "user" }) == true)
     }
 }

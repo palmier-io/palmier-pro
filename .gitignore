@@ -42,3 +42,8 @@ AUDIO_SUITE_*
 
 # Local MCP tool config
 .mobilebuildmcp/
+
+# Local tooling artifacts and downloaded stock media
+.playwright-mcp/
+com.apple.DeveloperTools/
+media-stock/

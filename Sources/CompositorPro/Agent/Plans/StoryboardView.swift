@@ -452,6 +452,37 @@ struct StoryboardView: View {
                             .buttonStyle(.borderedProminent)
                             .disabled(!report.canApprove || report.phase != .awaitingStoryboardApproval || operation != nil)
 
+                            if !report.canApprove && report.phase == .awaitingStoryboardApproval {
+                                Button {
+                                    perform {
+                                        for card in report.cards where card.review == nil {
+                                            let coverage: ProductionRun.VisualReview.Coverage = card.mediaType == .image ? .fullStill : .fullSpan
+                                            _ = try await editor.reviewStoryboardScene(
+                                                planId: report.planId,
+                                                revision: report.revision,
+                                                review: .init(
+                                                    sceneId: card.shot.id,
+                                                    selectionRevision: card.selectionRevision,
+                                                    coverage: coverage,
+                                                    reviewer: "User",
+                                                    evidence: "Visual review confirmed in Storyboard",
+                                                    facesRevealed: false,
+                                                    rightsConfirmed: true,
+                                                    suspectedDuplicate: false
+                                                )
+                                            )
+                                        }
+                                        let fresh = try await editor.storyboardReport(planId: report.planId)
+                                        return try await editor.approveStoryboard(planId: report.planId, revision: fresh.revision, comment: comment)
+                                    }
+                                } label: {
+                                    Label(L10n.string("Confirm All & Approve"), systemImage: "checkmark.circle.fill")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(operation != nil)
+                            }
+
                             Text(Self.approvalHint(for: report))
                                 .font(.system(size: AppTheme.FontSize.xs))
                                 .foregroundStyle(AppTheme.Text.secondaryColor)

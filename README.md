@@ -61,13 +61,32 @@ When the app is open, it exposes an MCP server at `http://127.0.0.1:19789/mcp` v
 
 **Claude Code**
 ```bash
-claude mcp add --transport http compositor-pro http://127.0.0.1:19789/mcp
+claude mcp add --transport http --scope user compositor-pro http://127.0.0.1:19789/mcp
 ```
 
 **Codex**
 ```bash
 codex mcp add compositor-pro --url http://127.0.0.1:19789/mcp
 ```
+
+**Antigravity**
+
+Open **MCP Servers → Manage MCP Servers → View raw config** and merge this entry into
+`~/.gemini/config/mcp_config.json`, then refresh the server list. Antigravity's app,
+IDE, and CLI use this global configuration.
+
+```json
+{
+  "mcpServers": {
+    "compositor-pro": {
+      "serverUrl": "http://127.0.0.1:19789/mcp"
+    }
+  }
+}
+```
+
+The editor's **Connect agent** button provides these setup instructions and a
+prompt that binds your agent to the selected project before inspecting it.
 
 **Cursor**
 

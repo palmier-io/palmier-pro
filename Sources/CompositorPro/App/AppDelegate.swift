@@ -8,9 +8,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var restartRequested = false
     private var terminationTask: Task<Void, Never>?
     private var terminationReplySent = false
+    private var memoryPressureSource: (any DispatchSourceMemoryPressure)?
+    private lazy var windowActivationRestoration = WindowActivationRestoration(
+        canRestore: { [weak self] in
+            guard let self else { return false }
+            return !self.isTerminating && NSApplication.shared.isActive
+        },
+        restore: { AppState.shared.restoreWindowForActivation(restoringMinimizedWindows: $0) }
+    )
 
     override init() {
         super.init()
+    }
+
+    init(windowActivationRestoration: WindowActivationRestoration) {
+        super.init()
+        self.windowActivationRestoration = windowActivationRestoration
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -30,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppNotifications.configure()
 
         AppState.shared.startMCPService()
+        startMemoryPressureMonitoring()
 
         // Pre-warm NSOpenPanel to avoid main thread blocking during cold start.
         Task { @MainActor [weak self] in
@@ -44,21 +58,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if flag {
-            // The app is already visible; just bring it forward (dock click while another app is frontmost).
-            NSApp.activate(ignoringOtherApps: true)
-        } else {
-            AppState.shared.showHome()
-        }
-        return true
+        guard !isTerminating else { return false }
+        windowActivationRestoration.request(restoringMinimizedWindows: true)
+        if !sender.isActive { sender.activate() }
+        return false
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        guard !isTerminating else { return }
+        windowActivationRestoration.request(restoringMinimizedWindows: false)
+    }
+
+    func applicationWillResignActive(_ notification: Notification) {
+        windowActivationRestoration.cancel()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         if isTerminating { return .terminateLater }
-        if !restartRequested, !Self.confirmQuit() { return .terminateCancel }
         let projects = AppState.shared.openProjects
         let shouldRestart = restartRequested
+
+        // Failsafe watchdog: if graceful termination takes longer than 3 seconds, force exit so Command+Q never hangs.
+        // Runs on a background queue so a hung main thread cannot prevent termination.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 3.0) {
+            Log.app.warning("Termination hard deadline reached; forcing process exit")
+            _exit(0)
+        }
+
         startTermination(projects: projects, prepareServices: { validate in
+            Log.app.info("Termination: flushing project registry")
             try await ProjectRegistry.shared.flush()
             try validate()
             if shouldRestart {
@@ -68,10 +96,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 )
                 try validate()
             }
+            Log.app.info("Termination: draining skill tasks")
             await SkillStore.shared.prepareForTermination()
             try validate()
+            Log.app.info("Termination: stopping MCP service")
             await AppState.shared.stopMCPService()
             try validate()
+            Log.app.info("Termination: draining MLX operations")
             if !MLXRuntime.beginTermination() {
                 await MLXRuntime.waitUntilIdle()
                 try validate()
@@ -91,9 +122,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ) {
         guard !isTerminating else { return }
         isTerminating = true
+        windowActivationRestoration.cancel()
         terminationReplySent = false
+        Log.app.info("Termination: saving \(projects.count) open projects")
         let closeOwners = projects.compactMap { project in
             project.beginClosing().map { (project: project, lease: $0) }
+        }
+        for owner in closeOwners {
+            owner.project.editorViewModel.agentService.cancelAllRuns()
         }
         let validateOwners: @MainActor () throws -> Void = {
             try Task.checkCancellation()
@@ -115,7 +151,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 try await prepareServices(validateOwners)
                 try validateOwners()
-                repeat {
+                var closeAttempts = 0
+                while closeOwners.contains(where: { owner in
+                    let coordinator = owner.project.editorViewModel.projectPackageCoordinator
+                    return !coordinator.isClosed && !coordinator.canFinishClosing
+                }) && closeAttempts < 5 {
+                    closeAttempts += 1
                     for owner in closeOwners where !owner.project.editorViewModel.projectPackageCoordinator.isClosed {
                         do { try await owner.project.editorViewModel.projectPackageCoordinator.waitUntilIdle(for: owner.lease) }
                         catch {
@@ -124,9 +165,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         }
                         try validateOwners()
                     }
-                } while closeOwners.contains { owner in
-                    let coordinator = owner.project.editorViewModel.projectPackageCoordinator
-                    return !coordinator.isClosed && !coordinator.canFinishClosing
                 }
                 try validateOwners()
                 for owner in closeOwners where !owner.project.editorViewModel.projectPackageCoordinator.isClosed {
@@ -141,9 +179,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 self.restartRequested = false
                 self.isTerminating = false
+                Log.app.error("Termination failed: \(error.localizedDescription)")
                 onError(error)
                 self.reply(allow: false, sendReply: sendReply)
             }
+        }
+    }
+
+    private func startMemoryPressureMonitoring() {
+        let source = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .main)
+        source.setEventHandler { [weak self] in
+            guard let self else { return }
+            self.releaseTransientMemory()
+        }
+        source.resume()
+        memoryPressureSource = source
+    }
+
+    private func releaseTransientMemory() {
+        CustomVideoCompositor.clearCaches()
+        TextFrameRenderer.clearCaches()
+        LUTLoader.releaseCachedLUTs()
+        Task { await HybridFrameCache.shared.reset() }
+        for project in AppState.shared.openProjects {
+            project.editorViewModel.mediaVisualCache.resetSessionState()
         }
     }
 
@@ -155,6 +214,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         CustomVideoCompositor.clearCaches()
         TextFrameRenderer.clearCaches()
+        LUTLoader.releaseCachedLUTs()
         Task { await HybridFrameCache.shared.reset() }
     }
 
@@ -163,17 +223,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !terminationReplySent else { return }
         terminationReplySent = true
         terminationTask = nil
+        Log.app.info("Termination: replying allow=\(allow)")
         sendReply(allow)
-    }
-
-    private static func confirmQuit() -> Bool {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = L10n.string("Quit Compositor Pro?")
-        alert.informativeText = L10n.string("Your projects will be saved before the app closes.")
-        alert.addButton(withTitle: L10n.string("Quit"))
-        alert.addButton(withTitle: L10n.string("Cancel"))
-        return alert.runModal() == .alertFirstButtonReturn
     }
 
     func restart() {

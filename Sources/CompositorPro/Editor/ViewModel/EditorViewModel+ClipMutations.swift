@@ -483,7 +483,10 @@ extension EditorViewModel {
         let canvasW = Double(timeline.width)
         let canvasH = Double(timeline.height)
         applyClipProperty(clipId: clipId, rebuild: true) { clip in
-            clip.textContent = content
+            clip.textContent = clip.captionGroupId == nil ? content : CaptionPunctuation.normalized(content)
+            if clip.captionGroupId != nil {
+                clip.wordTimings = CaptionPunctuation.normalized(clip.wordTimings)
+            }
             _ = self.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
         }
     }
@@ -492,7 +495,10 @@ extension EditorViewModel {
         let canvasW = Double(timeline.width)
         let canvasH = Double(timeline.height)
         commitClipProperty(clipId: clipId, actionName: "Change Text") { clip in
-            clip.textContent = content
+            clip.textContent = clip.captionGroupId == nil ? content : CaptionPunctuation.normalized(content)
+            if clip.captionGroupId != nil {
+                clip.wordTimings = CaptionPunctuation.normalized(clip.wordTimings)
+            }
             _ = self.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
         }
     }

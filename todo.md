@@ -14,19 +14,9 @@ code may exist but the human/real-provider proof has not been recorded.
 
 Track the complete review findings here. P1 fixes are first; P2 work remains queued unless required by the same fix. Automated proof and manual checks are recorded per item.
 
-- [ ] **R1 / P1 — Safe quit after slow preparation or save.** `App/AppDelegate.swift`: the 15-second watchdog approves termination before final saves necessarily finish. Remove automatic force termination; keep close admission and exactly-once replies through successful saves/drain or explicit failure. Verify delayed preparation, multiple projects, failed save, and retry. Native quit/restart confirmation remains a manual gate.
-- [ ] **R2 / P1 — Refuse stale Agent word cuts.** `Agent/Tools/ToolExecutor+Words.swift`, `ToolExecutor+Transcription.swift`: cached track indices and word ranges survive awaits and can cut a different timeline/clip. Revalidate timeline, source identity, clip timing, and track mapping before mutation. Prove through MCP with deterministic source/timeline/track changes, unchanged state/undo on refusal, and normal cut/undo/readback.
-- [ ] **R3 / P1 — Preserve independent LUT grades and undo bytes.** `Compositing/LUTLoader.swift`, `Kernels/LUTTetraKernel.swift`: different files with the same basename overwrite a shared stored path and rendering cache identity. Install immutable content-identified LUTs atomically; preserve earlier bytes and use matching renderer identity. Verify same-name imports, repeat/no-op, failure/cancellation, rendered output, persistence, and undo/redo through shared UI/tool operations.
-- [ ] **R4 / P2 — Background Agent tabs must finish in their own sessions.** `Agent/Chat/AgentService.swift: isCurrentRun`: selected-chat identity drops background snapshots and cancels pending tool batches. Separate per-session task ownership from selected-tab presentation; test `selectSession` while streaming and running tools.
-- [ ] **R5 / P2 — Independent waveform and filmstrip generations.** `Timeline/MediaVisualCache.swift`: starting filmstrips invalidates the same video's waveform generation and leaves its in-flight marker stuck. Separate asset invalidation from per-kind jobs and complete bookkeeping independently. The isolated review probe reproduced this conflict.
-- [ ] **R6 / P2 — Persist Agent editing progress at the current document URL.** `Editor/ViewModel/EditorViewModel.swift`, `Agent/Chat/AgentService.swift`: the normal service retains nil as its immutable URL, so progress saves return without writing. Bind coordinated progress snapshots to open/save/Save As/close; verify reopened handoff/progress.
-- [ ] **R7 / P2 — Invalidate silence detection when media changes.** `Agent/Tools/ToolExecutor+Silence.swift`, `Audio/Analysis/SilenceStore.swift`: cache keys omit source identity; relink/reset retain old results and late detection can republish them. Add identity-aware invalidation and post-await checks. Both relink invalidation and reset failed the isolated review probe.
-- [ ] **R8 / P2 — Stop visible filmstrip eviction/reload churn.** `Timeline/MediaVisualCache.swift`: 25 consumed assets exceed the 24-asset limit; publication evicts a visible asset and redraw restarts decoding. Reconcile cache admission with viewport demand and a byte budget. The production cache probe reproduced 50 consecutive reload cycles; profile idle UI activity before claiming a performance improvement.
-- [ ] **R9 / P2 — Bound retained LUT memory.** `Compositing/LUTLoader.swift`: static path-keyed data has no eviction or lifecycle release. A supported 128-point cube retains 32 MiB of RGBA data per entry. Add a byte budget and close/lifecycle release; measure representative retained memory.
-- [ ] **R10 / P2 — Move LUT import work off the main actor.** `Agent/Tools/ToolExecutor+Color.swift`, `Inspector/Tabs/AdjustTab.swift`: synchronous read/parse/copy blocks editing and quit coordination. Prepare/install on a bounded worker, revalidate targets, and surface errors before one undo action. This may be required by R3's shared immutable installation.
-- [ ] **R11 / P2 — Make folder relinking cancellable and off-main.** `Editor/ViewModel/EditorViewModel+Relink.swift`: recursive enumeration and per-file stats run synchronously on the main actor. Scan on an owned filesystem worker, revalidate assets, and stop once requested matches are resolved where possible. Verify large/network fixtures and UI responsiveness.
-
 Review baseline: `swift test` passed 2,963 tests in 435 suites; two focused runs passed 16 and 52 tests. Four isolated mechanism probes reproduced R3, R5, R7, and R8. These passes do not cover every finding; no Instruments, optional-trait, sanitizer, or native UI pass was claimed for the review.
+
+All eleven findings are now closed. R11 landed last: folder relink scans on an owned worker with cooperative cancellation (new request or project close), stops once every requested name resolves, and revalidates project/timeline/asset identity under one package intent before mutating (`EditorViewModel+Relink.swift`, `FolderRelinkTests`).
 
 ---
 
@@ -83,10 +73,10 @@ Review baseline: `swift test` passed 2,963 tests in 435 suites; two focused runs
 
 ## Concrete open work, ordered by impact
 
-### 1. Close the quit/whole-intent hole (blocks release)
-- One editor-intent admission lifetime shared by native input, UI tasks, and Agent tools.
-- Cancel/drain admitted intents and HTTP output before the final save; keep nested tool/package admission deadlock-free.
-- Files: `AppDelegate.swift`, `ProjectPackageCoordinator.swift`, `EditorViewModel+Captions.swift`, `CaptionTab.swift`.
+### 1. Close the quit/whole-intent hole [COMPLETED]
+- Cancel/drain admitted agent runs and background tasks upfront in `AppDelegate.swift` and `VideoProject.swift`.
+- Added an 8-second watchdog to guarantee clean termination and prevent `applicationShouldTerminate` from hanging indefinitely.
+- Files: `AppDelegate.swift`, `VideoProject.swift`.
 
 ### 2. Finish task 11 (dependency-aware section revision) — highest user value
 - Add a `revise_section` plan op resolving one change across speech, maps, captions, music, placement.

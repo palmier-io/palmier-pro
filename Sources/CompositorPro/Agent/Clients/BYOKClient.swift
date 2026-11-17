@@ -61,7 +61,7 @@ struct BYOKClient: AgentClient {
             AgentClientTransportError.httpError(provider: provider, status: status, body: body)
         }
         continuation.yield(.activity(.connected))
-        try await provider.parseSSE(bytes: bytes, continuation: continuation)
+        try await settings.streamProvider.parseSSE(bytes: bytes, continuation: continuation)
     }
 
     private func endpoint() throws -> URL {
@@ -77,7 +77,7 @@ struct BYOKClient: AgentClient {
                     message: "No custom endpoint is configured."
                 )
             }
-            return custom.chatCompletionsURL
+            return custom.requestURL
         }
     }
 }

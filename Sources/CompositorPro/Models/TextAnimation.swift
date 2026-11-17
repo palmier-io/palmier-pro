@@ -16,20 +16,21 @@ struct TextAnimation: Codable, Sendable, Equatable {
         // Whole-clip / per-line.
         case popIn, slideUp, typewriter
         // Per word.
-        case wordReveal, wordSlide, highlightPop, highlightBlock
+        case singleWord, wordReveal, wordSlide, highlightPop, highlightBlock
 
-        enum RenderMode { case entrance, perWord, typewriter }
+        enum RenderMode { case entrance, singleWord, perWord, typewriter }
 
         var renderMode: RenderMode {
             switch self {
             case .none, .popIn, .slideUp: .entrance
             case .typewriter: .typewriter
+            case .singleWord: .singleWord
             case .wordReveal, .wordSlide, .highlightPop, .highlightBlock: .perWord
             }
         }
 
-        var isPerWord: Bool { renderMode == .perWord }
-        var usesHighlight: Bool { isPerWord }
+        var isPerWord: Bool { renderMode == .perWord || renderMode == .singleWord }
+        var usesHighlight: Bool { renderMode == .perWord }
 
         var displayName: String {
             switch self {
@@ -37,6 +38,7 @@ struct TextAnimation: Codable, Sendable, Equatable {
             case .popIn: L10n.key("Pop In")
             case .slideUp: L10n.key("Slide Up")
             case .typewriter: L10n.key("Typewriter")
+            case .singleWord: L10n.key("One Word")
             case .wordReveal: L10n.key("Word Reveal")
             case .wordSlide: L10n.key("Word Slide")
             case .highlightPop: L10n.key("Highlight")
@@ -47,7 +49,7 @@ struct TextAnimation: Codable, Sendable, Equatable {
         static let agentValues: [String] = ["off"] + allCases.filter { $0 != .none }.map(\.rawValue)
 
         static let perLine: [Preset] = [.popIn, .slideUp, .typewriter]
-        static let perWord: [Preset] = [.wordReveal, .wordSlide, .highlightPop, .highlightBlock]
+        static let perWord: [Preset] = [.singleWord, .wordReveal, .wordSlide, .highlightPop, .highlightBlock]
     }
 
     var isActive: Bool { preset != .none }

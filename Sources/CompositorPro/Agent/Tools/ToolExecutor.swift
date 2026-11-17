@@ -33,6 +33,7 @@ final class ToolExecutor {
     let capabilityInputLoader: @Sendable () async throws -> RuntimeCapabilities.LocalInputs
     let stockProviders: [any StockMediaProvider]
     let importDownloader: ImportMediaDownload
+    let importPageResolver: @Sendable (URL) async throws -> StockMediaHit
     let projectRegistry: ProjectRegistry?
     let projectAccessibilityCheck: (@Sendable ([ProjectAccessibility.Key]) async throws -> [ProjectAccessibility])?
 
@@ -64,7 +65,8 @@ final class ToolExecutor {
         projectRegistry: ProjectRegistry? = nil,
         projectAccessibilityCheck: (@Sendable ([ProjectAccessibility.Key]) async throws -> [ProjectAccessibility])? = nil,
         userDefaults: UserDefaults = .standard,
-        importDownloader: @escaping ImportMediaDownload = ToolExecutor.downloadImportedMedia
+        importDownloader: @escaping ImportMediaDownload = ToolExecutor.downloadImportedMedia,
+        importPageResolver: @escaping @Sendable (URL) async throws -> StockMediaHit = { try await PixabayProvider().resolveVideoPage($0) }
     ) {
         self.inAppEditor = editor
         self.userDefaults = userDefaults
@@ -80,6 +82,7 @@ final class ToolExecutor {
         self.narrationTranscribe = narrationTranscribe
         self.stockProviders = stockProviders
         self.importDownloader = importDownloader
+        self.importPageResolver = importPageResolver
         self.projectRegistry = projectRegistry
         self.projectAccessibilityCheck = projectAccessibilityCheck
     }
@@ -98,7 +101,8 @@ final class ToolExecutor {
         projectRegistry: ProjectRegistry? = nil,
         projectAccessibilityCheck: (@Sendable ([ProjectAccessibility.Key]) async throws -> [ProjectAccessibility])? = nil,
         userDefaults: UserDefaults = .standard,
-        importDownloader: @escaping ImportMediaDownload = ToolExecutor.downloadImportedMedia
+        importDownloader: @escaping ImportMediaDownload = ToolExecutor.downloadImportedMedia,
+        importPageResolver: @escaping @Sendable (URL) async throws -> StockMediaHit = { try await PixabayProvider().resolveVideoPage($0) }
     ) {
         let project = projectProvider()
         self.userDefaults = userDefaults
@@ -116,6 +120,7 @@ final class ToolExecutor {
         self.narrationTranscribe = narrationTranscribe
         self.stockProviders = stockProviders
         self.importDownloader = importDownloader
+        self.importPageResolver = importPageResolver
         self.projectRegistry = projectRegistry
         self.projectAccessibilityCheck = projectAccessibilityCheck
     }
@@ -151,14 +156,43 @@ final class ToolExecutor {
         args.filter { !($0.value is NSNull) && ($0.value as? String) != "" }
     }
 
+    private static func resolveToolName(name: String, args: inout [String: Any]) -> ToolName? {
+        if let direct = ToolName(rawValue: name) {
+            return direct
+        }
+        let lower = name.lowercased().replacingOccurrences(of: "-", with: "_")
+        switch lower {
+        case "list_caption_templates", "list_caption_presets", "list_caption_styles", "caption_styles", "caption_library", "list_caption_library":
+            if args["action"] == nil {
+                args["action"] = "list"
+            }
+            return .captionTemplates
+        case "get_caption_templates", "get_caption_template", "get_caption_styles", "get_caption_style":
+            if args["action"] == nil {
+                args["action"] = "get"
+            }
+            return .captionTemplates
+        case "apply_caption_template", "apply_caption_style":
+            if args["action"] == nil {
+                args["action"] = "apply"
+            }
+            return .captionTemplates
+        default:
+            return nil
+        }
+    }
+
     private func executeWithOrigin(
         name: String,
         args: [String: Any],
         origin: Analytics.Origin
     ) async -> ToolResult {
-        let args = Self.droppingAutofilledBlanks(from: args)
+        // Caption cleanup must reject malformed selectors before blank defaults are dropped.
+        let preservesCaptionCleanupArguments = name == ToolName.updateText.rawValue
+            && args.keys.contains("normalizeCaptionPunctuation")
+        var args = preservesCaptionCleanupArguments ? args : Self.droppingAutofilledBlanks(from: args)
         let started = ContinuousClock.now
-        guard let tool = ToolName(rawValue: name),
+        guard let tool = Self.resolveToolName(name: name, args: &args),
               origin.source != "mcp"
                 || ToolDefinitions.mcpServer.contains(where: { $0.name == tool }) else {
             let result = ToolResult.error("Unknown tool: \(name)")

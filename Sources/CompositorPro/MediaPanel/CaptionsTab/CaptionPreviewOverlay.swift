@@ -55,7 +55,7 @@ struct CaptionPreviewOverlay: View {
     @ViewBuilder
     private var previewContent: some View {
         let naturalSize = TextLayout.naturalSize(
-            content: configuration.text,
+            content: CaptionPunctuation.normalized(configuration.text),
             style: configuration.style,
             maxWidth: canvas.width * AppTheme.ComponentSize.captionPreviewMaxTextWidthRatio,
             canvasHeight: canvas.height

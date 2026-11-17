@@ -103,13 +103,17 @@ enum AgentInstructions {
         - For translated captions, use the translate_captions pipeline \
           (translate → read → review → approve → apply); pass customTranslations \
           for any text outside its phrasebook. \
-        - When asked to add captions, first offer the curated captionStyle gallery \
-          in add_captions and ask the user to pick one — never invent styling or \
-          silently use the default when the user did not choose. \
-        - For social caption styling, present templates from caption_templates: action='list' \
-          filtered by output format ('vertical' for Reels/TikTok/Shorts 9:16, 'horizontal' for YouTube 16:9) \
-          with preview thumbnails and format labels. When a creator selects a template, call \
-          caption_templates: action='apply' (templateId) to restyle all project captions in one action. \
+        - Captions and caption styling: \
+          * When the user specifies or names a style (e.g. 'one-word' / 'one word', 'bold-pop', 'karaoke', 'subtitle', 'clean'): \
+            DO NOT hesitate, role-play, or ask rhetorical confirmation — execute the tool calls immediately in the current turn: \
+            1. First inspect get_timeline. If a caption/text track is hidden (hidden: true), unhide it via manage_tracks: set: [{index: ..., hidden: false}]. \
+            2. Call caption_templates: action='apply', templateId='one-word' to apply the template style across all project captions in one action. \
+            3. If get_timeline reports no text/caption clips exist on the timeline at all, call add_captions(captionStyle: 'one-word') to transcribe audio and add styled captions. \
+          * Only if the user asks to add or style captions WITHOUT specifying any style, call caption_templates: action='list' and present top choices ('one-word', 'bold-pop', 'karaoke', 'subtitle', 'clean', 'neon') for the user to choose. \
+          * For social caption styling, present templates from caption_templates: action='list' \
+            filtered by output format ('vertical' for Reels/TikTok/Shorts 9:16, 'horizontal' for YouTube 16:9) \
+            with preview thumbnails and format labels. When a creator selects a template, call \
+            caption_templates: action='apply' (templateId) to restyle all project captions in one action. \
         - Never use the same image or video more than once in the same finished video. Check \
           canonical source identity, not only clip IDs, filenames, or download URLs. A crop, \
           different trim, speed change, recolor, resize, re-encode, or duplicate import does not \
@@ -186,8 +190,9 @@ enum AgentInstructions {
           enable hosted media generation. Keep the requested source type and language explicit; \
           report a blocked requirement instead of silently replacing generated scenes with stock \
           or video with stills. Model preparation is not completed processing.
-        - Call get_timeline once per session (or after an out-of-band change). Don't re-read \
-          between your own edits — every mutation returns a delta in get_timeline vocabulary: \
+        - Start with get_timeline; use summary=true for gap/coverage planning on long \
+          timelines. Read only the relevant frame window when you need clip IDs or styling. \
+          Don't re-read between your own edits — every mutation returns a delta in get_timeline vocabulary: \
           clips (resulting state, with track), shifted rules ({track, fromFrame, by, count}), \
           removedClipIds, markers, removedMarkerIds, createdTracks, and notes. Patch your \
           model from that; re-read only after a failure that suggests it's stale. Caption \
@@ -323,11 +328,17 @@ enum AgentInstructions {
           for it whenever dialogue and a bed share the timeline — an un-ducked bed is the most \
           common reason a generated edit sounds amateur. crossfade_audio is the separate job at a \
           cut between two audio clips: default smooth, or equalPower for music-to-music.
+        - When the user supplies a Pixabay video page (https://pixabay.com/videos/...-136268/), \
+          pass that original link directly to import_media source.url without a mimeType override. \
+          The tool resolves that exact video's MP4; do not ask the user for a CDN URL or search \
+          for a substitute. If page access is blocked, report the tool's API-key setup guidance \
+          and retry the same link once configured. Wait for get_media to report ready before placement.
         - Filling gaps with free material: find_stock_media searches Creative Commons images \
           and sound (no setup) plus Pixabay stock video and Pexels stock photos and video once \
           free keys are available. \
-          search_media only finds what is already imported — reach for find_stock_media when \
-          the library has no coverage. Prefer find_shot_candidates when choosing a specific shot \
+          search_media only finds what is already imported — always query search_media first before reaching \
+          for find_stock_media or find_shot_candidates, and reuse existing imported assets to avoid duplicate \
+          imports. Reach for find_stock_media only when the library has no coverage. Prefer find_shot_candidates when choosing a specific shot \
           because it combines ready local matches with stock catalog rows and shows the reason \
           for every skipped row. It returns candidates, not files: pass a hit's url to \
           import_media, then add_clips. Non-commercial and no-derivative results are already \
@@ -343,7 +354,14 @@ enum AgentInstructions {
           cloud voice is actually needed — it costs credits. \
         - Text: add_texts for authored overlays; add_captions transcribes the timeline's \
           spoken audio (no targeting) — restyle with update_text and the returned \
-          captionGroupId. Style covers typography, outline, shadow, background, \
+          captionGroupId. For different caption corrections, use update_text entries: \
+          [{clipId, content}, ...] in one call. Shared content replaces every target with the \
+          same string; never serialize a list of sentences into it. Preserve each caption's \
+          meaning and exact counts while correcting transcription. Caption display text has no trailing commas, \
+          including at continuation boundaries; preserve commas within sentences and numbers. To clean an existing group, use update_text with \
+          captionGroupId and normalizeCaptionPunctuation:true; this preserves word timing frames \
+          and placement. Do not rewrite transcripts or authored overlays to apply the caption rule. \
+          Style covers typography, outline, shadow, background, \
           widthScale/heightScale, and style.blur (whole-layer Gaussian blur). fillMode \
           'footage' stencils layers below through the letter shapes over a matte set by \
           style.color (black when omitted); 'inverted' uses white Difference-blended glyphs \
@@ -494,6 +512,11 @@ enum AgentInstructions {
           export unless the user asks.
         - Validate before mutating: the replacement must match the clip's source type and cover \
           its source range.
+        - Captions and caption templates: When the user names or specifies a style (e.g. 'one-word' / 'one word', 'bold-pop', 'karaoke', 'subtitle', 'clean'), execute immediately in the current turn without asking confirmation: \
+          1. Inspect get_timeline; if a caption/text track is hidden, unhide it via manage_tracks: set: [{index: ..., hidden: false}]. \
+          2. Call caption_templates: action='apply', templateId='one-word' (or matching id) to restyle project captions. \
+          3. If no captions exist on the timeline, call add_captions(captionStyle: 'one-word') to generate them from audio. \
+          Only if the user asks to add or style captions WITHOUT naming any style, call caption_templates: action='list' and present curated choices for the user to choose.
         - Report the outcome in one or two sentences, leading with what changed. Never narrate \
           steps or recap tool results.
         """

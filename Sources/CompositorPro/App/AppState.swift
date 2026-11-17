@@ -44,26 +44,29 @@ final class AppState {
     private(set) var mcpService: MCPService?
 
     func startMCPService() {
-        guard mcpService == nil else { return }
         guard MCPService.isEnabledPreference else {
             Log.mcp.notice("mcp disabled in settings; not starting")
             return
         }
-        let service = MCPService(projectProvider: { [weak self] in
-            self?.activeProject
-        })
-        service.start()
-        mcpService = service
+        if mcpService == nil {
+            mcpService = MCPService(projectProvider: { [weak self] in
+                self?.activeProject
+            })
+        }
+        mcpService?.start()
     }
 
     func stopMCPService() async {
         await mcpService?.stop()
-        mcpService = nil
     }
 
     func setMCPEnabled(_ enabled: Bool) async {
         MCPService.isEnabledPreference = enabled
         if enabled {
+            if let service = mcpService, service.state == .stopping {
+                await service.stop()
+                guard MCPService.isEnabledPreference else { return }
+            }
             startMCPService()
         } else {
             await stopMCPService()
@@ -113,6 +116,34 @@ final class AppState {
     func projectWindowDidBecomeKey(_ project: VideoProject) {
         activateProject(project)
         hideHomeIfEditorIsVisible(for: project)
+    }
+
+    func restoreWindowForActivation(restoringMinimizedWindows: Bool) {
+        let application = NSApplication.shared
+        func isEligible(_ window: NSWindow) -> Bool {
+            guard window.canBecomeKey,
+                  (window.isVisible && !window.isMiniaturized) || (restoringMinimizedWindows && window.isMiniaturized) else { return false }
+            if let project = window.windowController?.document as? VideoProject {
+                let coordinator = project.editorViewModel.projectPackageCoordinator
+                guard !coordinator.isClosing, !coordinator.isClosed else { return false }
+            }
+            return true
+        }
+        let focusedWindows = [application.modalWindow, application.keyWindow, application.mainWindow]
+            .compactMap { $0 }
+            .map { $0.attachedSheet ?? $0 }
+        let projectWindows = activeProject?.windowControllers.compactMap(\.window) ?? []
+        let window = focusedWindows.first(where: isEligible)
+            ?? application.orderedWindows.first { $0.canBecomeMain && isEligible($0) }
+            ?? projectWindows.first(where: isEligible)
+            ?? application.windows.first { $0.canBecomeMain && isEligible($0) }
+        if let window {
+            if window.isMiniaturized { window.deminiaturize(nil) }
+            window.makeKeyAndOrderFront(nil)
+        } else if restoringMinimizedWindows {
+            HomeWindowController.shared.showWindow(nil)
+            HomeWindowController.shared.window?.makeKeyAndOrderFront(nil)
+        }
     }
 
     private func hideHomeIfEditorIsVisible(for project: VideoProject) {

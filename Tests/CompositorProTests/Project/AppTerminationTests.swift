@@ -5,6 +5,33 @@ import Testing
 @Suite("App termination persistence", .serialized)
 @MainActor
 struct AppTerminationTests {
+    @Test func homeWindowQuitWaitsForServicesAndRepliesOnce() async {
+        let delegate = AppDelegate()
+        let entered = PackageTestSignal()
+        let release = PackageTestSignal()
+        let finished = PackageTestSignal()
+        var replies: [Bool] = []
+        var closed = false
+        delegate.startTermination(projects: [], prepareServices: { validate in
+            entered.signal()
+            await release.wait()
+            try validate()
+        }, didClose: { closed = true }, onError: { Issue.record("Unexpected quit failure: \($0)") }, sendReply: {
+            replies.append($0)
+            finished.signal()
+        })
+        await entered.wait()
+        #expect(delegate.isTerminating && replies.isEmpty && !closed)
+        delegate.startTermination(projects: [], prepareServices: { _ in
+            Issue.record("Duplicate quit restarted service shutdown")
+        }, didClose: {}, onError: { _ in }, sendReply: { _ in
+            Issue.record("Duplicate quit replied")
+        })
+        release.signal()
+        await finished.wait()
+        #expect(replies == [true] && closed)
+    }
+
     @Test func waitsForAdmittedWorkThenSavesBeforeReplyingOnce() async throws {
         try await withPackageTestFixture { fixture in
             let document = fixture.document()

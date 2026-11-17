@@ -108,11 +108,11 @@ enum CaptionStyles {
                      fontCase: .mixed, alignment: .center, color: white, outlineWidth: 0,
                      outlineColor: ink, background: .soft, shadowEnabled: false, centerYRatio: 0.8,
                      animationPreset: .typewriter, highlight: nil),
-        CaptionStyle(id: "one-word", displayName: "One Word", intent: "Large word-reveal captions for single-word punches. Keep lines to one accent word.",
+        CaptionStyle(id: "one-word", displayName: "One Word", intent: "Large centered captions showing one word at a time, timed to speech.",
                      group: .loud, fontName: "Poppins", sizeRatio: 0.07, isBold: true, tracking: 0.5,
                      fontCase: .uppercase, alignment: .center, color: white, outlineWidth: 0.05,
                      outlineColor: ink, background: .none, shadowEnabled: true, centerYRatio: 0.78,
-                     animationPreset: .wordReveal, highlight: nil),
+                     animationPreset: .singleWord, highlight: nil),
         CaptionStyle(id: "neon", displayName: "Neon", intent: "Shrikhand display face with a cyan glow edge. Loud, playful, nighttime/funk moods.",
                      group: .loud, fontName: "Shrikhand", sizeRatio: 0.052, isBold: false, tracking: 0,
                      fontCase: .mixed, alignment: .center, color: cyan, outlineWidth: 0.03,
@@ -258,7 +258,28 @@ enum CaptionStyles {
     static let defaultStyle: CaptionStyle = all[12] // subtitle
 
     static func preset(id: String) -> CaptionStyle? {
-        all.first { $0.id == id }
+        if let exact = all.first(where: { $0.id == id }) {
+            return exact
+        }
+        let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmed.isEmpty else { return nil }
+        let normalized = trimmed
+            .replacingOccurrences(of: "_", with: "-")
+            .replacingOccurrences(of: " ", with: "-")
+        if let match = all.first(where: { $0.id.lowercased() == normalized }) {
+            return match
+        }
+        if let match = all.first(where: {
+            $0.displayName.localizedCaseInsensitiveCompare(trimmed) == .orderedSame
+            || $0.displayName.lowercased().replacingOccurrences(of: " ", with: "-") == normalized
+        }) {
+            return match
+        }
+        let stripped = normalized.replacingOccurrences(of: "-", with: "")
+        if let match = all.first(where: { $0.id.replacingOccurrences(of: "-", with: "") == stripped }) {
+            return match
+        }
+        return nil
     }
 
     static var availableIds: String {

@@ -25,6 +25,7 @@ enum OpenAIChatCompletionsRequestBody {
             body["reasoning_effort"] = reasoningEffort.rawValue
         }
         if !tools.isEmpty {
+            body["tool_choice"] = "auto"
             body["tools"] = tools.map {
                 [
                     "type": "function",
@@ -97,14 +98,24 @@ enum OpenAIChatCompletionsRequestBody {
                         } else {
                             reply = toolResultText(output, isError: isError)
                         }
-                        out.append([
-                            "role": "tool",
-                            "tool_call_id": toolUseID,
-                            "content": reply,
-                        ])
-                        pendingToolCalls.remove(toolUseID)
-                        // Chat Completions tool messages are text-only; images follow the complete tool batch.
-                        if pendingToolCalls.isEmpty { appendImageResults() }
+                        if pendingToolCalls.contains(toolUseID) {
+                            out.append([
+                                "role": "tool",
+                                "tool_call_id": toolUseID,
+                                "content": reply,
+                            ])
+                            pendingToolCalls.remove(toolUseID)
+                            // Chat Completions tool messages are text-only; images follow the complete tool batch.
+                            if pendingToolCalls.isEmpty { appendImageResults() }
+                        } else {
+                            // Defensive: convert orphan tool result to user text so OpenAI-compatible gateways
+                            // do not reject the payload with an invalid message structure error.
+                            out.append([
+                                "role": "user",
+                                "content": reply,
+                            ])
+                            appendImageResults()
+                        }
                     }
                 }
             }
@@ -166,11 +177,25 @@ enum OpenAIChatCompletionsRequestBody {
 enum OpenAIChatCompletionsSSE {
     static func parse(
         bytes: URLSession.AsyncBytes,
-        continuation: AsyncThrowingStream<AgentStreamEvent, Error>.Continuation
+        continuation: AsyncThrowingStream<AgentStreamEvent, Error>.Continuation,
+        idleTimeout: TimeInterval = AgentHTTP.streamIdleTimeout
     ) async throws {
         var parser = OpenAIChatCompletionsStreamParser()
+        let tracker = StreamActivityTracker()
+        let watchdog = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                if Task.isCancelled { break }
+                if tracker.elapsed >= idleTimeout {
+                    continuation.finish(throwing: URLError(.timedOut))
+                    break
+                }
+            }
+        }
+        defer { watchdog.cancel() }
         for try await line in bytes.lines {
             try Task.checkCancellation()
+            tracker.touch()
             for event in try parser.consume(line: line) {
                 continuation.yield(event)
             }
@@ -188,6 +213,7 @@ struct OpenAIChatCompletionsStreamParser {
     }
 
     private var pending: [Int: PendingToolCall] = [:]
+    private var accumulatedText = ""
     private(set) var didTerminate = false
 
     mutating func consume(line: String) throws -> [AgentStreamEvent] {
@@ -215,7 +241,8 @@ struct OpenAIChatCompletionsStreamParser {
         else { return [] }
 
         var events: [AgentStreamEvent] = []
-        if let delta = choice["delta"] as? [String: Any] {
+        let delta = (choice["delta"] as? [String: Any]) ?? (choice["message"] as? [String: Any])
+        if let delta {
             // Gateways spell reasoning three ways, and reading only one leaves the panel showing
             // anonymous activity dots for the whole time a reasoning model thinks. OpenRouter
             // streams `reasoning`, or `reasoning_details` when the model returns structured
@@ -232,12 +259,19 @@ struct OpenAIChatCompletionsStreamParser {
                 }
             }
             if let content = delta["content"] as? String, !content.isEmpty {
+                accumulatedText += content
                 events.append(.textDelta(content))
             }
             for call in delta["tool_calls"] as? [[String: Any]] ?? [] {
                 accumulate(call)
                 if let function = call["function"] as? [String: Any],
                    let name = function["name"] as? String, !name.isEmpty {
+                    events.append(.activity(.preparingTool(name)))
+                }
+            }
+            if let functionCall = delta["function_call"] as? [String: Any] {
+                accumulate(["index": 0, "id": "call_\(UUID().uuidString)", "function": functionCall])
+                if let name = functionCall["name"] as? String, !name.isEmpty {
                     events.append(.activity(.preparingTool(name)))
                 }
             }
@@ -267,6 +301,11 @@ struct OpenAIChatCompletionsStreamParser {
         guard !didTerminate else { return [] }
         didTerminate = true
         var events: [AgentStreamEvent] = []
+
+        if pending.isEmpty && !accumulatedText.isEmpty {
+            extractInlineToolCalls(from: accumulatedText)
+        }
+
         var hasToolCall = false
         for (_, call) in pending.sorted(by: { $0.key < $1.key }) where !call.name.isEmpty {
             events.append(.toolUseComplete(
@@ -283,12 +322,52 @@ struct OpenAIChatCompletionsStreamParser {
         return events
     }
 
+    private mutating func extractInlineToolCalls(from text: String) {
+        let invokePattern = try? NSRegularExpression(pattern: #"<invoke\s+name=["']([^"']+)["']>([\s\S]*?)</invoke>"#)
+        if let matches = invokePattern?.matches(in: text, range: NSRange(text.startIndex..., in: text)), !matches.isEmpty {
+            for (idx, match) in matches.enumerated() {
+                if let nameRange = Range(match.range(at: 1), in: text),
+                   let bodyRange = Range(match.range(at: 2), in: text) {
+                    let name = String(text[nameRange])
+                    let body = String(text[bodyRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+                    pending[idx] = PendingToolCall(id: "call_\(UUID().uuidString)", name: name, arguments: body)
+                }
+            }
+            return
+        }
+
+        let toolCallPattern = try? NSRegularExpression(pattern: #"<tool_call>([\s\S]*?)</tool_call>"#)
+        if let matches = toolCallPattern?.matches(in: text, range: NSRange(text.startIndex..., in: text)), !matches.isEmpty {
+            for (idx, match) in matches.enumerated() {
+                if let bodyRange = Range(match.range(at: 1), in: text) {
+                    let body = String(text[bodyRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if let data = body.data(using: .utf8),
+                       let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let name = obj["name"] as? String {
+                        let args: String
+                        if let dictArgs = obj["arguments"] as? [String: Any],
+                           let argsData = try? JSONSerialization.data(withJSONObject: dictArgs),
+                           let str = String(data: argsData, encoding: .utf8) {
+                            args = str
+                        } else if let strArgs = obj["arguments"] as? String {
+                            args = strArgs
+                        } else {
+                            args = "{}"
+                        }
+                        pending[idx] = PendingToolCall(id: "call_\(UUID().uuidString)", name: name, arguments: args)
+                    }
+                }
+            }
+        }
+    }
+
     private func stopReason(for raw: String?, hasToolCall: Bool) -> AgentStopReason {
+        if hasToolCall { return .toolUse }
         switch raw {
-        case "tool_calls", "function_call": .toolUse
-        case "length": .maxTokens
-        case "content_filter": .refusal
-        default: hasToolCall ? .toolUse : .endTurn
+        case "tool_calls", "function_call": return .toolUse
+        case "length": return .maxTokens
+        case "content_filter": return .refusal
+        default: return .endTurn
         }
     }
 

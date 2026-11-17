@@ -1,6 +1,13 @@
 import Foundation
 import MCP
 
+protocol MCPServiceListener: AnyObject, Sendable {
+    func start() async throws
+    func stop() async
+}
+
+extension MCPHTTPServer: MCPServiceListener {}
+
 /// HTTP adapter. Tool handling lives in `ToolExecutor`.
 @Observable
 @MainActor
@@ -21,19 +28,52 @@ final class MCPService {
         }
     }
 
-    private(set) var isRunning: Bool = false
+    enum State: Equatable {
+        case stopped, starting, running, stopping
+        case failed(String)
+    }
+
+    private(set) var state: State = .stopped
+
+    var isRunning: Bool { state == .running }
+    var isStarting: Bool { state == .starting }
+    var startupError: String? {
+        guard case .failed(let message) = state else { return nil }
+        return message
+    }
 
     @ObservationIgnored
     private let projectProvider: () -> VideoProject?
     @ObservationIgnored
-    private var httpServer: MCPHTTPServer?
+    private let userDefaults: UserDefaults
+    @ObservationIgnored
+    private let listenerPort: UInt16
+    @ObservationIgnored
+    private let injectedListener: (any MCPServiceListener)?
+    @ObservationIgnored
+    private var httpServer: (any MCPServiceListener)?
+    @ObservationIgnored
+    private var startupTask: Task<Void, Never>?
+    @ObservationIgnored
+    private var shutdownTask: Task<Void, Never>?
 
-    init(projectProvider: @escaping () -> VideoProject?) {
+    init(
+        projectProvider: @escaping () -> VideoProject?,
+        port: UInt16 = MCPService.port,
+        listener: (any MCPServiceListener)? = nil,
+        userDefaults: UserDefaults = .standard
+    ) {
         self.projectProvider = projectProvider
+        self.listenerPort = port
+        self.injectedListener = listener
+        self.userDefaults = userDefaults
     }
 
-    func start() {
-        let httpServer = MCPHTTPServer(port: Self.port) { [self] in
+    @discardableResult
+    func start() -> Task<Void, Never>? {
+        if state == .starting { return startupTask }
+        guard state != .running, state != .stopping else { return nil }
+        let httpServer = injectedListener ?? MCPHTTPServer(port: listenerPort) { [self] in
             let toolExecutor = await makeSessionToolExecutor()
             let server = Server(
                 name: "compositor-pro",
@@ -51,42 +91,92 @@ final class MCPService {
             }
         }
         self.httpServer = httpServer
-        Task { @MainActor [weak self] in
+        state = .starting
+        let task = Task { @MainActor [self] in
             do {
+                try Task.checkCancellation()
                 try await httpServer.start()
-                Log.mcp.notice("http server started port=\(Self.port)")
-                self?.isRunning = true
+                try Task.checkCancellation()
+                guard state == .starting, self.httpServer === httpServer else {
+                    await httpServer.stop()
+                    return
+                }
+                state = .running
+                startupTask = nil
+                Log.mcp.notice("http server started port=\(self.listenerPort)")
             } catch {
-                Log.mcp.error("http server failed to start: \(error.localizedDescription)")
-                self?.isRunning = false
+                await httpServer.stop()
+                guard state == .starting, self.httpServer === httpServer else { return }
+                self.httpServer = nil
+                startupTask = nil
+                if error is CancellationError {
+                    state = .stopped
+                } else {
+                    state = .failed(error.localizedDescription)
+                    Log.mcp.error("http server failed to start port=\(self.listenerPort): \(error.localizedDescription)")
+                }
             }
         }
+        startupTask = task
+        return task
     }
 
     func makeSessionToolExecutor() -> ToolExecutor {
-        ToolExecutor(projectProvider: projectProvider)
+        ToolExecutor(projectProvider: projectProvider, userDefaults: userDefaults)
     }
 
     func stop() async {
-        if let server = httpServer {
-            await server.stop()
+        if let shutdownTask {
+            await shutdownTask.value
+            return
         }
-        httpServer = nil
-        isRunning = false
-        Log.mcp.notice("http server stopped")
+        guard let server = httpServer else {
+            state = .stopped
+            return
+        }
+        state = .stopping
+        let startup = startupTask
+        startup?.cancel()
+        let task = Task { @MainActor [self] in
+            await server.stop()
+            await startup?.value
+            guard state == .stopping, httpServer === server else { return }
+            httpServer = nil
+            startupTask = nil
+            shutdownTask = nil
+            state = .stopped
+            Log.mcp.notice("http server stopped")
+        }
+        shutdownTask = task
+        await task.value
     }
 
     nonisolated static func registerTools(on server: Server, executor: ToolExecutor) async {
-        let tools: [Tool] = ToolDefinitions.mcpServer.map { def in
+        await registerTools(on: server, definitions: ToolDefinitions.mcpServer, enforceCatalog: false) { params in
+            await dispatchCall(params, executor: executor)
+        }
+    }
+
+    nonisolated static func registerTools(
+        on server: Server,
+        definitions: [AgentTool],
+        enforceCatalog: Bool = true,
+        call: @escaping @Sendable (CallTool.Parameters) async -> CallTool.Result
+    ) async {
+        let tools: [Tool] = definitions.map { def in
             Tool(name: def.name.rawValue, description: def.description, inputSchema: def.mcpSchemaValue)
         }
+        let names = Set(tools.map(\.name))
 
         await server.withMethodHandler(ListTools.self) { _ in
             .init(tools: tools)
         }
 
         await server.withMethodHandler(CallTool.self) { params in
-            await dispatchCall(params, executor: executor)
+            guard !enforceCatalog || names.contains(params.name) else {
+                return .init(content: [.text(text: "Unknown tool: \(params.name)", annotations: nil, _meta: nil)], isError: true)
+            }
+            return await call(params)
         }
     }
 

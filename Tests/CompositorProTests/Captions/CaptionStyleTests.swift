@@ -38,6 +38,16 @@ struct CaptionStyleTests {
         #expect(back.captionStyleId == "neon")
     }
 
+    @Test func oneWordStyleResolvesToSingleWordAnimation() throws {
+        let style = try #require(CaptionStyles.preset(id: "one-word"))
+        #expect(style.animationPreset == .singleWord)
+        #expect(style.resolved(canvasHeight: 1080).animation.preset == .singleWord)
+        #expect(TextAnimation.Preset.perWord.contains(.singleWord))
+        #expect(TextAnimation.Preset.agentValues.contains("singleWord"))
+        let animation = TextAnimation(preset: .singleWord)
+        #expect(try JSONDecoder().decode(TextAnimation.self, from: JSONEncoder().encode(animation)) == animation)
+    }
+
     @Test func unknownStyleDropsToDefaultOnLoad() {
         var file = ProjectFile(timelines: [Fixtures.timeline(tracks: [Fixtures.videoTrack()])])
         file.captionStyleId = "deleted-style"

@@ -1,17 +1,41 @@
 # External Agent Integration
 
-Status: Compositor Pro already hosts a working MCP server. External agents can
-connect today. Session-scoped permissions and tool filtering are **not** built.
+Compositor Pro can run installed agents directly in its chat, or expose its MCP
+server to an agent running in another app. The external server has no per-client
+permission policy.
 
 ## How HyperFrames does it, and what that maps to here
 
-HyperFrames integrates coding agents by running a local MCP server and pointing
-the agent at it. Compositor Pro exposes the same shape: a local, loopback-only
-MCP server that serves the full Compositor Pro tool surface to any MCP client.
+HyperFrames Studio launches installed coding-agent CLIs inside its chat and uses
+their signed-in accounts. Compositor Pro supports this workflow for Codex,
+Claude Code, and Antigravity, and also supports external MCP clients.
 
-There is no second protocol to implement, no adapter to write, and no CLI to
-ship. Integration = configuring the agent to connect to the server that the
-Mac app already runs.
+## Use an agent in Compositor chat
+
+Open **Connect agent**, select **Use in chat**, and choose an installed agent.
+Sign in once using the displayed Terminal command if needed. Leave **Model ID**
+empty for the CLI's configured model, or enter a supported model ID. Choose
+**Use in chat**, then send requests in Compositor's own chat panel. The chat
+selector also lists installed agents above API models.
+
+Each run supplies a temporary workspace and a loopback MCP connection bound to
+that chat's editor. No external MCP configuration is needed. The tool catalog
+uses the in-app editing operations and omits `manage_project`, so a run cannot
+retarget another project. Tool work, process shutdown, and workspace cleanup are
+awaited when a run stops. At most two local agent processes run concurrently.
+The inactivity watchdog stops a process after 15 minutes without stream output;
+active tool and response updates extend the deadline. A timeout preserves edits
+already applied and does not automatically replay the request.
+
+The app uses the official headless interfaces: `codex exec --json`,
+`claude --print --output-format stream-json`, and
+`agy --input-format stream-json --output-format stream-json`. Replies stream
+into the originating Compositor chat; tools already executed by the CLI are
+never submitted a second time by the native chat loop. Runs use the CLI account
+and its billing, without requiring a separate API key in Compositor.
+
+Antigravity's app manages external servers under **Customizations → Installed →
+MCP Servers**. The Antigravity IDE uses its agent panel's MCP Servers menu.
 
 ## The running endpoint
 
@@ -79,6 +103,20 @@ Manual, by design (external agents driving the editor is a UI-adjacent path):
    Undo menu, and the export file is produced.
 5. Quit the app; confirm the agent's next call fails with a connection error.
 
-Automated: the existing MCP tests already exercise tool handling over the
-in-memory transport; there is no endpoint-level test for the HTTP listener
-today.
+For native chat, use a disposable project and verify:
+
+1. Select each installed agent in **Connect agent → Use in chat**, leave the
+   model ID empty, and confirm the chat selector shows the chosen agent.
+2. Request a timeline summary, then one clip move. Confirm the response stays
+   in its chat, the timeline changes once, and native Undo restores it.
+3. Switch chats while a request runs, then stop the original request. Confirm
+   the other chat is unchanged and the agent exits before Stop completes.
+4. Dismiss the connection sheet with Escape; check a missing CLI is disabled
+   and an unsupported model or missing CLI sign-in produces an actionable error.
+   Close the disposable project during a run and confirm no late edit appears.
+
+Automated coverage includes isolated HTTP discovery, clip movement, independent
+timeline readback, shared undo, and stale-run refusal in `LocalAgentChatMCPTests`.
+`LocalAgentProcessTests` verifies pipe draining and cancellation, including an
+agent that ignores normal termination. The existing MCP tests also exercise
+tool dispatch through the in-memory transport and HTTP listener lifecycle.

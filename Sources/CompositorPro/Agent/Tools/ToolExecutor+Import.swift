@@ -43,8 +43,11 @@ extension ToolExecutor {
             throw ToolError("source must set exactly one of 'url', 'path', 'bytes', or 'matte' (got \(setCount))")
         }
 
-        let folderId = try resolveFolder(args, editor: editor)
         let providedName = args.string("name")
+        if let urlStr {
+            return try await importFromURL(editor: editor, urlString: urlStr, mimeOverride: mimeType, name: providedName, folderArgs: args, origin: origin)
+        }
+        let folderId = try resolveFolder(args, editor: editor)
 
         if let pathStr {
             return try await importFromPath(editor: editor, path: pathStr, name: providedName, folderId: folderId)
@@ -58,9 +61,6 @@ extension ToolExecutor {
         if let matte {
             return try await importMatte(editor: editor, matte: matte, name: providedName, folderId: folderId)
         }
-        if let urlStr {
-            return try importFromURL(editor: editor, urlString: urlStr, mimeOverride: mimeType, name: providedName, folderId: folderId, origin: origin)
-        }
         throw ToolError("unreachable")
     }
 
@@ -71,6 +71,17 @@ extension ToolExecutor {
         }.value
         guard status.exists else {
             throw ToolError("File not found: \(path)")
+        }
+        if let existing = editor.mediaAssets.first(where: {
+            $0.importInput?.sourcePath == fileURL.path
+        }) {
+            return .ok(Self.jsonString([
+                "mediaRef": existing.id,
+                "name": existing.name,
+                "type": existing.type.rawValue,
+                "status": "ready",
+                "note": "Reused existing imported media (already in project).",
+            ].merging(existing.inputIdentityReceipt) { _, value in value }) ?? "{}")
         }
         if status.isDirectory {
             let summary = try await editor.importFinderItems([fileURL], into: folderId, applying: { mutation in
@@ -164,7 +175,7 @@ extension ToolExecutor {
         ].merging(asset.inputIdentityReceipt) { _, value in value }) ?? "{}")
     }
 
-    private func importFromURL(editor: EditorViewModel, urlString: String, mimeOverride: String?, name: String?, folderId: String?, origin: MediaImportOrigin?) throws -> ToolResult {
+    private func importFromURL(editor: EditorViewModel, urlString: String, mimeOverride: String?, name: String?, folderArgs: [String: Any], origin suppliedOrigin: MediaImportOrigin?) async throws -> ToolResult {
         guard !editor.projectPackageCoordinator.isClosing, !editor.projectPackageCoordinator.isClosed else {
             throw ToolError("Project is closing; cannot start an import")
         }
@@ -181,8 +192,52 @@ extension ToolExecutor {
             throw ToolError("source.url has no host")
         }
 
+        let pageID = PixabayProvider.videoID(from: url)
+        let pageOrigin = pageID.map {
+            MediaImportOrigin(provider: "pixabay", assetId: "pixabay-video-\($0)", landingPageURL: MediaImportInput.provenanceURL(url))
+        }
+        if let pageOrigin, let suppliedOrigin,
+           suppliedOrigin.provider != pageOrigin.provider || suppliedOrigin.assetId != pageOrigin.assetId {
+            throw ToolError("source.origin does not match the Pixabay video page")
+        }
+        if pageID != nil, let mimeOverride, Self.fileExtension(forMime: mimeOverride) != "mp4" {
+            throw ToolError("Pixabay video pages require video/mp4 or no source.mimeType override")
+        }
+        let origin = suppliedOrigin ?? pageOrigin
+
+        if let origin {
+            if let existing = editor.mediaAssets.first(where: {
+                $0.importInput?.origin?.provider == origin.provider && $0.importInput?.origin?.assetId == origin.assetId
+            }) {
+                let status = existing.generationStatus == .downloading ? "downloading" : "ready"
+                return .ok(Self.jsonString([
+                    "mediaRef": existing.id,
+                    "name": existing.name,
+                    "type": existing.type.rawValue,
+                    "status": status,
+                    "note": "Reused existing imported media (already in project).",
+                ].merging(existing.inputIdentityReceipt) { _, value in value }) ?? "{}")
+            }
+        }
+        if let provenance = MediaImportInput.provenanceURL(url) {
+            if let existing = editor.mediaAssets.first(where: {
+                $0.importInput?.sourceURL == provenance
+            }) {
+                let status = existing.generationStatus == .downloading ? "downloading" : "ready"
+                return .ok(Self.jsonString([
+                    "mediaRef": existing.id,
+                    "name": existing.name,
+                    "type": existing.type.rawValue,
+                    "status": status,
+                    "note": "Reused existing imported media (already in project).",
+                ].merging(existing.inputIdentityReceipt) { _, value in value }) ?? "{}")
+            }
+        }
+
         let fileExt: String
-        if let mimeOverride {
+        if pageID != nil {
+            fileExt = "mp4"
+        } else if let mimeOverride {
             guard let mapped = Self.fileExtension(forMime: mimeOverride) else {
                 throw ToolError("Unsupported mimeType '\(mimeOverride)'. \(Self.acceptedMimeTypesMessage)")
             }
@@ -203,6 +258,35 @@ extension ToolExecutor {
             throw ToolError("No project is open; cannot import from URL")
         }
 
+        let remoteURL: URL
+        if let pageOrigin {
+            let hit = try await importPageResolver(url)
+            try Task.checkCancellation()
+            guard self.editor === editor, editor.projectURL == projectURL,
+                  !editor.projectPackageCoordinator.isClosing, !editor.projectPackageCoordinator.isClosed else {
+                throw ToolError("Project changed or closed while resolving the media page; retry the same link")
+            }
+            if let error = projectFocusError() { throw ToolError(error) }
+            guard hit.origin.sourceId == pageOrigin.sourceId, hit.kind == .video,
+                  let resolved = URL(string: hit.url), resolved.scheme == "https",
+                  resolved.host?.isEmpty == false, resolved.user == nil, resolved.password == nil,
+                  resolved.pathExtension.lowercased() == "mp4" else {
+                throw ToolError("Pixabay returned an invalid rendition for the requested video")
+            }
+            // A concurrent request may have imported the same source while resolution awaited.
+            if let existing = editor.mediaAssets.first(where: { $0.importInput?.origin?.sourceId == pageOrigin.sourceId }) {
+                return .ok(Self.jsonString([
+                    "mediaRef": existing.id, "name": existing.name, "type": existing.type.rawValue,
+                    "status": existing.generationStatus == .downloading ? "downloading" : "ready",
+                    "note": "Reused existing imported media (already in project).",
+                ].merging(existing.inputIdentityReceipt) { _, value in value }) ?? "{}")
+            }
+            remoteURL = resolved
+        } else {
+            remoteURL = url
+        }
+        let folderId = try resolveFolder(folderArgs, editor: editor)
+
         let displayName: String
         if let name {
             displayName = name
@@ -222,7 +306,7 @@ extension ToolExecutor {
         )
 
         editor.projectPackageCoordinator.startMutation { lease in
-            await Self.downloadImportedAsset(asset: placeholder, remoteURL: url, editor: editor,
+            await Self.downloadImportedAsset(asset: placeholder, remoteURL: remoteURL, editor: editor,
                 lease: lease, download: self.importDownloader)
         } onFailure: { error in
             Self.failImportedAsset(placeholder, editor: editor, message: error.localizedDescription)

@@ -866,6 +866,7 @@ extension EditorViewModel {
 
         for i in orderedIndices {
             let spec = specs[i]
+            let content = spec.captionGroupId == nil ? spec.content : CaptionPunctuation.normalized(spec.content)
             let trackExists = batchTimeline?.tracks.indices.contains(spec.trackIndex)
                 ?? timeline.tracks.indices.contains(spec.trackIndex)
             guard trackExists else { continue }
@@ -880,7 +881,7 @@ extension EditorViewModel {
                 resolved = t
             } else {
                 let natural = TextLayout.naturalSize(
-                    content: spec.content, style: spec.style, maxWidth: CGFloat(canvasW) * 0.9, canvasHeight: CGFloat(canvasH)
+                    content: content, style: spec.style, maxWidth: CGFloat(canvasW) * 0.9, canvasHeight: CGFloat(canvasH)
                 )
                 let w = Double(natural.width) / canvasW
                 let h = Double(natural.height) / canvasH
@@ -894,10 +895,10 @@ extension EditorViewModel {
                 durationFrames: duration,
                 transform: resolved
             )
-            clip.textContent = spec.content
+            clip.textContent = content
             clip.textStyle = spec.style
             clip.captionGroupId = spec.captionGroupId
-            clip.wordTimings = spec.words
+            clip.wordTimings = spec.captionGroupId == nil ? spec.words : CaptionPunctuation.normalized(spec.words)
             clip.textAnimation = spec.animation
             if let fillMode = spec.fillMode {
                 clip.setTextFillMode(fillMode, footageMatteColor: spec.style.color)

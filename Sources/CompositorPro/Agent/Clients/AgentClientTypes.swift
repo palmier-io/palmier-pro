@@ -136,17 +136,22 @@ enum AgentModel: String, CaseIterable, Codable, Sendable {
 struct AgentRunSettings: Equatable, Sendable {
     let model: AgentModel
     let reasoningEffort: AgentReasoningEffort
+    var localHarness: LocalAgentHarness?
+    var localModelID: String?
     /// Required when `model == .custom`, ignored otherwise.
     var custom: CustomAgentModel?
 
-    init(model: AgentModel, reasoningEffort: AgentReasoningEffort, custom: CustomAgentModel? = nil) {
+    init(model: AgentModel, reasoningEffort: AgentReasoningEffort, custom: CustomAgentModel? = nil,
+         localHarness: LocalAgentHarness? = nil, localModelID: String? = nil) {
         self.model = model
         self.reasoningEffort = reasoningEffort
+        self.localHarness = localHarness
+        self.localModelID = localHarness == nil ? nil : localModelID
         self.custom = model == .custom ? custom : nil
     }
 
     var supportsImages: Bool? {
-        model == .custom ? custom?.supportsImages : true
+        localHarness != nil ? true : (model == .custom ? custom?.supportsImages : true)
     }
 }
 
@@ -357,13 +362,35 @@ func makeAgentStream(
 }
 
 enum AgentHTTP {
-    static let streamIdleTimeout: TimeInterval = 600
+    static let connectTimeout: TimeInterval = 30
+    static let streamIdleTimeout: TimeInterval = 45
 
     static func urlErrorCode(_ error: any Error) -> URLError.Code? {
         let error = error as NSError
         guard error.domain == NSURLErrorDomain else { return nil }
         return URLError.Code(rawValue: error.code)
     }
+}
+
+final class StreamActivityTracker: @unchecked Sendable {
+    private var lastActivity = ContinuousClock.now
+    private let lock = NSLock()
+
+    func touch() {
+        lock.lock()
+        lastActivity = .now
+        lock.unlock()
+    }
+
+    var elapsed: TimeInterval {
+        lock.lock()
+        defer { lock.unlock() }
+        let duration = ContinuousClock.now - lastActivity
+        return Double(duration.components.seconds) + Double(duration.components.attoseconds) * 1e-18
+    }
+}
+
+extension AgentHTTP {
 
     static func bytes(
         for request: URLRequest,
@@ -371,7 +398,7 @@ enum AgentHTTP {
     ) async throws -> URLSession.AsyncBytes {
         try Task.checkCancellation()
         var request = request
-        request.timeoutInterval = streamIdleTimeout
+        request.timeoutInterval = connectTimeout
         let (bytes, response) = try await URLSession.shared.bytes(for: request)
         guard let response = response as? HTTPURLResponse, response.statusCode >= 400 else {
             return bytes
@@ -391,6 +418,10 @@ enum AgentHTTP {
 }
 
 extension AgentRunSettings {
+    var streamProvider: AgentProvider {
+        model == .custom && custom?.selectedAPI == .responses ? .openAI : model.provider
+    }
+
     func requestBody(
         system: String,
         tools: [AgentToolSchema],
@@ -415,6 +446,15 @@ extension AgentRunSettings {
             )
         case .custom:
             guard let custom else { return [:] }
+            if custom.selectedAPI == .responses {
+                return OpenAIRequestBody.build(
+                    modelID: custom.modelID,
+                    reasoningEffort: reasoningEffort,
+                    system: system,
+                    tools: tools,
+                    messages: messages
+                )
+            }
             return OpenAIChatCompletionsRequestBody.build(
                 modelID: custom.modelID,
                 system: system,

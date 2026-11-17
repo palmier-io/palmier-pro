@@ -212,5 +212,73 @@ struct CaptionTemplatesToolTests {
         ])
         #expect(res3.isError)
     }
+
+    @Test("Empty arguments defaults to listing all caption templates")
+    func emptyArgsDefaultsToList() async throws {
+        let harness = ToolHarness()
+
+        let result = try #require(
+            try await harness.runOK("caption_templates", args: [:]) as? [String: Any]
+        )
+        let templates = try #require(result["templates"] as? [[String: Any]])
+        #expect(templates.count >= 20)
+    }
+
+    @Test("Flexible parameter decoding and fuzzy template ID resolution for one-word style")
+    func fuzzyTemplateResolutionAndAliases() async throws {
+        let (harness, _) = makeHarnessWithCaptions(count: 2)
+
+        // Pass snake_case template_id with space ("one word")
+        let result = try #require(
+            try await harness.runOK("caption_templates", args: [
+                "action": "apply",
+                "template_id": "one word",
+            ]) as? [String: Any]
+        )
+
+        #expect(result["templateId"] as? String == "one-word")
+        #expect(result["appliedClipCount"] as? Int == 2)
+
+        for clip in harness.editor.timeline.tracks[0].clips {
+            #expect(clip.textStyle?.fontName == "Poppins")
+            #expect(clip.textAnimation?.preset == .singleWord)
+        }
+    }
+
+    @Test("Unhides track and restores opacity when applying caption template")
+    func unhidesTrackAndRestoresOpacity() async throws {
+        let (harness, _) = makeHarnessWithCaptions(count: 2)
+        // Mark track as hidden and clip opacity to 0
+        harness.editor.timeline.tracks[0].hidden = true
+        harness.editor.timeline.tracks[0].clips[0].opacity = 0
+
+        let result = try #require(
+            try await harness.runOK("caption_templates", args: [
+                "action": "apply",
+                "templateId": "one-word",
+            ]) as? [String: Any]
+        )
+
+        #expect(result["appliedClipCount"] as? Int == 2)
+        #expect(harness.editor.timeline.tracks[0].hidden == false)
+        #expect(harness.editor.timeline.tracks[0].clips[0].opacity == 1.0)
+    }
+
+    @Test("Tool aliases list_caption_presets and caption_styles route to caption_templates")
+    func toolAliasesRouteToCaptionTemplates() async throws {
+        let harness = ToolHarness()
+
+        let result1 = try #require(
+            try await harness.runOK("list_caption_presets", args: [:]) as? [String: Any]
+        )
+        let templates1 = try #require(result1["templates"] as? [[String: Any]])
+        #expect(!templates1.isEmpty)
+
+        let result2 = try #require(
+            try await harness.runOK("caption_styles", args: [:]) as? [String: Any]
+        )
+        let templates2 = try #require(result2["templates"] as? [[String: Any]])
+        #expect(!templates2.isEmpty)
+    }
 }
 

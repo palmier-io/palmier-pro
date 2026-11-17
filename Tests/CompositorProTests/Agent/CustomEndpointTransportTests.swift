@@ -9,6 +9,74 @@ import Testing
 @Suite("Custom endpoint transport")
 struct CustomEndpointTransportTests {
 
+    @Test func responsesEndpointStreamsTextAndToolsWithTheSelectedRequestFormat() async throws {
+        let server = try await LoopbackServer { _ in
+            """
+            HTTP/1.1 200 OK\r
+            Content-Type: text/event-stream\r
+            \r
+            data: {"type":"response.output_text.delta","delta":"Ready"}\n
+            data: {"type":"response.output_item.done","item":{"type":"function_call","call_id":"call_1","name":"get_timeline","arguments":"{}"}}\n
+            data: {"type":"response.completed","response":{"status":"completed","output":[{"type":"function_call","call_id":"call_1","name":"get_timeline","arguments":"{}"}]}}\n
+            """
+        }
+        defer { server.cancel() }
+        let endpoint = try #require(CustomModelStore.normalizedBaseURL(server.baseURL))
+        let client = BYOKClient(apiKey: "sk-test", settings: AgentRunSettings(
+            model: .custom, reasoningEffort: .low,
+            custom: CustomAgentModel(baseURL: endpoint, modelID: "gpt-6.1-sol", api: .responses)
+        ))
+        let events = try await transportEvents(client.stream(
+            system: "Edit locally", tools: [AgentToolSchema(name: "get_timeline", description: "Read", inputSchema: ["type": "object"])],
+            messages: [
+                AgentRequestMessage(role: .assistant, content: [.content(.toolUse(id: "inspect", name: "inspect_timeline", inputJSON: "{}"))]),
+                AgentRequestMessage(role: .user, content: [.content(.toolResult(toolUseId: "inspect", content: [
+                    .text("Timeline"), .image(base64: "AA==", mediaType: "image/png"),
+                ], isError: false))]),
+            ], context: Self.context
+        ))
+        let request = try #require(server.request)
+        #expect(request.hasPrefix("POST /v1/responses "))
+        #expect(request.lowercased().contains("authorization: bearer sk-test"))
+        let body = try #require(request.components(separatedBy: "\r\n\r\n").last)
+        let json = try #require(JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any])
+        #expect(json["model"] as? String == "gpt-6.1-sol")
+        #expect(json["instructions"] as? String == "Edit locally")
+        #expect(json["messages"] == nil)
+        #expect(json["prompt_cache_options"] == nil)
+        #expect((json["reasoning"] as? [String: String])?["effort"] == "low")
+        let input = try #require(json["input"] as? [[String: Any]])
+        #expect(input[0]["type"] as? String == "function_call")
+        #expect(input[1]["type"] as? String == "function_call_output")
+        let output = try #require(input[1]["output"] as? [[String: Any]])
+        #expect(output[1]["image_url"] as? String == "data:image/png;base64,AA==")
+        #expect(events.contains(.textDelta("Ready")))
+        #expect(events.filter { if case .toolUseComplete = $0 { true } else { false } }.count == 1)
+        #expect(events.contains(.toolUseComplete(id: "call_1", name: "get_timeline", inputJSON: "{}")))
+        #expect(events.contains(.messageStop(stopReason: .toolUse)))
+    }
+
+    @Test func responsesFailureRemainsObservableWithoutRetryingChatCompletions() async throws {
+        let server = try await LoopbackServer { _ in
+            """
+            HTTP/1.1 200 OK\r
+            Content-Type: text/event-stream\r
+            \r
+            data: {"type":"response.failed","response":{"status":"failed","error":{"message":"Model unavailable"}}}\n
+            """
+        }
+        defer { server.cancel() }
+        let endpoint = try #require(CustomModelStore.normalizedBaseURL(server.baseURL))
+        let client = BYOKClient(apiKey: "", settings: AgentRunSettings(
+            model: .custom, reasoningEffort: .low,
+            custom: CustomAgentModel(baseURL: endpoint, modelID: "m", api: .responses)
+        ))
+        await #expect(throws: AgentClientTransportError.self) {
+            _ = try await transportEvents(client.stream(system: "", tools: [], messages: [], context: Self.context))
+        }
+        #expect(try #require(server.request).hasPrefix("POST /v1/responses "))
+    }
+
     @Test func keylessLoopbackEndpointStreamsFromChatCompletions() async throws {
         let server = try await LoopbackServer { _ in Self.sseResponse }
         defer { server.cancel() }
@@ -321,6 +389,66 @@ struct CustomEndpointTransportTests {
         }
     }
 
+    @Test @MainActor
+    func customToolCycleDoesNotWaitForUnrelatedCredentialRefresh() async throws {
+        let probe = CredentialRefreshProbe()
+        let server = try await LoopbackServer(response: { request in
+            let bodyStart = request.range(of: "\r\n\r\n")?.upperBound ?? request.endIndex
+            let body = try? JSONSerialization.jsonObject(with: Data(request[bodyStart...].utf8)) as? [String: Any]
+            let messages = body?["messages"] as? [[String: Any]]
+            let payload = messages?.last?["role"] as? String == "tool"
+                ? #"data: {"choices":[{"delta":{"content":"Timeline inspected"},"finish_reason":"stop"}]}"#
+                : #"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"inspect","function":{"name":"get_timeline","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}"#
+            return "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n" + payload + "\n\n"
+        }, receivedRequest: { _ in Task { await probe.outcome.open(true) } })
+        defer { server.cancel() }
+        let suite = "agent-connection-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        guard case .saved = CustomModelStore.upsert(id: nil, name: "Local", baseURL: server.baseURL,
+                                                   modelID: "test", defaults: defaults) else {
+            Issue.record("Expected a valid loopback model")
+            return
+        }
+        defaults.set(AgentModel.custom.rawValue, forKey: "agentModel")
+        let directory = try await MediaInputIdentityFixtures.makeFiles()
+        let service = AgentService(userDefaults: defaults, skillStore: SkillStore(directory: directory),
+                                   credentialLoader: { await probe.load() }, customKeyLoader: { _ in "" })
+        let editor = EditorViewModel()
+        editor.timeline = Fixtures.timeline()
+        service.editor = editor
+        await probe.entered.wait()
+        do {
+            let conversationID = try #require(service.currentSessionId)
+            for _ in 0..<2 {
+                service.messages.append(AgentMessage(role: .user, blocks: [.text("Read the timeline")]))
+                let run = service.kickOffStream(conversationID: conversationID, traceID: UUID(),
+                                               settings: service.snapshotRunSettings())
+                let sentWithoutRefreshing = await probe.outcome.wait()
+                if !sentWithoutRefreshing { await probe.release.open(()) }
+                await run.value
+                #expect(sentWithoutRefreshing)
+                #expect(service.streamError == nil)
+                #expect(!service.isStreaming)
+                #expect(service.requestProgress == nil)
+                #expect(service.messages.last?.blocks.contains(where: {
+                    if case .text("Timeline inspected") = $0 { return true }
+                    return false
+                }) == true)
+            }
+            #expect(service.messages.filter(AgentService.isHumanUserMessage).count == 2)
+            #expect(service.messages.filter(AgentService.isToolResultOnlyMessage).count == 2)
+        } catch {
+            await probe.release.open(())
+            await service.cancelAndWait()
+            try await MediaInputIdentityFixtures.remove(directory)
+            throw error
+        }
+        await probe.release.open(())
+        await service.cancelAndWait()
+        try await MediaInputIdentityFixtures.remove(directory)
+    }
+
     // MARK: - Fixtures
 
     private static func client(modelID: String, endpoint: URL, apiKey: String, supportsImages: Bool? = nil) -> BYOKClient {
@@ -348,6 +476,42 @@ struct CustomEndpointTransportTests {
     data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n
     data: [DONE]\n
     """
+}
+
+private actor CredentialRefreshProbe {
+    let entered = TransportGate<Void>()
+    let release = TransportGate<Void>()
+    let outcome = TransportGate<Bool>()
+    private var initialLoadEntered = false
+
+    func load() async -> AgentCredentialSnapshot {
+        if initialLoadEntered {
+            await outcome.open(false)
+        } else {
+            initialLoadEntered = true
+            await entered.open(())
+        }
+        await release.wait()
+        return AgentCredentialSnapshot()
+    }
+}
+
+private actor TransportGate<Value: Sendable> {
+    private var value: Value?
+    private var waiters: [CheckedContinuation<Value, Never>] = []
+
+    func wait() async -> Value {
+        if let value { return value }
+        return await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func open(_ value: Value) {
+        guard self.value == nil else { return }
+        self.value = value
+        let pending = waiters
+        waiters.removeAll()
+        for waiter in pending { waiter.resume(returning: value) }
+    }
 }
 
 private func transportEvents(_ operation: AgentStreamOperation) async throws -> [AgentStreamEvent] {

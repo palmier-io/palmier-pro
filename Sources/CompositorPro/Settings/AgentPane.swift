@@ -33,6 +33,15 @@ struct AgentPane: View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
             mcpHeader
             mcpStatusRow
+            if let error = appState.mcpService?.startupError {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
+                    Text(L10n.string("Could not start MCP server. Quit other Compositor Pro instances, then try again."))
+                    Text(verbatim: error)
+                }
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Status.errorColor)
+                .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -43,7 +52,7 @@ struct AgentPane: View {
                 .foregroundStyle(AppTheme.Text.primaryColor)
 
             HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
-                Text(L10n.string("Lets external clients like Cursor, Claude Desktop, Claude Code, and Codex edit your timeline."))
+                Text(L10n.string("Lets external clients like Codex, Claude Code, Antigravity, Cursor, and Claude Desktop edit your timeline."))
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .fixedSize(horizontal: false, vertical: true)
@@ -79,6 +88,12 @@ struct AgentPane: View {
                             .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
                             .foregroundStyle(AppTheme.Text.primaryColor)
                     }
+                } else if appState.mcpService?.isStarting ?? false {
+                    Text(L10n.string("Starting…"))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                } else if appState.mcpService?.state == .stopping {
+                    Text(L10n.string("Stopping…"))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
                 } else {
                     Text(L10n.string("Stopped"))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
@@ -91,7 +106,7 @@ struct AgentPane: View {
             Toggle(
                 String(),
                 isOn: Binding(
-                    get: { (appState.mcpService?.isRunning ?? false) },
+                    get: { (appState.mcpService?.isRunning ?? false) || (appState.mcpService?.isStarting ?? false) },
                     set: { enabled in
                         Task { await appState.setMCPEnabled(enabled) }
                     }
@@ -100,6 +115,7 @@ struct AgentPane: View {
             .labelsHidden()
             .toggleStyle(.switch)
             .controlSize(.mini)
+            .disabled(appState.mcpService?.state == .stopping)
             .accessibilityLabel(L10n.string("MCP Server"))
         }
         .padding(.top, AppTheme.Spacing.xs)
@@ -280,11 +296,13 @@ private extension AgentProvider {
 /// save never leaves the agent service holding a half-applied endpoint.
 private struct CustomEndpointSettingSection: View {
     @State private var models: [CustomAgentModel] = []
+    @State private var selectedID: UUID?
     @State private var editing: CustomAgentModel?
     @State private var isAdding = false
     @State private var name = ""
     @State private var baseURL = ""
     @State private var modelID = ""
+    @State private var api: CustomAgentAPI = .chatCompletions
     @State private var supportsImages: Bool?
     @State private var apiKey = ""
     /// The key as last read from the Keychain, so an untouched field can be told apart from a
@@ -320,22 +338,32 @@ private struct CustomEndpointSettingSection: View {
     private var existingModels: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
             ForEach(models) { model in
+                let isSelected = selectedID == model.id
                 HStack(spacing: AppTheme.Spacing.sm) {
-                    VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
-                        Text(verbatim: model.displayTitle)
-                            .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
-                            .foregroundStyle(AppTheme.Text.primaryColor)
-                        if let subtitle = model.displaySubtitle {
-                            Text(verbatim: subtitle)
-                                .font(.system(size: AppTheme.FontSize.xs))
-                                .foregroundStyle(AppTheme.Text.secondaryColor)
+                    Button(action: { select(model) }) {
+                        HStack(spacing: AppTheme.Spacing.sm) {
+                            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: AppTheme.FontSize.md))
+                                .foregroundStyle(isSelected ? AppTheme.Accent.primary : AppTheme.Text.tertiaryColor)
+                            VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
+                                Text(verbatim: model.displayTitle)
+                                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+                                    .foregroundStyle(AppTheme.Text.primaryColor)
+                                if let subtitle = model.displaySubtitle {
+                                    Text(verbatim: subtitle)
+                                        .font(.system(size: AppTheme.FontSize.xs))
+                                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                                }
+                                Text(verbatim: model.baseURL.absoluteString)
+                                    .font(.system(size: AppTheme.FontSize.xs, design: .monospaced))
+                                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
                         }
-                        Text(verbatim: model.baseURL.absoluteString)
-                            .font(.system(size: AppTheme.FontSize.xs, design: .monospaced))
-                            .foregroundStyle(AppTheme.Text.tertiaryColor)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
                     }
+                    .buttonStyle(.plain)
+                    .help(L10n.string("Select active model"))
                     Spacer(minLength: AppTheme.Spacing.sm)
                     Button(action: { beginEdit(model) }) {
                         Image(systemName: "pencil")
@@ -357,11 +385,24 @@ private struct CustomEndpointSettingSection: View {
         }
     }
 
+    private func select(_ model: CustomAgentModel) {
+        selectedID = model.id
+        CustomModelStore.setSelectedID(model.id, defaults: .standard)
+        NotificationCenter.default.post(name: .agentCustomEndpointChanged, object: nil)
+    }
+
     private var editor: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
             field(placeholder: L10n.string("Name (optional)"), text: $name)
             field(placeholder: "http://localhost:11434/v1", text: $baseURL)
             field(placeholder: "qwen3-coder:30b", text: $modelID)
+            Picker(L10n.string("API type"), selection: $api) {
+                ForEach(CustomAgentAPI.allCases, id: \.self) { option in
+                    Text(L10n.string(key: option.labelKey)).tag(option)
+                }
+            }
+            .font(.system(size: AppTheme.FontSize.sm))
+            .help(L10n.string("Choose the API supported by this endpoint."))
             Picker(L10n.string("Image input"), selection: $supportsImages) {
                 Text(L10n.string("Unspecified")).tag(nil as Bool?)
                 Text(L10n.string("Supported")).tag(true as Bool?)
@@ -453,6 +494,7 @@ private struct CustomEndpointSettingSection: View {
 
     private func load() {
         models = CustomModelStore.load()
+        selectedID = CustomModelStore.selectedID()
     }
 
     private func beginAdd() {
@@ -462,6 +504,7 @@ private struct CustomEndpointSettingSection: View {
         baseURL = ""
         modelID = ""
         supportsImages = nil
+        api = .chatCompletions
         apiKey = ""
         loadedKey = ""
         error = nil
@@ -473,6 +516,7 @@ private struct CustomEndpointSettingSection: View {
         name = model.name
         baseURL = model.baseURL.absoluteString
         modelID = model.modelID
+        api = model.selectedAPI
         supportsImages = model.supportsImages
         apiKey = ""
         loadedKey = ""
@@ -496,6 +540,7 @@ private struct CustomEndpointSettingSection: View {
         baseURL = ""
         modelID = ""
         supportsImages = nil
+        api = .chatCompletions
         apiKey = ""
         loadedKey = ""
         error = nil
@@ -507,14 +552,13 @@ private struct CustomEndpointSettingSection: View {
         let pendingName = name
         let pendingBaseURL = baseURL
         let pendingModelID = modelID
+        let pendingAPI = api
         let pendingSupportsImages = supportsImages
         let pendingID = editing?.id
         let pendingKey: CustomKeyUpdate = apiKey == loadedKey
             ? .unchanged
             : (apiKey.isEmpty ? .clear : .set(apiKey))
         error = nil
-        cancel()
-        load()
         Task { @MainActor in
             let result = await CustomModelStore.upsert(
                 id: pendingID,
@@ -523,12 +567,18 @@ private struct CustomEndpointSettingSection: View {
                 modelID: pendingModelID,
                 key: pendingKey,
                 supportsImages: pendingSupportsImages,
+                api: pendingAPI,
                 defaults: .standard
             )
             if case .failed(let message) = result {
                 error = message
                 return
             }
+            if case .saved(let savedID) = result {
+                selectedID = savedID
+                CustomModelStore.setSelectedID(savedID, defaults: .standard)
+            }
+            cancel()
             load()
             // Announced only after the credential is readable, so the agent does not cache an
             // empty key for a model that has one.

@@ -38,6 +38,7 @@ struct ShortcutsPane: View {
             ("Cmd + N", L10n.string("New")),
             ("Cmd + Shift + N", L10n.string("New Folder")),
             ("Cmd + O", L10n.string("Open")),
+            ("Cmd + W", L10n.string("Close Window")),
             ("Cmd + S", L10n.string("Save")),
             ("Cmd + Shift + S", L10n.string("Save As")),
             ("Cmd + I", L10n.string("Import Media")),
@@ -52,7 +53,7 @@ struct ShortcutsPane: View {
             ("Cmd + A", L10n.string("Select All")),
         ]),
         ShortcutGroup(title: L10n.string("View"), shortcuts: [
-            ("Cmd + F", L10n.string("Full Screen")),
+            ("Ctrl + Cmd + F", L10n.string("Full Screen")),
             ("`", L10n.string("Maximize Focused Panel")),
             ("Cmd + Scroll", L10n.string("Zoom Preview to Cursor")),
             ("Esc", L10n.string("Deselect & Reset Tool")),

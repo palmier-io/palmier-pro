@@ -276,7 +276,7 @@ extension EditorViewModel {
                     sourceClipType: .text,
                     startFrame: segment.startFrame,
                     durationFrames: max(1, segment.endFrame - segment.startFrame),
-                    textContent: segment.translatedText
+                    textContent: CaptionPunctuation.normalized(segment.translatedText)
                 )
                 clip.captionGroupId = captionGroupId
                 clip.textStyle = resolved.style

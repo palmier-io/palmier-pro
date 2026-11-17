@@ -57,83 +57,104 @@ struct AgentPanelView: View {
 
     private var service: AgentService { editor.agentService }
 
-    private var canSend: Bool {
-        !service.isStreaming &&
+    private func canSend(in id: UUID) -> Bool {
+        !service.isStreaming(in: id) &&
         service.canStream &&
-        !service.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !service.draft(in: id).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     @State private var isScrolledFromBottom = false
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: AppTheme.Spacing.zero) {
             tabBar
             messageList
+                .id(service.currentSessionId)
             footer
         }
-        .background(ChatBackground())
-        .onChange(of: service.isStreaming) { _, streaming in
-            guard !streaming else { return }
+        .background(AppTheme.Background.baseColor)
+        .task { await service.reloadLocalAgents().value }
+        .onChange(of: service.runningSessionIDs) { previous, current in
+            guard !previous.subtracting(current).isEmpty else { return }
             AppNotifications.agentComplete()
+        }
+        .onChange(of: service.currentSessionId) { _, _ in
+            isScrolledFromBottom = false
         }
     }
 
     private var tabBar: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
+        VStack(spacing: AppTheme.Spacing.zero) {
+            HStack(spacing: AppTheme.Spacing.smMd) {
+                Label(L10n.string("Chat"), systemImage: "bubble.left.and.bubble.right")
+                    .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.semibold))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
+                if !service.runningSessionIDs.isEmpty {
+                    Text(L10n.string("\(service.runningSessionIDs.count) running"))
+                        .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
+                        .foregroundStyle(AppTheme.Accent.primary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: AppTheme.Spacing.xs)
+                ConnectAgentButton(compact: true)
+                historyButton
+                ViewSkillsButton()
+                    .frame(width: AppTheme.IconSize.lgXl, height: AppTheme.IconSize.lgXl)
+            }
+            .padding(.horizontal, AppTheme.Spacing.mdLg)
+            .frame(height: AppTheme.Chat.headerHeight)
+
+            HStack(spacing: AppTheme.Spacing.smMd) {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 0) {
+                        HStack(spacing: AppTheme.Spacing.xs) {
                             ForEach(service.openSessions) { session in
                                 ChatTabView(
                                     session: session,
                                     isActive: session.id == service.currentSessionId,
+                                    isRunning: service.isStreaming(in: session.id),
+                                    hasDraft: !service.draft(in: session.id).isEmpty,
                                     onSelect: { service.selectSession(session.id) },
                                     onClose: { service.closeTab(session.id) }
                                 )
                                 .id(session.id)
                             }
                         }
-                        .padding(.horizontal, 8)
                     }
                     .onChange(of: service.currentSessionId) { _, new in
                         guard let new else { return }
-                        withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(new, anchor: .center) }
+                        withAnimation(.easeOut(duration: AppTheme.Anim.hover)) { proxy.scrollTo(new, anchor: .center) }
+                    }
+                    .onAppear {
+                        if let id = service.currentSessionId { proxy.scrollTo(id, anchor: .center) }
                     }
                 }
-
-                Spacer(minLength: 8)
-
-                HStack(spacing: 8) {
-                    newTabButton
-                    historyButton
-                    ViewSkillsButton()
-                    modelPicker
-                    reasoningEffortPicker
-                }
+                newTabButton
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .frame(height: 44)
-            .background(
-                Rectangle()
-                    .fill(AppTheme.Background.surfaceColor)
-                    .overlay(alignment: .bottom) {
-                        Divider().foregroundStyle(AppTheme.Border.subtleColor)
-                    }
-            )
+            .padding(.horizontal, AppTheme.Spacing.smMd)
+            .padding(.bottom, AppTheme.Spacing.smMd)
+            .frame(height: AppTheme.Chat.tabHeight + AppTheme.Spacing.smMd)
+        }
+        .background(AppTheme.Background.surfaceColor)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(AppTheme.Border.subtleColor)
+                .frame(height: AppTheme.BorderWidth.hairline)
         }
     }
 
     private var newTabButton: some View {
         Button { service.newChat() } label: {
             Image(systemName: "plus")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .frame(width: 28, height: 28)
+                .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.medium))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .frame(width: AppTheme.IconSize.lgXl, height: AppTheme.Chat.tabHeight)
+                .contentShape(Rectangle())
+                .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
         }
         .buttonStyle(.plain)
         .focusable(false)
+        .accessibilityLabel(L10n.string("New chat"))
         .help(L10n.string("New chat"))
     }
 
@@ -142,81 +163,33 @@ struct AgentPanelView: View {
     private var historyButton: some View {
         Button { showHistory.toggle() } label: {
             Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 13, weight: .medium))
+                .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.medium))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .frame(width: 28, height: 28)
+                .frame(width: AppTheme.IconSize.lgXl, height: AppTheme.IconSize.lgXl)
+                .contentShape(Rectangle())
+                .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
         }
         .buttonStyle(.plain)
         .focusable(false)
+        .accessibilityLabel(L10n.string("Chat history"))
         .help(L10n.string("Chat history"))
         .popover(isPresented: $showHistory, arrowEdge: .top) {
             ChatHistoryList(
                 sessions: service.sessions.sorted { $0.updatedAt > $1.updatedAt },
                 currentId: service.currentSessionId,
+                runningIDs: service.runningSessionIDs,
                 onSelect: { id in
                     service.selectSession(id)
                     showHistory = false
                 },
                 onDelete: { service.deleteSession($0) }
             )
-            .frame(minWidth: 280, minHeight: 300)
         }
     }
 
-    private var modelPicker: some View {
+    private func reasoningEffortPicker(compact: Bool = false) -> some View {
         Menu {
-            ForEach(service.builtInModels, id: \.self) { model in
-                Button {
-                    service.model = model
-                } label: {
-                    Text(verbatim: service.modelTitle(model))
-                }
-                .disabled(!service.canSelectModel(model))
-            }
-            if !service.customModels.isEmpty {
-                Divider()
-                ForEach(service.customModels) { model in
-                    Button {
-                        service.selectCustomModel(model.id)
-                        service.model = .custom
-                    } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(verbatim: model.displayTitle)
-                            if let subtitle = model.displaySubtitle {
-                                Text(verbatim: subtitle)
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-                            }
-                        }
-                    }
-                    .disabled(!service.canSelectModel(.custom))
-                }
-            }
-        } label: {
-            footerPickerLabel(service.modelTitle(service.model)) {
-                switch service.model.provider {
-                case .anthropic:
-                    ExternalAgentLogo(agent: .claude, size: 12)
-                case .openAI:
-                    ProviderLogo(iconKey: "openai", size: 12)
-                case .custom:
-                    Image(systemName: "server.rack")
-                        .font(.system(size: 10))
-                        .foregroundStyle(AppTheme.Text.secondaryColor)
-                }
-            }
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .layoutPriority(1)
-        .accessibilityLabel(L10n.string("Model"))
-        .accessibilityValue(Text(verbatim: service.modelTitle(service.model)))
-        .help(L10n.string("Model"))
-    }
-
-    private var reasoningEffortPicker: some View {
-        Menu {
-            ForEach(service.model.supportedReasoningEfforts, id: \.self) { effort in
+            ForEach(service.supportedReasoningEfforts, id: \.self) { effort in
                 Button {
                     service.reasoningEffort = effort
                 } label: {
@@ -227,40 +200,52 @@ struct AgentPanelView: View {
                 }
             }
         } label: {
-            footerPickerLabel(L10n.string(key: service.reasoningEffort.labelKey)) {
+            if compact {
                 Image(systemName: "brain.head.profile")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    .frame(width: 12, height: 12)
-                    .accessibilityHidden(true)
+                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .frame(width: AppTheme.IconSize.lgXl, height: AppTheme.IconSize.lgXl)
+                    .background(AppTheme.Interaction.fill(AppTheme.Opacity.hint), in: RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
+            } else {
+                footerPickerLabel(L10n.string(key: service.reasoningEffort.labelKey)) {
+                    Image(systemName: "brain.head.profile")
+                        .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        .accessibilityHidden(true)
+                }
             }
         }
+        .id("reasoning-picker-\(service.model.rawValue)-\(service.reasoningEffort.rawValue)")
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
+        .fixedSize(horizontal: true, vertical: false)
         .accessibilityLabel(L10n.string("Reasoning effort"))
         .accessibilityValue(L10n.string(key: service.reasoningEffort.labelKey))
-        .help(L10n.string("Reasoning effort"))
+        .help(L10n.string("Reasoning effort for the next request"))
     }
 
     private func footerPickerLabel<Artwork: View>(
         _ title: String,
         @ViewBuilder artwork: () -> Artwork
     ) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            artwork()
+                .frame(width: AppTheme.IconSize.xxs, height: AppTheme.IconSize.xxs)
+                .clipped()
             Text(verbatim: title)
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .lineLimit(1)
                 .truncationMode(.tail)
-            artwork()
-                .frame(width: 12, height: 12)
-                .clipped()
+            Image(systemName: "chevron.down")
+                .font(.system(size: AppTheme.FontSize.micro, weight: AppTheme.FontWeight.semibold))
+                .foregroundStyle(AppTheme.Text.mutedColor)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, AppTheme.Spacing.smMd)
+        .padding(.vertical, AppTheme.Spacing.sm)
         .background(
-            Capsule()
-                .fill(AppTheme.Interaction.fill(AppTheme.Opacity.subtle))
+            RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
+                .fill(AppTheme.Interaction.fill(AppTheme.Opacity.hint))
         )
     }
 
@@ -281,9 +266,9 @@ struct AgentPanelView: View {
     private var byokIndicator: some View {
         if let provider = service.activeBYOKProvider {
             Image(systemName: "key.fill")
-                .font(.system(size: 10))
+                .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .frame(width: 20, height: 20)
+                .frame(width: AppTheme.IconSize.smMd, height: AppTheme.IconSize.smMd)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Text(verbatim: provider.chatPresentation.byokLabel))
                 .help(provider.chatPresentation.byokHelp)
@@ -302,8 +287,6 @@ struct AgentPanelView: View {
         return out
     }
 
-    private var reasoningStreaming: Bool { service.messages.last?.hasIncompleteReasoning == true }
-
     private var messageList: some View {
         Group {
             if service.messages.isEmpty && !service.isStreaming {
@@ -317,39 +300,52 @@ struct AgentPanelView: View {
     private var scrollingMessages: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
+                LazyVStack(alignment: .leading, spacing: AppTheme.Spacing.lgXl) {
                     let results = toolResults
-                    ForEach(service.messages) { msg in
-                        AgentMessageView(message: msg, toolResults: results)
+                    let visibleMessages = service.messages.filter { message in
+                        message.role != .user || message.blocks.contains { if case .text = $0 { return true }; return false }
+                    }
+                    ForEach(Array(visibleMessages.enumerated()), id: \.element.id) { index, msg in
+                        AgentMessageView(message: msg, toolResults: results,
+                                         showsHeader: index == 0 || visibleMessages[index - 1].role != .assistant,
+                                         onDisclosure: { isScrolledFromBottom = true })
                             .id(msg.id)
                     }
-                    errorBanner
-                        .padding(.vertical, 8)
+                    Color.clear
+                        .frame(height: AppTheme.Spacing.xxs)
+                        .id("chat-bottom")
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-                .padding(.bottom, 8)
-                .frame(maxWidth: 900)
+                .padding(.horizontal, AppTheme.Spacing.mdLg)
+                .padding(.vertical, AppTheme.Spacing.lgXl)
+                .frame(maxWidth: Layout.chatColumnMax)
                 .frame(maxWidth: .infinity)
                 .background(AgentOverlayScrollerStyle())
             }
             .scrollIndicators(.automatic)
             .scrollEdgeEffectStyle(.soft, for: .bottom)
-            .onScrollGeometryChange(for: Bool.self) { geo in
-                let distance = geo.contentSize.height - geo.contentOffset.y - geo.containerSize.height
-                return distance > 80
-            } action: { _, newValue in
-                withAnimation(.easeOut(duration: 0.15)) { isScrolledFromBottom = newValue }
+            .onScrollGeometryChange(for: ChatScrollMetrics.self) { geo in
+                ChatScrollMetrics(
+                    contentHeight: geo.contentSize.height,
+                    distanceFromBottom: geo.contentSize.height + geo.contentInsets.bottom - geo.contentOffset.y - geo.containerSize.height
+                )
+            } action: { previous, current in
+                if previous.contentHeight == current.contentHeight {
+                    withAnimation(.easeOut(duration: AppTheme.Anim.hover)) {
+                        isScrolledFromBottom = current.distanceFromBottom > AppTheme.Chat.scrollBottomThreshold
+                    }
+                } else if !isScrolledFromBottom && (service.isStreaming || previous.contentHeight == 0) {
+                    scrollToBottom(proxy, animated: false)
+                }
             }
-            .onChange(of: service.messages.count) { _, _ in scrollToBottom(proxy) }
-            .onChange(of: service.isStreaming) { _, _ in scrollToBottom(proxy) }
-            .onChange(of: reasoningStreaming) { _, _ in scrollToBottom(proxy) }
+            .onAppear { scrollToBottom(proxy, animated: false) }
+            .onChange(of: service.messages.count) { _, _ in
+                if !isScrolledFromBottom { scrollToBottom(proxy) }
+            }
             .overlay(alignment: .bottomTrailing) {
                 if isScrolledFromBottom {
                     scrollToBottomButton(proxy: proxy)
-                        .padding(.trailing, 16)
-                        .padding(.bottom, 16)
-                        .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                        .padding(AppTheme.Spacing.mdLg)
+                        .transition(.opacity)
                 }
             }
         }
@@ -360,54 +356,60 @@ struct AgentPanelView: View {
             scrollToBottom(proxy)
         } label: {
             Image(systemName: "arrow.down")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: AppTheme.FontSize.mdLg, weight: AppTheme.FontWeight.semibold))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
-                .frame(width: 36, height: 36)
+                .frame(width: AppTheme.Chat.headerHeight, height: AppTheme.Chat.headerHeight)
                 .background(
                     Circle()
                         .fill(AppTheme.Background.raisedColor)
                         .overlay(
                             Circle()
-                                .stroke(AppTheme.Border.subtleColor, lineWidth: 0.5)
+                                .stroke(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.hairline)
                         )
                 )
-                .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
+                .shadow(AppTheme.Shadow.md)
         }
         .buttonStyle(.plain)
         .focusable(false)
+        .accessibilityLabel(L10n.string("Scroll to latest"))
         .help(L10n.string("Scroll to latest"))
     }
 
     @ViewBuilder
     private var errorBanner: some View {
         if let err = service.streamError {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.red)
-                Text(verbatim: errorMessage(err))
-                    .font(.system(size: 12))
-                    .foregroundStyle(AppTheme.Text.primaryColor)
-                    .multilineTextAlignment(.leading)
-                    .textSelection(.enabled)
-                CopyButton(value: errorMessage(err))
-                    .font(.system(size: 10))
-                if let cta = errorCTA(for: err) {
-                    Button(action: cta.action) {
-                        Text(cta.title)
-                            .font(.system(size: 11, weight: .medium))
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+                HStack(alignment: .top, spacing: AppTheme.Spacing.smMd) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: AppTheme.FontSize.md))
+                        .foregroundStyle(AppTheme.Status.errorColor)
+                    Text(verbatim: errorMessage(err))
+                        .font(.system(size: AppTheme.FontSize.smMd))
+                        .foregroundStyle(AppTheme.Text.primaryColor)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(AppTheme.Chat.errorLineLimit)
+                        .textSelection(.enabled)
+                }
+                HStack {
+                    if let cta = errorCTA(for: err) {
+                        Button(action: cta.action) {
+                            Text(cta.title)
+                                .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+                        }
+                        .buttonStyle(.capsule(.secondary))
+                        .controlSize(.small)
                     }
-                    .buttonStyle(.capsule(.secondary))
-                    .controlSize(.small)
+                    Spacer(minLength: AppTheme.Spacing.zero)
+                    CopyButton(value: errorMessage(err))
                 }
             }
-            .padding(12)
+            .padding(AppTheme.Spacing.mdLg)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(.red.opacity(0.08))
+                RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
+                    .fill(AppTheme.Status.errorColor.opacity(AppTheme.Opacity.faint))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(.red.opacity(0.2), lineWidth: 0.5)
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
+                            .stroke(AppTheme.Status.errorColor.opacity(AppTheme.Opacity.moderate), lineWidth: AppTheme.BorderWidth.hairline)
                     )
             )
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -434,7 +436,7 @@ struct AgentPanelView: View {
             return ErrorCTA(title: L10n.string("Open Settings")) {
                 SettingsWindowController.shared.show(tab: .agent)
             }
-        case .refusal, .upstream, .httpError:
+        case .refusal, .stopping, .upstream, .httpError, .localAgent:
             return nil
         }
     }
@@ -455,6 +457,10 @@ struct AgentPanelView: View {
             }
         case .refusal:
             L10n.string("The selected model refused this request. Revise the prompt and try again.")
+        case .stopping:
+            L10n.string("Chat requests are stopping. Try again when they finish.")
+        case .localAgent(let failure):
+            failure.displayMessage
         }
     }
 
@@ -466,9 +472,9 @@ struct AgentPanelView: View {
         var body: some View {
             Button(action: copy) {
                 Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.regular))
                     .foregroundStyle(copied ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
-                    .frame(width: 24, height: 24)
+                    .frame(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.mdLg)
                     .hoverHighlight()
             }
             .buttonStyle(.plain)
@@ -490,31 +496,38 @@ struct AgentPanelView: View {
     @ViewBuilder
     private var emptyState: some View {
         if service.canStream {
-            VStack(spacing: 20) {
-                VStack(spacing: 8) {
-                    Image(systemName: "message.fill")
-                        .font(.system(size: 48))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor.opacity(0.5))
-                    Text(L10n.string("Start a conversation"))
-                        .font(.system(size: 17, weight: .medium))
-                        .foregroundStyle(AppTheme.Text.secondaryColor)
-                    Text(L10n.string("Ask anything, or start with:"))
-                        .font(.system(size: 13))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
-                }
-                VStack(spacing: 8) {
-                    ForEach(Self.starterPrompts) { starterPrompt in
-                        AgentStarterPromptButton(starterPrompt: starterPrompt) {
-                            Analytics.capture(.agentStarterPromptClicked, properties: [
-                                "starter_prompt": starterPrompt.id,
-                            ])
-                            populatePrompt(starterPrompt.prompt)
+            ScrollView {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.xlXxl) {
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+                        Image(systemName: "bubble.left.and.text.bubble.right")
+                            .font(.system(size: AppTheme.FontSize.title1, weight: AppTheme.FontWeight.medium))
+                            .foregroundStyle(AppTheme.Accent.primary)
+                            .frame(width: AppTheme.Chat.welcomeArtworkSize, height: AppTheme.Chat.welcomeArtworkSize)
+                            .background(AppTheme.Accent.primary.opacity(AppTheme.Opacity.faint), in: RoundedRectangle(cornerRadius: AppTheme.Radius.mdLg))
+                        Text(L10n.string("What would you like to edit?"))
+                            .font(.system(size: AppTheme.FontSize.xl, weight: AppTheme.FontWeight.semibold))
+                            .foregroundStyle(AppTheme.Text.primaryColor)
+                        Text(L10n.string("Describe your next edit, or choose a starting point."))
+                            .font(.system(size: AppTheme.FontSize.smMd))
+                            .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    }
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: AppTheme.Chat.starterCardMinWidth), spacing: AppTheme.Spacing.smMd)], spacing: AppTheme.Spacing.smMd) {
+                        ForEach(Self.starterPrompts) { starterPrompt in
+                            AgentStarterPromptButton(starterPrompt: starterPrompt) {
+                                Analytics.capture(.agentStarterPromptClicked, properties: [
+                                    "starter_prompt": starterPrompt.id,
+                                ])
+                                populatePrompt(starterPrompt.prompt)
+                            }
                         }
                     }
                 }
+                .padding(AppTheme.Spacing.lgXl)
+                .padding(.top, AppTheme.Spacing.mdLg)
+                .frame(maxWidth: AppTheme.Chat.welcomeMaxWidth, alignment: .leading)
+                .frame(maxWidth: .infinity)
             }
-            .padding(.horizontal, 32)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             missingKeyState
         }
@@ -523,36 +536,39 @@ struct AgentPanelView: View {
     @ViewBuilder
     private var missingKeyState: some View {
         let account = AccountService.shared
-        VStack(spacing: 20) {
-            VStack(spacing: 8) {
+        ScrollView {
+        VStack(spacing: AppTheme.Spacing.xl) {
+            VStack(spacing: AppTheme.Spacing.smMd) {
                 Image(systemName: "key.slash.fill")
-                    .font(.system(size: 48))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor.opacity(0.5))
+                    .font(.system(size: AppTheme.FontSize.title2))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .frame(width: AppTheme.Chat.welcomeArtworkSize, height: AppTheme.Chat.welcomeArtworkSize)
                 Text(missingKeyTitle(account: account))
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .font(.system(size: AppTheme.FontSize.xl, weight: AppTheme.FontWeight.semibold))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
+                    .multilineTextAlignment(.center)
                 Text(missingKeySubtitle(account: account))
-                    .font(.system(size: 13))
+                    .font(.system(size: AppTheme.FontSize.smMd))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .multilineTextAlignment(.center)
             }
 
             Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
-                HStack(spacing: 8) {
+                HStack(spacing: AppTheme.Spacing.smMd) {
                     if let icon = missingKeyPrimaryIcon(account: account) {
                         Image(systemName: icon)
                     }
                     Text(missingKeyPrimaryLabel(account: account))
                 }
-                .font(.system(size: 13, weight: .semibold))
-                .padding(.horizontal, 20)
-                .padding(.vertical, 10)
+                .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.semibold))
+                .padding(.horizontal, AppTheme.Spacing.xl)
+                .padding(.vertical, AppTheme.Spacing.md)
             }
             .buttonStyle(.capsule(.prominent, size: .regular))
 
-            if !account.isSignedIn {
+            if HostedServices.enabled && !account.isSignedIn {
                 Text(L10n.string("First-time sign-ups only"))
-                    .font(.system(size: 12))
+                    .font(.system(size: AppTheme.FontSize.smMd))
                     .foregroundStyle(AppTheme.Text.mutedColor)
             }
 
@@ -560,15 +576,19 @@ struct AgentPanelView: View {
                 Text(missingKeyLinkLabel)
                     .underline()
                     .foregroundStyle(AppTheme.Text.secondaryColor)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, AppTheme.Spacing.mdLg)
+                    .padding(.vertical, AppTheme.Spacing.sm)
             }
             .buttonStyle(.plain)
-            .font(.system(size: 13, weight: .medium))
-            .hoverHighlight(cornerRadius: 6)
+            .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.medium))
+            .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
         }
-        .padding(.horizontal, 32)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .padding(AppTheme.Spacing.xlXxl)
+        .padding(.top, AppTheme.Spacing.xlXxl)
+        .frame(maxWidth: AppTheme.Chat.welcomeMaxWidth)
+        .frame(maxWidth: .infinity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var missingKeyLinkLabel: String {
@@ -576,12 +596,14 @@ struct AgentPanelView: View {
     }
 
     private func missingKeyTitle(account: AccountService) -> String {
+        if !HostedServices.enabled { return L10n.string("Connect an AI model") }
         if !account.isSignedIn { return L10n.string("Sign in to use AI chat") }
         if !account.isPaid { return L10n.string("Subscription required") }
         return L10n.string("Configure AI settings")
     }
 
     private func missingKeySubtitle(account: AccountService) -> String {
+        if !HostedServices.enabled { return L10n.string("Add an API key or custom endpoint in Settings to start chatting.") }
         if !account.isSignedIn {
             return L10n.string("Log in with your Vercel account to get 250 free credits per month.")
         }
@@ -592,84 +614,97 @@ struct AgentPanelView: View {
     }
 
     private func missingKeyPrimaryLabel(account: AccountService) -> String {
+        if !HostedServices.enabled { return L10n.string("Open Settings") }
         if !account.isSignedIn { return L10n.string("Log in for 250 free credits") }
         if !account.isPaid { return L10n.string("Subscribe") }
         return L10n.string("Open Settings")
     }
 
     private func missingKeyPrimaryIcon(account: AccountService) -> String? {
+        if !HostedServices.enabled { return "key.fill" }
         if !account.isSignedIn { return "gift.fill" }
         if !account.isPaid { return nil }
         return "gearshape"
     }
 
-    private func scrollToBottom(_ proxy: ScrollViewProxy) {
-        guard let last = service.messages.last else { return }
-        withAnimation(.easeOut(duration: 0.15)) {
-            proxy.scrollTo(last.id, anchor: .bottom)
-        }
+    private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
+        let scroll = { proxy.scrollTo("chat-bottom", anchor: .bottom) }
+        if animated { withAnimation(.easeOut(duration: AppTheme.Anim.hover), scroll) }
+        else { scroll() }
     }
 
     private var footer: some View {
-        @Bindable var service = editor.agentService
-        return VStack(spacing: 0) {
-            Divider()
-                .foregroundStyle(AppTheme.Border.subtleColor)
+        VStack(spacing: AppTheme.Spacing.smMd) {
+            errorBanner
             if service.queuedMessageCount > 0 {
-                HStack(spacing: 8) {
+                HStack(spacing: AppTheme.Spacing.smMd) {
                     Image(systemName: "arrow.up.message.fill")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
                         .foregroundStyle(AppTheme.Accent.primary)
-                    Text("\(service.queuedMessageCount) queued")
-                        .font(.system(size: 11, weight: .medium))
+                    Text(L10n.string("\(service.queuedMessageCount) queued"))
+                        .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
                         .foregroundStyle(AppTheme.Text.secondaryColor)
-                    Spacer(minLength: 0)
+                    Spacer(minLength: AppTheme.Spacing.zero)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 6)
+                .padding(.horizontal, AppTheme.Spacing.mdLg)
+                .padding(.vertical, AppTheme.Spacing.sm)
                 .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(AppTheme.Accent.primary.opacity(0.08))
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
+                        .fill(AppTheme.Accent.primary.opacity(AppTheme.Opacity.faint))
                 )
-                .padding(.horizontal, 16)
-                .padding(.bottom, 8)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
             if let progress = service.requestProgress {
                 AgentRequestProgressView(progress: progress)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
-            HStack(spacing: 0) {
+            if let id = service.currentSessionId {
                 AgentInputBox(
-                    draft: $service.draft,
-                    mentions: $service.mentions,
-                    isSending: service.isStreaming,
-                    canSend: canSend,
-                    onSend: submit,
-                    onCancel: { service.cancel() }
+                    conversationID: id,
+                    draft: Binding(get: { service.draft(in: id) }, set: { service.setDraft($0, in: id) }),
+                    mentions: Binding(get: { service.mentions(in: id) }, set: { service.setMentions($0, in: id) }),
+                    isSending: service.isStreaming(in: id),
+                    canSend: canSend(in: id),
+                    onSend: {
+                        if service.submitDraft(in: id) { isScrolledFromBottom = false }
+                    },
+                    onCancel: { service.cancel(conversationID: id) }
                 ) {
-                    HStack(spacing: 8) {
-                        modelPicker
-                        reasoningEffortPicker
-                        byokIndicator
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: AppTheme.Spacing.sm) {
+                            AgentModelPickerView(service: service, idPrefix: "footer-full")
+                            reasoningEffortPicker()
+                            byokIndicator
+                        }
+                        HStack(spacing: AppTheme.Spacing.sm) {
+                            AgentModelPickerView(service: service, idPrefix: "footer-compact")
+                            reasoningEffortPicker(compact: true)
+                        }
+                        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+                            AgentModelPickerView(service: service, idPrefix: "footer-stacked")
+                            reasoningEffortPicker()
+                        }
                     }
                 }
+                .id(id)
+                Text(service.isStreaming ? L10n.string("Esc to stop") : L10n.string("↵ Send · ⇧↵ New line"))
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Text.mutedColor)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, AppTheme.Spacing.xs)
+                    .help(L10n.string("Return to send · Shift Return for a new line"))
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(AppTheme.Background.baseColor)
         }
-        .frame(maxWidth: 900)
+        .padding(AppTheme.Spacing.mdLg)
+        .frame(maxWidth: Layout.chatColumnMax)
         .frame(maxWidth: .infinity)
-        .animation(.easeOut(duration: 0.15), value: service.queuedMessageCount)
-        .animation(.easeOut(duration: 0.15), value: service.chatStatus)
-    }
-
-    private func submit() {
-        guard canSend else { return }
-        service.send(text: service.draft, mentions: service.mentions)
-        service.draft = ""
-        service.mentions.removeAll()
+        .background(AppTheme.Background.baseColor)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(AppTheme.Border.subtleColor)
+                .frame(height: AppTheme.BorderWidth.hairline)
+        }
+        .animation(.easeOut(duration: AppTheme.Anim.hover), value: service.queuedMessageCount)
     }
 
     private func populatePrompt(_ prompt: String) {
@@ -678,54 +713,73 @@ struct AgentPanelView: View {
     }
 }
 
-private struct ChatBackground: View {
-    var body: some View {
-        AppTheme.Background.baseColor
-    }
+private struct ChatScrollMetrics: Equatable {
+    let contentHeight: CGFloat
+    let distanceFromBottom: CGFloat
 }
 
 private struct ChatTabView: View {
     let session: ChatSession
     let isActive: Bool
+    let isRunning: Bool
+    let hasDraft: Bool
     let onSelect: () -> Void
     let onClose: () -> Void
+    @State private var isHovering = false
 
     var body: some View {
-        Button(action: onSelect) {
-            Text(verbatim: displayTitle)
-                .font(.system(size: 11, weight: isActive ? .semibold : .medium))
-                .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
-                .lineLimit(1)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+        HStack(spacing: AppTheme.Spacing.zero) {
+            Button(action: onSelect) {
+                HStack(spacing: AppTheme.Spacing.sm) {
+                    Image(systemName: isRunning ? "circle.fill" : hasDraft ? "pencil" : "bubble.left")
+                        .font(.system(size: isRunning ? AppTheme.FontSize.micro : AppTheme.FontSize.xs))
+                        .foregroundStyle(isRunning ? AppTheme.Accent.primary : AppTheme.Text.mutedColor)
+                        .frame(width: AppTheme.IconSize.xxs)
+                    Text(verbatim: displayTitle)
+                        .font(.system(size: AppTheme.FontSize.sm, weight: isActive ? AppTheme.FontWeight.semibold : AppTheme.FontWeight.medium))
+                        .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.leading, AppTheme.Spacing.smMd)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .focusable(false)
+            .accessibilityLabel(Text(verbatim: displayTitle))
+            .accessibilityAddTraits(isActive ? .isSelected : [])
+            .help(displayTitle)
+
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.md)
+                    .hoverHighlight(cornerRadius: AppTheme.Radius.xsSm)
+            }
+            .buttonStyle(.plain)
+            .focusable(false)
+            .opacity(isActive || isHovering ? AppTheme.Opacity.opaque : AppTheme.Opacity.strong)
+            .accessibilityLabel(L10n.string("Close chat tab"))
+            .help(L10n.string("Close tab; the conversation stays in history"))
+            .padding(.horizontal, AppTheme.Spacing.xs)
         }
-        .buttonStyle(.plain)
+        .frame(width: AppTheme.Chat.tabWidth, height: AppTheme.Chat.tabHeight)
         .background(
-            Capsule()
-                .fill(isActive ? AppTheme.Accent.primary.opacity(0.12) : Color.clear)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
+                .fill(isActive ? AppTheme.Background.baseColor : AppTheme.Interaction.fill(isHovering ? AppTheme.Opacity.hint : AppTheme.Opacity.transparent))
                 .overlay(
-                    Capsule()
-                        .stroke(isActive ? AppTheme.Accent.primary.opacity(0.3) : Color.clear, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
+                        .stroke(isActive ? AppTheme.Border.primaryColor : .clear, lineWidth: AppTheme.BorderWidth.hairline)
                 )
         )
-        .overlay(alignment: .trailing) {
-            if isActive {
-                Button(action: onClose) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
-                        .frame(width: 18, height: 18)
-                }
-                .buttonStyle(.plain)
-                .padding(.trailing, 4)
-            }
-        }
-        .accessibilityAddTraits(isActive ? .isSelected : [])
+        .onHover { isHovering = $0 }
     }
 
     private var displayTitle: String {
-        let t = session.title
-        return t.count > 24 ? String(t.prefix(24)) + "…" : t
+        session.title == "New chat" ? L10n.string("New chat") : session.title
     }
 }
 
@@ -803,31 +857,156 @@ private struct AgentStarterPromptButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
+            HStack(spacing: AppTheme.Spacing.md) {
                 Image(systemName: starterPrompt.systemImage)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    .frame(width: 24, height: 24)
+                    .font(.system(size: AppTheme.FontSize.mdLg, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(AppTheme.Accent.primary)
+                    .frame(width: AppTheme.IconSize.lgXl, height: AppTheme.IconSize.lgXl)
+                    .background(AppTheme.Accent.primary.opacity(AppTheme.Opacity.faint), in: RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
                 Text(starterPrompt.title)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.medium))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                     .multilineTextAlignment(.leading)
+                    .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(AppTheme.Spacing.mdLg)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(AppTheme.Interaction.fill(AppTheme.Opacity.subtle))
+                RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
+                    .fill(AppTheme.Background.surfaceColor)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(AppTheme.Border.subtleColor, lineWidth: 0.5)
+                RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
+                    .stroke(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.hairline)
             )
+            .hoverHighlight(cornerRadius: AppTheme.Radius.md)
         }
         .buttonStyle(.plain)
         .focusable(false)
         .help(L10n.string("Fill prompt"))
+    }
+}
+
+private struct AgentModelPickerView: View {
+    let service: AgentService
+    let idPrefix: String
+
+    var body: some View {
+        let _ = service.customModelsVersion
+        let customModels = service.customModels
+        let currentModel = service.model
+        let selectedID = service.selectedCustomModelID
+        let selectedHarness = service.selectedLocalHarness
+
+        Menu {
+            Section(L10n.string("Signed-in agents")) {
+                ForEach(LocalAgentHarness.allCases) { harness in
+                    Button { service.selectLocalHarness(harness) } label: {
+                        HStack {
+                            Text(verbatim: harness.name)
+                            if selectedHarness == harness { Image(systemName: "checkmark") }
+                        }
+                    }
+                    .disabled(service.localAgentExecutables[harness] == nil)
+                }
+            }
+            Divider()
+            ForEach(service.builtInModels, id: \.self) { model in
+                Button {
+                    service.selectAPIModel(model)
+                } label: {
+                    HStack {
+                        Text(verbatim: service.modelTitle(model))
+                        if selectedHarness == nil && currentModel == model {
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+                .disabled(!service.canSelectModel(model))
+            }
+            if !customModels.isEmpty {
+                Divider()
+                ForEach(customModels) { model in
+                    Button {
+                        service.selectCustomModel(model.id)
+                        service.model = .custom
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
+                                Text(verbatim: model.displayTitle)
+                                if let subtitle = model.displaySubtitle {
+                                    Text(verbatim: subtitle)
+                                        .font(.system(size: AppTheme.FontSize.xs))
+                                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                                }
+                            }
+                            if selectedHarness == nil && currentModel == .custom && selectedID == model.id {
+                                Spacer()
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            }
+        } label: {
+            footerPickerLabel(service.selectedAgentTitle) {
+                if let selectedHarness {
+                    switch selectedHarness {
+                    case .codex: ExternalAgentLogo(agent: .codex, size: AppTheme.IconSize.xxs)
+                    case .claudeCode: ExternalAgentLogo(agent: .claude, size: AppTheme.IconSize.xxs)
+                    case .antigravity:
+                        Image(systemName: "sparkles")
+                            .font(.system(size: AppTheme.FontSize.xs))
+                            .foregroundStyle(AppTheme.Accent.primary)
+                    }
+                } else {
+                    switch currentModel.provider {
+                case .anthropic:
+                    ExternalAgentLogo(agent: .claude, size: AppTheme.IconSize.xxs)
+                case .openAI:
+                    ProviderLogo(iconKey: "openai", size: AppTheme.IconSize.xxs)
+                case .custom:
+                    Image(systemName: "server.rack")
+                        .font(.system(size: AppTheme.FontSize.xs))
+                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                    }
+                }
+            }
+        }
+        .id("\(idPrefix)-model-picker-\(selectedHarness?.rawValue ?? currentModel.rawValue)-\(selectedID?.uuidString ?? "none")-\(service.customModelsVersion)")
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .frame(maxWidth: AppTheme.Chat.modelPickerMaxWidth, alignment: .leading)
+        .fixedSize(horizontal: true, vertical: false)
+        .layoutPriority(1)
+        .accessibilityLabel(L10n.string("Agent or model"))
+        .accessibilityValue(Text(verbatim: service.selectedAgentTitle))
+        .help(L10n.string("Agent or model for the next request"))
+    }
+
+    private func footerPickerLabel<Artwork: View>(
+        _ title: String,
+        @ViewBuilder artwork: () -> Artwork
+    ) -> some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            artwork()
+            Text(verbatim: title)
+                .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Image(systemName: "chevron.down")
+                .font(.system(size: AppTheme.FontSize.micro, weight: AppTheme.FontWeight.semibold))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+        }
+        .padding(.horizontal, AppTheme.Spacing.smMd)
+        .padding(.vertical, AppTheme.Spacing.sm)
+        .frame(maxWidth: AppTheme.Chat.modelPickerMaxWidth)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
+                .fill(AppTheme.Interaction.fill(AppTheme.Opacity.hint))
+        )
     }
 }

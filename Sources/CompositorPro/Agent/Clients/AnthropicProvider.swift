@@ -16,12 +16,26 @@ enum AgentUsageLog {
 enum AnthropicSSE {
     static func parse(
         bytes: URLSession.AsyncBytes,
-        continuation: AsyncThrowingStream<AgentStreamEvent, Error>.Continuation
+        continuation: AsyncThrowingStream<AgentStreamEvent, Error>.Continuation,
+        idleTimeout: TimeInterval = AgentHTTP.streamIdleTimeout
     ) async throws {
         var pendingTools: [Int: (id: String, name: String, json: String)] = [:]
         var stopReason: AgentStopReason?
+        let tracker = StreamActivityTracker()
+        let watchdog = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                if Task.isCancelled { break }
+                if tracker.elapsed >= idleTimeout {
+                    continuation.finish(throwing: URLError(.timedOut))
+                    break
+                }
+            }
+        }
+        defer { watchdog.cancel() }
         for try await line in bytes.lines {
             try Task.checkCancellation()
+            tracker.touch()
             guard line.hasPrefix("data:"),
                   let data = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces).data(using: .utf8),
                   let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

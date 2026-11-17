@@ -9,28 +9,50 @@ final class AgentService {
     private var apiKeyObserver: NSObjectProtocol?
     private var endpointObserver: NSObjectProtocol?
     private let userDefaults: UserDefaults
+    @ObservationIgnored private let credentialLoader: @Sendable () async -> AgentCredentialSnapshot
+    @ObservationIgnored private let customKeyLoader: @Sendable (UUID) async -> String
+    @ObservationIgnored private let sessionLoader: @Sendable (URL?) async -> [ChatSession]
+    @ObservationIgnored private var credentialRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var customKeyRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private let localAgentDiscovery: @Sendable () async -> [LocalAgentHarness: URL]
+    @ObservationIgnored private var localAgentDiscoveryTask: Task<Void, Never>?
+    private(set) var localAgentExecutables: [LocalAgentHarness: URL] = [:]
+    private(set) var selectedLocalHarness: LocalAgentHarness?
+    private var localModelIDs: [LocalAgentHarness: String] = [:]
     @ObservationIgnored private let skillStore: SkillStore?
     private var reasoningEfforts: [AgentModel: AgentReasoningEffort]
     /// The user's own OpenAI-compatible models, each with its own endpoint and credential.
     private(set) var customModels: [CustomAgentModel] = []
+    private(set) var customModelsVersion: Int = 0
     private var customKeys: [UUID: String] = [:]
     /// Which of `customModels` the `.custom` model entry resolves to.
     private(set) var selectedCustomModelID: UUID?
-
-    /// Project package URL, used to persist/load the editing progress summary.
-    private let projectURL: URL?
 
     /// Persisted editing progress, loaded once per project and updated after each
     /// coherent editing action. A new chat loads this instead of full history.
     var editingProgress: EditingProgressSummary = .init()
 
+    /// Marks the document dirty when agent-authored progress metadata changes.
+    var onEditingProgressChanged: (() -> Void)?
+
     /// Maximum input tokens reserved for the chat request (model context minus output
     /// headroom). A 256k model reserves ~32k for output, leaving ~224k for input.
     private let maxInputTokens: Int = 224_000
 
-    init(userDefaults: UserDefaults = .standard, skillStore: SkillStore? = nil, projectURL: URL? = nil) {
-        self.projectURL = projectURL
+    init(userDefaults: UserDefaults = .standard, skillStore: SkillStore? = nil,
+         credentialLoader: @escaping @Sendable () async -> AgentCredentialSnapshot = AgentCredentialSnapshot.loadFromKeychain,
+         customKeyLoader: @escaping @Sendable (UUID) async -> String = CustomModelStore.loadKey,
+         sessionLoader: @escaping @Sendable (URL?) async -> [ChatSession] = ChatSessionStore.load,
+         localAgentDiscovery: @escaping @Sendable () async -> [LocalAgentHarness: URL] = { await LocalAgentHarness.discoverExecutables() }) {
         self.userDefaults = userDefaults
+        self.credentialLoader = credentialLoader
+        self.customKeyLoader = customKeyLoader
+        self.sessionLoader = sessionLoader
+        self.localAgentDiscovery = localAgentDiscovery
+        self.selectedLocalHarness = userDefaults.string(forKey: "agentLocalHarness").flatMap(LocalAgentHarness.init(rawValue:))
+        self.localModelIDs = Dictionary(uniqueKeysWithValues: LocalAgentHarness.allCases.compactMap { harness in
+            userDefaults.string(forKey: "agentLocalModel.\(harness.rawValue)").map { (harness, $0) }
+        })
         self.skillStore = skillStore
         let models = CustomModelStore.load(defaults: userDefaults)
         let selection = CustomModelStore.selectedID(defaults: userDefaults)
@@ -46,6 +68,8 @@ final class AgentService {
         // A saved custom model is only usable while a model exists to call.
         self.model = restored == .custom && selectedID == nil ? .defaultModel : restored
         reloadAPIKeys()
+        reloadCustomKeys()
+        reloadLocalAgents()
         apiKeyObserver = NotificationCenter.default.addObserver(
             forName: .agentAPIKeyChanged,
             object: nil,
@@ -68,40 +92,62 @@ final class AgentService {
         newChat()
     }
 
-    private func reloadCustomModels() {
+    func reloadCustomModels() {
         let models = CustomModelStore.load(defaults: userDefaults)
         let selection = CustomModelStore.selectedID(defaults: userDefaults)
         customModels = models
         if let selection, models.contains(where: { $0.id == selection }) {
             selectedCustomModelID = selection
+            model = .custom
+        } else if let first = models.first {
+            selectedCustomModelID = first.id
+            if model == .custom {
+                selectedCustomModelID = first.id
+            }
         } else {
-            selectedCustomModelID = models.first?.id
-        }
-        if model == .custom, selectedCustomModelID == nil {
-            model = .defaultModel
-        }
-        let ids = Set(models.map(\.id))
-        customKeys = customKeys.filter { ids.contains($0.key) }
-        for model in models where customKeys[model.id] == nil {
-            Task { [weak self] in
-                let key = await CustomModelStore.loadKey(for: model.id)
-                self?.customKeys[model.id] = key
+            selectedCustomModelID = nil
+            if model == .custom {
+                model = .defaultModel
             }
         }
+        reloadCustomKeys()
+        customModelsVersion += 1
     }
 
     private func reloadAPIKeys() {
-        Task { [weak self] in
-            let credentials = await AgentCredentialSnapshot.loadFromKeychain()
-            self?.credentials = credentials
-            for model in self?.customModels ?? [] {
-                let key = await CustomModelStore.loadKey(for: model.id)
-                self?.customKeys[model.id] = key
+        credentialRefreshTask?.cancel()
+        credentials = AgentCredentialSnapshot()
+        let loader = credentialLoader
+        credentialRefreshTask = Task { [weak self] in
+            let credentials = await loader()
+            guard !Task.isCancelled, let self else { return }
+            self.credentials = credentials
+            self.customModelsVersion += 1
+        }
+    }
+
+    private func reloadCustomKeys() {
+        customKeyRefreshTask?.cancel()
+        customKeys.removeAll()
+        let models = customModels
+        let loader = customKeyLoader
+        customKeyRefreshTask = Task { [weak self] in
+            for model in models {
+                guard !Task.isCancelled else { return }
+                let key = await loader(model.id)
+                guard !Task.isCancelled, let self else { return }
+                guard self.customModels.contains(model) else { continue }
+                self.customKeys[model.id] = key
+                self.customModelsVersion += 1
             }
         }
     }
 
     isolated deinit {
+        credentialRefreshTask?.cancel()
+        customKeyRefreshTask?.cancel()
+        localAgentDiscoveryTask?.cancel()
+        sessionLoadTask?.cancel()
         for task in runTasks.values { task.cancel() }
         if let token = apiKeyObserver {
             NotificationCenter.default.removeObserver(token)
@@ -118,7 +164,10 @@ final class AgentService {
     }
 
     var route: AgentRoute {
-        AgentRouting.route(
+        if let selectedLocalHarness {
+            return localAgentExecutables[selectedLocalHarness] == nil ? .unavailable : .direct
+        }
+        return AgentRouting.route(
             model: model,
             credentials: credentials,
             hasHostedCredits: AccountService.shared.isSignedIn && AccountService.shared.hasCredits,
@@ -163,8 +212,12 @@ final class AgentService {
     /// Selects which configured model the `.custom` entry calls.
     func selectCustomModel(_ id: UUID) {
         guard customModels.contains(where: { $0.id == id }) else { return }
+        selectedLocalHarness = nil
+        userDefaults.removeObject(forKey: "agentLocalHarness")
         selectedCustomModelID = id
+        model = .custom
         CustomModelStore.setSelectedID(id, defaults: userDefaults)
+        customModelsVersion += 1
         if case .unavailable = route {
             streamError = .unavailable(model)
         } else if case .some(.unavailable) = streamError {
@@ -178,31 +231,82 @@ final class AgentService {
     }
 
     var activeBYOKProvider: AgentProvider? {
-        route == .direct ? model.provider : nil
+        selectedLocalHarness == nil && route == .direct ? model.provider : nil
+    }
+
+    var selectedAgentTitle: String {
+        guard let harness = selectedLocalHarness else { return modelTitle(model) }
+        return localModelIDs[harness].map { "\(harness.name) · \($0)" } ?? harness.name
+    }
+
+    func localModelID(for harness: LocalAgentHarness) -> String? { localModelIDs[harness] }
+
+    @discardableResult
+    func setLocalModelID(_ value: String, for harness: LocalAgentHarness) -> Bool {
+        do { localModelIDs[harness] = try LocalAgentHarness.normalizedModelID(value) }
+        catch { return false }
+        userDefaults.set(localModelIDs[harness], forKey: "agentLocalModel.\(harness.rawValue)")
+        return true
+    }
+
+    @discardableResult
+    func reloadLocalAgents() -> Task<Void, Never> {
+        localAgentDiscoveryTask?.cancel()
+        let discovery = localAgentDiscovery
+        let task = Task { [weak self] in
+            let installed = await discovery()
+            guard !Task.isCancelled, let self else { return }
+            self.localAgentExecutables = installed
+        }
+        localAgentDiscoveryTask = task
+        return task
+    }
+
+    func selectLocalHarness(_ harness: LocalAgentHarness) {
+        selectedLocalHarness = harness
+        userDefaults.set(harness.rawValue, forKey: "agentLocalHarness")
+        streamError = localAgentExecutables[harness] == nil ? .localAgent(.notInstalled(harness)) : nil
+    }
+
+    func selectAPIModel(_ model: AgentModel) {
+        selectedLocalHarness = nil
+        userDefaults.removeObject(forKey: "agentLocalHarness")
+        self.model = model
+    }
+
+    var supportedReasoningEfforts: [AgentReasoningEffort] {
+        selectedLocalHarness == nil ? model.supportedReasoningEfforts : [.low, .medium, .high, .xHigh, .max]
     }
 
     var reasoningEffort: AgentReasoningEffort {
-        get { reasoningEfforts[model, default: .medium] }
+        get {
+            if let selectedLocalHarness {
+                let effort = userDefaults.string(forKey: "agentLocalEffort.\(selectedLocalHarness.rawValue)")
+                    .flatMap(AgentReasoningEffort.init(rawValue:)) ?? .medium
+                return supportedReasoningEfforts.contains(effort) ? effort : .medium
+            }
+            return reasoningEfforts[model, default: .medium]
+        }
         set {
-            guard model.supportedReasoningEfforts.contains(newValue) else { return }
+            guard supportedReasoningEfforts.contains(newValue) else { return }
+            if let selectedLocalHarness {
+                userDefaults.set(newValue.rawValue, forKey: "agentLocalEffort.\(selectedLocalHarness.rawValue)")
+                customModelsVersion += 1
+                return
+            }
             reasoningEfforts[model] = newValue
             AgentReasoningPreferences.set(newValue, for: model, defaults: userDefaults)
         }
     }
 
     func snapshotRunSettings() -> AgentRunSettings {
-        AgentRunSettings(model: model, reasoningEffort: reasoningEffort, custom: customEndpoint)
+        AgentRunSettings(model: model, reasoningEffort: reasoningEffort, custom: customEndpoint,
+                         localHarness: selectedLocalHarness, localModelID: selectedLocalHarness.flatMap { localModelIDs[$0] })
     }
 
-    private func selectClient(for settings: AgentRunSettings) async -> (any AgentClient)? {
-        // Re-read keys so changes made mid-session affect the next send.
-        let credentials = await AgentCredentialSnapshot.loadFromKeychain()
-        self.credentials = credentials
-        var customKey = ""
-        if let custom = settings.custom {
-            customKey = await CustomModelStore.loadKey(for: custom.id)
-            customKeys[custom.id] = customKey
-        }
+    private func selectClient(for settings: AgentRunSettings) -> (any AgentClient)? {
+        // Settings notifications refresh credentials without blocking request startup.
+        let customKey = settings.custom.flatMap { customKeys[$0.id] } ?? ""
 
         // Local-only routing: no hosted backend remains (R1).
         switch AgentRouting.route(
@@ -255,8 +359,14 @@ final class AgentService {
     }
     /// True while the currently viewed session has a running stream.
     var isStreaming: Bool {
-        currentSessionId.map { sessionRunIDs[$0] != nil } ?? false
+        currentSessionId.map { isStreaming(in: $0) } ?? false
     }
+
+    func isStreaming(in conversationID: UUID) -> Bool {
+        sessionRunIDs[conversationID] != nil
+    }
+
+    var runningSessionIDs: Set<UUID> { Set(sessionRunIDs.keys) }
     var streamError: AgentServiceError? {
         get { currentSessionId.flatMap { sessionErrors[$0] } }
         set {
@@ -277,18 +387,51 @@ final class AgentService {
     }
     /// The visible draft is a projection of the currently viewed session; each session keeps its own draft.
     var draft: String {
-        get { currentSessionId.flatMap { sessionDrafts[$0] } ?? "" }
+        get { currentSessionId.map { draft(in: $0) } ?? "" }
         set {
             guard let id = currentSessionId else { return }
-            sessionDrafts[id] = newValue
+            setDraft(newValue, in: id)
         }
     }
-    var mentions: [AgentMention] = []
+    var mentions: [AgentMention] {
+        get { currentSessionId.map { mentions(in: $0) } ?? [] }
+        set {
+            guard let id = currentSessionId else { return }
+            setMentions(newValue, in: id)
+        }
+    }
     var onSessionsChanged: (@MainActor () -> Void)?
-    private var sessionDrafts: [UUID: String] = [:]
+    private struct Composer {
+        var draft = ""
+        var mentions: [AgentMention] = []
+    }
+    private var sessionComposers: [UUID: Composer] = [:]
     /// Per-session chat status.
     private var sessionProgress: [UUID: AgentRequestProgress] = [:]
     private static let clipMentionLabelMaxLength = 24
+
+    func containsSession(_ id: UUID) -> Bool { sessions.contains { $0.id == id } }
+
+    func draft(in id: UUID) -> String { sessionComposers[id]?.draft ?? "" }
+
+    func setDraft(_ text: String, in id: UUID) {
+        guard containsSession(id) else { return }
+        sessionComposers[id, default: Composer()].draft = text
+    }
+
+    func mentions(in id: UUID) -> [AgentMention] { sessionComposers[id]?.mentions ?? [] }
+
+    func setMentions(_ mentions: [AgentMention], in id: UUID) {
+        guard containsSession(id) else { return }
+        sessionComposers[id, default: Composer()].mentions = mentions
+    }
+
+    @discardableResult
+    func submitDraft(in id: UUID) -> Bool {
+        guard send(text: draft(in: id), mentions: mentions(in: id), conversationID: id) else { return false }
+        sessionComposers[id] = Composer()
+        return true
+    }
 
     /// High-level chat status for UI.
     enum ChatStatus: Equatable, Sendable {
@@ -344,13 +487,17 @@ final class AgentService {
         if activity != .connected { sessionProgress[conversationID]?.retry = nil }
     }
 
-    func attachMention(for asset: MediaAsset) {
+    func attachMention(for asset: MediaAsset, conversationID: UUID? = nil) {
+        guard let id = conversationID ?? currentSessionId, containsSession(id) else { return }
         editor?.agentPanelVisible = true
-        pruneDetachedMentions()
-        guard !mentions.contains(where: { $0.mediaRef == asset.id && !$0.referencesTimelineContext }) else { return }
-        let displayName = Self.disambiguatedMentionName(for: asset, existing: mentions)
-        appendMentionToken(displayName)
-        mentions.append(AgentMention(displayName: displayName, mediaRef: asset.id, type: asset.type))
+        var composer = sessionComposers[id, default: Composer()]
+        composer.mentions.removeAll { !composer.draft.contains("@\($0.displayName)") }
+        guard !composer.mentions.contains(where: { $0.mediaRef == asset.id && !$0.referencesTimelineContext }) else { return }
+        let displayName = Self.disambiguatedMentionName(for: asset, existing: composer.mentions)
+        let needsSpace = !composer.draft.isEmpty && !composer.draft.hasSuffix(" ") && !composer.draft.hasSuffix("\n")
+        composer.draft += (needsSpace ? " " : "") + "@\(displayName) "
+        composer.mentions.append(AgentMention(displayName: displayName, mediaRef: asset.id, type: asset.type))
+        sessionComposers[id] = composer
     }
 
     func attachMentions(forClipIds clipIds: [String]) {
@@ -391,16 +538,13 @@ final class AgentService {
     }
 
     private func pruneDetachedMentions() {
-        guard let id = currentSessionId else { return }
-        let currentDraft = sessionDrafts[id] ?? ""
-        mentions.removeAll { !currentDraft.contains("@\($0.displayName)") }
+        mentions.removeAll { !draft.contains("@\($0.displayName)") }
     }
 
     private func appendMentionToken(_ displayName: String) {
-        guard let id = currentSessionId else { return }
-        let currentDraft = sessionDrafts[id] ?? ""
+        let currentDraft = draft
         let needsSpace = !currentDraft.isEmpty && !currentDraft.hasSuffix(" ") && !currentDraft.hasSuffix("\n")
-        sessionDrafts[id] = currentDraft + (needsSpace ? " " : "") + "@\(displayName) "
+        draft = currentDraft + (needsSpace ? " " : "") + "@\(displayName) "
     }
 
     static func disambiguatedMentionName(for asset: MediaAsset, existing: [AgentMention]) -> String {
@@ -476,25 +620,27 @@ final class AgentService {
 
     weak var editor: EditorViewModel? {
         didSet {
+            guard oldValue !== editor else { return }
             // A new editor means a new project context; every running stream is stale.
             cancelAllRuns()
-            sessionRunIDs.removeAll()
-            sessionErrors.removeAll()
-            toolExecutor = editor.map {
-                ToolExecutor(editor: $0, skillStore: skillStore ?? .shared, userDefaults: userDefaults)
-            }
+            sessionLoadTask?.cancel()
+            sessionLoadID = nil
+            toolExecutors.removeAll()
         }
     }
-    private var toolExecutor: ToolExecutor?
+    @ObservationIgnored private var toolExecutors: [UUID: ToolExecutor] = [:]
     @ObservationIgnored private var runTasks: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored private var sessionTaskIDs: [UUID: UUID] = [:]
+    @ObservationIgnored private var sessionLoadID: UUID?
+    @ObservationIgnored private var sessionLoadTask: Task<Void, Never>?
     /// Active run per chat session, so multiple sessions can stream in parallel and a
     /// run stays alive while the user views another tab.
-    @ObservationIgnored private var sessionRunIDs: [UUID: UUID] = [:]
-    @ObservationIgnored private var sessionErrors: [UUID: AgentServiceError] = [:]
+    private var sessionRunIDs: [UUID: UUID] = [:]
+    private var sessionErrors: [UUID: AgentServiceError] = [:]
     @ObservationIgnored private var sessionSummaries: [UUID: String] = [:]
     /// Queued user messages per session (text, mentions). When the agent is busy,
     /// new messages are appended here and processed sequentially after each turn.
-    @ObservationIgnored private var sessionQueues: [UUID: [(text: String, mentions: [AgentMention])]] = [:]
+    private var sessionQueues: [UUID: [(text: String, mentions: [AgentMention])]] = [:]
     private static let streamTimeoutRetryLimit = 2
     private var drainsInProgress = 0
 
@@ -517,51 +663,56 @@ final class AgentService {
         sessionRunIDs.removeAll()
         sessionErrors.removeAll()
         sessionProgress.removeAll()
+        sessionQueues.removeAll()
     }
 
-    func loadSessions(from projectURL: URL?) async {
+    @discardableResult
+    func loadSessions(from projectURL: URL?) -> Task<Void, Never> {
+        guard editor?.projectPackageCoordinator.isClosing != true else { return Task {} }
+        let loadID = UUID()
+        let previousLoadTask = sessionLoadTask
+        sessionLoadID = loadID
+        previousLoadTask?.cancel()
+        let tasksToDrain = Array(runTasks.values)
         cancelAllRuns()
-        sessions = ChatSessionStore.load(from: projectURL)
-            .filter { !$0.messages.isEmpty }
-            .map {
-                var session = $0
-                session.isOpen = false
-                return session
+        let runEditor = editor
+        let progressBeforeLoading = editingProgress
+        let loader = sessionLoader
+        let task = Task { [weak self] in
+            defer {
+                if self?.sessionLoadID == loadID {
+                    self?.sessionLoadTask = nil
+                    self?.sessionLoadID = nil
+                }
             }
-            .sorted { $0.updatedAt > $1.updatedAt }
-        sessionRunIDs.removeAll()
-        sessionErrors.removeAll()
-        sessionSummaries.removeAll()
-        sessionQueues.removeAll()
-        sessionProgress.removeAll()
-
-        editingProgress = await EditingProgressStore.load(from: projectURL)
-
-        let session = ChatSession()
-        sessions.insert(session, at: 0)
-        currentSessionId = session.id
-        messages = []
-        draft = ""
-        mentions.removeAll()
-        streamError = nil
-        toolExecutor?.resetFeedbackState()
+            for runTask in tasksToDrain { await runTask.value }
+            if let previousLoadTask { await previousLoadTask.value }
+            guard !Task.isCancelled, let self, sessionLoadID == loadID, editor === runEditor else { return }
+            async let storedSessions = loader(projectURL)
+            async let storedProgress = EditingProgressStore.load(from: projectURL)
+            let loadedSessions = await storedSessions
+                .filter { !$0.messages.isEmpty }
+                .map {
+                    var session = $0
+                    session.isOpen = false
+                    return session
+                }
+                .sorted { $0.updatedAt > $1.updatedAt }
+            let loadedProgress = await storedProgress
+            guard !Task.isCancelled, sessionLoadID == loadID, editor === runEditor,
+                  runEditor?.projectPackageCoordinator.isClosed != true else { return }
+            let existingIDs = Set(sessions.map(\.id))
+            sessions.append(contentsOf: loadedSessions.filter { !existingIDs.contains($0.id) })
+            if editingProgress == progressBeforeLoading { editingProgress = loadedProgress }
+        }
+        sessionLoadTask = task
+        return task
     }
 
     func newChat() {
-        if let id = currentSessionId {
-            if let runID = sessionRunIDs[id] { runTasks[runID]?.cancel() }
-            sessionQueues[id] = nil
-            if let idx = sessions.firstIndex(where: { $0.id == id }),
-               sessions[idx].messages.isEmpty {
-                sessions.remove(at: idx)
-            }
-        }
         let session = ChatSession()
-        sessions.insert(session, at: 0)
+        sessions.append(session)
         currentSessionId = session.id
-        sessionDrafts[session.id] = ""
-        streamError = nil
-        toolExecutor?.resetFeedbackState()
         onSessionsChanged?()
     }
 
@@ -592,46 +743,33 @@ final class AgentService {
             handoffNote: editingProgress.handoffNote,
             updatedAt: Date()
         )
-        Task.detached(priority: .utility) {
-            await EditingProgressStore.save(self.editingProgress, to: self.projectURL)
-        }
     }
 
-    /// Record a completed editing step and persist progress.
+    /// Record a completed editing step.
     func recordProgressStep(_ step: String, phase: String? = nil) {
         var completed = editingProgress.completed
         if !completed.contains(step) { completed.append(step) }
         editingProgress.completed = completed
         if let phase { editingProgress.phase = phase }
-        Task.detached(priority: .utility) {
-            await EditingProgressStore.save(self.editingProgress, to: self.projectURL)
-        }
+        onEditingProgressChanged?()
     }
 
-    /// Set the current editorial phase (e.g. "rough-cut", "color-grade", "export"). Persisted
-    /// to the common progress file so any new chat can resume from it.
+    /// Set the current editorial phase (e.g. "rough-cut", "color-grade", "export").
     func setEditingPhase(_ phase: String) {
         editingProgress.phase = phase
-        Task.detached(priority: .utility) {
-            await EditingProgressStore.save(self.editingProgress, to: self.projectURL)
-        }
+        onEditingProgressChanged?()
     }
 
-    /// Set a handoff note describing what the next agent should do. Persisted to the common
-    /// progress file.
+    /// Set a handoff note describing what the next agent should do.
     func setHandoffNote(_ note: String) {
         editingProgress.handoffNote = note
-        Task.detached(priority: .utility) {
-            await EditingProgressStore.save(self.editingProgress, to: self.projectURL)
-        }
+        onEditingProgressChanged?()
     }
 
-    /// Mark the next planned steps. Persisted to the common progress file.
+    /// Mark the next planned steps.
     func setNextSteps(_ steps: [String]) {
         editingProgress.next = steps
-        Task.detached(priority: .utility) {
-            await EditingProgressStore.save(self.editingProgress, to: self.projectURL)
-        }
+        onEditingProgressChanged?()
     }
 
     var openSessions: [ChatSession] { sessions.filter { $0.isOpen } }
@@ -645,15 +783,17 @@ final class AgentService {
             onSessionsChanged?()
         }
         currentSessionId = id
-        streamError = nil
     }
 
     func closeTab(_ id: UUID) {
         guard let idx = sessions.firstIndex(where: { $0.id == id }) else { return }
+        let openIndex = openSessions.firstIndex { $0.id == id } ?? 0
         sessions[idx].isOpen = false
+        if !isStreaming(in: id) { toolExecutors[id] = nil }
         if currentSessionId == id {
-            if let next = sessions.first(where: { $0.isOpen }) {
-                currentSessionId = next.id
+            let remaining = openSessions
+            if !remaining.isEmpty {
+                currentSessionId = remaining[min(openIndex, remaining.count - 1)].id
             } else {
                 newChat()
                 return
@@ -663,8 +803,12 @@ final class AgentService {
     }
 
     func deleteSession(_ id: UUID) {
-        if let runID = sessionRunIDs[id] { runTasks[runID]?.cancel() }
-        sessionQueues[id] = nil
+        guard containsSession(id) else { return }
+        cancel(conversationID: id)
+        sessionComposers[id] = nil
+        sessionErrors[id] = nil
+        sessionSummaries[id] = nil
+        toolExecutors[id] = nil
         sessions.removeAll { $0.id == id }
         if currentSessionId == id {
             currentSessionId = sessions.first(where: { $0.isOpen })?.id
@@ -673,26 +817,28 @@ final class AgentService {
         onSessionsChanged?()
     }
 
-    func send(text: String, mentions: [AgentMention]) {
-        guard canStream else {
-            streamError = .unavailable(model)
-            return
+    @discardableResult
+    func send(text: String, mentions: [AgentMention], conversationID: UUID? = nil) -> Bool {
+        guard let conversationID = conversationID ?? currentSessionId, containsSession(conversationID) else { return false }
+        guard drainsInProgress == 0 else {
+            sessionErrors[conversationID] = .stopping
+            return false
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        guard let conversationID = currentSessionId else {
-            streamError = .upstream("Chat session unavailable.")
-            return
-        }
+        guard !trimmed.isEmpty else { return false }
         let referencedMentions = AgentMentionContext.referencedMentions(mentions, in: trimmed)
         let contextHint = referencedMentions.isEmpty
             ? nil
             : AgentMentionContext.hint(referencedMentions, editor: editor)
 
         // If agent is busy, queue the message for after the current turn completes.
-        if drainsInProgress > 0 {
+        if isStreaming(in: conversationID) {
             sessionQueues[conversationID, default: []].append((trimmed, referencedMentions))
-            return
+            return true
+        }
+        guard canStream else {
+            sessionErrors[conversationID] = selectedLocalHarness.map { .localAgent(.notInstalled($0)) } ?? .unavailable(model)
+            return false
         }
 
         let runSettings = snapshotRunSettings()
@@ -708,16 +854,22 @@ final class AgentService {
         }
 
         resolveOrphanToolUses(conversationID: conversationID)
-        mutateSessionMessages(conversationID) { $0.append(AgentMessage(
-            role: .user, blocks: [.text(trimmed)],
-            mentions: referencedMentions, contextHint: contextHint
-        )) }
-        streamError = nil
+        mutateSessionMessages(conversationID) { msgs in
+            if let last = msgs.last, last.role == .assistant && last.blocks.isEmpty {
+                msgs.removeLast()
+            }
+            msgs.append(AgentMessage(
+                role: .user, blocks: [.text(trimmed)],
+                mentions: referencedMentions, contextHint: contextHint
+            ))
+        }
+        sessionErrors[conversationID] = nil
         kickOffStream(
             conversationID: conversationID,
             traceID: UUID(),
             settings: runSettings
         )
+        return true
     }
 
     func postSystemNotice(_ text: String) {
@@ -726,11 +878,12 @@ final class AgentService {
         onSessionsChanged?()
     }
 
-    func cancel() {
-        guard let id = currentSessionId, let runID = sessionRunIDs[id] else { return }
-        runTasks[runID]?.cancel()
+    func cancel(conversationID: UUID? = nil) {
+        guard let id = conversationID ?? currentSessionId else { return }
+        if let runID = sessionTaskIDs[id] { runTasks[runID]?.cancel() }
         sessionRunIDs[id] = nil
         sessionProgress[id] = nil
+        sessionQueues[id] = nil
         onSessionsChanged?()
     }
 
@@ -738,9 +891,11 @@ final class AgentService {
         drainsInProgress += 1
         defer { drainsInProgress -= 1 }
         let tasks = Array(runTasks.values)
-        for task in tasks { task.cancel() }
+        cancelAllRuns()
         for task in tasks { await task.value }
-        sessionProgress.removeAll()
+        if let loadTask = sessionLoadTask { await loadTask.value }
+        runTasks.removeAll()
+        sessionTaskIDs.removeAll()
         onSessionsChanged?()
     }
 
@@ -751,27 +906,37 @@ final class AgentService {
         settings: AgentRunSettings,
         client: (any AgentClient)? = nil
     ) -> Task<Void, Never> {
-        guard drainsInProgress == 0 else { return Task {} }
+        guard drainsInProgress == 0, containsSession(conversationID) else { return Task {} }
         // Replace only this session's own run; other sessions keep streaming in parallel.
-        let previousTask = sessionRunIDs[conversationID].flatMap { runTasks[$0] }
+        let previousTask = sessionTaskIDs[conversationID].flatMap { runTasks[$0] }
         previousTask?.cancel()
         sessionErrors[conversationID] = nil
         let runID = UUID()
+        let runEditor = editor
         sessionRunIDs[conversationID] = runID
+        sessionTaskIDs[conversationID] = runID
         sessionProgress[conversationID] = AgentRequestProgress(
             phase: previousTask == nil ? .connecting : .waitingForPreviousRun,
-            providerName: settings.custom?.displayTitle ?? settings.model.provider.displayName
+            providerName: settings.localHarness?.name ?? settings.custom?.displayTitle ?? settings.model.provider.displayName
         )
         let task = Task { [weak self, previousTask] in
             defer {
                 self?.runTasks.removeValue(forKey: runID)
+                if self?.sessionTaskIDs[conversationID] == runID {
+                    self?.sessionTaskIDs[conversationID] = nil
+                    if self?.sessions.first(where: { $0.id == conversationID })?.isOpen == false {
+                        self?.toolExecutors[conversationID] = nil
+                    }
+                }
                 if let self, self.sessionRunIDs[conversationID] == runID {
                     self.sessionRunIDs[conversationID] = nil
                     self.sessionProgress[conversationID] = nil
-                    self.onSessionsChanged?()
                 }
+                if let self, editor === runEditor, containsSession(conversationID) { onSessionsChanged?() }
             }
-            if let previousTask { await previousTask.value }
+            if let previousTask {
+                await previousTask.value
+            }
             guard !Task.isCancelled else { return }
             await self?.runLoop(
                 conversationID: conversationID,
@@ -792,6 +957,10 @@ final class AgentService {
         runID: UUID,
         client suppliedClient: (any AgentClient)?
     ) async {
+        if settings.localHarness != nil, suppliedClient == nil {
+            await runLocalAgent(conversationID: conversationID, traceID: traceID, settings: settings, runID: runID)
+            return
+        }
         let runEditor = editor
         let chosenModel = settings.model
         let turnID = String(traceID.uuidString.prefix(8))
@@ -805,7 +974,7 @@ final class AgentService {
         setRequestPhase(.connecting, conversationID: conversationID)
         let selectedClient: (any AgentClient)?
         if let suppliedClient { selectedClient = suppliedClient }
-        else { selectedClient = await selectClient(for: settings) }
+        else { selectedClient = selectClient(for: settings) }
         guard let client = selectedClient else {
             if isCurrentRun(runID, conversationID: conversationID, editor: runEditor) {
                 sessionErrors[conversationID] = .unavailable(chosenModel)
@@ -833,6 +1002,7 @@ final class AgentService {
             .splitClips, .rippleDeleteRanges, .setClipProperties, .setKeyframes,
             .applyLayout, .setClipSpeedRamp, .applyColor, .applyEffect,
             .applyTextStyle, .addTexts, .updateText, .addCaptions, .translateCaptions,
+            .captionTemplates,
             .mixAudio, .duckAudio, .crossfadeAudio, .offsetAudio,
             .applyStylePreset, .applyMotionPreset, .manageMarkers,
             .setProjectSettings, .exportProject, .manageExports, .undo,
@@ -927,7 +1097,9 @@ final class AgentService {
             }
             let system = systemParts.joined()
 
-            guard let inputMessageID = sessionMessages(conversationID).last(where: { $0.role == .user })?.id else {
+            let lastUserMsg = sessionMessages(conversationID).last(where: { Self.isHumanUserMessage($0) })
+                ?? sessionMessages(conversationID).last(where: { $0.role == .user })
+            guard let inputMessageID = lastUserMsg?.id else {
                 sessionErrors[conversationID] = .upstream("The agent request has no user message.")
                 setRequestPhase(.error(L10n.string("No user message")), conversationID: conversationID)
                 break loop
@@ -1003,7 +1175,7 @@ final class AgentService {
                 }
                 if stopReason == .toolUse {
                     await runPendingToolUses(assistantID: assistantID, conversationID: conversationID,
-                                            runID: runID, runEditor: runEditor, settings: settings,
+                                            runID: runID, runEditor: runEditor,
                                             client: client, traceID: traceID, delegation: delegation)
                     if Task.isCancelled { break loop }
                     continue loop
@@ -1068,6 +1240,81 @@ final class AgentService {
         await processQueueIfNeeded(conversationID: conversationID, runID: runID, runEditor: runEditor, settings: settings, client: client)
     }
 
+    private func runLocalAgent(conversationID: UUID, traceID: UUID, settings: AgentRunSettings, runID: UUID) async {
+        guard let harness = settings.localHarness, let runEditor = editor,
+              let executable = localAgentExecutables[harness], let executor = toolExecutor(for: conversationID) else {
+            if let harness = settings.localHarness { sessionErrors[conversationID] = .localAgent(.notInstalled(harness)) }
+            return
+        }
+        let projectURL = runEditor.projectURL
+        let projectID = runEditor.projectId
+        do {
+            try Task.checkCancellation()
+            try await LocalAgentClient.runGate.wait()
+        } catch { return }
+        let bridge = LocalAgentMCPBridge(executor: executor, conversationID: conversationID) { [weak self, weak runEditor] in
+            guard let self, let runEditor else { return false }
+            return self.isCurrentRun(runID, conversationID: conversationID, editor: runEditor)
+                && runEditor.projectURL == projectURL && runEditor.projectId == projectID
+                && !runEditor.projectPackageCoordinator.isClosing
+        }
+        var assistantID: UUID?
+        var completed = false
+        do {
+            try Task.checkCancellation()
+            guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor) else { throw CancellationError() }
+            let endpoint = try await bridge.start()
+            setRequestPhase(.preparingContext, conversationID: conversationID)
+            let requestMessages = await apiMessages(conversationID: conversationID)
+            guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor),
+                  runEditor.projectURL == projectURL, runEditor.projectId == projectID,
+                  let inputID = sessionMessages(conversationID).last(where: { $0.role == .user })?.id else {
+                throw CancellationError()
+            }
+            let assistant = AgentMessage(role: .assistant, blocks: [])
+            assistantID = assistant.id
+            mutateSessionMessages(conversationID) { $0.append(assistant) }
+            var system = AgentInstructions.serverInstructions
+            if let summary = sessionSummaries[conversationID], !summary.isEmpty {
+                system += "\n\nEarlier conversation summary:\n\(summary)"
+            }
+            setRequestPhase(.waitingForResponse, conversationID: conversationID)
+            let client = LocalAgentClient(harness: harness, executable: executable,
+                                          effort: settings.reasoningEffort, endpoint: endpoint, modelID: settings.localModelID)
+            let stream = client.stream(system: system, tools: [], messages: requestMessages, context: AgentRequestContext(
+                conversationID: conversationID, traceID: traceID, spanID: UUID(), inputMessageID: inputID,
+                outputMessageID: assistant.id, projectID: projectID
+            ))
+            _ = try await presentAgentStream(stream, model: settings.model, turnID: String(traceID.uuidString.prefix(8))) { [weak self] snapshot in
+                await self?.applyLocalAgentSnapshot(snapshot, assistantID: assistant.id, conversationID: conversationID,
+                                                   runID: runID, runEditor: runEditor, projectURL: projectURL, projectID: projectID)
+            }
+            completed = true
+        } catch {
+            if let assistantID { dropEmptyAssistantTurn(id: assistantID, conversationID: conversationID) }
+            if isCurrentRun(runID, conversationID: conversationID, editor: runEditor), !(error is CancellationError) {
+                let failure = (error as? LocalAgentFailure) ?? .launchFailed(harness)
+                sessionErrors[conversationID] = .localAgent(failure)
+                setRequestPhase(.error(failure.displayMessage), conversationID: conversationID)
+            }
+        }
+        await bridge.stop()
+        await LocalAgentClient.runGate.signal()
+        guard completed, isCurrentRun(runID, conversationID: conversationID, editor: runEditor),
+              runEditor.projectURL == projectURL, runEditor.projectId == projectID else { return }
+        refreshEditingProgress()
+        await processQueueIfNeeded(conversationID: conversationID, runID: runID,
+                                   runEditor: runEditor, settings: settings, client: nil)
+    }
+
+    private func applyLocalAgentSnapshot(_ snapshot: AgentStreamSnapshot, assistantID: UUID, conversationID: UUID,
+                                        runID: UUID, runEditor: EditorViewModel, projectURL: URL?, projectID: String?) {
+        guard runEditor.projectURL == projectURL, runEditor.projectId == projectID,
+              !runEditor.projectPackageCoordinator.isClosing else { return }
+        applyRequestSnapshot(snapshot, assistantID: assistantID, conversationID: conversationID,
+                             runID: runID, runEditor: runEditor)
+    }
+
     private func processQueueIfNeeded(
         conversationID: UUID,
         runID: UUID,
@@ -1075,7 +1322,9 @@ final class AgentService {
         settings: AgentRunSettings,
         client: (any AgentClient)?
     ) async {
-        guard var queue = sessionQueues[conversationID], !queue.isEmpty else { return }
+        guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor),
+              sessionErrors[conversationID] == nil,
+              var queue = sessionQueues[conversationID], !queue.isEmpty else { return }
         let next = queue.removeFirst()
         sessionQueues[conversationID] = queue
         // Reuse the same run settings but with the queued message as the new input.
@@ -1160,15 +1409,24 @@ final class AgentService {
     }
 
     private func isCurrentRun(_ runID: UUID, conversationID: UUID, editor runEditor: EditorViewModel?) -> Bool {
-        !Task.isCancelled && sessionRunIDs[conversationID] == runID && currentSessionId == conversationID && editor === runEditor
+        // A run stays bound to its chat and editor while another tab is selected.
+        !Task.isCancelled && sessionRunIDs[conversationID] == runID && containsSession(conversationID) && editor === runEditor
+    }
+
+    private func toolExecutor(for conversationID: UUID) -> ToolExecutor? {
+        guard let editor, containsSession(conversationID) else { return nil }
+        if let executor = toolExecutors[conversationID] { return executor }
+        let executor = ToolExecutor(editor: editor, skillStore: skillStore ?? .shared, userDefaults: userDefaults)
+        toolExecutors[conversationID] = executor
+        return executor
     }
 
     private func runPendingToolUses(assistantID: UUID, conversationID: UUID, runID: UUID,
-                                   runEditor: EditorViewModel?, settings: AgentRunSettings,
+                                   runEditor: EditorViewModel?,
                                    client: any AgentClient, traceID: UUID, delegation: AgentDelegation) async {
         let sessionMsgs = sessionMessages(conversationID)
         guard let assistantIndex = assistantMessageIndex(id: assistantID, conversationID: conversationID) else { return }
-        guard let executor = toolExecutor else {
+        guard let executor = toolExecutor(for: conversationID) else {
             mutateSessionMessages(conversationID) { $0.append(AgentMessage(role: .user, blocks: [.text("Tool executor unavailable.")])) }
             return
         }
@@ -1190,8 +1448,7 @@ final class AgentService {
             if use.name == AgentDelegationTool.name {
                 result = await executeDelegation(input: use.input, client: client, delegation: delegation,
                     context: AgentRequestContext(conversationID: conversationID, traceID: traceID, spanID: UUID(),
-                        inputMessageID: assistantID, outputMessageID: UUID(), projectID: runEditor?.projectId),
-                    settings: settings)
+                        inputMessageID: assistantID, outputMessageID: UUID(), projectID: runEditor?.projectId))
             } else {
                 result = await executor.execute(
                     name: use.name,
@@ -1207,7 +1464,7 @@ final class AgentService {
         appendToolResults(resultBlocks, conversationID: conversationID)
         // Persist editing progress after each batch of tool results so a new chat can
         // resume without replaying full history.
-        refreshEditingProgress()
+        if editor === runEditor, containsSession(conversationID) { refreshEditingProgress() }
     }
 
     func appendToolResults(_ blocks: [AgentContentBlock], conversationID: UUID) {
@@ -1287,19 +1544,44 @@ final class AgentService {
         (text.utf16.count + 3) / 4
     }
 
+    static func isToolResultOnlyMessage(_ msg: AgentMessage) -> Bool {
+        msg.role == .user && msg.blocks.contains(where: {
+            if case .toolResult = $0 { return true }
+            return false
+        })
+    }
+
+    static func isHumanUserMessage(_ msg: AgentMessage) -> Bool {
+        msg.role == .user && !isToolResultOnlyMessage(msg)
+    }
+
     /// Prepare messages for the API with context-window management:
-    /// - Sliding window: last 6 turns verbatim, older turns collapsed into a rolling summary
+    /// - Sliding window: last 3 human conversational turns verbatim (including all tool exchanges),
+    ///   older turns collapsed into a rolling summary
     /// - Rolling summary: compresses old conversation into one compact system message
-    /// - Token budget: prunes oldest content first when over budget
+    /// - Token budget: prunes oldest turns first when over budget
     /// - Tool pruning: when context is tight, tool schemas stay out of the message body
     ///   (they are already handled separately by the caller).
     private func apiMessages(conversationID: UUID) async -> [AgentRequestMessage] {
         let sessionMsgs = sessionMessages(conversationID)
         var result: [AgentRequestMessage] = []
-        let lastUserIndex = sessionMsgs.lastIndex(where: { $0.role == .user })
 
-        // Build the rolling summary from turns outside the sliding window.
-        let windowStart = lastUserIndex.map { max(0, $0 - 6) } ?? 0
+        // Slicing at human turn boundaries guarantees:
+        // 1. The window ALWAYS starts with a human user message.
+        // 2. An assistant toolUse and its matching toolResults are never severed.
+        // 3. Tool call/result structure stays intact when consumed images are omitted.
+        let humanIndices = sessionMsgs.indices.filter { Self.isHumanUserMessage(sessionMsgs[$0]) }
+        let keepHumanTurns = 3
+        let windowStart: Int
+        if !humanIndices.isEmpty {
+            let startHumanIndex = max(0, humanIndices.count - keepHumanTurns)
+            windowStart = humanIndices[startHumanIndex]
+        } else {
+            windowStart = 0
+        }
+
+        let lastHumanIndex = humanIndices.last
+        let latestToolResultIndex = sessionMsgs.lastIndex(where: Self.isToolResultOnlyMessage)
         var summaryParts: [String] = []
 
         for (index, msg) in sessionMsgs.enumerated() {
@@ -1314,7 +1596,7 @@ final class AgentService {
 
             var content = msg.blocks.map(AgentRequestBlock.content)
             if msg.role == .user, !msg.mentions.isEmpty {
-                let isRecent = lastUserIndex == nil || index >= (lastUserIndex! - 2)
+                let isRecent = lastHumanIndex == nil || index >= (lastHumanIndex! - 2)
                 if isRecent {
                     let inlined = await inlineImageBlocks(for: msg.mentions)
                     var hint = msg.contextHint ?? AgentMentionContext.hint(msg.mentions, editor: editor)
@@ -1326,13 +1608,13 @@ final class AgentService {
                     content.insert(.content(.text(hint + " [Historical image mentions omitted for context budget]")), at: 0)
                 }
             }
-            let isOldTurn = lastUserIndex != nil && index < (lastUserIndex! - 4)
-            if isOldTurn {
+            // A later tool batch proves these inspection images already reached the model.
+            if let latestToolResultIndex, index < latestToolResultIndex {
                 content = content.map { block in
                     if case let .content(inner) = block, case .toolResult(let id, let blocks, let isErr) = inner {
                         let prunedBlocks = blocks.map { b -> ToolResult.Block in
                             if case .image = b {
-                                return .text("[Inspection image pruned to fit context budget: superseded by current revision]")
+                                return .text("[Inspection image omitted from request after a later tool batch; metadata retained]")
                             }
                             return b
                         }
@@ -1352,7 +1634,7 @@ final class AgentService {
             sessionSummaries[conversationID] = ""
         }
 
-        // Enforce token budget: estimate total input, prune oldest assistant turns first.
+        // Enforce token budget: estimate total input, prune oldest complete turns first.
         let systemTokens = 0
         var messageTokens = 0
         for msg in result {
@@ -1361,16 +1643,19 @@ final class AgentService {
         let totalTokens = systemTokens + messageTokens + Self.estimateTokens(sessionSummaries[conversationID] ?? "")
 
         if totalTokens > maxInputTokens {
-            // Drop oldest assistant turns until under budget, preserving user turns.
             var pruned = result
-            while messageTokens > maxInputTokens * 3 / 4, pruned.count > 2 {
-                // Remove the oldest non-user turn (assistant/tool).
-                if let oldestIdx = pruned.firstIndex(where: { $0.role != .user }) {
-                    let removed = pruned.remove(at: oldestIdx)
-                    messageTokens -= removed.content.reduce(0) { $0 + Self.estimateTokens(blockText($1)) }
-                } else {
-                    break
+            while messageTokens > maxInputTokens * 3 / 4 {
+                guard let nextHumanIdx = pruned.dropFirst().firstIndex(where: { msg in
+                    msg.role == .user && !msg.content.contains(where: {
+                        if case .content(.toolResult) = $0 { return true }
+                        return false
+                    })
+                }) else { break }
+                let removedTurns = pruned.prefix(upTo: nextHumanIdx)
+                for rm in removedTurns {
+                    messageTokens -= rm.content.reduce(0) { $0 + Self.estimateTokens(blockText($1)) }
                 }
+                pruned = Array(pruned[nextHumanIdx...])
             }
             result = pruned
         }

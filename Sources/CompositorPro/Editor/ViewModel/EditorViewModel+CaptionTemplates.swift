@@ -18,6 +18,7 @@ extension EditorViewModel {
         }
 
         let template = CaptionTemplateLibrary.template(id: templateId)
+        let canonicalId = template?.id ?? preset.id
         let resolvedFormat = format ?? template?.format ?? .all
         let centerY = template?.centerYRatio ?? resolvedFormat.safeCenterYRatio
 
@@ -30,7 +31,7 @@ extension EditorViewModel {
             targetClipIds = Set(explicit)
         } else if let trackIdx = trackIndex {
             guard timeline.tracks.indices.contains(trackIdx) else {
-                throw CaptionTemplateError.noCaptionsFound
+                throw CaptionTemplateError.noCaptionsFound(templateName: template?.displayName ?? preset.displayName)
             }
             let trackClips = timeline.tracks[trackIdx].clips.filter { $0.mediaType == .text }.map(\.id)
             targetClipIds = Set(trackClips)
@@ -46,7 +47,7 @@ extension EditorViewModel {
         }
 
         guard !targetClipIds.isEmpty else {
-            throw CaptionTemplateError.noCaptionsFound
+            throw CaptionTemplateError.noCaptionsFound(templateName: template?.displayName ?? preset.displayName)
         }
 
         var updatedClipIds: [String] = []
@@ -55,6 +56,7 @@ extension EditorViewModel {
         let actionLabel = "Apply Caption Template '\(template?.displayName ?? preset.displayName)'"
         withTimelineSwap(actionName: actionLabel) {
             for trackIdx in timeline.tracks.indices {
+                var trackHasTargetClip = false
                 for clipIdx in timeline.tracks[trackIdx].clips.indices {
                     let clip = timeline.tracks[trackIdx].clips[clipIdx]
                     guard targetClipIds.contains(clip.id) else { continue }
@@ -62,17 +64,24 @@ extension EditorViewModel {
                     timeline.tracks[trackIdx].clips[clipIdx].textStyle = resolved.style
                     timeline.tracks[trackIdx].clips[clipIdx].textAnimation = resolved.animation
                     timeline.tracks[trackIdx].clips[clipIdx].transform.centerY = centerY
+                    if timeline.tracks[trackIdx].clips[clipIdx].opacity <= 0 {
+                        timeline.tracks[trackIdx].clips[clipIdx].opacity = 1.0
+                    }
 
                     updatedClipIds.append(clip.id)
                     affectedTrackIndices.insert(trackIdx)
+                    trackHasTargetClip = true
+                }
+                if trackHasTargetClip && timeline.tracks[trackIdx].hidden {
+                    timeline.tracks[trackIdx].hidden = false
                 }
             }
         }
 
-        selectedCaptionStyleId = templateId
+        selectedCaptionStyleId = canonicalId
 
         return CaptionTemplateApplyReceipt(
-            templateId: templateId,
+            templateId: canonicalId,
             templateName: template?.displayName ?? preset.displayName,
             format: resolvedFormat.rawValue,
             formatLabel: template?.formatLabel ?? resolvedFormat.displayName,

@@ -70,7 +70,7 @@ struct AgentDelegationRuntimeTests {
         #expect(throws: (any Error).self) { _ = try AgentDelegationTool.tasks(from: input) }
     }
 
-    @Test(arguments: ["timeline", "storyboard", "model", "editor"])
+    @Test(arguments: ["timeline", "storyboard", "editor"])
     func changedContextRefusesChildDrafts(change: String) async throws {
         try await withRuntime { service, harness, _ in
             let probe = DelegationRuntimeClient(holdChildren: true)
@@ -78,14 +78,13 @@ struct AgentDelegationRuntimeTests {
                 spanID: UUID(), inputMessageID: UUID(), outputMessageID: UUID(), projectID: nil)
             let task = Task {
                 await service.executeDelegation(input: DelegationRuntimeClient.input, client: probe,
-                    delegation: AgentDelegation(), context: context, settings: service.snapshotRunSettings())
+                    delegation: AgentDelegation(), context: context)
             }
             await probe.waitForChildren()
             switch change {
             case "timeline": harness.editor.timeline.width = 1280
             case "storyboard": harness.editor.editPlans = [EditPlan(id: "changed", name: "Changed",
                 timelineId: harness.editor.activeTimelineId, fps: 30, width: 1920, height: 1080)]
-            case "model": service.model = .opus5
             default: service.editor = ToolHarness().editor
             }
             await probe.releaseChildren()
@@ -131,7 +130,7 @@ struct AgentDelegationRuntimeTests {
         }
     }
 
-    @Test func sessionSwitchCancelsChildrenWithoutClearingNewRun() async throws {
+    @Test func newChatKeepsChildrenRunningWithoutClearingNewRun() async throws {
         try await withRuntime { service, harness, _ in
             let probe = DelegationRuntimeClient(holdChildren: true)
             let original = try #require(service.currentSessionId)
@@ -139,16 +138,23 @@ struct AgentDelegationRuntimeTests {
                 settings: service.snapshotRunSettings(), client: probe)
             await probe.waitForChildren()
             service.newChat()
+            service.model = .opus5
             service.messages = [AgentMessage(role: .user, blocks: [.text("New work")])]
             let newClient = DelegationRuntimeClient(holdParent: true)
             let newRun = service.kickOffStream(conversationID: try #require(service.currentSessionId), traceID: UUID(),
                 settings: service.snapshotRunSettings(), client: newClient)
             await newClient.waitForParent()
+            await probe.releaseChildren()
             await oldRun.value
             #expect(service.isStreaming)
             #expect(service.messages.count == 2)
             #expect(service.messages.allSatisfy { $0.blocks.allSatisfy { if case .toolResult = $0 { return false }; return true } })
-            #expect(harness.editor.timeline.tracks.flatMap(\.clips).isEmpty)
+            #expect(harness.editor.timeline.tracks.flatMap(\.clips).count == 1)
+            let previous = try #require(service.sessions.first { $0.id == original })
+            #expect(previous.messages.contains { $0.blocks.contains {
+                if case .toolResult(let id, _, let isError) = $0 { return id == "delegate" && !isError }
+                return false
+            } })
             service.cancel()
             await newRun.value
             #expect(!service.isStreaming)

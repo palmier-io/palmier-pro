@@ -41,7 +41,8 @@ the parent to finish only unfinished work normally. Authentication, credits,
 permissions, model refusals, and forbidden tool calls instead block denied work;
 they do not authorize fallback around those restrictions.
 
-The parent revalidates editor binding, session, model settings, timeline/manifest
+Each run captures its model and client configuration; picker changes apply to the
+next request. The parent revalidates editor binding, session, timeline/manifest
 revision, and plan revision before accepting drafts. Stale drafts are discarded.
 The parent applies valid findings through ordinary shared domain tools and
 `EditorUndo`; child text grants no authority over production gates. No undo group
@@ -52,8 +53,9 @@ Structured child/timeout tasks are canceled and drained when the parent stops.
 joined with `join()` on every exit (completion, failure, cancellation): workers
 cancel their deadline race, finish text, and join before reporting terminal
 results, so no producer outlives a drained run.
-Session switching, tab closure, deletion, editor rebinding, and document close
-cancel the owned run. Save-before-close awaits the run before its save snapshot.
+Selecting or creating a chat and closing its tab preserve the owned run. Deleting
+the chat or stopping it cancels only that chat; editor rebinding and document close
+cancel every owned run. Save-before-close awaits all runs before its save snapshot.
 Late tool receipts go only to their originating conversation, and old cleanup
 cannot clear a newer run's streaming state.
 Canceled exchanges also sync their terminal conversation for ordinary saves.
@@ -78,8 +80,10 @@ medians from repeated real-provider runs per
   action per coherent edit. No duplicate commits or production approval inferred.
 - Cancel during preparation, switch chats/tabs, and start another request. Expect
   no old result in the new chat and no incorrect clearing of streaming state.
-- Change storyboard, timeline, source identity, or model while children run.
+- Change storyboard, timeline, or source identity while children run.
   Expect stale-result refusal and fresh preparation before edits.
+- Change the model picker in another chat while children run. Expect the original
+  run to keep its captured model and client, and the next request to use the new choice.
 - Use a model that rejects requests or simulate repeated transport timeouts.
   Expect finite retries and normal execution of unfinished permitted work, not
   repeated spawning or silent provider substitution.

@@ -62,10 +62,26 @@ enum LUTLoader {
 
     private static let lock = NSLock()
     nonisolated(unsafe) private static var cachedLUTs: [String: CubeLUT] = [:]
+    /// Retained bytes of parsed LUT data, tracked so the cache stays inside its budget.
+    nonisolated(unsafe) private static var cachedBytes = 0
+    /// Least-recently-used first.
+    nonisolated(unsafe) private static var cacheOrder: [String] = []
+
+    /// Upper bound on retained parsed LUT bytes. A 128-point cube is about 32 MiB, so this
+    /// keeps a handful resident without unbounded growth.
+    nonisolated(unsafe) static var cacheByteLimit = 64 * 1024 * 1024
+
+    /// Bytes currently retained by the parsed LUT cache.
+    static var cachedByteCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return cachedBytes
+    }
 
     static func load(path: String) -> CubeLUT? {
         lock.lock()
         if let lut = cachedLUTs[path] {
+            touch(path)
             lock.unlock()
             return lut
         }
@@ -75,24 +91,56 @@ enum LUTLoader {
         return cacheIfAbsent(lut, path: path)
     }
 
+    /// Drops every parsed LUT, so a closed project or a quitting app releases the bytes.
+    static func releaseCachedLUTs() {
+        lock.lock()
+        cachedLUTs.removeAll()
+        cacheOrder.removeAll()
+        cachedBytes = 0
+        lock.unlock()
+    }
+
     private static func loadFromDisk(path: String) -> CubeLUT? {
         guard let text = try? String(contentsOfFile: path, encoding: .utf8),
               let lut = parse(text) else { return nil }
         return lut
     }
 
-    private static func cache(_ lut: CubeLUT, path: String) {
-        lock.lock()
-        cachedLUTs[path] = lut
-        lock.unlock()
+    /// Caches an already-parsed LUT under `path`, evicting older entries if the budget needs it.
+    static func cache(_ lut: CubeLUT, path: String) {
+        _ = cacheIfAbsent(lut, path: path)
     }
 
     private static func cacheIfAbsent(_ lut: CubeLUT, path: String) -> CubeLUT {
         lock.lock()
         defer { lock.unlock() }
-        if let cached = cachedLUTs[path] { return cached }
+        if let cached = cachedLUTs[path] {
+            touch(path)
+            return cached
+        }
         cachedLUTs[path] = lut
+        cachedBytes += lut.data.count
+        touch(path)
+        evictIfNeeded()
         return lut
+    }
+
+    private static func touch(_ path: String) {
+        if let index = cacheOrder.firstIndex(of: path) {
+            cacheOrder.remove(at: index)
+        }
+        cacheOrder.append(path)
+    }
+
+    /// Evicts least-recently-used entries until the cache fits its budget. The newest entry is
+    /// kept even when it alone exceeds the budget, so a single large grade still loads.
+    private static func evictIfNeeded() {
+        while cachedBytes > cacheByteLimit, cacheOrder.count > 1 {
+            let oldest = cacheOrder.removeFirst()
+            if let removed = cachedLUTs.removeValue(forKey: oldest) {
+                cachedBytes -= removed.data.count
+            }
+        }
     }
 
     static func parse(_ text: String) -> CubeLUT? {

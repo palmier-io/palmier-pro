@@ -2,7 +2,7 @@ import AppKit
 import AVFoundation
 
 struct ScrubAudioReaderLoop {
-    nonisolated static func run<Payload, Snapshot>(
+    nonisolated(nonsending) static func run<Payload, Snapshot>(
         next: () async throws -> Payload?,
         process: (Payload) throws -> Void,
         snapshot: () throws -> Snapshot,
@@ -71,37 +71,7 @@ final class ScrubAudioEngine {
     nonisolated private static let mixInvalidationDebounce = Duration.milliseconds(250)
     nonisolated private static let failedDecodeRetryDelay = Duration.seconds(1)
 
-    nonisolated private static let readerTeardownQueue = DispatchQueue(
-        label: "io.compositor.pro.scrub-reader-teardown",
-        qos: .userInitiated
-    )
-
-    private typealias SampleProvider = AVAssetReaderOutput.Provider<
-        CMReadySampleBuffer<CMSampleBuffer.DynamicContent>
-    >
-
-    // Safety: the reader crosses queues only after provider reads finish.
-    private final class ReaderHandle: @unchecked Sendable {
-        let value: AVAssetReader
-
-        init(_ value: AVAssetReader) {
-            self.value = value
-        }
-    }
-
-    private struct ReaderSession {
-        let reader: ReaderHandle
-        let provider: SampleProvider
-    }
-
-    nonisolated private static func finishReading(_ reader: ReaderHandle) async {
-        await withCheckedContinuation { continuation in
-            readerTeardownQueue.async {
-                reader.value.cancelReading()
-                continuation.resume()
-            }
-        }
-    }
+    nonisolated private static let decoder = Decoder()
 
     private let meter: AudioMeterHub
     private let output = ScrubAudioOutput(sampleRate: sampleRate)
@@ -114,7 +84,7 @@ final class ScrubAudioEngine {
     private var latestMeterSample: Int64?
     private var lastRequestedSample: Int64?
     private var lastDirection: Direction = .forward
-    private var decodeTask: Task<Void, Never>?
+    private let decodeQueue = ScrubAudioDecodeQueue()
     private var pendingDecodeRange: Range<Int64>?
     private var lastFailedDecode: FailedDecode?
     private var mixInvalidationTask: Task<Void, Never>?
@@ -210,8 +180,7 @@ final class ScrubAudioEngine {
     func stopPlaybackMetering() {
         latestMeterSample = nil
         if latestRequest == nil {
-            decodeTask?.cancel()
-            decodeTask = nil
+            decodeQueue.cancel()
             pendingDecodeRange = nil
         }
         meter.reset()
@@ -223,8 +192,7 @@ final class ScrubAudioEngine {
     }
 
     private func resetScrubState() {
-        decodeTask?.cancel()
-        decodeTask = nil
+        decodeQueue.cancel()
         pendingDecodeRange = nil
         latestRequest = nil
         latestMeterSample = nil
@@ -259,19 +227,17 @@ final class ScrubAudioEngine {
             return
         }
 
-        decodeTask?.cancel()
         let startSample = windowStart(around: sample, direction: direction)
         let range = startSample..<(startSample + Int64(Self.cacheFrameCount))
         pendingDecodeRange = range
 
-        decodeTask = Task { [weak self] in
-            let window = await Self.decodeWindow(
+        decodeQueue.submit { [weak self] in
+            let window = await Self.decoder.decodeWindow(
                 source: source,
                 startSample: startSample,
                 frameCount: Self.cacheFrameCount
             )
             guard !Task.isCancelled, let self else { return }
-            self.decodeTask = nil
             self.pendingDecodeRange = nil
             guard source.generation == self.source?.generation else { return }
             guard let window else {
@@ -308,7 +274,7 @@ final class ScrubAudioEngine {
     }
 
     private func prefetchIfNeeded(sample: Int64, direction: Direction, from window: PCMWindow, source: Source) {
-        guard decodeTask == nil else { return }
+        guard !decodeQueue.hasWork else { return }
         let margin = Int64(Self.prefetchMarginFrameCount)
         let nearEdge = direction == .forward
             ? sample + margin >= window.endSample
@@ -461,121 +427,137 @@ final class ScrubAudioEngine {
         return min(fadeIn, fadeOut)
     }
 
-    nonisolated private static func makeReader(
-        source: Source,
-        tracks: [AVAssetTrack],
-        startSample: Int64,
-        frameCount: Int64
-    ) async -> ReaderSession? {
-        guard let reader = try? AVAssetReader(asset: source.asset) else { return nil }
-        let readerHandle = ReaderHandle(reader)
-        let output = AVAssetReaderAudioMixOutput(audioTracks: tracks, audioSettings: [
-            AVFormatIDKey: kAudioFormatLinearPCM,
-            AVSampleRateKey: sampleRate,
-            AVNumberOfChannelsKey: Int(channelCount),
-            AVLinearPCMBitDepthKey: 32,
-            AVLinearPCMIsFloatKey: true,
-            AVLinearPCMIsBigEndianKey: false,
-            AVLinearPCMIsNonInterleaved: true,
-        ])
-        output.audioMix = source.audioMix
-        output.alwaysCopiesSampleData = false
-        reader.timeRange = CMTimeRange(
-            start: CMTime(value: startSample, timescale: sampleTimescale),
-            duration: CMTime(value: frameCount, timescale: sampleTimescale)
-        )
-        let provider = reader.outputProvider(for: output)
-        do {
-            try reader.start()
-        } catch {
-            await finishReading(readerHandle)
-            return nil
-        }
-        return ReaderSession(reader: readerHandle, provider: provider)
-    }
+    private actor Decoder {
+        nonisolated private let executor = ScrubAudioReaderExecutor()
+        nonisolated var unownedExecutor: UnownedSerialExecutor { executor.asUnownedSerialExecutor() }
 
-    @concurrent
-    private static func decodeWindow(
-        source: Source,
-        startSample: Int64,
-        frameCount: Int
-    ) async -> PCMWindow? {
-        guard let tracks = try? await source.asset.loadTracks(withMediaType: .audio) else { return nil }
-
-        guard !tracks.isEmpty else {
-            let silence = [Int16](repeating: 0, count: frameCount)
-            return PCMWindow(startSample: startSample, left: silence, right: silence, hasAudioTracks: false)
+        private struct ReaderSession {
+            let reader: AVAssetReader
+            let provider: AVAssetReaderOutput.Provider<CMReadySampleBuffer<CMSampleBuffer.DynamicContent>>
         }
 
-        guard let session = await makeReader(
-            source: source, tracks: tracks, startSample: startSample, frameCount: Int64(frameCount)
-        ) else { return nil }
-        return await decodeSamples(session: session, startSample: startSample, frameCount: frameCount)
-    }
-
-    nonisolated private static func decodeSamples(
-        session: ReaderSession,
-        startSample: Int64,
-        frameCount: Int
-    ) async -> PCMWindow? {
-        var leftSamples = [Int16](repeating: 0, count: frameCount)
-        var rightSamples = [Int16](repeating: 0, count: frameCount)
-
-        var runningOffset = 0
-        let status: AVAssetReader.Status
-        do {
-            status = try await ScrubAudioReaderLoop.run(
-                next: { try await session.provider.next() },
-                process: { payload in
-                    payload.withUnsafeSampleBuffer { sampleBuffer in
-                        guard let description = CMSampleBufferGetFormatDescription(sampleBuffer),
-                              let streamDescription = CMAudioFormatDescriptionGetStreamBasicDescription(description),
-                              let sampleFormat = AVAudioFormat(streamDescription: streamDescription)
-                        else { return }
-
-                        let sampleCount = CMSampleBufferGetNumSamples(sampleBuffer)
-                        guard sampleCount > 0,
-                              let pcm = AVAudioPCMBuffer(
-                                pcmFormat: sampleFormat,
-                                frameCapacity: AVAudioFrameCount(sampleCount)
-                              )
-                        else { return }
-                        pcm.frameLength = AVAudioFrameCount(sampleCount)
-                        guard CMSampleBufferCopyPCMDataIntoAudioBufferList(
-                            sampleBuffer,
-                            at: 0,
-                            frameCount: Int32(sampleCount),
-                            into: pcm.mutableAudioBufferList
-                        ) == noErr, let channels = pcm.floatChannelData else { return }
-
-                        let presentationTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-                        let destinationOffset: Int
-                        if presentationTime.isValid {
-                            let delta = presentationTime - CMTime(value: startSample, timescale: sampleTimescale)
-                            destinationOffset = Int((delta.seconds * sampleRate).rounded())
-                        } else {
-                            destinationOffset = runningOffset
-                        }
-
-                        let sourceChannelCount = Int(sampleFormat.channelCount)
-                        let rightChannel = channels[min(1, sourceChannelCount - 1)]
-                        for sourceIndex in 0..<sampleCount {
-                            let destinationIndex = destinationOffset + sourceIndex
-                            guard leftSamples.indices.contains(destinationIndex) else { continue }
-                            leftSamples[destinationIndex] = quantize(channels[0][sourceIndex])
-                            rightSamples[destinationIndex] = quantize(rightChannel[sourceIndex])
-                        }
-                        runningOffset = max(runningOffset, destinationOffset + sampleCount)
-                    }
-                },
-                snapshot: { session.reader.value.status },
-                teardown: { await finishReading(session.reader) }
+        private func makeReader(
+            source: Source,
+            tracks: [AVAssetTrack],
+            startSample: Int64,
+            frameCount: Int64
+        ) -> ReaderSession? {
+            guard !Task.isCancelled, let reader = try? AVAssetReader(asset: source.asset) else { return nil }
+            let output = AVAssetReaderAudioMixOutput(audioTracks: tracks, audioSettings: [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVSampleRateKey: ScrubAudioEngine.sampleRate,
+                AVNumberOfChannelsKey: Int(ScrubAudioEngine.channelCount),
+                AVLinearPCMBitDepthKey: 32,
+                AVLinearPCMIsFloatKey: true,
+                AVLinearPCMIsBigEndianKey: false,
+                AVLinearPCMIsNonInterleaved: true,
+            ])
+            output.audioMix = source.audioMix
+            output.alwaysCopiesSampleData = false
+            reader.timeRange = CMTimeRange(
+                start: CMTime(value: startSample, timescale: ScrubAudioEngine.sampleTimescale),
+                duration: CMTime(value: frameCount, timescale: ScrubAudioEngine.sampleTimescale)
             )
-        } catch {
-            return nil
+            let provider = reader.outputProvider(for: output)
+            do {
+                try Task.checkCancellation()
+                try reader.start()
+                try Task.checkCancellation()
+            } catch {
+                reader.cancelReading()
+                return nil
+            }
+            return ReaderSession(reader: reader, provider: provider)
         }
 
-        guard !Task.isCancelled, status == .completed else { return nil }
-        return PCMWindow(startSample: startSample, left: leftSamples, right: rightSamples, hasAudioTracks: true)
+        func decodeWindow(
+            source: Source,
+            startSample: Int64,
+            frameCount: Int
+        ) async -> PCMWindow? {
+            guard !Task.isCancelled,
+                  let tracks = try? await source.asset.loadTracks(withMediaType: .audio),
+                  !Task.isCancelled else { return nil }
+
+            guard !tracks.isEmpty else {
+                let silence = [Int16](repeating: 0, count: frameCount)
+                return PCMWindow(startSample: startSample, left: silence, right: silence, hasAudioTracks: false)
+            }
+
+            guard let session = makeReader(
+                source: source, tracks: tracks, startSample: startSample, frameCount: Int64(frameCount)
+            ) else { return nil }
+            guard !Task.isCancelled else {
+                session.reader.cancelReading()
+                return nil
+            }
+            return await decodeSamples(session: session, startSample: startSample, frameCount: frameCount)
+        }
+
+        private func decodeSamples(
+            session: ReaderSession,
+            startSample: Int64,
+            frameCount: Int
+        ) async -> PCMWindow? {
+            var leftSamples = [Int16](repeating: 0, count: frameCount)
+            var rightSamples = [Int16](repeating: 0, count: frameCount)
+
+            var runningOffset = 0
+            let status: AVAssetReader.Status
+            do {
+                status = try await ScrubAudioReaderLoop.run(
+                    next: { try await session.provider.next() },
+                    process: { payload in
+                        payload.withUnsafeSampleBuffer { sampleBuffer in
+                            guard let description = CMSampleBufferGetFormatDescription(sampleBuffer),
+                                  let streamDescription = CMAudioFormatDescriptionGetStreamBasicDescription(description),
+                                  let sampleFormat = AVAudioFormat(streamDescription: streamDescription)
+                            else { return }
+
+                            let sampleCount = CMSampleBufferGetNumSamples(sampleBuffer)
+                            guard sampleCount > 0,
+                                  let pcm = AVAudioPCMBuffer(
+                                    pcmFormat: sampleFormat,
+                                    frameCapacity: AVAudioFrameCount(sampleCount)
+                                  )
+                            else { return }
+                            pcm.frameLength = AVAudioFrameCount(sampleCount)
+                            guard CMSampleBufferCopyPCMDataIntoAudioBufferList(
+                                sampleBuffer,
+                                at: 0,
+                                frameCount: Int32(sampleCount),
+                                into: pcm.mutableAudioBufferList
+                            ) == noErr, let channels = pcm.floatChannelData else { return }
+
+                            let presentationTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+                            let destinationOffset: Int
+                            if presentationTime.isValid {
+                                let delta = presentationTime - CMTime(value: startSample, timescale: ScrubAudioEngine.sampleTimescale)
+                                destinationOffset = Int((delta.seconds * ScrubAudioEngine.sampleRate).rounded())
+                            } else {
+                                destinationOffset = runningOffset
+                            }
+
+                            let sourceChannelCount = Int(sampleFormat.channelCount)
+                            let rightChannel = channels[min(1, sourceChannelCount - 1)]
+                            for sourceIndex in 0..<sampleCount {
+                                let destinationIndex = destinationOffset + sourceIndex
+                                guard leftSamples.indices.contains(destinationIndex) else { continue }
+                                leftSamples[destinationIndex] = ScrubAudioEngine.quantize(channels[0][sourceIndex])
+                                rightSamples[destinationIndex] = ScrubAudioEngine.quantize(rightChannel[sourceIndex])
+                            }
+                            runningOffset = max(runningOffset, destinationOffset + sampleCount)
+                        }
+                    },
+                    snapshot: { session.reader.status },
+                    teardown: { session.reader.cancelReading() }
+                )
+            } catch {
+                return nil
+            }
+
+            guard !Task.isCancelled, status == .completed else { return nil }
+            return PCMWindow(startSample: startSample, left: leftSamples, right: rightSamples, hasAudioTracks: true)
+        }
     }
 }

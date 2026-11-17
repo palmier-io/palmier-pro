@@ -4,14 +4,14 @@ import SwiftUI
 struct MCPInstructionsPane: View {
     @State private var claudeInstallError: String?
 
-    private var mcpEndpoint: String { "http://127.0.0.1:\(MCPService.port)/mcp" }
+    private var mcpEndpoint: String { MCPConnectionConfiguration.endpoint }
 
     private var claudeCodeCommand: String {
-        "claude mcp add --transport http compositor-pro \(mcpEndpoint)"
+        MCPConnectionConfiguration.claudeCodeCommand
     }
 
     private var codexCommand: String {
-        "codex mcp add compositor-pro --url \(mcpEndpoint)"
+        MCPConnectionConfiguration.codexCommand
     }
 
     private var cursorJSONConfig: String {
@@ -72,7 +72,7 @@ struct MCPInstructionsPane: View {
     }
 
     private var endpointRow: some View {
-        CodeBlockView(
+        MCPConnectionCodeBlock(
             content: mcpEndpoint,
             fontSize: AppTheme.FontSize.sm,
             foreground: AppTheme.Text.primaryColor,
@@ -87,6 +87,8 @@ struct MCPInstructionsPane: View {
             claudeCodeSection
             agentDivider
             codexSection
+            agentDivider
+            antigravitySection
             agentDivider
             cursorSection
         }
@@ -123,7 +125,7 @@ struct MCPInstructionsPane: View {
             name: "Claude Code",
             description: L10n.string("Run this command once in Terminal.")
         ) {
-            CodeBlockView(content: claudeCodeCommand)
+            MCPConnectionCodeBlock(content: claudeCodeCommand)
         }
     }
 
@@ -133,7 +135,21 @@ struct MCPInstructionsPane: View {
             name: "Codex",
             description: L10n.string("Run this command once in Terminal.")
         ) {
-            CodeBlockView(content: codexCommand)
+            MCPConnectionCodeBlock(content: codexCommand)
+        }
+    }
+
+    private var antigravitySection: some View {
+        agentSection(
+            nil,
+            name: MCPExternalClient.antigravity.name,
+            description: L10n.string(key: MCPExternalClient.antigravity.setupDescription)
+        ) {
+            Text(verbatim: MCPConnectionConfiguration.antigravityConfigPath)
+                .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .textSelection(.enabled)
+            MCPConnectionCodeBlock(content: MCPConnectionConfiguration.antigravityConfiguration)
         }
     }
 
@@ -142,7 +158,7 @@ struct MCPInstructionsPane: View {
     }
 
     private func agentSection<Details: View>(
-        _ agent: SkillExternalAgent,
+        _ agent: SkillExternalAgent?,
         name: String,
         description: String,
         action: (label: String, perform: () -> Void)? = nil,
@@ -161,9 +177,16 @@ struct MCPInstructionsPane: View {
         .padding(.vertical, AppTheme.Spacing.mdLg)
     }
 
-    private func agentIdentity(agent: SkillExternalAgent, name: String, description: String) -> some View {
+    private func agentIdentity(agent: SkillExternalAgent?, name: String, description: String) -> some View {
         HStack(spacing: AppTheme.Spacing.md) {
-            ExternalAgentLogo(agent: agent, size: AppTheme.IconSize.lgXl)
+            if let agent {
+                ExternalAgentLogo(agent: agent, size: AppTheme.IconSize.lgXl)
+            } else {
+                Image(systemName: "sparkles")
+                    .font(.system(size: AppTheme.FontSize.xl, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(AppTheme.Accent.primary)
+                    .frame(width: AppTheme.IconSize.lgXl, height: AppTheme.IconSize.lgXl)
+            }
 
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
                 Text(name)
@@ -224,28 +247,6 @@ struct MCPInstructionsPane: View {
     }
 }
 
-private struct CodeBlockView: View {
-    let content: String
-    var fontSize = AppTheme.FontSize.xs
-    var foreground = AppTheme.Text.secondaryColor
-    var verticalPadding = AppTheme.Spacing.md
-
-    var body: some View {
-        HStack(alignment: .top, spacing: AppTheme.Spacing.smMd) {
-            Text(content)
-                .font(.system(size: fontSize, weight: AppTheme.FontWeight.regular, design: .monospaced))
-                .foregroundStyle(foreground)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            CopyButton(value: content)
-        }
-        .padding(.horizontal, AppTheme.Spacing.mdLg)
-        .padding(.vertical, verticalPadding)
-        .themedSurface(AppTheme.Background.raisedColor, cornerRadius: AppTheme.Radius.sm)
-    }
-}
-
 private struct ManualFallback: View {
     let intro: String
     let code: String
@@ -272,7 +273,7 @@ private struct ManualFallback: View {
                         .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                         .fixedSize(horizontal: false, vertical: true)
-                    CodeBlockView(content: code)
+                    MCPConnectionCodeBlock(content: code)
                 }
             }
         }
@@ -281,36 +282,6 @@ private struct ManualFallback: View {
     private func toggle() {
         withAnimation(.easeInOut(duration: AppTheme.Anim.hover)) {
             expanded.toggle()
-        }
-    }
-}
-
-private struct CopyButton: View {
-    private static let feedbackDuration: Duration = .seconds(1.4)
-
-    let value: String
-    @State private var copied = false
-
-    var body: some View {
-        Button(action: copy) {
-            Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
-                .foregroundStyle(copied ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
-                .frame(width: AppTheme.IconSize.lg, height: AppTheme.IconSize.lg)
-                .hoverHighlight()
-        }
-        .buttonStyle(.plain)
-        .help(copied ? L10n.string("Copied") : L10n.string("Copy"))
-    }
-
-    private func copy() {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(value, forType: .string)
-        copied = true
-        Task {
-            try? await Task.sleep(for: Self.feedbackDuration)
-            copied = false
         }
     }
 }

@@ -308,6 +308,10 @@ final class EditorViewModel {
     let generationService = GenerationService()
     let agentService = AgentService()
 
+    /// In-flight folder relink scan; a newer request or project close cancels it.
+    @ObservationIgnored var relinkScanTask: Task<[String: URL], Error>?
+    @ObservationIgnored var relinkRequestToken: UUID?
+
     var agentPanelVisible: Bool = {
         UserDefaults.standard.object(forKey: "agentPanelVisible") as? Bool ?? false
     }() {
@@ -556,6 +560,7 @@ final class EditorViewModel {
         videoEngine?.teardown()
         videoEngine = nil
         mediaVisualCache.resetSessionState()
+        LUTLoader.releaseCachedLUTs()
         agentService.cancelAllRuns()
     }
 

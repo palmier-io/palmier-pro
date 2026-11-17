@@ -52,20 +52,39 @@ struct SilenceDetectorTests {
         let expected = [SilenceDetector.Segment(startSeconds: 1.0, endSeconds: 3.0)]
         #expect(store.segments(mediaRef: "asset1", sourceIdentity: "file-a|rev-1", settings: settings) == nil)
 
-        store.install(expected, mediaRef: "asset1", sourceIdentity: "file-a|rev-1", settings: settings)
+        let detection = store.beginDetection(mediaRef: "asset1")
+        #expect(store.install(expected, mediaRef: "asset1", sourceIdentity: "file-a|rev-1", settings: settings, token: detection))
         #expect(store.segments(mediaRef: "asset1", sourceIdentity: "file-a|rev-1", settings: settings) == expected)
         // A relink changes the source identity, so the previous decode is not served.
         #expect(store.segments(mediaRef: "asset1", sourceIdentity: "file-a|rev-2", settings: settings) == nil)
 
         // Invalidating an asset drops every settings variant, not just one.
         let other = SilenceDetectionSettings(thresholdDb: -25.0, minSilenceDuration: 1.0, paddingSeconds: 0.2)!
-        store.install(expected, mediaRef: "asset1", sourceIdentity: "file-a|rev-1", settings: other)
+        let otherDetection = store.beginDetection(mediaRef: "asset1")
+        #expect(store.install(expected, mediaRef: "asset1", sourceIdentity: "file-a|rev-1", settings: other, token: otherDetection))
         store.invalidate(mediaRef: "asset1")
         #expect(store.segments(mediaRef: "asset1", sourceIdentity: "file-a|rev-1", settings: settings) == nil)
         #expect(store.segments(mediaRef: "asset1", sourceIdentity: "file-a|rev-1", settings: other) == nil)
 
-        store.install(expected, mediaRef: "asset1", sourceIdentity: "file-a|rev-1", settings: settings)
+        let afterInvalidate = store.beginDetection(mediaRef: "asset1")
+        #expect(store.install(expected, mediaRef: "asset1", sourceIdentity: "file-a|rev-1", settings: settings, token: afterInvalidate))
         store.reset()
+        #expect(store.segments(mediaRef: "asset1", sourceIdentity: "file-a|rev-1", settings: settings) == nil)
+    }
+
+    @Test @MainActor func detectionCannotRepublishAfterInvalidationOrReset() {
+        let store = SilenceStore()
+        let settings = SilenceDetectionSettings(thresholdDb: -35.0, minSilenceDuration: 0.5, paddingSeconds: 0.1)!
+        let expected = [SilenceDetector.Segment(startSeconds: 1.0, endSeconds: 3.0)]
+
+        let invalidated = store.beginDetection(mediaRef: "asset1")
+        store.invalidate(mediaRef: "asset1")
+        #expect(store.install(expected, mediaRef: "asset1", sourceIdentity: "file-a|rev-1", settings: settings, token: invalidated) == false)
+        #expect(store.segments(mediaRef: "asset1", sourceIdentity: "file-a|rev-1", settings: settings) == nil)
+
+        let reset = store.beginDetection(mediaRef: "asset1")
+        store.reset()
+        #expect(store.install(expected, mediaRef: "asset1", sourceIdentity: "file-a|rev-1", settings: settings, token: reset) == false)
         #expect(store.segments(mediaRef: "asset1", sourceIdentity: "file-a|rev-1", settings: settings) == nil)
     }
 

@@ -18,6 +18,24 @@ extension ToolExecutor {
         }
 
         var payload: [String: Any] = ["timelineFps": editor.timeline.fps]
+        let nameHits = editor.mediaAssets
+            .filter { asset in
+                (restrict?.contains(asset.id) ?? true) &&
+                (asset.name.localizedCaseInsensitiveContains(query) ||
+                 asset.url.lastPathComponent.localizedCaseInsensitiveContains(query))
+            }
+            .prefix(limit)
+            .map { asset in
+                [
+                    "mediaRef": asset.id,
+                    "name": asset.name,
+                    "type": asset.type.rawValue,
+                    "duration": asset.duration,
+                ] as [String: Any]
+            }
+        if !nameHits.isEmpty {
+            payload["nameMatches"] = Array(nameHits)
+        }
         if scope != "spoken" {
             let (moments, index) = await visualResults(editor, query: query, limit: limit, restrict: restrict)
             payload["moments"] = moments

@@ -287,8 +287,8 @@ struct CustomAgentModelPersistenceTests {
             #expect(loaded.baseURL.absoluteString == "http://localhost:11434/v1")
             #expect(loaded.modelID == "qwen3:8b")
             // The model id is the identity and the wire value; the nickname is a subtitle.
-            #expect(loaded.displayTitle == "qwen3:8b")
-            #expect(loaded.displaySubtitle == "Local")
+            #expect(loaded.displayTitle == "Local")
+            #expect(loaded.displaySubtitle == "qwen3:8b")
 
             CustomModelStore.remove(id: loaded.id, defaults: defaults)
             #expect(CustomModelStore.load(defaults: defaults).isEmpty)
@@ -314,7 +314,7 @@ struct CustomAgentModelPersistenceTests {
             service.selectCustomModel(try #require(models.last).id)
             service.model = .custom
             #expect(service.snapshotRunSettings().custom?.modelID == "stealth/space-bunny-alpha")
-            #expect(service.modelTitle(.custom) == "stealth/space-bunny-alpha")
+            #expect(service.modelTitle(.custom) == "Cloud")
         }
     }
 

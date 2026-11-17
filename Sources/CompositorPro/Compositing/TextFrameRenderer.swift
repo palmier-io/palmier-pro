@@ -32,12 +32,16 @@ enum TextFrameRenderer {
         let boxes = layoutBoxes(style: style, box: box, renderSize: renderSize)
         let fontSize = CGFloat(style.fontSize) * (renderSize.height / TextLayout.referenceCanvasHeight)
         let anim = clip.textAnimation
-        let wordMotion = anim?.isActive == true && anim?.preset.renderMode != .entrance
+        let wordMotion = anim?.isActive == true
+            && (anim?.preset.renderMode == .perWord || anim?.preset.renderMode == .typewriter)
         let raster = rasterBounds(style: style, boxes: boxes, fontSize: fontSize,
                                   renderSize: renderSize, coversWordMotion: wordMotion)
 
         if let anim, anim.isActive {
             switch anim.preset.renderMode {
+            case .singleWord:
+                return renderSingleWord(clip: clip, content: content, style: style, boxes: boxes, raster: raster,
+                                        fontSize: fontSize, frame: frame, renderSize: renderSize)
             case .perWord:
                 return renderPerWord(clip: clip, content: content, style: style, boxes: boxes, raster: raster,
                                      fontSize: fontSize, anim: anim, frame: frame, renderSize: renderSize)
@@ -221,6 +225,29 @@ enum TextFrameRenderer {
             ])
         }
         return img
+    }
+
+    // MARK: - Single word
+
+    private static func renderSingleWord(clip: Clip, content: String, style: TextStyle, boxes: LayoutBoxes,
+                                         raster: CGRect, fontSize: CGFloat, frame: Int, renderSize: CGSize) -> CIImage? {
+        let relativeFrame = frame - clip.startFrame
+        guard relativeFrame >= 0, relativeFrame < clip.durationFrames else { return nil }
+        let timings = tokenTimings(words(in: content), clip.wordTimings, duration: clip.durationFrames)
+        let activeWord = timings.last { relativeFrame >= $0.startFrame && relativeFrame < $0.endFrame }
+        let finalWord = timings.last.flatMap { timing in
+            timing.endFrame > timing.startFrame && relativeFrame >= timing.endFrame ? timing : nil
+        }
+        let visible = (finalWord ?? activeWord)?.text ?? ""
+        var centeredStyle = style
+        centeredStyle.alignment = .center
+
+        return cachedImage(content: visible, style: centeredStyle, boxes: boxes, raster: raster,
+                           renderSize: renderSize) { ctx in
+            guard !visible.isEmpty else { return }
+            let textFrame = drawText(ctx, content: visible, style: centeredStyle, fontSize: fontSize, box: boxes.text)
+            drawOverlines(ctx, frame: textFrame, style: centeredStyle, fontSize: fontSize)
+        }
     }
 
     // MARK: - Per-word

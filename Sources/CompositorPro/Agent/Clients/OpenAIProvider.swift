@@ -10,18 +10,30 @@ enum OpenAIRequestBody {
     ) -> [String: Any] {
         precondition(model.provider == .openAI)
         precondition(model.supportedReasoningEfforts.contains(reasoningEffort))
+        var body = build(modelID: model.rawValue, reasoningEffort: reasoningEffort, system: system,
+                         tools: tools, messages: messages, replayReasoningFor: model)
+        body["reasoning"] = ["summary": "auto", "effort": reasoningEffort.rawValue]
+        body["prompt_cache_key"] = "compositor-agent"
+        body["prompt_cache_options"] = ["ttl": "12h"]
+        return body
+    }
+
+    static func build(
+        modelID: String,
+        reasoningEffort: AgentReasoningEffort,
+        system: String,
+        tools: [AgentToolSchema],
+        messages: [AgentRequestMessage],
+        replayReasoningFor model: AgentModel? = nil
+    ) -> [String: Any] {
         var body: [String: Any] = [
-            "model": model.rawValue,
+            "model": modelID,
             "store": false,
             "stream": true,
-            "max_output_tokens": model.maxOutputTokens,
+            "max_output_tokens": AgentModel.custom.maxOutputTokens,
             "instructions": system,
             "input": inputItems(messages: messages, model: model),
-            "reasoning": ["summary": "auto", "effort": reasoningEffort.rawValue],
-            // Responses caches the instructions+tools prefix automatically; a stable key keeps the
-            // agent loop's turns on the same cache route, and a 12h TTL avoids re-writing it.
-            "prompt_cache_key": "compositor-agent",
-            "prompt_cache_options": ["ttl": "12h"],
+            "reasoning": ["effort": reasoningEffort.rawValue],
         ]
         if !tools.isEmpty {
             body["tools"] = tools.map {
@@ -37,7 +49,7 @@ enum OpenAIRequestBody {
         return body
     }
 
-    private static func inputItems(messages: [AgentRequestMessage], model: AgentModel) -> [[String: Any]] {
+    private static func inputItems(messages: [AgentRequestMessage], model: AgentModel?) -> [[String: Any]] {
         var items: [[String: Any]] = []
         for message in messages {
             var content: [[String: Any]] = []
@@ -61,7 +73,7 @@ enum OpenAIRequestBody {
                     case .thinking, .redactedThinking:
                         continue
                     case .openAIReasoning(let summary, let encryptedContent, let itemID, let reasoningModel, _):
-                        guard reasoningModel == model, !encryptedContent.isEmpty else { continue }
+                        guard let model, reasoningModel == model, !encryptedContent.isEmpty else { continue }
                         flushMessage()
                         var item: [String: Any] = [
                             "type": "reasoning",
@@ -136,11 +148,25 @@ enum OpenAIRequestBody {
 enum OpenAISSE {
     static func parse(
         bytes: URLSession.AsyncBytes,
-        continuation: AsyncThrowingStream<AgentStreamEvent, Error>.Continuation
+        continuation: AsyncThrowingStream<AgentStreamEvent, Error>.Continuation,
+        idleTimeout: TimeInterval = AgentHTTP.streamIdleTimeout
     ) async throws {
         var parser = OpenAIStreamParser()
+        let tracker = StreamActivityTracker()
+        let watchdog = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                if Task.isCancelled { break }
+                if tracker.elapsed >= idleTimeout {
+                    continuation.finish(throwing: URLError(.timedOut))
+                    break
+                }
+            }
+        }
+        defer { watchdog.cancel() }
         for try await line in bytes.lines {
             try Task.checkCancellation()
+            tracker.touch()
             for event in try parser.consume(line: line) {
                 continuation.yield(event)
             }

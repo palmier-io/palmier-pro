@@ -53,7 +53,7 @@ enum AgentDelegationTool {
 
 extension AgentService {
     func executeDelegation(input: String, client: any AgentClient, delegation: AgentDelegation,
-                           context: AgentRequestContext, settings: AgentRunSettings) async -> ToolResult {
+                           context: AgentRequestContext) async -> ToolResult {
         let runEditor = editor
         let revision = runEditor?.visualReviewRevision
         let plansRevision = runEditor?.editPlansRevision
@@ -73,16 +73,16 @@ extension AgentService {
                     "elapsedMs": elapsedMs,
                 ])
             try Task.checkCancellation()
-            guard currentSessionId == context.conversationID, editor === runEditor,
-                  runEditor?.visualReviewRevision == revision, runEditor?.editPlansRevision == plansRevision,
-                  snapshotRunSettings() == settings else {
-                return .error("delegation_stale: editor, storyboard, session, or model changed; discard drafts and prepare against current state.")
+            guard containsSession(context.conversationID), editor === runEditor,
+                  runEditor?.visualReviewRevision == revision, runEditor?.editPlansRevision == plansRevision else {
+                return .error("delegation_stale: editor, storyboard, or session changed; discard drafts and prepare against current state.")
             }
             let data = try await Self.encodeDelegation(receipt)
             try Task.checkCancellation()
-            guard currentSessionId == context.conversationID, editor === runEditor,
-                  runEditor?.visualReviewRevision == revision, runEditor?.editPlansRevision == plansRevision,
-                  snapshotRunSettings() == settings else { return .error("delegation_stale: context changed during result preparation.") }
+            guard containsSession(context.conversationID), editor === runEditor,
+                  runEditor?.visualReviewRevision == revision, runEditor?.editPlansRevision == plansRevision else {
+                return .error("delegation_stale: context changed during result preparation.")
+            }
             return ToolResult(content: [.text(data)], isError: receipt.tasks.contains { $0.status != .completed })
         } catch is CancellationError {
             return .error("delegation_canceled")

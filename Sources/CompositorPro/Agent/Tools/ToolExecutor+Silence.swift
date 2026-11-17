@@ -38,6 +38,7 @@ extension ToolExecutor {
         let silenceStore = editor.mediaVisualCache.silenceStore
         let sourceIdentity = mediaAsset.sourceIdentity
         let sourceURL = mediaAsset.url
+        let detection = silenceStore.beginDetection(mediaRef: mediaRef)
 
         // Return cached segments for the same source revision and settings without re-decoding.
         if let cached = silenceStore.segments(
@@ -64,10 +65,12 @@ extension ToolExecutor {
         guard current.sourceIdentity == sourceIdentity, current.url == sourceURL else {
             throw ToolError("Media changed during silence detection. Run detect_silence again.")
         }
-
-        silenceStore.install(
-            segments, mediaRef: mediaRef, sourceIdentity: sourceIdentity, settings: settings
-        )
+        guard silenceStore.install(
+            segments, mediaRef: mediaRef, sourceIdentity: sourceIdentity, settings: settings,
+            token: detection
+        ) else {
+            throw ToolError("Silence cache was invalidated during detection. Run detect_silence again.")
+        }
         return try Self.detectSilenceResult(
             mediaRef: mediaRef, segments: segments, settings: settings
         )

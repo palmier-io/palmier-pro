@@ -46,6 +46,7 @@ enum MainMenuBuilder {
         let openItem = menu.addItem(withTitle: L10n.string("Open…"), action: #selector(AppDelegate.openProject(_:)), keyEquivalent: "o")
         openItem.target = NSApp.delegate
         menu.addItem(.separator())
+        menu.addItem(withTitle: L10n.string("Close Window"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         menu.addItem(withTitle: L10n.string("Save"), action: #selector(NSDocument.save(_:)), keyEquivalent: "s")
         menu.addItem(withTitle: L10n.string("Save As…"), action: #selector(NSDocument.saveAs(_:)), keyEquivalent: "S")
         menu.addItem(.separator())
@@ -147,7 +148,8 @@ enum MainMenuBuilder {
         menu.addItem(.separator())
         menu.addItem(layoutSubmenuItem())
         menu.addItem(.separator())
-        menu.addItem(withTitle: L10n.string("Enter Full Screen"), action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
+        let fullscreenItem = menu.addItem(withTitle: L10n.string("Enter Full Screen"), action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
+        fullscreenItem.keyEquivalentModifierMask = [.command, .control]
         item.submenu = menu
         return item
     }
@@ -167,6 +169,10 @@ enum MainMenuBuilder {
         let verticalItem = NSMenuItem(title: L10n.string(key: LayoutPreset.vertical.label), action: #selector(EditorActions.setLayoutVertical(_:)), keyEquivalent: String(LayoutPreset.vertical.shortcutKey))
         verticalItem.keyEquivalentModifierMask = [.command]
         submenu.addItem(verticalItem)
+
+        let studioItem = NSMenuItem(title: L10n.string(key: LayoutPreset.studio.label), action: #selector(EditorActions.setLayoutStudio(_:)), keyEquivalent: String(LayoutPreset.studio.shortcutKey))
+        studioItem.keyEquivalentModifierMask = [.command]
+        submenu.addItem(studioItem)
 
         item.submenu = submenu
         return item
@@ -209,4 +215,5 @@ enum MainMenuBuilder {
     func setLayoutDefault(_ sender: Any?)
     func setLayoutMedia(_ sender: Any?)
     func setLayoutVertical(_ sender: Any?)
+    func setLayoutStudio(_ sender: Any?)
 }

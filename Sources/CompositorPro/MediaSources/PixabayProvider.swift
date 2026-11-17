@@ -12,15 +12,18 @@ struct PixabayProvider: StockMediaProvider {
 
     /// Injected for tests so a missing-key refusal can be verified without Keychain or network
     /// access. Production uses the stored credential.
-    private let apiKey: String?
-    private let requestJSON: StockMediaJSONRequest
+    let apiKey: String?
+    let requestJSON: StockMediaJSONRequest
+    let requestPage: @Sendable (URL) async throws -> Data
 
     init(
         apiKey: String? = nil,
-        requestJSON: @escaping StockMediaJSONRequest = { try await StockMediaHTTP.getJSON($0, headers: $1) }
+        requestJSON: @escaping StockMediaJSONRequest = { try await StockMediaHTTP.getJSON($0, headers: $1) },
+        requestPage: @escaping @Sendable (URL) async throws -> Data = PixabayProvider.fetchVideoPage
     ) {
         self.apiKey = apiKey
         self.requestJSON = requestJSON
+        self.requestPage = requestPage
     }
 
     struct VideoResponse: Decodable {

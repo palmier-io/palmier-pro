@@ -2,17 +2,36 @@ import Foundation
 
 // get_timeline, create_timeline, set_active_timeline.
 extension ToolExecutor {
-    private static let getTimelineAllowedKeys: Set<String> = ["startFrame", "endFrame", "captionDetail"]
+    private static let getTimelineAllowedKeys: Set<String> = ["startFrame", "endFrame", "captionDetail", "summary"]
 
     func getTimeline(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.getTimelineAllowedKeys, path: "get_timeline")
         let window = try Self.frameWindow(args)
         let captionDetail = args["captionDetail"] as? Bool ?? false
+        let summary: Bool
+        if let raw = args["summary"] {
+            guard isJSONBoolean(raw), let value = raw as? Bool else { throw ToolError("get_timeline.summary: expected boolean") }
+            summary = value
+        } else {
+            summary = false
+        }
+        guard !summary || !captionDetail else { throw ToolError("summary and captionDetail cannot both be true; omit summary to read caption text and IDs") }
 
-        guard var dict = Self.rawTimelineDict(editor.timeline) else { throw ToolError("Failed to encode timeline") }
-        dict.removeValue(forKey: "settingsConfigured")
-        if let tracks = dict["tracks"] as? [[String: Any]] {
-            dict["tracks"] = Self.compactTracks(tracks, editor: editor, window: window, captionDetail: captionDetail)
+        var dict: [String: Any]
+        if summary {
+            let timeline = editor.timeline
+            dict = [
+                "id": timeline.id, "name": timeline.name, "fps": timeline.fps,
+                "width": timeline.width, "height": timeline.height,
+                "summary": true, "tracks": summaryTracks(editor, window: window),
+            ]
+        } else {
+            guard let encoded = Self.rawTimelineDict(editor.timeline) else { throw ToolError("Failed to encode timeline") }
+            dict = encoded
+            dict.removeValue(forKey: "settingsConfigured")
+            if let tracks = dict["tracks"] as? [[String: Any]] {
+                dict["tracks"] = Self.compactTracks(tracks, editor: editor, window: window, captionDetail: captionDetail)
+            }
         }
         let markers = editor.displayedTimelineMarkers().filter { marker in
             window.map(marker.intersects) ?? true
@@ -195,6 +214,46 @@ extension ToolExecutor {
 
     // MARK: - Payload shaping
 
+    private func summaryTracks(_ editor: EditorViewModel, window: Range<Int>?) -> [[String: Any]] {
+        editor.timeline.tracks.enumerated().map { index, track in
+            var row: [String: Any] = [
+                "trackId": track.id, "index": index,
+                "label": editor.timelineTrackDisplayLabel(at: index),
+                "type": track.type.rawValue, "clipCount": track.clips.count,
+            ]
+            if let name = track.name { row["name"] = name }
+            if track.muted { row["muted"] = true }
+            if track.hidden { row["hidden"] = true }
+            if !track.syncLocked { row["syncLocked"] = false }
+            var firstFrame: Int?
+            var lastFrame: Int?
+            var groups: [String: (count: Int, start: Int, end: Int)] = [:]
+            for clip in track.clips {
+                firstFrame = min(firstFrame ?? clip.startFrame, clip.startFrame)
+                lastFrame = max(lastFrame ?? clip.endFrame, clip.endFrame)
+                if let id = clip.captionGroupId {
+                    let group = groups[id]
+                    groups[id] = (
+                        (group?.count ?? 0) + 1,
+                        min(group?.start ?? clip.startFrame, clip.startFrame),
+                        max(group?.end ?? clip.endFrame, clip.endFrame)
+                    )
+                }
+            }
+            if let firstFrame, let lastFrame { row["frameRange"] = [firstFrame, lastFrame] }
+            if !groups.isEmpty {
+                row["captionGroups"] = groups.sorted {
+                    $0.value.start == $1.value.start ? $0.key < $1.key : $0.value.start < $1.value.start
+                }.map { id, group -> [String: Any] in
+                    ["captionGroupId": id, "clipCount": group.count, "frameRange": [group.start, group.end]]
+                }
+            }
+            let gaps = Self.trackGaps(track, window: window)
+            if !gaps.isEmpty { row["gaps"] = gaps }
+            return row
+        }
+    }
+
     private static let captionRowLimit = 200
     private static let captionRowFormat = ["clipId", "startFrame", "endFrame", "text"]
     private static let captionPreviewLimit = 60
@@ -240,14 +299,14 @@ extension ToolExecutor {
             track["trackId"] = track.removeValue(forKey: "id")
             track.removeValue(forKey: "displayHeight")
             if let count = fold.foldedCountByTrack[i] { track["linkedClips"] = count }
-            let gaps = trackGaps(editor.timeline.tracks[i])
+            let gaps = trackGaps(editor.timeline.tracks[i], window: window)
             if !gaps.isEmpty { track["gaps"] = gaps }
             return track
         }
     }
 
     /// Empty spans between non-caption clips; leading/trailing space reads off the clip frames.
-    private static func trackGaps(_ track: Track) -> [[Int]] {
+    private static func trackGaps(_ track: Track, window: Range<Int>?) -> [[Int]] {
         let spans = track.clips
             .filter { $0.captionGroupId == nil }
             .map { [$0.startFrame, $0.startFrame + $0.durationFrames] }
@@ -258,7 +317,12 @@ extension ToolExecutor {
             if let m = maxEnd, span[0] > m { gaps.append([m, span[0]]) }
             maxEnd = max(maxEnd ?? span[1], span[1])
         }
-        return gaps
+        guard let window else { return gaps }
+        return gaps.compactMap { gap in
+            let start = max(gap[0], window.lowerBound)
+            let end = min(gap[1], window.upperBound)
+            return start < end ? [start, end] : nil
+        }
     }
 
     // MARK: - Linked audio fold

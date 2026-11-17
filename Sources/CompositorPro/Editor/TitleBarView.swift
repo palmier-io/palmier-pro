@@ -3,9 +3,34 @@ import SwiftUI
 struct TitleBarLeadingView: View {
     @Environment(EditorViewModel.self) var editor
     @State private var showStoryboard = false
+    @Bindable private var workspaceLayout = WorkspaceLayoutStore.shared
 
     var body: some View {
         HStack(spacing: AppTheme.Spacing.xxs) {
+            Menu {
+                ForEach(LayoutPreset.allCases) { preset in
+                    Button {
+                        workspaceLayout.selection = preset
+                    } label: {
+                        if workspaceLayout.selection == preset {
+                            Label(L10n.string(key: preset.label), systemImage: "checkmark")
+                        } else {
+                            Text(L10n.string(key: preset.label))
+                        }
+                    }
+                }
+            } label: {
+                Image(systemName: "rectangle.split.3x1")
+                    .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .frame(width: AppTheme.IconSize.lg, height: AppTheme.IconSize.lg)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityLabel(L10n.string("Workspace layout"))
+            .help(L10n.string("Workspace layout"))
+
             PanelVisibilityButton(
                 systemName: "bubble.left",
                 filledSystemName: "bubble.left.fill",
@@ -49,6 +74,8 @@ struct TitleBarTrailingView: View {
             Spacer(minLength: AppTheme.Spacing.zero)
 
             UpdateProjectBadge()
+
+            ConnectAgentButton()
 
             Button(action: { editor.showExportDialog = true }) {
                 HStack(spacing: AppTheme.Spacing.xs) {

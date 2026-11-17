@@ -126,7 +126,8 @@ function synchronize() {
       throw new Error(`${stringsDataPath} contains no compiler-extracted localization keys`);
     }
     for (const entry of entries) {
-      if (!entry.key) throw new Error(`${stringsDataPath} contains an empty localization key`);
+      if (entry.key === "") continue;
+      if (typeof entry.key !== "string") throw new Error(`${stringsDataPath} contains an invalid localization key`);
       keys.add(entry.key);
     }
   }

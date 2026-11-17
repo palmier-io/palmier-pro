@@ -6,10 +6,19 @@ extension Notification.Name {
     static let agentCustomEndpointChanged = Notification.Name("agentCustomEndpointChanged")
 }
 
-/// A user-supplied OpenAI-compatible chat model. The agent speaks `/chat/completions` to it,
-/// which is the dialect Ollama, LM Studio, vLLM, LiteLLM, OpenRouter, Groq and most gateways
-/// implement. Each carries its own endpoint and credential, so several can coexist — a local
-/// model and a hosted gateway, or two models behind one gateway.
+enum CustomAgentAPI: String, CaseIterable, Codable, Sendable {
+    case chatCompletions
+    case responses
+
+    var labelKey: String {
+        switch self {
+        case .chatCompletions: L10n.key("Chat Completions")
+        case .responses: L10n.key("OpenAI Responses")
+        }
+    }
+}
+
+/// A user-supplied model with its own API, endpoint, and credential.
 struct CustomAgentModel: Identifiable, Equatable, Sendable, Codable {
     let id: UUID
     /// Shown in the model picker. Falls back to the wire model id when blank.
@@ -20,16 +29,26 @@ struct CustomAgentModel: Identifiable, Equatable, Sendable, Codable {
     var modelID: String
     // Nil leaves image support undeclared; the endpoint must accept or reject image requests.
     var supportsImages: Bool?
+    var api: CustomAgentAPI?
 
-    init(id: UUID = UUID(), name: String = "", baseURL: URL, modelID: String, supportsImages: Bool? = nil) {
+    init(id: UUID = UUID(), name: String = "", baseURL: URL, modelID: String, supportsImages: Bool? = nil,
+         api: CustomAgentAPI = .chatCompletions) {
         self.id = id
         self.name = name
         self.baseURL = baseURL
         self.modelID = modelID
         self.supportsImages = supportsImages
+        self.api = api
     }
 
     var chatCompletionsURL: URL { baseURL.appending(path: "chat/completions") }
+    var selectedAPI: CustomAgentAPI { api ?? .chatCompletions }
+    var requestURL: URL {
+        switch selectedAPI {
+        case .chatCompletions: chatCompletionsURL
+        case .responses: baseURL.appending(path: "responses")
+        }
+    }
 
     /// Loopback servers (Ollama, LM Studio) need no credential; anything remote must present a key.
     var allowsMissingAPIKey: Bool {
@@ -37,14 +56,17 @@ struct CustomAgentModel: Identifiable, Equatable, Sendable, Codable {
         return host == "localhost" || host == "127.0.0.1" || host == "::1" || host.hasSuffix(".localhost")
     }
 
-    /// The model identity, which is also what the request sends. `name` is only a nickname, so
-    /// showing it as the title made every model on one gateway look identical in the picker.
-    var displayTitle: String { modelID.isEmpty ? name : modelID }
+    /// The user-configured display title. When the user sets a custom name (e.g. "My Agent"),
+    /// show it as the title; otherwise fall back to the wire model identifier.
+    var displayTitle: String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? modelID : trimmed
+    }
 
-    /// The nickname, when it adds something the model id does not already say.
+    /// The model id or nickname, when it adds context.
     var displaySubtitle: String? {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty || trimmed == modelID ? nil : trimmed
+        return trimmed.isEmpty || trimmed == modelID ? nil : modelID
     }
 }
 
@@ -105,6 +127,7 @@ enum CustomModelStore {
         baseURL rawBase: String,
         modelID rawModelID: String,
         supportsImages: Bool? = nil,
+        api: CustomAgentAPI = .chatCompletions,
         defaults: UserDefaults = .standard
     ) -> CustomModelSaveResult {
         let base = rawBase.trimmingCharacters(in: .whitespaces)
@@ -120,7 +143,8 @@ enum CustomModelStore {
             name: trimmedName,
             baseURL: url,
             modelID: modelID,
-            supportsImages: supportsImages
+            supportsImages: supportsImages,
+            api: api
         )
         var models = load(defaults: defaults)
         if let index = models.firstIndex(where: { $0.id == model.id }) {
@@ -152,11 +176,12 @@ enum CustomModelStore {
         modelID: String,
         key: CustomKeyUpdate,
         supportsImages: Bool? = nil,
+        api: CustomAgentAPI = .chatCompletions,
         defaults: UserDefaults = .standard
     ) async -> CustomModelSaveResult {
         let result = upsert(
             id: id, name: name, baseURL: baseURL, modelID: modelID,
-            supportsImages: supportsImages, defaults: defaults
+            supportsImages: supportsImages, api: api, defaults: defaults
         )
         guard case .saved(let savedID) = result else { return result }
         switch key {
@@ -176,11 +201,25 @@ enum CustomModelStore {
     static func keyAccount(for id: UUID) -> String { "custom-agent-api-key.\(id.uuidString)" }
 
     static func loadKey(for id: UUID) async -> String {
-        await withCheckedContinuation { continuation in
+        let direct = await withCheckedContinuation { continuation in
             Task.detached(priority: .userInitiated) {
                 continuation.resume(returning: KeychainStore.load(account: keyAccount(for: id)) ?? "")
             }
         }
+        if !direct.isEmpty { return direct }
+        let models = load()
+        guard let current = models.first(where: { $0.id == id }),
+              let host = current.baseURL.host, !host.isEmpty
+        else { return "" }
+        for other in models where other.id != id && other.baseURL.host == host {
+            let key = await withCheckedContinuation { continuation in
+                Task.detached(priority: .userInitiated) {
+                    continuation.resume(returning: KeychainStore.load(account: keyAccount(for: other.id)) ?? "")
+                }
+            }
+            if !key.isEmpty { return key }
+        }
+        return ""
     }
 
     static func setKey(_ key: String?, for id: UUID) async {

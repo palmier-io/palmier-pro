@@ -12,14 +12,14 @@ struct WorkspaceLayoutStoreTests {
         #expect(presets.allSatisfy { $0.shortcutLabel == "⌘\($0.shortcutKey)" })
     }
 
-    @Test func missingOrInvalidPreferenceUsesDefaultLayout() throws {
+    @Test func missingOrInvalidPreferenceUsesStudioLayout() throws {
         let (defaults, suiteName) = try makeDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        #expect(makeStore(defaults).selection == .default)
+        #expect(makeStore(defaults).selection == .studio)
 
         defaults.set("cinema", forKey: LayoutPreset.defaultsKey)
-        #expect(makeStore(defaults).selection == .default)
+        #expect(makeStore(defaults).selection == .studio)
     }
 
     @Test func selectedLayoutPersists() throws {
@@ -27,11 +27,10 @@ struct WorkspaceLayoutStoreTests {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let store = makeStore(defaults)
 
-        store.selection = .media
-        #expect(makeStore(defaults).selection == .media)
-
-        store.selection = .vertical
-        #expect(makeStore(defaults).selection == .vertical)
+        for preset in LayoutPreset.allCases {
+            store.selection = preset
+            #expect(makeStore(defaults).selection == preset)
+        }
     }
 
     private func makeDefaults() throws -> (UserDefaults, String) {

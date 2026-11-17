@@ -55,7 +55,7 @@ struct EditingProgressSummary: Codable, Sendable, Equatable {
 }
 
 /// Persists EditingProgressSummary to the project package `chat/` directory.
-/// All file I/O happens off the main actor via Task.detached. Single owner of this file.
+/// The package save pipeline is the only writer; loading happens off the main actor.
 enum EditingProgressStore {
     static let fileName = "editing-progress.json"
 
@@ -92,18 +92,14 @@ enum EditingProgressStore {
         }
     }
 
-    /// Save the summary off the main actor. Use `Task.detached` from a MainActor context.
-    static func save(_ summary: EditingProgressSummary, to projectURL: URL?) async {
-        guard let projectURL else { return }
-        let dir = projectURL.appendingPathComponent("chat", isDirectory: true)
-        let file = dir.appendingPathComponent(fileName, isDirectory: false)
-        guard let data = try? encoder.encode(summary) else { return }
-        await withCheckedContinuation { continuation in
-            Task.detached(priority: .utility) {
-                try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-                try? data.write(to: file, options: .atomic)
-                continuation.resume(returning: ())
-            }
-        }
+    /// Encode with the store's stable on-disk format.
+    static func encode(_ summary: EditingProgressSummary) throws -> Data {
+        try encoder.encode(summary)
+    }
+
+    /// Write into an already-created package `chat/` directory. Caller is off-main.
+    static func write(_ summary: EditingProgressSummary, toChatDirectory chatURL: URL) throws {
+        try FileManager.default.createDirectory(at: chatURL, withIntermediateDirectories: true)
+        try encode(summary).write(to: chatURL.appendingPathComponent(fileName, isDirectory: false), options: .atomic)
     }
 }

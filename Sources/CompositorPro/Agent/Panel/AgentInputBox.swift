@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct AgentInputBox<LeadingTools: View>: View {
     @Environment(EditorViewModel.self) var editor
+    let conversationID: UUID
     @Binding var draft: String
     @Binding var mentions: [AgentMention]
     let isSending: Bool
@@ -13,6 +14,7 @@ struct AgentInputBox<LeadingTools: View>: View {
     let leadingTools: LeadingTools
 
     init(
+        conversationID: UUID,
         draft: Binding<String>,
         mentions: Binding<[AgentMention]>,
         isSending: Bool,
@@ -21,6 +23,7 @@ struct AgentInputBox<LeadingTools: View>: View {
         onCancel: @escaping () -> Void,
         @ViewBuilder leadingTools: () -> LeadingTools
     ) {
+        self.conversationID = conversationID
         self._draft = draft
         self._mentions = mentions
         self.isSending = isSending
@@ -37,7 +40,6 @@ struct AgentInputBox<LeadingTools: View>: View {
     @State private var mentionScrollTick: Int = 0
     @State private var isDropTargeted = false
     @State private var textEditorID = UUID()
-    @Namespace private var sendStopNamespace
 
     private var showMentionPicker: Bool { mentionQuery != nil }
 
@@ -50,7 +52,29 @@ struct AgentInputBox<LeadingTools: View>: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: AppTheme.Spacing.zero) {
+            let referencedMentions = AgentMentionContext.referencedMentions(mentions, in: draft)
+            if !referencedMentions.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: AppTheme.Spacing.xs) {
+                        ForEach(referencedMentions) { mention in
+                            Label {
+                                Text(verbatim: mention.displayName)
+                                    .lineLimit(1)
+                            } icon: {
+                                Image(systemName: mention.referencesTimelineContext ? "timeline.selection" : "paperclip")
+                            }
+                            .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
+                            .foregroundStyle(AppTheme.Text.secondaryColor)
+                            .padding(.horizontal, AppTheme.Spacing.smMd)
+                            .padding(.vertical, AppTheme.Spacing.xs)
+                            .background(AppTheme.Interaction.fill(AppTheme.Opacity.faint), in: RoundedRectangle(cornerRadius: AppTheme.Radius.xsSm))
+                        }
+                    }
+                }
+                .padding(.horizontal, AppTheme.Spacing.mdLg)
+                .padding(.top, AppTheme.Spacing.smMd)
+            }
             textField
                 .popover(isPresented: Binding(
                     get: { showMentionPicker },
@@ -68,19 +92,20 @@ struct AgentInputBox<LeadingTools: View>: View {
                 .onChange(of: mentionTab) { _, _ in highlightedMentionIndex = 0 }
             bottomBar
         }
-        .glassEffect(.regular, in: .rect(cornerRadius: AppTheme.Radius.xl))
+        .background(AppTheme.Background.prominentColor, in: RoundedRectangle(cornerRadius: AppTheme.Radius.mdLg, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: AppTheme.Radius.xl, style: .continuous)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.mdLg, style: .continuous)
                 .strokeBorder(
                     isDropTargeted ? AppTheme.Accent.primary.opacity(AppTheme.Opacity.strong)
                         : focused ? AppTheme.Accent.primary.opacity(AppTheme.Opacity.medium)
-                        : AppTheme.Interaction.fill(AppTheme.Opacity.hint),
+                        : AppTheme.Border.primaryColor,
                     lineWidth: (focused || isDropTargeted) ? AppTheme.BorderWidth.thin : AppTheme.BorderWidth.hairline
                 )
                 .allowsHitTesting(false)
         }
-        .animation(.easeOut(duration: 0.15), value: focused)
-        .animation(.easeOut(duration: 0.15), value: isDropTargeted)
+        .animation(.easeOut(duration: AppTheme.Anim.hover), value: focused)
+        .animation(.easeOut(duration: AppTheme.Anim.hover), value: isDropTargeted)
+        .onAppear { focused = true }
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted, perform: handleDrop)
     }
 
@@ -88,14 +113,15 @@ struct AgentInputBox<LeadingTools: View>: View {
         ZStack(alignment: .topLeading) {
             TextEditor(text: $draft)
                 .id(textEditorID)
-                .font(.body)
+                .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.regular))
+                .foregroundStyle(AppTheme.Text.primaryColor)
                 .scrollContentBackground(.hidden)
-                .scrollIndicators(.never)
+                .scrollIndicators(.automatic)
                 .padding(.horizontal, AppTheme.Spacing.mdLg)
                 .padding(.top, AppTheme.Spacing.smMd)
                 .padding(.bottom, AppTheme.Spacing.xs)
                 .focused($focused)
-                .frame(minHeight: 32, maxHeight: 64)
+                .frame(height: AppTheme.Chat.composerMinHeight)
                 .onChange(of: draft) { old, new in
                     updateMentionQuery(from: new)
                     if !old.isEmpty && new.isEmpty {
@@ -117,7 +143,7 @@ struct AgentInputBox<LeadingTools: View>: View {
 
             if draft.isEmpty {
                 Text(L10n.string("Ask, or type @ to reference media"))
-                    .font(.body)
+                    .font(.system(size: AppTheme.FontSize.md))
                     .foregroundStyle(AppTheme.Text.mutedColor)
                     .padding(.horizontal, AppTheme.Spacing.lgXl)
                     .padding(.top, AppTheme.Spacing.mdLg)
@@ -127,15 +153,15 @@ struct AgentInputBox<LeadingTools: View>: View {
     }
 
     private var bottomBar: some View {
-        HStack(spacing: AppTheme.Spacing.md) {
+        HStack(alignment: .bottom, spacing: AppTheme.Spacing.smMd) {
             leadingTools
-            Spacer(minLength: 0)
-            GlassEffectContainer(spacing: AppTheme.Spacing.xs) {
-                sendStopButton
-            }
+                .layoutPriority(1)
+            Spacer(minLength: AppTheme.Spacing.zero)
+            sendStopButton
         }
-        .padding(.horizontal, AppTheme.Spacing.sm)
-        .padding(.vertical, AppTheme.Spacing.sm)
+        .padding(.horizontal, AppTheme.Spacing.smMd)
+        .padding(.bottom, AppTheme.Spacing.smMd)
+        .padding(.top, AppTheme.Spacing.xs)
     }
 
     @ViewBuilder
@@ -143,29 +169,30 @@ struct AgentInputBox<LeadingTools: View>: View {
         if isSending {
             Button(action: onCancel) {
                 Image(systemName: "stop.fill")
-                    .font(.system(size: AppTheme.FontSize.xs, weight: .bold))
-                    .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
+                    .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.bold))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .frame(width: AppTheme.IconSize.lgXl, height: AppTheme.IconSize.lgXl)
+                    .background(AppTheme.Interaction.fill(AppTheme.Opacity.faint), in: Circle())
+                    .overlay(Circle().stroke(AppTheme.Border.primaryColor, lineWidth: AppTheme.BorderWidth.hairline))
             }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.circle)
-            .controlSize(.regular)
-            .tint(AppTheme.Text.secondaryColor)
-            .glassEffectID("sendStop", in: sendStopNamespace)
+            .buttonStyle(.plain)
+            .focusable(false)
+            .accessibilityLabel(L10n.string("Stop this chat"))
             .help(L10n.string("Stop"))
             .transition(.scale.combined(with: .opacity))
         } else {
             Button(action: onSend) {
                 Image(systemName: "arrow.up")
-                    .font(.system(size: AppTheme.FontSize.sm, weight: .bold))
-                    .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
+                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.bold))
+                    .foregroundStyle(canSend ? AppTheme.Background.baseColor : AppTheme.Text.mutedColor)
+                    .frame(width: AppTheme.IconSize.lgXl, height: AppTheme.IconSize.lgXl)
+                    .background(canSend ? AppTheme.Accent.primary : AppTheme.Interaction.fill(AppTheme.Opacity.faint), in: Circle())
             }
-            .buttonStyle(.glassProminent)
-            .buttonBorderShape(.circle)
-            .controlSize(.regular)
-            .tint(AppTheme.Accent.primary)
-            .glassEffectID("sendStop", in: sendStopNamespace)
+            .buttonStyle(.plain)
+            .focusable(false)
             .disabled(!canSend)
-            .opacity(canSend ? 1 : AppTheme.Opacity.strong)
+            .accessibilityLabel(L10n.string("Send message"))
+            .help(L10n.string("Send message"))
             .transition(.scale.combined(with: .opacity))
         }
     }
@@ -204,6 +231,10 @@ struct AgentInputBox<LeadingTools: View>: View {
         }
 
         guard press.phase == .down else { return .ignored }
+        if press.key == .escape, isSending {
+            onCancel()
+            return .handled
+        }
         if press.key == .return, !press.modifiers.contains(.shift), canSend {
             onSend()
             return .handled
@@ -257,11 +288,19 @@ struct AgentInputBox<LeadingTools: View>: View {
         var handled = false
         for provider in providers where provider.canLoadObject(ofClass: URL.self) {
             handled = true
-            _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                guard let url else { return }
+            _ = provider.loadObject(ofClass: URL.self) { url, error in
                 Task { @MainActor in
+                    guard editor.agentService.containsSession(conversationID) else { return }
+                    if let error {
+                        editor.reportMediaImportFailure(error)
+                        return
+                    }
+                    guard let url else {
+                        editor.reportMediaImportFailure(CocoaError(.fileReadUnknown))
+                        return
+                    }
                     if let asset = editor.addMediaAsset(from: url) {
-                        editor.agentService.attachMention(for: asset)
+                        editor.agentService.attachMention(for: asset, conversationID: conversationID)
                     }
                 }
             }
@@ -273,14 +312,15 @@ struct AgentInputBox<LeadingTools: View>: View {
         let pb = NSPasteboard.general
         if let urls = pb.readObjects(forClasses: [NSURL.self]) as? [URL], !urls.isEmpty {
             urls.compactMap { editor.addMediaAsset(from: $0) }
-                .forEach { editor.agentService.attachMention(for: $0) }
+                .forEach { editor.agentService.attachMention(for: $0, conversationID: conversationID) }
             return
         }
         for (type, ext) in [(NSPasteboard.PasteboardType.png, "png"), (.tiff, "tiff")] {
             if let data = pb.data(forType: type) {
                 Task { @MainActor in
+                    guard editor.agentService.containsSession(conversationID) else { return }
                     guard let asset = await editor.importPastedImageData(data, fileExtension: ext) else { return }
-                    editor.agentService.attachMention(for: asset)
+                    editor.agentService.attachMention(for: asset, conversationID: conversationID)
                 }
                 return
             }

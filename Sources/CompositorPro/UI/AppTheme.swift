@@ -10,25 +10,24 @@ enum AppTheme {
     }
 
     // MARK: - Backgrounds
-    // Compositor Pro own identity (R3): cool slate stack with teal accent, distinct
-    // from the  warm-neutral inherited skin.
+    // Neutral panels keep the composition and editing controls visually distinct.
 
     enum Background {
         static let base = AppTheme.adaptive(
-            light: NSColor(red: 238/255, green: 241/255, blue: 244/255, alpha: 1),
-            dark: NSColor(red: 15/255, green: 23/255, blue: 25/255, alpha: 1)
+            light: NSColor(red: 239/255, green: 239/255, blue: 235/255, alpha: 1),
+            dark: NSColor(red: 35/255, green: 34/255, blue: 33/255, alpha: 1)
         )
         static let surface = AppTheme.adaptive(
-            light: NSColor(red: 214/255, green: 222/255, blue: 230/255, alpha: 1),
-            dark: NSColor(red: 21/255, green: 32/255, blue: 36/255, alpha: 1)
+            light: NSColor(red: 247/255, green: 247/255, blue: 244/255, alpha: 1),
+            dark: NSColor(red: 43/255, green: 42/255, blue: 40/255, alpha: 1)
         )
         static let raised = AppTheme.adaptive(
-            light: NSColor(red: 220/255, green: 228/255, blue: 235/255, alpha: 1),
-            dark: NSColor(red: 27/255, green: 42/255, blue: 48/255, alpha: 1)
+            light: NSColor(red: 251/255, green: 251/255, blue: 248/255, alpha: 1),
+            dark: NSColor(red: 51/255, green: 50/255, blue: 48/255, alpha: 1)
         )
         static let prominent = AppTheme.adaptive(
-            light: NSColor(red: 248/255, green: 248/255, blue: 248/255, alpha: 1),
-            dark: NSColor(red: 36/255, green: 53/255, blue: 61/255, alpha: 1)
+            light: NSColor(red: 255/255, green: 255/255, blue: 253/255, alpha: 1),
+            dark: NSColor(red: 60/255, green: 58/255, blue: 55/255, alpha: 1)
         )
 
         /// Alias — empty media slot is a raised plate.
@@ -59,8 +58,8 @@ enum AppTheme {
             dark: NSColor.white.withAlphaComponent(0.24)
         )
         static let panel = AppTheme.adaptive(
-            light: NSColor.black.withAlphaComponent(0.18),
-            dark: .black
+            light: NSColor.black.withAlphaComponent(0.10),
+            dark: NSColor.white.withAlphaComponent(0.08)
         )
         static let timelineClip = AppTheme.adaptive(light: .white, dark: .black)
         static let timelineClipSelected = AppTheme.adaptive(light: .black, dark: .white)
@@ -84,11 +83,10 @@ enum AppTheme {
     // MARK: - Accent
 
     enum Accent {
-        /// Deep teal identity accent — own product hue distinct from the
-        /// inherited amber/grey skin (R3).
+        /// Green controls remain distinct from clip selection and the playhead.
         static let primaryNSColor = AppTheme.adaptive(
-            light: NSColor(srgbRed: 0.0, green: 0.48, blue: 0.53, alpha: 1),
-            dark: NSColor(srgbRed: 0.22, green: 0.85, blue: 0.92, alpha: 1)
+            light: NSColor(srgbRed: 0.14, green: 0.45, blue: 0.34, alpha: 1),
+            dark: NSColor(srgbRed: 0.45, green: 0.86, blue: 0.68, alpha: 1)
         )
         static let primary = Color(primaryNSColor)
 
@@ -476,6 +474,35 @@ enum AppTheme {
         static let evidenceHeight: CGFloat = 88
     }
 
+    enum Chat {
+        static let headerHeight: CGFloat = 36
+        static let tabHeight: CGFloat = 32
+        static let tabWidth: CGFloat = 156
+        static let composerMinHeight: CGFloat = 72
+        static let modelPickerMaxWidth: CGFloat = 180
+        static let starterCardMinWidth: CGFloat = 180
+        static let welcomeMaxWidth: CGFloat = 520
+        static let welcomeArtworkSize: CGFloat = 48
+        static let historyWidth: CGFloat = 340
+        static let historyMaxHeight: CGFloat = 360
+        static let detailMaxHeight: CGFloat = 300
+        static let imageMaxHeight: CGFloat = 200
+        static let scrollBottomThreshold: CGFloat = 80
+        static let errorLineLimit = 4
+    }
+
+    enum Workspace {
+        static let panelInset = Spacing.xs
+        static let panelRadius = Radius.mdLg
+        static let agentDefaultWidth: CGFloat = 320
+        static let sidebarDefaultWidth: CGFloat = 380
+        static let sidebarPanelMinHeight: CGFloat = 160
+        static let connectionSheetWidth: CGFloat = 640
+        static let connectionSheetHeight: CGFloat = 600
+        static let connectionCardMinHeight: CGFloat = 72
+        static let copyFeedbackDuration: Duration = .seconds(1.4)
+    }
+
     enum EditorPanel {
         static let defaultWidth: CGFloat = 340
         static let minimumWidth: CGFloat = 300
@@ -505,7 +532,7 @@ enum AppTheme {
             height: 600
         )
         static let projectTitlebarLeadingWidth: CGFloat = 164
-        static let projectTitlebarTrailingWidth: CGFloat = 280
+        static let projectTitlebarTrailingWidth: CGFloat = 360
         static let settingsDefault = NSSize(width: 1200, height: 800)
         static let settingsMin = NSSize(width: 860, height: 640)
     }

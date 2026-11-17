@@ -164,6 +164,102 @@ struct TextAnimationRenderTests {
         )
     }
 
+    @Test(arguments: [0, 29, 30, 59, 60, 89])
+    func singleWordSwitchesAtWordStarts(frame: Int) {
+        let animated = clip(TextAnimation(preset: .singleWord))
+        var expected = animated
+        expected.textAnimation = nil
+        expected.textContent = ["ONE", "TWO", "THREE"][frame / 30]
+
+        let expectedPixels = pixels(expected, frame: frame)
+        #expect(brightCount(expectedPixels) > 0)
+        #expect(pixels(animated, frame: frame) == expectedPixels)
+    }
+
+    @Test func singleWordUsesClipRelativeTimingAndLeavesGapsBlank() {
+        var animated = clip(TextAnimation(preset: .singleWord))
+        animated.startFrame = 100
+        animated.wordTimings = [
+            .init(text: "ONE", startFrame: 5, endFrame: 20),
+            .init(text: "TWO", startFrame: 35, endFrame: 50),
+            .init(text: "THREE", startFrame: 65, endFrame: 75),
+        ]
+        for frame in [100, 104, 120, 134, 150, 164] {
+            #expect(brightCount(pixels(animated, frame: frame)) == 0)
+        }
+        for (frame, word) in [(105, "ONE"), (119, "ONE"), (135, "TWO"), (165, "THREE"), (189, "THREE")] {
+            var expected = animated
+            expected.textAnimation = nil
+            expected.textContent = word
+            #expect(pixels(animated, frame: frame) == pixels(expected, frame: frame))
+        }
+    }
+
+    @Test func singleWordUsesCorrectedDisplayTokensWhenTranscriptCountsDiffer() {
+        var animated = clip(TextAnimation(preset: .singleWord))
+        animated.textContent = "New York!"
+        animated.textStyle?.fontCase = .uppercase
+        animated.wordTimings = [.init(text: "New York", startFrame: 10, endFrame: 50)]
+        for (frame, word) in [(10, "NEW"), (29, "NEW"), (30, "YORK!"), (89, "YORK!")] {
+            var expected = animated
+            expected.textAnimation = nil
+            expected.textContent = word
+            #expect(pixels(animated, frame: frame) == pixels(expected, frame: frame))
+        }
+    }
+
+    @Test func singleWordFallsBackToEvenTimingForMissingOrUnalignedTranscript() {
+        let variants: [[WordTiming]?] = [nil, [.init(text: "unrelated", startFrame: 5, endFrame: 10)]]
+        for timings in variants {
+            var animated = clip(TextAnimation(preset: .singleWord))
+            animated.wordTimings = timings
+            for (frame, word) in [(0, "ONE"), (30, "TWO"), (60, "THREE")] {
+                var expected = animated
+                expected.textAnimation = nil
+                expected.textContent = word
+                #expect(pixels(animated, frame: frame) == pixels(expected, frame: frame))
+            }
+        }
+    }
+
+    @Test func singleWordMergesTranscriptTokensForCorrectedDisplayContent() {
+        var animated = clip(TextAnimation(preset: .singleWord))
+        animated.textContent = "NewYork"
+        animated.wordTimings = [
+            .init(text: "New", startFrame: 10, endFrame: 30),
+            .init(text: "York", startFrame: 30, endFrame: 50),
+        ]
+        var expected = animated
+        expected.textAnimation = nil
+        for frame in [10, 29, 30, 50, 89] {
+            #expect(pixels(animated, frame: frame) == pixels(expected, frame: frame))
+        }
+    }
+
+    @Test func singleWordDoesNotDisplayCollapsedOrOutOfClipSpans() {
+        var animated = clip(TextAnimation(preset: .singleWord))
+        animated.textContent = "ONE"
+        animated.wordTimings = [.init(text: "ONE", startFrame: 40, endFrame: 40)]
+        for frame in [0, 40, 89] {
+            #expect(brightCount(pixels(animated, frame: frame)) == 0)
+        }
+        #expect(TextFrameRenderer.image(clip: animated, frame: -1, renderSize: size) == nil)
+        #expect(TextFrameRenderer.image(clip: animated, frame: 90, renderSize: size) == nil)
+    }
+
+    @Test func singleWordCentersEachTokenWithTheExistingBoxAndStyle() {
+        var animated = clip(TextAnimation(preset: .singleWord))
+        animated.textStyle?.alignment = .left
+        animated.textStyle?.border = .init(enabled: true, color: .init(r: 1, g: 0, b: 0, a: 1), width: 6)
+        animated.textStyle?.background.enabled = true
+        var expected = animated
+        expected.textAnimation = nil
+        expected.textStyle?.alignment = .center
+        expected.textContent = "TWO"
+
+        #expect(pixels(animated, frame: 45) == pixels(expected, frame: 45))
+    }
+
     @Test func tokenTimingsSplitAlignedTranscriptSpan() {
         let tokens = [
             (range: NSRange(location: 0, length: 3), text: "New"),

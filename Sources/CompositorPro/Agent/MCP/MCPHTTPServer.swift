@@ -8,10 +8,16 @@ struct MCPServerInstance: Sendable {
     let onInitialize: @Sendable (Client.Info) async -> Void
 }
 
+private struct PinnedSessionIDGenerator: SessionIDGenerator {
+    let id: String
+    func generateSessionID() -> String { id }
+}
+
 /// HTTP server for MCP. Each client session gets its own `Server` + stateful transport
 actor MCPHTTPServer {
 
     private let port: UInt16
+    private(set) var listeningPort: UInt16?
     private let makeServer: @Sendable () async -> MCPServerInstance
     private nonisolated(unsafe) var listener: NWListener?
 
@@ -37,7 +43,7 @@ actor MCPHTTPServer {
 
     func start() async throws {
         Log.mcp.info("listener start port=\(self.port)")
-        guard let endpointPort = NWEndpoint.Port(rawValue: port) else {
+        guard let endpointPort = port == 0 ? NWEndpoint.Port.any : NWEndpoint.Port(rawValue: port) else {
             Log.mcp.fault("invalid port \(self.port)")
             throw NSError(domain: "MCPHTTPServer", code: 1, userInfo: [NSLocalizedDescriptionKey: "invalid port \(port)"])
         }
@@ -85,11 +91,16 @@ actor MCPHTTPServer {
             }
             listener.start(queue: .global(qos: .userInitiated))
         }
+        guard self.listener === listener, let boundPort = listener.port?.rawValue else {
+            throw CancellationError()
+        }
+        listeningPort = boundPort
     }
 
     func stop() async {
         listener?.cancel()
         listener = nil
+        listeningPort = nil
         let closing = sessions.values.map(\.transport)
         sessions.removeAll()
         let fallbackTransport = fallback?.transport
@@ -151,7 +162,7 @@ actor MCPHTTPServer {
 
     private func handle(request: HTTPRequest, connection: NWConnection) async {
         if request.path == "/.well-known/oauth-protected-resource" {
-            let body = "{\"resource\":\"http://127.0.0.1:\(port)\"}"
+            let body = "{\"resource\":\"http://127.0.0.1:\(listeningPort ?? port)\"}"
             sendRaw("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: \(body.utf8.count)\r\n\r\n\(body)", on: connection, keepAlive: true)
             receive(on: connection)
             return
@@ -164,16 +175,43 @@ actor MCPHTTPServer {
 
         let response: HTTPResponse
         if let claimed = request.header(HTTPHeaderName.sessionID) {
-            guard var session = sessions[claimed] else {
-                // Unknown/expired session → 404 per spec; the client re-initializes
-                // and refreshes its tool inventory.
-                sendRaw("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n", on: connection, keepAlive: true)
-                receive(on: connection)
-                return
+            let session: Session
+            if let existing = sessions[claimed], request.method.uppercased() != "GET" {
+                session = existing
+            } else {
+                let transport = StatefulHTTPServerTransport(
+                    sessionIDGenerator: PinnedSessionIDGenerator(id: claimed),
+                    validationPipeline: StandardValidationPipeline(validators: baseValidators() + [SessionValidator()])
+                )
+                let instance = await makeServer()
+                try? await instance.server.start(transport: transport) { clientInfo, _ in
+                    await instance.onInitialize(clientInfo)
+                }
+                let boundPort = listeningPort ?? port
+                let initBody = Data("{\"jsonrpc\":\"2.0\",\"id\":\"init\",\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"reconnect\",\"version\":\"1.0\"}}}".utf8)
+                let initReq = HTTPRequest(
+                    method: "POST",
+                    headers: [
+                        HTTPHeaderName.contentType: "application/json",
+                        HTTPHeaderName.accept: "application/json, text/event-stream",
+                        HTTPHeaderName.host: "127.0.0.1:\(boundPort)"
+                    ],
+                    body: initBody,
+                    path: "/mcp"
+                )
+                let initResp = await transport.handleRequest(initReq)
+                if initResp.statusCode != 200 {
+                    Log.mcp.error("reconnect init failed: \(initResp.statusCode) \(String(decoding: initResp.bodyData ?? Data(), as: UTF8.self))")
+                }
+                session = Session(server: instance.server, transport: transport, lastUsed: .now)
+                pruneIdleSessions()
+                sessions[claimed] = session
+                Log.mcp.notice("session initialized id=\(claimed) total=\(self.sessions.count)")
             }
-            session.lastUsed = .now
-            sessions[claimed] = session
-            response = await session.transport.handleRequest(request)
+            var mutableSession = session
+            mutableSession.lastUsed = .now
+            sessions[claimed] = mutableSession
+            response = await mutableSession.transport.handleRequest(request)
             if request.method.uppercased() == "DELETE", response.statusCode == 200 {
                 sessions.removeValue(forKey: claimed)
             } else if request.method.uppercased() == "GET", response.statusCode == 200 {
@@ -230,8 +268,8 @@ actor MCPHTTPServer {
         return json["method"] as? String == "initialize"
     }
 
-    private nonisolated func baseValidators() -> [any HTTPRequestValidator] {
-        [OriginValidator.localhost(port: Int(port)), ContentTypeValidator(), ProtocolVersionValidator()]
+    private func baseValidators() -> [any HTTPRequestValidator] {
+        [OriginValidator.localhost(port: Int(listeningPort ?? port)), ContentTypeValidator(), ProtocolVersionValidator()]
     }
 
     private func fallbackPair() async -> (server: Server, transport: StatelessHTTPServerTransport) {

@@ -4,6 +4,8 @@ import SwiftUI
 struct AgentMessageView: View {
     let message: AgentMessage
     let toolResults: [String: ToolRunResult]
+    var showsHeader = true
+    var onDisclosure: () -> Void = {}
     @State private var isHovering = false
 
     var body: some View {
@@ -24,10 +26,10 @@ struct AgentMessageView: View {
             HStack {
                 Spacer(minLength: 0)
                 Text(verbatim: texts.joined(separator: "\n"))
-                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular, design: .monospaced))
                     .foregroundStyle(AppTheme.Text.mutedColor)
                     .multilineTextAlignment(.center)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, AppTheme.Spacing.xs)
                 Spacer(minLength: 0)
             }
         }
@@ -46,43 +48,40 @@ struct AgentMessageView: View {
             return nil
         }
         if !texts.isEmpty {
-            HStack(alignment: .top, spacing: 12) {
-                // User avatar indicator
-                Circle()
-                    .fill(AppTheme.Accent.primary.opacity(0.15))
-                    .frame(width: 28, height: 28)
-                    .overlay(
-                        Image(systemName: "person.fill")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(AppTheme.Accent.primary)
-                    )
-
-                VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .top, spacing: AppTheme.Spacing.zero) {
+                Spacer(minLength: AppTheme.Spacing.xlXxl)
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+                    HStack {
+                        Text(L10n.string("You"))
+                            .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.semibold))
+                            .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        CopyMessageButton(text: copyableText)
+                            .opacity(isHovering ? AppTheme.Opacity.opaque : AppTheme.Opacity.strong)
+                    }
                     Text(verbatim: texts.joined(separator: "\n"))
-                        .font(.system(size: 13, weight: .regular, design: .default))
+                        .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.regular))
                         .foregroundStyle(AppTheme.Text.primaryColor)
-                        .lineSpacing(2)
+                        .lineSpacing(AppTheme.Spacing.xxs)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(.vertical, 8)
+                .padding(AppTheme.Spacing.mdLg)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.mdLg, style: .continuous)
+                        .fill(AppTheme.Accent.primary.opacity(AppTheme.Opacity.faint))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AppTheme.Radius.mdLg, style: .continuous)
+                                .stroke(AppTheme.Accent.primary.opacity(AppTheme.Opacity.muted), lineWidth: AppTheme.BorderWidth.hairline)
+                        )
+                )
+                .onHover { isHovering = $0 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(AppTheme.Interaction.fill(AppTheme.Opacity.faint))
-            )
         }
         // Tool-result user messages render merged into the preceding assistant row.
     }
 
-    /// A stable identity per block, so a row's own state stays with it while the block list grows.
-    ///
-    /// Reasoning and non-reasoning blocks are counted separately: reasoning blocks are appended as
-    /// they stream and never reordered, whereas a plain index shifts whenever a text block is added
-    /// ahead of one, which is what previously let expansion state attach to the wrong row.
+    // Separate reasoning identities keep disclosure state stable as text blocks arrive.
     private var renderedBlocks: [(key: String, block: AgentContentBlock)] {
         var reasoning = 0
         var other = 0
@@ -98,16 +97,22 @@ struct AgentMessageView: View {
 
     @ViewBuilder
     private var assistantBody: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+            if showsHeader {
+                Label(L10n.string("Agent"), systemImage: "sparkles")
+                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.semibold))
+                    .foregroundStyle(AppTheme.Accent.primary)
+                    .padding(.bottom, AppTheme.Spacing.xs)
+            }
             ForEach(renderedBlocks, id: \.key) { entry in
                 let block = entry.block
                 switch block {
                 case .thinking(let text, let signature):
-                    ReasoningBlock(text: text, isComplete: !signature.isEmpty)
+                    ReasoningBlock(text: text, isComplete: !signature.isEmpty, onDisclosure: onDisclosure)
                 case .redactedThinking(let data):
-                    RedactedReasoningBlock(data: data)
+                    RedactedReasoningBlock(data: data, onDisclosure: onDisclosure)
                 case .openAIReasoning(let summary, _, _, _, let isComplete):
-                    ReasoningBlock(text: summary, isComplete: isComplete)
+                    ReasoningBlock(text: summary, isComplete: isComplete, onDisclosure: onDisclosure)
                 case .text(let text):
                     AssistantTextBlock(text: text)
                 case .toolUse(let id, let name, let inputJSON):
@@ -115,7 +120,8 @@ struct AgentMessageView: View {
                         id: id,
                         name: name,
                         inputJSON: inputJSON,
-                        result: toolResults[id]
+                        result: toolResults[id],
+                        onDisclosure: onDisclosure
                     )
                 case .toolResult:
                     EmptyView()
@@ -123,16 +129,16 @@ struct AgentMessageView: View {
             }
             if !copyableText.isEmpty {
                 CopyMessageButton(text: copyableText)
-                    .opacity(isHovering ? 1 : 0)
-                    .padding(.top, 4)
+                    .opacity(isHovering ? AppTheme.Opacity.opaque : AppTheme.Opacity.strong)
+                    .padding(.top, AppTheme.Spacing.xs)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
-        .animation(.easeOut(duration: 0.15), value: isHovering)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .animation(.easeOut(duration: AppTheme.Anim.hover), value: isHovering)
+        .padding(.horizontal, AppTheme.Spacing.xs)
+        .padding(.vertical, AppTheme.Spacing.xs)
     }
 }
 
@@ -149,6 +155,7 @@ private struct AssistantTextBlock: View {
 private struct ReasoningBlock: View {
     let text: String
     let isComplete: Bool
+    let onDisclosure: () -> Void
     @State private var expanded = false
 
     private var firstLine: String {
@@ -160,104 +167,109 @@ private struct ReasoningBlock: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
             Button {
-                withAnimation(.easeOut(duration: 0.15)) { expanded.toggle() }
+                if !expanded { onDisclosure() }
+                withAnimation(.easeOut(duration: AppTheme.Anim.hover)) { expanded.toggle() }
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: AppTheme.Spacing.smMd) {
                     if isComplete {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium))
                             .foregroundStyle(AppTheme.Text.tertiaryColor)
                     } else {
                         ThinkingDots()
                     }
                     Text(firstLine.isEmpty ? (isComplete ? L10n.string("Thought") : L10n.string("Thinking…")) : firstLine)
-                        .font(.system(size: 12, weight: .regular, design: .monospaced))
+                        .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.regular, design: .monospaced))
                         .foregroundStyle(isComplete ? AppTheme.Text.tertiaryColor : AppTheme.Text.secondaryColor)
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Spacer(minLength: 0)
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.semibold))
                         .rotationEffect(.degrees(expanded ? 90 : 0))
                         .foregroundStyle(AppTheme.Text.mutedColor)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
+                .padding(.horizontal, AppTheme.Spacing.md)
+                .padding(.vertical, AppTheme.Spacing.smMd)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .background(AppTheme.Background.surfaceColor, in: RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
 
             if expanded {
                 ScrollView {
                     Text(verbatim: text)
-                        .font(.system(size: 11, weight: .regular, design: .monospaced))
+                        .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular, design: .monospaced))
                         .foregroundStyle(AppTheme.Text.secondaryColor)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
-                        .padding(12)
+                        .padding(AppTheme.Spacing.mdLg)
                 }
-                .frame(maxHeight: 300)
+                .frame(maxHeight: AppTheme.Chat.detailMaxHeight)
                 .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
                         .fill(AppTheme.Background.raisedColor)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(AppTheme.Border.subtleColor, lineWidth: 0.5)
+                            RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
+                                .stroke(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.hairline)
                         )
                 )
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .animation(.easeOut(duration: 0.15), value: isComplete)
+        .animation(.easeOut(duration: AppTheme.Anim.hover), value: isComplete)
     }
 }
 
 private struct RedactedReasoningBlock: View {
     let data: String
+    let onDisclosure: () -> Void
     @State private var expanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
             Button {
-                withAnimation(.easeOut(duration: 0.15)) { expanded.toggle() }
+                if !expanded { onDisclosure() }
+                withAnimation(.easeOut(duration: AppTheme.Anim.hover)) { expanded.toggle() }
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: AppTheme.Spacing.smMd) {
                     Image(systemName: "lock.circle.fill")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                     Text(L10n.string("Reasoning (redacted)"))
-                        .font(.system(size: 12, weight: .regular, design: .monospaced))
+                        .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.regular, design: .monospaced))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                     Spacer(minLength: 0)
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.semibold))
                         .rotationEffect(.degrees(expanded ? 90 : 0))
                         .foregroundStyle(AppTheme.Text.mutedColor)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
+                .padding(.horizontal, AppTheme.Spacing.md)
+                .padding(.vertical, AppTheme.Spacing.smMd)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .background(AppTheme.Background.surfaceColor, in: RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
 
             if expanded {
                 ScrollView {
                     Text(verbatim: data)
-                        .font(.system(size: 11, weight: .regular, design: .monospaced))
+                        .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular, design: .monospaced))
                         .foregroundStyle(AppTheme.Text.secondaryColor)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
-                        .padding(12)
+                        .padding(AppTheme.Spacing.mdLg)
                 }
-                .frame(maxHeight: 300)
+                .frame(maxHeight: AppTheme.Chat.detailMaxHeight)
                 .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
                         .fill(AppTheme.Background.raisedColor)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(AppTheme.Border.subtleColor, lineWidth: 0.5)
+                            RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
+                                .stroke(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.hairline)
                         )
                 )
                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -271,6 +283,7 @@ private struct ToolCallRow: View {
     let name: String
     let inputJSON: String
     let result: ToolRunResult?
+    let onDisclosure: () -> Void
     @State private var expanded = false
 
     private var isRunning: Bool { result == nil }
@@ -279,55 +292,64 @@ private struct ToolCallRow: View {
         return result.isError ? "xmark.circle.fill" : "checkmark.circle.fill"
     }
     private var statusTint: Color {
-        guard let result else { return AppTheme.Text.mutedColor }
-        return result.isError ? .red.opacity(0.8) : AppTheme.Text.tertiaryColor
+        guard let result else { return AppTheme.Accent.primary }
+        return result.isError ? AppTheme.Status.errorColor : AppTheme.Status.successColor
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
             Button {
-                withAnimation(.easeOut(duration: 0.15)) { expanded.toggle() }
+                if !expanded { onDisclosure() }
+                withAnimation(.easeOut(duration: AppTheme.Anim.hover)) { expanded.toggle() }
             } label: {
-                HStack(spacing: 10) {
+                HStack(spacing: AppTheme.Spacing.md) {
                     if isRunning {
                         ProgressView()
                             .controlSize(.small)
-                            .frame(width: 16, height: 16)
+                            .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
                     } else {
                         Image(systemName: statusIcon)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium))
                             .foregroundStyle(statusTint)
                     }
-                    Text(name)
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundStyle(isRunning ? AppTheme.Text.tertiaryColor.opacity(0.7) : AppTheme.Text.secondaryColor)
+                    Text(verbatim: name)
+                        .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium, design: .monospaced))
+                        .foregroundStyle(isRunning ? AppTheme.Text.tertiaryColor.opacity(AppTheme.Opacity.high) : AppTheme.Text.secondaryColor)
                     Spacer(minLength: 0)
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.semibold))
                         .rotationEffect(.degrees(expanded ? 90 : 0))
                         .foregroundStyle(AppTheme.Text.mutedColor)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
+                .padding(.horizontal, AppTheme.Spacing.md)
+                .padding(.vertical, AppTheme.Spacing.smMd)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .background(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
+                    .fill(AppTheme.Background.surfaceColor)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
+                            .stroke(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.hairline)
+                    )
+            )
 
             if expanded {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
                     argsSection
                     if let result { resultSection(result) }
                 }
-                .font(.system(size: 11, design: .monospaced))
+                .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
+                .padding(AppTheme.Spacing.mdLg)
                 .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
                         .fill(AppTheme.Background.raisedColor)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(AppTheme.Border.subtleColor, lineWidth: 0.5)
+                            RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
+                                .stroke(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.hairline)
                         )
                 )
                 .textSelection(.enabled)
@@ -338,31 +360,31 @@ private struct ToolCallRow: View {
 
     @ViewBuilder
     private var argsSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("args")
-                .font(.system(size: 10, weight: .medium))
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+            Text(L10n.string("Arguments"))
+                .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
                 .foregroundStyle(AppTheme.Text.mutedColor)
-            Text(prettyPrinted(inputJSON))
+            Text(verbatim: prettyPrinted(inputJSON))
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
     @ViewBuilder
     private func resultSection(_ r: ToolRunResult) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Text(r.isError ? "error" : "result")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(r.isError ? .red.opacity(0.8) : AppTheme.Text.mutedColor)
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+            HStack(spacing: AppTheme.Spacing.smMd) {
+                Text(r.isError ? L10n.string("Error") : L10n.string("Result"))
+                    .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(r.isError ? AppTheme.Status.errorColor : AppTheme.Text.mutedColor)
                 if r.isError {
                     CopyButton(value: errorText(from: r))
-                        .font(.system(size: 10))
+                        .font(.system(size: AppTheme.FontSize.xs))
                 }
             }
             ForEach(Array(r.content.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .text(let s):
-                    Text(s)
+                    Text(verbatim: s)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 case .image(let base64, _):
                     ToolResultImageView(base64: base64)
@@ -386,9 +408,9 @@ private struct ToolCallRow: View {
         var body: some View {
             Button(action: copy) {
                 Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.regular))
                     .foregroundStyle(copied ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
-                    .frame(width: 24, height: 24)
+                    .frame(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.mdLg)
                     .hoverHighlight()
             }
             .buttonStyle(.plain)
@@ -416,7 +438,7 @@ private struct ToolCallRow: View {
               ),
               let s = String(data: pretty, encoding: .utf8),
               !s.isEmpty, s != "{}" else {
-            return "(no args)"
+            return L10n.string("No arguments")
         }
         return s
     }
@@ -432,13 +454,13 @@ private struct ToolResultImageView: View {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxHeight: 200)
+                    .frame(maxHeight: AppTheme.Chat.imageMaxHeight)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous))
             } else {
                 Text(L10n.string("(image payload)"))
                     .foregroundStyle(AppTheme.Text.mutedColor)
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
             }
         }
         .task(id: base64) {
@@ -487,14 +509,14 @@ private struct CopyMessageButton: View {
                     copied = false
                 }
             } label: {
-                HStack(spacing: 6) {
+                HStack(spacing: AppTheme.Spacing.sm) {
                     Image(systemName: copied ? "checkmark" : "doc.on.doc")
                     Text(copied ? L10n.string("Copied") : L10n.string("Copy"))
                 }
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+                .padding(.horizontal, AppTheme.Spacing.md)
+                .padding(.vertical, AppTheme.Spacing.sm)
                 .background(
                     Capsule()
                         .fill(AppTheme.Interaction.fill(AppTheme.Opacity.subtle))

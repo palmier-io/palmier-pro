@@ -1,12 +1,13 @@
 import Foundation
 
-/// Agent-stream transport failures. The hosted Compositor backend client was
-/// removed in R1; BYOK routing layers (AgentClientTypes) own direct calls.
+/// Agent request, lifecycle, and transport failures.
 enum AgentServiceError: Error {
     case unauthenticated
     case insufficientCredits(String)
     case unavailable(AgentModel)
     case refusal(AgentModel)
+    case stopping
+    case localAgent(LocalAgentFailure)
     case upstream(String)
     case httpError(status: Int, code: String?, message: String)
 
@@ -41,6 +42,8 @@ extension AgentServiceError: LocalizedError {
         case .insufficientCredits(let message): return message
         case .unavailable(let model): return "Model '\(model.rawValue)' is unavailable."
         case .refusal(let model): return "Model '\(model.rawValue)' refused the request."
+        case .stopping: return "chat_requests_stopping"
+        case .localAgent(let failure): return failure.errorDescription
         case .upstream(let message): return message
         case .httpError(_, _, let message): return message
         }

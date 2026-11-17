@@ -330,65 +330,86 @@ extension ToolExecutor {
         let omittedCount = specs.filter { $0.trackId == nil }.count
         let snapshot = timelineSnapshot(editor)
         let actionName = specs.count == 1 ? "Add Clip (Agent)" : "Add Clips (Agent)"
+        let timelinesBefore = editor.timelines
+        let timelineBefore = editor.timeline
+        let selectionBefore = editor.selectedClipIds
         var settingsNote: String?
         try editor.undo.perform(actionName) {
-            settingsNote = matchSettings ? applySettingsIfNeededForAgent(
-                editor,
-                assets: specs.map(\.asset).filter { $0.type != .sequence }
-            ) : nil
-            if omittedCount == specs.count {
-                let needsVideo = specs.contains { $0.asset.type != .audio }
-                let needsAudio = specs.contains { $0.asset.type == .audio }
-                var videoTrackId: String? = nil
-                var audioTrackId: String? = nil
-                if needsVideo {
-                    videoTrackId = editor.timeline.tracks[editor.insertTrack(at: 0, type: .video)].id
-                }
-                if needsAudio {
-                    audioTrackId = editor.timeline.tracks[
-                        editor.insertTrack(at: editor.timeline.tracks.count, type: .audio)
-                    ].id
-                }
-                for i in specs.indices {
-                    specs[i].trackId = (specs[i].asset.type == .audio) ? audioTrackId : videoTrackId
-                }
-            }
+            do {
+                // Overwrite helpers must not record intermediate batch snapshots.
+                try editor.undo.withoutRegistration {
+                    settingsNote = matchSettings ? applySettingsIfNeededForAgent(
+                        editor,
+                        assets: specs.map(\.asset).filter { $0.type != .sequence }
+                    ) : nil
+                    if omittedCount == specs.count {
+                        let needsVideo = specs.contains { $0.asset.type != .audio }
+                        let needsAudio = specs.contains { $0.asset.type == .audio }
+                        var videoTrackId: String? = nil
+                        var audioTrackId: String? = nil
+                        if needsVideo {
+                            videoTrackId = editor.timeline.tracks[editor.insertTrack(at: 0, type: .video)].id
+                        }
+                        if needsAudio {
+                            audioTrackId = editor.timeline.tracks[
+                                editor.insertTrack(at: editor.timeline.tracks.count, type: .audio)
+                            ].id
+                        }
+                        for i in specs.indices {
+                            specs[i].trackId = (specs[i].asset.type == .audio) ? audioTrackId : videoTrackId
+                        }
+                    }
 
-            var allAdded: [String] = []
-            let nonEmptyBefore = Set(editor.timeline.tracks.filter { !$0.clips.isEmpty }.map(\.id))
+                    let nonEmptyBefore = Set(editor.timeline.tracks.filter { !$0.clips.isEmpty }.map(\.id))
 
-            let orderedIndices = specs.indices.sorted {
-                let aAudio = specs[$0].asset.type == .audio ? 0 : 1
-                let bAudio = specs[$1].asset.type == .audio ? 0 : 1
-                if aAudio != bAudio { return aAudio < bAudio }
-                return (specs[$0].trackId!, specs[$0].startFrame) < (specs[$1].trackId!, specs[$1].startFrame)
-            }
-            for i in orderedIndices {
-                let spec = specs[i]
-                let trackId = spec.trackId!
-                guard let trackIdx = editor.timeline.tracks.firstIndex(where: { $0.id == trackId }) else {
-                    throw ToolError("entries[\(i)]: destination track no longer exists")
+                    let orderedIndices = specs.indices.sorted {
+                        let aAudio = specs[$0].asset.type == .audio ? 0 : 1
+                        let bAudio = specs[$1].asset.type == .audio ? 0 : 1
+                        if aAudio != bAudio { return aAudio < bAudio }
+                        return (specs[$0].trackId!, specs[$0].startFrame) < (specs[$1].trackId!, specs[$1].startFrame)
+                    }
+                    for i in orderedIndices {
+                        let spec = specs[i]
+                        let trackId = spec.trackId!
+                        guard let trackIdx = editor.timeline.tracks.firstIndex(where: { $0.id == trackId }) else {
+                            throw ToolError("entries[\(i)]: destination track no longer exists")
+                        }
+                        editor.clearRegion(trackIndex: trackIdx, start: spec.startFrame, end: spec.startFrame + spec.durationFrames, prune: false)
+                        let ids = editor.placeClip(
+                            asset: spec.asset, trackIndex: trackIdx,
+                            startFrame: spec.startFrame, durationFrames: spec.durationFrames,
+                            trimStartFrame: spec.trimStartFrame, trimEndFrame: spec.trimEndFrame
+                        )
+                        guard !ids.isEmpty else {
+                            throw ToolError("entries[\(i)]: failed to place clip on track \(trackIdx) at frame \(spec.startFrame)")
+                        }
+                    }
+
+                    for track in editor.timeline.tracks where track.clips.isEmpty && nonEmptyBefore.contains(track.id) {
+                        editor.removeTrack(id: track.id)
+                    }
                 }
-                editor.clearRegion(trackIndex: trackIdx, start: spec.startFrame, end: spec.startFrame + spec.durationFrames, prune: false)
-                let ids = editor.placeClip(
-                    asset: spec.asset, trackIndex: trackIdx,
-                    startFrame: spec.startFrame, durationFrames: spec.durationFrames,
-                    trimStartFrame: spec.trimStartFrame, trimEndFrame: spec.trimEndFrame
-                )
-                guard !ids.isEmpty else {
-                    throw ToolError("entries[\(i)]: failed to place clip on track \(trackIdx) at frame \(spec.startFrame)")
-                }
-                allAdded.append(contentsOf: ids)
+            } catch {
+                editor.timelines = timelinesBefore
+                editor.selectedClipIds = selectionBefore
+                editor.notifyTimelineChanged()
+                throw error
             }
-
-            for track in editor.timeline.tracks where track.clips.isEmpty && nonEmptyBefore.contains(track.id) {
-                editor.removeTrack(id: track.id)
+            let timelineAfter = editor.timeline
+            if timelineBefore != timelineAfter {
+                editor.registerTimelineSwap(undoState: timelineBefore, redoState: timelineAfter, actionName: actionName)
             }
-
-            let addedIds = allAdded
-            editor.registerTimelineUndo(actionName) { vm in
-                vm.removeClips(ids: Set(addedIds))
+            let changedSiblings = timelinesBefore.compactMap { before -> (id: String, before: Bool, after: Bool)? in
+                guard before.id != timelineBefore.id, let after = editor.timeline(for: before.id),
+                      before.settingsConfigured != after.settingsConfigured else { return nil }
+                return (before.id, before.settingsConfigured, after.settingsConfigured)
             }
+            editor.registerClipAdditionCompanionSwap(
+                undoSelection: selectionBefore, redoSelection: editor.selectedClipIds,
+                undoSettings: Dictionary(uniqueKeysWithValues: changedSiblings.map { ($0.id, $0.before) }),
+                redoSettings: Dictionary(uniqueKeysWithValues: changedSiblings.map { ($0.id, $0.after) }),
+                actionName: actionName
+            )
         }
         editor.notifyTimelineChanged()
         return mutationResult(editor, since: snapshot, notes: settingsNote.map { [$0] } ?? [])
@@ -1504,5 +1525,26 @@ extension ToolExecutor {
         if !renamedTracks.isEmpty { extra["renamed"] = renamedTracks }
         if !removedTracks.isEmpty { extra["removedTracks"] = removedTracks }
         return mutationResult(editor, since: snapshot, extra: extra)
+    }
+}
+
+private extension EditorViewModel {
+    func registerClipAdditionCompanionSwap(
+        undoSelection: Set<String>, redoSelection: Set<String>,
+        undoSettings: [String: Bool], redoSettings: [String: Bool], actionName: String
+    ) {
+        guard undoSelection != redoSelection || undoSettings != redoSettings else { return }
+        registerTimelineUndo(actionName) { editor in
+            editor.selectedClipIds = undoSelection
+            for (id, configured) in undoSettings {
+                if let index = editor.timelines.firstIndex(where: { $0.id == id }) {
+                    editor.timelines[index].settingsConfigured = configured
+                }
+            }
+            editor.registerClipAdditionCompanionSwap(
+                undoSelection: redoSelection, redoSelection: undoSelection,
+                undoSettings: redoSettings, redoSettings: undoSettings, actionName: actionName
+            )
+        }
     }
 }

@@ -563,10 +563,12 @@ struct PreviewContainerView: View {
         panel.message = L10n.string("Choose the folder that holds your media")
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
-            let result = editor.relinkOfflineAssets(fromFolder: url)
-            editor.mediaPanelToast = MediaPanelToast(
-                message: L10n.string("Relinked \(result.relinked) of \(result.total) offline clips.")
-            )
+            Task { [editor] in
+                guard let result = await editor.relinkOfflineAssets(fromFolder: url) else { return }
+                editor.mediaPanelToast = MediaPanelToast(
+                    message: L10n.string("Relinked \(result.relinked) of \(result.total) offline clips.")
+                )
+            }
         }
     }
 

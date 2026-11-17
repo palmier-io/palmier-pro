@@ -18,7 +18,7 @@ enum CaptionPreviewRender {
             durationFrames: loopFrames(preset)
         )
         c.mediaType = .text
-        c.textContent = content
+        c.textContent = CaptionPunctuation.normalized(content)
         c.textStyle = style
         c.transform = transform
         c.textAnimation = TextAnimation(preset: preset, highlight: highlight)

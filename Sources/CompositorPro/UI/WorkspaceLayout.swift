@@ -5,6 +5,7 @@ enum LayoutPreset: String, CaseIterable, Identifiable, Sendable {
     case `default`
     case media
     case vertical
+    case studio
 
     static let defaultsKey = "layoutPreset"
 
@@ -15,6 +16,7 @@ enum LayoutPreset: String, CaseIterable, Identifiable, Sendable {
         case .default: "1"
         case .media: "2"
         case .vertical: "3"
+        case .studio: "4"
         }
     }
 
@@ -25,11 +27,12 @@ enum LayoutPreset: String, CaseIterable, Identifiable, Sendable {
         case .default: L10n.key("Default")
         case .media: L10n.key("Media")
         case .vertical: L10n.key("Vertical")
+        case .studio: L10n.key("Studio")
         }
     }
 
     static func stored(in defaults: UserDefaults) -> LayoutPreset {
-        defaults.string(forKey: defaultsKey).flatMap(LayoutPreset.init(rawValue:)) ?? .default
+        defaults.string(forKey: defaultsKey).flatMap(LayoutPreset.init(rawValue:)) ?? .studio
     }
 }
 

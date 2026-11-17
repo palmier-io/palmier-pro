@@ -117,14 +117,17 @@ struct CaptionTemplateApplyReceipt: Codable, Sendable, Equatable {
 /// Errors raised during caption template selection or application.
 enum CaptionTemplateError: Error, LocalizedError, Equatable {
     case unknownTemplate(String, available: String)
-    case noCaptionsFound
+    case noCaptionsFound(templateName: String? = nil)
 
     var errorDescription: String? {
         switch self {
         case .unknownTemplate(let id, let available):
             return "Caption template '\(id)' is not known. Available templates: \(available)."
-        case .noCaptionsFound:
-            return "No text or caption clips found on the timeline to apply the template to."
+        case .noCaptionsFound(let name):
+            if let name, !name.isEmpty {
+                return "No text or caption clips found on the timeline to apply '\(name)' to. If you want to create captions from project audio, run add_captions with captionStyle to transcribe and generate timed captions."
+            }
+            return "No text or caption clips found on the timeline to apply the template to. If you want to create captions from project audio, run add_captions to transcribe and generate timed captions."
         }
     }
 }
@@ -164,7 +167,7 @@ enum CaptionTemplateLibrary {
             formatLabel: "Reels / TikTok / Shorts (9:16)",
             customCenterY: 0.70,
             sample: "PUNCH",
-            summary: "Large single-word pop reveal for short-form hooks"
+            summary: "Large centered word switching timed to speech"
         ),
         makeTemplate(
             id: "neon",
@@ -463,7 +466,28 @@ enum CaptionTemplateLibrary {
 
     /// Retrieves an individual template by ID.
     static func template(id: String) -> CaptionTemplate? {
-        all.first { $0.id == id }
+        if let exact = all.first(where: { $0.id == id }) {
+            return exact
+        }
+        let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmed.isEmpty else { return nil }
+        let normalized = trimmed
+            .replacingOccurrences(of: "_", with: "-")
+            .replacingOccurrences(of: " ", with: "-")
+        if let match = all.first(where: { $0.id.lowercased() == normalized }) {
+            return match
+        }
+        if let match = all.first(where: {
+            $0.displayName.localizedCaseInsensitiveCompare(trimmed) == .orderedSame
+            || $0.displayName.lowercased().replacingOccurrences(of: " ", with: "-") == normalized
+        }) {
+            return match
+        }
+        let stripped = normalized.replacingOccurrences(of: "-", with: "")
+        if let match = all.first(where: { $0.id.replacingOccurrences(of: "-", with: "") == stripped }) {
+            return match
+        }
+        return nil
     }
 
     /// Comma-separated list of available template IDs.

@@ -70,6 +70,8 @@ private enum SplitAutosave {
     static let mediaRight   = "editor.media.right"
     static let verticalTop  = "editor.vertical.top"
     static let verticalLeft = "editor.vertical.left"
+    static let studioCenter = "editor.studio.center"
+    static let studioSidebar = "editor.studio.sidebar"
     static func preset(_ p: LayoutPreset) -> String { "editor.\(p.rawValue).preset" }
 
     /// AppKit persists divider frames under this key; no public API queries it.
@@ -93,6 +95,7 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
     private weak var previewSplitItem: NSSplitViewItem?
     private weak var inspectorSplitItem: NSSplitViewItem?
     private weak var timelineSplitItem: NSSplitViewItem?
+    private weak var studioSidebarSplitItem: NSSplitViewItem?
 
     private let editorTitlebarFill = EditorTitlebarFillView()
     private lazy var mediaHC: NSViewController     = makeHosting(MediaPanelView(), panel: .media)
@@ -190,6 +193,7 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
         if item === agentSplitItem     { return !editor.agentPanelVisible }
         if item === mediaSplitItem     { return !editor.mediaPanelVisible }
         if item === inspectorSplitItem { return !editor.inspectorPanelVisible }
+        if item === studioSidebarSplitItem { return !editor.mediaPanelVisible && !editor.inspectorPanelVisible }
         return false
     }
 
@@ -201,11 +205,20 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
     func applyMediaVisibility(_ visible: Bool) {
         guard currentMaximized == nil else { return }
         applyCollapsed(item: mediaSplitItem, collapsed: !visible)
+        applyStudioSidebarVisibility()
     }
 
     func applyInspectorVisibility(_ visible: Bool) {
         guard currentMaximized == nil else { return }
         applyCollapsed(item: inspectorSplitItem, collapsed: !visible)
+        applyStudioSidebarVisibility()
+    }
+
+    private func applyStudioSidebarVisibility() {
+        applyCollapsed(
+            item: studioSidebarSplitItem,
+            collapsed: !editor.mediaPanelVisible && !editor.inspectorPanelVisible
+        )
     }
 
     func applyCollapsed(item: NSSplitViewItem?, collapsed: Bool) {
@@ -246,6 +259,7 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
         previewSplitItem = nil
         inspectorSplitItem = nil
         timelineSplitItem = nil
+        studioSidebarSplitItem = nil
 
         currentPreset = preset
         splitView.isVertical = true
@@ -257,6 +271,7 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
         case .default:  buildDefaultLayout(into: presetRoot)
         case .media:    buildMediaLayout(into: presetRoot)
         case .vertical: buildVerticalLayout(into: presetRoot)
+        case .studio:   buildStudioLayout(into: presetRoot)
         }
 
         let agentItem = NSSplitViewItem(viewController: agentHC)
@@ -268,8 +283,56 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
         agentSplitItem = agentItem
 
         let presetItem = NSSplitViewItem(viewController: presetRoot)
-        presetItem.minimumThickness = 400
+        presetItem.minimumThickness = preset == .studio
+            ? Layout.previewMinWidth + max(Layout.mediaPanelMin, Layout.inspectorMin) + AppTheme.BorderWidth.thin
+            : Layout.previewMinWidth
         addSplitViewItem(presetItem)
+    }
+
+    // MARK: - Studio layout
+
+    private func buildStudioLayout(into target: NSSplitViewController) {
+        target.splitView.isVertical = true
+
+        let center = makeChildSplit(isVertical: false, autosave: SplitAutosave.studioCenter)
+        center.addSplitViewItem(makePreviewItem(minimumThickness: Layout.previewMinHeight))
+        center.addSplitViewItem(makeTimelineItem())
+
+        let sidebar = makeChildSplit(isVertical: false, autosave: SplitAutosave.studioSidebar)
+        sidebar.addSplitViewItem(makeMediaItem(minimumThickness: AppTheme.Workspace.sidebarPanelMinHeight))
+        sidebar.addSplitViewItem(makeInspectorItem(minimumThickness: AppTheme.Workspace.sidebarPanelMinHeight))
+
+        let centerItem = NSSplitViewItem(viewController: center)
+        centerItem.minimumThickness = Layout.previewMinWidth
+        let sidebarItem = NSSplitViewItem(viewController: sidebar)
+        sidebarItem.minimumThickness = max(Layout.mediaPanelMin, Layout.inspectorMin)
+        sidebarItem.isCollapsed = !editor.mediaPanelVisible && !editor.inspectorPanelVisible
+        target.addSplitViewItem(centerItem)
+        target.addSplitViewItem(sidebarItem)
+        studioSidebarSplitItem = sidebarItem
+
+        applyAfterLayout { [weak self, weak target, weak center, weak sidebar] in
+            guard let self, let target, let center, let sidebar else { return }
+            self.positionIfUnsaved(self) {
+                $0.setPosition(AppTheme.Workspace.agentDefaultWidth, ofDividerAt: 0)
+            }
+            self.view.layoutSubtreeIfNeeded()
+            self.positionIfUnsaved(target) {
+                $0.setPosition(
+                    max(Layout.previewMinWidth, target.view.bounds.width - AppTheme.Workspace.sidebarDefaultWidth),
+                    ofDividerAt: 0
+                )
+            }
+            self.positionIfUnsaved(center) {
+                $0.setPosition(
+                    round(center.view.bounds.height * (1 - Layout.timelineDefaultHeightFraction)),
+                    ofDividerAt: 0
+                )
+            }
+            self.positionIfUnsaved(sidebar) {
+                $0.setPosition(round(sidebar.view.bounds.height * 0.55), ofDividerAt: 0)
+            }
+        }
     }
 
     // MARK: - Default layout
@@ -374,25 +437,25 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
         apply(controller.splitView)
     }
 
-    private func makeMediaItem() -> NSSplitViewItem {
+    private func makeMediaItem(minimumThickness: CGFloat = Layout.mediaPanelMin) -> NSSplitViewItem {
         let item = NSSplitViewItem(viewController: mediaHC)
-        item.minimumThickness = Layout.mediaPanelMin
+        item.minimumThickness = minimumThickness
         item.canCollapse = false
         item.isCollapsed = !editor.mediaPanelVisible
         mediaSplitItem = item
         return item
     }
 
-    private func makePreviewItem() -> NSSplitViewItem {
+    private func makePreviewItem(minimumThickness: CGFloat = Layout.previewMinWidth) -> NSSplitViewItem {
         let item = NSSplitViewItem(viewController: previewHC)
-        item.minimumThickness = Layout.previewMinWidth
+        item.minimumThickness = minimumThickness
         previewSplitItem = item
         return item
     }
 
-    private func makeInspectorItem() -> NSSplitViewItem {
+    private func makeInspectorItem(minimumThickness: CGFloat = Layout.inspectorMin) -> NSSplitViewItem {
         let item = NSSplitViewItem(viewController: inspectorHC)
-        item.minimumThickness = Layout.inspectorMin
+        item.minimumThickness = minimumThickness
         item.canCollapse = false
         item.isCollapsed = !editor.inspectorPanelVisible
         inspectorSplitItem = item
@@ -409,17 +472,20 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
     private func makeHosting<V: View>(_ content: V, panel: EditorViewModel.FocusedPanel) -> NSHostingController<some View> {
         let hc = NSHostingController(
             rootView: content
-                .environment(editor)
                 .appLocalization()
                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
                 .background {
                     AppTheme.Background.surfaceColor
                         .ignoresSafeArea(edges: .top)
                 }
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.Workspace.panelRadius))
                 .overlay {
                     PanelFocusRing(panel: panel)
                         .allowsHitTesting(false)
                 }
+                .padding(AppTheme.Workspace.panelInset)
+                .background(AppTheme.Background.baseColor)
+                .environment(editor)
         )
         hc.sizingOptions = []
         hc.view.setAccessibilityIdentifier(panel.accessibilityID)
@@ -429,9 +495,17 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
     private func makeAgentSidebarHosting<V: View>(_ content: V) -> NSHostingController<some View> {
         let hc = NSHostingController(
             rootView: content
-                .environment(editor)
                 .appLocalization()
                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                .background(AppTheme.Background.surfaceColor)
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.Workspace.panelRadius))
+                .overlay {
+                    PanelFocusRing(panel: .agent)
+                        .allowsHitTesting(false)
+                }
+                .padding(AppTheme.Workspace.panelInset)
+                .background(AppTheme.Background.baseColor)
+                .environment(editor)
         )
         hc.sizingOptions = []
         hc.view.setAccessibilityIdentifier(EditorViewModel.FocusedPanel.agent.accessibilityID)
@@ -501,9 +575,13 @@ private struct PanelFocusRing: View {
     private var isFocused: Bool { editor.focusedPanel == panel }
 
     var body: some View {
-        Rectangle()
-            .strokeBorder(AppTheme.Accent.primary, lineWidth: AppTheme.BorderWidth.thin)
-            .opacity(isFocused ? AppTheme.Opacity.strong : 0)
+        RoundedRectangle(cornerRadius: AppTheme.Workspace.panelRadius)
+            .strokeBorder(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.hairline)
+            .overlay {
+                RoundedRectangle(cornerRadius: AppTheme.Workspace.panelRadius)
+                    .strokeBorder(AppTheme.Accent.primary, lineWidth: AppTheme.BorderWidth.thin)
+                    .opacity(isFocused ? AppTheme.Opacity.strong : 0)
+            }
             .animation(.easeOut(duration: AppTheme.Anim.transition), value: isFocused)
     }
 }

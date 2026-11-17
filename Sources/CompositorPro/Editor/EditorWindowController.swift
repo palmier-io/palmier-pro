@@ -198,6 +198,13 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             }
             return false
 
+        case 12: // Q key — Control+Q quit shortcut
+            if mods.contains(.control) {
+                NSApp.terminate(nil)
+                return true
+            }
+            return false
+
         case 36: // Return / Enter
             if handlesMediaPanelCommands,
                editorViewModel.selectedFolderIds.count == 1,
@@ -351,6 +358,7 @@ extension EditorWindowController: EditorActions {
     @objc func setLayoutDefault(_ sender: Any?) { WorkspaceLayoutStore.shared.selection = .default }
     @objc func setLayoutMedia(_ sender: Any?) { WorkspaceLayoutStore.shared.selection = .media }
     @objc func setLayoutVertical(_ sender: Any?) { WorkspaceLayoutStore.shared.selection = .vertical }
+    @objc func setLayoutStudio(_ sender: Any?) { WorkspaceLayoutStore.shared.selection = .studio }
 
     private func toggleMaximizePanelAction() {
         if editorViewModel.maximizedPanel != nil {
@@ -385,6 +393,9 @@ extension EditorWindowController: EditorActions {
             return true
         case #selector(setLayoutVertical(_:)):
             menuItem.state = WorkspaceLayoutStore.shared.selection == .vertical ? .on : .off
+            return true
+        case #selector(setLayoutStudio(_:)):
+            menuItem.state = WorkspaceLayoutStore.shared.selection == .studio ? .on : .off
             return true
         case #selector(copy(_:)), #selector(cut(_:)):
             return canHandleClipboardShortcut() && !editorViewModel.selectedClipIds.isEmpty
