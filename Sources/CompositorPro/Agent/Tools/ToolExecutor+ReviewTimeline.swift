@@ -60,6 +60,14 @@ extension ToolExecutor {
                 }
             }
 
+            let plan = editor.editPlans.first { $0.timelineId == timeline.id }
+            let claimDisplay = ClaimDisplayAudit.make(plan: plan, timeline: timeline, startFrame: start, endFrame: end)
+            if claimDisplay.status == .disagreement {
+                warnings.append("claimsNotShown")
+            } else if !claimDisplay.unreviewedClaimIds.isEmpty {
+                warnings.append("unreviewedClaims")
+            }
+
             var metadata: [String: Any] = [
                 "timelineId": timeline.id, "startFrame": start, "endFrame": end, "path": url.path,
                 "outputRevision": outputRevision,
@@ -82,6 +90,7 @@ extension ToolExecutor {
                 "maxDelta": review.motion.maxDelta,
                 "frozenSpans": review.motion.frozenSpans,
             ] as [String: Any]
+            metadata["claimDisplay"] = claimDisplay.receipt
             guard let receipt = Self.jsonString(metadata) else { throw ToolError("review_timeline: metadata encoding failed") }
             return ToolResult(content: review.images.map { .image(base64: $0.base64EncodedString(), mediaType: "image/jpeg") }
                               + [.text(receipt)], isError: false)
