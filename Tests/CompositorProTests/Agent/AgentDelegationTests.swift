@@ -58,7 +58,8 @@ struct AgentDelegationTests {
     /// execution, without exceeding two in-flight workers.
     @Test func parallelPreparationIsFasterThanSequentialExecution() async throws {
         let probe = DelegationWorkerProbe()
-        let latency = Duration.milliseconds(150)
+        // Wide enough that scheduler jitter cannot invert the comparison on a loaded machine.
+        let latency = Duration.milliseconds(400)
         let worker: @Sendable (AgentDelegationTask, String, AgentRequestContext) async throws -> String = { task, _, _ in
             _ = await probe.begin(task.id)
             do {
