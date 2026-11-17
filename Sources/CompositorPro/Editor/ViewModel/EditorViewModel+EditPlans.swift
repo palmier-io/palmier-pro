@@ -234,3 +234,17 @@ extension EditPlan {
         }
     }
 }
+
+extension EditorViewModel {
+    /// Records a completed timeline inspection on the plan for that timeline. Inspections are
+    /// evidence, not edits, so this never opens an undo action.
+    @discardableResult
+    func recordReviewInspection(planId: String, inspection: ReviewInspection) -> Bool {
+        guard let index = editPlans.firstIndex(where: { $0.id == planId }) else { return false }
+        editPlans[index].reviewInspections = ReviewInspection.appending(
+            inspection, to: editPlans[index].reviewInspections
+        )
+        onProjectCheckpointRequired?()
+        return true
+    }
+}

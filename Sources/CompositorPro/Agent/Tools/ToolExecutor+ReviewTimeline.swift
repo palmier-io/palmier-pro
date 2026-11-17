@@ -61,6 +61,16 @@ extension ToolExecutor {
             }
 
             let plan = editor.editPlans.first { $0.timelineId == timeline.id }
+            var inspectionId: String?
+            if let plan {
+                let inspection = ReviewInspection(
+                    startFrame: start, endFrame: end, outputRevision: outputRevision,
+                    sampledFrames: review.frames.map { start + $0 }, qualityWarnings: warnings
+                )
+                if editor.recordReviewInspection(planId: plan.id, inspection: inspection) {
+                    inspectionId = inspection.inspectionId
+                }
+            }
             let claimDisplay = ClaimDisplayAudit.make(plan: plan, timeline: timeline, startFrame: start, endFrame: end)
             if claimDisplay.status == .disagreement {
                 warnings.append("claimsNotShown")
@@ -91,6 +101,7 @@ extension ToolExecutor {
                 "frozenSpans": review.motion.frozenSpans,
             ] as [String: Any]
             metadata["claimDisplay"] = claimDisplay.receipt
+            if let inspectionId { metadata["inspectionId"] = inspectionId }
             guard let receipt = Self.jsonString(metadata) else { throw ToolError("review_timeline: metadata encoding failed") }
             return ToolResult(content: review.images.map { .image(base64: $0.base64EncodedString(), mediaType: "image/jpeg") }
                               + [.text(receipt)], isError: false)

@@ -83,11 +83,14 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
     var assembly: PlanAssemblyState?
     /// Graphic scenes whose specification is retained for later regeneration.
     var graphicScenes: [PlanGraphicScene] = []
+    /// Recorded timeline inspections for this plan, newest first.
+    var reviewInspections: [ReviewInspection] = []
 
     private enum CodingKeys: String, CodingKey {
         case id, name, goal, timelineId, fps, width, height, status
         case sections, shots, notes, createdAt, updatedAt, referenceRecipe, sourceLedger, sourceLedgerRevision
         case graphicScenes
+        case reviewInspections
         case scriptBeats, narrationIntent, narration, narrationRevision, narrationTiming, narrationSynthesisProof
         case productionRun, brief, soundCues, assembly
     }
@@ -167,6 +170,7 @@ struct EditPlan: Codable, Sendable, Equatable, Identifiable {
         soundCues = try container.decodeIfPresent([PlanSoundCue].self, forKey: .soundCues)
         assembly = try container.decodeIfPresent(PlanAssemblyState.self, forKey: .assembly)
         graphicScenes = try container.decodeIfPresent([PlanGraphicScene].self, forKey: .graphicScenes) ?? []
+        reviewInspections = try container.decodeIfPresent([ReviewInspection].self, forKey: .reviewInspections) ?? []
     }
 }
 
@@ -413,9 +417,22 @@ extension EditPlan {
         if let brief { out["brief"] = brief.receipt }
         if let soundCues { out["soundCues"] = soundCues.map { $0.receipt } }
         out["durationMatch"] = durationMatchReceipt
+        out["inspectionCount"] = reviewInspections.count
         if includeDetails {
             out["createdAt"] = EditPlanStore.iso8601String(createdAt)
             if let referenceRecipe { out["referenceRecipe"] = referenceRecipe.receipt() }
+            if !reviewInspections.isEmpty {
+                out["inspections"] = reviewInspections.prefix(8).map { inspection in
+                    [
+                        "inspectionId": inspection.inspectionId,
+                        "startFrame": inspection.startFrame,
+                        "endFrame": inspection.endFrame,
+                        "outputRevision": inspection.outputRevision,
+                        "reviewedAt": EditPlanStore.iso8601String(inspection.reviewedAt),
+                        "qualityWarnings": inspection.qualityWarnings,
+                    ] as [String: Any]
+                }
+            }
             if let sourceLedger { out["sourceLedger"] = sourceLedger.receipt() }
             if let sourceLedgerRevision { out["sourceLedgerRevision"] = sourceLedgerRevision }
             if let scriptBeats { out["scriptBeats"] = scriptBeats.map { $0.receipt() } }
