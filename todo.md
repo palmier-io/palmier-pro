@@ -214,7 +214,7 @@ OpenCut's mature design (described in `changelog/0.1.0`–`0.3.0.md`) offers sev
 
 Each item below states: **What** (outcome), **Why** (OpenCut reference + value), **How** (steps with preconditions, invariants, failure handling), **Files**, **Preconditions**, **Invariants**, **Failure handling**, **Behavior that must remain unchanged**, and **Acceptance**. An agent should be able to pick any item and implement it without asking clarifying questions.
 
-### Additional item 1 — OKLCH semantic theme system
+### Additional item 1 — OKLCH semantic theme system **[DONE]**
 
 **What:** Add an optional OKLCH-based semantic theme layer over `AppTheme`, keyed by system appearance (light/dark/vibrant light/vibrant dark), with views opting in via `theme.color(for:)` / `theme.font(for:)`.
 
@@ -253,7 +253,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift build` succeeds with no new warnings.
 - Pointer equality holds for repeated resolution of the same appearance.
 
-### Additional item 2 — Integer tick time + rational frame rate (MediaTime)
+### Additional item 2 — Integer tick time + rational frame rate (MediaTime) **[DONE]**
 
 **What:** Add `MediaTime` (Int64 tick count at 120,000 ticks/sec) and `FrameRate` (rational `{numerator, denominator}`) for exact timeline time arithmetic, frame snapping, and timecode formatting.
 
@@ -288,7 +288,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - Repeated frame snap → unsnap cycles produce zero float rounding error.
 - `swift build` succeeds.
 
-### Additional item 3 — Type-safe track ordering (SceneTracks)
+### Additional item 3 — Type-safe track ordering (SceneTracks) **[OPEN]**
 
 **What:** Replace flat track array concept with `SceneTracks`: explicit typed fields `overlay`, `main` (singleton `VideoTrack`), `audio`, making it structurally impossible to mix track kinds or misplace a track.
 
@@ -320,7 +320,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter SceneTracksTests` passes (track-kind separation, invalid-placement rejection, singleton main track).
 - Compile-time impossible to place a video clip on an audio track (or vice versa) via the typed API.
 
-### Additional item 4 — Diff-based ripple editing
+### Additional item 4 — Diff-based ripple editing **[PARTIAL: engine + tests; command wiring open]**
 
 **What:** Add a diff-based ripple engine: snapshot track intervals before/after an edit, compute vacated intervals (incl. cross-track moves), emit explicit `RippleAdjustment` values applied in one deterministic pass.
 
@@ -677,6 +677,8 @@ Pattern: versioned migration steps keyed by format version, run on open, last-su
 ---
 
 ---
+
+Port status: OKLCH theme (`UI/OKLCHTheme.swift`, `OKLCHThemeTests`), exact `MediaTime`/`FrameRate` (`Timeline/MediaTime.swift`, `MediaTimeTests`), and the diff-based ripple engine (`Timeline/RippleEdit.swift`, `RippleEditTests`) are in. Remaining port items are unchanged; the release build is a local ad-hoc-signed bundle installed to /Applications (no Developer ID yet).
 
 ### Order of implementation (recommended)
 1. **Item 1 — OKLCH theme** (lowest risk, visual upgrade, maps to `AppTheme`)
