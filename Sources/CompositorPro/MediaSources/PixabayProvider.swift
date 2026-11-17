@@ -14,16 +14,19 @@ struct PixabayProvider: StockMediaProvider {
     /// access. Production uses the stored credential.
     let apiKey: String?
     let requestJSON: StockMediaJSONRequest
+    let requestCache: StockMediaRequestCache
     let requestPage: @Sendable (URL) async throws -> Data
 
     init(
         apiKey: String? = nil,
         requestJSON: @escaping StockMediaJSONRequest = { try await StockMediaHTTP.getJSON($0, headers: $1) },
-        requestPage: @escaping @Sendable (URL) async throws -> Data = PixabayProvider.fetchVideoPage
+        requestPage: @escaping @Sendable (URL) async throws -> Data = PixabayProvider.fetchVideoPage,
+        requestCache: StockMediaRequestCache = .shared
     ) {
         self.apiKey = apiKey
         self.requestJSON = requestJSON
         self.requestPage = requestPage
+        self.requestCache = requestCache
     }
 
     struct VideoResponse: Decodable {
@@ -75,8 +78,15 @@ struct PixabayProvider: StockMediaProvider {
         guard !key.isEmpty else { throw StockMediaError.needsAPIKey(provider: displayName) }
         guard let url = Self.searchURL(query, key: key) else { throw StockMediaError.emptyQuery }
 
-        let data = try await requestJSON(url, [:])
-        try Task.checkCancellation()
+        let cacheKey = StockMediaRequestCache.key(provider: Self.providerID, query: query)
+        let data: Data
+        if let cached = requestCache.cachedResponse(key: cacheKey) {
+            data = cached
+        } else {
+            data = try await requestJSON(url, [:])
+            try Task.checkCancellation()
+            requestCache.store(data, key: cacheKey)
+        }
         let response = try StockMediaHTTP.decode(VideoResponse.self, from: data, provider: displayName)
         guard response.totalHits >= 0 else { throw StockMediaError.undecodable(provider: displayName) }
         let hits = response.hits.compactMap { Self.hit($0, query: query) }

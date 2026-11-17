@@ -34,7 +34,7 @@ All eleven findings are now closed. R11 landed last: folder relink scans on an o
 | 5a | Storyboard review before production | Partial | `prepare_storyboard`/`approve_storyboard`, native panel, animatic render; **no semantic graphic drafts, no MCP animatic endpoint** |
 | 5b | No-repeat visual rule | Partial | identity + occurrence audit + export gate exist; `review_timeline` now measures perceptual similarity (bounded dHash + mean luma, 24 sources, near-duplicate pairs + `perceptualNearDuplicates`). **`deliveryVerified` stays false by design (no face inspection), so delivery remains unverified** |
 | 6 | Map scenes | Partial | `build_map_scene` with 12-place catalog + Lottie camera; **no region polygons, no plan/ledger binding** |
-| 7 | Evidence graphics | Partial | `build_graphic_scene` typed family + narration validator; spec persisted only as receipt, not a first-class plan artifact |
+| 7 | Evidence graphics | Implemented | `build_graphic_scene` typed family + narration validator; `PlanGraphicScene` (spec + digest + renderer version) persists on the plan and is exposed by `plan_edit read` |
 | 8 | Production lifecycle | Partial | `ProductionCoordinator` phases/resume/receipts; **whole-intent native/UI drain missing — quit quiescence blocked** (`docs/contracts/project-close-confirmation.md`) |
 
 ### P1
@@ -42,8 +42,8 @@ All eleven findings are now closed. R11 landed last: folder relink scans on an o
 | # | Capability | Real state | Evidence |
 |---|---|---|---|
 | 9 | Acquire verified coverage | Partial | `find_shot_candidates` + import; no end-to-end coverage workflow proof |
-| 9a | Source diversity | Partial | pagination + canonical exclusions + delivery history; **no 24h request cache, no complementary-source eval, no live benchmark** |
-| 10 | Preserve editable graphic artifacts | Partial | `EvidenceGraphicSpec` + `digest` now persist on `EditPlan.graphicScenes` with a renderer version; label fixes regenerate via the same spec (MCP readback pending) |
+| 9a | Source diversity | Partial | pagination + canonical exclusions + delivery history + 24 h provider response cache (Pixabay wired, TTL/rollback-safe); **no complementary-source eval, no live benchmark** |
+| 10 | Preserve editable graphic artifacts | Implemented | `EvidenceGraphicSpec` + `digest` persist on `EditPlan.graphicScenes` with a renderer version; label fixes regenerate via the same spec; MCP readback verified (`GraphicSceneReadbackMCPTests`) |
 | 11 | Dependency-aware section revision | Implemented | `plan_edit action=revise_section` updates the section, its linked beats, invalidates timing, and reports dependents; unit-tested and MCP-readback verified (`PlanReadbackMCPTests`) |
 | 12 | Review facts/motion/audio/coverage | Partial | `review_timeline` reports bounded motion (mean/min/max luma delta, frozen spans) + loudness/peak/clip, and now audits claim-vs-display structure (`ClaimDisplayAudit`: planned claimIds must be shown by the scene built for them, `claimsNotShown`/`unreviewedClaims` warnings); **still no persisted inspection intervals, `perceptualSimilarity: not_checked`** |
 | 13 | Intent-level Agent ops | Partial | `produce_plan`, `edit_pilot`, `plan_edit`, `production_status` exist; not all verified end-to-end |

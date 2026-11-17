@@ -418,9 +418,13 @@ extension EditPlan {
         if let soundCues { out["soundCues"] = soundCues.map { $0.receipt } }
         out["durationMatch"] = durationMatchReceipt
         out["inspectionCount"] = reviewInspections.count
+        out["graphicSceneCount"] = graphicScenes.count
         if includeDetails {
             out["createdAt"] = EditPlanStore.iso8601String(createdAt)
             if let referenceRecipe { out["referenceRecipe"] = referenceRecipe.receipt() }
+            if !graphicScenes.isEmpty {
+                out["graphicScenes"] = graphicScenes.prefix(16).map(\.receipt)
+            }
             if !reviewInspections.isEmpty {
                 out["inspections"] = reviewInspections.prefix(8).map { inspection in
                     [
