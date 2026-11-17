@@ -60,6 +60,14 @@ extension ToolExecutor {
                 }
             }
 
+            let uniqueness = try await VisualUniqueness.audit(
+                timeline: timeline, timelines: involved, manifest: editor.mediaManifest
+            )
+            let perceptual = await PerceptualSimilarity.audit(
+                occurrences: uniqueness.occurrences, manifest: editor.mediaManifest
+            )
+            if !perceptual.pairs.isEmpty { warnings.append("perceptualNearDuplicates") }
+
             let plan = editor.editPlans.first { $0.timelineId == timeline.id }
             var inspectionId: String?
             if let plan {
@@ -101,6 +109,7 @@ extension ToolExecutor {
                 "frozenSpans": review.motion.frozenSpans,
             ] as [String: Any]
             metadata["claimDisplay"] = claimDisplay.receipt
+            metadata["perceptualSimilarity"] = perceptual.receipt
             if let inspectionId { metadata["inspectionId"] = inspectionId }
             guard let receipt = Self.jsonString(metadata) else { throw ToolError("review_timeline: metadata encoding failed") }
             return ToolResult(content: review.images.map { .image(base64: $0.base64EncodedString(), mediaType: "image/jpeg") }

@@ -32,7 +32,7 @@ All eleven findings are now closed. R11 landed last: folder relink scans on an o
 | 4 | Measured narration timing | Partial | `measure_narration` + `NarrationTimingService`; auto paragraph regen/resume missing |
 | 5 | Grouped approvals | Partial | blockers grouped in `read_storyboard`; no human UI run recorded |
 | 5a | Storyboard review before production | Partial | `prepare_storyboard`/`approve_storyboard`, native panel, animatic render; **no semantic graphic drafts, no MCP animatic endpoint** |
-| 5b | No-repeat visual rule | Partial | identity + occurrence audit + export gate exist; **perceptual similarity is `not_checked`, `deliveryVerified` always false** — no perceptual/face detection |
+| 5b | No-repeat visual rule | Partial | identity + occurrence audit + export gate exist; `review_timeline` now measures perceptual similarity (bounded dHash + mean luma, 24 sources, near-duplicate pairs + `perceptualNearDuplicates`). **`deliveryVerified` stays false by design (no face inspection), so delivery remains unverified** |
 | 6 | Map scenes | Partial | `build_map_scene` with 12-place catalog + Lottie camera; **no region polygons, no plan/ledger binding** |
 | 7 | Evidence graphics | Partial | `build_graphic_scene` typed family + narration validator; spec persisted only as receipt, not a first-class plan artifact |
 | 8 | Production lifecycle | Partial | `ProductionCoordinator` phases/resume/receipts; **whole-intent native/UI drain missing — quit quiescence blocked** (`docs/contracts/project-close-confirmation.md`) |
