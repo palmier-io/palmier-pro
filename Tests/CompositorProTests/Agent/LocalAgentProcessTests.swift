@@ -35,6 +35,61 @@ private actor LocalAgentLineRecorder {
 @Suite("Local agent process lifecycle", .serialized)
 struct LocalAgentProcessTests {
     @Test(.timeLimit(.minutes(1)))
+    func silentReasoningAllowsTwoHoursAndToolActivityExtendsTheRunWithoutATotalLimit() async throws {
+        let script = try await LocalAgentTestFiles.script("""
+        import os, signal, sys
+        sys.stdin.read()
+        print(os.getpid(), flush=True)
+        while True:
+            signal.pause()
+        """)
+        let started = LocalAgentTestSignal()
+        let recorder = LocalAgentLineRecorder()
+        let clock = LocalAgentProcessTestClock()
+        let activity = LocalAgentActivity(clock: clock)
+        let origin = clock.now
+        var deadlines = clock.scheduled.makeAsyncIterator()
+        let run = Task {
+            defer { clock.finishObservations() }
+            return try await LocalAgentProcess.run(executable: script, request: .init(
+                directory: script.deletingLastPathComponent(), arguments: [], input: Data()
+            ), clock: clock, activity: activity) { data in
+                await recorder.append(data)
+                await started.open()
+            }
+        }
+        do {
+            await started.wait()
+            let pid = try #require(await recorder.lines.first.flatMap(Int32.init))
+            #expect(await deadlines.next() == origin.advanced(by: .seconds(7200)))
+            clock.advance(to: origin.advanced(by: .seconds(901)))
+            #expect(kill(pid, 0) == 0)
+            for update in [7199, 14398] {
+                clock.advance(to: origin.advanced(by: .seconds(update)))
+                activity.record()
+                clock.advance(to: origin.advanced(by: .seconds(update + 1)))
+                #expect(await deadlines.next() == origin.advanced(by: .seconds(update + 7200)))
+                #expect(kill(pid, 0) == 0)
+            }
+            clock.advance(to: origin.advanced(by: .seconds(21598)))
+            do {
+                _ = try await run.value
+                Issue.record("Silent process completed without a timeout")
+            } catch {
+                #expect(error as? LocalAgentFailure == .timedOut)
+            }
+            #expect(kill(pid, 0) == -1)
+            #expect(errno == ESRCH)
+        } catch {
+            run.cancel()
+            _ = await run.result
+            try await LocalAgentTestFiles.remove(script)
+            throw error
+        }
+        try await LocalAgentTestFiles.remove(script)
+    }
+
+    @Test(.timeLimit(.minutes(1)))
     func activeRunSurvivesTheOriginalDeadlineAndStopsAfterInactivity() async throws {
         let script = try await LocalAgentTestFiles.script("""
         import os, signal, sys

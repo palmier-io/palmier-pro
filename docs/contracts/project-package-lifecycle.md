@@ -30,6 +30,8 @@ Calling `save` installs a fence synchronously. Already-granted mutations finish 
 
 Save requests run FIFO. No queued mutation can enter between consecutive queued saves. Save completion callbacks run while the current fence remains held; a callback may enqueue another save without overlapping the current save context.
 
+`VideoProject` keeps AppKit document activities serialized with asynchronous waiting. Pending native save and close activities must leave the main actor available for coordinated save callbacks and Agent cleanup.
+
 `VideoProject` publishes one immutable `SaveContext` before calling `super.save`. Only the AppKit save worker reads it; the main actor clears it after the native completion returns. This is the invariant behind its `nonisolated(unsafe)` handoff. Timeline, manifest, plans, and chat sessions are encoded off-main with per-call encoders. Encoding failures throw before package writing begins. AppKit supplies safe-save staging and installation; failed encoding must preserve the last successful package.
 
 `writeSafely` unblocks native user interaction before AppKit prepares its safe-save directory. `write` also unblocks before checking its context. Direct main-thread writes and off-main writes without a coordinated context fail; there is no fallback snapshot or main-thread write path.

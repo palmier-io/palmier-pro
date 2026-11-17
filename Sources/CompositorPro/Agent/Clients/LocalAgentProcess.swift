@@ -8,6 +8,22 @@ struct LocalAgentProcessResult: Sendable {
     let diagnostics: String
 }
 
+final class LocalAgentActivity<TimeoutClock: Clock>: Sendable where TimeoutClock.Duration == Duration {
+    private let clock: TimeoutClock
+    private let lastActivity: Mutex<TimeoutClock.Instant>
+
+    init(clock: TimeoutClock) {
+        self.clock = clock
+        lastActivity = Mutex(clock.now)
+    }
+
+    func record() { lastActivity.withLock { $0 = clock.now } }
+
+    func deadline(after timeout: Duration) -> TimeoutClock.Instant {
+        lastActivity.withLock { $0.advanced(by: timeout) }
+    }
+}
+
 private struct LocalAgentPipe: Sendable {
     let channel: DispatchIO
     let chunks: AsyncThrowingStream<Data, Error>
@@ -43,14 +59,15 @@ private final class LocalAgentProcessLifetime<TimeoutClock: Clock>: Sendable whe
         var timedOut = false
         var exitStatus: Int32?
         var exitWaiter: CheckedContinuation<Int32, Never>?
-        var lastActivity: TimeoutClock.Instant
     }
     private let state: Mutex<State>
     private let clock: TimeoutClock
+    private let activity: LocalAgentActivity<TimeoutClock>
 
-    init(clock: TimeoutClock) {
+    init(clock: TimeoutClock, activity: LocalAgentActivity<TimeoutClock>) {
         self.clock = clock
-        state = Mutex(State(lastActivity: clock.now))
+        self.activity = activity
+        state = Mutex(State())
     }
 
     func install(_ process: Process, channels: [DispatchIO]) throws {
@@ -76,7 +93,7 @@ private final class LocalAgentProcessLifetime<TimeoutClock: Clock>: Sendable whe
     func recordActivity() {
         state.withLock {
             guard !$0.cancelled, $0.exitStatus == nil else { return }
-            $0.lastActivity = clock.now
+            activity.record()
         }
     }
 
@@ -84,7 +101,7 @@ private final class LocalAgentProcessLifetime<TimeoutClock: Clock>: Sendable whe
         var expired = false
         let deadline = state.withLock { state -> TimeoutClock.Instant? in
             guard !state.cancelled, state.exitStatus == nil else { return nil }
-            let deadline = state.lastActivity.advanced(by: timeout)
+            let deadline = activity.deadline(after: timeout)
             guard clock.now < deadline else {
                 state.cancelled = true
                 state.timedOut = true
@@ -146,11 +163,12 @@ enum LocalAgentProcess {
     static func run<TimeoutClock: Clock>(
         executable: URL,
         request: LocalAgentRequest,
-        timeout: Duration = .seconds(900),
+        timeout: Duration = .seconds(7200),
         clock: TimeoutClock = ContinuousClock(),
+        activity: LocalAgentActivity<TimeoutClock>? = nil,
         onLine: @escaping @Sendable (Data) async throws -> Void
     ) async throws -> LocalAgentProcessResult where TimeoutClock.Duration == Duration {
-        let lifetime = LocalAgentProcessLifetime(clock: clock)
+        let lifetime = LocalAgentProcessLifetime(clock: clock, activity: activity ?? LocalAgentActivity(clock: clock))
         return try await withTaskCancellationHandler {
             try Task.checkCancellation()
             let process = Process()
@@ -185,7 +203,6 @@ enum LocalAgentProcess {
                 }
                 catch { return }
             }
-            defer { watchdog.cancel() }
             do {
                 let result = try await withThrowingTaskGroup(of: Completion.self) { group in
                     group.addTask {
@@ -196,7 +213,9 @@ enum LocalAgentProcess {
                         try await readLines(stdout.chunks, onActivity: { lifetime.recordActivity() }, onLine: onLine)
                         return .output
                     }
-                    group.addTask { .diagnostics(try await readDiagnostics(stderr.chunks)) }
+                    group.addTask {
+                        .diagnostics(try await readDiagnostics(stderr.chunks, onActivity: { lifetime.recordActivity() }))
+                    }
                     group.addTask {
                         .exit(await lifetime.waitForExit())
                     }
@@ -218,11 +237,15 @@ enum LocalAgentProcess {
                     guard let status else { throw LocalAgentFailure.incompleteOutput }
                     return LocalAgentProcessResult(status: status, diagnostics: diagnostics)
                 }
+                watchdog.cancel()
+                await watchdog.value
                 try Task.checkCancellation()
                 if lifetime.didTimeOut { throw LocalAgentFailure.timedOut }
                 return result
             } catch {
                 lifetime.cancel()
+                watchdog.cancel()
+                await watchdog.value
                 if lifetime.didTimeOut { throw LocalAgentFailure.timedOut }
                 if Task.isCancelled { throw CancellationError() }
                 throw error
@@ -268,10 +291,14 @@ enum LocalAgentProcess {
         if !buffer.isEmpty { try await onLine(buffer) }
     }
 
-    private static func readDiagnostics(_ chunks: AsyncThrowingStream<Data, Error>) async throws -> String {
+    private static func readDiagnostics(
+        _ chunks: AsyncThrowingStream<Data, Error>,
+        onActivity: @escaping @Sendable () -> Void
+    ) async throws -> String {
         var buffer = Data()
         for try await chunk in chunks {
             try Task.checkCancellation()
+            onActivity()
             buffer.append(chunk.prefix(max(0, 65_536 - buffer.count)))
         }
         return String(decoding: buffer, as: UTF8.self)

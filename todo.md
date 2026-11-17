@@ -117,7 +117,9 @@ All eleven findings are now closed. R11 landed last: folder relink scans on an o
 
 OpenCut's rewrite is plugin-first: third-party plugins ship executable agent tools, not just instructions, plus headless mode and an in-editor scripting tab. Compositor Pro already has Skills (instruction-only agent context) and a baked-in MCP server (~60 tools in a compile-time `ToolName` enum). The gap: third parties cannot ship a new executable agent tool without rebuilding the app. These items close that gap.
 
-### Plugin item 1 — Agent tool plugin registry (core)
+Plugin items 1, 2, 3, and 5 landed: `Agent/Plugins/` (manifest, store + digest ledger + trust, sandbox, registry), `ToolExecutor+Plugins.swift`, MCP `tools/list` + `tools/call` merge, plugin schemas in the built-in agent request (surviving both pruning paths), Settings › Plugins approval pane, and the `sample_echo` sample installed once at startup. `PluginManifestStoreTests`, `PluginSandboxRegistryTests`, and `PluginMCPTests` cover install/tamper/trust refusal, schema validation, timeout/exit mapping, name-shadow rejection, and an end-to-end MCP call. `CLI/PluginCommand.swift` adds headless `plugin list|run|trust|install`. Still open: `notifications/tools/list_changed` for already-connected clients (they pick up new tools on the next session), and mutating-scope plugins.
+
+### Plugin item 1 — Agent tool plugin registry (core) **[DONE]**
 Add a `ToolRegistry` that merges third-party tool definitions with the built-in `ToolName` enum. Plugins declare name + JSON input schema + executable entry point; the registry validates, indexes, and dispatches them. Read-only/query tools first (no project mutation) to limit risk.
 
 Files:
@@ -136,7 +138,7 @@ Acceptance:
 - `swift test --filter ToolRegistryTests` passes (register, lookup, duplicate rejection, schema validation).
 - MCP client connecting sees built-in + registered plugin tools; calling a plugin tool returns a shaped result.
 
-### Plugin item 2 — Sandboxed out-of-process plugin execution
+### Plugin item 2 — Sandboxed out-of-process plugin execution **[DONE]**
 Run plugin tools in a separate process (XPC or `Process`) with strict entitlements; never load third-party code into the main app process. Compositor Pro is non-sandboxed Developer ID, so code-sign + notarization constraints apply.
 
 Files:
@@ -153,7 +155,7 @@ Acceptance:
 - A sample read-only plugin (e.g., `list_sample_plugins`) runs out of process and returns JSON via MCP.
 - Timeout kills a hung plugin; non-zero exit maps to an error `ToolResult`, not a crash.
 
-### Plugin item 3 — Plugin manifest store + trust model (reuse Skill patterns)
+### Plugin item 3 — Plugin manifest store + trust model (reuse Skill patterns) **[DONE]**
 Reuse `SkillStore`/`SkillCatalog` patterns (content hash, ledger, install/sync/delete) for plugin manifests. Trust model: signed plugins run; unsigned plugins require explicit user confirmation and run with reduced scope.
 
 Files:
@@ -172,7 +174,7 @@ Acceptance:
 - `swift test --filter PluginStoreTests` passes (install, hash mismatch rejection, ledger persist).
 - Untrusted plugin tool call surfaces a confirmation UI; confirmed-once is remembered.
 
-### Plugin item 4 — Headless / scripting CLI for plugins
+### Plugin item 4 — Headless / scripting CLI for plugins **[DONE]**
 OpenCut has headless mode + a scripting tab in the editor. Compositor Pro's CLI exists but is currently broken (`CLIHandler.swift` compile failure: `HyperframesCatalogWrapper.inspectBlock(id:)` signature mismatch). Fix CLI first so plugins can run headlessly.
 
 Files:
@@ -189,7 +191,7 @@ Acceptance:
 - `swift build` succeeds (unblocks all CLI/plugin work).
 - `compositor plugin list` prints installed plugins; `compositor plugin run <id> --args '{}'` returns JSON.
 
-### Plugin item 5 — Prototype: one read-only sample plugin
+### Plugin item 5 — Prototype: one read-only sample plugin **[DONE]**
 Ship one sample read-only plugin end-to-end to prove the loop (manifest → store → registry → MCP → sandbox → result) before opening to third parties.
 
 Files:
@@ -701,4 +703,4 @@ All items follow AGENTS.md: keep one authoritative owner for mutable state, view
 - Nothing below the "Recently landed" line has a real-provider or human playback proof.
 - OpenCut repo surveyed: `https://github.com/OpenCut-app/OpenCut` — mid-rewrite skeleton (TS web + Rust GPUI desktop + Cloudflare API), MIT licensed. Mature design described in `changelog/0.1.0`–`0.3.0.md` (`MediaTime` 120k ticks/sec, rational `FrameRate`, `SceneTracks`, diff-based ripple, Rust/wgpu WASM compositor). Referenced `rust/crates/` and `src/lib/ripple/` code is **not in this checkout** — treat as design reference only, do not copy.
 - Compositor Pro is AGPL-clean: OpenCut is MIT, so adapting ideas/reimplementing in Swift is fine. Do not vendor OpenCut TS/Rust source.
-- The pre-existing `CLIHandler.swift` compile failure blocks `swift build`/`swift test`; fix it before plugin item 4. Plugin items 1–3 do not depend on the CLI build.
+- The former `CLIHandler.swift` compile failure no longer reproduces; `swift build` is green. Plugin items 1–5 are implemented (`CLI/PluginCommand.swift` adds `plugin list|run|trust|install`; `PluginCLITests` covers it).

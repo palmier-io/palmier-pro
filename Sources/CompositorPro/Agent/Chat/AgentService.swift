@@ -989,9 +989,14 @@ final class AgentService {
         guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor) else { return }
         await skillStore.reloadSkills()
         guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor) else { return }
+        await ToolRegistry.shared.ensureLoaded()
+        let pluginSchemas = ToolRegistry.shared.tools.map {
+            AgentToolSchema(name: $0.name, description: $0.description, inputSchema: $0.inputSchema)
+        }
+        let pluginToolNames = Set(pluginSchemas.map(\.name))
         let baseTools = ToolDefinitions.inAppAgent.map {
             AgentToolSchema(name: $0.name.rawValue, description: $0.description, inputSchema: $0.inputSchema)
-        }
+        } + pluginSchemas
 
         // --- Context-window management ---
         // Prune tools to editing-relevant subset when context is tight. Generation/stock/
@@ -1046,9 +1051,9 @@ final class AgentService {
             // tools; tight context trims only when the request is purely an edit.
             let tools: [AgentToolSchema]
             if targetedEdit {
-                tools = baseTools.filter { editingSubset.contains($0.name) }
+                tools = baseTools.filter { editingSubset.contains($0.name) || pluginToolNames.contains($0.name) }
             } else if contextIsTight, !userRequests.contains(where: { !ToolDefinitions.isTargetedEdit($0) }) {
-                tools = baseTools.filter { editingToolSet.contains($0.name) }
+                tools = baseTools.filter { editingToolSet.contains($0.name) || pluginToolNames.contains($0.name) }
             } else {
                 tools = baseTools
             }
@@ -1252,7 +1257,8 @@ final class AgentService {
             try Task.checkCancellation()
             try await LocalAgentClient.runGate.wait()
         } catch { return }
-        let bridge = LocalAgentMCPBridge(executor: executor, conversationID: conversationID) { [weak self, weak runEditor] in
+        let activity = LocalAgentActivity(clock: ContinuousClock())
+        let bridge = LocalAgentMCPBridge(executor: executor, conversationID: conversationID, onActivity: { activity.record() }) { [weak self, weak runEditor] in
             guard let self, let runEditor else { return false }
             return self.isCurrentRun(runID, conversationID: conversationID, editor: runEditor)
                 && runEditor.projectURL == projectURL && runEditor.projectId == projectID
@@ -1261,33 +1267,34 @@ final class AgentService {
         var assistantID: UUID?
         var completed = false
         do {
-            try Task.checkCancellation()
-            guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor) else { throw CancellationError() }
-            let endpoint = try await bridge.start()
-            setRequestPhase(.preparingContext, conversationID: conversationID)
-            let requestMessages = await apiMessages(conversationID: conversationID)
-            guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor),
-                  runEditor.projectURL == projectURL, runEditor.projectId == projectID,
-                  let inputID = sessionMessages(conversationID).last(where: { $0.role == .user })?.id else {
-                throw CancellationError()
-            }
-            let assistant = AgentMessage(role: .assistant, blocks: [])
-            assistantID = assistant.id
-            mutateSessionMessages(conversationID) { $0.append(assistant) }
-            var system = AgentInstructions.serverInstructions
-            if let summary = sessionSummaries[conversationID], !summary.isEmpty {
-                system += "\n\nEarlier conversation summary:\n\(summary)"
-            }
-            setRequestPhase(.waitingForResponse, conversationID: conversationID)
-            let client = LocalAgentClient(harness: harness, executable: executable,
-                                          effort: settings.reasoningEffort, endpoint: endpoint, modelID: settings.localModelID)
-            let stream = client.stream(system: system, tools: [], messages: requestMessages, context: AgentRequestContext(
-                conversationID: conversationID, traceID: traceID, spanID: UUID(), inputMessageID: inputID,
-                outputMessageID: assistant.id, projectID: projectID
-            ))
-            _ = try await presentAgentStream(stream, model: settings.model, turnID: String(traceID.uuidString.prefix(8))) { [weak self] snapshot in
-                await self?.applyLocalAgentSnapshot(snapshot, assistantID: assistant.id, conversationID: conversationID,
-                                                   runID: runID, runEditor: runEditor, projectURL: projectURL, projectID: projectID)
+            try await bridge.withConnection { endpoint in
+                try Task.checkCancellation()
+                guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor) else { throw CancellationError() }
+                setRequestPhase(.preparingContext, conversationID: conversationID)
+                let requestMessages = await apiMessages(conversationID: conversationID)
+                guard isCurrentRun(runID, conversationID: conversationID, editor: runEditor),
+                      runEditor.projectURL == projectURL, runEditor.projectId == projectID,
+                      let inputID = sessionMessages(conversationID).last(where: { $0.role == .user })?.id else {
+                    throw CancellationError()
+                }
+                let assistant = AgentMessage(role: .assistant, blocks: [])
+                assistantID = assistant.id
+                mutateSessionMessages(conversationID) { $0.append(assistant) }
+                var system = AgentInstructions.serverInstructions
+                if let summary = sessionSummaries[conversationID], !summary.isEmpty {
+                    system += "\n\nEarlier conversation summary:\n\(summary)"
+                }
+                setRequestPhase(.waitingForResponse, conversationID: conversationID)
+                let client = LocalAgentClient(harness: harness, executable: executable,
+                                              effort: settings.reasoningEffort, endpoint: endpoint, modelID: settings.localModelID, activity: activity)
+                let stream = client.stream(system: system, tools: [], messages: requestMessages, context: AgentRequestContext(
+                    conversationID: conversationID, traceID: traceID, spanID: UUID(), inputMessageID: inputID,
+                    outputMessageID: assistant.id, projectID: projectID
+                ))
+                _ = try await presentAgentStream(stream, model: settings.model, turnID: String(traceID.uuidString.prefix(8))) { [weak self] snapshot in
+                    await self?.applyLocalAgentSnapshot(snapshot, assistantID: assistant.id, conversationID: conversationID,
+                                                       runID: runID, runEditor: runEditor, projectURL: projectURL, projectID: projectID)
+                }
             }
             completed = true
         } catch {
@@ -1298,7 +1305,6 @@ final class AgentService {
                 setRequestPhase(.error(failure.displayMessage), conversationID: conversationID)
             }
         }
-        await bridge.stop()
         await LocalAgentClient.runGate.signal()
         guard completed, isCurrentRun(runID, conversationID: conversationID, editor: runEditor),
               runEditor.projectURL == projectURL, runEditor.projectId == projectID else { return }

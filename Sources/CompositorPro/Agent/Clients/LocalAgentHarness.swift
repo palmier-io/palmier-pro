@@ -123,7 +123,7 @@ enum LocalAgentFailure: Error, Equatable, Sendable {
         case .cancelled:
             L10n.string("Agent request canceled.")
         case .timedOut:
-            L10n.string("The agent stopped after 15 minutes without an update. Check the project before continuing; earlier edits may already be applied.")
+            L10n.string("The agent stopped after 2 hours without an update. Check the project before continuing; earlier edits may already be applied.")
         }
     }
 }

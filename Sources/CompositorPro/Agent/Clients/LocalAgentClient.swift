@@ -7,6 +7,7 @@ struct LocalAgentClient: AgentClient {
     let effort: AgentReasoningEffort
     let endpoint: URL
     var modelID: String? = nil
+    var activity = LocalAgentActivity(clock: ContinuousClock())
 
     func stream(system: String, tools: [AgentToolSchema], messages: [AgentRequestMessage],
                 context: AgentRequestContext) -> AgentStreamOperation {
@@ -16,7 +17,7 @@ struct LocalAgentClient: AgentClient {
             )
             let decoder = LocalAgentStreamDecoder(harness: harness)
             do {
-                let result = try await LocalAgentProcess.run(executable: executable, request: request) { line in
+                let result = try await LocalAgentProcess.run(executable: executable, request: request, activity: activity) { line in
                     for event in try await decoder.receive(line) { continuation.yield(event) }
                 }
                 try await decoder.finish(status: result.status, diagnostics: result.diagnostics)

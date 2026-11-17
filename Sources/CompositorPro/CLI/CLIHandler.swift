@@ -8,7 +8,7 @@ final class CLIHandler: Sendable {
 
     /// Known CLI subcommands.
     static let subcommands: Set<String> = [
-        "init", "preview", "render", "hyperframes", "catalog", "export-job", "help", "--help", "-h", "version", "--version"
+        "init", "preview", "render", "hyperframes", "catalog", "export-job", "plugin", "help", "--help", "-h", "version", "--version"
     ]
 
     /// Determines whether command line arguments represent a headless CLI run.
@@ -72,6 +72,11 @@ final class CLIHandler: Sendable {
 
             case "export-job":
                 let message = try await handleExportJob(rest)
+                printOut(message)
+                return 0
+
+            case "plugin":
+                let message = try await PluginCLI.run(rest)
                 printOut(message)
                 return 0
 
@@ -545,6 +550,10 @@ final class CLIHandler: Sendable {
               catalog               List catalog blocks
               inspect <blockId>     Print block specification JSON
               html <blockId> [-o <out.html>] [--title <title>] Export self-contained HTML
+
+          plugin <action> [options]
+            Manage agent plugins (read-only tools that run out of process).
+            Actions: list | run <toolName> [--args <json>] | trust <id> trusted|untrusted|blocked | install <folder>
 
           catalog <action> [options]
             Manage extended and community HyperFrames motion templates.

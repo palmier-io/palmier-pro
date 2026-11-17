@@ -238,6 +238,7 @@
 "Checking…" = "Checking…";
 "Choose a .cube LUT file" = "Choose a .cube LUT file";
 "Choose a crop aspect" = "Choose a crop aspect";
+"Choose a plugin folder containing plugin.json" = "Choose a plugin folder containing plugin.json";
 "Choose a scene from the list to review narration, visuals, and inspection." = "Choose a scene from the list to review narration, visuals, and inspection.";
 "Choose animation clip color" = "Choose animation clip color";
 "Choose audio clip color" = "Choose audio clip color";
@@ -689,6 +690,7 @@
 "Instagram" = "Instagram";
 "Instagram Edits" = "Instagram Edits";
 "Install" = "Install";
+"Install Plugin…" = "Install Plugin…";
 "Install in Claude Desktop" = "Install in Claude Desktop";
 "Install in Cursor" = "Install in Cursor";
 "Install once in Terminal, then refresh:" = "Install once in Terminal, then refresh:";
@@ -699,6 +701,7 @@
 "Install update" = "Install update";
 "Install update v%@" = "Install update v%@";
 "Installed" = "Installed";
+"Installed %@." = "Installed %@.";
 "Instructions" = "Instructions";
 "Instrumental" = "Instrumental";
 "Integration with your own agent" = "Integration with your own agent";
@@ -910,6 +913,7 @@
 "No narration linked to this scene." = "No narration linked to this scene.";
 "No new response content for %llds. Waiting for %@." = "No new response content for %llds. Waiting for %@.";
 "No person's face is revealed." = "No person's face is revealed.";
+"No plugins installed." = "No plugins installed.";
 "No production steps yet. Prepare, inspect, and approve the storyboard, then produce." = "No production steps yet. Prepare, inspect, and approve the storyboard, then produce.";
 "No projects found" = "No projects found";
 "No prompt needed" = "No prompt needed";
@@ -990,6 +994,9 @@
 "Playback" = "Playback";
 "Playback Speed" = "Playback Speed";
 "Playback previews, waveforms, filmstrip thumbnails, and transcripts. Safe to clear; files rebuild as needed." = "Playback previews, waveforms, filmstrip thumbnails, and transcripts. Safe to clear; files rebuild as needed.";
+"Plugin trust" = "Plugin trust";
+"Plugins" = "Plugins";
+"Plugins add read-only tools that agents can call. Each tool runs as a separate process; a bundle whose files change after install is blocked." = "Plugins add read-only tools that agents can call. Each tool runs as a separate process; a bundle whose files change after install is blocked.";
 "Podcast" = "Podcast";
 "Pointer (V)" = "Pointer (V)";
 "Pop In" = "Pop In";
@@ -1082,6 +1089,7 @@
 "Relink missing sources or wait for media preparation, then preview again." = "Relink missing sources or wait for media preparation, then preview again.";
 "Relinked %lld of %lld offline clips." = "Relinked %lld of %lld offline clips.";
 "Relink…" = "Relink…";
+"Reload" = "Reload";
 "Remove" = "Remove";
 "Remove %@" = "Remove %@";
 "Remove API key" = "Remove API key";
@@ -1095,6 +1103,7 @@
 "Remove horizontal flip" = "Remove horizontal flip";
 "Remove model" = "Remove model";
 "Remove vertical flip" = "Remove vertical flip";
+"Removed %@." = "Removed %@.";
 "Removes background noise from this audio using an on-device model." = "Removes background noise from this audio using an on-device model.";
 "Removes this label and tint. Identify recreates it if the voice is still present." = "Removes this label and tint. Identify recreates it if the voice is still present.";
 "Removing background noise…" = "Removing background noise…";
@@ -1384,10 +1393,9 @@
 "Text to speak (minimum %lld characters)" = "Text to speak (minimum %lld characters)";
 "Thanks for the feedback." = "Thanks for the feedback.";
 "The agent" = "The agent";
-"The agent request timed out. Check its CLI, then try a smaller task." = "The agent request timed out. Check its CLI, then try a smaller task.";
 "The agent response exceeded the size limit. Ask for a smaller task." = "The agent response exceeded the size limit. Ask for a smaller task.";
 "The agent returned an unsupported response. Update its CLI, then try again." = "The agent returned an unsupported response. Update its CLI, then try again.";
-"The agent stopped after 15 minutes without an update. Check the project before continuing; earlier edits may already be applied." = "The agent stopped after 15 minutes without an update. Check the project before continuing; earlier edits may already be applied.";
+"The agent stopped after 2 hours without an update. Check the project before continuing; earlier edits may already be applied." = "The agent stopped after 2 hours without an update. Check the project before continuing; earlier edits may already be applied.";
 "The agent stopped before finishing its response. Check its CLI, then try again." = "The agent stopped before finishing its response. Check its CLI, then try again.";
 "The clip you're adding has different settings than the current project." = "The clip you're adding has different settings than the current project.";
 "The conversation exceeded the model’s limit. Reducing context and retrying…" = "The conversation exceeded the model’s limit. Reducing context and retrying…";
@@ -1467,6 +1475,7 @@
 "Trim Start to Playhead" = "Trim Start to Playhead";
 "Trim Start to Playhead (Q)" = "Trim Start to Playhead (Q)";
 "Trimming and ripple edits" = "Trimming and ripple edits";
+"Trusted" = "Trusted";
 "Try Again" = "Try Again";
 "Try again." = "Try again.";
 "Try another search." = "Try another search.";
@@ -1497,6 +1506,7 @@
 "Unsupported" = "Unsupported";
 "Unsupported visual type" = "Unsupported visual type";
 "Untitled" = "Untitled";
+"Untrusted" = "Untrusted";
 "Update" = "Update";
 "Update available" = "Update available";
 "Updating %@" = "Updating %@";

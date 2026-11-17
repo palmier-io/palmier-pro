@@ -23,9 +23,11 @@ that chat's editor. No external MCP configuration is needed. The tool catalog
 uses the in-app editing operations and omits `manage_project`, so a run cannot
 retarget another project. Tool work, process shutdown, and workspace cleanup are
 awaited when a run stops. At most two local agent processes run concurrently.
-The inactivity watchdog stops a process after 15 minutes without stream output;
-active tool and response updates extend the deadline. A timeout preserves edits
-already applied and does not automatically replay the request.
+There is no overall run duration limit. The inactivity watchdog allows two hours
+without an update; response, reasoning, CLI diagnostic output, and editor tool
+starts/completions extend that allowance. Process existence alone does not count
+as progress. A timeout preserves edits already applied and does not automatically
+replay the request.
 
 The app uses the official headless interfaces: `codex exec --json`,
 `claude --print --output-format stream-json`, and
@@ -74,6 +76,56 @@ Requirements the agent side will hit either way:
   current project/timeline and returns the same structured receipts the in-app
   agent gets.
 
+## Plugin tools
+
+Third-party plugins ship executable tools that appear alongside the built-in
+catalog. A plugin is a folder with `plugin.json` plus one executable entry point,
+installed under `~/Library/Application Support/CompositorPro/plugins/<id>/`.
+
+`plugin.json`:
+
+```json
+{
+  "id": "example.tide",
+  "name": "Tide Tables",
+  "version": "1.0.0",
+  "entryPoint": "run.sh",
+  "permissionScope": "read-only",
+  "tool": {
+    "name": "example_tide_lookup",
+    "description": "Returns the tide height for a date and station.",
+    "inputSchema": {
+      "type": "object",
+      "properties": { "station": { "type": "string" }, "date": { "type": "string" } },
+      "required": ["station"],
+      "additionalProperties": false
+    }
+  }
+}
+```
+
+Process contract: arguments arrive on stdin as `{"args": {...}}`; the plugin
+writes one JSON object to stdout — `{"result": ...}` on success or
+`{"error": "message"}` — and exits 0 for success, non-zero for failure. Output is
+capped at 1 MiB and a run is killed after 15 s. stdout/stderr are captured; the
+environment is minimal (`PATH`, `HOME`, `TMPDIR`) and the working directory is
+the plugin bundle.
+
+Safety rules enforced by the host:
+
+- Built-in tool names always win; a plugin cannot shadow `get_timeline` etc.
+- Only `read-only` scope runs today. Mutating plugins are refused at registration.
+- Install records a SHA-256 digest of `plugin.json` plus the entry point. If either
+  changes, the plugin is `blocked` until reinstalled.
+- Unsigned manifests install as `untrusted` and are refused at call time; approve
+  them in Settings › Plugins.
+- Entry points must resolve inside the bundle (symlink escapes are refused), and
+  schema/argument validation happens before a process starts.
+
+The sample plugin `compositor.sample.echo` (`sample_echo`) is installed once at
+startup so the loop is exercisable end to end. Headless management is
+`compositor-pro plugin list|run|trust|install`, with `run --args '{"k": 1}'`.
+
 ## Known gaps (deliberately not built)
 
 These were considered and intentionally left out to keep the surface minimal:
@@ -114,6 +166,12 @@ For native chat, use a disposable project and verify:
 4. Dismiss the connection sheet with Escape; check a missing CLI is disabled
    and an unsupported model or missing CLI sign-in produces an actionable error.
    Close the disposable project during a run and confirm no late edit appears.
+5. Save and quit during a run, then repeat after an agent edit. Expect the agent
+   and its active tools to cancel, cleanup and final saving to finish, and the app
+   to quit. Reopen the project and confirm the last completed edit was saved.
+   Repeat Quit while cleanup is pending. Force a final-save failure using a
+   disposable unwritable destination; expect an error, an open project, and
+   editing to resume before retrying.
 
 Automated coverage includes isolated HTTP discovery, clip movement, independent
 timeline readback, shared undo, and stale-run refusal in `LocalAgentChatMCPTests`.

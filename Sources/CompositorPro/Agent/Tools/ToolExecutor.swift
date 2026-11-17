@@ -139,6 +139,9 @@ final class ToolExecutor {
     var lastTranscriptSession: TranscriptSession?
     var lutStoring: EditorViewModel.LUTStoring = { try await LUTLoader.store(path: $0, projectId: $1) }
     var transcriptLoading: (@Sendable (URL, Bool, Locale?) async throws -> TranscriptionResult)?
+    /// Third-party tools merged with the built-in catalog; owned by `ToolRegistry.shared`.
+    var pluginRegistry: ToolRegistry = .shared
+    var pluginTools: [PluginTool] { pluginRegistry.tools }
 
     func execute(
         name: String,
@@ -192,6 +195,20 @@ final class ToolExecutor {
             && args.keys.contains("normalizeCaptionPunctuation")
         var args = preservesCaptionCleanupArguments ? args : Self.droppingAutofilledBlanks(from: args)
         let started = ContinuousClock.now
+        // Plugin tools are dynamic; built-in names always take precedence over a plugin.
+        if Self.resolveToolName(name: name, args: &args) == nil,
+           let plugin = pluginRegistry.tool(named: name) {
+            let result = await executePluginTool(plugin, args: args)
+            captureToolAnalytics(
+                toolName: name,
+                origin: origin,
+                projectId: editor?.projectId,
+                result: result,
+                started: started,
+                failureReason: result.isError ? "plugin_failed" : nil
+            )
+            return result
+        }
         guard let tool = Self.resolveToolName(name: name, args: &args),
               origin.source != "mcp"
                 || ToolDefinitions.mcpServer.contains(where: { $0.name == tool }) else {

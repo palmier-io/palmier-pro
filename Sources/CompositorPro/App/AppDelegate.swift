@@ -36,6 +36,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         HomeWindowController.shared.showWindow(nil)
         SkillStore.shared.startSkillSync()
+        Task {
+            _ = await PluginStore.shared.installBuiltInSampleIfNeeded()
+            await ToolRegistry.shared.reload()
+        }
         Task.detached(priority: .utility) {
             Project.ensureStorageDirectory()
         }
@@ -77,13 +81,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if isTerminating { return .terminateLater }
         let projects = AppState.shared.openProjects
         let shouldRestart = restartRequested
-
-        // Failsafe watchdog: if graceful termination takes longer than 3 seconds, force exit so Command+Q never hangs.
-        // Runs on a background queue so a hung main thread cannot prevent termination.
-        DispatchQueue.global().asyncAfter(deadline: .now() + 3.0) {
-            Log.app.warning("Termination hard deadline reached; forcing process exit")
-            _exit(0)
-        }
 
         startTermination(projects: projects, prepareServices: { validate in
             Log.app.info("Termination: flushing project registry")

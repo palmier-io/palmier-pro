@@ -116,6 +116,11 @@ class VideoProject: NSDocument {
 
     override class var autosavesInPlace: Bool { true }
 
+    override func performActivity(withSynchronousWaiting waitSynchronously: Bool, using block: @escaping (@escaping () -> Void) -> Void) {
+        // Queued saves and agent cleanup need the main actor while AppKit serializes activities.
+        super.performActivity(withSynchronousWaiting: false, using: block)
+    }
+
     // The save snapshot is captured on main before super.save; the encode + disk write run off-main.
     override func canAsynchronouslyWrite(to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType) -> Bool { true }
 

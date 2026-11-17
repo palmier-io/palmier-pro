@@ -445,9 +445,12 @@ struct PromptToVideoBaselineTests {
             let (tools, _) = try await client.listTools()
             let toolNames = Set(tools.map(\.name))
 
-            // MCP server exposes manageProject in addition to chat agent tools
+            // MCP server exposes manageProject in addition to chat agent tools; plugin tools are
+            // a separate installable surface and are recorded independently.
             let inAppToolNames = Set(ToolDefinitions.all.map(\.name.rawValue))
-            let extraTools = Array(toolNames.subtracting(inAppToolNames)).sorted()
+            await ToolRegistry.shared.ensureLoaded()
+            let pluginToolNames = Set(ToolRegistry.shared.tools.map(\.name))
+            let extraTools = Array(toolNames.subtracting(inAppToolNames).subtracting(pluginToolNames)).sorted()
             #expect(extraTools.contains("manage_project"))
 
             let externalContext = [

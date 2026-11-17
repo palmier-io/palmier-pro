@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import CompositorPro
 
@@ -7,6 +8,23 @@ private actor LocalAgentNoCredentials {
 }
 
 @MainActor private final class LocalAgentRunState { var active = true }
+
+private final class LocalAgentToolCancellationGate: Sendable {
+    let entered = LocalAgentTestSignal()
+    let release = LocalAgentTestSignal()
+    let cancelled = Mutex(false)
+
+    func load() async throws -> RuntimeCapabilities.LocalInputs {
+        try await withTaskCancellationHandler {
+            await entered.open()
+            await release.wait()
+            try Task.checkCancellation()
+            throw ToolError("Fixture released without cancellation.")
+        } onCancel: {
+            self.cancelled.withLock { $0 = true }
+        }
+    }
+}
 
 @MainActor private final class LocalAgentHTTPClient {
     let endpoint: URL
@@ -74,13 +92,88 @@ private actor LocalAgentNoCredentials {
 struct LocalAgentChatMCPTests {
     private let clipID = "ABCD1234-0000-0000-0000-000000000000"
 
+    @Test(.timeLimit(.minutes(1)))
+    func cancellingTheRunCancelsItsToolBeforeProcessCleanupAndDrainsRepeatedStops() async throws {
+        let harness = fixture()
+        let undo = UndoManager()
+        harness.editor.undo.attach(undo)
+        let before = harness.editor.timeline
+        let gate = LocalAgentToolCancellationGate()
+        let executor = ToolExecutor(editor: harness.editor, capabilityInputLoader: { try await gate.load() })
+        let bridge = LocalAgentMCPBridge(executor: executor, conversationID: UUID(), isActive: { true })
+        let ready = PackageTestSignal()
+        let releaseRun = LocalAgentTestSignal()
+        var endpoint: URL?
+        let run = Task {
+            try await bridge.withConnection {
+                endpoint = $0
+                ready.signal()
+                await releaseRun.wait()
+                try Task.checkCancellation()
+            }
+        }
+        await ready.wait()
+        let client = LocalAgentHTTPClient(endpoint: try #require(endpoint))
+        do {
+            try await client.connect()
+        } catch {
+            run.cancel()
+            await releaseRun.open()
+            _ = await run.result
+            client.disconnect()
+            throw error
+        }
+        let tool = Task {
+            let result = try await client.tool("get_capabilities")
+            return result["isError"] as? Bool == true
+        }
+        await gate.entered.wait()
+
+        run.cancel()
+        #expect(gate.cancelled.withLock { $0 }, "The tool must be cancelled before the CLI finishes cleanup")
+        let firstEntered = PackageTestSignal()
+        let secondEntered = PackageTestSignal()
+        var firstFinished = false
+        var secondFinished = false
+        let firstStop = Task {
+            firstEntered.signal()
+            await bridge.stop()
+            firstFinished = true
+        }
+        await firstEntered.wait()
+        let secondStop = Task {
+            secondEntered.signal()
+            await bridge.stop()
+            secondFinished = true
+        }
+        await secondEntered.wait()
+        #expect(!firstFinished && !secondFinished)
+        await gate.release.open()
+        await releaseRun.open()
+        _ = await firstStop.value
+        _ = await secondStop.value
+        let outcome = await run.result
+        if case .failure(let error) = outcome { #expect(error is CancellationError) }
+        else { Issue.record("Cancelled run completed successfully") }
+        if case .success(let isError) = await tool.result { #expect(isError) }
+        client.disconnect()
+        await bridge.stop()
+        #expect(firstFinished && secondFinished)
+        #expect(harness.editor.timeline == before)
+        #expect(!undo.canUndo)
+    }
+
     @Test func isolatedHTTPConnectionSharesEditingAndUndoAndRejectsStaleRuns() async throws {
         let harness = fixture()
         let undo = UndoManager()
         harness.editor.undo.attach(undo)
         let before = harness.editor.timeline
         let state = LocalAgentRunState()
-        let bridge = LocalAgentMCPBridge(executor: harness.executor, conversationID: UUID(), isActive: { state.active })
+        let clock = LocalAgentProcessTestClock()
+        let origin = clock.now
+        let activity = LocalAgentActivity(clock: clock)
+        let bridge = LocalAgentMCPBridge(executor: harness.executor, conversationID: UUID(),
+                                        onActivity: { activity.record() }, isActive: { state.active })
         let client = LocalAgentHTTPClient(endpoint: try await bridge.start())
         do {
             try await client.connect()
@@ -93,8 +186,10 @@ struct LocalAgentChatMCPTests {
             #expect(harness.editor.timeline == before)
             #expect(!undo.canUndo)
 
+            clock.advance(to: origin.advanced(by: .seconds(100)))
             let moved = try await client.tool("move_clips", arguments: ["moves": [["clipId": clipID, "toFrame": 60]]])
             #expect(moved["isError"] as? Bool != true)
+            #expect(activity.deadline(after: .seconds(7200)) == origin.advanced(by: .seconds(7300)))
             #expect(harness.editor.timeline.tracks[0].clips[0].startFrame == 60)
             let read = try await client.tool("get_timeline")
             #expect(try timelineClips(read).first?["frames"] as? [Int] == [60, 90])

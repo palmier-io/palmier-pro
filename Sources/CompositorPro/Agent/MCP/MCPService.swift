@@ -151,8 +151,15 @@ final class MCPService {
         await task.value
     }
 
-    nonisolated static func registerTools(on server: Server, executor: ToolExecutor) async {
-        await registerTools(on: server, definitions: ToolDefinitions.mcpServer, enforceCatalog: false) { params in
+    @MainActor
+    static func registerTools(on server: Server, executor: ToolExecutor) async {
+        await executor.pluginRegistry.ensureLoaded()
+        let tools: [Tool] = ToolDefinitions.mcpServer.map { def in
+            Tool(name: def.name.rawValue, description: def.description, inputSchema: def.mcpSchemaValue)
+        } + executor.pluginTools.map { plugin in
+            Tool(name: plugin.name, description: plugin.description, inputSchema: AgentTool.jsonValue(plugin.inputSchema))
+        }
+        await registerTools(on: server, tools: tools) { params in
             await dispatchCall(params, executor: executor)
         }
     }
@@ -166,6 +173,15 @@ final class MCPService {
         let tools: [Tool] = definitions.map { def in
             Tool(name: def.name.rawValue, description: def.description, inputSchema: def.mcpSchemaValue)
         }
+        await registerTools(on: server, tools: tools, enforceNames: enforceCatalog, call: call)
+    }
+
+    nonisolated static func registerTools(
+        on server: Server,
+        tools: [Tool],
+        enforceNames: Bool = true,
+        call: @escaping @Sendable (CallTool.Parameters) async -> CallTool.Result
+    ) async {
         let names = Set(tools.map(\.name))
 
         await server.withMethodHandler(ListTools.self) { _ in
@@ -173,7 +189,7 @@ final class MCPService {
         }
 
         await server.withMethodHandler(CallTool.self) { params in
-            guard !enforceCatalog || names.contains(params.name) else {
+            guard !enforceNames || names.contains(params.name) else {
                 return .init(content: [.text(text: "Unknown tool: \(params.name)", annotations: nil, _meta: nil)], isError: true)
             }
             return await call(params)

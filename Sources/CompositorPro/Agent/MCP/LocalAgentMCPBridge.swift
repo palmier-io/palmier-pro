@@ -1,20 +1,45 @@
 import Foundation
 import MCP
+import Synchronization
 
 @MainActor
 final class LocalAgentMCPBridge {
     private let executor: ToolExecutor
     private let conversationID: UUID
     private let isActive: @MainActor @Sendable () -> Bool
+    private let onActivity: @Sendable () -> Void
     private var listener: MCPHTTPServer?
-    private var calls: [UUID: Task<CallTool.Result, Never>] = [:]
-    private var stopped = false
+    private struct CallState {
+        var cancelled = false
+        var tasks: [UUID: Task<CallTool.Result, Never>] = [:]
+    }
+    private nonisolated let calls = Mutex(CallState())
+    private var stopTask: Task<Void, Never>?
+    private nonisolated var stopped: Bool { calls.withLock { $0.cancelled } }
 
     init(executor: ToolExecutor, conversationID: UUID,
+         onActivity: @escaping @Sendable () -> Void = {},
          isActive: @escaping @MainActor @Sendable () -> Bool) {
         self.executor = executor
         self.conversationID = conversationID
+        self.onActivity = onActivity
         self.isActive = isActive
+    }
+
+    func withConnection(_ operation: @MainActor (URL) async throws -> Void) async throws {
+        try await withTaskCancellationHandler {
+            do {
+                let endpoint = try await start()
+                try await operation(endpoint)
+            } catch {
+                await stop()
+                throw error
+            }
+            await stop()
+            try Task.checkCancellation()
+        } onCancel: {
+            self.cancel()
+        }
     }
 
     func start() async throws -> URL {
@@ -42,6 +67,8 @@ final class LocalAgentMCPBridge {
         guard !stopped, isActive(), !Task.isCancelled else {
             return .init(content: [.text(text: "operation_canceled", annotations: nil, _meta: nil)], isError: true)
         }
+        onActivity()
+        defer { onActivity() }
         let id = UUID()
         let task = Task { [weak self, executor, conversationID] in
             guard let self, !self.stopped, self.isActive(), !Task.isCancelled else {
@@ -51,21 +78,37 @@ final class LocalAgentMCPBridge {
             return await executor.execute(name: params.name, args: arguments,
                                           source: "agent", sessionID: conversationID.uuidString).toMCPResult()
         }
-        calls[id] = task
+        let registered = calls.withLock { state in
+            guard !state.cancelled else { return false }
+            state.tasks[id] = task
+            return true
+        }
+        if !registered { task.cancel() }
         let result = await task.value
-        calls[id] = nil
+        calls.withLock { $0.tasks[id] = nil }
         guard !stopped, isActive() else { return .init(content: [.text(text: "operation_canceled", annotations: nil, _meta: nil)], isError: true) }
         return result
     }
 
-    func stop() async {
-        stopped = true
-        let pending = Array(calls.values)
+    nonisolated func cancel() {
+        let pending = calls.withLock { state in
+            state.cancelled = true
+            return Array(state.tasks.values)
+        }
         pending.forEach { $0.cancel() }
+    }
+
+    func stop() async {
+        if let stopTask { await stopTask.value; return }
+        cancel()
+        let pending = calls.withLock { Array($0.tasks.values) }
         let closing = listener
         listener = nil
-        await closing?.stop()
-        for task in pending { _ = await task.value }
-        calls.removeAll()
+        let task = Task {
+            await closing?.stop()
+            for task in pending { _ = await task.value }
+        }
+        stopTask = task
+        await task.value
     }
 }

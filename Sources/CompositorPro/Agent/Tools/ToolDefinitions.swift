@@ -2737,21 +2737,21 @@ enum ToolDefinitions {
 
 extension AgentTool {
     var mcpSchemaValue: Value {
-        Self.valueFromJSON(inputSchema)
+        Self.jsonValue(inputSchema)
     }
 
-    private static func valueFromJSON(_ any: Any) -> Value {
+    static func jsonValue(_ any: Any) -> Value {
         switch any {
         case let v as Value: return v
         case let s as String: return .string(s)
         case let b as Bool: return .bool(b)
         case let i as Int: return .int(i)
         case let d as Double: return .double(d)
-        case let arr as [Any]: return .array(arr.map(valueFromJSON))
+        case let arr as [Any]: return .array(arr.map(jsonValue))
         case let dict as [String: Any]:
             var out: [String: Value] = [:]
             out.reserveCapacity(dict.count)
-            for (k, v) in dict { out[k] = valueFromJSON(v) }
+            for (k, v) in dict { out[k] = jsonValue(v) }
             return .object(out)
         default: return .null
         }

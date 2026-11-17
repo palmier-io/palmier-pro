@@ -6,6 +6,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case models
     case agent
     case skills
+    case plugins
     case storage
 
     var id: String { rawValue }
@@ -17,6 +18,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .models: return L10n.key("Models")
         case .agent: return "Agent"
         case .skills: return L10n.key("Skills")
+        case .plugins: return L10n.key("Plugins")
         case .storage: return L10n.key("Storage")
         }
     }
@@ -28,6 +30,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .models: return "square.stack.3d.up"
         case .agent: return "paperplane"
         case .skills: return "book.closed"
+        case .plugins: return "puzzlepiece.extension"
         case .storage: return "internaldrive"
         }
     }
@@ -131,6 +134,8 @@ private struct SettingsDetail: View {
                                 AgentPane()
                             case .skills:
                                 EmptyView()
+                            case .plugins:
+                                PluginsPane()
                             case .storage:
                                 StoragePane()
                             }
