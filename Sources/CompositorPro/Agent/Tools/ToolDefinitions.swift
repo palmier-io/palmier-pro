@@ -714,6 +714,10 @@ enum ToolDefinitions {
                         "description": "Clip IDs to remove.",
                         "items": ["type": "string"],
                     ],
+                    "ripple": [
+                        "type": "boolean",
+                        "description": "Optional. true closes the vacated ranges by shifting later clips on the same track (one undo action). Default false keeps positions exactly as they were.",
+                    ],
                 ],
                 required: ["clipIds"]
             )

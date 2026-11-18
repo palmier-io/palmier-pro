@@ -320,7 +320,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter SceneTracksTests` passes (track-kind separation, invalid-placement rejection, singleton main track).
 - Compile-time impossible to place a video clip on an audio track (or vice versa) via the typed API.
 
-### Additional item 4 — Diff-based ripple editing **[PARTIAL: engine + tests; command wiring open]**
+### Additional item 4 — Diff-based ripple editing **[DONE]**
 
 **What:** Add a diff-based ripple engine: snapshot track intervals before/after an edit, compute vacated intervals (incl. cross-track moves), emit explicit `RippleAdjustment` values applied in one deterministic pass.
 
@@ -678,7 +678,7 @@ Pattern: versioned migration steps keyed by format version, run on open, last-su
 
 ---
 
-Port status: OKLCH theme (`UI/OKLCHTheme.swift`, `OKLCHThemeTests`), exact `MediaTime`/`FrameRate` (`Timeline/MediaTime.swift`, `MediaTimeTests`), and the diff-based ripple engine (`Timeline/RippleEdit.swift`, `RippleEditTests`) are in. Remaining port items are unchanged; the release build is a local ad-hoc-signed bundle installed to /Applications (no Developer ID yet).
+Port status: OKLCH theme (`UI/OKLCHTheme.swift`, `OKLCHThemeTests`), exact `MediaTime`/`FrameRate` (`Timeline/MediaTime.swift`, `MediaTimeTests`), and the diff-based ripple engine (`Timeline/RippleEdit.swift`, `RippleEditTests`) is in; `remove_clips` accepts `ripple: true` to close vacated ranges through the engine (default behavior unchanged, one undo action). Remaining port items are unchanged; the release build is a local ad-hoc-signed bundle installed to /Applications (no Developer ID yet).
 
 ### Order of implementation (recommended)
 1. **Item 1 — OKLCH theme** (lowest risk, visual upgrade, maps to `AppTheme`)
