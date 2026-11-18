@@ -755,6 +755,7 @@
 "Line Spacing" = "Line Spacing";
 "Linear" = "Linear";
 "Link" = "Link";
+"Linked selection: keep audio partners together (hold Option to invert)" = "Linked selection: keep audio partners together (hold Option to invert)";
 "Linking picture and sound" = "Linking picture and sound";
 "Lip Sync" = "Lip Sync";
 "Lip Sync model not available" = "Lip Sync model not available";
@@ -1159,6 +1160,7 @@
 "Ripple Insert" = "Ripple Insert";
 "Ripple Timeline Markers" = "Ripple Timeline Markers";
 "Ripple Trim" = "Ripple Trim";
+"Ripple editing: later clips follow trims and removals" = "Ripple editing: later clips follow trims and removals";
 "Ripple-deletes every silent section; downstream clips close the gaps." = "Ripple-deletes every silent section; downstream clips close the gaps.";
 "Rotation" = "Rotation";
 "Roundness" = "Roundness";
@@ -1445,6 +1447,7 @@
 "Timeline" = "Timeline";
 "Timeline Format" = "Timeline Format";
 "Timeline colors" = "Timeline colors";
+"Timeline zoom" = "Timeline zoom";
 "Timelines" = "Timelines";
 "Tint" = "Tint";
 "Tints waveforms by speaker. Voices are matched across clips using cloud transcripts." = "Tints waveforms by speaker. Voices are matched across clips using cloud transcripts.";
@@ -1611,6 +1614,7 @@
 "Zoom Out" = "Zoom Out";
 "Zoom Preview to Cursor" = "Zoom Preview to Cursor";
 "Zoom to Cursor" = "Zoom to Cursor";
+"Zoom to Selection (⇧⌘9)" = "Zoom to Selection (⇧⌘9)";
 "by audio" = "by audio";
 "by timecode" = "by timecode";
 "drift correction skipped — it would overwrite an adjacent clip" = "drift correction skipped — it would overwrite an adjacent clip";

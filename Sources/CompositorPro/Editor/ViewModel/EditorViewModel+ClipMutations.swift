@@ -768,7 +768,11 @@ extension EditorViewModel {
     }
 
     func deleteSelectedClips() {
-        removeClips(ids: selectedClipIds)
+        if rippleEditingEnabled, selectedGap == nil {
+            rippleDeleteSelectedClips()
+        } else {
+            removeClips(ids: selectedClipIds)
+        }
     }
 
     func deleteMediaAssets(ids: Set<String>) {

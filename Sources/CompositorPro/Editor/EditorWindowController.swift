@@ -101,6 +101,20 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             }
             return false
 
+        case 29: // 0 key
+            if cmd, mods.intersection([.option, .control]).isEmpty {
+                editorViewModel.zoomToFitTimeline()
+                return true
+            }
+            return false
+
+        case 25: // 9 key
+            if cmd, shift {
+                editorViewModel.zoomToSelection()
+                return true
+            }
+            return false
+
         case 49: // Space
             editorViewModel.togglePlayback()
             return true

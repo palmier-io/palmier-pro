@@ -14,6 +14,7 @@ struct PreviewContainerView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            RecoveryBannerView()
             tabBar
                 .padding(.horizontal, AppTheme.Spacing.sm)
                 .panelHeaderBar()
@@ -93,6 +94,8 @@ struct PreviewContainerView: View {
                 }
             }
             .frame(width: scaledWidth, height: scaledHeight)
+            .onAppear { editor.canvasViewportSize = geo.size }
+            .onChange(of: geo.size) { _, size in editor.canvasViewportSize = size }
             .simultaneousGesture(
                 SpatialTapGesture()
                     .onEnded { value in
