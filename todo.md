@@ -387,7 +387,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter KeyframeLaneTests` passes (copy/paste, expand lanes, independent X/Y, bezier encode/decode round-trip).
 - Position X can animate at a different rate than Y on the same clip.
 
-### Additional item 6 — Masks
+### Additional item 6 — Masks **[PARTIAL: model + validation + CI mask rendering landed; preview handles/open]**. 
 
 **What:** Add `Mask` model (split/rectangle/ellipse/star/heart/diamond/cinematic bars with position/size/rotation/feather/stroke) and Core Image mask rendering per layer.
 
