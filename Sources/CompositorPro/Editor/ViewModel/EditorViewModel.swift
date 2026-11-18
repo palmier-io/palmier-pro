@@ -220,6 +220,8 @@ final class EditorViewModel {
     /// Preview viewport size in points, published by the preview canvas for pan clamping.
     @ObservationIgnored var canvasViewportSize: CGSize = .zero
     var rotationSnapGuidesVisible: Bool = false
+    /// ⌘⇧P command palette presentation.
+    var isCommandPalettePresented: Bool = false
     var timelineVisibleWidth: Double = 0
     var timelineRenderRevision: Int = 0
     var timelineCompositionGeneration: Int = 0

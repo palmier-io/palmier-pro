@@ -108,6 +108,13 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             }
             return false
 
+        case 35: // P key
+            if cmd, shift {
+                editorViewModel.isCommandPalettePresented = true
+                return true
+            }
+            return false
+
         case 25: // 9 key
             if cmd, shift {
                 editorViewModel.zoomToSelection()

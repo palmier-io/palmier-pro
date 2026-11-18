@@ -511,6 +511,7 @@
 "Explicit Resolution" = "Explicit Resolution";
 "Export" = "Export";
 "Export (⌘E)" = "Export (⌘E)";
+"Export Anyway" = "Export Anyway";
 "Export Queue" = "Export Queue";
 "Export complete" = "Export complete";
 "Export failed" = "Export failed";
@@ -557,6 +558,7 @@
 "First/Last" = "First/Last";
 "Fit" = "Fit";
 "Fix names & jargon" = "Fix names & jargon";
+"Fix these before exporting" = "Fix these before exporting";
 "Flat" = "Flat";
 "Flip" = "Flip";
 "Flip horizontally" = "Flip horizontally";
@@ -571,6 +573,7 @@
 "Format References" = "Format References";
 "Forward" = "Forward";
 "Founder" = "Founder";
+"Frame %lld" = "Frame %lld";
 "Frame Rate" = "Frame Rate";
 "Free" = "Free";
 "Freeform" = "Freeform";
@@ -641,6 +644,7 @@
 "Hide Info" = "Hide Info";
 "Hide Inspector Panel" = "Hide Inspector Panel";
 "Hide Timeline Tabs" = "Hide Timeline Tabs";
+"Hide Track" = "Hide Track";
 "Hide clip keyframes" = "Hide clip keyframes";
 "High" = "High";
 "Highlight" = "Highlight";
@@ -731,6 +735,7 @@
 "Language for the editor UI" = "Language for the editor UI";
 "Large" = "Large";
 "Last Frame" = "Last Frame";
+"Layers" = "Layers";
 "Layout" = "Layout";
 "Layouts and framing" = "Layouts and framing";
 "Left" = "Left";
@@ -782,6 +787,7 @@
 "Log in for 250 free credits" = "Log in for 250 free credits";
 "Log in with your Vercel account to get 250 free credits per month." = "Log in with your Vercel account to get 250 free credits per month.";
 "Looks" = "Looks";
+"Lottie" = "Lottie";
 "Loud" = "Loud";
 "Low" = "Low";
 "Lower the music exactly where someone is talking and bring it back afterwards, with an adjustable depth and a tail that keeps the music from pumping between words." = "Lower the music exactly where someone is talking and bring it back afterwards, with an adjustable depth and a tail that keeps the music from pumping between words.";
@@ -856,6 +862,8 @@
 "Move Clip to New Track" = "Move Clip to New Track";
 "Move Earlier" = "Move Earlier";
 "Move Later" = "Move Later";
+"Move Track Down" = "Move Track Down";
+"Move Track Up" = "Move Track Up";
 "Move playhead inside the clip" = "Move playhead inside the clip";
 "Move to Folder" = "Move to Folder";
 "Multicam" = "Multicam";
@@ -863,6 +871,7 @@
 "Multilingual" = "Multilingual";
 "Multiply" = "Multiply";
 "Music" = "Music";
+"Mute Track" = "Mute Track";
 "My Projects" = "My Projects";
 "Name" = "Name";
 "Name (optional)" = "Name (optional)";
@@ -907,6 +916,7 @@
 "No matches" = "No matches";
 "No matches for \"%@\"" = "No matches for \"%@\"";
 "No matches for “%@”" = "No matches for “%@”";
+"No matching commands" = "No matching commands";
 "No matching conversations" = "No matching conversations";
 "No media" = "No media";
 "No media yet" = "No media yet";
@@ -1259,6 +1269,7 @@
 "Show All Tabs" = "Show All Tabs";
 "Show Info" = "Show Info";
 "Show Timeline Tabs" = "Show Timeline Tabs";
+"Show Track" = "Show Track";
 "Show clip keyframes" = "Show clip keyframes";
 "Show in Finder" = "Show in Finder";
 "Show notifications" = "Show notifications";
@@ -1457,6 +1468,7 @@
 "Tools" = "Tools";
 "Top" = "Top";
 "Top / Bottom" = "Top / Bottom";
+"Track" = "Track";
 "Track Name" = "Track Name";
 "Tracking" = "Tracking";
 "Tracks" = "Tracks";
@@ -1487,6 +1499,7 @@
 "Turn text into a line of narration. The packaged app uses a local voice when one is installed and falls back to the system voice, and the result lands on the timeline as a normal audio clip you can grade and time like any other." = "Turn text into a line of narration. The packaged app uses a local voice when one is installed and falls back to the system voice, and the result lands on the timeline as a normal audio clip you can grade and time like any other.";
 "Tutorial" = "Tutorial";
 "Type" = "Type";
+"Type a command" = "Type a command";
 "Type styles" = "Type styles";
 "Typewriter" = "Typewriter";
 "Typical flow: create or update plan → prepare storyboard → review scenes → approve." = "Typical flow: create or update plan → prepare storyboard → review scenes → approve.";
@@ -1501,6 +1514,7 @@
 "Ungroup Multicam" = "Ungroup Multicam";
 "Unlink" = "Unlink";
 "Unlink the audio on this clip — I want to swap the picture and keep the sound." = "Unlink the audio on this clip — I want to swap the picture and keep the sound.";
+"Unmute Track" = "Unmute Track";
 "Unresolved claim: %@" = "Unresolved claim: %@";
 "Unresolved visual identity" = "Unresolved visual identity";
 "Unspecified" = "Unspecified";
