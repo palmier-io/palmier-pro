@@ -151,11 +151,12 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             return false
 
         case 9: // V key
-            if !cmd {
-                editorViewModel.toolMode = .pointer
+            if cmd {
+                editorViewModel.pasteMedia()
                 return true
             }
-            return false
+            editorViewModel.toolMode = .pointer
+            return true
 
         case 17: // T key
             if !cmd {

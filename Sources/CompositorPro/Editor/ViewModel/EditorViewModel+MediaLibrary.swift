@@ -310,6 +310,29 @@ extension EditorViewModel {
         mediaPanelToast = MediaPanelToast(message: rejection.message)
     }
 
+    /// ⌘V: imports supported media files and copied images from the pasteboard.
+    func pasteMedia(from pasteboard: NSPasteboard = .general) {
+        let items = PasteboardMedia.readable(from: pasteboard)
+        guard !items.isEmpty else { return }
+        let staging = FileManager.default.temporaryDirectory
+            .appendingPathComponent("CompositorProPaste", isDirectory: true)
+        for item in items {
+            switch item {
+            case .file(let url, _):
+                _ = addMediaAsset(from: url)
+            case .imageData(let data):
+                Task { [weak self] in
+                    do {
+                        let url = try await PasteboardMedia.stageImageData(data, into: staging)
+                        self?.addMediaAsset(from: url, type: .image)
+                    } catch {
+                        self?.reportMediaImportFailure(error)
+                    }
+                }
+            }
+        }
+    }
+
     /// A Finder drop or open-panel import that failed outright still has to say so.
     func reportMediaImportFailure(_ error: Error) {
         Log.project.error(

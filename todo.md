@@ -42,7 +42,7 @@ All eleven findings are now closed. R11 landed last: folder relink scans on an o
 | # | Capability | Real state | Evidence |
 |---|---|---|---|
 | 9 | Acquire verified coverage | Partial | `find_shot_candidates` + import; no end-to-end coverage workflow proof |
-| 9a | Source diversity | Partial | pagination + canonical exclusions + delivery history + 24 h provider response cache + `SourceDiversity` selection (provider round-robin, duplicate/delivered/near-duplicate subject rejection); **no live benchmark, selection not yet wired into find_shot_candidates** |
+| 9a | Source diversity | Partial | pagination + canonical exclusions + delivery history + 24 h provider response cache + `SourceDiversity` selection (provider round-robin, duplicate/delivered/near-duplicate subject rejection); selection is wired into `find_shot_candidates` (`diversity` block + skip warning); **no live benchmark** |
 | 10 | Preserve editable graphic artifacts | Implemented | `EvidenceGraphicSpec` + `digest` persist on `EditPlan.graphicScenes` with a renderer version; label fixes regenerate via the same spec; MCP readback verified (`GraphicSceneReadbackMCPTests`) |
 | 11 | Dependency-aware section revision | Implemented | `plan_edit action=revise_section` updates the section, its linked beats, invalidates timing, and reports dependents; unit-tested and MCP-readback verified (`PlanReadbackMCPTests`) |
 | 12 | Review facts/motion/audio/coverage | Partial | `review_timeline` reports bounded motion (mean/min/max luma delta, frozen spans) + loudness/peak/clip, and now audits claim-vs-display structure (`ClaimDisplayAudit`: planned claimIds must be shown by the scene built for them, `claimsNotShown`/`unreviewedClaims` warnings); **still no persisted inspection intervals, `perceptualSimilarity: not_checked`** |
@@ -561,7 +561,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter TimelineSelectionTests` passes (add-to-selection, Escape deselect, retention after move).
 - Bulk asset delete removes exactly the selected set; Escape clears timeline selection.
 
-### Additional item 11 — Number inputs: math expressions + click-drag scrubbing + hold-Shift-to-unsnap **[PARTIAL: evaluator + clamp/scrub helpers landed; field adoption + Shift-to-unsnap open]**
+### Additional item 11 — Number inputs: math expressions + click-drag scrubbing + hold-Shift-to-unsnap **[PARTIAL: evaluator adopted by ScrubbableNumberField (handles scrub too); Shift-to-unsnap open]**
 
 **What:** Add number input supporting math expressions (e.g., `1920/2`) and click-drag scrubbing; hold Shift to temporarily disable snap; trim handles outside clip; dashed selection outlines.
 
@@ -627,7 +627,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter BookmarkTests` passes (note/label/duration, Codable round-trip, backward-compatible decode).
 - Bookmark with duration renders as span; without duration renders as point.
 
-### Additional item 13 — Blend modes + paste clipboard media **[PARTIAL: blend modes already render; pasteboard read/stage landed; paste-to-timeline action open]**
+### Additional item 13 — Blend modes + paste clipboard media **[PARTIAL: blend modes render; ⌘V imports pasted files/images into the media library; insert-at-playhead open]**
 
 **What:** Add per-clip `blendMode` (Multiply/Screen/Overlay) and paste image/video/audio from NSPasteboard into media library/timeline.
 
