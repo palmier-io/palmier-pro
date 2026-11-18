@@ -455,3 +455,33 @@ struct EvidenceGraphicMCPTests {
         #expect(decodedPlan.graphicScenes == [scene])
     }
 }
+
+@Suite("Evidence graphic claim aggregation")
+struct EvidenceGraphicClaimAggregationTests {
+    @Test func numericComparisonAggregatesItemClaims() throws {
+        let spec = try EvidenceGraphicSpec.validated(
+            kind: .numericComparison,
+            title: "Assembly share",
+            numericData: NumericComparisonData(items: [
+                .init(label: "A", value: 13, unit: "percent", claimIds: ["c-1"], baseline: nil, note: nil),
+                .init(label: "B", value: 4.5, unit: "percent", claimIds: ["c-2", "c-1"], baseline: nil, note: nil),
+            ]),
+            width: 480,
+            height: 270
+        )
+        #expect(spec.claimIds == ["c-1", "c-2"])
+    }
+
+    @Test func sourceCardClaimsAreCarriedThrough() throws {
+        var card = SourceCardData(
+            sourceId: nil, title: "Report", author: "Desk", publicationDate: nil,
+            accessedDate: "2026-01-01", url: "https://example.com", documentReference: nil,
+            quotation: "Quote", paraphrase: nil, claimIds: ["c-9"]
+        )
+        card = try card.validated()
+        let spec = try EvidenceGraphicSpec.validated(
+            kind: .sourceCard, title: "Report", sourceCardData: card, width: 480, height: 270
+        )
+        #expect(spec.claimIds == ["c-9"])
+    }
+}

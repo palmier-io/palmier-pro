@@ -28,7 +28,7 @@ All eleven findings are now closed. R11 landed last: folder relink scans on an o
 |---|---|---|---|
 | 1 | Tool discovery/execution contracts | Implemented | 107 tools in `ToolDefinitions.swift`; MCP readback tests pass |
 | 2 | Reference → editorial recipe | Partial | `referenceRecipe` on `EditPlan`; no automatic reference analysis |
-| 3 | Source & claim ledger | Partial | `sourceLedger` persists claims/passages; plan-scoped graphics validate cited claims against the ledger, but numeric-comparison item claims are not yet threaded into the spec, so binding is incomplete |
+| 3 | Source & claim ledger | Implemented | `sourceLedger` persists claims/passages; graphic specs aggregate item/source-card/chart/event claim ids, and plan-scoped builds refuse ids the ledger does not contain (`EvidenceGraphicClaimAggregationTests`) |
 | 4 | Measured narration timing | Partial | `measure_narration` + `NarrationTimingService`; auto paragraph regen/resume missing |
 | 5 | Grouped approvals | Partial | blockers grouped in `read_storyboard`; no human UI run recorded |
 | 5a | Storyboard review before production | Partial | `prepare_storyboard`/`approve_storyboard`, native panel, animatic render; **no semantic graphic drafts, no MCP animatic endpoint** |
@@ -492,7 +492,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter RMSWaveformTests` passes (RMS values, visible-range slicing).
 - Volume and speed change per clip without mutating source asset; maintain pitch toggles correctly.
 
-### Additional item 9 — Captions: auto-captions + transcript file import **[PARTIAL: parser + merge landed; Captions-tab import action open]**
+### Additional item 9 — Captions: auto-captions + transcript file import **[DONE: parser, merge, Captions-tab import action, one-group placement]**
 
 **What:** Add import of transcript files (.srt/.vtt/.txt) to generate captions instead of running auto-transcription.
 
@@ -527,7 +527,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter TranscriptImporterTests` passes for SRT/VTT/plain.
 - Imported captions appear on timeline; invalid files show actionable error, no crash.
 
-### Additional item 10 — Asset panel multi-select + timeline multi-select modifiers **[PARTIAL: Escape clears timeline and media-panel selections; shift-toggle and asset multi-select existed]**
+### Additional item 10 — Asset panel multi-select + timeline multi-select modifiers **[DONE: shift-toggle, ⌘A select-all, Escape clears timeline and media panel]**
 
 **What:** Add multi-select to asset panel (⌘/Shift click, bulk delete) and timeline (Shift/Ctrl drag-select, Shift+click add-to-selection, Escape deselect, selection retention after drag/resize/move).
 
@@ -627,7 +627,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter BookmarkTests` passes (note/label/duration, Codable round-trip, backward-compatible decode).
 - Bookmark with duration renders as span; without duration renders as point.
 
-### Additional item 13 — Blend modes + paste clipboard media **[PARTIAL: blend modes render; ⌘V imports pasted files/images into the media library; insert-at-playhead open]**
+### Additional item 13 — Blend modes + paste clipboard media **[DONE: blend modes render; ⌘V imports and inserts pasted files/images at the playhead in one undo action]**
 
 **What:** Add per-clip `blendMode` (Multiply/Screen/Overlay) and paste image/video/audio from NSPasteboard into media library/timeline.
 
