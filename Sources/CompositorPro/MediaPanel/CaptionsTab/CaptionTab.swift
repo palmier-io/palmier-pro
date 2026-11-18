@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct CaptionTab: View {
     private enum Output {
@@ -232,6 +233,40 @@ struct CaptionTab: View {
                 labelHelp: L10n.string("Local runs with Apple's SpeechAnalyzer. Cloud uses credits and a more accurate model with more capabilities."),
                 onReset: { provider = .cloud }
             ) { providerPicker }
+            InspectorRow(
+                label: L10n.string("Transcript"),
+                labelHelp: L10n.string("Import a .srt, .vtt, or .txt transcript instead of transcribing audio."),
+                onReset: {}
+            ) {
+                Button(L10n.string("Import…")) { importTranscriptFile() }
+                    .buttonStyle(.capsule(.secondary))
+                    .fixedSize()
+                    .help(L10n.string("Choose a .srt, .vtt, or .txt transcript"))
+            }
+        }
+    }
+
+    /// Imports a transcript file and places it as one caption group.
+    private func importTranscriptFile() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.message = L10n.string("Choose a transcript file")
+        panel.allowedContentTypes = [.commaSeparatedText, .plainText, .text, UTType(filenameExtension: "srt") ?? .plainText,
+                                     UTType(filenameExtension: "vtt") ?? .plainText]
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            let duration = Double(editor.timeline.totalFrames) / Double(max(1, editor.timeline.fps))
+            do {
+                let text = try String(contentsOf: url, encoding: .utf8)
+                let segments = try TranscriptImporter.parse(
+                    text, fileExtension: url.pathExtension, durationSeconds: duration
+                )
+                editor.importTranscriptSegments(segments)
+            } catch {
+                editor.mediaPanelToast = MediaPanelToast(message: error.localizedDescription)
+            }
         }
     }
 

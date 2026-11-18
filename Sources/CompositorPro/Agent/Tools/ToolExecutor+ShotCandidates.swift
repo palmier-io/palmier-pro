@@ -149,6 +149,22 @@ extension ToolExecutor {
         try Task.checkCancellation()
 
         let history = StockDeliveryHistory.load()
+        var diversity: [String: Any]?
+        if !remoteHits.isEmpty {
+            // Complementary-source evaluation: interleave providers and drop duplicate or
+            // near-duplicate subjects before the pool becomes shot candidates.
+            let pool = remoteHits.map {
+                SourceDiversity.Candidate(id: $0.id, providerID: $0.providerID, title: $0.title, url: $0.url)
+            }
+            let selection = SourceDiversity.select(pool, delivered: history, limit: max(1, retrievalLimit))
+            if !selection.picked.isEmpty {
+                let ordered = Dictionary(uniqueKeysWithValues: selection.picked.enumerated().map { ($0.element.id, $0.offset) })
+                remoteHits = remoteHits
+                    .filter { ordered[$0.id] != nil }
+                    .sorted { (ordered[$0.id] ?? .max) < (ordered[$1.id] ?? .max) }
+            }
+            diversity = selection.receipt
+        }
         var bundle = await Self.buildShotCandidates(kind: kind, visual: visualInputs, spoken: spokenInputs,
             remote: remoteHits, assets: assets, exclusions: exclusions, limit: retrievalLimit,
             usedSourceIds: history.usedSourceIds)
@@ -186,6 +202,9 @@ extension ToolExecutor {
         if !bundle.skipped.isEmpty {
             warnings.append("Skipped candidates are reported separately rather than silently dropped.")
         }
+        if let diversity, let skipped = diversity["skipped"] as? [Any], !skipped.isEmpty {
+            warnings.append("Some remote candidates were skipped for source diversity; see diversity.skipped.")
+        }
         if !exclusions.unresolved.isEmpty {
             warnings.append("Known source aliases were excluded; selected sources with unresolved identities cannot certify distinct alternatives.")
         }
@@ -213,6 +232,7 @@ extension ToolExecutor {
             "skipped": bundle.skipped.map { $0.receipt() },
             "local": local,
             "remote": remote,
+            "diversity": diversity as Any? ?? NSNull(),
             "verification": verification as Any,
             "noOp": true,
             "exclusions": [

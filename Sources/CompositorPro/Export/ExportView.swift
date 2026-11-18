@@ -71,6 +71,8 @@ struct ExportView: View {
     @State private var submissionError: String?
     @State private var compositorSummary: (collect: Int, missing: Int, bytes: Int64) = (0, 0, 0)
     @State private var selectedTimelineId: String?
+    @State private var preflightIssues: [TimelineIssue] = []
+    @State private var bypassPreflight = false
 
     private var exportTimeline: Timeline {
         selectedTimelineId.flatMap { editor.timeline(for: $0) } ?? editor.timeline
@@ -97,6 +99,12 @@ struct ExportView: View {
         }
         .frame(width: AppTheme.Export.sheetWidthWithLog, height: AppTheme.Export.sheetHeight)
         .appSheetBackground()
+        .sheet(isPresented: Binding(
+            get: { !preflightIssues.isEmpty },
+            set: { if !$0 { preflightIssues = [] } }
+        )) {
+            preflightSheet
+        }
         .task {
             selectedTimelineId = editor.activeTimelineId
             let entries = editor.mediaManifest.entries
@@ -663,8 +671,58 @@ struct ExportView: View {
         return (collect, missing, bytes)
     }
 
+    /// Blocks the export on timeline errors the user has not seen yet, with an explicit override.
+    private var preflightSheet: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
+            Text(L10n.string("Fix these before exporting"))
+                .font(.system(size: AppTheme.FontSize.lg, weight: AppTheme.FontWeight.semibold))
+            ScrollView {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+                    ForEach(preflightIssues) { issue in
+                        HStack(alignment: .top, spacing: AppTheme.Spacing.sm) {
+                            Image(systemName: issue.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
+                                .foregroundStyle(issue.severity == .error ? AppTheme.Status.errorColor : AppTheme.Status.warningColor)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(verbatim: issue.detail)
+                                    .font(.system(size: AppTheme.FontSize.sm))
+                                if let frame = issue.startFrame {
+                                    Text(verbatim: L10n.string("Frame \(frame)"))
+                                        .font(.system(size: AppTheme.FontSize.xs))
+                                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 220)
+            HStack {
+                Spacer()
+                Button(L10n.string("Cancel")) { preflightIssues = [] }
+                    .buttonStyle(.capsule(.secondary))
+                Button(L10n.string("Export Anyway")) {
+                    bypassPreflight = true
+                    preflightIssues = []
+                    startExport()
+                }
+                .buttonStyle(.capsule(.prominent))
+            }
+        }
+        .padding(AppTheme.Spacing.xl)
+        .frame(width: 460)
+        .appSheetBackground()
+    }
+
     private func startExport() {
         if destination == .compositorProject { startCompositorExport(); return }
+        if !bypassPreflight, destination == .video {
+            let errors = TimelineQCAudit.audit(timeline: exportTimeline, editor: editor)
+                .filter { $0.severity == .error }
+            if !errors.isEmpty {
+                preflightIssues = errors
+                return
+            }
+        }
         submissionError = nil
         let format = exportFormat
         Telemetry.beginOperation("save_panel", data: ["flow": "video_export", "format": format.fileExtension])

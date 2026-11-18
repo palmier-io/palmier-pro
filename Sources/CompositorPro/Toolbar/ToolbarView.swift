@@ -34,6 +34,21 @@ struct ToolbarView: View {
             toolbarDivider
 
             HStack(spacing: AppTheme.Spacing.md) {
+                toggleButton(
+                    "arrow.triangle.2.circlepath",
+                    isOn: editor.rippleEditingEnabled,
+                    help: L10n.string("Ripple editing: later clips follow trims and removals")
+                ) { editor.rippleEditingEnabled.toggle() }
+                toggleButton(
+                    "link",
+                    isOn: editor.linkedSelectionEnabled,
+                    help: L10n.string("Linked selection: keep audio partners together (hold Option to invert)")
+                ) { editor.linkedSelectionEnabled.toggle() }
+            }
+
+            toolbarDivider
+
+            HStack(spacing: AppTheme.Spacing.md) {
                 textGlyphButton("T", help: L10n.string("Add Text"), action: { _ = editor.addTextClip() })
                 markerButton
             }
@@ -64,11 +79,38 @@ struct ToolbarView: View {
                     tooltipAlignment: .bottomTrailing,
                     action: zoomIn
                 )
+                Text(verbatim: "\(Int((editor.zoomScale / Defaults.pixelsPerFrame * 100).rounded()))%")
+                    .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium).monospacedDigit())
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .frame(width: 38, alignment: .trailing)
+                    .help(L10n.string("Timeline zoom"))
+                zoomButton("arrow.left.and.right.square", help: L10n.string("Zoom to Selection (⇧⌘9)"),
+                           isDisabled: editor.selectedClipIds.isEmpty) {
+                    editor.zoomToSelection()
+                }
             }
         }
         .padding(.horizontal, AppTheme.Spacing.md)
         .padding(.vertical, AppTheme.Spacing.sm)
         .frame(maxWidth: .infinity)
+    }
+
+    private func toggleButton(_ systemImage: String, isOn: Bool, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: AppTheme.FontSize.md))
+                .foregroundStyle(isOn ? AppTheme.Accent.primary : AppTheme.Text.secondaryColor)
+                .frame(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.mdLg)
+                .background(
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                        .fill(isOn ? AppTheme.Accent.primary.opacity(AppTheme.Opacity.hint) : .clear)
+                )
+        }
+        .buttonStyle(.plain)
+        .frame(minWidth: 24, minHeight: 24)
+        .help(help)
+        .accessibilityLabel(L10n.string(key: help))
+        .accessibilityAddTraits(isOn ? [.isSelected] : [])
     }
 
     private var timelineTabsButton: some View {

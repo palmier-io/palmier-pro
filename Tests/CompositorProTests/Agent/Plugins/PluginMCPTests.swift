@@ -91,3 +91,41 @@ struct PluginMCPTests {
         }
     }
 }
+
+@Suite("Plugin tool list refresh", .serialized)
+@MainActor
+struct PluginToolListRefreshTests {
+    @Test func connectedClientSeesToolsInstalledAfterItConnected() async throws {
+        let store = PluginStore(rootDirectory: FileManager.default.temporaryDirectory
+            .appendingPathComponent("plugin-refresh-\(UUID().uuidString)"))
+        defer { try? FileManager.default.removeItem(at: store.rootDirectory) }
+        let registry = ToolRegistry(store: store)
+        await registry.reload()
+        let executor = ToolExecutor(projectProvider: { nil })
+        executor.pluginRegistry = registry
+
+        let server = Server(name: "plugin-refresh", version: "1", capabilities: .init(tools: .init(listChanged: true)))
+        await MCPService.registerTools(on: server, executor: executor)
+        let pair = await InMemoryTransport.createConnectedPair()
+        let client = Client(name: "plugin-refresh-tests", version: "1")
+        try await server.start(transport: pair.server)
+        do {
+            _ = try await client.connect(transport: pair.client)
+            let before = try await client.listTools()
+            #expect(!before.tools.contains { $0.name == "sample_echo" })
+
+            _ = await store.installBuiltInSampleIfNeeded()
+            await registry.reload()
+
+            let after = try await client.listTools()
+            #expect(after.tools.contains { $0.name == "sample_echo" })
+            #expect(after.tools.contains { $0.name == ToolName.getTimeline.rawValue })
+        } catch {
+            await server.stop()
+            await client.disconnect()
+            throw error
+        }
+        await server.stop()
+        await client.disconnect()
+    }
+}

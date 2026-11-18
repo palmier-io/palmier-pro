@@ -86,7 +86,7 @@ struct PluginsPane: View {
                 Task {
                     await run {
                         try await store.setTrust(level, for: plugin.manifest.id)
-                        await ToolRegistry.shared.reload()
+                        await refreshRegistry()
                     }
                 }
             }
@@ -105,7 +105,7 @@ struct PluginsPane: View {
                 await run {
                     let installed = try await store.install(from: url)
                     status = L10n.string("Installed \(installed.manifest.name).")
-                    await ToolRegistry.shared.reload()
+                    await refreshRegistry()
                     plugins = await store.installedPlugins()
                 }
             }
@@ -116,10 +116,17 @@ struct PluginsPane: View {
         Task {
             await run {
                 try await store.remove(id: plugin.manifest.id)
-                await ToolRegistry.shared.reload()
+                await refreshRegistry()
                 status = L10n.string("Removed \(plugin.manifest.name).")
             }
         }
+    }
+
+    /// Reloads installed plugins and tells connected MCP clients the tool list changed.
+    @MainActor
+    private func refreshRegistry() async {
+        await ToolRegistry.shared.reload()
+        await AppState.shared.mcpService?.notifyToolListChanged()
     }
 
     @MainActor

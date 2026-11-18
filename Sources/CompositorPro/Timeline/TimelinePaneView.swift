@@ -21,5 +21,9 @@ struct TimelinePaneView: View {
                 AudioMeterView()
             }
         }
+        .sheet(isPresented: Bindable(editor).isCommandPalettePresented) {
+            CommandPaletteView()
+                .environment(editor)
+        }
     }
 }

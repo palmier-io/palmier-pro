@@ -4,6 +4,12 @@ import MCP
 protocol MCPServiceListener: AnyObject, Sendable {
     func start() async throws
     func stop() async
+    func announceToolListChanged() async
+}
+
+extension MCPServiceListener {
+    /// Most listeners have no long-lived client sessions to notify.
+    func announceToolListChanged() async {}
 }
 
 extension MCPHTTPServer: MCPServiceListener {}
@@ -125,6 +131,11 @@ final class MCPService {
         ToolExecutor(projectProvider: projectProvider, userDefaults: userDefaults)
     }
 
+    /// Tells connected MCP clients that the tool list changed (e.g. a plugin was installed).
+    func notifyToolListChanged() async {
+        await httpServer?.announceToolListChanged()
+    }
+
     func stop() async {
         if let shutdownTask {
             await shutdownTask.value
@@ -154,12 +165,19 @@ final class MCPService {
     @MainActor
     static func registerTools(on server: Server, executor: ToolExecutor) async {
         await executor.pluginRegistry.ensureLoaded()
-        let tools: [Tool] = ToolDefinitions.mcpServer.map { def in
-            Tool(name: def.name.rawValue, description: def.description, inputSchema: def.mcpSchemaValue)
-        } + executor.pluginTools.map { plugin in
-            Tool(name: plugin.name, description: plugin.description, inputSchema: AgentTool.jsonValue(plugin.inputSchema))
-        }
-        await registerTools(on: server, tools: tools) { params in
+        // Listing is dynamic so clients connected across a plugin install see the new tool set.
+        await registerTools(on: server, listing: { @Sendable in
+            let pluginTools = await MainActor.run {
+                executor.pluginTools.map { plugin in
+                    Tool(name: plugin.name, description: plugin.description,
+                         inputSchema: AgentTool.jsonValue(plugin.inputSchema))
+                }
+            }
+            let builtIns = ToolDefinitions.mcpServer.map { def in
+                Tool(name: def.name.rawValue, description: def.description, inputSchema: def.mcpSchemaValue)
+            }
+            return builtIns + pluginTools
+        }) { params in
             await dispatchCall(params, executor: executor)
         }
     }
@@ -182,15 +200,25 @@ final class MCPService {
         enforceNames: Bool = true,
         call: @escaping @Sendable (CallTool.Parameters) async -> CallTool.Result
     ) async {
-        let names = Set(tools.map(\.name))
+        await registerTools(on: server, listing: { tools }, enforceNames: enforceNames, call: call)
+    }
 
+    nonisolated static func registerTools(
+        on server: Server,
+        listing: @escaping @Sendable () async -> [Tool],
+        enforceNames: Bool = true,
+        call: @escaping @Sendable (CallTool.Parameters) async -> CallTool.Result
+    ) async {
         await server.withMethodHandler(ListTools.self) { _ in
-            .init(tools: tools)
+            .init(tools: await listing())
         }
 
         await server.withMethodHandler(CallTool.self) { params in
-            guard !enforceNames || names.contains(params.name) else {
-                return .init(content: [.text(text: "Unknown tool: \(params.name)", annotations: nil, _meta: nil)], isError: true)
+            if enforceNames {
+                let names = Set(await listing().map(\.name))
+                guard names.contains(params.name) else {
+                    return .init(content: [.text(text: "Unknown tool: \(params.name)", annotations: nil, _meta: nil)], isError: true)
+                }
             }
             return await call(params)
         }

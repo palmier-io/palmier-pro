@@ -129,6 +129,18 @@ extension ToolExecutor {
             throw ToolError("build_graphic_scene: \(error.localizedDescription ?? error.errorDescription ?? "invalid spec")")
         }
 
+        // A plan-scoped graphic must cite claims the plan's ledger actually contains.
+        if let planId = input.planId, let plan = editor.editPlan(id: planId), !spec.claimIds.isEmpty {
+            guard let ledger = plan.sourceLedger else {
+                throw ToolError("build_graphic_scene: plan '\(planId)' has no sourceLedger for the cited claims.")
+            }
+            let known = Set(ledger.claims.map(\.claimId))
+            let unknown = Set(spec.claimIds).subtracting(known).sorted()
+            guard unknown.isEmpty else {
+                throw ToolError("build_graphic_scene: claimIds not in the plan ledger: \(unknown.joined(separator: ", ")).")
+            }
+        }
+
         let addToTimeline = input.addToTimeline ?? false
         let startFrame = input.startFrame ?? 0
         guard (0...1_099_511_627_776).contains(startFrame) else {

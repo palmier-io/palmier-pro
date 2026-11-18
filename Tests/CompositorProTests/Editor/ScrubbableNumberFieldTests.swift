@@ -25,4 +25,29 @@ struct ScrubbableNumberFieldTests {
 
         #expect(value == 1)
     }
+
+    @Test func evaluatesArithmeticExpressionsInTheField() {
+        let value = ScrubbableNumberField.committedValue(
+            from: "1920/2",
+            suffix: "",
+            displayMultiplier: 1,
+            range: 0...4096
+        )
+        #expect(value == 960)
+
+        let clamped = ScrubbableNumberField.committedValue(
+            from: "50 + 25",
+            suffix: "",
+            displayMultiplier: 1,
+            range: 0...60
+        )
+        #expect(clamped == 60)
+
+        #expect(ScrubbableNumberField.committedValue(
+            from: "3 * ",
+            suffix: "",
+            displayMultiplier: 1,
+            range: 0...100
+        ) == nil)
+    }
 }

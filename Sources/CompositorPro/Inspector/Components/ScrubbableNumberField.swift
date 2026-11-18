@@ -187,7 +187,8 @@ struct ScrubbableNumberField: View {
         let cleaned = withoutSuffix
             .trimmingCharacters(in: .whitespaces)
             .replacingOccurrences(of: ",", with: ".")
-        guard let parsed = Double(cleaned), parsed.isFinite else { return nil }
+        // Accept arithmetic ("1920/2", "50 + 25") as well as plain numbers.
+        guard let parsed = MathExpression.evaluate(cleaned), parsed.isFinite else { return nil }
         let mult = displayMultiplier == 0 ? 1 : displayMultiplier
         guard mult.isFinite else { return nil }
         let raw = parsed / mult

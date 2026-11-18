@@ -4,6 +4,7 @@ enum MediaPanelSection: String, CaseIterable {
     case media = "Media"
     case index = "Index"
     case captions = "Captions"
+    case layers = "Layers"
     case audio = "Audio"
     case catalog = "Catalog"
 
@@ -12,6 +13,7 @@ enum MediaPanelSection: String, CaseIterable {
         case .media: L10n.key("Media")
         case .index: L10n.key("Index")
         case .captions: L10n.key("Captions")
+        case .layers: L10n.key("Layers")
         case .audio: L10n.key("Audio")
         case .catalog: L10n.key("Catalog")
         }
@@ -22,6 +24,7 @@ enum MediaPanelSection: String, CaseIterable {
         case .media: "folder"
         case .index: "list.bullet.rectangle"
         case .captions: "captions.bubble"
+        case .layers: "square.3.layers.3d"
         case .audio: "waveform"
         case .catalog: "book"
         }
@@ -65,6 +68,7 @@ struct MediaPanelView: View {
                         indexSource = .automatic
                         selectSection(.index)
                     })
+                case .layers: LayersTabView()
                 case .audio: AudioPanelTab()
                 case .catalog: CatalogTab()
                 }

@@ -229,8 +229,8 @@ final class TimelineInputController {
             view.setHoveredClipId(ClipRenderer.supportsPrecisionControls(in: rect) ? clip.id : nil)
             let isShift = event.modifierFlags.contains(.shift)
             let isOption = event.modifierFlags.contains(.option)
-            // Linked behavior is always on; Option is the per-drag override.
-            let linkedOn = !isOption
+            // Linked selection is on by default; Option inverts it for this gesture.
+            let linkedOn = editor.linkedSelectionEnabled != isOption
 
             let localX = point.x - rect.minX
             let trimEdge = isOption ? nil : Self.trimEdge(localX: localX, clipWidth: rect.width)

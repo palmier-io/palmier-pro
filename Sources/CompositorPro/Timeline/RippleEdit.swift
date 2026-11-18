@@ -69,6 +69,28 @@ enum RippleEdit {
         return result
     }
 
+    /// Snapshot of occupied frame intervals for every track.
+    static func snapshots(of timeline: Timeline) -> [TrackSnapshot] {
+        timeline.tracks.compactMap { track in
+            TrackSnapshot(trackId: track.id, intervals: track.clips.map { $0.startFrame..<$0.endFrame })
+        }
+    }
+
+    /// Closes the given vacated ranges: clips starting at or after each range shift by the delta.
+    static func apply(_ adjustments: [Adjustment], to timeline: inout Timeline) {
+        for adjustment in adjustments where adjustment.delta < 0 {
+            guard let index = timeline.tracks.firstIndex(where: { $0.id == adjustment.trackId }) else { continue }
+            for clipIndex in timeline.tracks[index].clips.indices {
+                var clip = timeline.tracks[index].clips[clipIndex]
+                guard clip.startFrame >= adjustment.interval.lowerBound else { continue }
+                let shifted = max(0, clip.startFrame + adjustment.delta)
+                guard shifted != clip.startFrame else { continue }
+                clip.startFrame = shifted
+                timeline.tracks[index].clips[clipIndex] = clip
+            }
+        }
+    }
+
     /// Intervals in `lhs` not covered by any interval in `rhs`, as maximal ranges.
     private static func difference(_ lhs: [Range<Int>], _ rhs: [Range<Int>]) -> [Range<Int>] {
         var out: [Range<Int>] = []

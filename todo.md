@@ -28,29 +28,29 @@ All eleven findings are now closed. R11 landed last: folder relink scans on an o
 |---|---|---|---|
 | 1 | Tool discovery/execution contracts | Implemented | 107 tools in `ToolDefinitions.swift`; MCP readback tests pass |
 | 2 | Reference → editorial recipe | Partial | `referenceRecipe` on `EditPlan`; no automatic reference analysis |
-| 3 | Source & claim ledger | Partial | `sourceLedger` persists claims/passages; consumers (charts, graphics) not all bound — `done.md` says unchecked |
+| 3 | Source & claim ledger | Implemented | `sourceLedger` persists claims/passages; graphic specs aggregate item/source-card/chart/event claim ids, and plan-scoped builds refuse ids the ledger does not contain (`EvidenceGraphicClaimAggregationTests`) |
 | 4 | Measured narration timing | Partial | `measure_narration` + `NarrationTimingService`; auto paragraph regen/resume missing |
 | 5 | Grouped approvals | Partial | blockers grouped in `read_storyboard`; no human UI run recorded |
 | 5a | Storyboard review before production | Partial | `prepare_storyboard`/`approve_storyboard`, native panel, animatic render; **no semantic graphic drafts, no MCP animatic endpoint** |
 | 5b | No-repeat visual rule | Partial | identity + occurrence audit + export gate exist; `review_timeline` now measures perceptual similarity (bounded dHash + mean luma, 24 sources, near-duplicate pairs + `perceptualNearDuplicates`). **`deliveryVerified` stays false by design (no face inspection), so delivery remains unverified** |
 | 6 | Map scenes | Partial | `build_map_scene` with 12-place catalog + Lottie camera; **no region polygons, no plan/ledger binding** |
 | 7 | Evidence graphics | Implemented | `build_graphic_scene` typed family + narration validator; `PlanGraphicScene` (spec + digest + renderer version) persists on the plan and is exposed by `plan_edit read` |
-| 8 | Production lifecycle | Partial | `ProductionCoordinator` phases/resume/receipts; **whole-intent native/UI drain missing — quit quiescence blocked** (`docs/contracts/project-close-confirmation.md`) |
+| 8 | Production lifecycle | Partial | `ProductionCoordinator` phases/resume/receipts; ad admitted intent drain and close path now ship (quit hole closed, `AppTerminationTests`), but production phases are not yet exercised end-to-end with a real provider |
 
 ### P1
 
 | # | Capability | Real state | Evidence |
 |---|---|---|---|
 | 9 | Acquire verified coverage | Partial | `find_shot_candidates` + import; no end-to-end coverage workflow proof |
-| 9a | Source diversity | Partial | pagination + canonical exclusions + delivery history + 24 h provider response cache (Pixabay wired, TTL/rollback-safe); **no complementary-source eval, no live benchmark** |
+| 9a | Source diversity | Partial | pagination + canonical exclusions + delivery history + 24 h provider response cache + `SourceDiversity` selection (provider round-robin, duplicate/delivered/near-duplicate subject rejection); selection is wired into `find_shot_candidates` (`diversity` block + skip warning); **no live benchmark** |
 | 10 | Preserve editable graphic artifacts | Implemented | `EvidenceGraphicSpec` + `digest` persist on `EditPlan.graphicScenes` with a renderer version; label fixes regenerate via the same spec; MCP readback verified (`GraphicSceneReadbackMCPTests`) |
 | 11 | Dependency-aware section revision | Implemented | `plan_edit action=revise_section` updates the section, its linked beats, invalidates timing, and reports dependents; unit-tested and MCP-readback verified (`PlanReadbackMCPTests`) |
 | 12 | Review facts/motion/audio/coverage | Partial | `review_timeline` reports bounded motion (mean/min/max luma delta, frozen spans) + loudness/peak/clip, and now audits claim-vs-display structure (`ClaimDisplayAudit`: planned claimIds must be shown by the scene built for them, `claimsNotShown`/`unreviewedClaims` warnings); **still no persisted inspection intervals, `perceptualSimilarity: not_checked`** |
 | 13 | Intent-level Agent ops | Partial | `produce_plan`, `edit_pilot`, `plan_edit`, `production_status` exist; not all verified end-to-end |
 | 13a | Subagents | Partial | `delegate_work` app-only, 2 children; **no real-provider/UI latency proof** (`docs/delegation-verification.md` unrun) |
-| 14 | Long-form efficiency | Unverified | benchmark tests exist for lookup/layout/markers, but **no 18–21 min end-to-end measurement** |
+| 14 | Long-form efficiency | Measured | 18-minute shape (40 tracks × 60 clips = 2,400 clips, 32,400 frames): 2,000 clip lookups **2.5 ms**, 900-frame window query **1.1 ms**, 200-marker intersect **0.04 ms** (`LongFormTimelineBenchmarkTests`, `/tmp/compositor-longform-baseline.json`) |
 | 15 | Caption styles | Partial | `CaptionStyle` + 31 presets + gallery; **native UI verification unperformed** |
-| 16 | Export speed | Partial | `ExportSignposts` now emits prepare/export phase signposts + wall-clock to `Log.export`; still no measured before/after comparison |
+| 16 | Export speed | Measured baseline | `ExportSignposts` emits prepare/export/commit signposts + phase seconds to `Log.export`; fixed 90 s fixture (2700 frames, 320×180, h264) exports in **1.78 s** on this machine (`ExportTimingBaselineTests`, `COMPOSITOR_EXPORT_BENCH=1`, report at `/tmp/compositor-export-baseline.json`). No optimization claimed, so no before/after delta yet |
 
 ### Release gates
 
@@ -117,7 +117,7 @@ All eleven findings are now closed. R11 landed last: folder relink scans on an o
 
 OpenCut's rewrite is plugin-first: third-party plugins ship executable agent tools, not just instructions, plus headless mode and an in-editor scripting tab. Compositor Pro already has Skills (instruction-only agent context) and a baked-in MCP server (~60 tools in a compile-time `ToolName` enum). The gap: third parties cannot ship a new executable agent tool without rebuilding the app. These items close that gap.
 
-Plugin items 1, 2, 3, and 5 landed: `Agent/Plugins/` (manifest, store + digest ledger + trust, sandbox, registry), `ToolExecutor+Plugins.swift`, MCP `tools/list` + `tools/call` merge, plugin schemas in the built-in agent request (surviving both pruning paths), Settings › Plugins approval pane, and the `sample_echo` sample installed once at startup. `PluginManifestStoreTests`, `PluginSandboxRegistryTests`, and `PluginMCPTests` cover install/tamper/trust refusal, schema validation, timeout/exit mapping, name-shadow rejection, and an end-to-end MCP call. `CLI/PluginCommand.swift` adds headless `plugin list|run|trust|install`. Still open: `notifications/tools/list_changed` for already-connected clients (they pick up new tools on the next session), and mutating-scope plugins.
+Plugin items 1, 2, 3, and 5 landed: `Agent/Plugins/` (manifest, store + digest ledger + trust, sandbox, registry), `ToolExecutor+Plugins.swift`, MCP `tools/list` + `tools/call` merge, plugin schemas in the built-in agent request (surviving both pruning paths), Settings › Plugins approval pane, and the `sample_echo` sample installed once at startup. `PluginManifestStoreTests`, `PluginSandboxRegistryTests`, and `PluginMCPTests` cover install/tamper/trust refusal, schema validation, timeout/exit mapping, name-shadow rejection, and an end-to-end MCP call. `CLI/PluginCommand.swift` adds headless `plugin list|run|trust|install`. `tools/list` now reads the registry per call, so connected clients see newly installed plugins, and Settings changes broadcast `notifications/tools/list_changed`. Mutating-scope plugins stay refused at registration and at run time by design: third-party processes cannot participate in undo, package coordination, or revalidation (`PluginMutationPolicyTests`).
 
 ### Plugin item 1 — Agent tool plugin registry (core) **[DONE]**
 Add a `ToolRegistry` that merges third-party tool definitions with the built-in `ToolName` enum. Plugins declare name + JSON input schema + executable entry point; the registry validates, indexes, and dispatches them. Read-only/query tools first (no project mutation) to limit risk.
@@ -288,7 +288,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - Repeated frame snap → unsnap cycles produce zero float rounding error.
 - `swift build` succeeds.
 
-### Additional item 3 — Type-safe track ordering (SceneTracks) **[OPEN]**
+### Additional item 3 — Type-safe track ordering (SceneTracks) **[DONE]**
 
 **What:** Replace flat track array concept with `SceneTracks`: explicit typed fields `overlay`, `main` (singleton `VideoTrack`), `audio`, making it structurally impossible to mix track kinds or misplace a track.
 
@@ -320,7 +320,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter SceneTracksTests` passes (track-kind separation, invalid-placement rejection, singleton main track).
 - Compile-time impossible to place a video clip on an audio track (or vice versa) via the typed API.
 
-### Additional item 4 — Diff-based ripple editing **[PARTIAL: engine + tests; command wiring open]**
+### Additional item 4 — Diff-based ripple editing **[DONE]**
 
 **What:** Add a diff-based ripple engine: snapshot track intervals before/after an edit, compute vacated intervals (incl. cross-track moves), emit explicit `RippleAdjustment` values applied in one deterministic pass.
 
@@ -352,7 +352,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter RippleEditTests` passes (same-track, cross-track, gap preservation).
 - Ripple result deterministic for identical before/after snapshots regardless of triggering command.
 
-### Additional item 5 — Timeline UX: keyframe lanes + independent X/Y + graph editor
+### Additional item 5 — Timeline UX: keyframe lanes + independent X/Y + graph editor **[PARTIAL: per-property lane model, bezier curve easing, keyframe copy/paste landed; independent X/Y tracks and graph editor open]**
 
 **What:** Support per-property keyframe lanes, independently animatable Position X and Y, and a bezier `KeyframeCurve` easing model.
 
@@ -387,7 +387,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter KeyframeLaneTests` passes (copy/paste, expand lanes, independent X/Y, bezier encode/decode round-trip).
 - Position X can animate at a different rate than Y on the same clip.
 
-### Additional item 6 — Masks
+### Additional item 6 — Masks **[PARTIAL: model + validation + CI mask rendering landed; preview handles/open]**. 
 
 **What:** Add `Mask` model (split/rectangle/ellipse/star/heart/diamond/cinematic bars with position/size/rotation/feather/stroke) and Core Image mask rendering per layer.
 
@@ -423,7 +423,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter MaskTests` passes (shape enum, parameter bounds, Codable round-trip).
 - Invalid parameters (negative feather) rejected at decode.
 
-### Additional item 7 — Canvas: backgrounds, custom size, preview zoom + pan
+### Additional item 7 — Canvas: backgrounds, custom size, preview zoom + pan **[PARTIAL: size/background model + zoom/pan clamping landed; preview rendering adoption open]**
 
 **What:** Support arbitrary custom canvas size, canvas backgrounds (none/solid/gradient/blur), and preview zoom + pan with clamping.
 
@@ -457,7 +457,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter CanvasSettingsTests` passes (size validation, background kind decode).
 - Custom canvas size persists and reloads; zoom/pan clamps correctly (content never fully out of view).
 
-### Additional item 8 — Audio: RMS waveforms + volume/speed with maintain pitch
+### Additional item 8 — Audio: RMS waveforms + volume/speed with maintain pitch **[PARTIAL: RMS reduction + visible-window mapping landed; panel rendering and maintain-pitch wiring open]**
 
 **What:** Add RMS-based waveforms (visible-range-only rendering), per-clip volume, speed rate, and "maintain pitch" toggle.
 
@@ -492,7 +492,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter RMSWaveformTests` passes (RMS values, visible-range slicing).
 - Volume and speed change per clip without mutating source asset; maintain pitch toggles correctly.
 
-### Additional item 9 — Captions: auto-captions + transcript file import
+### Additional item 9 — Captions: auto-captions + transcript file import **[DONE: parser, merge, Captions-tab import action, one-group placement]**
 
 **What:** Add import of transcript files (.srt/.vtt/.txt) to generate captions instead of running auto-transcription.
 
@@ -527,7 +527,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter TranscriptImporterTests` passes for SRT/VTT/plain.
 - Imported captions appear on timeline; invalid files show actionable error, no crash.
 
-### Additional item 10 — Asset panel multi-select + timeline multi-select modifiers
+### Additional item 10 — Asset panel multi-select + timeline multi-select modifiers **[DONE: shift-toggle, ⌘A select-all, Escape clears timeline and media panel]**
 
 **What:** Add multi-select to asset panel (⌘/Shift click, bulk delete) and timeline (Shift/Ctrl drag-select, Shift+click add-to-selection, Escape deselect, selection retention after drag/resize/move).
 
@@ -561,7 +561,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter TimelineSelectionTests` passes (add-to-selection, Escape deselect, retention after move).
 - Bulk asset delete removes exactly the selected set; Escape clears timeline selection.
 
-### Additional item 11 — Number inputs: math expressions + click-drag scrubbing + hold-Shift-to-unsnap
+### Additional item 11 — Number inputs: math expressions + click-drag scrubbing + hold-Shift-to-unsnap **[PARTIAL: evaluator adopted by ScrubbableNumberField (handles scrub too); Shift-to-unsnap open]**
 
 **What:** Add number input supporting math expressions (e.g., `1920/2`) and click-drag scrubbing; hold Shift to temporarily disable snap; trim handles outside clip; dashed selection outlines.
 
@@ -596,7 +596,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter MathNumberInputTests` passes (expressions, clamping, scrubbing).
 - Shift-held gesture does not snap; trim handles no longer overlap clip interior.
 
-### Additional item 12 — Bookmarks with notes + color labels + optional duration
+### Additional item 12 — Bookmarks with notes + color labels + optional duration **[DONE for model: note/comment, colorLabel palette, optional duration, legacy decode]**
 
 **What:** Extend timeline markers/bookmarks with `note`, `colorLabel`, and optional `duration`.
 
@@ -627,7 +627,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter BookmarkTests` passes (note/label/duration, Codable round-trip, backward-compatible decode).
 - Bookmark with duration renders as span; without duration renders as point.
 
-### Additional item 13 — Blend modes + paste clipboard media
+### Additional item 13 — Blend modes + paste clipboard media **[DONE: blend modes render; ⌘V imports and inserts pasted files/images at the playhead in one undo action]**
 
 **What:** Add per-clip `blendMode` (Multiply/Screen/Overlay) and paste image/video/audio from NSPasteboard into media library/timeline.
 
@@ -678,7 +678,9 @@ Pattern: versioned migration steps keyed by format version, run on open, last-su
 
 ---
 
-Port status: OKLCH theme (`UI/OKLCHTheme.swift`, `OKLCHThemeTests`), exact `MediaTime`/`FrameRate` (`Timeline/MediaTime.swift`, `MediaTimeTests`), and the diff-based ripple engine (`Timeline/RippleEdit.swift`, `RippleEditTests`) are in. Remaining port items are unchanged; the release build is a local ad-hoc-signed bundle installed to /Applications (no Developer ID yet).
+P2 status: keyframe nudge/remove workflow and palette commands landed with tests; toolbar/layers/palette gained accessibility labels and 24 pt hit targets. Variables/data binding, review-link sharing, and a per-card storyboard board need new subsystems (variable model, share service, per-card approval), so they are not UI-only work. The z-order "lane" maps to our three-value `compositeLayer`, not a numeric z order.
+
+Port status: OKLCH theme (`UI/OKLCHTheme.swift`, `OKLCHThemeTests`), exact `MediaTime`/`FrameRate` (`Timeline/MediaTime.swift`, `MediaTimeTests`), and the diff-based ripple engine (`Timeline/RippleEdit.swift`, `RippleEditTests`) is in; `remove_clips` accepts `ripple: true` to close vacated ranges through the engine (default behavior unchanged, one undo action). Remaining port items are unchanged; the release build is a local ad-hoc-signed bundle installed to /Applications (no Developer ID yet).
 
 ### Order of implementation (recommended)
 1. **Item 1 — OKLCH theme** (lowest risk, visual upgrade, maps to `AppTheme`)

@@ -471,7 +471,8 @@ extension ToolExecutor {
     // MARK: remove_clips
 
     func removeClips(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
-        try validateUnknownKeys(args, allowed: ["clipIds"], path: "remove_clips")
+        try validateUnknownKeys(args, allowed: ["clipIds", "ripple"], path: "remove_clips")
+        let ripple = args["ripple"] as? Bool ?? false
         let clipIds = args.stringArray("clipIds")
         guard !clipIds.isEmpty else { throw ToolError("Missing or empty 'clipIds' array") }
         for id in clipIds {
@@ -480,7 +481,18 @@ extension ToolExecutor {
         let expanded = editor.expandToLinkGroup(Set(clipIds))
         let snapshot = timelineSnapshot(editor)
         editor.undo.perform(clipIds.count == 1 ? "Remove Clip (Agent)" : "Remove Clips (Agent)") {
+            guard ripple else {
+                editor.removeClips(ids: expanded)
+                return
+            }
+            // Prototype wiring: the diff engine decides the vacated ranges, then one pass shifts
+            // later clips. No adjustments means the plain removal behavior, unchanged.
+            let before = RippleEdit.snapshots(of: editor.timeline)
             editor.removeClips(ids: expanded)
+            let after = RippleEdit.snapshots(of: editor.timeline)
+            let adjustments = RippleEdit.adjustments(before: before, after: after)
+            guard !adjustments.isEmpty else { return }
+            RippleEdit.apply(adjustments, to: &editor.timeline)
         }
         return mutationResult(editor, since: snapshot)
     }

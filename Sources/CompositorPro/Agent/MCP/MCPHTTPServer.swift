@@ -41,6 +41,19 @@ actor MCPHTTPServer {
         self.makeServer = makeServer
     }
 
+    /// Broadcasts `notifications/tools/list_changed` to every live client session.
+    func announceToolListChanged() async {
+        let notification = Message<ToolListChangedNotification>(
+            method: ToolListChangedNotification.name, params: Empty()
+        )
+        for session in sessions.values {
+            try? await session.server.notify(notification)
+        }
+        if let fallback {
+            try? await fallback.server.notify(notification)
+        }
+    }
+
     func start() async throws {
         Log.mcp.info("listener start port=\(self.port)")
         guard let endpointPort = port == 0 ? NWEndpoint.Port.any : NWEndpoint.Port(rawValue: port) else {

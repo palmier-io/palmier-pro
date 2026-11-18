@@ -101,16 +101,56 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             }
             return false
 
+        case 29: // 0 key
+            if cmd, mods.intersection([.option, .control]).isEmpty {
+                editorViewModel.zoomToFitTimeline()
+                return true
+            }
+            return false
+
+        case 35: // P key
+            if cmd, shift {
+                editorViewModel.isCommandPalettePresented = true
+                return true
+            }
+            return false
+
+        case 25: // 9 key
+            if cmd, shift {
+                editorViewModel.zoomToSelection()
+                return true
+            }
+            return false
+
         case 49: // Space
             editorViewModel.togglePlayback()
             return true
 
         case 123: // Left arrow
-            if shift { editorViewModel.skipBackward() } else { editorViewModel.stepBackward() }
+            if mods.contains(.option) {
+                _ = editorViewModel.nudgeSelectedKeyframes(at: editorViewModel.activeFrame, by: -1)
+            } else if shift {
+                editorViewModel.skipBackward()
+            } else {
+                editorViewModel.stepBackward()
+            }
             return true
 
         case 124: // Right arrow
-            if shift { editorViewModel.skipForward() } else { editorViewModel.stepForward() }
+            if mods.contains(.option) {
+                _ = editorViewModel.nudgeSelectedKeyframes(at: editorViewModel.activeFrame, by: 1)
+            } else if shift {
+                editorViewModel.skipForward()
+            } else {
+                editorViewModel.stepForward()
+            }
+            return true
+
+        case 53: // Escape
+            if !editorViewModel.mediaPanelSelectedKeys().isEmpty {
+                editorViewModel.clearMediaPanelSelection()
+            }
+            editorViewModel.clearTimelineSelection()
             return true
 
         case 51: // Delete/Backspace
@@ -144,11 +184,12 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             return false
 
         case 9: // V key
-            if !cmd {
-                editorViewModel.toolMode = .pointer
+            if cmd {
+                editorViewModel.pasteMedia()
                 return true
             }
-            return false
+            editorViewModel.toolMode = .pointer
+            return true
 
         case 17: // T key
             if !cmd {

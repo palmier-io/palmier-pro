@@ -16,11 +16,19 @@ struct TimelineMarker: Codable, Sendable, Equatable, Hashable, Identifiable {
     var startFrame: Int
     var durationFrames: Int = 0
     var color: TextStyle.RGBA = defaultColor
+    /// Optional semantic label; `color` keeps rendering-compatible values for older files.
+    var colorLabel: MarkerColorLabel?
     var comment: String = ""
     var status: Status = .open
 
     var endFrame: Int { startFrame + durationFrames }
     var isRange: Bool { durationFrames > 0 }
+
+    /// Applies the label's palette color when one is set.
+    mutating func adoptColorLabel() {
+        guard let colorLabel else { return }
+        color = colorLabel.color
+    }
 
     func intersects(_ range: Range<Int>) -> Bool {
         isRange
@@ -35,9 +43,26 @@ struct TimelineMarker: Codable, Sendable, Equatable, Hashable, Identifiable {
     }
 }
 
+enum MarkerColorLabel: String, Codable, Sendable, CaseIterable {
+    case blue, green, yellow, orange, red, purple, gray, teal
+
+    var color: TextStyle.RGBA {
+        switch self {
+        case .blue: .init(r: 0, g: 0.478, b: 1, a: 1)
+        case .green: .init(r: 0.2, g: 0.78, b: 0.35, a: 1)
+        case .yellow: .init(r: 0.95, g: 0.78, b: 0.2, a: 1)
+        case .orange: .init(r: 0.98, g: 0.55, b: 0.16, a: 1)
+        case .red: .init(r: 0.92, g: 0.26, b: 0.26, a: 1)
+        case .purple: .init(r: 0.62, g: 0.4, b: 0.95, a: 1)
+        case .gray: .init(r: 0.55, g: 0.58, b: 0.62, a: 1)
+        case .teal: .init(r: 0.15, g: 0.72, b: 0.72, a: 1)
+        }
+    }
+}
+
 extension TimelineMarker {
     private enum CodingKeys: String, CodingKey {
-        case id, name, startFrame, durationFrames, color, comment, status
+        case id, name, startFrame, durationFrames, color, colorLabel, comment, status
     }
 
     init(from decoder: Decoder) throws {
@@ -48,6 +73,7 @@ extension TimelineMarker {
             startFrame: try values.decode(Int.self, forKey: .startFrame),
             durationFrames: try values.decode(Int.self, forKey: .durationFrames),
             color: try values.decode(TextStyle.RGBA.self, forKey: .color),
+            colorLabel: try values.decodeIfPresent(MarkerColorLabel.self, forKey: .colorLabel),
             comment: try values.decode(String.self, forKey: .comment),
             status: try values.decodeIfPresent(Status.self, forKey: .status) ?? .open
         )

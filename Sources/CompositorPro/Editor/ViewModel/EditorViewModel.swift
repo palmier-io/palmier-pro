@@ -214,8 +214,14 @@ final class EditorViewModel {
             if canvasZoom <= 1.0 { canvasOffset = .zero }
         }
     }
-    var canvasOffset: CGSize = .zero
+    var canvasOffset: CGSize = .zero {
+        didSet { clampCanvasOffset() }
+    }
+    /// Preview viewport size in points, published by the preview canvas for pan clamping.
+    @ObservationIgnored var canvasViewportSize: CGSize = .zero
     var rotationSnapGuidesVisible: Bool = false
+    /// ⌘⇧P command palette presentation.
+    var isCommandPalettePresented: Bool = false
     var timelineVisibleWidth: Double = 0
     var timelineRenderRevision: Int = 0
     var timelineCompositionGeneration: Int = 0
@@ -337,6 +343,20 @@ final class EditorViewModel {
             UserDefaults.standard.set(markDeadAir, forKey: "markDeadAir")
             mediaVisualCache.timelineView?.needsDisplay = true
         }
+    }
+
+    /// Ripple mode keeps later clips attached when a clip is trimmed or removed.
+    var rippleEditingEnabled: Bool = {
+        UserDefaults.standard.bool(forKey: "rippleEditingEnabled")
+    }() {
+        didSet { UserDefaults.standard.set(rippleEditingEnabled, forKey: "rippleEditingEnabled") }
+    }
+
+    /// Linked selection moves a clip's linked audio partner with it. Option inverts it per gesture.
+    var linkedSelectionEnabled: Bool = {
+        UserDefaults.standard.object(forKey: "linkedSelectionEnabled") as? Bool ?? true
+    }() {
+        didSet { UserDefaults.standard.set(linkedSelectionEnabled, forKey: "linkedSelectionEnabled") }
     }
 
     var rippleTimelineMarkers: Bool = {
