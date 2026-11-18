@@ -492,7 +492,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter RMSWaveformTests` passes (RMS values, visible-range slicing).
 - Volume and speed change per clip without mutating source asset; maintain pitch toggles correctly.
 
-### Additional item 9 — Captions: auto-captions + transcript file import
+### Additional item 9 — Captions: auto-captions + transcript file import **[PARTIAL: parser + merge landed; Captions-tab import action open]**
 
 **What:** Add import of transcript files (.srt/.vtt/.txt) to generate captions instead of running auto-transcription.
 
@@ -561,7 +561,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter TimelineSelectionTests` passes (add-to-selection, Escape deselect, retention after move).
 - Bulk asset delete removes exactly the selected set; Escape clears timeline selection.
 
-### Additional item 11 — Number inputs: math expressions + click-drag scrubbing + hold-Shift-to-unsnap
+### Additional item 11 — Number inputs: math expressions + click-drag scrubbing + hold-Shift-to-unsnap **[PARTIAL: evaluator + clamp/scrub helpers landed; field adoption + Shift-to-unsnap open]**
 
 **What:** Add number input supporting math expressions (e.g., `1920/2`) and click-drag scrubbing; hold Shift to temporarily disable snap; trim handles outside clip; dashed selection outlines.
 
