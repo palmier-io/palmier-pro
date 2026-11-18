@@ -608,6 +608,28 @@ extension EditorViewModel {
         return wordsByTrack.filter { $0.value > 0 }.max { $0.value < $1.value }?.key
     }
 
+    /// Places imported transcript segments as one caption group in a single undo action.
+    @discardableResult
+    func importTranscriptSegments(_ segments: [TranscriptSegment], style: TextStyle = TextStyle()) -> [String] {
+        guard !segments.isEmpty else { return [] }
+        let fps = max(1, timeline.fps)
+        let group = UUID().uuidString
+        let specs = segments.map { segment -> TextClipSpec in
+            let start = max(0, Int((segment.startSeconds * Double(fps)).rounded()))
+            let end = max(start + 1, Int((segment.endSeconds * Double(fps)).rounded()))
+            return TextClipSpec(
+                trackIndex: 0,
+                startFrame: start,
+                durationFrames: end - start,
+                content: segment.text,
+                style: style,
+                transform: nil,
+                captionGroupId: group
+            )
+        }
+        return placeCaptionTrack(specs, actionName: "Import Transcript")
+    }
+
     /// Nested inside an open undo transaction this coalesces into the outer group.
     @discardableResult
     func placeCaptionTrack(_ specs: [TextClipSpec], actionName: String) -> [String] {
