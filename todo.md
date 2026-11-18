@@ -596,7 +596,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter MathNumberInputTests` passes (expressions, clamping, scrubbing).
 - Shift-held gesture does not snap; trim handles no longer overlap clip interior.
 
-### Additional item 12 — Bookmarks with notes + color labels + optional duration
+### Additional item 12 — Bookmarks with notes + color labels + optional duration **[DONE for model: note/comment, colorLabel palette, optional duration, legacy decode]**
 
 **What:** Extend timeline markers/bookmarks with `note`, `colorLabel`, and optional `duration`.
 
