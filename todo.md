@@ -28,7 +28,7 @@ All eleven findings are now closed. R11 landed last: folder relink scans on an o
 |---|---|---|---|
 | 1 | Tool discovery/execution contracts | Implemented | 107 tools in `ToolDefinitions.swift`; MCP readback tests pass |
 | 2 | Reference → editorial recipe | Partial | `referenceRecipe` on `EditPlan`; no automatic reference analysis |
-| 3 | Source & claim ledger | Partial | `sourceLedger` persists claims/passages; consumers (charts, graphics) not all bound — `done.md` says unchecked |
+| 3 | Source & claim ledger | Partial | `sourceLedger` persists claims/passages; plan-scoped graphics validate cited claims against the ledger, but numeric-comparison item claims are not yet threaded into the spec, so binding is incomplete |
 | 4 | Measured narration timing | Partial | `measure_narration` + `NarrationTimingService`; auto paragraph regen/resume missing |
 | 5 | Grouped approvals | Partial | blockers grouped in `read_storyboard`; no human UI run recorded |
 | 5a | Storyboard review before production | Partial | `prepare_storyboard`/`approve_storyboard`, native panel, animatic render; **no semantic graphic drafts, no MCP animatic endpoint** |
