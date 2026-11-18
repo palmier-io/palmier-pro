@@ -352,7 +352,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter RippleEditTests` passes (same-track, cross-track, gap preservation).
 - Ripple result deterministic for identical before/after snapshots regardless of triggering command.
 
-### Additional item 5 — Timeline UX: keyframe lanes + independent X/Y + graph editor
+### Additional item 5 — Timeline UX: keyframe lanes + independent X/Y + graph editor **[PARTIAL: per-property lane model, bezier curve easing, keyframe copy/paste landed; independent X/Y tracks and graph editor open]**
 
 **What:** Support per-property keyframe lanes, independently animatable Position X and Y, and a bezier `KeyframeCurve` easing model.
 
@@ -527,7 +527,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter TranscriptImporterTests` passes for SRT/VTT/plain.
 - Imported captions appear on timeline; invalid files show actionable error, no crash.
 
-### Additional item 10 — Asset panel multi-select + timeline multi-select modifiers
+### Additional item 10 — Asset panel multi-select + timeline multi-select modifiers **[PARTIAL: Escape clears timeline and media-panel selections; shift-toggle and asset multi-select existed]**
 
 **What:** Add multi-select to asset panel (⌘/Shift click, bulk delete) and timeline (Shift/Ctrl drag-select, Shift+click add-to-selection, Escape deselect, selection retention after drag/resize/move).
 

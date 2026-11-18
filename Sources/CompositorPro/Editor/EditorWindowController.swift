@@ -113,6 +113,13 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             if shift { editorViewModel.skipForward() } else { editorViewModel.stepForward() }
             return true
 
+        case 53: // Escape
+            if !editorViewModel.mediaPanelSelectedKeys().isEmpty {
+                editorViewModel.clearMediaPanelSelection()
+            }
+            editorViewModel.clearTimelineSelection()
+            return true
+
         case 51: // Delete/Backspace
             if handlesMediaPanelCommands, !editorViewModel.mediaPanelSelectedKeys().isEmpty {
                 editorViewModel.deleteMediaPanelItems()

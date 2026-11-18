@@ -212,6 +212,13 @@ extension EditorViewModel {
         )
     }
 
+    /// Escape: drops every timeline selection (clips, gap, markers) without touching the timeline.
+    func clearTimelineSelection() {
+        selectedClipIds = []
+        selectedGap = nil
+        selectedTimelineMarkerIds = []
+    }
+
     func removeClips(ids: Set<String>, prune: Bool = true) {
         let hasMatches = timeline.tracks.contains { t in t.clips.contains { ids.contains($0.id) } }
         guard hasMatches else { return }
