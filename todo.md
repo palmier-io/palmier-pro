@@ -42,7 +42,7 @@ All eleven findings are now closed. R11 landed last: folder relink scans on an o
 | # | Capability | Real state | Evidence |
 |---|---|---|---|
 | 9 | Acquire verified coverage | Partial | `find_shot_candidates` + import; no end-to-end coverage workflow proof |
-| 9a | Source diversity | Partial | pagination + canonical exclusions + delivery history + 24 h provider response cache (Pixabay wired, TTL/rollback-safe); **no complementary-source eval, no live benchmark** |
+| 9a | Source diversity | Partial | pagination + canonical exclusions + delivery history + 24 h provider response cache + `SourceDiversity` selection (provider round-robin, duplicate/delivered/near-duplicate subject rejection); **no live benchmark, selection not yet wired into find_shot_candidates** |
 | 10 | Preserve editable graphic artifacts | Implemented | `EvidenceGraphicSpec` + `digest` persist on `EditPlan.graphicScenes` with a renderer version; label fixes regenerate via the same spec; MCP readback verified (`GraphicSceneReadbackMCPTests`) |
 | 11 | Dependency-aware section revision | Implemented | `plan_edit action=revise_section` updates the section, its linked beats, invalidates timing, and reports dependents; unit-tested and MCP-readback verified (`PlanReadbackMCPTests`) |
 | 12 | Review facts/motion/audio/coverage | Partial | `review_timeline` reports bounded motion (mean/min/max luma delta, frozen spans) + loudness/peak/clip, and now audits claim-vs-display structure (`ClaimDisplayAudit`: planned claimIds must be shown by the scene built for them, `claimsNotShown`/`unreviewedClaims` warnings); **still no persisted inspection intervals, `perceptualSimilarity: not_checked`** |
