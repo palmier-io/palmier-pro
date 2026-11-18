@@ -114,7 +114,9 @@ the plugin bundle.
 Safety rules enforced by the host:
 
 - Built-in tool names always win; a plugin cannot shadow `get_timeline` etc.
-- Only `read-only` scope runs today. Mutating plugins are refused at registration.
+- Only `read-only` scope runs today. Mutating plugins are refused at registration *and* at run
+  time by design: project mutations stay behind the built-in tool contract (undo, package
+  coordination, revalidation), which a separate process cannot participate in.
 - Install records a SHA-256 digest of `plugin.json` plus the entry point. If either
   changes, the plugin is `blocked` until reinstalled.
 - Unsigned manifests install as `untrusted` and are refused at call time; approve

@@ -136,3 +136,33 @@ struct PluginSandboxRegistryTests {
         #expect(accepted.text == "{\"ran\":true}")
     }
 }
+
+@Suite("Plugin mutation policy")
+@MainActor
+struct PluginMutationPolicyTests {
+    @Test func mutatingScopeIsRefusedAtRegistrationAndAtRun() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("plugin-mutating-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let entry = directory.appendingPathComponent("run.sh")
+        try "#!/bin/sh\nprintf '{\"result\":{\"wrote\":true}}\\n'\n".write(to: entry, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: entry.path)
+        let manifest = PluginManifest(
+            id: "test.mutating", name: "Mutating", version: "1", toolName: "mutating_tool",
+            toolDescription: "Tries to mutate", inputSchema: ["type": "object"],
+            entryPoint: "run.sh", permissionScope: .mutatingTools, signature: "dev:test"
+        )
+        let installed = InstalledPlugin(manifest: manifest, directory: directory, trust: .trusted, digest: "d")
+
+        let registry = ToolRegistry(store: PluginStore(rootDirectory: directory))
+        registry.replace(with: [installed])
+        #expect(registry.tool(named: "mutating_tool") == nil)
+
+        let tool = PluginTool(name: manifest.toolName, description: manifest.toolDescription,
+                              inputSchema: manifest.inputSchema, plugin: installed)
+        await #expect(throws: PluginRunError.self) {
+            _ = try PluginRunner.payload(for: tool, args: [:])
+        }
+    }
+}
