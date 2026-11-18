@@ -50,7 +50,7 @@ All eleven findings are now closed. R11 landed last: folder relink scans on an o
 | 13a | Subagents | Partial | `delegate_work` app-only, 2 children; **no real-provider/UI latency proof** (`docs/delegation-verification.md` unrun) |
 | 14 | Long-form efficiency | Unverified | benchmark tests exist for lookup/layout/markers, but **no 18–21 min end-to-end measurement** |
 | 15 | Caption styles | Partial | `CaptionStyle` + 31 presets + gallery; **native UI verification unperformed** |
-| 16 | Export speed | Partial | `ExportSignposts` now emits prepare/export phase signposts + wall-clock to `Log.export`; still no measured before/after comparison |
+| 16 | Export speed | Measured baseline | `ExportSignposts` emits prepare/export/commit signposts + phase seconds to `Log.export`; fixed 90 s fixture (2700 frames, 320×180, h264) exports in **1.78 s** on this machine (`ExportTimingBaselineTests`, `COMPOSITOR_EXPORT_BENCH=1`, report at `/tmp/compositor-export-baseline.json`). No optimization claimed, so no before/after delta yet |
 
 ### Release gates
 
