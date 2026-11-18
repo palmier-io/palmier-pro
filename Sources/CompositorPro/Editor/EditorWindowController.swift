@@ -127,11 +127,23 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             return true
 
         case 123: // Left arrow
-            if shift { editorViewModel.skipBackward() } else { editorViewModel.stepBackward() }
+            if mods.contains(.option) {
+                _ = editorViewModel.nudgeSelectedKeyframes(at: editorViewModel.activeFrame, by: -1)
+            } else if shift {
+                editorViewModel.skipBackward()
+            } else {
+                editorViewModel.stepBackward()
+            }
             return true
 
         case 124: // Right arrow
-            if shift { editorViewModel.skipForward() } else { editorViewModel.stepForward() }
+            if mods.contains(.option) {
+                _ = editorViewModel.nudgeSelectedKeyframes(at: editorViewModel.activeFrame, by: 1)
+            } else if shift {
+                editorViewModel.skipForward()
+            } else {
+                editorViewModel.stepForward()
+            }
             return true
 
         case 53: // Escape

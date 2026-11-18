@@ -11,6 +11,9 @@ struct AppCommand: Identifiable, Sendable, Equatable {
         case addMarker
         case togglePlayback
         case clearSelection
+        case nudgeKeyframesLeft
+        case nudgeKeyframesRight
+        case removeKeyframes
     }
 
     let id: ID
@@ -30,6 +33,9 @@ enum CommandRegistry {
         .init(id: .addMarker, titleKey: "Add Marker", shortcut: "M", systemImage: "flag"),
         .init(id: .togglePlayback, titleKey: "Play/Pause", shortcut: "Space", systemImage: "playpause"),
         .init(id: .clearSelection, titleKey: "Deselect All", shortcut: "Esc", systemImage: "xmark.circle"),
+        .init(id: .nudgeKeyframesLeft, titleKey: "Nudge Keyframes Left", shortcut: "⌥←", systemImage: "diamond.arrow.left"),
+        .init(id: .nudgeKeyframesRight, titleKey: "Nudge Keyframes Right", shortcut: "⌥→", systemImage: "diamond.arrow.right"),
+        .init(id: .removeKeyframes, titleKey: "Remove Keyframes at Playhead", shortcut: "", systemImage: "diamond.slash"),
     ]
 
     /// Case- and diacritic-insensitive search over titles and ids.
@@ -52,6 +58,9 @@ enum CommandRegistry {
         case .addMarker: _ = editor.addTimelineMarkerAtSelection()
         case .togglePlayback: editor.togglePlayback()
         case .clearSelection: editor.clearTimelineSelection()
+        case .nudgeKeyframesLeft: _ = editor.nudgeSelectedKeyframes(at: editor.activeFrame, by: -1)
+        case .nudgeKeyframesRight: _ = editor.nudgeSelectedKeyframes(at: editor.activeFrame, by: 1)
+        case .removeKeyframes: _ = editor.removeSelectedKeyframes(at: editor.activeFrame)
         }
     }
 }
