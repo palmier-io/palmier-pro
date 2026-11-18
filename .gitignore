@@ -47,3 +47,6 @@ AUDIO_SUITE_*
 .playwright-mcp/
 com.apple.DeveloperTools/
 media-stock/
+
+# Local tooling artifacts
+:memory:.ses
