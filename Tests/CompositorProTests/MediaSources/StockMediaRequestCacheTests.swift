@@ -15,17 +15,17 @@ struct StockMediaRequestCacheTests {
         StockMediaQuery(text: "Harbor", kind: .video, limit: 3)
     }
 
-    @Test func entriesExpireAfterTwentyFourHours() {
+    @Test func entriesExpireAfterTwentyFourHours() async {
         let clock = Clock(Date())
         let cache = makeCache(now: { clock.now })
-        cache.store(Data("payload".utf8), key: "pixabay|harbor")
+        await cache.store(Data("payload".utf8), key: "pixabay|harbor")
         clock.now = Date()
 
-        #expect(cache.cachedResponse(key: "pixabay|harbor") == Data("payload".utf8))
+        #expect(await cache.cachedResponse(key: "pixabay|harbor") == Data("payload".utf8))
         clock.now = clock.now.addingTimeInterval(StockMediaRequestCache.ttl - 60)
-        #expect(cache.cachedResponse(key: "pixabay|harbor") != nil)
+        #expect(await cache.cachedResponse(key: "pixabay|harbor") != nil)
         clock.now = clock.now.addingTimeInterval(120)
-        #expect(cache.cachedResponse(key: "pixabay|harbor") == nil)
+        #expect(await cache.cachedResponse(key: "pixabay|harbor") == nil)
     }
 
     @Test func keyIgnoresExcludedSourceIdsButSeparatesPages() {

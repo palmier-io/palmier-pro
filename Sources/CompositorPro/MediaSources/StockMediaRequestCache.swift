@@ -31,7 +31,8 @@ struct StockMediaRequestCache: Sendable {
         ].joined(separator: "|")
     }
 
-    func cachedResponse(key: String) -> Data? {
+    @concurrent
+    func cachedResponse(key: String) async -> Data? {
         let url = fileURL(for: key)
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
               let modified = attributes[.modificationDate] as? Date,
@@ -42,7 +43,8 @@ struct StockMediaRequestCache: Sendable {
         return data
     }
 
-    func store(_ data: Data, key: String) {
+    @concurrent
+    func store(_ data: Data, key: String) async {
         guard !data.isEmpty else { return }
         let url = fileURL(for: key)
         try? FileManager.default.createDirectory(at: cache.directory, withIntermediateDirectories: true)

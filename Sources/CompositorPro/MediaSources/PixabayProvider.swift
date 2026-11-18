@@ -80,12 +80,12 @@ struct PixabayProvider: StockMediaProvider {
 
         let cacheKey = StockMediaRequestCache.key(provider: Self.providerID, query: query)
         let data: Data
-        if let cached = requestCache.cachedResponse(key: cacheKey) {
+        if let cached = await requestCache.cachedResponse(key: cacheKey) {
             data = cached
         } else {
             data = try await requestJSON(url, [:])
             try Task.checkCancellation()
-            requestCache.store(data, key: cacheKey)
+            await requestCache.store(data, key: cacheKey)
         }
         let response = try StockMediaHTTP.decode(VideoResponse.self, from: data, provider: displayName)
         guard response.totalHits >= 0 else { throw StockMediaError.undecodable(provider: displayName) }
