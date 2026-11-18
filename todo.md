@@ -35,7 +35,7 @@ All eleven findings are now closed. R11 landed last: folder relink scans on an o
 | 5b | No-repeat visual rule | Partial | identity + occurrence audit + export gate exist; `review_timeline` now measures perceptual similarity (bounded dHash + mean luma, 24 sources, near-duplicate pairs + `perceptualNearDuplicates`). **`deliveryVerified` stays false by design (no face inspection), so delivery remains unverified** |
 | 6 | Map scenes | Partial | `build_map_scene` with 12-place catalog + Lottie camera; **no region polygons, no plan/ledger binding** |
 | 7 | Evidence graphics | Implemented | `build_graphic_scene` typed family + narration validator; `PlanGraphicScene` (spec + digest + renderer version) persists on the plan and is exposed by `plan_edit read` |
-| 8 | Production lifecycle | Partial | `ProductionCoordinator` phases/resume/receipts; **whole-intent native/UI drain missing — quit quiescence blocked** (`docs/contracts/project-close-confirmation.md`) |
+| 8 | Production lifecycle | Partial | `ProductionCoordinator` phases/resume/receipts; ad admitted intent drain and close path now ship (quit hole closed, `AppTerminationTests`), but production phases are not yet exercised end-to-end with a real provider |
 
 ### P1
 
