@@ -28,6 +28,11 @@ struct PasteMediaImportTests {
         #expect(harness.editor.mediaAssets.count == before + 1)
         #expect(harness.editor.mediaAssets.last?.type == .image)
         #expect(harness.editor.mediaAssets.last?.url.lastPathComponent == "pasted.png")
+
+        // Pasting also inserts the clip at the playhead.
+        let asset = try #require(harness.editor.mediaAssets.last)
+        #expect(harness.editor.timeline.tracks.flatMap(\.clips).contains { $0.mediaRef == asset.id })
+        #expect(harness.editor.selectedClipIds.count == 1)
     }
 
     @Test func plainTextPasteboardAddsNothing() {

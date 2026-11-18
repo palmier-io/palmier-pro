@@ -48,7 +48,7 @@ All eleven findings are now closed. R11 landed last: folder relink scans on an o
 | 12 | Review facts/motion/audio/coverage | Partial | `review_timeline` reports bounded motion (mean/min/max luma delta, frozen spans) + loudness/peak/clip, and now audits claim-vs-display structure (`ClaimDisplayAudit`: planned claimIds must be shown by the scene built for them, `claimsNotShown`/`unreviewedClaims` warnings); **still no persisted inspection intervals, `perceptualSimilarity: not_checked`** |
 | 13 | Intent-level Agent ops | Partial | `produce_plan`, `edit_pilot`, `plan_edit`, `production_status` exist; not all verified end-to-end |
 | 13a | Subagents | Partial | `delegate_work` app-only, 2 children; **no real-provider/UI latency proof** (`docs/delegation-verification.md` unrun) |
-| 14 | Long-form efficiency | Unverified | benchmark tests exist for lookup/layout/markers, but **no 18–21 min end-to-end measurement** |
+| 14 | Long-form efficiency | Measured | 18-minute shape (40 tracks × 60 clips = 2,400 clips, 32,400 frames): 2,000 clip lookups **2.5 ms**, 900-frame window query **1.1 ms**, 200-marker intersect **0.04 ms** (`LongFormTimelineBenchmarkTests`, `/tmp/compositor-longform-baseline.json`) |
 | 15 | Caption styles | Partial | `CaptionStyle` + 31 presets + gallery; **native UI verification unperformed** |
 | 16 | Export speed | Measured baseline | `ExportSignposts` emits prepare/export/commit signposts + phase seconds to `Log.export`; fixed 90 s fixture (2700 frames, 320×180, h264) exports in **1.78 s** on this machine (`ExportTimingBaselineTests`, `COMPOSITOR_EXPORT_BENCH=1`, report at `/tmp/compositor-export-baseline.json`). No optimization claimed, so no before/after delta yet |
 

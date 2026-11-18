@@ -319,18 +319,46 @@ extension EditorViewModel {
         for item in items {
             switch item {
             case .file(let url, _):
-                _ = addMediaAsset(from: url)
+                if let asset = addMediaAsset(from: url) { insertPastedAssetAtPlayhead(asset) }
             case .imageData(let data):
                 Task { [weak self] in
                     do {
                         let url = try await PasteboardMedia.stageImageData(data, into: staging)
-                        self?.addMediaAsset(from: url, type: .image)
+                        guard let asset = self?.addMediaAsset(from: url, type: .image) else { return }
+                        self?.insertPastedAssetAtPlayhead(asset)
                     } catch {
                         self?.reportMediaImportFailure(error)
                     }
                 }
             }
         }
+    }
+
+    /// Places a just-imported asset at the playhead on a compatible track, creating one if needed.
+    @discardableResult
+    func insertPastedAssetAtPlayhead(_ asset: MediaAsset) -> [String] {
+        let startFrame = max(0, activeFrame)
+        let duration = clipDurationFrames(for: asset, segment: nil)
+        guard duration > 0 else { return [] }
+        var placed: [String] = []
+        undo.perform("Paste Media") {
+            let trackIndex: Int
+            if asset.type == .audio {
+                trackIndex = timeline.tracks.firstIndex { $0.type == .audio }
+                    ?? insertTrack(at: timeline.tracks.count, type: .audio)
+            } else {
+                trackIndex = timeline.tracks.firstIndex { $0.type == .video }
+                    ?? insertTrack(at: 0, type: .video)
+            }
+            guard timeline.tracks.indices.contains(trackIndex) else { return }
+            placed = placeClip(asset: asset, trackIndex: trackIndex, startFrame: startFrame,
+                               durationFrames: duration, addLinkedAudio: asset.type == .video)
+            if !placed.isEmpty {
+                selectedClipIds = Set(placed)
+                notifyTimelineChanged()
+            }
+        }
+        return placed
     }
 
     /// A Finder drop or open-panel import that failed outright still has to say so.
