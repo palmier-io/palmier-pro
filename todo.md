@@ -423,7 +423,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter MaskTests` passes (shape enum, parameter bounds, Codable round-trip).
 - Invalid parameters (negative feather) rejected at decode.
 
-### Additional item 7 — Canvas: backgrounds, custom size, preview zoom + pan
+### Additional item 7 — Canvas: backgrounds, custom size, preview zoom + pan **[PARTIAL: size/background model + zoom/pan clamping landed; preview rendering adoption open]**
 
 **What:** Support arbitrary custom canvas size, canvas backgrounds (none/solid/gradient/blur), and preview zoom + pan with clamping.
 
@@ -457,7 +457,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter CanvasSettingsTests` passes (size validation, background kind decode).
 - Custom canvas size persists and reloads; zoom/pan clamps correctly (content never fully out of view).
 
-### Additional item 8 — Audio: RMS waveforms + volume/speed with maintain pitch
+### Additional item 8 — Audio: RMS waveforms + volume/speed with maintain pitch **[PARTIAL: RMS reduction + visible-window mapping landed; panel rendering and maintain-pitch wiring open]**
 
 **What:** Add RMS-based waveforms (visible-range-only rendering), per-clip volume, speed rate, and "maintain pitch" toggle.
 
