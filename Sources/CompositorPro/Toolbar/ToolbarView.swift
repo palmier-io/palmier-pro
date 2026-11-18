@@ -107,6 +107,7 @@ struct ToolbarView: View {
                 )
         }
         .buttonStyle(.plain)
+        .frame(minWidth: 24, minHeight: 24)
         .help(help)
         .accessibilityLabel(L10n.string(key: help))
         .accessibilityAddTraits(isOn ? [.isSelected] : [])

@@ -678,6 +678,8 @@ Pattern: versioned migration steps keyed by format version, run on open, last-su
 
 ---
 
+P2 status: keyframe nudge/remove workflow and palette commands landed with tests; toolbar/layers/palette gained accessibility labels and 24 pt hit targets. Variables/data binding, review-link sharing, and a per-card storyboard board need new subsystems (variable model, share service, per-card approval), so they are not UI-only work. The z-order "lane" maps to our three-value `compositeLayer`, not a numeric z order.
+
 Port status: OKLCH theme (`UI/OKLCHTheme.swift`, `OKLCHThemeTests`), exact `MediaTime`/`FrameRate` (`Timeline/MediaTime.swift`, `MediaTimeTests`), and the diff-based ripple engine (`Timeline/RippleEdit.swift`, `RippleEditTests`) is in; `remove_clips` accepts `ripple: true` to close vacated ranges through the engine (default behavior unchanged, one undo action). Remaining port items are unchanged; the release build is a local ad-hoc-signed bundle installed to /Applications (no Developer ID yet).
 
 ### Order of implementation (recommended)

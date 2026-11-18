@@ -49,6 +49,8 @@ struct CommandPaletteView: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel(L10n.string(key: command.titleKey))
+                        .accessibilityHint(Text(verbatim: command.shortcut))
                     }
                     if results.isEmpty {
                         Text(L10n.string("No matching commands"))

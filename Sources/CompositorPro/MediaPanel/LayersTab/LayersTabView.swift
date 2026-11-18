@@ -78,7 +78,8 @@ struct LayersTabView: View {
             Image(systemName: systemImage)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(isOn ? AppTheme.Text.secondaryColor : AppTheme.Text.mutedColor)
-                .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
+                .frame(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.mdLg)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(help)
@@ -90,7 +91,8 @@ struct LayersTabView: View {
             Image(systemName: systemImage)
                 .font(.system(size: AppTheme.FontSize.xxs, weight: .semibold))
                 .foregroundStyle(disabled ? AppTheme.Text.mutedColor : AppTheme.Text.tertiaryColor)
-                .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
+                .frame(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.mdLg)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(disabled)
