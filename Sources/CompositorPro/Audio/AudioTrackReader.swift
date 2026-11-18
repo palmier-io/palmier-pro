@@ -3,9 +3,13 @@ import Foundation
 
 /// Streams an asset's first audio track as decoded PCM buffers via AVAssetReader.
 enum AudioTrackReader {
-    enum ReadError: Error {
+    static let mixReadAhead = CMTime(value: 4_096, timescale: 48_000)
+
+    enum ReadError: LocalizedError {
         case noAudioTrack(String)
         case readFailed(String, underlying: NSError? = nil)
+
+        var errorDescription: String? { message }
 
         var message: String {
             switch self {
@@ -80,11 +84,13 @@ enum AudioTrackReader {
     static func readMix(
         from asset: AVAsset, audioMix: AVAudioMix, timeRange: CMTimeRange,
         contentRanges: [CMTimeRange]? = nil,
+        readAhead: CMTime = .zero,
         onBuffer: (AVAudioPCMBuffer) throws -> Void
     ) async throws {
         try Task.checkCancellation()
         guard timeRange.isValid, timeRange.start.isNumeric, timeRange.duration.isNumeric,
-              timeRange.start >= .zero, timeRange.duration > .zero, timeRange.end.isNumeric else {
+              timeRange.start >= .zero, timeRange.duration > .zero, timeRange.end.isNumeric,
+              readAhead.isNumeric, readAhead >= .zero, (timeRange.end + readAhead).isNumeric else {
             throw ReadError.readFailed("Invalid mixed audio time range")
         }
         var decodeRange = timeRange
@@ -105,6 +111,14 @@ enum AudioTrackReader {
         let leadingFrames = startFrame - (try sampleFrame(timeRange.start))
         let trailingFrames = try sampleFrame(timeRange.end) - sampleFrame(decodeRange.end)
         let tracks = try await asset.loadTracks(withMediaType: .audio)
+        var readerRange = decodeRange
+        if readAhead > .zero, decodeFrames > 0 {
+            let available = try await asset.load(.duration)
+            guard available.isNumeric, available >= decodeRange.end else {
+                throw ReadError.readFailed("Mixed audio composition is shorter than its planned content")
+            }
+            readerRange = CMTimeRange(start: decodeRange.start, end: CMTimeMinimum(decodeRange.end + readAhead, available))
+        }
         var decodedFormat: AVAudioFormat?
         if leadingFrames > 0 {
             let format = try await silenceFormat(tracks: tracks)
@@ -120,12 +134,12 @@ enum AudioTrackReader {
                 AVLinearPCMIsBigEndianKey: false, AVLinearPCMIsNonInterleaved: true,
             ])
             output.audioMix = audioMix
-            try read(asset: asset, output: output, timeRange: decodeRange) { buffer, time in
+            try read(asset: asset, output: output, timeRange: readerRange) { buffer, time in
+                let needed = decodeFrames - totalFramesRead
+                guard needed > 0 else { return }
                 guard abs(try sampleFrame(time) - startFrame - totalFramesRead) <= 1 else {
                     throw ReadError.readFailed("Mixed audio contains an unexpected decode gap")
                 }
-                let needed = decodeFrames - totalFramesRead
-                guard needed > 0 else { return }
                 if Int64(buffer.frameLength) > needed {
                     buffer.frameLength = AVAudioFrameCount(needed)
                 }
@@ -134,7 +148,10 @@ enum AudioTrackReader {
                 try onBuffer(buffer)
             }
             guard abs(totalFramesRead - decodeFrames) <= 1 else {
-                throw ReadError.readFailed("Mixed audio did not decode the complete media range")
+                throw ReadError.readFailed("Mixed audio did not decode the complete media range: expected \(decodeFrames) samples, decoded \(totalFramesRead)")
+            }
+            if totalFramesRead < decodeFrames, let decodedFormat {
+                try streamSilence(frames: decodeFrames - totalFramesRead, format: decodedFormat, onBuffer: onBuffer)
             }
         }
         guard trailingFrames > 0 else { return }

@@ -75,6 +75,60 @@ struct AudioMixAnalyzerTests {
         try await AudioFinishingFixtures.remove(directory)
     }
 
+    @Test(arguments: [24, 30], [false, true])
+    func resampledSentenceGapAndVisualTailKeepExactDuration(fps: Int, earlierBed: Bool) async throws {
+        let directory = try await AudioFinishingFixtures.makeDirectory()
+        do {
+            let source = directory.appendingPathComponent("speech-rate.wav")
+            try await AudioFinishingFixtures.writeTone(to: source, amplitudes: [0.05], secondsPerLevel: 3.38, sampleRate: 22_050)
+            let first = Fixtures.clip(mediaRef: "voice", mediaType: .audio, start: 0, duration: 3 * fps + 9)
+            let second = Fixtures.clip(mediaRef: "voice", mediaType: .audio, start: first.endFrame + 1, duration: 3 * fps + 4)
+            let duration = second.endFrame + 12
+            let title = Fixtures.clip(mediaType: .text, start: 0, duration: duration)
+            var tracks = [Fixtures.videoTrack(clips: [title]), Fixtures.audioTrack(clips: [first, second])]
+            var urls = ["voice": source]
+            if earlierBed {
+                let bed = directory.appendingPathComponent("bed.wav")
+                try await AudioFinishingFixtures.writeTone(to: bed, amplitudes: [0.001])
+                tracks.append(Fixtures.audioTrack(clips: [Fixtures.clip(mediaRef: "bed", mediaType: .audio, start: 0, duration: fps)]))
+                urls["bed"] = bed
+            }
+            let timeline = Fixtures.timeline(fps: fps, tracks: tracks)
+            let result = try await AudioMixAnalyzer.measure(timeline: timeline, timelines: [], urls: urls)
+            #expect(result.loudness.analyzedFrames == Int64(duration) * 48_000 / Int64(fps))
+            #expect(result.loudness.status == .measured)
+            #expect(abs(try #require(result.samplePeakDBFS) - 20 * log10(0.05)) < 1)
+            let gap = try await AudioMixAnalyzer.measure(timeline: timeline, timelines: [], urls: urls, range: first.endFrame..<second.startFrame)
+            #expect(gap.loudness.analyzedFrames == 48_000 / Int64(fps))
+            #expect(gap.samplePeakDBFS == nil)
+        } catch {
+            do { try await AudioFinishingFixtures.remove(directory) }
+            catch let cleanup { throw ProjectPackageCleanupError(operationError: error, cleanupError: cleanup) }
+            throw error
+        }
+        try await AudioFinishingFixtures.remove(directory)
+    }
+
+    @Test func shortEffectsKeepTheirDurationAfterResampling() async throws {
+        let directory = try await AudioFinishingFixtures.makeDirectory()
+        do {
+            let source = directory.appendingPathComponent("short-effect.wav")
+            try await AudioFinishingFixtures.writeTone(to: source, amplitudes: [0.05], sampleRate: 22_050)
+            let effect = Fixtures.clip(mediaRef: "effect", mediaType: .audio, start: 0, duration: 1)
+            let title = Fixtures.clip(mediaType: .text, start: 0, duration: 12)
+            let timeline = Fixtures.timeline(fps: 120, tracks: [Fixtures.videoTrack(clips: [title]), Fixtures.audioTrack(clips: [effect])])
+            let result = try await AudioMixAnalyzer.measure(timeline: timeline, timelines: [], urls: ["effect": source])
+            #expect(result.loudness.analyzedFrames == 4_800)
+            #expect(result.loudness.status == .insufficientDuration)
+            #expect(result.samplePeakDBFS != nil)
+        } catch {
+            do { try await AudioFinishingFixtures.remove(directory) }
+            catch let cleanup { throw ProjectPackageCleanupError(operationError: error, cleanupError: cleanup) }
+            throw error
+        }
+        try await AudioFinishingFixtures.remove(directory)
+    }
+
     @Test func measurementMatchesEncodedPlaybackProcessing() async throws {
         let directory = try await AudioFinishingFixtures.makeDirectory()
         let source = directory.appendingPathComponent("tone.wav")

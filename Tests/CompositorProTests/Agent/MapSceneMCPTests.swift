@@ -219,13 +219,26 @@ struct MapSceneMCPTests {
             editor.exportQueue = queue
             do {
                 try await withClient(editor) { client in
-                    let voices = SpeechSynthesizer.voices(matchingLanguage: "en-US")
-                    let voice = try #require(voices.first(where: \.isEnhanced) ?? voices.first)
+                    let environment = ProcessInfo.processInfo.environment
+                    let engine = environment["COMPOSITOR_MAP_PROOF_ENGINE"] ?? "system"
+                    try #require(["system", "piper"].contains(engine))
+                    let targetLUFS = try #require(Double(environment["COMPOSITOR_MAP_PROOF_TARGET_LUFS"] ?? "-18"))
+                    try #require(targetLUFS.isFinite)
+                    let voiceIdentifier: String
+                    if engine == "piper" {
+                        voiceIdentifier = try #require(environment["COMPOSITOR_MAP_PROOF_VOICE"])
+                    } else {
+                        let voices = SpeechSynthesizer.voices(matchingLanguage: "en-US")
+                        voiceIdentifier = try #require(voices.first(where: \.isEnhanced) ?? voices.first).identifier
+                    }
+                    if environment["COMPOSITOR_MAP_REQUIRE_BUNDLED_MIX"] == "1" {
+                        try #require(RuntimeCapabilities.bundledSpeech && MLXRuntime.isAvailable)
+                    }
                     var secondStart = 0
                     for sentence in ["Follow the cargo ship. It carries packages across the sea.",
                                      "At the next port, those packages continue their journey by truck."] {
                         let speech = try await client.callTool(name: "generate_speech", arguments: [
-                            "engine": .string("system"), "voice": .string(voice.identifier), "rate": .double(1.08),
+                            "engine": .string(engine), "voice": .string(voiceIdentifier), "rate": .double(1.08),
                             "text": .string(sentence), "placeAtFrame": .int(secondStart), "trackName": .string("Narration"),
                         ])
                         let speechText = try jsonText(speech)
@@ -237,16 +250,18 @@ struct MapSceneMCPTests {
                     let duration = editor.timeline.totalFrames + 12
                     let built = try await client.callTool(name: "build_map_scene", arguments: [
                         "places": .array([
-                            .object(["name": .string("Port Klang"), "latitude": .double(3.0), "longitude": .double(101.35)]),
-                            .object(["name": .string("Tanjung Pelepas")]), .object(["name": .string("Johor Bahru")]),
+                            .object(["name": .string("Port Klang"), "latitude": .double(3.0), "longitude": .double(101.35), "showLabel": .bool(false)]),
+                            .object(["name": .string("Tanjung Pelepas"), "showLabel": .bool(false)]),
+                            .object(["name": .string("Kuala Lumpur"), "latitude": .double(3.14), "longitude": .double(101.69), "showLabel": .bool(false)]),
                         ]),
-                        "regions": .array([.object(["name": .string("country:MYS"), "showLabel": .bool(false), "opacity": .double(0.35)])]),
+                        "regions": .array([.object(["name": .string("country:MYS"), "showLabel": .bool(false), "opacity": .double(0.75), "color": .string("#7FD1AD")])]),
                         "connections": .array([
                             .object(["id": .string("sea"), "from": .string("Port Klang"), "to": .string("Tanjung Pelepas"), "revealFrames": .int(12),
                                 "via": .array([.object(["latitude": .double(2.5), "longitude": .double(100.5)]),
                                                .object(["latitude": .double(1.0), "longitude": .double(102.5)])])]),
-                            .object(["id": .string("road"), "from": .string("Tanjung Pelepas"), "to": .string("Johor Bahru"),
-                                "revealFrame": .int(secondStart), "revealFrames": .int(12), "color": .string("#FF725B")]),
+                            .object(["id": .string("road"), "from": .string("Tanjung Pelepas"), "to": .string("Kuala Lumpur"),
+                                "revealFrame": .int(secondStart), "revealFrames": .int(12), "color": .string("#FF725B"),
+                                "via": .array([.object(["latitude": .double(2.2), "longitude": .double(102.3)])])]),
                         ]),
                         "objects": .array([
                             .object(["id": .string("ship"), "kind": .string("ship"), "routeId": .string("sea"), "startFrame": .int(12), "endFrame": .int(secondStart), "size": .int(104)]),
@@ -256,13 +271,16 @@ struct MapSceneMCPTests {
                         ]),
                         "camera": .array([
                             .object(["frame": .int(0), "latitude": .double(3.6), "longitude": .double(106), "zoom": .double(1.2)]),
-                            .object(["frame": .int(secondStart - 1), "latitude": .double(1.6), "longitude": .double(103.4), "zoom": .double(7)]),
+                            .object(["frame": .int(secondStart - 1), "latitude": .double(2.3), "longitude": .double(102.8), "zoom": .double(3.2)]),
                         ]),
                         "texts": .array([
                             .object(["id": .string("hook"), "text": .string("FOLLOW THE CARGO"), "fontSize": .int(96), "y": .double(0.15), "endFrame": .int(secondStart)]),
-                            .object(["id": .string("transfer"), "text": .string("THE JOURNEY CONTINUES"), "fontSize": .int(80), "y": .double(0.15), "startFrame": .int(secondStart)]),
+                            .object(["id": .string("transfer"), "text": .string("THE JOURNEY CONTINUES"), "fontSize": .int(72), "y": .double(0.15), "startFrame": .int(secondStart)]),
+                            .object(["id": .string("sea-stage"), "text": .string("SEA TRANSFER"), "fontSize": .int(64), "y": .double(0.70), "endFrame": .int(secondStart)]),
+                            .object(["id": .string("road-stage"), "text": .string("ROAD DELIVERY"), "fontSize": .int(64), "y": .double(0.70), "startFrame": .int(secondStart)]),
                         ]),
-                        "palette": .object(["labelSize": .int(42)]), "durationFrames": .int(duration), "addToTimeline": .bool(true),
+                        "palette": .object(["labelSize": .int(42), "relief": .bool(false), "background": .string("#071A2B"),
+                            "land": .string("#243E4B"), "border": .string("#41616C")]), "durationFrames": .int(duration), "addToTimeline": .bool(true),
                     ])
                     let builtText = try jsonText(built)
                     try #require(built.isError != true, "\(builtText)")
@@ -270,7 +288,7 @@ struct MapSceneMCPTests {
                     #expect(clips.map(\.startFrame).sorted() == [0, secondStart])
                     let mixed = try await client.callTool(name: "mix_audio", arguments: [
                         "roles": .array(clips.map { .object(["clipId": .string($0.id), "role": .string("voice")]) }),
-                        "targetLUFS": .int(-18), "truePeakDBTP": .int(-1),
+                        "targetLUFS": .double(targetLUFS), "truePeakDBTP": .int(-1),
                     ])
                     let mixedText = try jsonText(mixed)
                     if RuntimeCapabilities.bundledSpeech && MLXRuntime.isAvailable {

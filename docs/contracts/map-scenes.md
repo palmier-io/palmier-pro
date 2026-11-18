@@ -34,6 +34,16 @@ Three offline built-in skills cover map story patterns, motion-object choreograp
 
 Use available speech voices, pinned approved narration intent, actual transcription/beat timing, phrase captions, and `mix_audio`. Map rendering creates no soundtrack. Follow normal storyboard inspection/approval for finished productions, then assemble, review and await completed export. Atlas attribution does not establish rights to custom images. Voice intelligibility and creative similarity require playback/audition.
 
+## Narration measurement
+
+Mixed-audio analysis must decode the complete requested range when narration uses a different sample rate from delivery. `CompositionBuilder.buildAudio` supplies a 4,096-sample muted media tail at 48 kHz after the last planned audio content. Empty trailing edits cannot extend an AVFoundation composition track. The read-ahead borrows a real composition segment, repeats it only when needed with a 128-copy bound, and exists only in the measurement composition. Ordinary playback/export construction is unchanged.
+
+`AudioTrackReader.readMix` feeds the resampler past the cut but emits exactly the requested samples, including planned silence. At most one output sample of endpoint rounding may be filled; a genuinely incomplete decode still refuses with expected/decoded counts. Regressions cover 22.05 kHz sentences, a one-frame pause, a visual tail, an earlier 48 kHz music bed, and a one-frame effect at 120 fps.
+
+`mix_audio` measures the sum and refuses a loudness target that would exceed the true-peak ceiling. It does not apply a limiter. The narration playbook directs the agent to choose a suitable lower target, measure again, and report the target actually achieved.
+
+The retained MCP proof is opt-in through `COMPOSITOR_MAP_PROOF_DIRECTORY` and uses a fresh destination per run. `COMPOSITOR_MAP_PROOF_ENGINE` defaults to `system`; `piper` requires `COMPOSITOR_MAP_PROOF_VOICE`. `COMPOSITOR_MAP_PROOF_TARGET_LUFS` defaults to -18. `COMPOSITOR_MAP_REQUIRE_BUNDLED_MIX=1` requires the bundled-speech trait, an actual app host, measured voice activity, and a successful mix rather than accepting the ordinary unbundled refusal. The proof synchronizes two visual sections to generated sentence durations; it does not certify word alignment, narrator performance, or the native agent UI.
+
 ## Verification
 
 Automated gates: `swift build`; focused `MapSceneTests|MapSceneRendererTests|MapSceneMCPTests|MapScenePublicationTests|FilmmakingPlaybooksTests|GenerateSpeechToolTests`; full `swift test`; `BundledSpeech` build and relevant tests; resource lookup/packaging; relevant Thread Sanitizer tests; guidance lint and diff checks. Record actual results after running these gates; this contract is not itself a pass claim.
@@ -42,7 +52,7 @@ The MCP suites use isolated Client/Server in-memory transports, protocol discove
 
 Manual plan (unverified until confirmed):
 
-1. Use a disposable vertical project. Ask the agent for a sourced map explainer, choose an available voice and approve its prepared storyboard. Inspect both Malaysia land masses and the Georgia ambiguity error.
+1. Use a disposable vertical project. Ask the agent for a sourced map explainer, choose an available voice and approve its prepared storyboard. Inspect both Malaysia land masses and the Georgia ambiguity error. Check keyboard focus and Escape/cancel in playbook selection and storyboard review; cancelled review must preserve existing edits.
 2. Scrub/play a scene with a moving camera, route, ship/package, highlight and large title. Check reveal/arrival/end frames, labels, flag masks, safe margins, coastlines and camera continuity. Try a supplied transparent wildlife/other object image.
 3. Play the finished narration/captions/SFX/music together. Check pronunciations, emphasis, word-to-visual timing, intelligibility and audio tails; inspect the encoded export.
 4. Repeat a request and verify no duplicate asset/clip/undo step. Undo/redo, Save As and reopen; inspect the saved spec and backing video. Keep another edit on the timeline during generation.

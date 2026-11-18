@@ -108,7 +108,7 @@ enum AudioMixAnalyzer {
             from: result.composition, audioMix: result.audioMix,
             timeRange: CMTimeRange(start: CMTime(value: Int64(window.lowerBound), timescale: Int32(timeline.fps)),
                                    end: CMTime(value: Int64(window.upperBound), timescale: Int32(timeline.fps))),
-            contentRanges: result.audioContentRanges
+            contentRanges: result.audioContentRanges, readAhead: AudioTrackReader.mixReadAhead
         ) { try accumulator.consume($0) }
         try AudioGainTap.validate(result.audioMix)
         let measurement = accumulator.measurement

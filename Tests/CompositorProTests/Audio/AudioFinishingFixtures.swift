@@ -22,15 +22,15 @@ enum AudioFinishingFixtures {
     static func remove(_ directory: URL) async throws { try FileManager.default.removeItem(at: directory) }
 
     @concurrent
-    static func writeTone(to url: URL, amplitudes: [Double], secondsPerLevel: Double = 1) async throws {
-        let format = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1)!
+    static func writeTone(to url: URL, amplitudes: [Double], secondsPerLevel: Double = 1, sampleRate: Double = 48_000) async throws {
+        let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)!
         let file = try AVAudioFile(forWriting: url, settings: format.settings)
-        let count = Int(48_000 * secondsPerLevel)
+        let count = Int(sampleRate * secondsPerLevel)
         let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(count))!
         buffer.frameLength = buffer.frameCapacity
         for amplitude in amplitudes {
             for index in 0..<count {
-                buffer.floatChannelData![0][index] = Float(amplitude * sin(2 * .pi * 1_000 * Double(index) / 48_000))
+                buffer.floatChannelData![0][index] = Float(amplitude * sin(2 * .pi * 1_000 * Double(index) / sampleRate))
             }
             try file.write(from: buffer)
         }

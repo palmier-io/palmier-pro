@@ -71,11 +71,17 @@ enum CompositionBuilder {
             CMTimeRange(start: CMTime(value: Int64(clip.startFrame), timescale: context.timescale),
                         duration: CMTime(value: Int64(clip.durationFrames), timescale: context.timescale))
         }
+        let audioMix = try makeAudioMix(timeline: timeline, trackMappings: context.trackMappings,
+                                        timescale: context.timescale, preparedAudio: prepared)
+        if context.offlineMediaRefs.isEmpty, context.unprocessableMediaRefs.isEmpty,
+           let source = context.trackMappings.first(where: { !$0.isVideo })?.compositionTrack,
+           let end = audioContentRanges.map(\.end).max() {
+            try await addAudioReadAhead(to: context.composition, audioMix: audioMix, source: source, at: end)
+        }
         try Task.checkCancellation()
         return AudioCompositionResult(
             composition: context.composition,
-            audioMix: try makeAudioMix(timeline: timeline, trackMappings: context.trackMappings,
-                                      timescale: context.timescale, preparedAudio: prepared),
+            audioMix: audioMix,
             audioContentRanges: audioContentRanges,
             offlineMediaRefs: context.offlineMediaRefs, unprocessableMediaRefs: context.unprocessableMediaRefs
         )

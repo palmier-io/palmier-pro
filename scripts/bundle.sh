@@ -192,17 +192,13 @@ fi
 cp "$RES_BUNDLE"/*.metallib "$APP/Contents/Resources/"
 
 if $INCLUDE_BUNDLED_SPEECH; then
-  MLX_METALLIB="$ROOT/.build/$CONFIG/mlx.metallib"
-  if [ ! -f "$MLX_METALLIB" ]; then
-    echo "==> Building MLX metallib ($CONFIG)"
-    BUILD_DIR="$ROOT/.build" "$ROOT/.build/checkouts/speech-swift/scripts/build_mlx_metallib.sh" "$CONFIG"
-  fi
-  if [ ! -f "$MLX_METALLIB" ]; then
-    echo "!! missing $MLX_METALLIB — on-device speech features (VAD, speaker ID) would die silently" >&2
+  MLX_RESOURCE_BUNDLE="$(dirname "$BIN")/mlx-swift_Cmlx.bundle"
+  if [ ! -s "$MLX_RESOURCE_BUNDLE/Contents/Resources/default.metallib" ]; then
+    echo "!! missing MLX shader library in $MLX_RESOURCE_BUNDLE — bundled speech analysis cannot run" >&2
     exit 1
   fi
-  mkdir -p "$APP/Contents/Resources/mlx-swift_Cmlx.bundle"
-  cp "$MLX_METALLIB" "$APP/Contents/Resources/mlx-swift_Cmlx.bundle/default.metallib"
+  # Keep the generated shaders and resource layout from the same SwiftPM build.
+  cp -R "$MLX_RESOURCE_BUNDLE" "$APP/Contents/Resources/"
 fi
 
 install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/CompositorPro"

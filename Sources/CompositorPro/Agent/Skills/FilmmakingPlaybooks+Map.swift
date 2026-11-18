@@ -157,6 +157,8 @@ extension FilmmakingPlaybooks {
         Add music/ambience and local/imported SFX only when they support the brief. Assign all audio
         clips to voice, music, ambience or effects in mix_audio. A useful short-form starting target
         is -16 LUFS with true peak <= -1 dBTP; the summed measured delivery governs the final mix.
+        If mix_audio refuses impossible headroom, choose a lower loudness target and measure again.
+        Gain alone cannot tame sharp peaks; report the target actually achieved.
         Duck under measured speech, preserve manual automation, and synchronize transient effects.
         Inspect review_timeline and audition the rendered hook, dense geographic sequence and ending.
         Listen for name pronunciation, harshness, buried words, clipped effects and abrupt tails.
