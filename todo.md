@@ -288,7 +288,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - Repeated frame snap → unsnap cycles produce zero float rounding error.
 - `swift build` succeeds.
 
-### Additional item 3 — Type-safe track ordering (SceneTracks) **[OPEN]**
+### Additional item 3 — Type-safe track ordering (SceneTracks) **[DONE]**
 
 **What:** Replace flat track array concept with `SceneTracks`: explicit typed fields `overlay`, `main` (singleton `VideoTrack`), `audio`, making it structurally impossible to mix track kinds or misplace a track.
 
