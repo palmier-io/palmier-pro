@@ -273,7 +273,13 @@ struct MapSceneMCPTests {
                         "targetLUFS": .int(-18), "truePeakDBTP": .int(-1),
                     ])
                     let mixedText = try jsonText(mixed)
-                    try #require(mixed.isError != true, "\(mixedText)")
+                    if RuntimeCapabilities.bundledSpeech && MLXRuntime.isAvailable {
+                        try #require(mixed.isError != true, "\(mixedText)")
+                        #expect(editor.timeline.audioMix?.speechDetection.values.allSatisfy { $0 == "voiceActivity" } == true)
+                    } else {
+                        #expect(mixed.isError == true)
+                        #expect(mixedText.contains("Speech timing is unavailable"))
+                    }
                     let output = fixture.root.appendingPathComponent("narrated-map-proof.mp4")
                     let submitted = try json(try await client.callTool(name: "export_project", arguments: [
                         "codec": .string("H.264"), "outputPath": .string(output.path),
