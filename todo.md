@@ -627,7 +627,7 @@ Each item below states: **What** (outcome), **Why** (OpenCut reference + value),
 - `swift test --filter BookmarkTests` passes (note/label/duration, Codable round-trip, backward-compatible decode).
 - Bookmark with duration renders as span; without duration renders as point.
 
-### Additional item 13 — Blend modes + paste clipboard media
+### Additional item 13 — Blend modes + paste clipboard media **[PARTIAL: blend modes already render; pasteboard read/stage landed; paste-to-timeline action open]**
 
 **What:** Add per-clip `blendMode` (Multiply/Screen/Overlay) and paste image/video/audio from NSPasteboard into media library/timeline.
 
