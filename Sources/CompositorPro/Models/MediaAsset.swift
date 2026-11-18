@@ -31,6 +31,7 @@ final class MediaAsset: Identifiable {
     var hasAudio: Bool = false
     var generationInput: GenerationInput?
     var importInput: MediaImportInput?
+    var mapScene: MapSceneRecord?
     var inputIdentity: MediaInputIdentity? {
         didSet { if inputIdentity != oldValue { inputIdentityVerified = false } }
     }
@@ -164,6 +165,7 @@ final class MediaAsset: Identifiable {
         self.cachedRemoteURL = entry.cachedRemoteURL
         self.cachedRemoteURLExpiresAt = entry.cachedRemoteURLExpiresAt
         self.importInput = entry.importInput
+        self.mapScene = entry.mapScene
         if self.importInput?.origin == nil, let assetId = entry.providerAssetId {
             var input = self.importInput ?? MediaImportInput()
             input.origin = MediaImportOrigin(
@@ -202,6 +204,7 @@ final class MediaAsset: Identifiable {
             generationStatus: generationStatus.manifestValue,
             importInput: importInput,
             inputIdentity: inputIdentity,
+            mapScene: mapScene,
 
             // Stock provenance travels with the asset so credits survive reuse and repackaging.
             providerAssetId: importInput?.origin?.assetId,
@@ -245,6 +248,15 @@ final class MediaAsset: Identifiable {
         let identity = inputIdentity
         url = newURL
         inputIdentity = identity
+    }
+
+    // Only a coordinated install of the same prepared bytes preserves verification.
+    func installPreparedContent(at newURL: URL) {
+        let identity = inputIdentity
+        let verified = inputIdentityVerified
+        url = newURL
+        inputIdentity = identity
+        inputIdentityVerified = verified
     }
 
     func loadLibraryThumbnail(load: MediaAssetMetadata.Loader = MediaAssetMetadata.load) async {

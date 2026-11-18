@@ -78,6 +78,7 @@ let package = Package(
                 .copy("Resources/Fonts"),
                 .copy("Resources/MCPB/compositor-pro.mcpb"),
                 .copy("Resources/Images"),
+                .copy("Resources/Maps"),
                 .copy("Resources/Changelog"),
                 .copy("Resources/Styles"),
                 .process("Resources/Localization"),

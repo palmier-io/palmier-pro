@@ -1,21 +1,49 @@
 # Geographic map scenes
 
-`build_map_scene` turns a supplied place/connection/camera specification into a baked video scene. The spec is the editorial source of truth; the Lottie JSON and baked mov are derived outputs.
+`build_map_scene` produces a silent, locally rendered H.264 geography video. `MapSceneSpec` owns validation, canonical input and geographic calculations; `MapSceneMotion` owns route/object timing. The generated asset retains a `MapSceneRecord` in `media.json`, including input, atlas/renderer versions, image fingerprints and rendered-video fingerprint. `read_map_scene` reads that record after manifest restoration; revisions generate another asset.
 
-## Contract
+## Geography and visual contract
 
-- `MalaysiaPlaceCatalog` owns 12 Peninsular places (5 island) with approximate WGS-84 centroids (`MalaysiaPlaceCatalog.datasetNote`). Unknown/blank names and duplicates refuse; aliases (`George Town`, `KL`, `JB`, `PTP`) resolve to canonical entries. East Malaysia and survey naming are non-goals.
-- `MapProjection` is the single equirectangular projection: longitude degrees scale by `cos(mean latitude)`, latitude degrees map directly. `screen(point, camera, frame)` is the shared oracle: a layer child at anchor + plane renders at `groupPosition + plane * zoom`.
-- Pins, route strokes, and text labels live in one Lottie shape layer plus parented text layers sharing one keyframed transform, so labels stay attached during camera moves. Reveal frames hide shapes via group opacity keys and labels via layer windows.
-- Connections are `illustrative` unless `kind: sourced` with a non-empty claimId list; claim IDs are validated for shape only (ledger binding is task 3/10).
-- The tool validates the full spec before mutation, bakes off the staged JSON through `LottieVideoGenerator`, and installs the mov via `commitStagedProjectMedia` inside a package mutation lease. Refusals add no asset, clip, or undo step. The receipt returns the spec, digest, and catalog coordinates.
+- `list_map_regions` searches the bundled public-domain Natural Earth atlas: 177 country features at 1:110m and 294 available subdivisions at 1:50m. IDs are `country:GEO`, `subdivision:US-GA`, etc. Ambiguous aliases refuse. The 12 existing Malaysian editorial place anchors remain available. Explicit WGS-84 coordinates support other towns/ports; they are caller supplied, not geocoded.
+- Atlas components expose index, center and bounds. `componentIndices` can highlight separate land masses of Malaysia. A custom region needs a nondegenerate, closed 4–4096 vertex `[longitude,latitude]` polygon. Custom polygon holes and automatic administrative/geocoding downloads are not supplied. Region event IDs are unique; different IDs allow repeated highlights of one geographic region.
+- `MapProjection` owns a north-up equirectangular plane, circular longitude origin and a shared affine camera transform. Camera keys support center, logarithmically interpolated zoom, rotation and simulated planar tilt. Incoming easing is linear, easeInOut, easeOut, or hold. This is not globe geometry, a terrain mesh, navigation data, or a claim that atlas borders settle disputed boundaries.
+- Country outlines and public-domain relief form the background. An optional ready library image can replace the background with explicit west/south/east/north registration. Region image fills clip to outlines. Pins, routes and object anchors follow the same camera transform; geographic labels remain upright in screen space.
+- Routes use straight/curved geometry or via coordinates, timed reveals and optional labels. An approximate haversine endpoint distance is separate from traveled route distance. `kind:sourced` needs nonempty claim IDs; identifiers alone are not evidence verification. A plan's existing source ledger remains the factual review mechanism.
+- Objects support ship, airplane, truck, train, package, person, factory, money, tank, arrow, pin, circle, gunfire, explosion, heat, rain, image and flag. Image/flag objects need an image asset. An object has exactly one anchor, routeId or timed waypoint path. Route traversal may loop; timed waypoints do not. Optional tangent rotation follows the camera-transformed path. Built-in symbols are vector drawings; effects are deterministic frame functions.
+- Timed screen/geographic text supports bold outlined typography, multiline wrapping and none/fade/pop/slide/typewriter entrances. Screen coordinates are normalized with a top-left origin. Caption tools provide transcript-aligned spoken phrases separately.
 
-## Limits
+## Time, limits and failure
 
-- No region polygons (no sourced dataset in scope), no plan/ledger binding, no plan-side spec persistence; corrections regenerate a new asset.
-- Catalog coordinates are centroids, not boundary-accurate; `deliveryVerified` and uniqueness behavior are unchanged from tasks 5b/10.
-- Human playback attachment across reveals remains manual.
+Scene cue frames use explicit integer fps (default: timeline fps, 1–120). The scene lasts at least one frame and at most 180 seconds at that fps, up to 21,600 frames. Start/reveal is inclusive; endFrame is exclusive. Object route arrival is the last visible frame; waypoints must increase strictly within the visible window. Camera frames are unique. Routes must finish their reveal before their endFrame. Typewriter is supported only for text.
+
+Canvas dimensions are 320–3840 by 180–3840, at most 8,294,400 pixels. A scene supports 64 place anchors, 64 regions, 64 routes, 64 objects, 64 text cues and 128 camera keys. At most 16 custom images are read with 64 MiB per-file and 128 MiB aggregate input limits. Decoded images have a separate 128 MiB ceiling. One renderer permit bounds resource preparation and encoding. Country geography is generalized; close-ups may need a better registered source image/custom outline.
+
+Types, finite values, colors, IDs, geometry, dimensions, windows and supported combinations validate before mutation. Unknown nested tool fields refuse. Missing/corrupt image files, encoder errors and cancellation return failures. Rendered output fingerprints prevent a changed/missing video file from becoming an identical-retry no-op.
+
+## Publication and ownership
+
+`EditorViewModel.prepareMapScene` is the shared owning operation. It acquires a `ProjectPackageCoordinator` mutation lease, snapshots configuration and source asset identities, resolves the atlas/spec off-main, renders off-main, and revalidates project/timeline configuration, sources, lifecycle and cancellation after suspension. The CoreGraphics/CoreText canvas is worker owned and transfers exclusively into the encoder; it is not declared Sendable or shared across concurrent workers. Image bytes are fingerprinted again at render completion.
+
+The producer owns a unique stage until it passes it to `commitStagedProjectMedia`. The installer owns cleanup even if the render completed just before cancellation. Installation uses create-new package semantics and awaits cleanup/rollback; no feature code writes directly into a live package. Publication installs asset metadata and optional placement together in one `EditorUndo` library snapshot action. Failed/refused/cancelled requests create no asset/clip/undo step. Backing bytes remain for redo.
+
+For placement, `ClipPlacement` converts source duration to complete timeline frames by rounding down. A result shorter than one timeline frame refuses before rendering. Placement uses an available visible video track with no overlap, or creates a new visual track; existing clips are not overwritten. Unrelated edits during rendering are captured at publication and survive map undo. Identical input/resources reuse a matching fingerprinted asset; matching placement is a no-op. Name applies only to a newly generated asset. Changed input generates a new asset; the agent explicitly targets any clip replacement.
+
+## Agent workflow
+
+Three offline built-in skills cover map story patterns, motion-object choreography, and narration/synchronization. They are included in the in-app skill scan and `read_skill`. The external MCP server receives map workflow instructions and the same map tools. See [reference study](../design/map-reference-study.md).
+
+Use available speech voices, pinned approved narration intent, actual transcription/beat timing, phrase captions, and `mix_audio`. Map rendering creates no soundtrack. Follow normal storyboard inspection/approval for finished productions, then assemble, review and await completed export. Atlas attribution does not establish rights to custom images. Voice intelligibility and creative similarity require playback/audition.
 
 ## Verification
 
-Focused `MapScene|ToolDefinition|ToolDiscovery|ExplainerContractsMCP|ComposeImage|Storyboard|VisualUniqueness|ProductionExportGate|Lottie` passed 127 tests in 20 suites. Projection oracle, catalog ambiguity, sourced-link evidence, and invalid frame/zoom refusals are unit-covered. The attachment test renders the same spec at first/last camera keys and asserts bright label pixels follow predicted screen positions. MCP tests verify library registration, spec receipt, placement duration, undo, and unknown-place refusal. Full `swift test` passed 2,574 tests in 377 suites (with concurrent unrelated work temporarily absent for that run). TSan was not completed — blocked by another worker's in-flight broken files and a SIGKILL, with no race diagnostics observed. A staged-only snapshot build failed on `ExportQueue.waitForCompletion` — `HEAD` pairs the finishing worker's `ToolExecutor+Export` caller with a missing `ExportQueue` definition and cannot build standalone; no standalone full pass is claimed.
+Automated gates: `swift build`; focused `MapSceneTests|MapSceneRendererTests|MapSceneMCPTests|MapScenePublicationTests|FilmmakingPlaybooksTests|GenerateSpeechToolTests`; full `swift test`; `BundledSpeech` build and relevant tests; resource lookup/packaging; relevant Thread Sanitizer tests; guidance lint and diff checks. Record actual results after running these gates; this contract is not itself a pass claim.
+
+The MCP suites use isolated Client/Server in-memory transports, protocol discovery/calls, independent library/timeline/media/manifest readback, invalid arguments, no-op retries, undo, native redo and Save As. Rendering tests cover country-window pixels, north-up custom imagery, labels, moving ships/effects and encoded source timing. Publication gates coordinate cancellation and stale state without sleeps.
+
+Manual plan (unverified until confirmed):
+
+1. Use a disposable vertical project. Ask the agent for a sourced map explainer, choose an available voice and approve its prepared storyboard. Inspect both Malaysia land masses and the Georgia ambiguity error.
+2. Scrub/play a scene with a moving camera, route, ship/package, highlight and large title. Check reveal/arrival/end frames, labels, flag masks, safe margins, coastlines and camera continuity. Try a supplied transparent wildlife/other object image.
+3. Play the finished narration/captions/SFX/music together. Check pronunciations, emphasis, word-to-visual timing, intelligibility and audio tails; inspect the encoded export.
+4. Repeat a request and verify no duplicate asset/clip/undo step. Undo/redo, Save As and reopen; inspect the saved spec and backing video. Keep another edit on the timeline during generation.
+5. Cancel while rendering; repoint an image or switch timeline configuration; close/cancel close during rendering. Confirm visible failure/cancellation, cleanup and preservation of existing edits/media. Exercise sleep/wake and app deactivation during a long render.

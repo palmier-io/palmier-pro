@@ -37,6 +37,7 @@ struct MediaManifestEntry: Codable, Sendable, Equatable, Identifiable {
     var generationStatus: String?
     var importInput: MediaImportInput?
     var inputIdentity: MediaInputIdentity?
+    var mapScene: MapSceneRecord?
     
     // Stock provenance
     var providerAssetId: String?

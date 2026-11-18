@@ -59,6 +59,8 @@ enum ToolName: String, CaseIterable, Sendable {
     case addOutro = "add_outro"
     case composeImage = "compose_image"
     case buildMapScene = "build_map_scene"
+    case listMapRegions = "list_map_regions"
+    case readMapScene = "read_map_scene"
     case buildGraphicScene = "build_graphic_scene"
     case removeImageBackground = "remove_image_background"
     case applyTextStyle = "apply_text_style"
@@ -1067,39 +1069,9 @@ enum ToolDefinitions {
                 required: []
             )
         ),
-        AgentTool(
-            name: .buildMapScene,
-            description: "Builds a locator / industrial-hub / relationship map for Malaysia (Peninsular mainland and Penang island) in one local step. Places resolve against a built-in catalog of approximate WGS-84 centroids (Penang, Kulim, Kuala Lumpur, Johor Bahru, ...); unknown or ambiguous names are refused with the known list, never guessed. One equirectangular projection owns every coordinate; camera keys move the whole plane, so pins, routes, and labels stay attached while zooming. Label positions, reveal frames, camera motion, and the baked video come from this one specification. Connections are illustrative unless you pass kind sourced with at least one claimId each. The result is a normal library video asset — pass addToTimeline:true and startFrame to place it in the same step, exactly like compose_image. Rebuild with corrected places to regenerate; the receipt carries the spec, digest, and catalog coordinates for readback. Coordinates are editorial approximations, not survey-grade.",
-            inputSchema: objectSchema(
-                properties: [
-                    "places": ["type": "array", "description": "Scene places. Each needs a catalog name (e.g. \"Kulim\", \"Penang\", \"Kuala Lumpur\"). Duplicate or unknown names are refused.", "items": ["type": "object", "description": "One place.", "properties": [
-                        "name": ["type": "string", "description": "Canonical catalog name."],
-                        "label": ["type": "string", "description": "On-screen label. Defaults to the canonical name."],
-                        "claimIds": ["type": "array", "description": "Factual claim ids backing this place's narration cue."],
-                        "revealFrame": ["type": "integer", "description": "Frame when this pin and label appear. Default 0."],
-                    ], "required": ["name"]]],
-                    "connections": ["type": "array", "description": "Routes between scene places.", "items": ["type": "object", "description": "One link.", "properties": [
-                        "from": ["type": "string", "description": "Start place (must be in places)."],
-                        "to": ["type": "string", "description": "End place (must be in places)."],
-                        "kind": ["type": "string", "enum": ["illustrative", "sourced"], "description": "illustrative draws a relationship line; sourced claims a measured flow and needs claimIds. Default illustrative."],
-                        "claimIds": ["type": "array", "description": "Claim ids for sourced links."],
-                        "revealFrame": ["type": "integer", "description": "Frame when this route appears. Default 0."],
-                    ], "required": ["from", "to"]]],
-                    "camera": ["type": "array", "description": "Camera keys: center place and zoom over time. The camera transforms the map, pins, routes, and labels together. Empty defaults to the first place at zoom 1.", "items": ["type": "object", "description": "One key.", "properties": [
-                        "frame": ["type": "integer", "description": "Frame of this key."],
-                        "place": ["type": "string", "description": "Catalog place the camera centers (need not be a scene place)."],
-                        "zoom": ["type": "number", "description": "Zoom multiplier 0.5–4. Default 1."],
-                    ], "required": ["frame", "place"]]],
-                    "durationFrames": ["type": "integer", "description": "Scene length in frames at 30fps. Default 240."],
-                    "width": ["type": "integer", "description": "Canvas width. Defaults to the timeline canvas."],
-                    "height": ["type": "integer", "description": "Canvas height. Defaults to the timeline canvas."],
-                    "name": ["type": "string", "description": "Name for the scene in the library."],
-                    "addToTimeline": ["type": "boolean", "description": "Place the baked scene on the timeline in the same step. Default false."],
-                    "startFrame": ["type": "integer", "description": "Where to place it when addToTimeline is true. Defaults to 0."],
-                ],
-                required: ["places"]
-            )
-        ),
+        MapSceneToolSchema.build,
+        MapSceneToolSchema.list,
+        MapSceneToolSchema.read,
         AgentTool(
             name: .buildGraphicScene,
             description: "Builds a sourced data and evidence graphic scene (numeric comparison, source card, comparison line/bar chart, or dated policy timeline) in one local step from real structured inputs. Stores series, units, dates, citations, and claim IDs separately from styling. Rejects malformed data, non-finite values, incompatible units, fabricated attribution, and chronology violations before mutation. Automatically validates display/narration agreement (including GDP vs GDP per capita, nominal vs adjusted values, and announced vs realized investment). Bakes an alpha ProRes 4444 video asset into the library with deterministic animated reveals and holds, and optionally places it on the timeline in the same step. Pass planId to validate cited claims against the plan's sourceLedger and script beats.",
@@ -2400,7 +2372,7 @@ enum ToolDefinitions {
         .getMedia, .inspectMedia, .searchMedia, .importMedia, .organizeMedia, .captureFrame,
         .getTranscript, .removeWords, .removeSilence, .detectSilence, .detectBeats,
         .setProjectSettings, .exportProject, .manageExports, .undo,
-        .composeImage, .buildMapScene, .buildGraphicScene, .removeImageBackground,
+        .composeImage, .buildMapScene, .listMapRegions, .readMapScene, .buildGraphicScene, .removeImageBackground,
         .denoiseAudio, .debreatheAudio, .enhanceVoice,
         .readSkill,
     ]

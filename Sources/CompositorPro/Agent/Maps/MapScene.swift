@@ -1,20 +1,21 @@
 import CoreGraphics
+import CryptoKit
 import Foundation
 
-/// One projection (equirectangular, adequate at Peninsula Malaysia extents) and a
-/// small resolved-place catalog. Unknown or ambiguous names are refused, never
-/// guessed; coordinates are approximate WGS-84 centroids for illustration.
-struct MalaysiaPlace: Sendable, Equatable {
+// Resolved coordinates are editorial anchors, not survey measurements.
+struct MapSceneLocation: Codable, Sendable, Equatable {
     let canonicalName: String
     let aliases: [String]
     let latitude: Double
     let longitude: Double
     let island: Bool
     let note: String
+    var regionId: String? = nil
+    var coordinate: MapCoordinate { .init(latitude: latitude, longitude: longitude) }
 }
 
 enum MalaysiaPlaceCatalog {
-    static let places: [MalaysiaPlace] = [
+    static let places: [MapSceneLocation] = [
         .init(canonicalName: "Penang", aliases: ["Penang", "George Town"], latitude: 5.414, longitude: 100.332, island: true, note: "Island state capital area."),
         .init(canonicalName: "Bayan Lepas", aliases: ["Bayan Lepas"], latitude: 5.297, longitude: 100.263, island: true, note: "Penang island industrial zone."),
         .init(canonicalName: "Butterworth", aliases: ["Butterworth"], latitude: 5.398, longitude: 100.363, island: false, note: "Mainland Penang (Seberang Perai)."),
@@ -32,7 +33,7 @@ enum MalaysiaPlaceCatalog {
     /// Coordinates are approximate town centroids for editorial illustration.
     static let datasetNote = "Approximate WGS-84 centroids (OpenStreetMap-scale), for map illustration only; not survey-grade."
 
-    static func resolve(_ rawName: String) throws -> MalaysiaPlace {
+    static func resolve(_ rawName: String) throws -> MapSceneLocation {
         let key = rawName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !key.isEmpty else { throw MapSceneError.unresolvedPlace(name: rawName) }
         let matches = places.filter { place in
@@ -58,7 +59,7 @@ enum MapSceneError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .unresolvedPlace(let name):
-            "Place '\(name)' is not in the map catalog (\(MalaysiaPlaceCatalog.places.map(\.canonicalName).joined(separator: ", "))). \(MalaysiaPlaceCatalog.datasetNote)"
+            "Place '\(name)' is not in the map catalog. Use list_map_regions for exact region IDs, or supply an explicit WGS-84 coordinate. \(MalaysiaPlaceCatalog.datasetNote)"
         case .ambiguousPlace(let name):
             "Place '\(name)' matches more than one catalog entry; use a canonical name."
         case .duplicatePlace(let name):
@@ -66,7 +67,7 @@ enum MapSceneError: LocalizedError, Equatable {
         case .invalidFrame:
             "Camera and reveal frames must be within the scene duration."
         case .invalidZoom:
-            "Camera zoom must be finite, between 0.5 and 4."
+            "Camera zoom must be finite, between 0.05 and 128."
         case .connectionNeedsClaims(let from, let to):
             "Sourced connection '\(from)' → '\(to)' needs at least one claimId; use kind illustrative instead."
         case .invalidSpec(let detail):
@@ -75,103 +76,158 @@ enum MapSceneError: LocalizedError, Equatable {
     }
 }
 
-struct MapScenePlace: Decodable, Sendable {
+struct MapScenePlace: Codable, Sendable, Equatable {
     var name: String
     var label: String?
     var claimIds: [String]?
     var revealFrame: Int?
+    var latitude: Double?
+    var longitude: Double?
+    var showPin: Bool?
+    var showLabel: Bool?
 }
 
-struct MapSceneConnection: Decodable, Sendable {
+struct MapSceneConnection: Codable, Sendable, Equatable {
     var from: String
     var to: String
     var kind: String?
     var claimIds: [String]?
     var revealFrame: Int?
+    var id: String?
+    var endFrame: Int?
+    var revealFrames: Int?
+    var via: [MapCoordinate]?
+    var arc: Double?
+    var color: String?
+    var width: Double?
+    var label: String?
+    var distanceLabel: Bool?
 }
 
-struct MapSceneCameraKey: Decodable, Sendable {
+struct MapSceneCameraKey: Codable, Sendable, Equatable {
     var frame: Int
-    var place: String
+    var place: String?
     var zoom: Double?
+    var latitude: Double?
+    var longitude: Double?
+    var rotation: Double?
+    var tilt: Double?
+    var easing: MapSceneEasing?
 }
 
-struct MapSceneInput: Decodable, Sendable {
+struct MapSceneInput: Codable, Sendable, Equatable {
     var places: [MapScenePlace]
     var connections: [MapSceneConnection]?
     var camera: [MapSceneCameraKey]?
     var durationFrames: Int?
     var width: Int?
     var height: Int?
+    var regions: [MapSceneRegion]?
+    var objects: [MapSceneObject]?
+    var texts: [MapSceneText]?
+    var fps: Int?
+    var palette: MapScenePalette?
+    var backgroundImage: MapSceneBackgroundImage?
 }
 
 struct MapScenePlaceRequest: Sendable {
-    var place: MalaysiaPlace
+    var place: MapSceneLocation
     var label: String
     var claimIds: [String]
     var revealFrame: Int
+    var showPin: Bool
+    var showLabel: Bool
 }
 
 struct MapSceneConnectionRequest: Sendable {
-    var from: MalaysiaPlace
-    var to: MalaysiaPlace
+    var from: MapSceneLocation
+    var to: MapSceneLocation
     var sourced: Bool
     var claimIds: [String]
     var revealFrame: Int
+    var id: String
+    var input: MapSceneConnection
 }
 
 struct MapSceneCameraRequest: Sendable {
     var frame: Int
-    var center: MalaysiaPlace
+    var center: MapSceneLocation
     var zoom: Double
+    var rotation: Double = 0
+    var tilt: Double = 0
+    var easing: MapSceneEasing = .easeInOut
 }
 
-struct MapSceneStyle {
-    var pinColor: (r: Double, g: Double, b: Double) = (1, 0.25, 0.2)
-    var routeColor: (r: Double, g: Double, b: Double) = (0.2, 0.55, 1)
-    var labelColor: (r: Double, g: Double, b: Double) = (1, 1, 1)
-    var backgroundColor: (r: Double, g: Double, b: Double) = (0.06, 0.09, 0.14)
-}
-
-struct MapSceneSpec {
+struct MapSceneSpec: Sendable {
     var places: [MapScenePlaceRequest]
     var connections: [MapSceneConnectionRequest]
     var camera: [MapSceneCameraRequest]
     var durationFrames: Int
     var width: Int
     var height: Int
-    var style: MapSceneStyle = MapSceneStyle()
+    var fps: Int = 30
+    var palette: MapScenePalette = MapScenePalette()
+    var regions: [MapSceneRegionRequest] = []
+    var objects: [MapSceneObjectRequest] = []
+    var texts: [MapSceneText] = []
+    var atlasVersion: String = "centroids"
+    var extentCoordinates: [MapCoordinate] = []
+    var backgroundImage: MapSceneBackgroundImage?
 
-    static func validated(_ input: MapSceneInput, defaultWidth: Int, defaultHeight: Int) throws -> MapSceneSpec {
-        let duration = input.durationFrames ?? 240
-        guard (30...3600).contains(duration) else {
-            throw MapSceneError.invalidSpec("durationFrames must be between 30 and 3600 (1s–2m at 30fps).")
+    @concurrent static func resolve(_ input: MapSceneInput, defaultWidth: Int, defaultHeight: Int,
+                                   defaultFPS: Int, atlas: MapAtlas) async throws -> Self {
+        try Task.checkCancellation()
+        return try validated(input, defaultWidth: defaultWidth, defaultHeight: defaultHeight, defaultFPS: defaultFPS, atlas: atlas)
+    }
+
+    static func validated(_ input: MapSceneInput, defaultWidth: Int, defaultHeight: Int,
+                          defaultFPS: Int = 30, atlas: MapAtlas = .empty) throws -> MapSceneSpec {
+        let fps = input.fps ?? defaultFPS
+        guard (1...120).contains(fps) else { throw MapSceneError.invalidSpec("fps must be 1...120.") }
+        let duration = input.durationFrames ?? fps * 8
+        guard (1...(fps * 180)).contains(duration) else {
+            throw MapSceneError.invalidSpec("durationFrames must be positive and at most 180 seconds at the scene fps.")
         }
         let width = input.width ?? defaultWidth
         let height = input.height ?? defaultHeight
-        guard (320...2048).contains(width), (240...2048).contains(height) else {
-            throw MapSceneError.invalidSpec("width must be 320–2048 and height 240–2048.")
+        guard (320...3840).contains(width), (180...3840).contains(height), width * height <= 8_294_400 else {
+            throw MapSceneError.invalidSpec("Canvas must be 320...3840 by 180...3840, at most 8,294,400 pixels.")
         }
-        guard !input.places.isEmpty else {
-            throw MapSceneError.invalidSpec("A map scene needs at least one place.")
+        guard (1...64).contains(input.places.count), (input.connections?.count ?? 0) <= 64,
+              (input.camera?.count ?? 0) <= 128 else {
+            throw MapSceneError.invalidSpec("A scene needs 1...64 places, at most 64 routes and 128 camera keys.")
         }
         var seen = Set<String>()
         var places: [MapScenePlaceRequest] = []
         for raw in input.places {
-            let place = try MalaysiaPlaceCatalog.resolve(raw.name)
-            guard seen.insert(place.canonicalName).inserted else { throw MapSceneError.duplicatePlace(name: raw.name) }
+            _ = try identifier(raw.name)
+            let place: MapSceneLocation
+            if raw.latitude != nil || raw.longitude != nil {
+                let coordinate = try location(place: nil, latitude: raw.latitude, longitude: raw.longitude,
+                                              atlas: atlas, scenePlaces: [])
+                place = .init(canonicalName: raw.name, aliases: [], latitude: coordinate.latitude,
+                              longitude: coordinate.longitude, island: false, note: "Explicit caller-supplied WGS-84 coordinate.",
+                              regionId: atlas.regions.first(where: { $0.id == raw.name })?.id)
+            } else {
+                place = try atlas.location(named: raw.name)
+                _ = try place.coordinate.validated()
+            }
+            guard seen.insert(MapAtlas.key(place.canonicalName)).inserted else { throw MapSceneError.duplicatePlace(name: raw.name) }
             let reveal = raw.revealFrame ?? 0
             guard (0..<duration).contains(reveal) else { throw MapSceneError.invalidFrame }
-            let claimIds = (raw.claimIds ?? []).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+            let claimIds = try claims(raw.claimIds)
             let trimmedLabel = raw.label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let label = trimmedLabel.isEmpty ? place.canonicalName : trimmedLabel
-            places.append(MapScenePlaceRequest(place: place, label: label, claimIds: claimIds, revealFrame: reveal))
+            let defaultLabel = atlas.regions.first(where: { $0.id == place.regionId })?.name ?? place.canonicalName
+            let label = trimmedLabel.isEmpty ? defaultLabel : trimmedLabel
+            _ = try text(label, maximum: 120)
+            places.append(MapScenePlaceRequest(place: place, label: label, claimIds: claimIds, revealFrame: reveal, showPin: raw.showPin ?? true, showLabel: raw.showLabel ?? true))
         }
-        func resolvedPlace(_ raw: String) throws -> MalaysiaPlace {
-            try MalaysiaPlaceCatalog.resolve(raw)
+        func resolvedPlace(_ raw: String) throws -> MapSceneLocation {
+            try Self.namedLocation(raw, atlas: atlas, scenePlaces: places)
         }
-        var scoped = Set(places.map(\.place.canonicalName))
+        let scoped = Set(places.map(\.place.canonicalName))
         var connections: [MapSceneConnectionRequest] = []
+        var connectionIds = Set<String>()
         for raw in input.connections ?? [] {
             let from = try resolvedPlace(raw.from)
             let to = try resolvedPlace(raw.to)
@@ -182,34 +238,85 @@ struct MapSceneSpec {
             guard ["illustrative", "sourced"].contains(kind) else {
                 throw MapSceneError.invalidSpec("Connection kind must be illustrative or sourced.")
             }
-            let claimIds = (raw.claimIds ?? []).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+            let claimIds = try claims(raw.claimIds)
             if kind == "sourced", claimIds.isEmpty {
                 throw MapSceneError.connectionNeedsClaims(from: from.canonicalName, to: to.canonicalName)
             }
             let reveal = raw.revealFrame ?? 0
-            guard (0..<duration).contains(reveal) else { throw MapSceneError.invalidFrame }
-            connections.append(MapSceneConnectionRequest(from: from, to: to, sourced: kind == "sourced", claimIds: claimIds, revealFrame: reveal))
+            try validateWindow(start: reveal, end: raw.endFrame ?? duration, duration: duration)
+            let id = try identifier(raw.id ?? "\(from.canonicalName) → \(to.canonicalName)")
+            guard connectionIds.insert(id).inserted, from.latitude != to.latitude
+                    || MapProjection.longitudeDelta(from.longitude, from: to.longitude) != 0 else {
+                throw MapSceneError.invalidSpec("Routes need distinct endpoints and unique IDs.")
+            }
+            guard (0...120).contains(raw.revealFrames ?? 18), (raw.via?.count ?? 0) <= 128,
+                  (raw.arc ?? 0).isFinite, (-1...1).contains(raw.arc ?? 0),
+                  (raw.width ?? 4).isFinite, (1...24).contains(raw.width ?? 4) else {
+                throw MapSceneError.invalidSpec("Route revealFrames must be 0...120, arc -1...1, width 1...24, with at most 128 via coordinates.")
+            }
+            guard (raw.via ?? []).isEmpty || (raw.arc ?? 0) == 0 else {
+                throw MapSceneError.invalidSpec("Use via coordinates or arc curvature, never both.")
+            }
+            for point in raw.via ?? [] { _ = try point.validated() }
+            _ = try MapSceneColor(raw.color ?? "#FFE389")
+            if let label = raw.label { _ = try text(label, maximum: 120) }
+            let availableRevealFrames = (raw.endFrame ?? duration) - reveal - 1
+            guard (raw.revealFrames ?? 0) <= availableRevealFrames else {
+                throw MapSceneError.invalidSpec("A route reveal must complete before its exclusive endFrame.")
+            }
+            var canonical = raw
+            canonical.revealFrames = raw.revealFrames ?? min(18, availableRevealFrames)
+            canonical.from = from.canonicalName; canonical.to = to.canonicalName; canonical.id = id
+            connections.append(.init(from: from, to: to, sourced: kind == "sourced", claimIds: claimIds,
+                                     revealFrame: reveal, id: id, input: canonical))
         }
         var camera: [MapSceneCameraRequest] = []
+        var cameraFrames = Set<Int>()
         for raw in input.camera ?? [] {
-            guard (0..<duration).contains(raw.frame) else { throw MapSceneError.invalidFrame }
+            guard (0..<duration).contains(raw.frame), cameraFrames.insert(raw.frame).inserted else { throw MapSceneError.invalidFrame }
             let zoom = raw.zoom ?? 1
-            guard zoom.isFinite, (0.5...4).contains(zoom) else { throw MapSceneError.invalidZoom }
-            camera.append(MapSceneCameraRequest(frame: raw.frame, center: try resolvedPlace(raw.place), zoom: zoom))
+            guard zoom.isFinite, (0.05...128).contains(zoom) else { throw MapSceneError.invalidZoom }
+            let coordinate = try location(place: raw.place, latitude: raw.latitude, longitude: raw.longitude,
+                                          atlas: atlas, scenePlaces: places)
+            let rotation = raw.rotation ?? 0, tilt = raw.tilt ?? 0
+            guard rotation.isFinite, (-180...180).contains(rotation), tilt.isFinite, (0...60).contains(tilt) else {
+                throw MapSceneError.invalidSpec("Camera rotation must be -180...180 and tilt 0...60 degrees.")
+            }
+            let center = MapSceneLocation(canonicalName: raw.place ?? "camera", aliases: [],
+                latitude: coordinate.latitude, longitude: coordinate.longitude, island: false, note: "Authored camera center.")
+            camera.append(.init(frame: raw.frame, center: center, zoom: zoom, rotation: rotation, tilt: tilt, easing: raw.easing ?? .easeInOut))
         }
         if camera.isEmpty, let first = places.first {
             camera = [MapSceneCameraRequest(frame: 0, center: first.place, zoom: 1)]
         }
         camera.sort { $0.frame < $1.frame }
-        return MapSceneSpec(places: places, connections: connections, camera: camera,
-                            durationFrames: duration, width: width, height: height)
+        var spec = MapSceneSpec(places: places, connections: connections, camera: camera,
+                                durationFrames: duration, width: width, height: height)
+        spec.fps = fps
+        spec.palette = try (input.palette ?? MapScenePalette()).validated()
+        spec.backgroundImage = try input.backgroundImage?.validated()
+        spec.atlasVersion = atlas.version
+        try spec.validateElements(input, atlas: atlas)
+        spec.extentCoordinates = spec.regions.flatMap { $0.polygons.flatMap { $0.flatMap { $0 } } }
+        if spec.extentCoordinates.isEmpty {
+            let ids = Set(spec.places.compactMap(\.place.regionId))
+            spec.extentCoordinates = atlas.regions.filter { ids.contains($0.id) }
+                .flatMap { $0.polygons.flatMap { $0.flatMap { $0 } } }
+        }
+        spec.extentCoordinates += spec.objects.flatMap { $0.keys.map(\.coordinate) }
+        spec.extentCoordinates += spec.connections.flatMap { $0.input.via ?? [] }
+        if let background = spec.backgroundImage {
+            spec.extentCoordinates += [.init(latitude: background.south, longitude: background.west),
+                                       .init(latitude: background.north, longitude: background.east)]
+        }
+        return spec
     }
 }
 
 /// Equirectangular projection about the scene center latitude. Plane is canvas
 /// units, y-down, origin at the extent center.
 enum MapProjection {
-    struct Frame {
+    struct Frame: Sendable {
         /// Canvas-plane position (y-down, origin at the extent center) per place.
         var points: [CGPoint]
         var baseScale: Double
@@ -221,234 +328,98 @@ enum MapProjection {
 
     static func frame(for spec: MapSceneSpec) -> Frame {
         let lat0 = spec.places.map(\.place.latitude).reduce(0, +) / Double(spec.places.count)
-        let lon0 = spec.places.map(\.place.longitude).reduce(0, +) / Double(spec.places.count)
+        let longitudes = spec.places.map { $0.place.longitude * .pi / 180 }
+        let lon0 = atan2(longitudes.map { sin($0) }.reduce(0, +), longitudes.map { cos($0) }.reduce(0, +)) * 180 / .pi
         let cosine = cos(lat0 * .pi / 180)
-        func planar(_ place: MalaysiaPlace) -> (x: Double, y: Double) {
+        func planar(_ place: MapSceneLocation) -> (x: Double, y: Double) {
             // Equirectangular: meters per degree latitude ≈ constant, longitude scaled by cos(lat).
-            ((place.longitude - lon0) * cosine, (lat0 - place.latitude))
+            (longitudeDelta(place.longitude, from: lon0) * cosine, (lat0 - place.latitude))
         }
         let raw = spec.places.map { planar($0.place) }
-        let spanX = max(0.2, (raw.map(\.x).max() ?? 0) - (raw.map(\.x).min() ?? 0))
-        let spanY = max(0.2, (raw.map(\.y).max() ?? 0) - (raw.map(\.y).min() ?? 0))
+        let extent = raw + spec.extentCoordinates.map {
+            (x: longitudeDelta($0.longitude, from: lon0) * cosine, y: lat0 - $0.latitude)
+        }
+        let spanX = max(0.2, (extent.map(\.x).max() ?? 0) - (extent.map(\.x).min() ?? 0))
+        let spanY = max(0.2, (extent.map(\.y).max() ?? 0) - (extent.map(\.y).min() ?? 0))
         let baseScale = min(Double(spec.width) * 0.8 / spanX, Double(spec.height) * 0.8 / spanY)
         let center = CGPoint(x: Double(spec.width) / 2, y: Double(spec.height) / 2)
         let points = raw.map { CGPoint(x: $0.x * baseScale, y: $0.y * baseScale) }
         return Frame(points: points, baseScale: baseScale, center: center, latitude0: lat0, longitude0: lon0, cosine: cosine)
     }
 
-    static func point(of place: MalaysiaPlace, in frame: Frame) -> CGPoint {
-        CGPoint(x: (place.longitude - frame.longitude0) * frame.cosine * frame.baseScale,
+    static func point(of place: MapSceneLocation, in frame: Frame) -> CGPoint {
+        CGPoint(x: longitudeDelta(place.longitude, from: frame.longitude0) * frame.cosine * frame.baseScale,
                 y: (frame.latitude0 - place.latitude) * frame.baseScale)
     }
 
-    static func cameraScale(_ camera: MapSceneCameraRequest, in frame: Frame) -> Double {
-        camera.zoom
+    static func longitudeDelta(_ longitude: Double, from origin: Double) -> Double {
+        var delta = (longitude - origin).truncatingRemainder(dividingBy: 360)
+        if delta > 180 { delta -= 360 }
+        if delta < -180 { delta += 360 }
+        return delta
     }
 
-    /// Group position so the camera center lands on the canvas center. The layer
-    /// anchor is the canvas center, so children render at anchor + plane*scale.
-    static func groupPosition(for camera: MapSceneCameraRequest, in frame: Frame) -> CGPoint {
-        let centerPlane = point(of: camera.center, in: frame)
-        let scale = cameraScale(camera, in: frame)
-        return CGPoint(x: frame.center.x - centerPlane.x * scale,
-                       y: frame.center.y - centerPlane.y * scale)
+    static func point(_ coordinate: MapCoordinate, in frame: Frame) -> CGPoint {
+        CGPoint(x: longitudeDelta(coordinate.longitude, from: frame.longitude0) * frame.cosine * frame.baseScale,
+                y: (frame.latitude0 - coordinate.latitude) * frame.baseScale)
     }
 
     /// Screen position of a plane point under a camera key (render-test oracle).
     static func screen(_ plane: CGPoint, camera: MapSceneCameraRequest, in frame: Frame) -> CGPoint {
-        let centerPlane = point(of: camera.center, in: frame)
-        let scale = cameraScale(camera, in: frame)
-        return CGPoint(x: frame.center.x + (plane.x - centerPlane.x) * scale,
-                       y: frame.center.y + (plane.y - centerPlane.y) * scale)
+        plane.applying(transform(camera, in: frame))
+    }
+
+    static func transform(_ camera: MapSceneCameraRequest, in frame: Frame) -> CGAffineTransform {
+        let center = point(of: camera.center, in: frame)
+        let angle = camera.rotation * .pi / 180
+        let x = camera.zoom, y = camera.zoom * cos(camera.tilt * .pi / 180)
+        let a = x * cos(angle), b = x * sin(angle), c = -y * sin(angle), d = y * cos(angle)
+        return CGAffineTransform(a: a, b: b, c: c, d: d,
+            tx: frame.center.x - a * center.x - c * center.y,
+            ty: frame.center.y - b * center.x - d * center.y)
     }
 }
 
 extension MapSceneSpec {
+    var authoredInput: MapSceneInput {
+        MapSceneInput(
+            places: places.map { .init(name: $0.place.canonicalName, label: $0.label, claimIds: $0.claimIds,
+                revealFrame: $0.revealFrame, latitude: $0.place.latitude, longitude: $0.place.longitude,
+                showPin: $0.showPin, showLabel: $0.showLabel) },
+            connections: connections.map(\.input),
+            camera: camera.map { .init(frame: $0.frame, zoom: $0.zoom, latitude: $0.center.latitude,
+                longitude: $0.center.longitude, rotation: $0.rotation, tilt: $0.tilt, easing: $0.easing) },
+            durationFrames: durationFrames, width: width, height: height,
+            regions: regions.map(\.input), objects: objects.map(\.input), texts: texts, fps: fps, palette: palette,
+            backgroundImage: backgroundImage)
+    }
+
     var digest: String {
-        var hasher = Hasher()
-        for place in places { place.place.canonicalName.hash(into: &hasher) }
-        for connection in connections {
-            connection.from.canonicalName.hash(into: &hasher)
-            connection.to.canonicalName.hash(into: &hasher)
+        get throws {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            let bytes = try encoder.encode(authoredInput)
+            let identity = Data((atlasVersion + "|" + MapSceneRenderer.version).utf8) + bytes
+            return SHA256.hash(data: identity).map { String(format: "%02x", $0) }.joined()
         }
-        for key in camera { key.frame.hash(into: &hasher); key.zoom.hash(into: &hasher) }
-        durationFrames.hash(into: &hasher)
-        width.hash(into: &hasher)
-        height.hash(into: &hasher)
-        return String(describing: hasher.finalize())
     }
 
-    var receipt: [String: Any] {
-        [
-            "projection": "equirectangular",
-            "dataset": MalaysiaPlaceCatalog.datasetNote,
-            "digest": digest,
-            "canvas": [width, height],
-            "durationFrames": durationFrames,
-            "places": places.map { ["name": $0.place.canonicalName, "label": $0.label, "latitude": $0.place.latitude,
-                                   "longitude": $0.place.longitude, "island": $0.place.island,
-                                   "claimIds": $0.claimIds, "revealFrame": $0.revealFrame] },
-            "connections": connections.map { ["from": $0.from.canonicalName, "to": $0.to.canonicalName,
-                                              "sourced": $0.sourced, "claimIds": $0.claimIds, "revealFrame": $0.revealFrame] },
-            "camera": camera.map { ["frame": $0.frame, "place": $0.center.canonicalName, "zoom": $0.zoom] },
-        ]
-    }
-}
-
-/// Builds a Lottie scene whose shape layer and label text layers share one
-/// camera transform, so labels stay attached to their pins while zooming.
-enum MapSceneLottie {
-    static let fps = 30
-
-    static func json(for spec: MapSceneSpec) -> [String: Any] {
-        let frame = MapProjection.frame(for: spec)
-        let duration = spec.durationFrames
-        let center = frame.center
-        let keys = spec.camera
-
-        func positionKeys() -> [String: Any] {
-            if keys.count == 1 {
-                let p = MapProjection.groupPosition(for: keys[0], in: frame)
-                return ["a": 0, "k": [Double(p.x), Double(p.y), 0]]
-            }
-            let frames = keys.map { key -> [String: Any] in
-                let p = MapProjection.groupPosition(for: key, in: frame)
-                return ["i": ["x": [0.667], "y": [1]], "o": ["x": [0.333], "y": [0]],
-                        "t": key.frame, "s": [Double(p.x), Double(p.y), 0]]
-            }
-            return ["a": 1, "k": frames]
-        }
-
-        func scaleKeys() -> [String: Any] {
-            if keys.count == 1 {
-                let s = MapProjection.cameraScale(keys[0], in: frame) * 100
-                return ["a": 0, "k": [s, s, 100]]
-            }
-            let frames = keys.map { key -> [String: Any] in
-                let s = MapProjection.cameraScale(key, in: frame) * 100
-                return ["i": ["x": [0.667], "y": [1]], "o": ["x": [0.333], "y": [0]],
-                        "t": key.frame, "s": [s, s, 100]]
-            }
-            return ["a": 1, "k": frames]
-        }
-
-        func opacityKeys(reveal: Int) -> [String: Any] {
-            guard reveal > 0 else { return ["a": 0, "k": 100] }
-            return ["a": 1, "k": [
-                ["i": ["x": [0.833], "y": [0.833]], "o": ["x": [0.167], "y": [0.167]], "t": 0, "s": [0]],
-                ["i": ["x": [0.833], "y": [0.833]], "o": ["x": [0.167], "y": [0.167]], "t": reveal, "s": [100]],
-            ]]
-        }
-
-        func group(_ name: String, items: [[String: Any]], reveal: Int = 0) -> [String: Any] {
-            var tr: [String: Any] = ["ty": "tr", "p": ["a": 0, "k": [0, 0]], "a": ["a": 0, "k": [0, 0]],
-                                     "s": ["a": 0, "k": [100, 100]], "r": ["a": 0, "k": 0],
-                                     "sk": ["a": 0, "k": 0], "sa": ["a": 0, "k": 0]]
-            tr["o"] = opacityKeys(reveal: reveal)
-            return ["ty": "gr", "nm": name, "np": items.count, "mn": "AD Group",
-                    "hd": false, "it": items + [tr]]
-        }
-
-        func fill(_ c: (r: Double, g: Double, b: Double), opacity: Double = 100) -> [String: Any] {
-            ["ty": "fl", "c": ["a": 0, "k": [c.r, c.g, c.b, 1]], "o": ["a": 0, "k": opacity],
-             "r": ["a": 0, "k": 2], "bm": 0]
-        }
-
-        // Lottie layer coords run top-left; plane origin is the canvas center.
-        func local(_ plane: CGPoint) -> CGPoint {
-            CGPoint(x: center.x + plane.x, y: center.y + plane.y)
-        }
-
-        var shapeItems: [[String: Any]] = []
-        // Connections as stroked paths between projected points.
-        for connection in spec.connections {
-            let a = local(MapProjection.point(of: connection.from, in: frame))
-            let b = local(MapProjection.point(of: connection.to, in: frame))
-            let path: [String: Any] = ["ty": "sh",
-                                       "ks": ["a": 0, "k": ["i": [[0, 0], [0, 0]], "o": [[0, 0], [0, 0]],
-                                                   "v": [[Double(a.x), Double(a.y)], [Double(b.x), Double(b.y)]], "c": false]]]
-            let stroke: [String: Any] = ["ty": "st", "c": ["a": 0, "k": [spec.style.routeColor.r, spec.style.routeColor.g, spec.style.routeColor.b, 1]],
-                                         "o": ["a": 0, "k": 80], "w": ["a": 0, "k": connection.sourced ? 8 : 4],
-                                         "lc": 1, "lj": 1, "ml": 4]
-            shapeItems.append(group("route", items: [path, stroke], reveal: connection.revealFrame))
-        }
-
-        for (index, place) in spec.places.enumerated() {
-            let pt = local(frame.points[index])
-            let ellipse: [String: Any] = ["ty": "el",
-                                           "p": ["a": 0, "k": [Double(pt.x), Double(pt.y - 14)]],
-                                           "s": ["a": 0, "k": [18, 18]]]
-            shapeItems.append(group("pin-\(place.place.canonicalName)", items: [ellipse, fill(spec.style.pinColor)],
-                                    reveal: place.revealFrame))
-        }
-
-        let shapeLayer: [String: Any] = [
-            "ddd": 0, "ind": 1, "ty": 4, "nm": "map", "sr": 1, "ks": [
-                "o": ["a": 0, "k": 100],
-                "r": ["a": 0, "k": 0],
-                "p": positionKeys(),
-                "a": ["a": 0, "k": [Double(center.x), Double(center.y), 0]],
-                "s": scaleKeys(),
-            ], "ao": 0, "shapes": shapeItems, "ip": 0, "op": duration, "st": 0, "bm": 0,
-        ]
-
-        let bg: [String: Any] = [
-            "ddd": 0, "ind": 0, "ty": 1, "nm": "background", "sr": 1, "sw": spec.width, "sh": spec.height,
-            "sc": "#\(Self.hex(spec.style.backgroundColor))",
-            "ks": ["o": ["a": 0, "k": 100], "r": ["a": 0, "k": 0],
-                   "p": ["a": 0, "k": [0, 0, 0]],
-                   "a": ["a": 0, "k": [0, 0, 0]], "s": ["a": 0, "k": [100, 100, 100]]],
-            "ao": 0, "ip": 0, "op": duration, "st": 0, "bm": 0,
-        ]
-
-        // Layers render first-on-top; the background goes last (bottom).
-        var layers: [[String: Any]] = [shapeLayer]
-        var ind = 2
-        for (index, place) in spec.places.enumerated() {
-            let pt = local(frame.points[index])
-            layers.append([
-                "ddd": 0, "ind": ind, "ty": 5, "nm": "label-\(place.place.canonicalName)",
-                "parent": 1, "sr": 1,
-                "ks": [
-                    "o": ["a": 0, "k": 100], "r": ["a": 0, "k": 0],
-                    "p": ["a": 0, "k": [Double(pt.x), Double(pt.y - 34), 0]],
-                    "a": ["a": 0, "k": [0, 0, 0]], "s": ["a": 0, "k": [100, 100, 100]],
-                ],
-                "ao": 0, "ip": place.revealFrame, "op": duration, "st": 0, "bm": 0,
-                "t": [
-                    "d": ["k": [[
-                        "s": ["s": 30, "f": "Helvetica-Bold", "t": place.label, "j": 1,
-                                "tr": 0, "lh": 36, "ls": 0, "a": 24,
-                                "fc": [spec.style.labelColor.r, spec.style.labelColor.g, spec.style.labelColor.b, 1]],
-                        "t": 0,
-                    ]]],
-                    "f": [[
-                        "fName": "Helvetica-Bold", "fFamily": "Helvetica", "fStyle": "Bold", "ascent": 24,
-                    ]],
-                    "p": ["a": 0, "k": [0, 0, 0]],
-                    "m": ["g": 1, "a": ["a": 0, "k": [0, 0]]],
-                    "a": [],
-                ],
-            ])
-            ind += 1
-        }
-        layers.append(bg)
-
-        return [
-            "v": "5.7.0", "fr": fps, "ip": 0, "op": duration,
-            "w": spec.width, "h": spec.height, "nm": "map", "ddd": 0,
-            "assets": [], "fonts": [[
-                "fName": "Helvetica-Bold", "fFamily": "Helvetica", "fStyle": "Bold", "ascent": 24,
-            ]],
-            "layers": layers,
-        ]
-    }
-
-    static func data(for spec: MapSceneSpec) throws -> Data {
-        try JSONSerialization.data(withJSONObject: json(for: spec), options: [.sortedKeys])
-    }
-
-    static func hex(_ c: (r: Double, g: Double, b: Double)) -> String {
-        String(format: "%02X%02X%02X", Int((c.r * 255).rounded()), Int((c.g * 255).rounded()), Int((c.b * 255).rounded()))
+    func camera(at frame: Int) -> MapSceneCameraRequest {
+        guard let first = camera.first, let last = camera.last else { preconditionFailure("Validated maps have a camera.") }
+        guard frame > first.frame else { return first }
+        guard frame < last.frame else { return last }
+        let index = camera.firstIndex { $0.frame > frame }!
+        let before = camera[index - 1], after = camera[index]
+        let progress = after.easing.value(Double(frame - before.frame) / Double(after.frame - before.frame))
+        func blend(_ a: Double, _ b: Double) -> Double { a + (b - a) * progress }
+        var result = before
+        let longitude = before.center.longitude + MapProjection.longitudeDelta(after.center.longitude, from: before.center.longitude) * progress
+        result.center = .init(canonicalName: "camera", aliases: [], latitude: blend(before.center.latitude, after.center.latitude),
+                              longitude: longitude, island: false, note: "Interpolated camera center.")
+        result.zoom = exp(blend(log(before.zoom), log(after.zoom)))
+        result.rotation = before.rotation + MapProjection.longitudeDelta(after.rotation, from: before.rotation) * progress
+        result.tilt = blend(before.tilt, after.tilt)
+        result.frame = frame
+        return result
     }
 }

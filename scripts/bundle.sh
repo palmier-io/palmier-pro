@@ -144,6 +144,11 @@ rm -rf "$(dirname "$MCPB_FRESH")"
 if [ -d "$RES_BUNDLE/Images" ]; then
   cp -R "$RES_BUNDLE/Images" "$APP/Contents/Resources/"
 fi
+if [ ! -f "$RES_BUNDLE/Maps/atlas.json" ] || [ ! -f "$RES_BUNDLE/Maps/earth-relief.jpg" ]; then
+  echo "!! missing bundled Maps resources at $RES_BUNDLE" >&2
+  exit 1
+fi
+cp -R "$RES_BUNDLE/Maps" "$APP/Contents/Resources/"
 # .lproj folders must live at the bundle root for macOS to resolve them.
 LOCALIZATION_COUNT=0
 for locale_dir in "$RES_BUNDLE"/*.lproj; do

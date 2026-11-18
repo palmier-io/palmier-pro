@@ -7,6 +7,50 @@ import Testing
 @Suite("generate_speech", .serialized)
 @MainActor
 struct GenerateSpeechToolTests {
+    @Test func unavailableExplicitPiperVoiceCannotSilentlyUseAnotherNarrator() async throws {
+        try await withFixture { fixture in
+            let result = await ToolExecutor(editor: fixture.editor).execute(name: "generate_speech", args: [
+                "engine": "piper", "voice": "Definitely Not A Voice", "text": "Follow this route.",
+            ], source: "test")
+            #expect(result.isError)
+            #expect(fixture.editor.mediaAssets.isEmpty)
+            #expect(!fixture.undoManager.canUndo)
+        }
+    }
+
+    @Test func explicitSystemEngineRendersThroughMCPAndCanBeUndone() async throws {
+        try await withFixture { fixture in
+            let server = Server(name: "system-speech-proof", version: "1", capabilities: .init(tools: .init(listChanged: false)))
+            await MCPService.registerTools(on: server, executor: ToolExecutor(editor: fixture.editor))
+            let transports = await InMemoryTransport.createConnectedPair()
+            let client = Client(name: "system-speech-proof", version: "1")
+            do {
+                try await server.start(transport: transports.server)
+                _ = try await client.connect(transport: transports.client)
+                let result = try await client.callTool(name: "generate_speech", arguments: [
+                    "engine": .string("system"), "text": .string("Follow this route."),
+                ])
+                try #require(result.isError != true)
+                let asset = try #require(fixture.editor.mediaAssets.first)
+                #expect(asset.inputIdentityVerified)
+                let url = asset.url
+                #expect(try await fixture.package.io.perform { try AVAudioFile(forReading: url).length } > 0)
+                let content = try #require(result.content.first)
+                guard case .text(let text, _, _) = content else { throw CocoaError(.coderReadCorrupt) }
+                #expect(try json(text)["engine"] as? String == "system")
+                _ = try await client.callTool(name: "undo")
+                #expect(fixture.editor.mediaAssets.isEmpty)
+                #expect(try await fixture.package.exists(url))
+            } catch {
+                await server.stop()
+                await client.disconnect()
+                throw error
+            }
+            await server.stop()
+            await client.disconnect()
+        }
+    }
+
     @Test func speaksTextIntoTheLibraryAndReportsTheVoice() async throws {
         try await withFixture { fixture in
             let executor = ToolExecutor(editor: fixture.editor)

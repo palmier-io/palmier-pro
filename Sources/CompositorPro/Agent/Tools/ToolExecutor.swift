@@ -435,7 +435,7 @@ final class ToolExecutor {
         switch tool {
         case .getTimeline, .inspectTimeline, .reviewTimeline, .getMedia, .inspectMedia, .searchMedia,
              .getMulticam, .getTranscript, .detectBeats, .inspectColor, .listModels,
-             .listSpeechVoices, .sendFeedback, .searchHyperframesCatalog:
+             .listSpeechVoices, .sendFeedback, .searchHyperframesCatalog, .listMapRegions, .readMapScene:
             true
         default:
             false
@@ -536,6 +536,8 @@ final class ToolExecutor {
         case .addOutro:          return try addOutro(editor, args)
         case .composeImage:      return try await composeImage(editor, args)
         case .buildMapScene:     return try await buildMapScene(editor, args)
+        case .listMapRegions:    return try await listMapRegions(args)
+        case .readMapScene:      return try await readMapScene(editor, args)
         case .buildGraphicScene: return try await buildGraphicScene(editor, args)
         case .removeImageBackground: return try await removeImageBackground(editor, args)
         case .applyTextStyle:      return try await applyTextStyle(editor, args)

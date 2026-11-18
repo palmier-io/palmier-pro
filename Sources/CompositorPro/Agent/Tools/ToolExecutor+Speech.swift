@@ -103,7 +103,7 @@ extension ToolExecutor {
             guard let parsed = SpeechSynthesizer.Engine(rawValue: raw) else {
                 throw ToolError("engine must be piper or system.")
             }
-            guard parsed == .piper, PiperTTS.isAvailable else {
+            if parsed == .piper, !(await Self.piperExecutableAvailable()) {
                 throw ToolError(
                     "Piper is not installed. Install it with: uv tool install piper-tts"
                 )
@@ -138,29 +138,44 @@ extension ToolExecutor {
             pitch: input.pitch ?? 1.0,
             engine: requestedEngine
         )
-        let (engine, model) = SpeechSynthesizer.resolveEngine(for: spec)
+        let (_, model) = try await Self.resolveSpeechEngine(spec)
         let timelineBeforeRender = editor.timeline
         let revision = editor.timelineRenderRevision
         let result = try await SpeechSynthesizer.renderReportingEngine(spec: spec)
+        let engine = result.engine
         let wavURL = result.url
         let filename = "speech-\(UUID().uuidString).wav"
         let asset = MediaAsset(url: wavURL, type: .audio, name: "speech-\(UUID().uuidString)")
-        _ = try await editor.commitStagedProjectMedia(
-            wavURL,
-            filename: filename, lease: lease, validate: {
-                guard editor.timeline == timelineBeforeRender, editor.timelineRenderRevision == revision else { throw CancellationError() }
+        let snapshot = timelineSnapshot(editor)
+        var newClipId: String?
+        var installerOwnsStage = false
+        do {
+            guard requestedEngine == nil || requestedEngine == engine else {
+                throw ToolError("The requested speech engine could not render this voice; call list_speech_voices and choose an available voice.")
             }
-        ) { destination in
-            asset.url = destination
-            editor.importMediaAsset(asset)
-        }
-        let finalized = await editor.finalizeImportedAsset(asset)
-        guard finalized, editor.mediaAssetsById[asset.id] === asset else {
-            throw ToolError("Could not prepare rendered speech; library record retained with mediaRef '\(asset.id)'")
-        }
-        try Task.checkCancellation()
-        guard editor.timeline == timelineBeforeRender, editor.timelineRenderRevision == revision else {
-            throw ToolError("Timeline changed while preparing speech; rendered media retained with mediaRef '\(asset.id)'")
+            let metadata = try await asset.readMetadata(thumbnailMaxPixelSize: nil, validate: {
+                editor.timeline == timelineBeforeRender && editor.timelineRenderRevision == revision
+            })
+            guard metadata.isReadable else { throw ToolError("Could not read the rendered speech audio.") }
+            asset.applyMetadata(metadata)
+            try await asset.prepareInputIdentity(validate: {
+                editor.timeline == timelineBeforeRender && editor.timelineRenderRevision == revision
+            })
+            let trackName = try TrackName.normalized(input.trackName ?? "Voiceover")
+            let clips = try editor.prepareSpeechPlacement(asset, at: input.placeAtFrame)
+            installerOwnsStage = true
+            _ = try await editor.commitStagedProjectMedia(wavURL, filename: filename, lease: lease, validate: {
+                guard editor.timeline == timelineBeforeRender, editor.timelineRenderRevision == revision else { throw CancellationError() }
+            }) { destination in
+                asset.installPreparedContent(at: destination)
+                newClipId = editor.publishSpeechAsset(asset, clips: clips, trackName: trackName)
+            }
+        } catch {
+            if !installerOwnsStage {
+                do { try await editor.projectPackageCoordinator.io.remove([wavURL]) }
+                catch let cleanup { throw ProjectPackageCleanupError(operationError: error, cleanupError: cleanup) }
+            }
+            throw error
         }
 
         var notes = [
@@ -175,10 +190,12 @@ extension ToolExecutor {
             )
         }
 
-        guard let placeAt = input.placeAtFrame else {
+        guard input.placeAtFrame != nil else {
             return .ok(Self.jsonString([
                 "mediaRef": asset.id,
                 "status": "ready",
+                "changed": true,
+                "undoSteps": 1,
                 "engine": engine.rawValue,
                 "voice": result.voiceName,
                 "language": model?.languageTag ?? input.language ?? "",
@@ -188,20 +205,23 @@ extension ToolExecutor {
             ]) ?? "{}")
         }
 
-        let snapshot = timelineSnapshot(editor)
-        var newClipId: String?
-        let trackName = input.trackName ?? "Voiceover"
-        editor.undo.perform("Generate Speech (Agent)") {
-            let trackIndex = editor.insertTrack(at: editor.timeline.tracks.count, type: .audio)
-            guard editor.timeline.tracks.indices.contains(trackIndex) else { return }
-            let track = editor.timeline.tracks[trackIndex]
-            _ = try? editor.setTrackName(id: track.id, to: trackName)
-            editor.addClips(assets: [asset], trackIndex: trackIndex, startFrame: placeAt)
-            newClipId = editor.timeline.tracks[trackIndex].clips
-                .first(where: { $0.mediaRef == asset.id })?.id
-        }
-
         return mutationResult(editor, since: snapshot, touched: newClipId.map { [$0] } ?? [], notes: notes)
+    }
+
+    @concurrent private static func piperExecutableAvailable() async -> Bool {
+        PiperTTS.isAvailable
+    }
+
+    @concurrent private static func resolveSpeechEngine(_ spec: SpeechSynthesizer.Spec) async throws -> (SpeechSynthesizer.Engine, PiperTTS.Model?) {
+        try Task.checkCancellation()
+        if spec.engine == .piper, let voice = spec.voiceIdentifier, PiperTTS.model(named: voice) == nil {
+            throw SpeechSynthesizer.SpeechError.unknownVoice(voice, PiperTTS.installedModels().map(\.fileName))
+        }
+        let resolved = SpeechSynthesizer.resolveEngine(for: spec)
+        if resolved.engine == .piper, resolved.model == nil {
+            throw ToolError("No Piper voice is installed for this request. Call list_speech_voices and choose an available voice.")
+        }
+        return resolved
     }
 
     /// Reads the same transcript `get_transcript` reads, so a spoken take and the captions

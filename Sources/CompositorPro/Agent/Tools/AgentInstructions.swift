@@ -55,6 +55,13 @@ enum AgentInstructions {
         - Audio finishing order: prepare requested available voice cleanup → mix_audio with \
           explicit roles/targets → qc_timeline → review_timeline. Do not stack source \
           normalization or independent ducking on a verified mix.
+        - Map explainers: use list_map_regions and build_map_scene for native geographic \
+          animation, including colored regions, camera flights, route-following ships, packages, \
+          vehicles and timed effects. Supply coordinates/custom polygons for unavailable places; \
+          never guess boundaries. Map video is silent: use measured narration timing, captions \
+          and mix_audio to synchronize the soundtrack. read_map_scene retrieves the saved input \
+          for revisions. In the in-app agent, load the map-explainer, map-object-choreography \
+          and map-narration playbooks before producing these videos.
         - Captions: translate_captions pipeline (translate → read → review → approve → apply) or \
           add_captions with the captionStyle gallery; never invent styling.
         - Export: export_project then manage_exports action=wait on its jobId; deliver only on \

@@ -15,6 +15,9 @@ struct FilmmakingPlaybooksTests {
         #expect(ids.contains("product-playbook"))
         #expect(ids.contains("montage-playbook"))
         #expect(ids.contains("hyperframes-motion-playbook"))
+        #expect(ids.contains("map-explainer-playbook"))
+        #expect(ids.contains("map-object-choreography-playbook"))
+        #expect(ids.contains("map-narration-playbook"))
 
         let brollBody = scan.bodies["narrated-broll-playbook"]
         #expect(brollBody?.contains("Narrated B-Roll Filmmaking Playbook") == true)
@@ -26,6 +29,22 @@ struct FilmmakingPlaybooksTests {
         #expect(hfBody?.contains("Brand System & Design Alignment") == true)
         #expect(hfBody?.contains("Track Stacking Hierarchy") == true)
         #expect(scan.shas["hyperframes-motion-playbook"] != nil)
+    }
+
+    @Test func mapSkillsCoverReferencePatternsMotionAndMeasuredNarration() async throws {
+        let map = try #require(FilmmakingPlaybooks.playbook(for: "/maps"))
+        for reference in ["o5PJaIjbIMs", "NO20UYpSdCI", "tT-BzWbyqkw", "PImrCxx6ZJU", "Rc40jDjW2Cw"] {
+            #expect(map.content.contains(reference))
+        }
+        let editor = EditorViewModel()
+        let executor = ToolExecutor(editor: editor)
+        for id in ["map-explainer-playbook", "map-object-choreography-playbook", "map-narration-playbook"] {
+            let result = await executor.execute(name: "read_skill", args: ["id": id], source: "test")
+            #expect(!result.isError)
+            #expect(!result.text.isEmpty)
+        }
+        #expect(FilmmakingPlaybooks.mapObjectChoreography.content.contains("gunfire"))
+        #expect(FilmmakingPlaybooks.mapNarration.content.contains("measured word/beat times"))
     }
 
     @Test func hyperframesPlaybookCanBeResolvedByAlias() {

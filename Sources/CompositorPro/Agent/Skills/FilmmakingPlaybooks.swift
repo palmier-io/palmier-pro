@@ -15,6 +15,9 @@ enum FilmmakingPlaybooks {
         productShowcase,
         rhythmicMontage,
         hyperframesMotion,
+        mapExplainer,
+        mapObjectChoreography,
+        mapNarration,
     ]
 
     static let narratedBRoll = PlaybookDefinition(
@@ -163,6 +166,7 @@ enum FilmmakingPlaybooks {
         if normalized == "hyperframes" || normalized == "hyperframes-motion-playbook" {
             return hyperframesMotion
         }
+        if ["map", "maps", "geography"].contains(normalized) { return mapExplainer }
         return all.first { $0.id == id || $0.id == normalized }
     }
 

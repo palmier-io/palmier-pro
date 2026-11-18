@@ -140,7 +140,6 @@
 "Approve Storyboard" = "Approve Storyboard";
 "Approved" = "Approved";
 "Arguments" = "Arguments";
-"Ask anything, or start with:" = "Ask anything, or start with:";
 "Ask the agent" = "Ask the agent";
 "Ask, or type @ to reference media" = "Ask, or type @ to reference media";
 "Aspect" = "Aspect";
@@ -177,6 +176,7 @@
 "Bring in everything in ~/Footage into the library, filed under a folder called Trip." = "Bring in everything in ~/Footage into the library, filed under a folder called Trip.";
 "Bring in video, audio and stills. Missing files stay linked by name, so moving the project or the drive does not break the edit — relink and it picks up where it left off." = "Bring in video, audio and stills. Missing files stay linked by name, so moving the project or the drive does not break the edit — relink and it picks up where it left off.";
 "Browse Community Skills ↗" = "Browse Community Skills ↗";
+"Build Map Scene" = "Build Map Scene";
 "Build lightweight stand-ins for large sources so scrubbing and playback stay smooth. They are preview-only: exports and audio analysis still read the original." = "Build lightweight stand-ins for large sources so scrubbing and playback stay smooth. They are preview-only: exports and audio analysis still read the original.";
 "Build one image out of several of your own frames and stills: a mood board, a contact sheet, a poster frame, a title card. This assembles real pictures from the edit rather than inventing any, so give it a query and the visual index will find the shots that match. A grid suits contact sheets, a hero-and-strip suits posters. The lettering is identical to a thumbnail's. The result is a normal library asset." = "Build one image out of several of your own frames and stills: a mood board, a contact sheet, a poster frame, a title card. This assembles real pictures from the edit rather than inventing any, so give it a query and the visual index will find the shots that match. A grid suits contact sheets, a hero-and-strip suits posters. The lettering is identical to a thumbnail's. The result is a normal library asset.";
 "Build proxies for the 4K clips so scrubbing is smooth." = "Build proxies for the 4K clips so scrubbing is smooth.";
@@ -589,6 +589,7 @@
 "Generate SFX" = "Generate SFX";
 "Generate SFX only works on video" = "Generate SFX only works on video";
 "Generate SFX…" = "Generate SFX…";
+"Generate Speech (Agent)" = "Generate Speech (Agent)";
 "Generate a drone" = "Generate a drone";
 "Generate a line of narration reading this script, and time it to the picture." = "Generate a line of narration reading this script, and time it to the picture.";
 "Generate a lower-cost 720p preview that can be enhanced later." = "Generate a lower-cost 720p preview that can be enhanced later.";
@@ -738,7 +739,6 @@
 "Let the next scene's sound start before its picture, or hold the current scene's sound past its picture. One setting on a linked pair, and both sides still overlap." = "Let the next scene's sound start before its picture, or hold the current scene's sound past its picture. One setting on a linked pair, and both sides still overlap.";
 "Let's take a quick tour of the workspace and what you can do." = "Let's take a quick tour of the workspace and what you can do.";
 "Lets external clients like Codex, Claude Code, Antigravity, Cursor, and Claude Desktop edit your timeline." = "Lets external clients like Codex, Claude Code, Antigravity, Cursor, and Claude Desktop edit your timeline.";
-"Lets external clients like Cursor, Claude Desktop, Claude Code, and Codex edit your timeline." = "Lets external clients like Cursor, Claude Desktop, Claude Code, and Codex edit your timeline.";
 "Levels" = "Levels";
 "Levels and fades" = "Levels and fades";
 "Library" = "Library";
@@ -1047,9 +1047,7 @@
 "Quality" = "Quality";
 "Queued" = "Queued";
 "Quick questions" = "Quick questions";
-"Quit" = "Quit";
 "Quit Compositor Pro" = "Quit Compositor Pro";
-"Quit Compositor Pro?" = "Quit Compositor Pro?";
 "Radius" = "Radius";
 "Ramp this clip from normal speed down to a quarter speed over the last second." = "Ramp this clip from normal speed down to a quarter speed over the last second.";
 "Range" = "Range";
@@ -1316,7 +1314,6 @@
 "Square (1:1)" = "Square (1:1)";
 "Stale" = "Stale";
 "Start" = "Start";
-"Start a conversation" = "Start a conversation";
 "Start creating" = "Start creating";
 "Start creating or explore sample projects." = "Start creating or explore sample projects.";
 "Start creating, or explore these to get the most out of Compositor Pro." = "Start creating, or explore these to get the most out of Compositor Pro.";
@@ -1603,7 +1600,6 @@
 "Your audio clip is ready." = "Your audio clip is ready.";
 "Your image is ready." = "Your image is ready.";
 "Your inspector for the selected clip — transform, adjust, audio, and more." = "Your inspector for the selected clip — transform, adjust, audio, and more.";
-"Your projects will be saved before the app closes." = "Your projects will be saved before the app closes.";
 "Your subtitle file is ready." = "Your subtitle file is ready.";
 "Your text clip is ready." = "Your text clip is ready.";
 "Your timeline: the top half is video, the bottom half is audio. Click a clip to inspect it — we've selected one for you." = "Your timeline: the top half is video, the bottom half is audio. Click a clip to inspect it — we've selected one for you.";
@@ -1613,7 +1609,6 @@
 "Zoom Out" = "Zoom Out";
 "Zoom Preview to Cursor" = "Zoom Preview to Cursor";
 "Zoom to Cursor" = "Zoom to Cursor";
-"args" = "args";
 "by audio" = "by audio";
 "by timecode" = "by timecode";
 "drift correction skipped — it would overwrite an adjacent clip" = "drift correction skipped — it would overwrite an adjacent clip";
@@ -1621,7 +1616,6 @@
 "e.g., 16:9, 9:16, 1:1" = "e.g., 16:9, 9:16, 1:1";
 "e.g., cinematic, vibrant, muted" = "e.g., cinematic, vibrant, muted";
 "e.g., word-by-word, line-by-line" = "e.g., word-by-word, line-by-line";
-"error" = "error";
 "frame.md Visual Wizard" = "frame.md Visual Wizard";
 "group moved right to fit" = "group moved right to fit";
 "iMovie" = "iMovie";
@@ -1631,7 +1625,6 @@
 "or set up your custom endpoint" = "or set up your custom endpoint";
 "pt" = "pt";
 "px" = "px";
-"result" = "result";
 "s" = "s";
 "seconds" = "seconds";
 "using Anthropic API key" = "using Anthropic API key";
