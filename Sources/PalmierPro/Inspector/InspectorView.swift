@@ -452,7 +452,7 @@ struct InspectorView: View {
                         dragSensitivity: 0.01,
                         fieldWidth: AppTheme.EditorPanel.numericFieldWidth,
                         onChanged: { newVal in
-                            for c in clips { editor.applyClipSpeed(clipId: c.id, newSpeed: newVal) }
+                            editor.applyClipSpeed(ids: clips.map(\.id), newSpeed: newVal)
                         }
                     ) { newVal in
                         editor.commitClipSpeed(ids: clips.map(\.id), newSpeed: newVal)

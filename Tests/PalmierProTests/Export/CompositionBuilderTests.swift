@@ -403,7 +403,7 @@ struct CompositionBuildAudioTrackTests {
         #expect(mappings[2].target.start == CMTime(value: 48, timescale: ts))
     }
 
-    @Test func fractionalSpeedAudioUsesTruncatedSourceFramesForCompositionInsertion() async throws {
+    @Test func fractionalSpeedAudioConsumesRoundedSourceFrames() async throws {
         let audioURL = try makeSilentWav(durationSeconds: 4)
         defer { try? FileManager.default.removeItem(at: audioURL) }
         let sourceAsset = AVURLAsset(url: audioURL)
@@ -432,10 +432,32 @@ struct CompositionBuildAudioTrackTests {
 
         let audioMapping = try #require(result.trackMappings.first { !$0.isVideo })
         let mediaSegment = try #require(audioMapping.compositionTrack.segments.first { !$0.isEmpty })
-        let expectedSourceSeconds = Double(13) / Double(timeline.fps)
+        // insertClip must consume the same source span the model reports; truncating to 13 here made
+        // the scaleTimeRange a 13f -> 13f no-op and the clip played at 1x despite speed != 1.
+        let expectedSourceSeconds = Double(clip.sourceFramesConsumed) / Double(timeline.fps)
         #expect(abs(mediaSegment.timeMapping.source.duration.seconds - expectedSourceSeconds) <= 1.0 / Double(sourceTimescale))
         #expect(mediaSegment.timeMapping.source.duration.timescale == sourceTimescale)
         #expect(mediaSegment.timeMapping.target.duration == CMTime(value: 13, timescale: 24))
+    }
+
+
+    @Test func audioMixPinsPitchAlgorithmSoPreviewAndExportMatch() async throws {
+        // AVPlayerItem defaults to time domain and AVAssetExportSession to spectral; an unset
+        // algorithm makes a retimed clip sound different in preview than in the exported file.
+        let audioURL = try makeSilentWav(durationSeconds: 4)
+        defer { try? FileManager.default.removeItem(at: audioURL) }
+
+        let clip = Fixtures.clip(id: "a1", mediaRef: "audio", mediaType: .audio, start: 0, duration: 24, speed: 1.4)
+        let timeline = Fixtures.timeline(fps: 24, tracks: [Fixtures.audioTrack(clips: [clip])])
+
+        let result = try await CompositionBuilder.build(
+            timeline: timeline,
+            resolveURL: { _ in audioURL },
+            renderSize: CGSize(width: 320, height: 180)
+        )
+
+        let params = try #require(result.audioMix.inputParameters.first)
+        #expect(params.audioTimePitchAlgorithm == .spectral)
     }
 
     private func clipIds(_ mapping: TrackMapping) -> Set<String>? {

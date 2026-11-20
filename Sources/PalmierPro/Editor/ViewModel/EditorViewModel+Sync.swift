@@ -317,7 +317,10 @@ extension EditorViewModel {
         if !moves.isEmpty || !retimes.isEmpty {
             try Task.checkCancellation()
             let apply: @MainActor () -> Void = { [self] in
-                for retime in retimes { commitClipSpeed(ids: retime.ids, newSpeed: retime.speed, ripple: false) }
+                // Sync already resolved its own retime unit and deliberately excludes the reference clip.
+                for retime in retimes {
+                    commitClipSpeed(ids: retime.ids, newSpeed: retime.speed, ripple: false, propagateToLinked: false)
+                }
                 if !moves.isEmpty { moveClips(moves) }
             }
             if let mutation {

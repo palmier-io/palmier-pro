@@ -90,13 +90,11 @@ struct LottieVideoGeneratorTests {
         let codec = try #require(formats.first.map { CMFormatDescriptionGetMediaSubType($0) })
         #expect(codec == kCMVideoCodecType_AppleProRes4444)
 
-        let gen = AVAssetImageGenerator(asset: asset)
-        gen.requestedTimeToleranceBefore = .zero
-        gen.requestedTimeToleranceAfter = .zero
-        nonisolated(unsafe) let unsafeGen = gen
-
         func sample(_ seconds: Double) async throws -> (top: NSColor, bottom: NSColor) {
-            let frame = try await unsafeGen.image(at: CMTime(seconds: seconds, preferredTimescale: 600)).image
+            let gen = AVAssetImageGenerator(asset: asset)
+            gen.requestedTimeToleranceBefore = .zero
+            gen.requestedTimeToleranceAfter = .zero
+            let frame = try await gen.image(at: CMTime(seconds: seconds, preferredTimescale: 600)).image
             let rep = NSBitmapImageRep(cgImage: frame)
             return (
                 try #require(rep.colorAt(x: frame.width / 4, y: frame.height / 4)),
