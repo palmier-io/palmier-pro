@@ -3,20 +3,19 @@
 set -euo pipefail
 
 repo_root="${0:A:h:h:h}"
-source_strings="$repo_root/Sources/PalmierPro/Resources/Localization/en.lproj/Localizable.strings"
-temporary_directory="$(mktemp -d /private/tmp/palmier-localization.XXXXXX)"
-trap 'rm -rf "$temporary_directory"' EXIT
+source_strings="$repo_root/Sources/CompositorPro/Resources/Localization/en.lproj/Localizable.strings"
+scratch_path="${SCRATCH_PATH:-$repo_root/.build}"
 
 cd "$repo_root"
-swift build \
-  -Xswiftc -emit-localized-strings \
-  -Xswiftc -emit-localized-strings-path \
-  -Xswiftc "$temporary_directory"
+# No -emit-localized-strings flags: the build already emits stringsdata for the app target, and
+# passing an output path makes the toolchain write somewhere the scan below does not read.
+swift build --scratch-path "$scratch_path"
 
 stringsdata_arguments=()
-app_stringsdata_list="$temporary_directory/app-stringsdata"
+app_stringsdata_list="$(mktemp)"
+trap 'rm -f "$app_stringsdata_list"' EXIT
 node scripts/localization/sync.mjs \
-  --list-app-stringsdata "$temporary_directory" > "$app_stringsdata_list"
+  --list-app-stringsdata "$scratch_path/out" > "$app_stringsdata_list"
 while IFS= read -r data; do
   stringsdata_arguments+=(--stringsdata "$data")
 done < "$app_stringsdata_list"

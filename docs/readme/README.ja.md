@@ -2,19 +2,18 @@
 
 <div align="center">
 
-# Palmier Pro
+# Compositor Pro
 
 **AI のために作られた動画エディタ。**
 
-<a href="https://github.com/palmier-io/palmier-pro/releases/latest/download/PalmierPro.dmg">
-  <img src="../../assets/macos-badge.png" alt="Palmier Pro for macOS をダウンロード" width="180" />
+<a href="https://github.com/compositor-pro/compositor-pro/releases/latest/download/CompositorPro.dmg">
+  <img src="../../assets/macos-badge.png" alt="Compositor Pro for macOS をダウンロード" width="180" />
 </a>
 
 <sub><i>Apple Silicon 搭載の macOS 26 (Tahoe) が必要</i></sub>
 
-<a href="https://x.com/Palmier_io"><img src="https://img.shields.io/badge/Follow-%40Palmier__io-000000?style=flat&logo=x&logoColor=white" alt="X でフォロー" /></a>
+<a href="https://x.com/CompositorPro"><img src="https://img.shields.io/badge/Follow-%40CompositorPro-000000?style=flat&logo=x&logoColor=white" alt="X でフォロー" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Discord に参加" /></a>
-<a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 <br />
 
 <p>
@@ -37,18 +36,18 @@
 
 </div>
 
-<img src="../../assets/palmier-ui.png" alt="Palmier Pro の UI" width="900" />
+<img src="../../assets/compositor-ui.png" alt="Compositor Pro の UI" width="900" />
 
 ---
 
 > [!IMPORTANT]
-> Palmier Pro の v0.7.6 までのリリースは GPLv3 で公開されました。最後の公開ソーススナップショットは [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) です。v0.7.6 より後のリリースはプロプライエタリであり、そのソースコードはここでは公開されません。
+> Compositor Pro の v0.7.6 までのリリースは GPLv3 で公開されました。最後の公開ソーススナップショットは [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source) です。v0.7.6 より後のリリースはプロプライエタリであり、そのソースコードはここでは公開されません。
 
-Palmier Pro は Mac 向けの動画エディタです。ユーザーと agent がタイムライン上で一緒に動画を生成、編集できます。
+Compositor Pro は Mac 向けの動画エディタです。ユーザーと agent がタイムライン上で一緒に動画を生成、編集できます。
 
 ### Swift ネイティブ動画エディタ
 
-Palmier Pro は Swift でゼロから構築しました。目指す基準は Premiere Pro で、AI をワークフローに統合する独自の形をとっています。
+Compositor Pro は Swift でゼロから構築しました。目指す基準は Premiere Pro で、AI をワークフローに統合する独自の形をとっています。
 
 ### 内蔵の生成 AI
 
@@ -64,12 +63,12 @@ MCP で Claude、Codex、Cursor と接続できます。アプリ内 agent を�
 
 **Claude Code**
 ```bash
-claude mcp add --transport http palmier-pro http://127.0.0.1:19789/mcp
+claude mcp add --transport http compositor-pro http://127.0.0.1:19789/mcp
 ```
 
 **Codex**
 ```bash
-codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
+codex mcp add compositor-pro --url http://127.0.0.1:19789/mcp
 ```
 
 **Cursor**
@@ -79,7 +78,7 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 ```
 {
   "mcpServers": {
-    "palmier-pro": {
+    "compositor-pro": {
       "type": "http",
       "url": "http://127.0.0.1:19789/mcp"
     }
@@ -93,9 +92,9 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 
 ## FAQ
 
-**Palmier Pro のどのバージョンがオープンソースですか？**
+**Compositor Pro のどのバージョンがオープンソースですか？**
 
-v0.7.6 までのリリースと [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) までのソースコードは GPLv3 のままです。それ以降のリリースはプロプライエタリです。
+v0.7.6 までのリリースと [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source) までのソースコードは GPLv3 のままです。それ以降のリリースはプロプライエタリです。
 
 **無料ですか？**
 
@@ -114,12 +113,12 @@ Apple Silicon 搭載の macOS 26 (Tahoe) のみです。
 ## コミュニティとサポート
 
 - **Discord:** **[Discord](https://discord.com/invite/SMVW6pKYmg)** でコミュニティに参加できます。
-- **Twitter / X:** 更新と告知は **[@Palmier_io](https://x.com/Palmier_io)** をフォローしてください。
-- **Instagram:** [@palmier.io](https://www.instagram.com/palmier.io) をフォローしてください。
-- **フィードバックとサポート:** founders@palmier.io にメールしてください。
+- **Twitter / X:** 更新と告知は **[@CompositorPro](https://x.com/CompositorPro)** をフォローしてください。
+- **Instagram:** [@compositorpro](https://www.instagram.com/compositorpro) をフォローしてください。
+- **フィードバックとサポート:** support@compositor.pro にメールしてください。
 
 ## ライセンス
 
-Copyright (C) 2026 Palmier, Inc.
+Copyright (C) 2026 Compositor Pro
 
 このリポジトリで公開されているソースコードは引き続き [GPLv3](../../LICENSE) のもとにあります。v0.7.6 より後のバイナリリリースはプロプライエタリであり、[BINARY_LICENSE.md](../../BINARY_LICENSE.md) が適用されます。

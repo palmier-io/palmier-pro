@@ -37,3 +37,16 @@ models/*/checkpoint*
 models/*/convert*.log
 
 AUDIO_SUITE_*
+# SwiftPM scratch verification snapshots
+.build-check/
+
+# Local MCP tool config
+.mobilebuildmcp/
+
+# Local tooling artifacts and downloaded stock media
+.playwright-mcp/
+com.apple.DeveloperTools/
+media-stock/
+
+# Local tooling artifacts
+:memory:.ses

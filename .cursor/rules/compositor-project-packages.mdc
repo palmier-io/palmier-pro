@@ -1,0 +1,7 @@
+---
+description: Coordinated package I/O, media publication, document save/Save As, close, and quit.
+globs: Sources/CompositorPro/Project/**/*.swift, Sources/CompositorPro/Generation/**/*.swift, Sources/CompositorPro/App/**/*.swift, Tests/CompositorProTests/Project/**/*.swift, Tests/CompositorProTests/Generation/**/*.swift
+alwaysApply: false
+---
+
+Read `docs/agents/rules/project-packages.md` for package/document lifecycle changes and every media commit reached through these files. Load concurrency rules for executor/admission/cancellation work. The canonical policy applies to feature code elsewhere too; directory globs do not limit its scope.

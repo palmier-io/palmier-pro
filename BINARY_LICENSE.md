@@ -1,10 +1,10 @@
-# Palmier Pro Binary License
+# Compositor Pro Binary License
 
-Copyright (C) 2026 Palmier, Inc. All rights reserved.
+Copyright (C) 2026 Compositor Pro. All rights reserved.
 
-Palmier Pro binary releases after v0.7.6 are proprietary to Palmier, Inc. No
+Compositor Pro binary releases after v0.7.6 are proprietary to Compositor Pro. No
 permission is granted to copy, modify, redistribute, sublicense, reverse
 engineer, or create derivative works except under a separate written agreement
-with Palmier, Inc.
+with Compositor Pro.
 
 Third-party components remain subject to their respective licenses.

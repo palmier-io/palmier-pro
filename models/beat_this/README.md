@@ -2,7 +2,7 @@
 
 [Beat This](https://github.com/CPJKU/beat_this) is a model that tracks neural
 beat/downbeat. Runs fully on-device; the compiled model is bundled in
-the app at `Sources/PalmierPro/Resources/Models/BeatThis.mlmodelc` (6.6 MB).
+the app at `Sources/CompositorPro/Resources/Models/BeatThis.mlmodelc` (6.6 MB).
 
 ## The model
 
@@ -27,13 +27,13 @@ parity gates pass on a 120 BPM click fixture: the patched torch model must place
 beats identically to the unmodified upstream pipeline (1-frame tolerance), and
 the Core ML model identically to the patched torch model.
 
-Copy `build/BeatThis.mlmodelc` into `Sources/PalmierPro/Resources/Models/`.
+Copy `build/BeatThis.mlmodelc` into `Sources/CompositorPro/Resources/Models/`.
 
 ## Runtime contract
 
 Longer audio is chunked with a 6-frame border discard and keep-first stitching;
 peak-picking is sigmoid ≥ 0.5 + local max (the model needs no DBN). Outputs are
-FP16 multiarrays — read as Float16. See `Sources/PalmierPro/Audio/Beats/BeatDetector.swift`.
+FP16 multiarrays — read as Float16. See `Sources/CompositorPro/Audio/Beats/BeatDetector.swift`.
 
 ## License
 

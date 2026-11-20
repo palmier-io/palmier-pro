@@ -1,0 +1,318 @@
+import Foundation
+
+/// Editorial role for a section within the plan brief.
+enum SectionRole: String, Codable, Sendable, CaseIterable {
+    case hook
+    case development
+    case payoff
+    case context
+    case callToAction = "call_to_action"
+}
+
+/// Filmmaking brief recorded on the plan: intended audience, format, tone,
+/// realism requirements, language, and delivery constraints. Every field is
+/// optional and editable; inferred choices are recorded so the model's guesses
+/// stay visible and revisable.
+struct PlanBrief: Codable, Sendable, Equatable {
+    enum Realism: String, Codable, Sendable, CaseIterable {
+        case realFootageOnly
+        case realOrGenerated
+        case generatedAllowed
+        case illustrative
+    }
+
+    var audience: String?
+    var durationSeconds: Double?
+    var aspectFormat: String?
+    var tone: String?
+    var language: String?
+    var realism: Realism?
+    var deliveryConstraints: String?
+    var inferredChoices: [String: String]?
+    /// Measured delivery target for the finished film. Production mixes to this
+    /// target; without it the run reports the default it used.
+    var deliveryTarget: AudioDeliveryTarget?
+
+    static let maxComboboxLength = 200
+
+    func validated() throws -> Self {
+        var brief = self
+        if let audience { brief.audience = try Self.validatedField(audience, field: "brief.audience") }
+        if let aspectFormat { brief.aspectFormat = try Self.validatedField(aspectFormat, field: "brief.aspectFormat") }
+        if let tone { brief.tone = try Self.validatedField(tone, field: "brief.tone") }
+        if let language { brief.language = try Self.validatedField(language, field: "brief.language") }
+        if let deliveryConstraints {
+            brief.deliveryConstraints = try EditPlan.validatedText(deliveryConstraints, field: "brief.deliveryConstraints")
+        }
+        if let durationSeconds {
+            guard durationSeconds.isFinite, durationSeconds > 0, durationSeconds <= 14_400 else {
+                throw EditPlanValidationError.invalidReference("brief.durationSeconds must be 0–4 hours.")
+            }
+        }
+        if let deliveryTarget {
+            guard deliveryTarget.integratedLUFS.isFinite, (-60 ... -5).contains(deliveryTarget.integratedLUFS),
+                  deliveryTarget.truePeakDBTP.isFinite, (-20 ... 0).contains(deliveryTarget.truePeakDBTP),
+                  deliveryTarget.toleranceLU.isFinite, (0.1 ... 2).contains(deliveryTarget.toleranceLU) else {
+                throw EditPlanValidationError.invalidReference(
+                    "brief.deliveryTarget requires -60…-5 LUFS, -20…0 dBTP, and 0.1…2 LU tolerance.")
+            }
+        }
+        if let inferredChoices {
+            guard inferredChoices.count <= 32 else {
+                throw EditPlanValidationError.invalidReference("brief.inferredChoices holds at most 32 entries.")
+            }
+            var cleaned: [String: String] = [:]
+            for (key, value) in inferredChoices {
+                let key = try EditPlan.validatedID(key, field: "brief choice key")
+                cleaned[key] = try Self.validatedField(value, field: "brief choice '\(key)'")
+            }
+            brief.inferredChoices = cleaned
+        }
+        return brief
+    }
+
+    var receipt: [String: Any] {
+        var row: [String: Any] = [:]
+        if let audience { row["audience"] = audience }
+        if let durationSeconds { row["durationSeconds"] = durationSeconds }
+        if let aspectFormat { row["aspectFormat"] = aspectFormat }
+        if let tone { row["tone"] = tone }
+        if let language { row["language"] = language }
+        if let realism { row["realism"] = realism.rawValue }
+        if let deliveryConstraints { row["deliveryConstraints"] = deliveryConstraints }
+        if let inferredChoices { row["inferredChoices"] = inferredChoices }
+        if let deliveryTarget { row["deliveryTarget"] = deliveryTarget.receipt }
+        return row
+    }
+
+    private static func validatedField(_ value: String, field: String) throws -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= maxComboboxLength,
+              trimmed.rangeOfCharacter(from: .controlCharacters.union(.newlines)) == nil else {
+            throw EditPlanValidationError.invalidText(field: field)
+        }
+        return trimmed
+    }
+}
+
+/// Per-shot editorial requirements: why the shot exists, what it must show,
+/// how it should be framed, and which source kinds are acceptable. Rejections
+/// and unresolved requirements are recorded during retrieval against the shot.
+struct ShotRequirement: Codable, Sendable, Equatable {
+    enum ShotSize: String, Codable, Sendable, CaseIterable {
+        case extremeWide = "extreme_wide"
+        case wide
+        case medium
+        case mediumClose = "medium_close"
+        case closeUp = "close_up"
+        case extremeCloseUp = "extreme_close_up"
+        case insert
+    }
+
+    enum Motion: String, Codable, Sendable, CaseIterable {
+        case static_  // swiftlint:disable:this identifier_name
+        case pan
+        case tilt
+        case push
+        case handheld
+        case aerial
+        case follow
+    }
+
+    enum SourceType: String, Codable, Sendable, CaseIterable {
+        case stockVideo = "stock_video"
+        case stockImage = "stock_image"
+        case library
+        case generated
+        case screenRecording = "screen_recording"
+        case archival
+    }
+
+    var narrativePurpose: String
+    var subject: String?
+    var action: String?
+    var location: String?
+    var shotSize: ShotSize?
+    var motion: Motion?
+    var sourceTypes: [SourceType]?
+    var exclusions: [String]?
+    var targetDurationSeconds: Double?
+    var handleSeconds: Double?
+
+    func validated() throws -> Self {
+        var requirement = self
+        requirement.narrativePurpose = try EditPlan.validatedText(narrativePurpose, field: "shot narrativePurpose")
+        guard !requirement.narrativePurpose.trimmingCharacters(in: .whitespaces).isEmpty else {
+            throw EditPlanValidationError.invalidReference("Shot narrativePurpose cannot be empty.")
+        }
+        if let subject { requirement.subject = try Self.validatedField(subject, field: "shot.subject") }
+        if let action { requirement.action = try Self.validatedField(action, field: "shot.action") }
+        if let location { requirement.location = try Self.validatedField(location, field: "shot.location") }
+        if let exclusions {
+            var cleaned: [String] = []
+            for exclusion in exclusions {
+                cleaned.append(try Self.validatedField(exclusion, field: "shot.exclusions"))
+            }
+            requirement.exclusions = cleaned.isEmpty ? nil : cleaned
+        }
+        if let sourceTypes {
+            var seen = Set<SourceType>()
+            let ordered = sourceTypes.filter { seen.insert($0).inserted }
+            requirement.sourceTypes = ordered.isEmpty ? nil : ordered
+        }
+        if let targetDurationSeconds {
+            guard targetDurationSeconds.isFinite, targetDurationSeconds > 0, targetDurationSeconds <= 600 else {
+                throw EditPlanValidationError.invalidReference("shot.targetDurationSeconds must be within 0–600 seconds.")
+            }
+        }
+        if let handleSeconds {
+            guard handleSeconds.isFinite, handleSeconds >= 0, handleSeconds <= 30 else {
+                throw EditPlanValidationError.invalidReference("shot.handleSeconds must be within 0–30 seconds.")
+            }
+        }
+        return requirement
+    }
+
+    var receipt: [String: Any] {
+        var row: [String: Any] = ["narrativePurpose": narrativePurpose]
+        if let subject { row["subject"] = subject }
+        if let action { row["action"] = action }
+        if let location { row["location"] = location }
+        if let shotSize { row["shotSize"] = shotSize.rawValue }
+        if let motion { row["motion"] = motion.rawValue }
+        if let sourceTypes { row["sourceTypes"] = sourceTypes.map(\.rawValue) }
+        if let exclusions { row["exclusions"] = exclusions }
+        if let targetDurationSeconds { row["targetDurationSeconds"] = targetDurationSeconds }
+        if let handleSeconds { row["handleSeconds"] = handleSeconds }
+        return row
+    }
+
+    private static func validatedField(_ value: String, field: String) throws -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= PlanBrief.maxComboboxLength,
+              trimmed.rangeOfCharacter(from: .controlCharacters.union(.newlines)) == nil else {
+            throw EditPlanValidationError.invalidText(field: field)
+        }
+        return trimmed
+    }
+}
+
+/// A candidate rejection recorded during shot retrieval.
+struct ShotRejection: Codable, Sendable, Equatable {
+    enum Reason: String, Codable, Sendable, CaseIterable {
+        case wrongSubject = "wrong_subject"
+        case wrongAction = "wrong_action"
+        case wrongLocation = "wrong_location"
+        case insufficientDuration = "insufficient_duration"
+        case wrongShape = "wrong_shape"
+        case generatedMaterial = "generated_material"
+        case duplicate = "duplicate"
+        case notUsable = "not_usable"
+    }
+
+    var candidateRef: String
+    var reason: Reason
+    var evidence: String
+
+    init(candidateRef: String, reason: Reason, evidence: String) {
+        self.candidateRef = candidateRef
+        self.reason = reason
+        self.evidence = evidence
+    }
+
+    func validated() throws -> Self {
+        var rejection = self
+        rejection.candidateRef = try EditPlan.validatedID(rejection.candidateRef, field: "shot rejection candidateRef")
+        let evidence = rejection.evidence.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !evidence.isEmpty, evidence.count <= EditPlanLimits.maximumTextLength,
+              evidence.rangeOfCharacter(from: .controlCharacters.union(.newlines)) == nil else {
+            throw EditPlanValidationError.invalidText(field: "shot rejection evidence")
+        }
+        rejection.evidence = evidence
+        return rejection
+    }
+
+    static func validateAll(_ rejections: [ShotRejection]) throws -> [ShotRejection] {
+        guard rejections.count <= EditPlanLimits.maximumShotRejections else {
+            throw EditPlanValidationError.invalidReference(
+                "A shot records at most \(EditPlanLimits.maximumShotRejections) rejections.")
+        }
+        let validated = try rejections.map { try $0.validated() }
+        var candidates = Set<String>()
+        for rejection in validated {
+            guard candidates.insert(rejection.candidateRef).inserted else {
+                throw EditPlanValidationError.invalidReference("Duplicate shot rejection candidate '\(rejection.candidateRef)'.")
+            }
+        }
+        return validated
+    }
+
+    var receipt: [String: Any] {
+        [
+            "candidateRef": candidateRef,
+            "reason": reason.rawValue,
+            "evidence": evidence,
+        ]
+    }
+}
+
+/// One motivated sound cue on the plan: role, purpose, and a single timing
+/// anchor — either a narrative beat or a timeline frame, never both.
+struct PlanSoundCue: Codable, Sendable, Equatable {
+    enum Role: String, Codable, Sendable, CaseIterable {
+        case voice
+        case music
+        case ambience
+        case sfx
+    }
+
+    var cueId: String
+    var role: Role
+    var purpose: String
+    var anchorBeatId: String?
+    var anchorFrame: Int?
+    var durationSeconds: Double?
+    var notes: String?
+    var mediaRef: String?
+    var trackId: String?
+
+    func validated() throws -> Self {
+        var cue = self
+        cue.cueId = try EditPlan.validatedID(cueId, field: "cueId")
+        cue.purpose = try EditPlan.validatedText(purpose, field: "sound cue purpose")
+        guard !cue.purpose.trimmingCharacters(in: .whitespaces).isEmpty else {
+            throw EditPlanValidationError.invalidReference("Sound cue purpose cannot be empty.")
+        }
+        if let anchorBeatId { cue.anchorBeatId = try EditPlan.validatedID(anchorBeatId, field: "cue.anchorBeatId") }
+        if let anchorFrame, !(0..<maxFrameArg).contains(anchorFrame) {
+            throw EditPlanValidationError.invalidRange
+        }
+        if let durationSeconds {
+            guard durationSeconds.isFinite, durationSeconds > 0, durationSeconds <= 600 else {
+                throw EditPlanValidationError.invalidReference("sound cue durationSeconds must be within 0–600 seconds.")
+            }
+        }
+        if let notes {
+            let trimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+            cue.notes = trimmed.isEmpty ? nil : try EditPlan.validatedText(trimmed, field: "sound cue notes")
+        }
+        if let mediaRef { cue.mediaRef = try EditPlan.validatedID(mediaRef, field: "cue.mediaRef") }
+        if let trackId { cue.trackId = try EditPlan.validatedID(trackId, field: "cue.trackId") }
+        if cue.anchorBeatId != nil, cue.anchorFrame != nil {
+            throw EditPlanValidationError.invalidReference(
+                "Sound cue '\(cue.cueId)' has one timing anchor: anchorBeatId or anchorFrame, not both.")
+        }
+        return cue
+    }
+
+    var receipt: [String: Any] {
+        var row: [String: Any] = ["cueId": cueId, "role": role.rawValue, "purpose": purpose]
+        if let anchorBeatId { row["anchorBeatId"] = anchorBeatId }
+        if let anchorFrame { row["anchorFrame"] = anchorFrame }
+        if let durationSeconds { row["durationSeconds"] = durationSeconds }
+        if let notes { row["notes"] = notes }
+        if let mediaRef { row["mediaRef"] = mediaRef }
+        if let trackId { row["trackId"] = trackId }
+        return row
+    }
+}

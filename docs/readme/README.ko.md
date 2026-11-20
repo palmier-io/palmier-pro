@@ -2,19 +2,18 @@
 
 <div align="center">
 
-# Palmier Pro
+# Compositor Pro
 
 **AI를 위한 비디오 편집기.**
 
-<a href="https://github.com/palmier-io/palmier-pro/releases/latest/download/PalmierPro.dmg">
-  <img src="../../assets/macos-badge.png" alt="macOS용 Palmier Pro 다운로드" width="180" />
+<a href="https://github.com/compositor-pro/compositor-pro/releases/latest/download/CompositorPro.dmg">
+  <img src="../../assets/macos-badge.png" alt="macOS용 Compositor Pro 다운로드" width="180" />
 </a>
 
 <sub><i>Apple Silicon 기반 macOS 26 (Tahoe) 필요</i></sub>
 
-<a href="https://x.com/Palmier_io"><img src="https://img.shields.io/badge/Follow-%40Palmier__io-000000?style=flat&logo=x&logoColor=white" alt="X에서 팔로우" /></a>
+<a href="https://x.com/CompositorPro"><img src="https://img.shields.io/badge/Follow-%40CompositorPro-000000?style=flat&logo=x&logoColor=white" alt="X에서 팔로우" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Discord 참여" /></a>
-<a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 <br />
 
 <p>
@@ -37,18 +36,18 @@
 
 </div>
 
-<img src="../../assets/palmier-ui.png" alt="Palmier Pro UI" width="900" />
+<img src="../../assets/compositor-ui.png" alt="Compositor Pro UI" width="900" />
 
 ---
 
 > [!IMPORTANT]
-> v0.7.6까지의 Palmier Pro 릴리스는 GPLv3로 공개되었습니다. 마지막 공개 소스 스냅샷은 [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source)입니다. v0.7.6 이후 릴리스는 독점 소프트웨어이며 소스 코드는 이곳에 공개되지 않습니다.
+> v0.7.6까지의 Compositor Pro 릴리스는 GPLv3로 공개되었습니다. 마지막 공개 소스 스냅샷은 [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source)입니다. v0.7.6 이후 릴리스는 독점 소프트웨어이며 소스 코드는 이곳에 공개되지 않습니다.
 
-Palmier Pro는 Mac용 비디오 편집기입니다. 사용자와 agent가 타임라인 안에서 함께 비디오를 생성하고 편집할 수 있습니다.
+Compositor Pro는 Mac용 비디오 편집기입니다. 사용자와 agent가 타임라인 안에서 함께 비디오를 생성하고 편집할 수 있습니다.
 
 ### Swift 네이티브 비디오 편집기
 
-Palmier Pro는 Swift로 처음부터 만들었습니다. Premiere Pro를 모티브로 했으며, AI를 워크플로에 통합하는 Palmier Pro만의 방식을 적용했습니다.
+Compositor Pro는 Swift로 처음부터 만들었습니다. Premiere Pro를 모티브로 했으며, AI를 워크플로에 통합하는 Compositor Pro만의 방식을 적용했습니다.
 
 ### 내장 생성형 AI
 
@@ -64,12 +63,12 @@ MCP로 Claude, Codex, Cursor를 연결하거나, 앱 안의 agent를 사용해 �
 
 **Claude Code**
 ```bash
-claude mcp add --transport http palmier-pro http://127.0.0.1:19789/mcp
+claude mcp add --transport http compositor-pro http://127.0.0.1:19789/mcp
 ```
 
 **Codex**
 ```bash
-codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
+codex mcp add compositor-pro --url http://127.0.0.1:19789/mcp
 ```
 
 **Cursor**
@@ -79,7 +78,7 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 ```
 {
   "mcpServers": {
-    "palmier-pro": {
+    "compositor-pro": {
       "type": "http",
       "url": "http://127.0.0.1:19789/mcp"
     }
@@ -93,9 +92,9 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 
 ## FAQ
 
-**어떤 Palmier Pro 버전이 오픈 소스인가요?**
+**어떤 Compositor Pro 버전이 오픈 소스인가요?**
 
-v0.7.6까지의 릴리스와 [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source)까지의 소스 코드는 GPLv3로 유지되며, 이후 릴리스는 독점 소프트웨어입니다.
+v0.7.6까지의 릴리스와 [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source)까지의 소스 코드는 GPLv3로 유지되며, 이후 릴리스는 독점 소프트웨어입니다.
 
 **무료인가요?**
 
@@ -114,12 +113,12 @@ Apple Silicon 기반 macOS 26 (Tahoe)만 지원합니다.
 ## 커뮤니티 및 지원
 
 - **Discord:** **[Discord](https://discord.com/invite/SMVW6pKYmg)**에서 커뮤니티에 참여하세요.
-- **Twitter / X:** 업데이트와 공지는 **[@Palmier_io](https://x.com/Palmier_io)**를 팔로우하세요.
-- **Instagram:** [@palmier.io](https://www.instagram.com/palmier.io)를 팔로우하세요.
-- **피드백 및 지원:** founders@palmier.io로 이메일을 보내세요.
+- **Twitter / X:** 업데이트와 공지는 **[@CompositorPro](https://x.com/CompositorPro)**를 팔로우하세요.
+- **Instagram:** [@compositorpro](https://www.instagram.com/compositorpro)를 팔로우하세요.
+- **피드백 및 지원:** support@compositor.pro로 이메일을 보내세요.
 
 ## 라이선스
 
-Copyright (C) 2026 Palmier, Inc.
+Copyright (C) 2026 Compositor Pro
 
 이 저장소에 공개된 소스 코드는 [GPLv3](../../LICENSE)에 따라 유지됩니다. v0.7.6 이후의 바이너리 릴리스는 [BINARY_LICENSE.md](../../BINARY_LICENSE.md)에 따른 독점 소프트웨어입니다.

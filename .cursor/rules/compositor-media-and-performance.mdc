@@ -1,0 +1,7 @@
+---
+description: AVFoundation/audio semantics, bounded media work, cache contracts, hot paths, and measured performance.
+globs: Sources/CompositorPro/Audio/**/*.swift, Sources/CompositorPro/Compositing/**/*.swift, Sources/CompositorPro/Preview/**/*.swift, Sources/CompositorPro/Export/**/*.swift, Sources/CompositorPro/Media/**/*.swift, Sources/CompositorPro/Search/**/*.swift, Sources/CompositorPro/Transcription/**/*.swift, Tests/CompositorProTests/Rendering/**/*.swift, Tests/CompositorProTests/Audio/**/*.swift, Tests/CompositorProTests/Export/**/*.swift
+alwaysApply: false
+---
+
+Read `docs/agents/rules/media-and-performance.md` for processing, playback, rendering, indexing, inference, or cache changes. Load concurrency/package rules when reached. Correctness tests do not establish performance improvement; preserve source timing/color/audio semantics.

@@ -1,0 +1,52 @@
+import Foundation
+
+enum SearchIndexConfig {
+    static let enabledDefaultsKey = "searchIndexEnabled"
+    static let visualMatchCosineFloor: Float = 0.05
+
+    static var enabled: Bool {
+        get { UserDefaults.standard.object(forKey: enabledDefaultsKey) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: enabledDefaultsKey) }
+    }
+
+    /// The hosted previous-vendor model repository was removed in the backend teardown (R1);
+    /// the visual model now comes from the bundled `models/siglip2` resources.
+    static var baseURL: URL {
+        #if DEBUG
+        if let raw = UserDefaults.standard.string(forKey: "searchIndexModelBaseURL"), let url = URL(string: raw) {
+            return url
+        }
+        #endif
+        // No hosted model host remains (R1). Weights must be re-hosted under a
+        // compositor namespace and pointed back here before visual search can
+        // reinstall; the bundled `models/siglip2` tree is the migration source.
+        // Until then install fails fast with a visible error instead of
+        // pretending to reach a server.
+        return Bundle.main.bundleURL
+    }
+
+    static let manifest = ModelDownloader.Manifest(
+        model: "siglip2-base-patch16-256",
+        version: 1,
+        embeddingDim: 768,
+        imageSize: 256,
+        contextLength: 64,
+        files: .init(
+            imageEncoder: .init(
+                name: "ImageEncoder.mlpackage.zip",
+                sha256: "426115f240ead5faf69b073e08dd1b959d850ca5c592537cd81886992283b2fb",
+                bytes: 91_700_398
+            ),
+            textEncoder: .init(
+                name: "TextEncoder.mlpackage.zip",
+                sha256: "48f80e35ce40a9dcdc55bef986a104d3153e1cfa78229bb45c4724f3f3427368",
+                bytes: 258_593_083
+            ),
+            tokenizer: .init(
+                name: "tokenizer.zip",
+                sha256: "c37f2a8e8555d8561109564c4f60ee962b0072abddcfcfd599d321469d6d1ef5",
+                bytes: 5_460_173
+            )
+        )
+    )
+}
