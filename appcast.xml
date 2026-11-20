@@ -1086,5 +1086,18 @@
                 type="application/octet-stream"
                 sparkle:edSignature="iEwzWwZvu/IzdRWvye/sOIRAdyRZfoVS//Eiy9Q38dzjNOKpk9E8KROer+yEis90z2poM7JEcRDFrCxDQftqCA=="/>
         </item>
+        <item>
+            <title>Version 1.0.0-beta.4</title>
+            <pubDate>Fri, 20 Nov 2026 01:38:58 +0000</pubDate>
+            <sparkle:channel>beta</sparkle:channel>
+            <sparkle:version>95</sparkle:version>
+            <sparkle:shortVersionString>1.0.0-beta.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/palmier-io/palmier-pro/releases/download/v1.0.0-beta.4/PalmierPro.dmg"
+                length="117369854"
+                type="application/octet-stream"
+                sparkle:edSignature="oeaUikPxg/Y3wiHsOVXkPssxjy99JuXtXuFjXt4HJwn++Zt1mYjDdFvqYsVT/5hrIBD/7f/t2h01ZG9ibDZLDw=="/>
+        </item>
     </channel>
 </rss>
