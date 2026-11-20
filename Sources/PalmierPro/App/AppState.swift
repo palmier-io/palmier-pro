@@ -57,8 +57,11 @@ final class AppState {
     }
 
     func stopMCPService() {
-        mcpService?.stop()
+        guard let service = mcpService else { return }
         mcpService = nil
+        Task { @MainActor in
+            await service.stop()
+        }
     }
 
     func setMCPEnabled(_ enabled: Bool) {
@@ -67,6 +70,29 @@ final class AppState {
             startMCPService()
         } else {
             stopMCPService()
+        }
+    }
+
+    func setMCPHost(_ host: String) {
+        let normalizedHost = MCPHTTPServer.normalizedBindHost(host)
+        guard MCPService.bindHostPreference != normalizedHost else { return }
+        MCPService.bindHostPreference = normalizedHost
+        restartMCPServiceIfNeeded()
+    }
+
+    @discardableResult
+    func regenerateMCPToken() -> String {
+        let token = MCPService.regenerateBearerTokenPreference()
+        restartMCPServiceIfNeeded()
+        return token
+    }
+
+    private func restartMCPServiceIfNeeded() {
+        guard MCPService.isEnabledPreference, let service = mcpService else { return }
+        mcpService = nil
+        Task { @MainActor [weak self] in
+            await service.stop()
+            self?.startMCPService()
         }
     }
 
