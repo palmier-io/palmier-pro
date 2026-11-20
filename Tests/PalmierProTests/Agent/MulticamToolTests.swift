@@ -185,4 +185,25 @@ struct MulticamToolTests {
         let mute = await h.runRaw("manage_tracks", args: ["set": [["index": trackIdx, "muted": true]]])
         #expect(mute.isError == false)
     }
+
+    /// A mic ending before the earliest angle starts used to invert the clip's frame range and trap.
+    @Test func micEndingBeforeProgramStartIsSkippedNotFatal() async throws {
+        let h = ToolHarness()
+        h.addAsset(id: "camA", type: .video, duration: 120, hasAudio: true)
+        h.addAsset(id: "earlyMic", type: .audio, duration: 10)
+
+        let outer = try #require(await h.runOK("manage_multicam", args: ["create": [
+            "name": "Offset",
+            "members": [
+                ["mediaRef": "camA", "kind": "angle", "angleLabel": "cam-a", "offsetSeconds": 100],
+                ["mediaRef": "earlyMic", "kind": "mic", "angleLabel": "early", "offsetSeconds": 0],
+            ],
+            "master": "early",
+            "startFrame": 0,
+        ] as [String: Any]]) as? [String: Any])
+
+        let created = try #require(outer["created"] as? [String: Any])
+        // Only the angle places a clip; the out-of-range mic is dropped rather than crashing.
+        #expect((created["clipIds"] as? [String])?.count == 1)
+    }
 }

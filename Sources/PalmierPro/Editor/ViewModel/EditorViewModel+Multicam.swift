@@ -356,13 +356,16 @@ extension EditorViewModel {
         groupId: String, groupOrigin: Int, fps: Int, sourceDuration: Double?
     ) -> Clip? {
         let start = groupOrigin + groupRange.lowerBound
-        let clampedRange = max(0, start)..<(groupOrigin + groupRange.upperBound)
-        guard !clampedRange.isEmpty else { return nil }
-        let headCut = clampedRange.lowerBound - start
+        // Bounds must be compared before forming a Range — a mic lying entirely before the
+        // program start yields lower > upper, and Range.init traps rather than returning empty.
+        let lower = max(0, start)
+        let upper = groupOrigin + groupRange.upperBound
+        guard lower < upper else { return nil }
+        let headCut = lower - start
 
         var clip = Clip(mediaRef: member.mediaRef,
-                        startFrame: clampedRange.lowerBound,
-                        durationFrames: clampedRange.count)
+                        startFrame: lower,
+                        durationFrames: upper - lower)
         clip.mediaType = mediaType
         clip.sourceClipType = mediaAssets.first { $0.id == member.mediaRef }?.type ?? mediaType
         clip.multicamGroupId = groupId

@@ -43,9 +43,7 @@ final class ModelDownloader: @unchecked Sendable {
         case missingPackage(String)
     }
 
-    static let modelsDir = FileManager.default
-        .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("PalmierPro/Models")
+    static let modelsDir = StorageLocations.modelsDirectory
 
     static func installDir(for manifest: Manifest) -> URL {
         modelsDir.appendingPathComponent("\(manifest.model)-v\(manifest.version)")
@@ -72,7 +70,7 @@ final class ModelDownloader: @unchecked Sendable {
         if let existing = Self.installed(for: manifest) { return existing }
 
         let fm = FileManager.default
-        let staging = fm.temporaryDirectory.appendingPathComponent("palmier-model-\(UUID().uuidString)")
+        let staging = StorageLocations.temporaryDirectory.appendingPathComponent("palmier-model-\(UUID().uuidString)")
         try fm.createDirectory(at: staging, withIntermediateDirectories: true)
         defer { try? fm.removeItem(at: staging) }
 

@@ -31,7 +31,7 @@ enum AudioTrackExtractor {
         }
         try compositionTrack.insertTimeRange(sourceRange, of: audioTrack, at: .zero)
 
-        let outputURL = destURL ?? FileManager.default.temporaryDirectory
+        let outputURL = destURL ?? StorageLocations.temporaryDirectory
             .appendingPathComponent("audio-\(UUID().uuidString).m4a")
         guard let session = AVAssetExportSession(
             asset: composition,

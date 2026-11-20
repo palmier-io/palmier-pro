@@ -12,6 +12,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         super.init()
     }
 
+    /// Resolves the storage roots before any window can touch them. Only a configured root does
+    /// file I/O here, so the default setup never risks a blocking touch from the main thread.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        Task.detached(priority: .userInitiated) {
+            StorageLocations.prepare()
+            Project.ensureStorageDirectory()
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Activate the app (required when launched from CLI, not a .app bundle)
         NSApp.setActivationPolicy(.regular)
@@ -22,9 +31,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         HomeWindowController.shared.showWindow(nil)
         SkillStore.shared.startSkillSync()
-        Task.detached(priority: .utility) {
-            Project.ensureStorageDirectory()
-        }
 
         AppNotifications.configure()
 
