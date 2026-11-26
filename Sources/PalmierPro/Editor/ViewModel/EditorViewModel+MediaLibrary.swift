@@ -128,6 +128,11 @@ private enum MediaImportScanner {
 
 extension EditorViewModel {
 
+    /// Selected media assets in library order.
+    var selectedMediaAssetsInOrder: [MediaAsset] {
+        mediaAssets.filter { selectedMediaAssetIds.contains($0.id) }
+    }
+
     func commitStagedProjectMedia(
         _ stagedURL: URL,
         filename: String,
