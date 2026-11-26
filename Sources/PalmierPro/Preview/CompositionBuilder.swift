@@ -462,9 +462,7 @@ enum CompositionBuilder {
             compTrack.insertEmptyTimeRange(CMTimeRange(start: cursor, duration: gap))
         }
 
-        let sourceFrames = clip.speed == 1.0
-            ? clip.durationFrames
-            : max(1, Int(Double(clip.durationFrames) * clip.speed))
+        let sourceFrames = max(1, clip.sourceFramesConsumed)
         let durationSeconds = Double(sourceFrames) / Double(timescale)
         var sourceDuration = CMTime(seconds: durationSeconds, preferredTimescale: sourceTimescale)
         // Baked sources can be a hair shorter than the original; clamp instead of throwing.
@@ -559,6 +557,15 @@ enum CompositionBuilder {
         }
     }
 
+    /// AVPlayerItem stretches retimed audio with the time-domain algorithm while AVAssetExportSession
+    /// and AVAssetReaderAudioMixOutput default to spectral. Pinning it here is the one point both
+    /// preview and every export path read, so a retimed clip sounds identical in each.
+    private static func makeInputParameters(track: AVMutableCompositionTrack) -> AVMutableAudioMixInputParameters {
+        let params = AVMutableAudioMixInputParameters(track: track)
+        params.audioTimePitchAlgorithm = .spectral
+        return params
+    }
+
     /// Rebuild only visual properties (transforms, opacity, volume)
     static func buildVisuals(
         timeline: Timeline,
@@ -577,7 +584,7 @@ enum CompositionBuilder {
             case .blackBackground:
                 return nil
             case .nested(let clips, let carrier, let parentTrackIndex):
-                let params = AVMutableAudioMixInputParameters(track: mapping.compositionTrack)
+                let params = makeInputParameters(track: mapping.compositionTrack)
                 guard timeline.tracks.indices.contains(parentTrackIndex) else { return params }
                 let parentTrack = timeline.tracks[parentTrackIndex]
                 if parentTrack.muted {
@@ -593,7 +600,7 @@ enum CompositionBuilder {
             case .timeline(let trackIndex, let clipIds):
                 guard timeline.tracks.indices.contains(trackIndex) else { return nil }
                 let track = timeline.tracks[trackIndex]
-                let params = AVMutableAudioMixInputParameters(track: mapping.compositionTrack)
+                let params = makeInputParameters(track: mapping.compositionTrack)
                 if track.muted {
                     params.setVolume(0, at: .zero)
                     return params
