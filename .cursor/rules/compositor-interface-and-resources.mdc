@@ -1,0 +1,7 @@
+---
+description: Native Mac UI, AppTheme, interaction, localization, drop hierarchy, and bundled resource layout.
+globs: Sources/CompositorPro/UI/**/*.swift, Sources/CompositorPro/Inspector/**/*.swift, Sources/CompositorPro/MediaPanel/**/*.swift, Sources/CompositorPro/Localization/**/*.swift, Sources/CompositorPro/Resources/**, scripts/localization/**, scripts/bundle.sh
+alwaysApply: false
+---
+
+Read `docs/agents/rules/interface-and-resources.md` for interface/copy/resource/packaging changes. UI behavior in other directories uses the same policy through `AGENTS.md`; these globs are discovery aids, not scope boundaries. Provide manual interaction verification and do not claim a UI pass without user confirmation.

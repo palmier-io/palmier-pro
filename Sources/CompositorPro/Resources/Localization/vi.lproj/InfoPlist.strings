@@ -1,0 +1,4 @@
+/* Text displayed by macOS for Compositor Pro project packages. */
+
+"CFBundleTypeName" = "Dự án Compositor";
+"UTTypeDescription" = "Dự án Compositor";

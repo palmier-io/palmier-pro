@@ -2,19 +2,18 @@
 
 <div align="center">
 
-# Palmier Pro
+# Compositor Pro
 
 **O editor de vídeo criado para IA.**
 
-<a href="https://github.com/palmier-io/palmier-pro/releases/latest/download/PalmierPro.dmg">
-  <img src="../../assets/macos-badge.png" alt="Baixar Palmier Pro para macOS" width="180" />
+<a href="https://github.com/compositor-pro/compositor-pro/releases/latest/download/CompositorPro.dmg">
+  <img src="../../assets/macos-badge.png" alt="Baixar Compositor Pro para macOS" width="180" />
 </a>
 
 <sub><i>Requer macOS 26 (Tahoe) em Macs com Apple Silicon</i></sub>
 
-<a href="https://x.com/Palmier_io"><img src="https://img.shields.io/badge/Follow-%40Palmier__io-000000?style=flat&logo=x&logoColor=white" alt="Seguir no X" /></a>
+<a href="https://x.com/CompositorPro"><img src="https://img.shields.io/badge/Follow-%40CompositorPro-000000?style=flat&logo=x&logoColor=white" alt="Seguir no X" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Entrar no Discord" /></a>
-<a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 <br />
 
 <p>
@@ -37,18 +36,18 @@
 
 </div>
 
-<img src="../../assets/palmier-ui.png" alt="Interface do Palmier Pro" width="900" />
+<img src="../../assets/compositor-ui.png" alt="Interface do Compositor Pro" width="900" />
 
 ---
 
 > [!IMPORTANT]
-> As versões do Palmier Pro até v0.7.6 foram publicadas sob a GPLv3. O snapshot público final do código-fonte é [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source). As versões posteriores a v0.7.6 são proprietárias e seu código-fonte não é publicado aqui.
+> As versões do Compositor Pro até v0.7.6 foram publicadas sob a GPLv3. O snapshot público final do código-fonte é [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source). As versões posteriores a v0.7.6 são proprietárias e seu código-fonte não é publicado aqui.
 
-Palmier Pro é um editor de vídeo para Mac. Você e seu agente podem gerar e editar vídeos juntos dentro da linha do tempo.
+Compositor Pro é um editor de vídeo para Mac. Você e seu agente podem gerar e editar vídeos juntos dentro da linha do tempo.
 
 ### Editor de vídeo nativo em Swift
 
-Construímos o Palmier Pro do zero com Swift. Inspirado no Premiere Pro, mas com a nossa própria forma de integrar IA ao fluxo de trabalho.
+Construímos o Compositor Pro do zero com Swift. Inspirado no Premiere Pro, mas com a nossa própria forma de integrar IA ao fluxo de trabalho.
 
 ### IA generativa integrada
 
@@ -64,12 +63,12 @@ Quando o app está aberto, ele expõe um servidor MCP em `http://127.0.0.1:19789
 
 **Claude Code**
 ```bash
-claude mcp add --transport http palmier-pro http://127.0.0.1:19789/mcp
+claude mcp add --transport http compositor-pro http://127.0.0.1:19789/mcp
 ```
 
 **Codex**
 ```bash
-codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
+codex mcp add compositor-pro --url http://127.0.0.1:19789/mcp
 ```
 
 **Cursor**
@@ -79,7 +78,7 @@ A forma mais fácil é abrir, no app, `Help` -> `MCP Instructions` -> `Install i
 ```
 {
   "mcpServers": {
-    "palmier-pro": {
+    "compositor-pro": {
       "type": "http",
       "url": "http://127.0.0.1:19789/mcp"
     }
@@ -93,9 +92,9 @@ Incluímos um pacote [mcpb](https://github.com/modelcontextprotocol/mcpb) no app
 
 ## FAQ
 
-**Quais versões do Palmier Pro são open source?**
+**Quais versões do Compositor Pro são open source?**
 
-As versões até v0.7.6 e o código-fonte até [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) permanecem sob a GPLv3; as versões posteriores são proprietárias.
+As versões até v0.7.6 e o código-fonte até [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source) permanecem sob a GPLv3; as versões posteriores são proprietárias.
 
 **É gratuito?**
 
@@ -114,12 +113,12 @@ Este repositório não aceita mais contribuições de código. O código-fonte p
 ## Comunidade e suporte
 
 - **Discord:** Entre na comunidade no **[Discord](https://discord.com/invite/SMVW6pKYmg)**.
-- **Twitter / X:** Siga **[@Palmier_io](https://x.com/Palmier_io)** para atualizações e anúncios.
-- **Instagram:** Siga [@palmier.io](https://www.instagram.com/palmier.io).
-- **Feedback e suporte:** Envie um email para founders@palmier.io.
+- **Twitter / X:** Siga **[@CompositorPro](https://x.com/CompositorPro)** para atualizações e anúncios.
+- **Instagram:** Siga [@compositorpro](https://www.instagram.com/compositorpro).
+- **Feedback e suporte:** Envie um email para support@compositor.pro.
 
 ## Licença
 
-Copyright (C) 2026 Palmier, Inc.
+Copyright (C) 2026 Compositor Pro
 
 O código-fonte publicado neste repositório permanece sob a [GPLv3](../../LICENSE). As versões binárias posteriores a v0.7.6 são proprietárias sob a [BINARY_LICENSE.md](../../BINARY_LICENSE.md).

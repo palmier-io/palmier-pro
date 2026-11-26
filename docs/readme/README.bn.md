@@ -2,19 +2,18 @@
 
 <div align="center">
 
-# Palmier Pro
+# Compositor Pro
 
 **AI-এর জন্য তৈরি ভিডিও এডিটর।**
 
-<a href="https://github.com/palmier-io/palmier-pro/releases/latest/download/PalmierPro.dmg">
-  <img src="../../assets/macos-badge.png" alt="macOS-এর জন্য Palmier Pro ডাউনলোড করুন" width="180" />
+<a href="https://github.com/compositor-pro/compositor-pro/releases/latest/download/CompositorPro.dmg">
+  <img src="../../assets/macos-badge.png" alt="macOS-এর জন্য Compositor Pro ডাউনলোড করুন" width="180" />
 </a>
 
 <sub><i>Apple Silicon-এ macOS 26 (Tahoe) প্রয়োজন</i></sub>
 
-<a href="https://x.com/Palmier_io"><img src="https://img.shields.io/badge/Follow-%40Palmier__io-000000?style=flat&logo=x&logoColor=white" alt="X-এ অনুসরণ করুন" /></a>
+<a href="https://x.com/CompositorPro"><img src="https://img.shields.io/badge/Follow-%40CompositorPro-000000?style=flat&logo=x&logoColor=white" alt="X-এ অনুসরণ করুন" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Discord-এ যোগ দিন" /></a>
-<a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
 <br />
 
 <p>
@@ -37,18 +36,18 @@
 
 </div>
 
-<img src="../../assets/palmier-ui.png" alt="Palmier Pro UI" width="900" />
+<img src="../../assets/compositor-ui.png" alt="Compositor Pro UI" width="900" />
 
 ---
 
 > [!IMPORTANT]
-> Palmier Pro-এর v0.7.6 পর্যন্ত releases GPLv3-এর অধীনে প্রকাশিত হয়েছিল। সর্বশেষ public source snapshot হলো [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source)। v0.7.6-এর পরের releases proprietary এবং তাদের source এখানে প্রকাশ করা হয় না।
+> Compositor Pro-এর v0.7.6 পর্যন্ত releases GPLv3-এর অধীনে প্রকাশিত হয়েছিল। সর্বশেষ public source snapshot হলো [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source)। v0.7.6-এর পরের releases proprietary এবং তাদের source এখানে প্রকাশ করা হয় না।
 
-Palmier Pro Mac-এর জন্য একটি ভিডিও এডিটর। আপনি এবং আপনার agent timeline-এর ভিতরে একসঙ্গে ভিডিও generate ও edit করতে পারেন।
+Compositor Pro Mac-এর জন্য একটি ভিডিও এডিটর। আপনি এবং আপনার agent timeline-এর ভিতরে একসঙ্গে ভিডিও generate ও edit করতে পারেন।
 
 ### Swift-native ভিডিও এডিটর
 
-আমরা Swift দিয়ে Palmier Pro একদম শুরু থেকে তৈরি করেছি। আমাদের উত্তর তারা Premiere Pro, তবে workflow-তে AI যুক্ত করার নিজস্ব পদ্ধতি নিয়ে।
+আমরা Swift দিয়ে Compositor Pro একদম শুরু থেকে তৈরি করেছি। আমাদের উত্তর তারা Premiere Pro, তবে workflow-তে AI যুক্ত করার নিজস্ব পদ্ধতি নিয়ে।
 
 ### Built-in Generative AI
 
@@ -64,12 +63,12 @@ App খোলা থাকলে, এটি HTTP-এর মাধ্যমে `h
 
 **Claude Code**
 ```bash
-claude mcp add --transport http palmier-pro http://127.0.0.1:19789/mcp
+claude mcp add --transport http compositor-pro http://127.0.0.1:19789/mcp
 ```
 
 **Codex**
 ```bash
-codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
+codex mcp add compositor-pro --url http://127.0.0.1:19789/mcp
 ```
 
 **Cursor**
@@ -79,7 +78,7 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 ```
 {
   "mcpServers": {
-    "palmier-pro": {
+    "compositor-pro": {
       "type": "http",
       "url": "http://127.0.0.1:19789/mcp"
     }
@@ -93,9 +92,9 @@ App-এর সঙ্গে আমরা একটি [mcpb](https://github.com/m
 
 ## FAQ
 
-**Palmier Pro-এর কোন versions open source?**
+**Compositor Pro-এর কোন versions open source?**
 
-v0.7.6 পর্যন্ত releases এবং [`last-gpl-source`](https://github.com/palmier-io/palmier-pro/tree/last-gpl-source) পর্যন্ত source GPLv3-এর অধীনে থাকবে; পরবর্তী releases proprietary।
+v0.7.6 পর্যন্ত releases এবং [`last-gpl-source`](https://github.com/compositor-pro/compositor-pro/tree/last-gpl-source) পর্যন্ত source GPLv3-এর অধীনে থাকবে; পরবর্তী releases proprietary।
 
 **এটি কি free?**
 
@@ -114,12 +113,12 @@ Generative AI features-এর জন্য login এবং subscription প্�
 ## Community এবং support
 
 - **Discord:** **[Discord](https://discord.com/invite/SMVW6pKYmg)**-এ community-তে যোগ দিন।
-- **Twitter / X:** Updates এবং announcements-এর জন্য **[@Palmier_io](https://x.com/Palmier_io)** follow করুন।
-- **Instagram:** [@palmier.io](https://www.instagram.com/palmier.io) follow করুন।
-- **Feedback এবং support:** founders@palmier.io-এ email করুন।
+- **Twitter / X:** Updates এবং announcements-এর জন্য **[@CompositorPro](https://x.com/CompositorPro)** follow করুন।
+- **Instagram:** [@compositorpro](https://www.instagram.com/compositorpro) follow করুন।
+- **Feedback এবং support:** support@compositor.pro-এ email করুন।
 
 ## License
 
-Copyright (C) 2026 Palmier, Inc.
+Copyright (C) 2026 Compositor Pro
 
 এই repository-তে প্রকাশিত source [GPLv3](../../LICENSE)-এর অধীনে থাকবে। v0.7.6-এর পরের binary releases [BINARY_LICENSE.md](../../BINARY_LICENSE.md)-এর অধীনে proprietary।

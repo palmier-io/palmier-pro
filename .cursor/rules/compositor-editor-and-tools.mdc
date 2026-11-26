@@ -1,0 +1,7 @@
+---
+description: Shared editorial mutations, frame math, undo, and machine-facing Agent/MCP contracts.
+globs: Sources/CompositorPro/Editor/**/*.swift, Sources/CompositorPro/Timeline/**/*.swift, Sources/CompositorPro/Models/**/*.swift, Sources/CompositorPro/Agent/Tools/**/*.swift, Sources/CompositorPro/Agent/MCP/**/*.swift, Tests/CompositorProTests/Editor/**/*.swift, Tests/CompositorProTests/Timeline/**/*.swift, Tests/CompositorProTests/Agent/**/*.swift
+alwaysApply: false
+---
+
+Read `docs/agents/rules/editor-and-tools.md` before changing editorial mutations or tool contracts. Agent/MCP behavior also requires `.agents/skills/compositor-mcp-test/SKILL.md`; use shared domain operations, independent state readback, and undo. Follow all affected behavioral routes in `AGENTS.md`.

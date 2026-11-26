@@ -1,5 +1,5 @@
 {
-  "originHash" : "1c41338131a6fcbf5dc9354df9b2ff8ad6288c14b07f488862acada172550b23",
+  "originHash" : "aee869b5e257ce9c1b7ee48c6c726987788d73360ebd5ae02662f0126e00ee61",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -11,39 +11,12 @@
       }
     },
     {
-      "identity" : "clerk-convex-swift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/clerk/clerk-convex-swift",
-      "state" : {
-        "revision" : "5c7e62ee329a00df0f9ed73462c54b069a7286ab",
-        "version" : "0.1.0"
-      }
-    },
-    {
-      "identity" : "clerk-ios",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/clerk/clerk-ios",
-      "state" : {
-        "revision" : "32f7e0f08225845f086097e2a0a5d957557cf49b",
-        "version" : "1.3.9"
-      }
-    },
-    {
       "identity" : "compress-nio",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/adam-fowler/compress-nio.git",
       "state" : {
-        "revision" : "e1caa19077dda4b00441142ef57da3db02acd466",
-        "version" : "1.4.2"
-      }
-    },
-    {
-      "identity" : "convex-swift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/get-convex/convex-swift",
-      "state" : {
-        "revision" : "125b71b2f8725931a5b0e8252f0799ef2adad120",
-        "version" : "0.8.1"
+        "revision" : "e238631c31f06274ad75c003c154f0b6ad4910e7",
+        "version" : "1.5.0"
       }
     },
     {
@@ -89,42 +62,6 @@
       "state" : {
         "revision" : "eb889e01b7267bc6d9c01fde91bc517b09506c2d",
         "version" : "0.31.5"
-      }
-    },
-    {
-      "identity" : "nuke",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/kean/Nuke.git",
-      "state" : {
-        "revision" : "63a8fcbd6621340a2410bc3e9575ac97058615f4",
-        "version" : "13.0.6"
-      }
-    },
-    {
-      "identity" : "phonenumberkit",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/PhoneNumberKit/PhoneNumberKit",
-      "state" : {
-        "revision" : "c93fb1c3eef581fbd08acf99d4886dea12b5c1dc",
-        "version" : "5.0.3"
-      }
-    },
-    {
-      "identity" : "posthog-ios",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/PostHog/posthog-ios.git",
-      "state" : {
-        "revision" : "a2366f5397fb133b215b4d03bc9534958068a6c3",
-        "version" : "3.64.4"
-      }
-    },
-    {
-      "identity" : "sentry-cocoa",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/getsentry/sentry-cocoa",
-      "state" : {
-        "revision" : "53eb9bd5da18e208cfd80e86863d3f4c7ba21b1d",
-        "version" : "9.21.0"
       }
     },
     {
@@ -195,8 +132,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-certificates.git",
       "state" : {
-        "revision" : "89fbc3714264cce8db8e4ec51b64e01c3e28c6c5",
-        "version" : "1.19.3"
+        "revision" : "84f03fafeca28c19f5fc4b528df3d22ce8896bd7",
+        "version" : "1.21.1"
       }
     },
     {
@@ -213,8 +150,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-configuration.git",
       "state" : {
-        "revision" : "be76c4ad929eb6c4bcaf3351799f2adf9e6848a9",
-        "version" : "1.2.0"
+        "revision" : "0b0c23215764302f7db752b079c024fbaff12e62",
+        "version" : "1.5.0"
       }
     },
     {
@@ -231,8 +168,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-distributed-tracing.git",
       "state" : {
-        "revision" : "dc4030184203ffafbb2ec614352487235d747fe0",
-        "version" : "1.4.1"
+        "revision" : "9f982a7ec8dd815bf57024e39de592813ca14399",
+        "version" : "1.7.4"
       }
     },
     {
@@ -249,8 +186,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-http-types.git",
       "state" : {
-        "revision" : "db774a277f60063a32d854f2980299caf06da041",
-        "version" : "1.6.0"
+        "revision" : "bff4b6903cdc99dda49649dd52f46c11cfd3ed50",
+        "version" : "1.8.0"
       }
     },
     {
@@ -285,8 +222,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-metrics.git",
       "state" : {
-        "revision" : "087e8074afa97040c3b870c8664fe5482fb87cc4",
-        "version" : "2.11.0"
+        "revision" : "5da0b6ea2a89dcce222eec559289e298d357d0a5",
+        "version" : "2.13.1"
       }
     },
     {
@@ -303,8 +240,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-nio-extras.git",
       "state" : {
-        "revision" : "88a51340f59cf181ebde888bd1b749296b3ec029",
-        "version" : "1.34.3"
+        "revision" : "8e1249b29f92574e05e0d91637f239e378a9a95b",
+        "version" : "1.35.2"
       }
     },
     {
@@ -312,8 +249,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-nio-http2.git",
       "state" : {
-        "revision" : "61d1b44f6e4e118792be1cff88ee2bc0267c6f9a",
-        "version" : "1.44.0"
+        "revision" : "0f3e54e29c944c2e835ad52159da7d9e1c94ac69",
+        "version" : "1.46.0"
       }
     },
     {
@@ -357,8 +294,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-service-context.git",
       "state" : {
-        "revision" : "d0997351b0c7779017f88e7a93bc30a1878d7f29",
-        "version" : "1.3.0"
+        "revision" : "853ba3d9ce78851b9cc20108e8bd4f13f7fa546c",
+        "version" : "1.5.1"
       }
     },
     {
@@ -402,8 +339,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/argmaxinc/WhisperKit",
       "state" : {
-        "revision" : "25c62997041c134b03ca82731ce2f6fd2cae1eb9",
-        "version" : "1.0.0"
+        "revision" : "1bbc57cb7fe6410248a685b1c5a3c6d56adc2ed4",
+        "version" : "1.1.1"
       }
     },
     {

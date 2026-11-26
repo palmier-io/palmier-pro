@@ -1,0 +1,7 @@
+---
+description: Focused regressions, full affected suites, optional traits, protocol proof, and honest completion evidence.
+globs: Tests/CompositorProTests/**/*.swift, Package.swift, .agents/skills/**/SKILL.md, .cursor/rules/*.mdc, docs/agents/**/*.md
+alwaysApply: false
+---
+
+Read `docs/agents/rules/verification.md` before choosing tests or reporting completion. Use `.agents/skills/compositor-verify/SKILL.md` for gate selection. Confirm tests actually ran; do not replace full-suite, MCP, package, or manual UI proof with narrower results.

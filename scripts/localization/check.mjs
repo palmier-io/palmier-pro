@@ -9,7 +9,7 @@ import { sourceKeys } from "./sync.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(scriptPath), "../..");
-const sourceRoot = path.join(root, "Sources", "PalmierPro");
+const sourceRoot = path.join(root, "Sources", "CompositorPro");
 const catalogRoot = path.join(sourceRoot, "Resources", "Localization");
 const sourceLocale = "en";
 const tableNames = ["Localizable", "InfoPlist"];
