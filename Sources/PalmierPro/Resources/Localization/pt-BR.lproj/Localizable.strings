@@ -371,6 +371,7 @@
 "Extend" = "Estender";
 "Extends captions across short gaps and holds the final caption." = "Estende as legendas pelos intervalos curtos e mantém a legenda final.";
 "Extra Large" = "Extragrande";
+"Extract Audio" = "Extrair áudio";
 "FLUX Enhance" = "FLUX Enhance";
 "Fade In" = "Fade-in";
 "Fade Out" = "Fade-out";
@@ -799,6 +800,7 @@
 "Ripple Delete" = "Excluir com ondulação";
 "Ripple Delete Gap" = "Excluir espaço com ondulação";
 "Ripple Insert" = "Inserir com ondulação";
+"Ripple Timeline Markers" = "Ondular marcadores da linha do tempo";
 "Ripple Trim" = "Aparar com ondulação";
 "Ripple-deletes every silent section; downstream clips close the gaps." = "Exclui com ondulação cada seção silenciosa; os clipes seguintes fecham os espaços.";
 "Rotation" = "Rotação";
@@ -817,6 +819,7 @@
 "Save As…" = "Salvar como…";
 "Save Changes" = "Salvar alterações";
 "Save Range as Media" = "Salvar intervalo como mídia";
+"Save as Audio" = "Salvar como áudio";
 "Save as Media" = "Salvar como mídia";
 "Save this project to view activity" = "Salve este projeto para ver a atividade";
 "Saves a copy of this project with all media bundled inside, so it opens on any machine." = "Salva uma cópia deste projeto com toda a mídia incluída para que ele possa ser aberto em qualquer máquina.";
